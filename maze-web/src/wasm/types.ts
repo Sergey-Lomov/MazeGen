@@ -321,8 +321,11 @@ export type SplitFaceRequirement =
   | { kind: "wall" }
   | { kind: "unspecified" };
 
-/** Mirrors Rust's `SplitPatternFaceDto`. `face_index` is a position into the active
- * tessellation's face list (e.g. Square: 0=N, 1=S, 2=E, 3=W). */
+/** Mirrors Rust's `SplitPatternFaceDto` in shape, but NOT in `face_index` ordering while held in
+ * `MazeStore`/the project file: here it's a position into `tessellationGeometry.ts`'s
+ * `getNeighborData` offsets (`TileFaceEditor`'s authoring order), not `Tessellation::faces()`'s
+ * order — the two differ for square/hex (GitHub issue #273). Converted to core's ordering only at
+ * the wasm-config-serialization boundary (`generateConfigBuilder.ts`'s `splitPatternsToCore`). */
 export interface SplitPatternFace {
   face_index: number;
   requirement: SplitFaceRequirement;

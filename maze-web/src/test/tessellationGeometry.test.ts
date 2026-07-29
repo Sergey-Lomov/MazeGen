@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { SplitPattern } from "../wasm/types";
 
 // `getCartesian` (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment
 // — same mock `hexGeometry.test.ts` uses, canonical (unit-tile-scale) formulas mirroring
@@ -19,7 +20,13 @@ vi.mock("../pixi/cartesianCache", () => ({
   },
 }));
 
-const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getNeighborData, getSplitCircleRotationDeg, splitHubPoint, buildNodePositions } = await import("../pixi/tessellationGeometry");
+const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getNeighborData, getSplitCircleRotationDeg, splitHubPoint, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb } = await import("../pixi/tessellationGeometry");
+
+// `maze-core`'s own `Tessellation::faces()` order per space (`Specs/split-patterns.md`,
+// GitHub issue #273) — used here only to name expected indices by face, not to duplicate the
+// mapping under test.
+const SQUARE_CORE_ORDER = ["N", "S", "E", "W"];
+const HEX_CORE_ORDER = ["E", "NE", "NW", "W", "SW", "SE"];
 
 // A face's `v0 -> v1` direction must agree with `getSharedEdgeSegment`'s own choice for that same
 // shared edge — both the split-node dialog's tile diagram (`TileFaceEditor`, via `getTileDiagram`)
@@ -158,5 +165,83 @@ describe("buildNodePositions", () => {
     const nodes = [{ id: 5, x: 3, y: 3 }];
     const nodePos = buildNodePositions(nodes, cfg);
     expect(nodePos.get(5)).toEqual(getCellCenter(3, 3, cfg));
+  });
+});
+
+// Web-authored `face_index` (per `getNeighborData`'s offset order) must land on the same physical
+// face in `maze-core`'s own `Tessellation::faces()` order once converted — GitHub issue #273.
+// Named by axial/cartesian delta (E/N/W/S, E/NE/NW/W/SW/SE) so this test fails if either side's
+// face-name-to-delta mapping ever changes, not just the permutation table.
+describe("splitFaceIndexToCore", () => {
+  it("maps every square web offset to its same-direction core index", () => {
+    const cfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const { offsets } = getNeighborData(cfg, 1, 1);
+    const deltaToName: Record<string, string> = { "1,0": "E", "0,1": "N", "-1,0": "W", "0,-1": "S" };
+    offsets.forEach(([dx, dy], webIndex) => {
+      const name = deltaToName[`${dx},${dy}`];
+      expect(SQUARE_CORE_ORDER[splitFaceIndexToCore(cfg, webIndex)]).toBe(name);
+    });
+  });
+
+  it("maps every hex flat_top web offset to its same-direction core index", () => {
+    const cfg: TessellationConfig = { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "flat_top" };
+    const { offsets } = getNeighborData(cfg, 1, 1);
+    const deltaToName: Record<string, string> = { "1,0": "E", "0,1": "SE", "-1,1": "SW", "-1,0": "W", "0,-1": "NW", "1,-1": "NE" };
+    offsets.forEach(([dx, dy], webIndex) => {
+      const name = deltaToName[`${dx},${dy}`];
+      expect(HEX_CORE_ORDER[splitFaceIndexToCore(cfg, webIndex)]).toBe(name);
+    });
+  });
+
+  it("maps every hex pointy_top web offset to its same-direction core index", () => {
+    const cfg: TessellationConfig = { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "pointy_top" };
+    const { offsets } = getNeighborData(cfg, 1, 1);
+    const deltaToName: Record<string, string> = { "1,0": "E", "0,1": "SE", "-1,1": "SW", "-1,0": "W", "0,-1": "NW", "1,-1": "NE" };
+    offsets.forEach(([dx, dy], webIndex) => {
+      const name = deltaToName[`${dx},${dy}`];
+      expect(HEX_CORE_ORDER[splitFaceIndexToCore(cfg, webIndex)]).toBe(name);
+    });
+  });
+
+  it("is identity for triangle tessellations (web/core orders already agree)", () => {
+    const cfg: TessellationConfig = { type: "triangle_rect", cols: 3, rows: 3 };
+    for (let i = 0; i < 3; i++) expect(splitFaceIndexToCore(cfg, i)).toBe(i);
+  });
+});
+
+// `splitFaceIndexToWeb`/`splitPatternsToWeb` must invert `splitFaceIndexToCore`/`splitPatternsToCore`
+// exactly — a repair/check strategy's `pattern_list`/`split_generation_config` param stores patterns
+// in core ordering (GitHub issue #273's `ParamFields.tsx` fix) but re-opening the editor converts
+// back to web ordering for `TileFaceEditor`; a round-trip must reproduce the original web indices.
+describe("splitFaceIndexToWeb / splitPatternsToWeb (round-trip with *ToCore)", () => {
+  const cfgs: [string, TessellationConfig][] = [
+    ["square", { type: "square", width: 3, height: 3 }],
+    ["hex flat_top", { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "flat_top" }],
+    ["hex pointy_top", { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "pointy_top" }],
+    ["triangle", { type: "triangle_rect", cols: 3, rows: 3 }],
+  ];
+
+  it.each(cfgs)("round-trips every face index for %s", (_label, cfg) => {
+    const degree = getNeighborData(cfg, 1, 1).offsets.length;
+    for (let webIndex = 0; webIndex < degree; webIndex++) {
+      const core = splitFaceIndexToCore(cfg, webIndex);
+      expect(splitFaceIndexToWeb(cfg, core)).toBe(webIndex);
+    }
+  });
+
+  it("splitPatternsToWeb undoes splitPatternsToCore for a full pattern", () => {
+    const cfg: TessellationConfig = { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "flat_top" };
+    const original: SplitPattern[] = [
+      {
+        node_count: 2,
+        faces: [
+          [{ face_index: 0, requirement: { kind: "passage" } }, { face_index: 3, requirement: { kind: "wall" } }],
+          [{ face_index: 5, requirement: { kind: "one_way", direction: "forward" }, sibling_target: 0 }],
+        ],
+        weight: 1.0,
+      },
+    ];
+    const roundTripped = splitPatternsToWeb(splitPatternsToCore(original, cfg), cfg);
+    expect(roundTripped).toEqual(original);
   });
 });

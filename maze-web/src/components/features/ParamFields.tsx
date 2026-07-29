@@ -8,6 +8,9 @@ import { Inline } from "../Layout";
 import { Modal } from "../Modal";
 import { SplitPatternListEditor } from "../dialogs/SplitPatternListEditor";
 import { SplitGenerationSettingsBody, type SplitGenerationSettingsValue } from "../dialogs/SplitGenerationSettingsBody";
+import { splitPatternsToCore, splitPatternsToWeb } from "../../pixi/tessellationGeometry";
+import { useMazeStore } from "../../store/mazeStore";
+import { activeTessellationOf } from "../../store/storeHelpers";
 import * as m from "~/paraglide/messages";
 
 const OPTION_WIDTH_BUFFER = 10;
@@ -76,6 +79,7 @@ function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | u
 }
 
 export function ParamFields({ params, values, getValue, onChange, getDescription, disabled }: Props) {
+  const tessellationConfig = useMazeStore((s) => activeTessellationOf(s));
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [openPatternListParam, setOpenPatternListParam] = useState<string | null>(null);
@@ -106,27 +110,31 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
   }
 
   // Mirrors `parse_split_patterns_param`'s own "invalid falls back to empty" contract (GitHub
-  // issue #247) — a malformed or missing value reads as "no patterns" rather than throwing.
+  // issue #247) — a malformed or missing value reads as "no patterns" rather than throwing. The
+  // stored value is in core `face_index` ordering (see the `onChange` handlers below, GitHub issue
+  // #273) — converted back to web ordering here so `TileFaceEditor`-based UI reads it correctly.
   function getPatterns(p: ParamDescriptor): SplitPattern[] {
     try {
       const parsed = JSON.parse(get(p));
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? splitPatternsToWeb(parsed, tessellationConfig) : [];
     } catch {
       return [];
     }
   }
 
   // Mirrors `parse_split_config_param`'s own "invalid falls back to SplitGenerationConfig::default()"
-  // contract (GitHub issue #247).
+  // contract (GitHub issue #247). `patterns` is stored in core ordering, converted back to web here
+  // (see `getPatterns`, GitHub issue #273).
   function getSplitConfig(p: ParamDescriptor): SplitGenerationSettingsValue {
     const fallback: SplitGenerationSettingsValue = { pattern_mode: false, max_split_nodes: 2, patterns: [] };
     try {
       const parsed = JSON.parse(get(p));
       if (!parsed || typeof parsed !== "object") return fallback;
+      const patterns = Array.isArray(parsed.patterns) ? parsed.patterns : [];
       return {
         pattern_mode: Boolean(parsed.pattern_mode),
         max_split_nodes: Number.isFinite(parsed.max_split_nodes) ? Math.max(1, Math.trunc(parsed.max_split_nodes)) : 2,
-        patterns: Array.isArray(parsed.patterns) ? parsed.patterns : [],
+        patterns: splitPatternsToWeb(patterns, tessellationConfig),
       };
     } catch {
       return fallback;
@@ -309,7 +317,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
             <SplitPatternListEditor
               patterns={getPatterns(p)}
               withWeights={withWeights}
-              onChange={(next) => onChange(p.id, JSON.stringify(next))}
+              onChange={(next) => onChange(p.id, JSON.stringify(splitPatternsToCore(next, tessellationConfig)))}
             />
           </Modal>
         );
@@ -321,7 +329,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
           <Modal title={p.label} onClose={() => setOpenSplitConfigParam(null)}>
             <SplitGenerationSettingsBody
               value={getSplitConfig(p)}
-              onChange={(next) => onChange(p.id, JSON.stringify(next))}
+              onChange={(next) => onChange(p.id, JSON.stringify({ ...next, patterns: splitPatternsToCore(next.patterns, tessellationConfig) }))}
             />
           </Modal>
         );

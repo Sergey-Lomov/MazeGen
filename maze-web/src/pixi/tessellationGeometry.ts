@@ -4,6 +4,7 @@ import { triCenter, triVertices } from "./triGeometry";
 import type { TriOrientation } from "./triGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { TILE_SIZE } from "./constants";
+import type { SplitPattern } from "../wasm/types";
 
 export type Pos = { x: number; y: number };
 
@@ -178,6 +179,82 @@ export function getNeighborData(
 
 export function getCellNeighborOffsets(cfg: TessellationConfig, x: number, y: number): [number, number][] {
   return getNeighborData(cfg, x, y).offsets;
+}
+
+/** Web-authored `face_index` values (GitHub issue #222's `SplitPattern`, authored/edited via
+ *  `TileFaceEditor` against `getNeighborData`'s offset ordering) use a different per-tessellation
+ *  face ordering than `maze-core`'s `Tessellation::faces()` (`SquareFace::faces() = [N, S, E, W]`,
+ *  `HexFace::faces() = [E, NE, NW, W, SW, SE]`) — confirmed via delta-by-delta comparison, GitHub
+ *  issue #273. Triangle's web/core orderings already agree (identity), so no entry is needed there.
+ *  Maps a web-order `face_index` to core's ordering; both sides keep their own internal ordering
+ *  (canvas geometry/hit-testing on the web side, `step`/`face_at`/wire format on the core side). */
+const SPLIT_FACE_INDEX_WEB_TO_CORE: Record<string, number[]> = {
+  square: [2, 0, 3, 1],
+  hex_flat_top: [0, 5, 4, 3, 2, 1],
+  hex_pointy_top: [4, 3, 2, 1, 0, 5],
+};
+
+/** Converts a `SplitPattern.faces[].face_index` value from web ordering (`TileFaceEditor`'s
+ *  authoring order) to `maze-core`'s `Tessellation::faces()` ordering — the one conversion point
+ *  at the wasm-config-serialization boundary (`buildGenerateConfig`), so neither side's internal
+ *  ordering has to change (GitHub issue #273). Identity for triangle tessellations. */
+export function splitFaceIndexToCore(cfg: TessellationConfig, faceIndex: number): number {
+  const t = cfg.type;
+  if (t.startsWith("hex")) {
+    const ori = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
+    return SPLIT_FACE_INDEX_WEB_TO_CORE[`hex_${ori}`][faceIndex];
+  }
+  if (t === "square" || t === "square_custom") {
+    return SPLIT_FACE_INDEX_WEB_TO_CORE.square[faceIndex];
+  }
+  return faceIndex;
+}
+
+/** Converts a `SplitPattern[]` from web `face_index` ordering (`TileFaceEditor`'s authoring order)
+ *  to `maze-core`'s `Tessellation::faces()` ordering, via `splitFaceIndexToCore` — the single
+ *  conversion point every wasm-bound `SplitPattern[]` payload must go through (GitHub issue #273):
+ *  `buildGenerateConfig`'s `split_generation.patterns` (generation's own store-backed patterns) and
+ *  `ParamFields.tsx`'s `pattern_list`/`split_generation_config` param editors (a repair/check
+ *  strategy's own patterns, round-tripped as a raw JSON param string, entirely independent of
+ *  `state.splitPatterns`). Neither the project file (`serializeProject`) nor the param string's own
+ *  *stored* value are converted — only the moment a pattern list is stringified/sent to wasm. */
+export function splitPatternsToCore(patterns: SplitPattern[], cfg: TessellationConfig): SplitPattern[] {
+  return mapSplitPatternFaceIndices(patterns, (i) => splitFaceIndexToCore(cfg, i));
+}
+
+/** Inverse of `splitFaceIndexToCore` — core `Tessellation::faces()` ordering back to web
+ *  (`TileFaceEditor`'s authoring order). Used when a `SplitPattern[]` that was already converted to
+ *  core ordering (a repair/check strategy's `pattern_list`/`split_generation_config` param, GitHub
+ *  issue #273) needs to be shown/edited again in `TileFaceEditor`-based UI, which only ever reads
+ *  web ordering. Built once per tessellation instead of inverting per-call — each table is its own
+ *  permutation, so this is just the array's own inverse index mapping. */
+export function splitFaceIndexToWeb(cfg: TessellationConfig, faceIndex: number): number {
+  const t = cfg.type;
+  let table: number[] | undefined;
+  if (t.startsWith("hex")) {
+    const ori = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
+    table = SPLIT_FACE_INDEX_WEB_TO_CORE[`hex_${ori}`];
+  } else if (t === "square" || t === "square_custom") {
+    table = SPLIT_FACE_INDEX_WEB_TO_CORE.square;
+  }
+  if (!table) return faceIndex;
+  const webIndex = table.indexOf(faceIndex);
+  return webIndex === -1 ? faceIndex : webIndex;
+}
+
+/** Inverse of `splitPatternsToCore` — converts a `SplitPattern[]` already in core ordering back to
+ *  web ordering, for display/editing in `TileFaceEditor`-based UI (GitHub issue #273). */
+export function splitPatternsToWeb(patterns: SplitPattern[], cfg: TessellationConfig): SplitPattern[] {
+  return mapSplitPatternFaceIndices(patterns, (i) => splitFaceIndexToWeb(cfg, i));
+}
+
+function mapSplitPatternFaceIndices(patterns: SplitPattern[], convert: (faceIndex: number) => number): SplitPattern[] {
+  return patterns.map((p) => ({
+    ...p,
+    faces: p.faces.map((nodeFaces) =>
+      nodeFaces.map((f) => ({ ...f, face_index: convert(f.face_index) })),
+    ),
+  }));
 }
 
 export interface TileSide {
