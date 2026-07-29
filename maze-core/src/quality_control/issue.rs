@@ -23,6 +23,8 @@ pub enum IssueKind {
     InvalidSplitTileGroup,
     MissingSplitTiles,
     InvalidSplitNode,
+    InvalidSplitNodeConnection,
+    InvalidSplitNodeConnectionGroup,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -165,6 +167,31 @@ pub const MISSING_SPLIT_TILES: IssueKind = IssueKind::MissingSplitTiles;
 /// Vec<NodeId>, .. }` — see that type's doc comment.
 pub const INVALID_SPLIT_NODE: IssueKind = IssueKind::InvalidSplitNode;
 
+/// A single connection (edge) from one node of a split tile out to an outside neighbor is
+/// invalid for some check-specific reason — see GitHub issue #251, part of epic #246. Mirrors
+/// `INVALID_ONE_WAY`'s role for one-ways: a semantic category, not tied to one specific reason.
+/// Carries `InvalidSplitNodeConnectionIssue { invalid: Vec<EdgeId>, .. }` — see that type's doc
+/// comment. Exists purely as the nested-strategy target for
+/// `SplitNodeConnectionGroupSelectStrategy` (below) — no check produces this kind directly, only
+/// `INVALID_SPLIT_NODE_CONNECTION_GROUP`'s own checks do, mirroring `INVALID_ONE_WAY`'s dual role
+/// as both a directly-checked kind and a group-select nested target.
+pub const INVALID_SPLIT_NODE_CONNECTION: IssueKind = IssueKind::InvalidSplitNodeConnection;
+
+/// A split tile's nodes collectively over-connect to the outside world — see GitHub issue #251,
+/// part of epic #246. Two producing checks: `SplitNodeConnectionPerNeighborCheck` (too many
+/// connections from different nodes of the same split converging on one outside neighbor) and
+/// `SplitNodeConnectionPerFaceCheck` (too many connections from different nodes of the same split
+/// going out through the same tile face direction) — mirrors
+/// `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck` staying two distinct
+/// checks rather than one dual-metric check. Distinct from `INVALID_SPLIT_NODE`: that kind flags
+/// a single node's own connection count invalid on its own terms; this one flags a *relationship*
+/// across several nodes of the same split (excess connections converging on one neighbor/face),
+/// none of which is individually invalid. Carries `InvalidSplitNodeConnectionGroupIssue` — see
+/// that type's doc comment. Repaired by `SplitNodeConnectionGroupSelectStrategy`, which delegates
+/// each candidate connection's removal to a nested `INVALID_SPLIT_NODE_CONNECTION` strategy
+/// (`RemoveSplitNodeConnectionStrategy`).
+pub const INVALID_SPLIT_NODE_CONNECTION_GROUP: IssueKind = IssueKind::InvalidSplitNodeConnectionGroup;
+
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -189,6 +216,8 @@ impl IssueKind {
             IssueKind::InvalidSplitTileGroup => "invalid_split_tile_group",
             IssueKind::MissingSplitTiles => "missing_split_tiles",
             IssueKind::InvalidSplitNode => "invalid_split_node",
+            IssueKind::InvalidSplitNodeConnection => "invalid_split_node_connection",
+            IssueKind::InvalidSplitNodeConnectionGroup => "invalid_split_node_connection_group",
         }
     }
 
@@ -223,6 +252,8 @@ impl IssueKind {
             "invalid_split_tile_group" => Some(IssueKind::InvalidSplitTileGroup),
             "missing_split_tiles" => Some(IssueKind::MissingSplitTiles),
             "invalid_split_node" => Some(IssueKind::InvalidSplitNode),
+            "invalid_split_node_connection" => Some(IssueKind::InvalidSplitNodeConnection),
+            "invalid_split_node_connection_group" => Some(IssueKind::InvalidSplitNodeConnectionGroup),
             _ => None,
         }
     }

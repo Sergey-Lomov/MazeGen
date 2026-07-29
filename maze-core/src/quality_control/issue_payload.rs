@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::ids::NodeId;
 use crate::graph::{Graph, scc::ConnectedComponents};
 use super::issue::Issue;
-use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue};
+use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue, InvalidSplitNodeConnectionGroupIssue};
 
 /// Structural payload data for an `Issue`, resolved against the current `Graph`/`ConnectedComponents`
 /// — one shared source of truth for both `maze-wasm`'s JSON `IssuePayloadDto` (via a thin
@@ -10,8 +10,9 @@ use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroup
 /// `RuleChecked` payload (`quality_control::event`). Only `InvalidLoopIssue`/
 /// `InvalidLoopGroupIssue`/`RegionNeedsExpansionIssue`/`RegionNeedsShrinkIssue`/
 /// `InvalidTeleportIssue`/`InvalidTeleportGroupIssue`/`InvalidOneWayIssue`/
-/// `InvalidOneWayGroupIssue` carry structural edge/node data today — every other concrete `Issue`
-/// type resolves to `None`, same as `build_analytics_snapshot`'s pre-existing behavior.
+/// `InvalidOneWayGroupIssue`/`InvalidSplitNodeConnectionGroupIssue` carry structural edge/node
+/// data today — every other concrete `Issue` type resolves to `None`, same as
+/// `build_analytics_snapshot`'s pre-existing behavior.
 /// `InvalidLoopGroupIssue` reuses the `InvalidLoop` payload variant (identical shape) rather than
 /// getting its own wire tag — `InvalidTeleportGroupIssue` reuses `InvalidTeleport` the same way,
 /// and `InvalidOneWayGroupIssue` reuses `InvalidOneWay` the same way (see GitHub issue #205).
@@ -332,6 +333,12 @@ pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedCo
 
     if let Some(InvalidSplitNodeIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitNodeIssue>() {
         if let Some(payload) = resolve_invalid_split_node_payload(invalid, invalid_sources) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidSplitNodeConnectionGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitNodeConnectionGroupIssue>() {
+        if let Some(payload) = resolve_invalid_one_way_group_payload(groups, invalid_sources, graph) {
             return payload;
         }
     }

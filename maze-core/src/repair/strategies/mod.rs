@@ -28,6 +28,8 @@ pub mod remove_split;
 pub mod split_group_select;
 pub mod add_split;
 pub mod remove_split_node;
+pub mod remove_split_node_connection;
+pub mod split_node_connection_group_select;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -57,6 +59,17 @@ pub use remove_split::{RemoveSplitStrategy, PARAM_REDISTRIBUTE as REMOVE_SPLIT_P
 pub use split_group_select::{SplitGroupSelectStrategy, SLOT_FIX_TARGET as SPLIT_GROUP_SELECT_SLOT_FIX_TARGET, SPLIT_PRIORITY_OPTIONS, PRIORITY_MOST_VOLUMINOUS, PRIORITY_LEAST_VOLUMINOUS, PRIORITY_MOST_CONNECTED, PRIORITY_LEAST_CONNECTED};
 pub use add_split::{AddSplitStrategy, PARAM_ALLOW_LOSE_CONNECTIONS as ADD_SPLIT_PARAM_ALLOW_LOSE_CONNECTIONS, PARAM_ALLOW_ADD_CONNECTIONS as ADD_SPLIT_PARAM_ALLOW_ADD_CONNECTIONS, PARAM_MAX_ATTEMPTS as ADD_SPLIT_PARAM_MAX_ATTEMPTS, MAX_ATTEMPTS_DEFAULT as ADD_SPLIT_MAX_ATTEMPTS_DEFAULT};
 pub use remove_split_node::{RemoveSplitNodeStrategy, PARAM_REDISTRIBUTE as REMOVE_SPLIT_NODE_PARAM_REDISTRIBUTE};
+pub use remove_split_node_connection::RemoveSplitNodeConnectionStrategy;
+pub use split_node_connection_group_select::{
+    SplitNodeConnectionGroupSelectStrategy, SLOT_FIX_TARGET as SPLIT_NODE_CONNECTION_GROUP_SELECT_SLOT_FIX_TARGET,
+    SELECTION_OPTIONS as SPLIT_NODE_CONNECTION_SELECTION_OPTIONS,
+    SELECTION_RANDOM as SPLIT_NODE_CONNECTION_SELECTION_RANDOM,
+    SELECTION_MOST_CONNECTED as SPLIT_NODE_CONNECTION_SELECTION_MOST_CONNECTED,
+    SELECTION_LEAST_CONNECTED as SPLIT_NODE_CONNECTION_SELECTION_LEAST_CONNECTED,
+    PARAM_SELECTION as SPLIT_NODE_CONNECTION_PARAM_SELECTION,
+    PARAM_PROTECT_ORIGINAL as SPLIT_NODE_CONNECTION_PARAM_PROTECT_ORIGINAL,
+    PARAM_PROTECT_ROUTE as SPLIT_NODE_CONNECTION_PARAM_PROTECT_ROUTE,
+};
 
 #[cfg(test)]
 pub(crate) mod test_utils {

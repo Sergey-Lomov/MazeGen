@@ -49,7 +49,7 @@ pub(crate) use edge_ops::{add_edge, add_edge_kind};
 pub(crate) use mutation_commands::{
     cmd_add_directed_edge, cmd_add_bidirectional_edge, cmd_add_directed_teleport,
     cmd_add_bidirectional_teleport, cmd_remove_edge, cmd_remove_edge_by_id,
-    cmd_remove_teleport_with_reverse, cmd_remove_node,
+    cmd_remove_edge_with_reverse, cmd_remove_teleport_with_reverse, cmd_remove_node,
 };
 
 use crate::random::MazeRng;

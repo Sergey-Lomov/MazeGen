@@ -163,6 +163,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.split_node_connection_count.label"] as MessageFn,
     description: m["check.split_node_connection_count.description"] as MessageFn,
   },
+  split_node_connection_per_neighbor: {
+    label: m["check.split_node_connection_per_neighbor.label"] as MessageFn,
+    description: m["check.split_node_connection_per_neighbor.description"] as MessageFn,
+  },
+  split_node_connection_per_face: {
+    label: m["check.split_node_connection_per_face.label"] as MessageFn,
+    description: m["check.split_node_connection_per_face.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -242,6 +250,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_split_node.label"] as MessageFn,
     description: m["issue.invalid_split_node.description"] as MessageFn,
   },
+  invalid_split_node_connection_group: {
+    label: m["issue.invalid_split_node_connection_group.label"] as MessageFn,
+    description: m["issue.invalid_split_node_connection_group.description"] as MessageFn,
+  },
 };
 
 /** Section grouping for `IssueSelectDialog` only — distinct from `issueI18n`'s full labels,
@@ -266,6 +278,7 @@ export const issueSectionI18n: Record<string, MessageFn> = {
   invalid_split_tile_group: m["issue_select.section.splits"] as MessageFn,
   missing_split_tiles: m["issue_select.section.splits"] as MessageFn,
   invalid_split_node: m["issue_select.section.splits"] as MessageFn,
+  invalid_split_node_connection_group: m["issue_select.section.splits"] as MessageFn,
 };
 
 /** Short item labels for `IssueSelectDialog` only, indented under `issueSectionI18n`'s header —
@@ -290,6 +303,7 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   invalid_split_tile_group: m["issue_select.short_label.validate_tile_groups"] as MessageFn,
   missing_split_tiles: m["issue_select.short_label.add"] as MessageFn,
   invalid_split_node: m["issue_select.short_label.validate_node"] as MessageFn,
+  invalid_split_node_connection_group: m["issue_select.short_label.validate_node_groups"] as MessageFn,
 };
 
 export const NO_FIX_STRATEGY_ID = "no_fix";
@@ -398,6 +412,14 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   remove_split_node: {
     label: m["strategy.remove_split_node.label"] as MessageFn,
     description: m["strategy.remove_split_node.description"] as MessageFn,
+  },
+  remove_split_node_connection: {
+    label: m["strategy.remove_split_node_connection.label"] as MessageFn,
+    description: m["strategy.remove_split_node_connection.description"] as MessageFn,
+  },
+  split_node_connection_group_select: {
+    label: m["strategy.split_node_connection_group_select.label"] as MessageFn,
+    description: m["strategy.split_node_connection_group_select.description"] as MessageFn,
   },
 };
 
@@ -710,6 +732,18 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.direction.label"] as MessageFn,
     description: m["param.direction.description"] as MessageFn,
   },
+  max: {
+    label: m["param.max.label"] as MessageFn,
+    description: m["param.max.description"] as MessageFn,
+  },
+  selection: {
+    label: m["param.selection.label"] as MessageFn,
+    description: m["param.selection.description"] as MessageFn,
+  },
+  protect_original: {
+    label: m["param.protect_original.label"] as MessageFn,
+    description: m["param.protect_original.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -778,6 +812,9 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "direction.outgoing": m["param.direction.option.outgoing"] as MessageFn,
   "direction.bidirectional": m["param.direction.option.bidirectional"] as MessageFn,
   "direction.any": m["param.direction.option.any"] as MessageFn,
+  "selection.random": m["param.selection.option.random"] as MessageFn,
+  "selection.most_connected": m["param.selection.option.most_connected"] as MessageFn,
+  "selection.least_connected": m["param.selection.option.least_connected"] as MessageFn,
 };
 
 // Explanations for individual option values of Enum-kind params, shown under the param's
@@ -833,6 +870,9 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "direction.outgoing": m["param.direction.option.outgoing.explanation"] as MessageFn,
   "direction.bidirectional": m["param.direction.option.bidirectional.explanation"] as MessageFn,
   "direction.any": m["param.direction.option.any.explanation"] as MessageFn,
+  "selection.random": m["param.selection.option.random.explanation"] as MessageFn,
+  "selection.most_connected": m["param.selection.option.most_connected.explanation"] as MessageFn,
+  "selection.least_connected": m["param.selection.option.least_connected.explanation"] as MessageFn,
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {

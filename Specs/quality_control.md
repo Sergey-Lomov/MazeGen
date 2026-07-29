@@ -37,6 +37,8 @@ pub enum IssueKind {
 
 `InvalidSplitNode` — see GitHub issue #250, part of epic #246. A single split node (any node of a split tile, slot-0 included) is invalid for some check-specific reason — currently `SplitNodeConnectionCountCheck` (the node's connection count, filtered by direction, compares against a configured threshold). Distinct from `InvalidSplitTile`: that kind's unit of work is a whole tile (`SplitTileNodes`), this one's is a single node (`NodeId`) — a check here may flag slot-0 itself (epic #246's "slot-0 is not otherwise special" rule), but the registered repair strategy (`RemoveSplitNodeStrategy`) still never removes it, mirroring the hard constraint every strategy in this epic shares. Carries `InvalidSplitNodeIssue { invalid: Vec<NodeId>, .. }` — see that type's doc comment.
 
+`InvalidSplitNodeConnectionGroup` — see GitHub issue #251, part of epic #246. A field-wide/relationship condition over a split tile's own outgoing connections: too many of them (from different nodes of the same split) converge on the same single outside neighbor, or go out through the same tile face direction. Distinct from both `InvalidSplitNode` (a single node's own connection *count*) and `InvalidSplitTile`/`InvalidSplitTileGroup` (excess node *count*, not excess *connections*). Produced by `SplitNodeConnectionPerNeighborCheck`/`SplitNodeConnectionPerFaceCheck` — two distinct check types, same "no dual-metric check" rationale as `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck`. Carries `InvalidSplitNodeConnectionGroupIssue { groups, invalid_sources, .. }` — a type alias onto the generic `InvalidGroupIssue<SplitNodeConnectionGroupKind>` shape (`Element = EdgeId`), same as `InvalidOneWayGroupIssue`/`InvalidTeleportGroupIssue`. Repaired by `SplitNodeConnectionGroupSelectStrategy`, which delegates each candidate connection's removal to a nested `INVALID_SPLIT_NODE_CONNECTION` strategy (`RemoveSplitNodeConnectionStrategy`) — mirrors `OneWayGroupSelectStrategy`'s shape.
+
 Each variant has a canonical string representation used in serialization and config:
 
 ```rust
@@ -1253,6 +1255,60 @@ Fires `InvalidSplitNodeIssue::new_from_check(instance_id, invalid)` with `.with_
 
 `RemoveSplitNodeStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_SPLIT_NODE`.
 
+### SplitNodeConnectionPerNeighborCheck / SplitNodeConnectionPerFaceCheck
+
+```rust
+pub const SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT: u32 = 1;
+
+pub struct SplitNodeConnectionPerNeighborCheck {
+    pub instance_id: String,
+    pub max: u32,
+}
+
+pub const SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT: u32 = 1;
+
+pub struct SplitNodeConnectionPerFaceCheck {
+    pub instance_id: String,
+    pub max: u32,
+}
+```
+
+See GitHub issue #251, part of epic #246. Two separate check types (mirrors
+`OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck` staying distinct rather than
+one dual-metric check), both producing `INVALID_SPLIT_NODE_CONNECTION_GROUP` when a split tile's
+nodes collectively over-connect to the outside — distinct from `INVALID_SPLIT_NODE` (which flags a
+single node's own connection count) and from `INVALID_SPLIT_TILE` (which flags excess node
+*count*, not excess *connections*).
+
+Both scan `Field::all_points()` (deduped via a seen-points set), keep only points with
+`nodes_at(point).len() >= 2`, then for each split tile scan every edge whose `from` is one of the
+tile's own nodes (slot-0 included — epic #246's "slot-0 is not otherwise special" rule). A
+connection only counts if it's genuinely **outside**: the target node's own point
+(`Field::point_of(edge.to)`) must differ from the split tile's point — a sibling edge to another
+node of the same split is never counted. Only **outgoing** edges count (`edge.from` at the split
+point) — mirrors the issue's own wording ("connections ... go out to..."). `EdgeKind` doesn't
+matter, `Basic` and `Teleport` both count.
+
+**`SplitNodeConnectionPerNeighborCheck`** buckets each tile's outgoing outside edges by the target
+`NodeId` — a bucket with more than `max` edges fires, with `to_remove = bucket.len() - max`.
+
+**`SplitNodeConnectionPerFaceCheck`** buckets by face-direction index instead
+(`T::face_between(split_point, neighbor_point)`, resolved to a stable index via `T::face_index`) —
+edges toward *different* outside neighbors that happen to share the same face direction land in
+the same bucket, so this check's cap is independent of how many distinct neighbors receive the
+connections, unlike the per-neighbor check above.
+
+Each over-cap bucket becomes its own group in `InvalidSplitNodeConnectionGroupIssue.groups:
+Vec<(Vec<EdgeId>, u32)>` (the generic `InvalidGroupIssue<SplitNodeConnectionGroupKind>` shape —
+`Element = EdgeId`, mirroring `OneWayGroupKind`/`TeleportGroupKind`'s flat-`EdgeId` shape). Fires
+`InvalidSplitNodeConnectionGroupIssue::new_from_check(instance_id, groups)` with
+`.with_detail(instance_id, "max", self.max.to_string())` chained on. Both allow multiple
+simultaneous instances (`allow_multiple_instances: true`) — distinct `max` thresholds are a
+legitimate simultaneous configuration, same rationale as the one-way/teleport proximity checks.
+
+`SplitNodeConnectionGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for
+`INVALID_SPLIT_NODE_CONNECTION_GROUP`.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -1494,10 +1550,15 @@ unified QualityControlEngine" section for how a `QcRuleConfig` is validated and 
 | `max_split_density` | `invalid_split_tile_group` | `max_split_density: Integer(default=30, min=0, max=100)` | no |
 | `split_group_geometric_proximity` | `invalid_split_tile_group` | `split_group_geometric_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)` | no |
 | `split_group_graph_proximity` | `invalid_split_tile_group` | `split_group_graph_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)` | no |
+| `split_count` | `missing_split_tiles` | `split_count: Integer(default=1, min=0, max=1_000_000)`, `patterns: PatternList(with_weights=false)` | no |
+| `split_density` | `missing_split_tiles` | `split_density: Integer(default=10, min=0, max=100)`, `split_tile_estimate: Integer(default=1, min=1, max=100_000)`, `patterns: PatternList(with_weights=false)` | no |
+| `split_node_connection_count` | `invalid_split_node` | `count: Integer(default=2, min=0, max=1_000_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `direction: Enum(options=[incoming,outgoing,bidirectional,any], default=any)` | no |
+| `split_node_connection_per_neighbor` | `invalid_split_node_connection_group` | `max: Integer(default=1, min=0, max=1_000_000)` | no |
+| `split_node_connection_per_face` | `invalid_split_node_connection_group` | `max: Integer(default=1, min=0, max=1_000_000)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 
-`teleport_waypoint_distance` has `allow_multiple_instances: true` (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance`/`comparison` combinations are a legitimate simultaneous configuration. `split_group_geometric_proximity`/`split_group_graph_proximity` likewise allow multiple instances — distinct distance thresholds are a legitimate simultaneous configuration, same rationale as `one_way_group_geometric_proximity`/`teleport_group_proximity`.
+`teleport_waypoint_distance` has `allow_multiple_instances: true` (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance`/`comparison` combinations are a legitimate simultaneous configuration. `split_group_geometric_proximity`/`split_group_graph_proximity` likewise allow multiple instances — distinct distance thresholds are a legitimate simultaneous configuration, same rationale as `one_way_group_geometric_proximity`/`teleport_group_proximity`. `split_node_connection_count`/`split_node_connection_per_neighbor`/`split_node_connection_per_face` also allow multiple instances — distinct threshold/direction or `max` combinations are a legitimate simultaneous configuration.
 
 ## Architectural Contract
 

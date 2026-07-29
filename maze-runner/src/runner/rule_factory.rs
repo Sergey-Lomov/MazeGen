@@ -8,7 +8,7 @@ use maze_core::{
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
         InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
         MissingOneWaysIssue, MissingTeleportsIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue,
-        MissingSplitTilesIssue, InvalidSplitNodeIssue,
+        MissingSplitTilesIssue, InvalidSplitNodeIssue, InvalidSplitNodeConnectionGroupIssue,
     },
 };
 use crate::config::GenerateConfig;
@@ -20,7 +20,7 @@ use super::check_factory::{
     build_missing_regions_check, build_invalid_teleport_check, build_teleport_group_proximity_check,
     build_invalid_one_way_check, build_one_way_group_proximity_check, build_missing_one_ways_check,
     build_missing_teleports_check, build_invalid_split_tile_check, build_split_group_check,
-    build_missing_split_tiles_check, build_invalid_split_node_check,
+    build_missing_split_tiles_check, build_invalid_split_node_check, build_split_node_connection_group_check,
 };
 use super::strategy_factory::{build_strategy_erased, downcast_strategy, build_nested};
 
@@ -92,6 +92,7 @@ fn build_rule<T: Tessellation + 'static>(rule_cfg: &crate::config::QcRuleConfig)
         KindTag::InvalidSplitTileGroup => build_rule_for!(InvalidSplitTileGroupIssue, build_split_group_check, rule_cfg),
         KindTag::MissingSplitTiles => build_rule_for!(MissingSplitTilesIssue, build_missing_split_tiles_check, rule_cfg),
         KindTag::InvalidSplitNode => build_rule_for!(InvalidSplitNodeIssue, build_invalid_split_node_check, rule_cfg),
+        KindTag::InvalidSplitNodeConnectionGroup => build_rule_for!(InvalidSplitNodeConnectionGroupIssue, build_split_node_connection_group_check, rule_cfg),
     }
 }
 

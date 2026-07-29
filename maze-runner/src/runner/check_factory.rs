@@ -40,13 +40,15 @@ use maze_core::{
         SplitCountCheck, SPLIT_COUNT_DEFAULT,
         SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT,
         SplitNodeConnectionCountCheck, SplitNodeConnectionDirection, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON,
+        SplitNodeConnectionPerNeighborCheck, SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT,
+        SplitNodeConnectionPerFaceCheck, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT,
         Comparison, CycleKind,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
         InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue,
         MissingOneWaysIssue, MissingTeleportsIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue,
-        MissingSplitTilesIssue, InvalidSplitNodeIssue,
+        MissingSplitTilesIssue, InvalidSplitNodeIssue, InvalidSplitNodeConnectionGroupIssue,
     },
     RegionClass,
 };
@@ -79,6 +81,7 @@ pub(crate) enum KindTag {
     InvalidSplitTileGroup,
     MissingSplitTiles,
     InvalidSplitNode,
+    InvalidSplitNodeConnectionGroup,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -123,6 +126,8 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "split_count"               => KindTag::MissingSplitTiles,
         "split_density"             => KindTag::MissingSplitTiles,
         "split_node_connection_count" => KindTag::InvalidSplitNode,
+        "split_node_connection_per_neighbor" => KindTag::InvalidSplitNodeConnectionGroup,
+        "split_node_connection_per_face" => KindTag::InvalidSplitNodeConnectionGroup,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -593,6 +598,26 @@ pub(crate) fn build_invalid_split_node_check<T: Tessellation>(instance: &CheckIn
             let comparison = parse_comparison(instance.params.get("comparison"), SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON);
             let direction = parse_split_node_connection_direction(instance.params.get("direction"));
             Some(Box::new(SplitNodeConnectionCountCheck { instance_id, count, comparison, direction }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_split_node_connection_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitNodeConnectionGroupIssue>>> {
+    match instance.type_id.as_str() {
+        "split_node_connection_per_neighbor" => {
+            let max = instance.params.get("max")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT);
+            Some(Box::new(SplitNodeConnectionPerNeighborCheck { instance_id, max }))
+        }
+        "split_node_connection_per_face" => {
+            let max = instance.params.get("max")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT);
+            Some(Box::new(SplitNodeConnectionPerFaceCheck { instance_id, max }))
         }
         _ => None,
     }

@@ -43,6 +43,8 @@ pub mod split_group_graph_proximity;
 pub mod split_count;
 pub mod split_density;
 pub mod split_node_connection_count;
+pub mod split_node_connection_per_neighbor;
+pub mod split_node_connection_per_face;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -84,3 +86,5 @@ pub use split_group_graph_proximity::{SplitGroupGraphProximityCheck, SPLIT_GROUP
 pub use split_count::{SplitCountCheck, SPLIT_COUNT_DEFAULT};
 pub use split_density::{SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT};
 pub use split_node_connection_count::{SplitNodeConnectionCountCheck, SplitNodeConnectionDirection, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON};
+pub use split_node_connection_per_neighbor::{SplitNodeConnectionPerNeighborCheck, SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT};
+pub use split_node_connection_per_face::{SplitNodeConnectionPerFaceCheck, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT};
