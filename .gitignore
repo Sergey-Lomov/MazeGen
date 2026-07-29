@@ -1,5 +1,6 @@
 /target
 maze-web/generated/
 maze-web/coverage/
+node_modules/
 .claude/settings.local.json
 .claude/hooks/wasm-rebuild.log
