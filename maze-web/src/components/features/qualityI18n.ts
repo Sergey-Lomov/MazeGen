@@ -171,6 +171,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.split_node_connection_per_face.label"] as MessageFn,
     description: m["check.split_node_connection_per_face.description"] as MessageFn,
   },
+  max_split_tile_node_count: {
+    label: m["check.max_split_tile_node_count.label"] as MessageFn,
+    description: m["check.max_split_tile_node_count.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -254,6 +258,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_split_node_connection_group.label"] as MessageFn,
     description: m["issue.invalid_split_node_connection_group.description"] as MessageFn,
   },
+  invalid_split_node_group: {
+    label: m["issue.invalid_split_node_group.label"] as MessageFn,
+    description: m["issue.invalid_split_node_group.description"] as MessageFn,
+  },
 };
 
 /** Section grouping for `IssueSelectDialog` only — distinct from `issueI18n`'s full labels,
@@ -279,6 +287,7 @@ export const issueSectionI18n: Record<string, MessageFn> = {
   missing_split_tiles: m["issue_select.section.splits"] as MessageFn,
   invalid_split_node: m["issue_select.section.splits"] as MessageFn,
   invalid_split_node_connection_group: m["issue_select.section.splits"] as MessageFn,
+  invalid_split_node_group: m["issue_select.section.splits"] as MessageFn,
 };
 
 /** Short item labels for `IssueSelectDialog` only, indented under `issueSectionI18n`'s header —
@@ -303,7 +312,8 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   invalid_split_tile_group: m["issue_select.short_label.validate_tile_groups"] as MessageFn,
   missing_split_tiles: m["issue_select.short_label.add"] as MessageFn,
   invalid_split_node: m["issue_select.short_label.validate_node"] as MessageFn,
-  invalid_split_node_connection_group: m["issue_select.short_label.validate_node_groups"] as MessageFn,
+  invalid_split_node_connection_group: m["issue_select.short_label.validate_connection_groups"] as MessageFn,
+  invalid_split_node_group: m["issue_select.short_label.validate_node_groups"] as MessageFn,
 };
 
 export const NO_FIX_STRATEGY_ID = "no_fix";
@@ -420,6 +430,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   split_node_connection_group_select: {
     label: m["strategy.split_node_connection_group_select.label"] as MessageFn,
     description: m["strategy.split_node_connection_group_select.description"] as MessageFn,
+  },
+  split_node_group_select: {
+    label: m["strategy.split_node_group_select.label"] as MessageFn,
+    description: m["strategy.split_node_group_select.description"] as MessageFn,
   },
 };
 

@@ -31,6 +31,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   missing_split_tiles: () => ({ label: m["issue.missing_split_tiles.label"](), description: m["issue.missing_split_tiles.description"](), severity: "warning" }),
   invalid_split_node: () => ({ label: m["issue.invalid_split_node.label"](), description: m["issue.invalid_split_node.description"](), severity: "warning" }),
   invalid_split_node_connection_group: () => ({ label: m["issue.invalid_split_node_connection_group.label"](), description: m["issue.invalid_split_node_connection_group.description"](), severity: "warning" }),
+  invalid_split_node_group: () => ({ label: m["issue.invalid_split_node_group.label"](), description: m["issue.invalid_split_node_group.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -133,6 +134,7 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   split_node_connection_count: (d) => d.count !== undefined ? m["issue.invalid_split_node.split_node_connection_count_label"]({ count: d.count }) : undefined,
   split_node_connection_per_neighbor: (d) => d.max !== undefined ? m["issue.invalid_split_node_connection_group.split_node_connection_per_neighbor_label"]({ max: d.max }) : undefined,
   split_node_connection_per_face: (d) => d.max !== undefined ? m["issue.invalid_split_node_connection_group.split_node_connection_per_face_label"]({ max: d.max }) : undefined,
+  max_split_tile_node_count: (d) => d.max !== undefined ? m["issue.invalid_split_node_group.max_split_tile_node_count_label"]({ max: d.max }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

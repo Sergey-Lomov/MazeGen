@@ -13,6 +13,7 @@ use maze_core::{
         MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy,
         RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy,
         RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy,
+        SplitNodeGroupSelectStrategy,
     },
     quality_control::IssueRequirement,
 };
@@ -55,6 +56,7 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(id: &str, params: &HashMap<
         "remove_split_node"    => Box::new(RemoveSplitNodeStrategy),
         "remove_split_node_connection" => Box::new(RemoveSplitNodeConnectionStrategy),
         "split_node_connection_group_select" => Box::new(SplitNodeConnectionGroupSelectStrategy),
+        "split_node_group_select" => Box::new(SplitNodeGroupSelectStrategy),
         other => return Err(format!("unknown strategy: {other}")),
     })
 }

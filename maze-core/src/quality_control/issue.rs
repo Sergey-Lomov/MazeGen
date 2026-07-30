@@ -25,6 +25,7 @@ pub enum IssueKind {
     InvalidSplitNode,
     InvalidSplitNodeConnection,
     InvalidSplitNodeConnectionGroup,
+    InvalidSplitNodeGroup,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -192,6 +193,16 @@ pub const INVALID_SPLIT_NODE_CONNECTION: IssueKind = IssueKind::InvalidSplitNode
 /// (`RemoveSplitNodeConnectionStrategy`).
 pub const INVALID_SPLIT_NODE_CONNECTION_GROUP: IssueKind = IssueKind::InvalidSplitNodeConnectionGroup;
 
+/// A split tile has more nodes than a check's configured limit allows (currently
+/// `SplitTileNodeCountCheck`, compared via the shared `Comparison` operator) — see GitHub issue
+/// #252, part of epic #246. Distinct from `INVALID_SPLIT_NODE_CONNECTION_GROUP`: that kind flags
+/// excess *connections* converging on a neighbor/face; this one flags excess *node count* within a
+/// single split tile, none of whose individual nodes is invalid on its own. Carries
+/// `InvalidSplitNodeGroupIssue` — see that type's doc comment. Repaired by
+/// `SplitNodeGroupSelectStrategy`, which delegates each candidate node's removal to a nested
+/// `INVALID_SPLIT_NODE` strategy (`RemoveSplitNodeStrategy`) — never selects a tile's slot-0.
+pub const INVALID_SPLIT_NODE_GROUP: IssueKind = IssueKind::InvalidSplitNodeGroup;
+
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -218,6 +229,7 @@ impl IssueKind {
             IssueKind::InvalidSplitNode => "invalid_split_node",
             IssueKind::InvalidSplitNodeConnection => "invalid_split_node_connection",
             IssueKind::InvalidSplitNodeConnectionGroup => "invalid_split_node_connection_group",
+            IssueKind::InvalidSplitNodeGroup => "invalid_split_node_group",
         }
     }
 
@@ -254,6 +266,7 @@ impl IssueKind {
             "invalid_split_node" => Some(IssueKind::InvalidSplitNode),
             "invalid_split_node_connection" => Some(IssueKind::InvalidSplitNodeConnection),
             "invalid_split_node_connection_group" => Some(IssueKind::InvalidSplitNodeConnectionGroup),
+            "invalid_split_node_group" => Some(IssueKind::InvalidSplitNodeGroup),
             _ => None,
         }
     }

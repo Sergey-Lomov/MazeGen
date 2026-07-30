@@ -45,6 +45,7 @@ pub mod split_density;
 pub mod split_node_connection_count;
 pub mod split_node_connection_per_neighbor;
 pub mod split_node_connection_per_face;
+pub mod max_split_tile_node_count;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -88,3 +89,4 @@ pub use split_density::{SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_
 pub use split_node_connection_count::{SplitNodeConnectionCountCheck, SplitNodeConnectionDirection, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON};
 pub use split_node_connection_per_neighbor::{SplitNodeConnectionPerNeighborCheck, SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT};
 pub use split_node_connection_per_face::{SplitNodeConnectionPerFaceCheck, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT};
+pub use max_split_tile_node_count::{MaxSplitTileNodeCountCheck, MAX_SPLIT_TILE_NODE_COUNT_DEFAULT};

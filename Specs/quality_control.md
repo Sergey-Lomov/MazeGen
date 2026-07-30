@@ -39,6 +39,8 @@ pub enum IssueKind {
 
 `InvalidSplitNodeConnectionGroup` — see GitHub issue #251, part of epic #246. A field-wide/relationship condition over a split tile's own outgoing connections: too many of them (from different nodes of the same split) converge on the same single outside neighbor, or go out through the same tile face direction. Distinct from both `InvalidSplitNode` (a single node's own connection *count*) and `InvalidSplitTile`/`InvalidSplitTileGroup` (excess node *count*, not excess *connections*). Produced by `SplitNodeConnectionPerNeighborCheck`/`SplitNodeConnectionPerFaceCheck` — two distinct check types, same "no dual-metric check" rationale as `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck`. Carries `InvalidSplitNodeConnectionGroupIssue { groups, invalid_sources, .. }` — a type alias onto the generic `InvalidGroupIssue<SplitNodeConnectionGroupKind>` shape (`Element = EdgeId`), same as `InvalidOneWayGroupIssue`/`InvalidTeleportGroupIssue`. Repaired by `SplitNodeConnectionGroupSelectStrategy`, which delegates each candidate connection's removal to a nested `INVALID_SPLIT_NODE_CONNECTION` strategy (`RemoveSplitNodeConnectionStrategy`) — mirrors `OneWayGroupSelectStrategy`'s shape.
 
+`InvalidSplitNodeGroup` — see GitHub issue #252, part of epic #246. A single split tile's node count exceeds a configured maximum — distinct from `InvalidSplitNodeConnectionGroup` (excess *connections*, not excess *node count*) and from `InvalidSplitTile`/`InvalidSplitTileGroup` (whose unit of work is a whole tile collapsing back to slot-0, not picking individual excess nodes to remove from an otherwise-kept tile). Produced by `MaxSplitTileNodeCountCheck` — fixed "too many" semantics only (no generic `Comparison`, unlike `SplitNodeConnectionCountCheck`): the only registered repair strategy for this kind can only remove nodes, so a "too few" comparison would have no way to ever resolve. Carries `InvalidSplitNodeGroupIssue { groups, invalid_sources, .. }` — a type alias onto the generic `InvalidGroupIssue<SplitNodeGroupKind>` shape (`Element = NodeId`), one group per over-limit split tile, `to_remove` = excess node count over the max. Repaired by `SplitNodeGroupSelectStrategy`, which delegates each candidate node's removal to a nested `INVALID_SPLIT_NODE` strategy (`RemoveSplitNodeStrategy`) — never selects a tile's slot-0.
+
 Each variant has a canonical string representation used in serialization and config:
 
 ```rust
@@ -1555,6 +1557,7 @@ unified QualityControlEngine" section for how a `QcRuleConfig` is validated and 
 | `split_node_connection_count` | `invalid_split_node` | `count: Integer(default=2, min=0, max=1_000_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `direction: Enum(options=[incoming,outgoing,bidirectional,any], default=any)` | no |
 | `split_node_connection_per_neighbor` | `invalid_split_node_connection_group` | `max: Integer(default=1, min=0, max=1_000_000)` | no |
 | `split_node_connection_per_face` | `invalid_split_node_connection_group` | `max: Integer(default=1, min=0, max=1_000_000)` | no |
+| `max_split_tile_node_count` | `invalid_split_node_group` | `max: Integer(default=3, min=0, max=1_000_000)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

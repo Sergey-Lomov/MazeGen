@@ -28,6 +28,7 @@ mod missing_split_tiles;
 mod invalid_split_node;
 mod invalid_split_node_connection;
 mod invalid_split_node_connection_group;
+mod invalid_split_node_group;
 
 pub use group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 pub use missing_endpoints::MissingEndpointsIssue;
@@ -53,6 +54,7 @@ pub use missing_split_tiles::MissingSplitTilesIssue;
 pub use invalid_split_node::InvalidSplitNodeIssue;
 pub use invalid_split_node_connection::InvalidSplitNodeConnectionIssue;
 pub use invalid_split_node_connection_group::{InvalidSplitNodeConnectionGroupIssue, SplitNodeConnectionGroupKind};
+pub use invalid_split_node_group::{InvalidSplitNodeGroupIssue, SplitNodeGroupKind};
 
 /// Canonical key for a cycle: its edge set, sorted. Two `Vec<EdgeId>` describing the same cycle
 /// (same edges, any order) produce the same key — used both to dedup cycles across merges and
