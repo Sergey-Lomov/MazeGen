@@ -32,6 +32,7 @@ use maze_core::{
         MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT,
         MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT,
         MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT,
+        TeleportSplitIntersectionCheck, TeleportSplitEdgeSelector,
         SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT,
         SplitTeleportIntersectionCheck, SplitTeleportDirection,
         MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT,
@@ -111,6 +112,7 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "teleport_geometric_length" => KindTag::InvalidTeleport,
         "teleport_graph_distance"   => KindTag::InvalidTeleport,
         "teleport_super_hub_avoidance" => KindTag::InvalidTeleport,
+        "teleport_split_intersection" => KindTag::InvalidTeleport,
         "teleport_group_proximity" => KindTag::InvalidTeleportGroup,
         "one_way_waypoint_distance" => KindTag::InvalidOneWay,
         "one_way_group_geometric_proximity" => KindTag::InvalidOneWayGroup,
@@ -169,6 +171,14 @@ fn parse_teleport_hub_edge_selector(param: Option<&String>) -> TeleportHubEdgeSe
         Some("entry") => TeleportHubEdgeSelector::Entry,
         Some("exit") => TeleportHubEdgeSelector::Exit,
         _ => TeleportHubEdgeSelector::EntryOrExit,
+    }
+}
+
+fn parse_teleport_split_edge_selector(param: Option<&String>) -> TeleportSplitEdgeSelector {
+    match param.map(String::as_str) {
+        Some("entry") => TeleportSplitEdgeSelector::Entry,
+        Some("exit") => TeleportSplitEdgeSelector::Exit,
+        _ => TeleportSplitEdgeSelector::EntryOrExit,
     }
 }
 
@@ -485,6 +495,11 @@ pub(crate) fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInst
             let edge = parse_teleport_hub_edge_selector(instance.params.get("edge_hub"));
             let protect_route = parse_protect_route(instance.params.get("protect_route"));
             Some(Box::new(TeleportSuperHubAvoidanceCheck { instance_id, max_connections, edge, protect_route }))
+        }
+        "teleport_split_intersection" => {
+            let edge = parse_teleport_split_edge_selector(instance.params.get("edge_split"));
+            let protect_route = parse_protect_route(instance.params.get("protect_route"));
+            Some(Box::new(TeleportSplitIntersectionCheck { instance_id, edge, protect_route }))
         }
         _ => None,
     }

@@ -68,6 +68,7 @@ pub use checks::{
     MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT,
     MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT,
     MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT,
+    TeleportSplitIntersectionCheck, TeleportSplitEdgeSelector,
     SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT_COMPARISON,
     SplitTeleportIntersectionCheck, SplitTeleportDirection,
     MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT,

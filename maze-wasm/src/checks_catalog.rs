@@ -247,6 +247,21 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             allow_multiple_instances: false,
         },
         CheckDescriptor {
+            id: "teleport_split_intersection",
+            label: "Teleport split intersection",
+            description: "Fires if a teleport's entry (or exit, or either) vertex belongs to a split cell.",
+            issue_kinds: vec![kind_str(INVALID_TELEPORT)],
+            params: vec![
+                ParamDescriptor {
+                    id: "edge_split",
+                    label: "Edge",
+                    kind: ParamKindDto::Enum { options: vec!["entry", "exit", "entry_or_exit"], default: "entry_or_exit" },
+                },
+                protect_route_param(),
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
             id: "teleport_group_proximity",
             label: "Teleport group proximity",
             description: "Fires if a pair of teleport edges sit topologically closer to each other than the required minimum distance.",

@@ -879,6 +879,34 @@ The wire-level (WASM/web) param id for `edge` is `edge_hub`, not `edge` — desp
 
 `protect_route` (GitHub issue #78, default `true`) — see "`protect_route`: route protection for per-teleport checks" below.
 
+### TeleportSplitIntersectionCheck
+
+```rust
+pub enum TeleportSplitEdgeSelector {
+    Entry,
+    Exit,
+    EntryOrExit,
+}
+
+pub struct TeleportSplitIntersectionCheck {
+    pub instance_id: String,
+    pub edge: TeleportSplitEdgeSelector,
+    pub protect_route: bool,
+}
+```
+
+Flags a `Teleport` edge (`EdgeKind::Teleport`) as invalid (`INVALID_TELEPORT`) when an end selected by `edge` belongs to a split cell (`Field::nodes_at(point).len() >= 2` — slot-0 counts the same as any other slot, see "Split tiles vs. split nodes" above) — see GitHub issue #257. Mirror check to `SplitTeleportIntersectionCheck` above (that one flags the split cell itself, `INVALID_SPLIT_TILE`; this one flags the teleport edge, `INVALID_TELEPORT`, for the same intersection).
+
+`Entry` tests the teleport's `from` vertex (where a traveler enters the teleport), `Exit` tests its `to` vertex (where a traveler exits into — "leads into a split cell" per the issue title), `EntryOrExit` fires if either end sits in a split cell. Same `Entry`/`Exit`/`EntryOrExit` naming and semantics as `TeleportHubEdgeSelector` above.
+
+If any teleports are flagged, fires `InvalidTeleportIssue::new_from_check("teleport_split_intersection", invalid)` — no `.with_detail` call (`edge` is a mode, not a narrated value). Can be active alongside any other `INVALID_TELEPORT`-producing check — all merge into one issue per the same dedup rule.
+
+Repaired by the existing `RemoveTeleportStrategy` (already registered against `INVALID_TELEPORT`) — no new strategy.
+
+The wire-level (WASM/web) param id for `edge` is `edge_split`, not `edge` — same rationale as `edge_hub` above: a deliberately distinct param id so this check doesn't share i18n text with `TeleportWaypointDistanceCheck`'s `edge`.
+
+`protect_route` (GitHub issue #78, default `true`) — see "`protect_route`: route protection for per-teleport checks" below.
+
 ### TeleportGroupProximityCheck
 
 ```rust

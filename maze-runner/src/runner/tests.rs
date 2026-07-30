@@ -383,7 +383,7 @@ mod build_check_tests {
         "max_region_size", "max_region_ratio", "min_region_count",
         "teleport_duplicates_connection", "teleport_waypoint_distance",
         "teleport_geometric_length", "teleport_graph_distance",
-        "teleport_super_hub_avoidance", "teleport_group_proximity",
+        "teleport_super_hub_avoidance", "teleport_split_intersection", "teleport_group_proximity",
         "one_way_waypoint_distance",
         "one_way_group_geometric_proximity", "one_way_group_graph_proximity", "one_way_group_super_hub",
         "max_one_way_count", "max_one_way_ratio", "min_one_way_count", "min_one_way_ratio",

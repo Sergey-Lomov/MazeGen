@@ -87,6 +87,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.teleport_super_hub_avoidance.label"] as MessageFn,
     description: m["check.teleport_super_hub_avoidance.description"] as MessageFn,
   },
+  teleport_split_intersection: {
+    label: m["check.teleport_split_intersection.label"] as MessageFn,
+    description: m["check.teleport_split_intersection.description"] as MessageFn,
+  },
   teleport_group_proximity: {
     label: m["check.teleport_group_proximity.label"] as MessageFn,
     description: m["check.teleport_group_proximity.description"] as MessageFn,
@@ -618,6 +622,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.edge_hub.label"] as MessageFn,
     description: m["param.edge_hub.description"] as MessageFn,
   },
+  edge_split: {
+    label: m["param.edge_split.label"] as MessageFn,
+    description: m["param.edge_split.description"] as MessageFn,
+  },
   own_edge: {
     label: m["param.own_edge.label"] as MessageFn,
     description: m["param.own_edge.description"] as MessageFn,
@@ -808,6 +816,9 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "edge_hub.entry": m["param.edge_hub.option.entry"] as MessageFn,
   "edge_hub.exit": m["param.edge_hub.option.exit"] as MessageFn,
   "edge_hub.entry_or_exit": m["param.edge_hub.option.entry_or_exit"] as MessageFn,
+  "edge_split.entry": m["param.edge_split.option.entry"] as MessageFn,
+  "edge_split.exit": m["param.edge_split.option.exit"] as MessageFn,
+  "edge_split.entry_or_exit": m["param.edge_split.option.entry_or_exit"] as MessageFn,
   "own_edge.entry": m["param.own_edge.option.entry"] as MessageFn,
   "own_edge.exit": m["param.own_edge.option.exit"] as MessageFn,
   "own_edge.entry_or_exit": m["param.own_edge.option.entry_or_exit"] as MessageFn,
@@ -875,6 +886,9 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "edge_hub.entry": m["param.edge_hub.option.entry.explanation"] as MessageFn,
   "edge_hub.exit": m["param.edge_hub.option.exit.explanation"] as MessageFn,
   "edge_hub.entry_or_exit": m["param.edge_hub.option.entry_or_exit.explanation"] as MessageFn,
+  "edge_split.entry": m["param.edge_split.option.entry.explanation"] as MessageFn,
+  "edge_split.exit": m["param.edge_split.option.exit.explanation"] as MessageFn,
+  "edge_split.entry_or_exit": m["param.edge_split.option.entry_or_exit.explanation"] as MessageFn,
   "own_edge.entry": m["param.own_edge.option.entry.explanation"] as MessageFn,
   "own_edge.exit": m["param.own_edge.option.exit.explanation"] as MessageFn,
   "own_edge.entry_or_exit": m["param.own_edge.option.entry_or_exit.explanation"] as MessageFn,
