@@ -675,6 +675,20 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             allow_multiple_instances: true,
         },
         CheckDescriptor {
+            id: "split_teleport_intersection",
+            label: "Split teleport intersection",
+            description: "Fires if a split tile has a teleport connection matching the configured shape (one-way in, one-way out, or bidirectional).",
+            issue_kinds: vec![kind_str(INVALID_SPLIT_TILE)],
+            params: vec![
+                ParamDescriptor {
+                    id: "split_teleport_direction",
+                    label: "Teleport shape",
+                    kind: ParamKindDto::Enum { options: vec!["incoming", "outgoing", "bidirectional", "any"], default: "any" },
+                },
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
             id: "max_split_count",
             label: "Maximum split count",
             description: "Fires if the total count of extra split nodes on the field exceeds the configured maximum.",

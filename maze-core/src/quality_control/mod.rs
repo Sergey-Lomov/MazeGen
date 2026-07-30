@@ -69,6 +69,7 @@ pub use checks::{
     MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT,
     MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT,
     SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT_COMPARISON,
+    SplitTeleportIntersectionCheck, SplitTeleportDirection,
     MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT,
     MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT,
     SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,

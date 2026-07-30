@@ -364,6 +364,8 @@ mod build_check_tests {
         build_missing_regions_check, build_invalid_teleport_check, build_teleport_group_proximity_check,
         build_invalid_one_way_check, build_missing_teleports_check,
         build_one_way_group_proximity_check, build_missing_one_ways_check,
+        build_missing_split_tiles_check, build_invalid_split_tile_check, build_invalid_split_node_check,
+        build_split_node_connection_group_check, build_split_node_group_check, build_split_group_check,
     };
 
     // Same rationale as `build_strategy_tests::every_known_id_builds_a_strategy_whose_own_strategy_id_matches`
@@ -386,6 +388,13 @@ mod build_check_tests {
         "one_way_group_geometric_proximity", "one_way_group_graph_proximity", "one_way_group_super_hub",
         "max_one_way_count", "max_one_way_ratio", "min_one_way_count", "min_one_way_ratio",
         "min_teleport_count", "min_teleport_ratio",
+        "split_count", "split_density",
+        "split_distance_from_waypoint", "split_teleport_intersection",
+        "split_node_connection_count",
+        "split_node_connection_per_neighbor", "split_node_connection_per_face",
+        "max_split_tile_node_count",
+        "max_split_count", "max_split_density",
+        "split_group_geometric_proximity", "split_group_graph_proximity",
     ];
 
     /// Test-only dispatcher mirroring `build_rule_for!`'s own `KindTag` match, but returning just
@@ -415,6 +424,12 @@ mod build_check_tests {
         try_ctor!(build_one_way_group_proximity_check);
         try_ctor!(build_missing_one_ways_check);
         try_ctor!(build_missing_teleports_check);
+        try_ctor!(build_missing_split_tiles_check);
+        try_ctor!(build_invalid_split_tile_check);
+        try_ctor!(build_invalid_split_node_check);
+        try_ctor!(build_split_node_connection_group_check);
+        try_ctor!(build_split_node_group_check);
+        try_ctor!(build_split_group_check);
         None
     }
 

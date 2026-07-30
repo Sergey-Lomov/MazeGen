@@ -1110,11 +1110,33 @@ Flags the whole tile (`SplitTileNodes` — every node at the point, slot-0 inclu
 
 `RemoveSplitStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_SPLIT_TILE`.
 
+### SplitTeleportIntersectionCheck
+
+```rust
+pub enum SplitTeleportDirection { Incoming, Outgoing, Bidirectional, Any }
+
+pub struct SplitTeleportIntersectionCheck {
+    pub instance_id: String,
+    pub direction: SplitTeleportDirection,
+}
+```
+
+GitHub issue #256, part of epic #246. Flags a split cell (`InvalidSplitTile`) as invalid when it has a `Teleport` edge (`EdgeKind::Teleport`) connection matching a shape selected by `direction`, evaluated per node of the cell and per neighbor:
+
+- `Incoming` — a one-way teleport leads into a node of the cell (`Teleport(neighbor -> node)` with no matching reverse `Teleport(node -> neighbor)` to the same neighbor).
+- `Outgoing` — a one-way teleport leads out of a node of the cell (the mirror of `Incoming`).
+- `Bidirectional` — a node of the cell has a full two-way teleport pair with some neighbor (both `Teleport(neighbor -> node)` and `Teleport(node -> neighbor)` present for the same neighbor).
+- `Any` — any of the three shapes above. Default.
+
+Scans `Field::all_points()` (deduped via a seen-points set, same as `SplitDistanceFromWaypointCheck`), keeps points with `nodes_at(point).len() >= 2`, and flags the whole tile (`SplitTileNodes`) if any of its nodes has a matching connection. Multiple matching connections on the same tile still produce one `SplitTileNodes` entry (a tile is flagged once, not once per connection). Fires `InvalidSplitTileIssue::new_from_check(instance_id, invalid)` — no `.with_detail` call (`direction` is a mode, not a narrated value).
+
+`RemoveSplitStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_SPLIT_TILE` — no new strategy for this check, it reuses the same one `SplitDistanceFromWaypointCheck` does.
+
 ### Split tiles vs. split nodes — slot-0 is not otherwise special (GitHub epic #246)
 
 **Hard constraint across every strategy in this epic: none of them may remove the original (slot-0) split node.** Outside that one removal-eligibility constraint, slot-0 is an equal member of a split tile for every other purpose — size/volume, connectivity/degree, distance — any metric a check or repair-priority computes over "a split tile's nodes" must include slot-0, not just the extra nodes. Only the actual removal step excludes it, and even there the convention is to pass the whole node set to the removal strategy and let it filter (`RemoveSplitStrategy`/`remove_node_feasible`), not to pre-filter slot-0 out beforehand.
 
-A **split tile** is one `Field` point carrying more than one node (`Field::nodes_at(point).len() >= 2`) — slot-0 plus one or more extra nodes minted by `Field::add_node_at`. Every split-QC check, including `SplitDistanceFromWaypointCheck` above (GitHub issue #260), is *tile*-level: it counts, measures, and flags whole split tiles (`SplitTileNodes`), not individual nodes — only the repair strategy's own removal step (`RemoveSplitStrategy`/`remove_node_feasible`) excludes slot-0.
+A **split tile** is one `Field` point carrying more than one node (`Field::nodes_at(point).len() >= 2`) — slot-0 plus one or more extra nodes minted by `Field::add_node_at`. Every split-QC check, including `SplitDistanceFromWaypointCheck`/`SplitTeleportIntersectionCheck` above, is *tile*-level: it counts, measures, and flags whole split tiles (`SplitTileNodes`), not individual nodes — only the repair strategy's own removal step (`RemoveSplitStrategy`/`remove_node_feasible`) excludes slot-0.
 
 ### SplitTileNodes / InvalidSplitTileGroupIssue
 

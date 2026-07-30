@@ -135,6 +135,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.split_distance_from_waypoint.label"] as MessageFn,
     description: m["check.split_distance_from_waypoint.description"] as MessageFn,
   },
+  split_teleport_intersection: {
+    label: m["check.split_teleport_intersection.label"] as MessageFn,
+    description: m["check.split_teleport_intersection.description"] as MessageFn,
+  },
   max_split_count: {
     label: m["check.max_split_count.label"] as MessageFn,
     description: m["check.max_split_count.description"] as MessageFn,
@@ -746,6 +750,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.direction.label"] as MessageFn,
     description: m["param.direction.description"] as MessageFn,
   },
+  split_teleport_direction: {
+    label: m["param.split_teleport_direction.label"] as MessageFn,
+    description: m["param.split_teleport_direction.description"] as MessageFn,
+  },
   max: {
     label: m["param.max.label"] as MessageFn,
     description: m["param.max.description"] as MessageFn,
@@ -826,6 +834,10 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "direction.outgoing": m["param.direction.option.outgoing"] as MessageFn,
   "direction.bidirectional": m["param.direction.option.bidirectional"] as MessageFn,
   "direction.any": m["param.direction.option.any"] as MessageFn,
+  "split_teleport_direction.incoming": m["param.split_teleport_direction.option.incoming"] as MessageFn,
+  "split_teleport_direction.outgoing": m["param.split_teleport_direction.option.outgoing"] as MessageFn,
+  "split_teleport_direction.bidirectional": m["param.split_teleport_direction.option.bidirectional"] as MessageFn,
+  "split_teleport_direction.any": m["param.split_teleport_direction.option.any"] as MessageFn,
   "selection.random": m["param.selection.option.random"] as MessageFn,
   "selection.most_connected": m["param.selection.option.most_connected"] as MessageFn,
   "selection.least_connected": m["param.selection.option.least_connected"] as MessageFn,
@@ -884,6 +896,10 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "direction.outgoing": m["param.direction.option.outgoing.explanation"] as MessageFn,
   "direction.bidirectional": m["param.direction.option.bidirectional.explanation"] as MessageFn,
   "direction.any": m["param.direction.option.any.explanation"] as MessageFn,
+  "split_teleport_direction.incoming": m["param.split_teleport_direction.option.incoming.explanation"] as MessageFn,
+  "split_teleport_direction.outgoing": m["param.split_teleport_direction.option.outgoing.explanation"] as MessageFn,
+  "split_teleport_direction.bidirectional": m["param.split_teleport_direction.option.bidirectional.explanation"] as MessageFn,
+  "split_teleport_direction.any": m["param.split_teleport_direction.option.any.explanation"] as MessageFn,
   "selection.random": m["param.selection.option.random.explanation"] as MessageFn,
   "selection.most_connected": m["param.selection.option.most_connected.explanation"] as MessageFn,
   "selection.least_connected": m["param.selection.option.least_connected.explanation"] as MessageFn,

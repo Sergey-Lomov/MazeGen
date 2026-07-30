@@ -33,6 +33,7 @@ use maze_core::{
         MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT,
         MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT,
         SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT,
+        SplitTeleportIntersectionCheck, SplitTeleportDirection,
         MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT,
         MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT,
         SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
@@ -122,6 +123,7 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "min_teleport_count"        => KindTag::MissingTeleports,
         "min_teleport_ratio"        => KindTag::MissingTeleports,
         "split_distance_from_waypoint" => KindTag::InvalidSplitTile,
+        "split_teleport_intersection" => KindTag::InvalidSplitTile,
         "max_split_count"           => KindTag::InvalidSplitTileGroup,
         "max_split_density"         => KindTag::InvalidSplitTileGroup,
         "split_group_geometric_proximity" => KindTag::InvalidSplitTileGroup,
@@ -192,6 +194,15 @@ fn parse_split_node_connection_direction(param: Option<&String>) -> SplitNodeCon
         Some("outgoing") => SplitNodeConnectionDirection::Outgoing,
         Some("bidirectional") => SplitNodeConnectionDirection::Bidirectional,
         _ => SplitNodeConnectionDirection::Any,
+    }
+}
+
+fn parse_split_teleport_direction(param: Option<&String>) -> SplitTeleportDirection {
+    match param.map(String::as_str) {
+        Some("incoming") => SplitTeleportDirection::Incoming,
+        Some("outgoing") => SplitTeleportDirection::Outgoing,
+        Some("bidirectional") => SplitTeleportDirection::Bidirectional,
+        _ => SplitTeleportDirection::Any,
     }
 }
 
@@ -587,6 +598,10 @@ pub(crate) fn build_invalid_split_tile_check<T: Tessellation>(instance: &CheckIn
             let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
             let waypoint = parse_split_waypoint(instance.params.get("waypoint"));
             Some(Box::new(SplitDistanceFromWaypointCheck { instance_id, distance, comparison, waypoint }))
+        }
+        "split_teleport_intersection" => {
+            let direction = parse_split_teleport_direction(instance.params.get("split_teleport_direction"));
+            Some(Box::new(SplitTeleportIntersectionCheck { instance_id, direction }))
         }
         _ => None,
     }
