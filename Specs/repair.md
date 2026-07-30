@@ -705,6 +705,29 @@ The loop ends when the sample queue empties. Returns `Fixed` (with every nested 
 
 Cannot translate the nested strategy's own `requirement()` into `InvalidLoopGroupRequirement` — `Rule::new` resolves a strategy's `requirement()` from `&self, params` alone, before `nested` is known to it at all, so there is no nested `RepairStrategy` to consult yet at that point. Always requests `InvalidLoopGroupRequirement::all()` ("compute everything") — safe (never wrong, just potentially wasted computation) regardless of what the eventually-configured nested strategy turns out to need.
 
+### dead_end_priority (shared, not a strategy)
+
+`maze-core/src/repair/strategies/dead_end_priority.rs` — shared by `MissingLoopsRandomStrategy` and `MissingLoopsSplitStrategy` (GitHub issue #254 follow-up, exhaustion bug fixed by issue #278's audit). Both strategies pick a `src` node from a candidate pool, one at a time via `Vec::pop`, before finding it a new geometric neighbor to connect (or split into a bridge).
+
+```rust
+pub const PARAM_SRC_MODE: &str = "src_mode";
+pub const SRC_MODE_RANDOM: &str = "random";
+pub const SRC_MODE_DEAD_END_PRIORITY: &str = "dead_end_priority";
+pub static SRC_MODE_OPTIONS: &[&str] = &[SRC_MODE_RANDOM, SRC_MODE_DEAD_END_PRIORITY];
+
+pub fn apply_src_mode<T: Tessellation>(
+    maze: &Maze<T>, pool: Vec<NodeId>, src_mode: &str, rng: &mut dyn RngCore,
+) -> Vec<NodeId>;
+```
+
+A dead end is a node with exactly one distinct graph neighbor (incoming and outgoing edges together, deduplicated by partner `NodeId`) — a single bidirectional passage to one neighbor counts as a dead end just as much as one one-way edge; two one-way edges to two *different* neighbors does not (that's degree 2, a through-node).
+
+`src_mode: dead_end_priority` orders that pool so dead ends are popped first, growing a fix out from the maze's least-connected cells before an arbitrary one. **One combined pool, ordered for `pop`-based consumption** — not a hard filter: partitions the pool into dead ends and the rest, shuffles each half independently (so same-tier ties resolve randomly, not by incidental input order), then returns `[rest..., dead_ends...]` — dead ends at the end, so a caller popping from the back consumes every dead end before ever reaching a non-dead-end candidate. Every other candidate stays in the pool behind them, never dropped, so exhausting the dead ends (all consumed or all failed) falls through to the rest automatically instead of leaving the caller's loop with nothing left to try.
+
+**GitHub issue #278's exhaustion bug**: an earlier version filtered the pool down to dead ends outright (`if dead_ends.is_empty() { pool } else { dead_ends }`), losing every non-dead-end candidate for the rest of the call — once the dead ends in that static pool were exhausted, the caller's `while !pool.is_empty()` loop stopped even if its `target` count wasn't reached and plenty of eligible non-dead-end candidates were never tried. Fixed by switching to the single ordered pool above; both strategies consume it via `pool.pop()` specifically (never a random index), since a random-index pick would destroy the dead-ends-last ordering on the very first iteration. `src_mode` values other than `dead_end_priority` (including the `random` default) return the pool shuffled but otherwise unpartitioned.
+
+Issue #278 also tracks a systematic audit of every other strategy parameter with a similar "priority tier, then fall back to the rest" shape, checking each one independently for the same exhaustion risk and for whether a single combined pool (as here) or two separate pools is the better fit given that strategy's own performance profile — not assumed to generalize from this fix alone.
+
 ### MissingLoopsRandomStrategy
 
 Handles `MISSING_LOOPS` — opposite approach from `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy`, which cut edges from existing bad loops. This strategy instead seeds new connections at random between geometrically adjacent node pairs, expecting a follow-up QC pass to discard whichever of them don't end up forming a valid loop. `issue.missing` (how many loops short of the requirement) is mandatory — the producing check (`MinLoopsCountCheck`/`MinLoopDensityCheck`) already computed it; there is no other channel.
@@ -715,10 +738,11 @@ Handles `MISSING_LOOPS` — opposite approach from `InvalidLoopRandomStrategy`/`
 |----|------|---------|-------|-------------|
 | `reserve_percent` | Float | `50.0` | `[0, 500]` | Target connection count is `ceil(missing * (1 + reserve_percent / 100))`, not the strict `missing` value — a buffer against candidates that turn out blocked or already-connected. |
 | `loop_one_way_chance` | Float | `0.0` | `[0, 100]` | Chance a seeded connection is added as a single one-way edge (random direction) instead of a full bidirectional passage — see GitHub issue #217's follow-up. |
+| `src_mode` | Enum | `random` | `random`, `dead_end_priority` — see `dead_end_priority` above. |
 
 Named `loop_one_way_chance`, not `one_way_chance` — a `StrategyParam::id` is looked up by web i18n as a flat key with no strategy-scoping, and `MissingTeleportsStrategy` already registers its own `one_way_chance` param with a teleport-specific label; a shared id would resolve to whichever strategy's label the web layer happened to look up.
 
-Picks a random unconnected node from `maze.field.all_node_ids()`, then a random geometric neighbor, repeating until `target` connections are added or the candidate pool is exhausted. For each candidate pair, per-pair RNG draws mirror `generation::edge_ops::add_edge_kind`'s own sample-consumption contract (a `[0, 100)` chance roll, then — only for the one-way branch — a direction coin flip) so a later param change never reorders draws relative to earlier iterations of this same loop:
+Builds the candidate pool from `maze.field.all_node_ids()`, ordered by `apply_src_mode` per `src_mode`, then pops a `src` node (always via `Vec::pop`, never a random index — see `dead_end_priority`'s ordering contract above) and tries a random geometric neighbor as `dst`, repeating until `target` connections are added or the pool is exhausted. For each candidate pair, per-pair RNG draws mirror `generation::edge_ops::add_edge_kind`'s own sample-consumption contract (a `[0, 100)` chance roll, then — only for the one-way branch — a direction coin flip) so a later param change never reorders draws relative to earlier iterations of this same loop:
 - **Chance roll below `loop_one_way_chance`**: rolls a random direction, then adds `MutationCommand::AddDirectedEdge` if `generation::directed_edge_feasible` allows it; otherwise the pair is skipped (another neighbor is tried).
 - **Otherwise**: strictly bidirectional — skips the pair unless both directions are unblocked (`generation::bidirectional_edge_feasible`, stricter than `can_connect`'s "at least one direction" contract), then adds `MutationCommand::AddBidirectionalEdge`.
 
@@ -1205,6 +1229,33 @@ There is no route-protection concept here (unlike one-way/teleport groups): a sp
 
 `SPLIT_PRIORITY_OPTIONS` is a superset of the shared `PRIORITY_OPTIONS` (`random`/`problematic`, see `group_select.rs`) with four split-specific metrics added — kept local to this strategy rather than widening the shared constant, since `OneWayGroupSelectStrategy`/`TeleportGroupSelectStrategy` have no equivalent per-candidate size/connectivity notion (an edge has neither). Every metric respects the epic's "slot-0 is not otherwise special" rule (`quality_control.md`): both `_voluminous` and `_connected` sort by the tile's *entire* node list, not just its extra nodes. Ties (equal volume/connectivity/membership) are broken by an unconditional shuffle applied before sorting, same rationale `order_by_priority` uses.
 
+### split_core (shared, not a strategy)
+
+`maze-core/src/repair/strategies/split_core.rs` — split-tile face-planning logic shared by `AddSplitStrategy` (GitHub issue #247) and `MissingLoopsSplitStrategy` (GitHub issue #254), factored out once the latter needed the same rotation/mirror search and existing-connection bookkeeping with one extra constraint: a specific new node must end up connected to a specific pre-chosen neighbor (a loop-closing bridge), and that same node must carry at least one more connection so it's a through-node, not a dead end.
+
+```rust
+pub(crate) struct RequiredConnection { pub neighbor: NodeId, pub direction: SplitNodeEdgeDirection }
+pub(crate) type ExcludedTargets<'a> = &'a HashSet<NodeId>;
+
+pub(crate) fn pick_weighted_pattern(patterns: &[SplitPattern], rng: &mut dyn RngCore) -> usize;
+pub(crate) fn existing_directions<T: Tessellation>(maze: &Maze<T>, at: NodeId) -> Vec<(NodeId, SplitNodeEdgeDirection)>;
+pub(crate) fn plan_unconstrained_split<T: Tessellation>(
+    maze: &Maze<T>, at: NodeId, node_count: usize,
+    required: Option<&RequiredConnection>, excluded: ExcludedTargets, rng: &mut dyn RngCore,
+) -> Option<Vec<Vec<SplitNodeEdge>>>;
+pub(crate) fn plan_pattern_split<T: Tessellation>(
+    maze: &Maze<T>, at: NodeId, pattern: &SplitPattern,
+    required: Option<&RequiredConnection>, excluded: ExcludedTargets, rng: &mut dyn RngCore,
+    allow_lose: bool, allow_add: bool,
+) -> Option<Vec<Vec<SplitNodeEdge>>>;
+```
+
+`required`, when `Some`, must be satisfied by the returned plan: some node of the tile has a `SplitNodeEdge { target: neighbor, direction }` matching `required` **and** at least one other edge (existing or newly added) of its own. `None` reproduces `AddSplitStrategy`'s original, unconstrained behavior exactly — `plan_unconstrained_split`/`plan_pattern_split` are the same functions `AddSplitStrategy` calls (as `core_plan_unconstrained_split`/`core_plan_pattern_split`), just with `required: None` and its own per-call `committed: HashSet<NodeId>` as `excluded`.
+
+**`ExcludedTargets`** — nodes a *new* edge (one not already present in `maze.graph`) must never target: every node belonging to a point another command already committed to replace earlier in the same `apply()` batch. Such a node's id won't exist by apply time (`ReplacePointNodes` mints a fresh id set for its point), so a brand-new `SplitNodeEdge` pointing at it would make the whole proposing command decline outright at apply time — silently, since `replace_point_nodes_feasible` requires every edge `target` to still resolve. An *existing* edge is never affected (its target obviously still exists right now, planning against an immutable snapshot) — only "does this new edge get planned at all" decisions consult this set: `required.neighbor` itself, `plan_unconstrained_split`'s fallback second-edge pick, and every neighbor (existing or new) `try_pattern_adaptation` resolves a pattern face against.
+
+**Bug this fixed (no dedicated issue number, found while implementing #254)**: planning several `ReplacePointNodes` commands in one `apply()` call against neighboring points, with no `excluded` bookkeeping, could have a later command's `SplitNodeEdge::target` point at a node an earlier command in the same batch already replaced — that id no longer resolves by the time `apply_commands` applies it, so the whole later command is silently dropped (all-or-nothing feasibility), instead of minting the split tile it was supposed to. `ExcludedTargets` closes this by rejecting any such target at planning time, so a caller only ever proposes commands survivable at apply time; `MissingLoopsSplitStrategy` tracks its own committed points as `split_points` for this purpose (see below), `AddSplitStrategy` as `committed`.
+
 ### AddSplitStrategy
 
 Handles `MISSING_SPLIT_TILES` — see GitHub issue #247, split-QC epic #246. Mints new split tiles at randomly chosen eligible points (`generation::split_is_eligible` — not locked, point not already multi-node) until `issue.missing` is satisfied or `max_attempts` **failed** attempts have been spent (successful attempts don't count against the budget). Every node at the chosen point — slot-0 included — is replaced in one atomic step, via `MutationCommand::ReplacePointNodes` (see above); slot-0 is not special-cased (epic #246's "slot-0 is not special" rule).
@@ -1246,6 +1297,35 @@ Resolving node 0's own faces the same way as every other node is the actual fix 
 **Retry/termination**: candidates are drawn from a pool of every `split_is_eligible` point not currently on the start->finish route (when `protect_route` is enabled), one at a time (`pool.swap_remove` on every attempt, success or failure) so no point is retried twice in the same call — this guarantees termination independent of `max_attempts`. `apply()` returns `Fixed` if at least one split tile was added (even if `missing` wasn't fully satisfied — the deficit simply carries over to the next repair iteration's freshly-recomputed issue), `Failed` if zero were added by the time `max_attempts` failed attempts are spent or the pool runs dry (including when `protect_route` leaves no eligible candidate at all).
 
 Connectivity (`most_connected`/`least_connected`) is computed via a `HashMap<NodeId, usize>` incoming-degree map built once per `order_candidates` call (a single O(E) pass over `maze.graph.edges()`) rather than re-scanning the whole edge list per node inside the sort comparator — `Graph` has no incoming-edge index of its own, so a naive per-node `graph.edges().filter(|e| e.to == node).count()` would cost `O(candidates * tile_nodes * E)` across one sort.
+
+### MissingLoopsSplitStrategy
+
+Handles `MISSING_LOOPS` — see GitHub issue #254, part of epic #246. Alternative to `MissingLoopsRandomStrategy`'s plain new-edge seeding: instead of connecting a random geometrically-adjacent pair directly with a bare edge, turns one side of the pair into a split tile, so the bridge is carried by one of the tile's own nodes rather than being a new edge on an otherwise-ordinary cell. Same "seed and let QC re-check" contract as `MissingLoopsRandomStrategy` — no attempt to verify the new connection actually closes a cycle.
+
+```rust
+pub struct MissingLoopsSplitStrategy {
+    pub config: SplitGenerationConfig,
+}
+```
+
+Same construction-time `config` field as `AddSplitStrategy` (see above) — an ordinary `generation::SplitGenerationConfig`, resolved by `maze-runner`'s `build_missing_loops_split_strategy` the same way `build_add_split_strategy` resolves `AddSplitStrategy`'s own, carried under the strategy's `split_config` wasm param (`ParamKindDto::SplitGenerationConfig`, same convention).
+
+**Parameters (ordinary `StrategyParams`):**
+
+| id | type | default | range | description |
+|----|------|---------|-------|-------------|
+| `reserve_percent` | Float | `50.0` | `[0, 500]` | Mirrors `MissingLoopsRandomStrategy`'s own param — target bridge count is `ceil(missing * (1 + reserve_percent/100))`. |
+| `protect_route` | Bool | `true` | — | Excludes every node on the maze's current start->finish route from the candidate pool — same gate `AddSplitStrategy` applies. |
+| `max_attempts` | Float | `50` | `[1, 10000]` | Failed-attempt budget for the whole `apply()` call. |
+| `src_mode` | Enum | `random` | `random`, `dead_end_priority` — see `dead_end_priority` above. |
+
+No `allow_lose_connections`/`allow_add_connections` params, unlike `AddSplitStrategy` — always calls `split_core::plan_pattern_split` with both forced `true`: the whole point of the split is a *new* connection to `dst` (`allow_add: false` would make every candidate fail outright, since the bridge is by definition not a pre-existing connection), and a bridge tile freely redistributing `at`'s other existing connections to fit the chosen pattern/rotation — dropping whichever don't fit, adding whichever new ones do — is exactly the behavior wanted here, not a configurable choice.
+
+**Candidate selection**: candidate pool is every `split_is_eligible` node (not locked, point not already multi-node), filtered by `protect_route` the same way `AddSplitStrategy` is, then ordered by `apply_src_mode(src_mode)` (see `dead_end_priority` above). Pops a `src` node (via `Vec::pop`, preserving `dead_end_priority`'s tail ordering), then tries each of `src`'s geometric neighbors (`maze.field.neighbors`, random order) as `dst` — skipping a pair already connected (either direction) or already attempted this call, and skipping any `dst` whose point was already turned into a split tile earlier in the same `apply()` call (`split_points: HashSet<NodeId>` — the same "don't target an already-committed point" bookkeeping `split_core::ExcludedTargets` formalizes). A candidate pair whose split planning fails is abandoned in favor of a different `dst`, then a different `src` — never retried against the same `(src, dst)`.
+
+**Building the split tile**: `src` is replaced by a split tile (`MutationCommand::ReplacePointNodes`) built via `split_core::plan_unconstrained_split`/`plan_pattern_split` (pattern chosen via `pick_weighted_pattern` when `config.patterns` is non-empty), with `required: Some(RequiredConnection { neighbor: dst, direction: Passage })` and `excluded: &split_points`. One hard constraint on top of `split_core`'s own required-connection contract: whichever new node ends up carrying the bridge to `dst` must have at least one more edge of its own (a through-node, not a dead end) — drawn from `src`'s other existing connections if any land there, otherwise a brand-new edge to any other free geometric neighbor of `src`.
+
+Returns `Failed` if zero split tiles were added by the time `max_attempts` failed attempts are spent or the pool runs dry (including when no split-eligible candidate exists at all); otherwise `Fixed { score: None }` with every proposed command, even if fewer than `target` were actually added.
 
 ## Pipeline
 

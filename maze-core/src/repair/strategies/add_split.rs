@@ -1,15 +1,15 @@
 use rand::{Rng, RngCore};
-use std::collections::HashSet;
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
-use crate::generation::{PresetState, SplitGenerationConfig, SplitPattern, SplitFaceRequirement, OneWayDirection};
+use crate::generation::{PresetState, SplitGenerationConfig};
 use crate::graph::route_protection::is_node_on_route;
 use crate::quality_control::MissingSplitTilesIssue;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::{MutationCommand, SplitNodeEdge, SplitNodeEdgeDirection};
+use crate::repair::command::{MutationCommand, SplitNodeEdge};
+use super::split_core::{pick_weighted_pattern, plan_unconstrained_split as core_plan_unconstrained_split, plan_pattern_split as core_plan_pattern_split};
 
 pub const PARAM_ALLOW_LOSE_CONNECTIONS: &str = "allow_lose_connections";
 pub const PARAM_ALLOW_ADD_CONNECTIONS: &str = "allow_add_connections";
@@ -126,6 +126,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
         let mut added = 0u32;
         let mut failed_attempts = 0u32;
         let mut pool = candidates;
+        // Points already committed to a `ReplacePointNodes` command earlier in this same call —
+        // their node ids won't exist by apply time, so no later command in this batch may plan a
+        // new edge (existing-connection reuse or `allow_add`) pointing at one (see
+        // `split_core::ExcludedTargets`).
+        let mut committed: std::collections::HashSet<NodeId> = std::collections::HashSet::new();
 
         while added < missing && failed_attempts < max_attempts && !pool.is_empty() {
             let pick_idx = rng.random_range(0..pool.len());
@@ -133,14 +138,15 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
 
             let outcome = if self.config.patterns.is_empty() {
                 let node_count = self.config.max_split_nodes.max(2) as usize;
-                plan_unconstrained_split(maze, at, node_count, rng)
+                core_plan_unconstrained_split(maze, at, node_count, None, &committed, rng)
             } else {
                 let pattern_idx = pick_weighted_pattern(&self.config.patterns, rng);
-                plan_pattern_split(maze, at, &self.config.patterns[pattern_idx], rng, allow_lose, allow_add)
+                core_plan_pattern_split(maze, at, &self.config.patterns[pattern_idx], None, &committed, rng, allow_lose, allow_add)
             };
 
             match outcome {
                 Some(nodes) => {
+                    committed.insert(at);
                     commands.push(MutationCommand::ReplacePointNodes { at, nodes });
                     added += 1;
                     // Eligibility is per-point — once `at` has a command pending, it must not be
@@ -164,205 +170,6 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
 
 crate::impl_erased_repair_strategy!(AddSplitStrategy, MissingSplitTilesIssue);
 
-/// Picks a pattern index honoring `SplitPattern::weight`, via the same shared
-/// `math::weighted_index` generation's own `handle_pattern_split` (`split_logic.rs`) uses (GitHub
-/// issue #275: this strategy used to ignore weight entirely, always picking uniformly).
-fn pick_weighted_pattern(patterns: &[SplitPattern], rng: &mut dyn RngCore) -> usize {
-    let weights: Vec<f64> = patterns.iter().map(|p| p.weight).collect();
-    crate::math::weighted_index(&weights, rng)
-}
-
-/// Non-pattern candidate: `node_count` new nodes (index 0 becomes the new slot-0), each of `at`'s
-/// existing connections reassigned unchanged to one uniformly random node among all of them —
-/// index 0 is on equal footing with every other index here, no special weighting or reservation
-/// (epic #246's "slot-0 is not special" rule). A new node ending up with zero edges is valid,
-/// same as it already is for any non-slot-0 sibling (e.g. when `at` has fewer real connections
-/// than `node_count`) — this strategy doesn't guarantee every minted node stays reachable;
-/// catching a genuinely disconnected outcome is a later QC check's job (e.g.
-/// `MissingRegionsStrategy`), not this one's.
-fn plan_unconstrained_split<T: Tessellation>(
-    maze: &Maze<T>,
-    at: NodeId,
-    node_count: usize,
-    rng: &mut dyn RngCore,
-) -> Option<Vec<Vec<SplitNodeEdge>>> {
-    let mut per_node: Vec<Vec<SplitNodeEdge>> = vec![Vec::new(); node_count];
-    for (target, direction) in existing_directions(maze, at) {
-        let owner = rng.random_range(0..node_count);
-        per_node[owner].push(SplitNodeEdge { target, direction });
-    }
-    Some(per_node)
-}
-
-/// Every direction `at` (a point's slot-0 node) currently has a real connection in, resolved to
-/// `(neighbor, direction-relative-to-at)` — `Passage` when both directions exist between `at` and
-/// the neighbor, `Forward`/`Backward` for a single direction. One entry per distinct neighbor
-/// (never per raw edge — a neighbor connected both ways collapses to one `Passage` entry).
-fn existing_directions<T: Tessellation>(maze: &Maze<T>, at: NodeId) -> Vec<(NodeId, SplitNodeEdgeDirection)> {
-    let neighbors: HashSet<NodeId> = maze.graph.outgoing_neighbors(at)
-        .chain(maze.graph.incoming_neighbors(at))
-        .collect();
-    neighbors.into_iter().map(|n| {
-        let fwd = maze.graph.edge_between(at, n).is_some();
-        let bwd = maze.graph.edge_between(n, at).is_some();
-        let direction = match (fwd, bwd) {
-            (true, true) => SplitNodeEdgeDirection::Passage,
-            (true, false) => SplitNodeEdgeDirection::Forward,
-            (false, true) => SplitNodeEdgeDirection::Backward,
-            (false, false) => unreachable!("n came from an outgoing/incoming edge, one direction must exist"),
-        };
-        (n, direction)
-    }).collect()
-}
-
-/// Pattern-based candidate against `at`, trying every `rotation`/`mirror` combination in random
-/// order (mirrors `enumerate_adaptations`'s exhaustive-but-order-independent search, minus the
-/// generation-only visited/bridge/parent/cyclic bookkeeping — every neighbor here is either
-/// already connected or not, there is no "unvisited" concept post-generation) until one validates
-/// under `allow_lose`/`allow_add`, or returns `None` if every combination fails. Never resolves
-/// `sibling_target` faces to a real neighbor — mirrors generation's own inter-split-node edges,
-/// added directly between the pattern's new nodes without touching `at`'s existing connections
-/// (out of scope for `SplitNodeEdge`, which only ever describes a sibling's *outside* edges; a
-/// sibling_target-only pattern face simply contributes no `SplitNodeEdge` here, same as it would
-/// get no resolvable-to-neighbor face in `enumerate_adaptations`).
-fn plan_pattern_split<T: Tessellation>(
-    maze: &Maze<T>,
-    at: NodeId,
-    pattern: &SplitPattern,
-    rng: &mut dyn RngCore,
-    allow_lose: bool,
-    allow_add: bool,
-) -> Option<Vec<Vec<SplitNodeEdge>>> {
-    let Some(point) = maze.field.point_of(at) else { return None; };
-    let degree = T::faces().len();
-    if degree == 0 || pattern.node_count < 2 {
-        return None;
-    }
-
-    let mut rotations: Vec<usize> = (0..T::rotation_symmetries().len()).collect();
-    shuffle(&mut rotations, rng);
-    let mut mirrors: Vec<Option<usize>> = std::iter::once(None).chain((0..T::mirror_symmetries().len()).map(Some)).collect();
-    shuffle(&mut mirrors, rng);
-
-    for &rotation in &rotations {
-        for &mirror in &mirrors {
-            if let Some(nodes) = try_pattern_adaptation(maze, at, point, pattern, rotation, mirror, allow_lose, allow_add) {
-                return Some(nodes);
-            }
-        }
-    }
-    None
-}
-
-fn shuffle<X>(items: &mut [X], rng: &mut dyn RngCore) {
-    for i in (1..items.len()).rev() {
-        let j = rng.random_range(0..=i);
-        items.swap(i, j);
-    }
-}
-
-/// One rotation/mirror candidate: resolves every one of the pattern's `node_count` new nodes' own
-/// faces to real neighbors (`T::step` off `point`) — **including node 0**, the new slot-0, on
-/// equal footing with every other node (epic #246's "slot-0 is not special" rule; this is the
-/// actual fix for the pattern-mode bug — an earlier version left node 0's faces unresolved
-/// entirely, so a split tile's real slot-0 connections never had to agree with what the
-/// configured pattern said about them at all). `allow_lose`/`allow_add` gate the two possible
-/// mismatches between `at`'s existing connections and *every* new node's own face requirements
-/// (node 0 included) — see `AddSplitStrategy`'s own doc comment. This is what guarantees the
-/// resulting tile always structurally matches the pattern (see
-/// `quality_control::split_pattern_match::split_tile_matches_any`, which the resulting tile must
-/// always satisfy).
-///
-/// **Index correspondence**: `per_node[i]` is built from `pattern.faces[i]` via
-/// `pattern.faces.iter().enumerate()` below, with no reordering or skipping — so `per_node[0]`
-/// always comes from `pattern.faces[0]`, matching `pattern_faces_at`'s own convention
-/// (`split_pattern_match.rs`) that `faces[0]` is node 0's (slot-0's) own requirements. This is the
-/// same indexing `MutationCommand::ReplacePointNodes` expects: `nodes[0]` becomes the point's new
-/// slot-0.
-#[allow(clippy::too_many_arguments)]
-fn try_pattern_adaptation<T: Tessellation>(
-    maze: &Maze<T>,
-    at: NodeId,
-    point: T::Point,
-    pattern: &SplitPattern,
-    rotation: usize,
-    mirror: Option<usize>,
-    allow_lose: bool,
-    allow_add: bool,
-) -> Option<Vec<Vec<SplitNodeEdge>>> {
-    let mut per_node: Vec<Vec<SplitNodeEdge>> = Vec::with_capacity(pattern.faces.len());
-    let mut claimed_directions: HashSet<NodeId> = HashSet::new();
-
-    for node_faces in pattern.faces.iter() {
-        let mut node_edges: Vec<SplitNodeEdge> = Vec::new();
-        for face in node_faces {
-            let resolved_index = crate::space::transform_face_index::<T>(face.face_index, rotation, mirror)?;
-            if face.sibling_target.is_some() {
-                continue; // inter-split edge, not an outside connection — out of scope here
-            }
-            match face.requirement {
-                SplitFaceRequirement::Wall | SplitFaceRequirement::Unspecified => continue,
-                SplitFaceRequirement::Passage | SplitFaceRequirement::OneWay(_) => {
-                    let Some(tess_face) = T::face_at(resolved_index) else { return None; };
-                    let neighbor_point = T::step(point, tess_face);
-                    let neighbor_candidates = maze.field.nodes_at(neighbor_point);
-                    if neighbor_candidates.is_empty() {
-                        // Face points off-field or at an empty point — a real connection can
-                        // never land there no matter what `allow_add` says (there is nothing to
-                        // add a connection *to*), so this rotation/mirror can never make the
-                        // pattern fit at this point at all — reject the whole candidate rather
-                        // than silently producing a tile missing this required face (the original
-                        // bug: a pattern was applied at a point where it structurally can't fit,
-                        // e.g. against the field's edge, producing a truncated tile).
-                        return None;
-                    }
-                    // When the neighboring point is itself a split tile, an already-existing
-                    // connection in this direction may land on any of its nodes, not just its
-                    // slot-0 (e.g. the real edge sits on the neighbor's slot-1) — picking
-                    // `.first()` unconditionally would silently redirect that edge onto the
-                    // neighbor's slot-0 during cleanup/rewire, severing it from the node that
-                    // actually owns it. Prefer whichever candidate already has a real edge with
-                    // `at` in this direction (mirrors `reconstruct_tile_faces`'s own
-                    // `candidates.iter().any(...)` check); only fall back to slot-0 when nothing
-                    // is connected yet (a brand-new connection has no existing owner to prefer).
-                    let neighbor = *neighbor_candidates.iter()
-                        .find(|&&c| maze.graph.edge_between(at, c).is_some() || maze.graph.edge_between(c, at).is_some())
-                        .unwrap_or(&neighbor_candidates[0]);
-                    let direction = match face.requirement {
-                        SplitFaceRequirement::Passage => SplitNodeEdgeDirection::Passage,
-                        SplitFaceRequirement::OneWay(OneWayDirection::Forward) => SplitNodeEdgeDirection::Forward,
-                        SplitFaceRequirement::OneWay(OneWayDirection::Backward) => SplitNodeEdgeDirection::Backward,
-                        _ => unreachable!(),
-                    };
-                    let already_connected = match direction {
-                        SplitNodeEdgeDirection::Passage => maze.graph.edge_between(at, neighbor).is_some() && maze.graph.edge_between(neighbor, at).is_some(),
-                        SplitNodeEdgeDirection::Forward => maze.graph.edge_between(at, neighbor).is_some(),
-                        SplitNodeEdgeDirection::Backward => maze.graph.edge_between(neighbor, at).is_some(),
-                    };
-                    if !already_connected && !allow_add {
-                        return None;
-                    }
-                    claimed_directions.insert(neighbor);
-                    node_edges.push(SplitNodeEdge { target: neighbor, direction });
-                }
-            }
-        }
-        per_node.push(node_edges);
-    }
-
-    // Every direction `at` already has a real connection in, but no new node claimed — dropped if
-    // allowed, otherwise the whole candidate fails.
-    if !allow_lose {
-        for (neighbor, _) in existing_directions(maze, at) {
-            if !claimed_directions.contains(&neighbor) {
-                return None;
-            }
-        }
-    }
-
-    Some(per_node)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,9 +178,10 @@ mod tests {
     use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
     use crate::space::{SquareTessellation, SquarePoint, square_rect, Field};
-    use crate::generation::SplitPatternFace;
+    use crate::generation::{SplitPattern, SplitPatternFace, SplitFaceRequirement};
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
+    use crate::repair::strategies::split_core;
 
     fn no_params() -> StrategyParams {
         build_params(<AddSplitStrategy as RepairStrategy<SquareTessellation, MissingSplitTilesIssue>>::params(&AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] } }), None)
@@ -714,7 +522,7 @@ mod tests {
             ],
             weight: 1.0,
         };
-        let per_node = try_pattern_adaptation(&maze, at, point, &pattern, 0, None, true, true)
+        let per_node = split_core::try_pattern_adaptation(&maze, at, point, &pattern, 0, None, true, true, None, &std::collections::HashSet::new())
             .expect("West face has a real neighbor, must resolve");
 
         let west_slot0 = maze.field.nodes_at(west_point)[0];

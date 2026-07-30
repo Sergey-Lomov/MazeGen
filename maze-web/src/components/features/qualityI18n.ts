@@ -359,6 +359,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.missing_loops_random.label"] as MessageFn,
     description: m["strategy.missing_loops_random.description"] as MessageFn,
   },
+  missing_loops_split: {
+    label: m["strategy.missing_loops_split.label"] as MessageFn,
+    description: m["strategy.missing_loops_split.description"] as MessageFn,
+  },
   expand_region_passage: {
     label: m["strategy.expand_region_passage.label"] as MessageFn,
     description: m["strategy.expand_region_passage.description"] as MessageFn,
@@ -521,6 +525,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   reserve_percent: {
     label: m["param.reserve_percent.label"] as MessageFn,
     description: m["param.reserve_percent.description"] as MessageFn,
+  },
+  src_mode: {
+    label: m["param.src_mode.label"] as MessageFn,
+    description: m["param.src_mode.description"] as MessageFn,
   },
   max_scc_count: {
     label: m["param.max_scc_count.label"] as MessageFn,
@@ -831,6 +839,8 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "priority.least_voluminous": m["param.priority.option.least_voluminous"] as MessageFn,
   "priority.most_connected": m["param.priority.option.most_connected"] as MessageFn,
   "priority.least_connected": m["param.priority.option.least_connected"] as MessageFn,
+  "src_mode.random": m["param.src_mode.option.random"] as MessageFn,
+  "src_mode.dead_end_priority": m["param.src_mode.option.dead_end_priority"] as MessageFn,
   "comparison.lt": m["param.comparison.option.lt"] as MessageFn,
   "comparison.gt": m["param.comparison.option.gt"] as MessageFn,
   "comparison.le": m["param.comparison.option.le"] as MessageFn,
@@ -878,6 +888,8 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "selection_mode.longest": m["param.selection_mode.option.longest.explanation"] as MessageFn,
   "sample_mode.count": m["param.sample_mode.option.count.explanation"] as MessageFn,
   "sample_mode.percent": m["param.sample_mode.option.percent.explanation"] as MessageFn,
+  "src_mode.random": m["param.src_mode.option.random.explanation"] as MessageFn,
+  "src_mode.dead_end_priority": m["param.src_mode.option.dead_end_priority.explanation"] as MessageFn,
   "waypoint.start": m["param.waypoint.option.start.explanation"] as MessageFn,
   "waypoint.finish": m["param.waypoint.option.finish.explanation"] as MessageFn,
   "waypoint.any": m["param.waypoint.option.any.explanation"] as MessageFn,

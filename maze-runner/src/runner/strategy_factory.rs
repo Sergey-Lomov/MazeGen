@@ -6,7 +6,7 @@ use maze_core::{
         RepairStrategy, ErasedRepairStrategy,
         NestedSlot, NestedStrategyConfig,
         RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy,
-        InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy,
+        InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy,
         ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy,
         RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy,
         OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy,
@@ -36,6 +36,7 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(id: &str, params: &HashMap<
         "invalid_loop_scored"  => Box::new(InvalidLoopScoredStrategy),
         "invalid_loop_group_select" => Box::new(InvalidLoopGroupSelectStrategy),
         "missing_loops_random" => Box::new(MissingLoopsRandomStrategy),
+        "missing_loops_split"  => Box::new(build_missing_loops_split_strategy(params)),
         "expand_region_passage" => Box::new(ExpandRegionPassageStrategy),
         "teleport_region_merge" => Box::new(TeleportRegionMergeStrategy),
         "region_shrink_split"  => Box::new(RegionShrinkSplitStrategy),
@@ -70,6 +71,12 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(id: &str, params: &HashMap<
 /// `parse_split_config_param`.
 fn build_add_split_strategy(params: &HashMap<String, String>) -> AddSplitStrategy {
     AddSplitStrategy { config: parse_split_config_param(params.get("split_config")) }
+}
+
+/// Builds `MissingLoopsSplitStrategy` (GitHub issue #254) — same construction-time `split_config`
+/// convention as `build_add_split_strategy` above.
+fn build_missing_loops_split_strategy(params: &HashMap<String, String>) -> MissingLoopsSplitStrategy {
+    MissingLoopsSplitStrategy { config: parse_split_config_param(params.get("split_config")) }
 }
 
 /// Downcasts an erased `Box<dyn ErasedRepairStrategy<T>>` (from `build_strategy_erased`) to a
