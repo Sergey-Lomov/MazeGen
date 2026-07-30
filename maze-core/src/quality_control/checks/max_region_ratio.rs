@@ -23,7 +23,7 @@ impl<T: Tessellation> Check<T, RegionNeedsShrinkIssue> for MaxRegionRatioCheck {
     fn check_type_id(&self) -> &'static str { "max_region_ratio" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<RegionNeedsShrinkIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let field_cells = maze.field.node_count();
+        let field_cells = maze.field.point_count();
         if field_cells == 0 {
             return;
         }

@@ -23,7 +23,7 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitDensityCh
     fn check_type_id(&self) -> &'static str { "max_split_density" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitTileGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let field_cells = maze.field.node_count();
+        let field_cells = maze.field.point_count();
         if field_cells == 0 {
             return;
         }

@@ -27,7 +27,7 @@ impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopDensityCheck {
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopGroupIssue>, _rng: &mut dyn RngCore, _requirement: InvalidLoopGroupRequirement) {
         // Not yet migrated to honor `_requirement` — this check always flags every loop it finds
         // (see the struct's doc comment), so there is never a "valid cycle" to skip computing.
-        let field_cells = maze.field.node_count();
+        let field_cells = maze.field.point_count();
         if field_cells == 0 {
             return;
         }

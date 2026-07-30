@@ -195,6 +195,14 @@ impl<T: Tessellation> Field<T> {
         self.node_to_point.len()
     }
 
+    /// Number of distinct field cells (points) — **not** `node_count()`, which counts nodes and
+    /// is inflated by any point carrying a split tile (multiple nodes per point). Density/ratio
+    /// checks normalizing "per 100 field cells" must use this, not `node_count()` — see GitHub
+    /// issue #267.
+    pub fn point_count(&self) -> usize {
+        self.point_to_nodes.len()
+    }
+
     /// Builds a `Field` directly from caller-supplied `(NodeId, Point)` pairs, bypassing
     /// `IdGenerator` entirely — GitHub issue #236. Unlike `new` (which always mints fresh
     /// sequential ids), this preserves whatever ids the caller already has, so a rebuild from a

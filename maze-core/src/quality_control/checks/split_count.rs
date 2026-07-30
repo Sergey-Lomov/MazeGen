@@ -54,15 +54,6 @@ pub(super) fn count_matching_split_tiles<T: Tessellation>(maze: &Maze<T>, patter
         .count()
 }
 
-/// The field's actual cell count — deduplicated `all_points()`, **not** `Field::node_count()`
-/// (which counts nodes, inflated by any existing split tile's extra nodes). `SplitDensityCheck`
-/// needs the true field-cell count as its density denominator, or an already-split field would
-/// silently under-report its own split density.
-pub(super) fn field_point_count<T: Tessellation>(maze: &Maze<T>) -> usize {
-    let mut seen_points = std::collections::HashSet::new();
-    maze.field.all_points().filter(|&point| seen_points.insert(point)).count()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

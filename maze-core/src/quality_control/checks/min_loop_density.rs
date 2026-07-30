@@ -27,7 +27,7 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
     fn check_type_id(&self) -> &'static str { "min_loop_density" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingLoopsIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let field_cells = maze.field.node_count();
+        let field_cells = maze.field.point_count();
         if field_cells == 0 {
             return;
         }

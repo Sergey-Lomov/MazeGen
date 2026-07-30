@@ -10,7 +10,7 @@ pub const MIN_REGION_RATIO_DEFAULT: u32 = 25;
 
 /// Flags SCC regions smaller than a configured share of the field — see GitHub issue #50.
 /// Counterpart to `MinRegionSizeCheck` using a relative threshold (a percentage of
-/// `maze.field.node_count()`) instead of an absolute tile count.
+/// `maze.field.point_count()`) instead of an absolute tile count.
 ///
 /// `region_classes`: SCC regions whose `RegionClass` (see `graph::region_class`) is not in this
 /// list are ignored entirely — never flagged, never assigned for expansion repair. Empty means no
@@ -26,7 +26,7 @@ impl<T: Tessellation> Check<T, RegionNeedsExpansionIssue> for MinRegionRatioChec
     fn check_type_id(&self) -> &'static str { "min_region_ratio" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<RegionNeedsExpansionIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let field_cells = maze.field.node_count();
+        let field_cells = maze.field.point_count();
         if field_cells == 0 {
             return;
         }

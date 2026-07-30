@@ -10,7 +10,7 @@ pub const MAX_ONE_WAY_RATIO_DEFAULT: u32 = 100;
 /// Flags an excess against the share of one-way passage edges (`EdgeKind::Basic`, single
 /// direction) relative to the field's size — see GitHub issue #202, part of the one-way
 /// management epic (#92). Symmetric counterpart to `MinOneWayRatioCheck` (issue #201): same
-/// "one-ways per 100 field cells" normalization (via `maze.field.node_count()`, not a share of
+/// "one-ways per 100 field cells" normalization (via `maze.field.point_count()`, not a share of
 /// the total edge count), just the excess side of the threshold rather than the deficit side.
 /// Mirrors `MaxOneWayCountCheck`'s "single group, whole one-way edge set" reporting shape:
 /// `to_remove` (GitHub issue #202 follow-up) is `count - target_count`, where `target_count` is
@@ -35,7 +35,7 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck 
     fn check_type_id(&self) -> &'static str { "max_one_way_ratio" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let field_cells = maze.field.node_count() as u64;
+        let field_cells = maze.field.point_count() as u64;
         if field_cells == 0 {
             return;
         }

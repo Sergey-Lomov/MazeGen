@@ -9,7 +9,7 @@ pub const MIN_TELEPORT_RATIO_DEFAULT: u32 = 10;
 
 /// Flags a deficit against the share of distinct teleports (see `count_distinct_teleports`)
 /// relative to the field's size — see GitHub issue #211. Mirrors `MinOneWayRatioCheck`'s role for
-/// one-ways: a count expressed per 100 field cells (via `maze.field.node_count()`).
+/// one-ways: a count expressed per 100 field cells (via `maze.field.point_count()`).
 ///
 /// Compares `count * 100` against `min_teleport_ratio * field_cells` directly instead of computing an
 /// intermediate `count * 100 / field_cells` ratio — the intermediate division floors, which can
@@ -25,7 +25,7 @@ impl<T: Tessellation> Check<T, MissingTeleportsIssue> for MinTeleportRatioCheck 
     fn check_type_id(&self) -> &'static str { "min_teleport_ratio" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingTeleportsIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let field_cells = maze.field.node_count() as u64;
+        let field_cells = maze.field.point_count() as u64;
         if field_cells == 0 {
             return;
         }

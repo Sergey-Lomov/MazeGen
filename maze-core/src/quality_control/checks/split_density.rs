@@ -5,7 +5,7 @@ use crate::graph::cycles::density_per_100;
 use crate::generation::SplitPattern;
 use crate::quality_control::check::Check;
 use crate::quality_control::{Issue, MissingSplitTilesIssue};
-use super::split_count::{count_matching_split_tiles, field_point_count};
+use super::split_count::count_matching_split_tiles;
 
 pub const SPLIT_DENSITY_DEFAULT: u32 = 10;
 pub const SPLIT_DENSITY_ESTIMATE_DEFAULT: u32 = 1;
@@ -28,10 +28,7 @@ impl<T: Tessellation> Check<T, MissingSplitTilesIssue> for SplitDensityCheck {
     fn check_type_id(&self) -> &'static str { "split_density" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingSplitTilesIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        // `maze.field.node_count()` counts nodes, not points — inflated by any existing split
-        // tile's extra nodes, which would silently understate density. `field_point_count`
-        // dedupes to the actual field-cell count instead (see its own doc comment).
-        let field_cells = field_point_count(maze);
+        let field_cells = maze.field.point_count();
         if field_cells == 0 {
             return;
         }
