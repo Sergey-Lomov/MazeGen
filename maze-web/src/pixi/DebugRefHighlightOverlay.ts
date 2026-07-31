@@ -14,6 +14,11 @@ const HIGHLIGHT_ALPHA = 1;
 
 export interface DebugRefHighlightData {
   nodes: NodeDto[];
+  /** Every node that ever existed during the run (`debugArena.allNodes`, GitHub issue #271),
+   *  including ones removed before the current debug step — lets a `node`-kind ref keep
+   *  highlighting by coordinate after its node is gone from `nodes` (GitHub issue #279), instead
+   *  of silently drawing nothing. */
+  allNodes: NodeDto[];
   ref: HoveredDebugRef | null;
   cfg: TessellationConfig;
 }
@@ -50,7 +55,7 @@ export class DebugRefHighlightOverlay {
   }
 
   render(data: DebugRefHighlightData): void {
-    const { nodes, ref, cfg } = data;
+    const { nodes, allNodes, ref, cfg } = data;
 
     if (!ref || nodes.length === 0) {
       this.edgeRenderer.render([]);
@@ -85,7 +90,16 @@ export class DebugRefHighlightOverlay {
         // treating the single node as a one-element region), not a circle marker at its center —
         // reads more directly as "this maze cell" than a dot floating on top of the maze.
         this.edgeRenderer.render([]);
-        this.regionRenderer.render({ nodes, regionGroups: [[Number(ref.id)]], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
+        const nodeId = Number(ref.id);
+        // `allNodes` (GitHub issue #271) deliberately excludes the field's original base nodes —
+        // those are never removed, so they're always already in `nodes` (see
+        // `DebugGenerationState`'s doc comment). It's the *concatenation* of the two that's a full
+        // union of every node that ever existed, mirroring `DebugEventTree.tsx`'s own
+        // `coordIndex` — using `allNodes` alone here previously still lost a removed base-field
+        // node's tile, since it's absent from both `nodes` (removed) and `allNodes` (never minted
+        // mid-run) individually (GitHub issue #279).
+        const lookupNodes = nodes.some((n) => n.id === nodeId) ? nodes : [...nodes, ...allNodes];
+        this.regionRenderer.render({ nodes: lookupNodes, regionGroups: [[nodeId]], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
         break;
       }
       case "issue": {

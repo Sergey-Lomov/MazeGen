@@ -418,13 +418,21 @@ rule):
 - `node` → also `RegionHighlightRenderer`, called with a single one-element `regionGroups` entry
   (`[[nodeId]]`) — highlights the referenced vertex's own maze tile (fill + perimeter) rather than
   a circle marker floating at its center, since a single node is just a region of size one and the
-  same renderer already draws that shape correctly.
+  same renderer already draws that shape correctly. If `nodeId` isn't in the current step's
+  `nodes` (the node was removed earlier in the sequence, GitHub issue #279), falls back to
+  `[...nodes, ...allNodes]` for that one lookup — `allNodes` (`DebugRefHighlightData.allNodes`,
+  `debugArena.allNodes`, #271) deliberately excludes the field's original base nodes (never
+  removed, so already in `nodes`), so only the *concatenation* of the two is a full union of every
+  node that ever existed, mirroring `DebugEventTree.tsx`'s own `coordIndex` union. A removed
+  node's tile highlights exactly like a live node's — no separate visual treatment (e.g. no
+  "deleted" marker), per explicit user decision.
 
-`GenerationRenderer.renderAll` calls `debugRefHighlight.render({ nodes: view.nodes, ref:
-state.hoveredDebugRef, cfg })` only while `state.debugMode` is true (`debugRefHighlight.clear()`
-otherwise) — `view.nodes` is the already-reconstructed debug-step node list (`debugView`, per
-#125/#126), so highlighted positions always match what's currently drawn, including mid-replay.
-`hoveredDebugRef` participates in the store-subscribe `dataChanged` diff alongside the existing
+`GenerationRenderer.renderAll` calls `debugRefHighlight.render({ nodes: view.nodes, allNodes:
+state.debugArena?.allNodes ?? [], ref: state.hoveredDebugRef, cfg })` only while `state.debugMode`
+is true (`debugRefHighlight.clear()` otherwise) — `view.nodes` is the already-reconstructed
+debug-step node list (`debugView`, per #125/#126), so highlighted positions always match what's
+currently drawn, including mid-replay. `hoveredDebugRef` participates in the store-subscribe
+`dataChanged` diff alongside the existing
 debug fields.
 
 ### Out of Scope (#130)
