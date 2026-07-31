@@ -1055,3 +1055,93 @@ fn pipeline_terminates_via_repair_limits_when_content_keeps_changing_but_nothing
     let limit_issue = warnings.iter().find_map(|i| as_issue::<RepairLimitReachedIssue>(i.as_ref())).expect("must surface a RepairLimitReachedIssue");
     assert_eq!(limit_issue.limit, RepairLimitKind::MaxIterations);
 }
+
+/// Regression for GitHub issue #280: a rule whose strategy returns `Failed` once must not be
+/// permanently blacklisted for the rest of the stage's fixpoint loop — only until the graph
+/// actually mutates. Two rules share one stage: `flaky` fails on its first call, then always
+/// succeeds; `mutator` always mutates the graph (toggling one edge) and always succeeds. Since
+/// `mutator` bumps `Graph::version()` every pass, `flaky` must be retried on the very next
+/// iteration and resolve — before the #280 fix, `flaky`'s single early failure would have
+/// blacklisted it for the rest of the run, leaving its issue unresolved.
+#[test]
+fn failed_rule_is_retried_once_a_later_pass_mutates_the_graph() {
+    use maze_core::repair::{RepairResult, RepairStrategy};
+
+    struct AlwaysMissingEndpointsCheck;
+    impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysMissingEndpointsCheck {
+        fn check_type_id(&self) -> &'static str { "always_missing_endpoints" }
+
+        fn repair_check(&self, maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
+            if maze.meta.start.is_none() || maze.meta.finish.is_none() {
+                issues.push(MissingEndpointsIssue::new_from_check("always_missing_endpoints", true, true));
+            }
+        }
+    }
+
+    // Fails exactly once (its first call), then always resolves endpoints.
+    struct FlakyThenFixed {
+        calls: Arc<AtomicUsize>,
+    }
+    impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for FlakyThenFixed {
+        fn strategy_id(&self) -> &'static str { "flaky_then_fixed" }
+
+        fn apply(&self, _: &MissingEndpointsIssue, maze: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
+            let call = self.calls.fetch_add(1, Ordering::SeqCst);
+            if call == 0 {
+                return (RepairResult::Failed, vec![]);
+            }
+            let mut nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
+            nodes.sort_unstable();
+            let mut commands = Vec::new();
+            if let Some(&first) = nodes.first() { commands.push(MutationCommand::SetStart(first)); }
+            if let Some(&last) = nodes.last() { commands.push(MutationCommand::SetFinish(last)); }
+            (RepairResult::Fixed { score: None }, commands)
+        }
+    }
+
+    // Fires every pass regardless of maze state, always toggles one edge so `Graph::version()`
+    // keeps bumping every single call instead of settling once mutated.
+    struct AlwaysMutatorIssueCheck;
+    impl Check<SquareTessellation, MissingEndpointsIssue> for AlwaysMutatorIssueCheck {
+        fn check_type_id(&self) -> &'static str { "always_mutator_check" }
+
+        fn repair_check(&self, _maze: &Maze<SquareTessellation>, issues: &mut Vec<MissingEndpointsIssue>, _rng: &mut dyn rand::RngCore, _requirement: ()) {
+            issues.push(MissingEndpointsIssue::new_from_check("always_mutator_check", true, true));
+        }
+    }
+    struct AlwaysMutates;
+    impl RepairStrategy<SquareTessellation, MissingEndpointsIssue> for AlwaysMutates {
+        fn strategy_id(&self) -> &'static str { "always_mutates" }
+
+        fn apply(&self, _: &MissingEndpointsIssue, maze: &Maze<SquareTessellation>, _: &mut dyn rand::RngCore, _: &StrategyParams, _: &PresetState, _: &[maze_core::repair::NestedStrategyConfig<SquareTessellation>]) -> (RepairResult, Vec<MutationCommand>) {
+            let mut nodes: Vec<_> = maze.graph.nodes().map(|n| n.id).collect();
+            nodes.sort_unstable();
+            let (a, b) = (nodes[0], nodes[1]);
+            let commands = if maze.graph.edge_between(a, b).is_some() {
+                vec![MutationCommand::RemoveEdgeBetween { from: a, to: b }]
+            } else {
+                vec![MutationCommand::AddDirectedEdge { from: a, to: b }]
+            };
+            (RepairResult::Fixed { score: None }, commands)
+        }
+    }
+
+    let (field, graph) = make_generated_graph(1);
+    let flaky_calls = Arc::new(AtomicUsize::new(0));
+    let qc = two_rules(
+        (vec![("always_missing_endpoints", Box::new(AlwaysMissingEndpointsCheck) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],
+         Box::new(FlakyThenFixed { calls: Arc::clone(&flaky_calls) }) as Box<dyn RepairStrategy<SquareTessellation, MissingEndpointsIssue>>),
+        (vec![("always_mutator_check", Box::new(AlwaysMutatorIssueCheck))],
+         Box::new(AlwaysMutates) as Box<dyn RepairStrategy<SquareTessellation, MissingEndpointsIssue>>),
+    );
+
+    let limits = RepairLimits::new(Some(5), None).unwrap();
+    let (maze, warnings, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), limits, None, None, None, None);
+
+    assert!(flaky_calls.load(Ordering::SeqCst) > 1,
+        "flaky rule must be retried after its first Failed once the graph mutates, not permanently skipped");
+    assert!(maze.meta.start.is_some() && maze.meta.finish.is_some(),
+        "flaky rule's issue must eventually resolve once it is retried");
+    assert!(!warnings.iter().any(|i| as_issue::<MissingEndpointsIssue>(i.as_ref()).is_some() && i.source_checks().iter().any(|s| s == "always_missing_endpoints")),
+        "flaky rule's MissingEndpoints issue must not remain unresolved");
+}

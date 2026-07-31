@@ -59,7 +59,9 @@ impl<T: Tessellation> Stage<T> {
     /// requirement that at least one bound is set) — there is no separate no-progress guard (see
     /// GitHub issue #170: the old value-equality/"commands dropped" guards were unreliable and
     /// easily defeated, e.g. two rules whose issue content differs every iteration while never
-    /// actually converging).
+    /// actually converging). A rule whose strategy returns `Failed` is skipped on later passes
+    /// only until the graph next mutates (GitHub issue #280) — see `check_and_dispatch`'s doc
+    /// comment for why a graph mutation, not just elapsed time, is what clears it.
     pub(crate) fn run_repair(
         &self,
         maze: &mut Maze<T>,
@@ -132,9 +134,14 @@ impl<T: Tessellation> Stage<T> {
     /// no-progress guard left to compare snapshots across iterations, dispatch order is simply
     /// `self.rules`' own configured order, not re-derived from rule id.
     ///
-    /// A `Failed` result adds the rule's id to `failed` so future iterations of this stage's loop
-    /// skip it; a `Fixed` result with a route score sets `maze.meta.route_score` if not already
-    /// set (first strategy to report a score wins, matching the original flat pipeline).
+    /// A `Failed` result adds the rule's id to `failed` so it is skipped for the rest of this
+    /// pass and any later pass — until the graph actually mutates (see GitHub issue #280): once
+    /// `maze.graph.version()` changes, `failed` is cleared entirely, since `Failed` only means
+    /// "couldn't fix the issue instance just given" (`Specs/repair.md`'s `RepairResult` doc), not
+    /// "broken for the rest of the stage run" — a graph mutation may reshape or remove the very
+    /// issue that made a previously failed rule fail. A `Fixed` result with a route score sets
+    /// `maze.meta.route_score` if not already set (first strategy to report a score wins,
+    /// matching the original flat pipeline).
     fn check_and_dispatch(
         &self,
         maze: &mut Maze<T>,
@@ -151,6 +158,7 @@ impl<T: Tessellation> Stage<T> {
             if failed.contains(rule.id()) {
                 continue;
             }
+            let version_before = maze.graph.version();
             let mut rule_scope = event_log.as_mut().map(|g| g.enter(format!("rule {}", rule.id())));
             let outcome = rule.check_and_repair(
                 maze, rng, preset_state, timing.per_check, timing.per_strategy,
@@ -176,6 +184,16 @@ impl<T: Tessellation> Stage<T> {
                         RepairResult::Fixed { score: None } => {}
                     }
                 }
+            }
+            // GitHub issue #280: `Failed` only means "this strategy can't fix the issue instance
+            // it was just given" (see `Specs/repair.md`'s `RepairResult` doc), not "this strategy
+            // is broken for the rest of the stage's fixpoint loop". Once the graph has actually
+            // mutated (`Graph::version()` bumped — the same signal `MazeAnalysis` uses to detect
+            // stale caches), every previously failed rule may face a genuinely different issue
+            // next time it runs, so `failed` is cleared entirely rather than kept as a permanent
+            // per-rule blacklist for the whole run.
+            if maze.graph.version() != version_before {
+                failed.clear();
             }
         }
         found_any
