@@ -232,6 +232,48 @@ pub struct GraphAnalyticsDto {
     pub region_classes: HashMap<String, String>,
 }
 
+/// Mirrors `maze_core::generation::SplitFaceRequirement` — one node's per-face-position
+/// requirement, as reconstructed from the built graph (see `SplitGroupDto`'s doc comment).
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SplitFaceRequirementDto {
+    Passage,
+    OneWay { direction: OneWayDirectionDto },
+    Wall,
+    Unspecified,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OneWayDirectionDto {
+    Forward,
+    Backward,
+}
+
+/// One group of maze-wide split tiles sharing the same canonical topology
+/// (`maze_core::graph::split_topology::canonical_split_topology`) — the same pattern applied at
+/// any rotation/mirror, with node creation order ignored. `topology[i]` is one node's
+/// per-face-position requirement list (length = tessellation degree); the outer list is sorted
+/// (order-independent — see `SplitTopology`'s doc comment), so it also serves as a stable
+/// dedup/lookup key on the web side (e.g. for a title registry keyed by serialized topology).
+#[derive(Serialize)]
+pub struct SplitGroupDto {
+    pub topology: Vec<Vec<SplitFaceRequirementDto>>,
+    pub count: usize,
+}
+
+/// Maze-wide split totals, independent of any route (contrast `RouteInfoDto.split_count`, which
+/// counts split occurrences along one specific route) — see GitHub issue #262.
+#[derive(Serialize)]
+pub struct SplitAnalyticsDto {
+    /// Number of field points with 2+ nodes.
+    pub tile_count: usize,
+    /// Sum, over every split point, of its full node count (including the original node).
+    pub node_count: usize,
+    /// Every distinct canonical topology found on the field, with how many tiles share it.
+    pub groups: Vec<SplitGroupDto>,
+}
+
 /// One endpoint of a post-edit edge — either a plain existing `NodeId`, or a reference to one of
 /// a split point's extra nodes by its stable `slot_id` (GitHub issue #221). The web side never
 /// predicts a split node's `NodeId` (it doesn't exist yet until this same call creates it via
@@ -301,6 +343,7 @@ pub struct MazeSnapshot {
     pub teleport_edge_stats: TeleportEdgeStatsDto,
     pub route_info: Option<RouteInfoDto>,
     pub graph_analytics: GraphAnalyticsDto,
+    pub split_analytics: SplitAnalyticsDto,
     /// `Some` only when this snapshot came from a generation run (`run_generate`) — see
     /// `GenerationTimingDto`'s doc comment.
     pub timing: Option<GenerationTimingDto>,

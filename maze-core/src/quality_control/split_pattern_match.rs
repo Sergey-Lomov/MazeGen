@@ -14,7 +14,7 @@ use crate::generation::{SplitPattern, SplitFaceRequirement, OneWayDirection};
 ///
 /// Returns one `Vec<SplitFaceRequirement>` per node in `nodes`, indexed by `Tessellation::faces()`
 /// position (`Wall` where no edge exists in that direction — including a face pointing off-field).
-fn reconstruct_tile_faces<T: Tessellation>(
+pub(crate) fn reconstruct_tile_faces<T: Tessellation>(
     graph: &Graph,
     field: &Field<T>,
     nodes: &[NodeId],

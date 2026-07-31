@@ -1,4 +1,4 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, NodeLockKind, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, SplitAnalyticsDto, NodeLockKind, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
 import type { ParsedTape, Snapshot, DebugValueDescriptor } from "../debug/eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -50,6 +50,7 @@ export interface PostEditAnalytics {
   navNodes: NavNodeDto[];
   navEdges: NavEdgeDto[];
   graphAnalytics: GraphAnalyticsDto;
+  splitAnalytics: SplitAnalyticsDto;
   issues: IssueDto[];
 }
 
@@ -450,6 +451,7 @@ export interface GenerationState {
   navNodes: NavNodeDto[];
   navEdges: NavEdgeDto[];
   graphAnalytics: GraphAnalyticsDto | null;
+  splitAnalytics: SplitAnalyticsDto | null;
   showNodeIds: boolean;
   showCoords: boolean;
   showMaze: boolean;

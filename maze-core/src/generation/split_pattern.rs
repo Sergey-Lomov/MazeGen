@@ -3,7 +3,7 @@
 /// leaves the face open to the ordinary corridor/junction logic, like any other free neighbor —
 /// it participates in `enumerate_adaptations`'s visited/unvisited bookkeeping but adds no edge of
 /// its own.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SplitFaceRequirement {
     Passage,
     OneWay(OneWayDirection),
@@ -15,7 +15,7 @@ pub enum SplitFaceRequirement {
 /// `Forward` means the edge points away from this node (toward `sibling_target` or the outside
 /// neighbor), `Backward` means it points into this node. Reuses `PresetConnectionState`'s
 /// `OneWayForward`/`OneWayBackward` naming convention for consistency.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum OneWayDirection {
     Forward,
     Backward,

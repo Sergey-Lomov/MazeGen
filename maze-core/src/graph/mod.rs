@@ -4,6 +4,7 @@ pub mod classify;
 pub mod stats;
 pub mod routing;
 pub mod graph_analytics;
+pub mod split_topology;
 pub mod region_class;
 pub mod route_protection;
 pub mod bisect;

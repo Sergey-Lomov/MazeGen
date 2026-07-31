@@ -191,3 +191,93 @@ Exact directed tile-hop distance between two arbitrary maze nodes — unlike `co
 |---|---|
 | `cycle_count` (β₁) | Minimum cycle count — maze must not be a tree |
 | `cycle_region_count` | Cycle spread — avoid all cycles concentrated in one region (or too fragmented) |
+
+## Split Topology & Statistics (GitHub issue #262)
+
+`maze-core/src/graph/split_topology.rs` — maze-wide split-tile statistics, independent of
+`GraphAnalytics`/`NavGraph` (this is `Field`/`Graph` domain, not nav-domain) and independent of any
+route (contrast `RouteInfo::split_count`, which counts split occurrences along one specific
+route — `Specs/repair.md`'s "Score formula" section).
+
+### `SplitTopology` and `canonical_split_topology`
+
+```rust
+pub type SplitTopology = Vec<Vec<SplitFaceRequirement>>;
+
+pub fn canonical_split_topology<T: Tessellation>(
+    graph: &Graph,
+    field: &Field<T>,
+    nodes: &[NodeId],
+) -> Option<SplitTopology>;
+```
+
+A split tile's shape, independent of:
+- **which physical node happens to be listed first** — `nodes_at` order is creation order, not
+  geometry; the canonical form's outer `Vec` is sorted, so node identity never matters, only the
+  multiset of per-node face-requirement shapes.
+- **the tile's rotation/mirror orientation on the field** — every rotation/mirror the tessellation
+  supports (`Tessellation::rotation_symmetries`/`mirror_symmetries`, via `transform_face_index`) is
+  tried, and the lexicographically smallest resulting (sorted) candidate is kept as the one fixed
+  representative.
+
+Built on `reconstruct_tile_faces` (`quality_control::split_pattern_match`, made `pub(crate)` for
+this reuse) — the same per-node, per-face-position `Passage`/`OneWay`/`Wall` reconstruction
+`split_tile_matches_any` uses to check a tile against a configured `SplitPattern` list. Unlike that
+function, `canonical_split_topology` needs no candidate pattern list at all — it reduces a tile to
+one canonical value that can be grouped/compared with plain equality, no rotation search needed by
+the caller. Returns `None` for a non-split tile (`nodes.len() < 2`) or a degenerate tessellation
+(`T::faces()` empty).
+
+### `split_totals`
+
+```rust
+pub fn split_totals<T: Tessellation>(
+    graph: &Graph,
+    field: &Field<T>,
+) -> (usize, usize, HashMap<SplitTopology, usize>);
+```
+
+Returns `(split_tile_count, split_node_count, groups)`:
+- `split_tile_count` — number of field points with `nodes_at(point).len() >= 2`.
+- `split_node_count` — sum, over every split point, of its full node count (including the point's
+  original node, not just the extra ones).
+- `groups` — every split tile's canonical topology, grouped by equality, mapped to how many tiles
+  share it. A tile whose topology can't be canonicalized (degenerate tessellation) is still counted
+  in the two totals above but has no group entry.
+
+Iterates via `Field::all_points`, deduped per point (a split point appears once per its own node
+count in `all_points`'s NodeId-domain iteration) — same dedup shape as `build_analytics_snapshot`'s
+node listing (GitHub issue #223). Not cached in `MazeAnalysis` — same precedent as
+`compute_node_stats`/`compute_spatial_edge_stats`, which are also recomputed on every analytics
+snapshot rather than going through `MazeAnalysis`'s `RefCell`-backed cache slots.
+
+### Web Integration
+
+`SplitAnalyticsDto` (`maze-wasm/src/dto.rs`), computed in `build_analytics_snapshot` from
+`maze.field`/`maze.graph` directly (not from `GraphAnalytics`):
+
+```rust
+pub struct SplitGroupDto {
+    pub topology: Vec<Vec<SplitFaceRequirementDto>>,
+    pub count: usize,
+}
+
+pub struct SplitAnalyticsDto {
+    pub tile_count: usize,
+    pub node_count: usize,
+    pub groups: Vec<SplitGroupDto>,
+}
+```
+
+`SplitFaceRequirementDto`/`OneWayDirectionDto` mirror `maze_core::generation::SplitFaceRequirement`/
+`OneWayDirection` (tagged via `#[serde(tag = "kind", rename_all = "snake_case")]`, same convention
+as `IssuePayloadDto`). `topology[i]` is one node's per-face-position requirement list, indexed by
+`maze-core`'s `Tessellation::faces()` position directly (**not** the web `TileFaceEditor` authoring
+order — see `nav-graph.md`/GitHub issue #273's face-index distinction).
+
+`MazeSnapshot.split_analytics: SplitAnalyticsDto` follows `graph_analytics`'s wiring exactly:
+`GenerationState.splitAnalytics`, `PostEditAnalytics.splitAnalytics`, reset alongside
+`graphAnalytics` in `buildResetMazeState` — not persisted in project export (purely derived,
+recomputed after load, same as `graphAnalytics`).
+
+See `analytics-web.md`'s "Splits Block" section for the `AnalyticsFeature` UI built on this DTO.

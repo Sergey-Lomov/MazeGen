@@ -12,11 +12,14 @@ use maze_core::{
     compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
     graph::{Graph, EdgeKind},
     space::{Field, SquarePoint, HexPoint, TriPoint},
+    generation::{SplitFaceRequirement, OneWayDirection},
+    split_totals,
     Maze,
 };
 use crate::dto::{
     EdgeDto, EdgeKindDto, IssueDto, IssuePayloadDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
     NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, JunctionBucket, GraphAnalyticsDto,
+    SplitFaceRequirementDto, OneWayDirectionDto, SplitGroupDto, SplitAnalyticsDto,
     ComputeAnalyticsConfig, PostEditEdgeDto, PostEditEndpointDto,
 };
 use crate::generation_config::{self, GenerateConfig, TessellationType};
@@ -189,6 +192,20 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         .map(|(comp_id, class)| (comp_id.to_string(), class.as_str().to_string()))
         .collect();
 
+    let (split_tile_count, split_node_count, split_groups) = split_totals(&maze.graph, &maze.field);
+    let split_analytics = SplitAnalyticsDto {
+        tile_count: split_tile_count,
+        node_count: split_node_count,
+        groups: split_groups.into_iter()
+            .map(|(topology, count)| SplitGroupDto {
+                topology: topology.into_iter()
+                    .map(|node_faces| node_faces.into_iter().map(split_face_requirement_dto).collect())
+                    .collect(),
+                count,
+            })
+            .collect(),
+    };
+
     let graph_analytics_dto = GraphAnalyticsDto {
         node_count:        graph_analytics.node_count,
         edge_count:        graph_analytics.edge_count,
@@ -248,8 +265,21 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         teleport_edge_stats,
         route_info,
         graph_analytics: graph_analytics_dto,
+        split_analytics,
         timing: None,
     })
+}
+
+fn split_face_requirement_dto(req: SplitFaceRequirement) -> SplitFaceRequirementDto {
+    match req {
+        SplitFaceRequirement::Passage => SplitFaceRequirementDto::Passage,
+        SplitFaceRequirement::OneWay(OneWayDirection::Forward) =>
+            SplitFaceRequirementDto::OneWay { direction: OneWayDirectionDto::Forward },
+        SplitFaceRequirement::OneWay(OneWayDirection::Backward) =>
+            SplitFaceRequirementDto::OneWay { direction: OneWayDirectionDto::Backward },
+        SplitFaceRequirement::Wall => SplitFaceRequirementDto::Wall,
+        SplitFaceRequirement::Unspecified => SplitFaceRequirementDto::Unspecified,
+    }
 }
 
 #[wasm_bindgen]

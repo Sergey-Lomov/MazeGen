@@ -85,6 +85,31 @@ export interface GraphAnalyticsDto {
 
 export type RegionClass = "path" | "alternative" | "unreachable" | "trap";
 
+/** One maze-wide group of split tiles sharing the same canonical topology (the same pattern
+ *  applied at any rotation/mirror, node creation order ignored — see
+ *  `maze_core::graph::split_topology`). `topology[i]` is one node's per-face-position requirement
+ *  list (length = tessellation degree, `SplitFaceRequirement` — see below), reconstructed from the
+ *  built graph rather than authored (`unspecified` never appears in practice, indistinguishable
+ *  from a plain absent edge after the fact). The outer list is sorted (order-independent), so it
+ *  also serves as a stable key for a client-side title registry (e.g. `JSON.stringify(topology)`).
+ *  Declared here, ahead of `SplitFaceRequirement`'s own declaration further down this file, since
+ *  both describe the same wire shape and belong together conceptually. */
+export interface SplitGroupDto {
+  topology: SplitFaceRequirement[][];
+  count: number;
+}
+
+/** Maze-wide split totals, independent of any route (contrast `RouteInfoDto.split_count`, which
+ *  counts split occurrences along one specific route) — see GitHub issue #262. */
+export interface SplitAnalyticsDto {
+  /** Number of field points with 2+ nodes. */
+  tile_count: number;
+  /** Sum, over every split point, of its full node count (including the original node). */
+  node_count: number;
+  /** Every distinct canonical topology found on the field, with how many tiles share it. */
+  groups: SplitGroupDto[];
+}
+
 /** Tagged payload for `IssueDto` — a real discriminated union (narrow on `kind`) mirroring
  * Rust's `IssuePayloadDto`. `IssueDto.kind` remains the source of truth for UI filtering/labels;
  * `payload.kind` is only a narrowing discriminant for which payload fields are present. */
@@ -195,6 +220,7 @@ export interface MazeSnapshot {
   teleport_edge_stats: TeleportEdgeStatsDto;
   route_info: RouteInfoDto | null;
   graph_analytics: GraphAnalyticsDto;
+  split_analytics: SplitAnalyticsDto;
   timing: GenerationTimingDto | null;
 }
 

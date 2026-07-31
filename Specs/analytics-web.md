@@ -19,6 +19,7 @@ Block order (top to bottom):
 4. **Nodes**
 5. **Edges**
 6. **Graph** — hidden when `graphAnalytics == null`
+7. **Splits** — hidden when `splitAnalytics == null` (GitHub issue #262)
 
 ## Data Source: Post-Edit Integration
 
@@ -31,6 +32,7 @@ Analytics always operates on the post-edited graph, not the raw generated graph.
 | `warnings` | `postEditAnalytics?.warnings ?? state.warnings` |
 | `routeInfo` | `postEditAnalytics != null ? postEditAnalytics.routeInfo : state.routeInfo` |
 | `graphAnalytics` | `postEditAnalytics?.graphAnalytics ?? state.graphAnalytics` |
+| `splitAnalytics` | `postEditAnalytics?.splitAnalytics ?? state.splitAnalytics` |
 | `components` | `postEditAnalytics?.components ?? state.components` |
 | `navNodes/navEdges` | `postEditAnalytics?.navNodes/navEdges ?? state.navNodes/navEdges` |
 | `edges` (canvas) | `postEditEdgesToDto(state.postEditEdges)` — confirmed post-edit edges snapshot |
@@ -111,6 +113,62 @@ Shown only when `graphAnalytics != null`. Statistics from `graphAnalytics: Graph
 | Cycle rank (β₁) | `cycle_rank` |
 | Min cycle length | `min_cycle_length` — hidden when null |
 | Max cycle density | `max_cycle_density` (2 decimal places) — shown as "—" when null |
+
+### Splits Block (GitHub issue #262)
+
+Shown only when `splitAnalytics != null`. Statistics from `splitAnalytics: SplitAnalyticsDto` —
+maze-wide split totals, independent of any route (contrast the Path Block's `split_count`, which
+counts split occurrences along the one shortest route — see `graph-analytics.md`'s "Split Topology
+& Statistics" section for the core computation).
+
+| Row | Value |
+|---|---|
+| Split tiles | `tile_count` |
+| Split nodes | `node_count` — every node at a split point, including each point's original node |
+| One row per named group | `count` — see "Named Split Patterns" below |
+
+A "Pattern statistics" button opens a modal listing every distinct canonical topology found on the
+field (`splitAnalytics.groups`), regardless of whether it has a registered title — see "Split
+Pattern Statistics Modal" below. The button is hidden when `splitAnalytics.groups` is empty.
+
+#### Named Split Patterns
+
+`maze-web/src/pixi/splitPatternTitles.ts` — a small, curated, client-only title registry mapping a
+handful of recognizable canonical topologies to an i18n title (`split_pattern_title.*`), filtered
+by tile degree (`topology[0].length`) the same way `splitBlueprints.ts`'s `SplitNodeBlueprint`
+registry is filtered by degree. Deliberately independent from that blueprint registry — a blueprint
+is an editor action template with no title of its own; this registry exists purely to label a
+handful of shapes in the stats UI. Matching is plain structural equality against the exact
+canonical topology core already computed (`titleKeyForTopology`, no rotation search needed
+client-side, since core already picked one fixed representative per shape).
+
+Currently registered (each entry's canonical topology was computed once via a throwaway diagnostic
+Rust test, not derived at runtime):
+
+| Tessellation | Title | Shape |
+|---|---|---|
+| Triangle | Split fork | The tessellation's only built-in triangle blueprint |
+| Square | Bridge | Two nodes, each a straight-through opposite-face pair |
+| Square | Diagonal divider | Two nodes, each an adjacent-face pair |
+| Hex | Bridge | Two nodes, each a straight-through opposite-face pair |
+| Hex | Double bridge | Three nodes, all opposite-face pairs |
+| Hex | Triple corridor | One opposite-face pair plus two adjacent-face pairs |
+
+A group whose topology has no registered title is shown only in the "Pattern statistics" modal, not
+directly in the Splits Block.
+
+#### Split Pattern Statistics Modal
+
+One row per `splitAnalytics.groups` entry (sorted by `count` descending), each showing:
+- **Preview thumbnail** — `SplitGroupPreviewTile`, reusing `TileFaceEditor` itself (via
+  `tileNodesForTopology`, which converts the DTO's core-ordered `topology` to the web
+  `TileFaceEditor` face order — see GitHub issue #273) at a fixed anchor point, same rationale as
+  `SplitPatternListEditor`'s own `PatternPreviewTile` (no separate rendering path to keep in sync).
+- **Title** — via `titleKeyForTopology`, omitted for an unregistered topology.
+- **Count**, **% of splits** (`count / splitAnalytics.tile_count`), **% of field tiles**
+  (`count / fieldTileCount`, computed lazily inside the modal from `state.nodes`' distinct `(x, y)`
+  coordinates — not precomputed on every `AnalyticsFeature` render, since it's only needed while
+  this modal is open).
 
 ### Timing Block
 

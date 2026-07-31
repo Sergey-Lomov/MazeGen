@@ -1,6 +1,6 @@
 import { splitSlotColor } from "./colorUtils";
 import { canvas } from "./colorTokens";
-import { getNeighborData } from "./tessellationGeometry";
+import { getNeighborData, splitFaceIndexToCore } from "./tessellationGeometry";
 import type { TileFace, TileFaceKind, TileFaceNode } from "../components/features/TileFaceEditor";
 import type { SplitPattern, SplitFaceRequirement } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -47,6 +47,26 @@ export function tileNodesForPattern(pattern: SplitPattern, degree: number): Tile
     color: splitPatternNodeColor(nodeIndex),
     faces: Array.from({ length: degree }, (_, faceIndex): TileFace => ({
       kind: tileFaceKindOf(pattern.faces[nodeIndex]?.find((f) => f.face_index === faceIndex)?.requirement),
+      boundary: false,
+    })),
+  }));
+}
+
+/** Builds the `TileFaceEditor`/`TileFaceNode[]` shape for a maze-wide split group's canonical
+ *  topology (`SplitGroupDto.topology`, `maze_core::graph::split_topology`) — used by the analytics
+ *  "pattern statistics" modal's preview thumbnails. Unlike `tileNodesForPattern`, `topology[node]`
+ *  is a plain array indexed by `maze-core`'s `Tessellation::faces()` position directly (no
+ *  `face_index` field to match against), so each web face position is converted to its
+ *  corresponding core position via `splitFaceIndexToCore` before reading — the same conversion
+ *  point `splitPatternsToCore` uses at the wasm-config-serialization boundary (GitHub issue #273),
+ *  just read in the opposite direction (core value -> web slot) since this data already arrived
+ *  from wasm in core ordering, unlike an authored `SplitPattern`. */
+export function tileNodesForTopology(topology: SplitFaceRequirement[][], cfg: TessellationConfig): TileFaceNode[] {
+  const degree = degreeFor(cfg);
+  return topology.map((nodeFaces, nodeIndex): TileFaceNode => ({
+    color: splitPatternNodeColor(nodeIndex),
+    faces: Array.from({ length: degree }, (_, webFaceIndex): TileFace => ({
+      kind: tileFaceKindOf(nodeFaces[splitFaceIndexToCore(cfg, webFaceIndex)]),
       boundary: false,
     })),
   }));

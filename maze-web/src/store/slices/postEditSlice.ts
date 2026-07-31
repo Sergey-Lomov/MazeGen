@@ -181,6 +181,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
           navNodes: snapshot.nav_nodes,
           navEdges: snapshot.nav_edges,
           graphAnalytics: snapshot.graph_analytics,
+          splitAnalytics: snapshot.split_analytics,
           issues: snapshot.issues,
         },
         postEditEdges: edgesSnapshot,

@@ -2,6 +2,7 @@ import React from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
+import { activeTessellationOf } from "../../store/storeHelpers";
 import { ui, typography, muted, disabled, spacing } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
@@ -9,7 +10,75 @@ import { IssuesBlock } from "../IssuesBlock";
 import { ToggleRow } from "../ToggleRow";
 import { Modal } from "../Modal";
 import { canvas } from "../../pixi/colorTokens";
+import { TileFaceEditor } from "./TileFaceEditor";
+import { tileNodesForTopology } from "../../pixi/splitPatternTile";
+import { titleKeyForTopology } from "../../pixi/splitPatternTitles";
+import type { SplitGroupDto } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
+
+const SPLIT_PREVIEW_ANCHOR: [number, number] = [0, 0];
+const NOOP_FACE = () => {};
+const NOOP_ROTATE = () => {};
+
+const SPLIT_PATTERN_TITLES: Record<string, () => string> = {
+  "split_pattern_title.split_fork": () => m["split_pattern_title.split_fork"](),
+  "split_pattern_title.bridge": () => m["split_pattern_title.bridge"](),
+  "split_pattern_title.diagonal_divider": () => m["split_pattern_title.diagonal_divider"](),
+  "split_pattern_title.double_bridge": () => m["split_pattern_title.double_bridge"](),
+  "split_pattern_title.triple_corridor": () => m["split_pattern_title.triple_corridor"](),
+};
+
+function messageFor(key: string): string {
+  return SPLIT_PATTERN_TITLES[key]();
+}
+
+/** Compact, non-interactive tile preview for one split group's card in the "pattern statistics"
+ *  modal — reuses `TileFaceEditor` itself, same rationale as `SplitPatternListEditor`'s own
+ *  `PatternPreviewTile` (no separate rendering path to keep in sync). */
+function SplitGroupPreviewTile({ topology, cfg }: { topology: SplitGroupDto["topology"]; cfg: ReturnType<typeof activeTessellationOf> }) {
+  return (
+    <div style={styles.previewTile}>
+      <TileFaceEditor
+        point={SPLIT_PREVIEW_ANCHOR} cfg={cfg} nodes={tileNodesForTopology(topology, cfg)} activeIndex={null}
+        onFaceClick={NOOP_FACE} onFaceRightClick={NOOP_FACE} onRotate={NOOP_ROTATE} showRotateControls={false}
+      />
+    </div>
+  );
+}
+
+function SplitPatternStatsModal({ groups, tileCount, nodes, cfg, onClose }: {
+  groups: SplitGroupDto[];
+  tileCount: number;
+  nodes: { x: number; y: number }[];
+  cfg: ReturnType<typeof activeTessellationOf>;
+  onClose: () => void;
+}) {
+  const sorted = [...groups].sort((a, b) => b.count - a.count);
+  // Computed only while this modal is actually open/mounted, not on every AnalyticsFeature render.
+  const fieldTileCount = React.useMemo(() => new Set(nodes.map((n) => `${n.x},${n.y}`)).size, [nodes]);
+  return (
+    <Modal title={m["analytics.split_pattern_stats_title"]()} onClose={onClose}>
+      <div style={styles.patternStatsList}>
+        {sorted.map((group, i) => {
+          const titleKey = titleKeyForTopology(group.topology);
+          const pctOfSplits = tileCount > 0 ? (group.count / tileCount) * 100 : 0;
+          const pctOfTiles = fieldTileCount > 0 ? (group.count / fieldTileCount) * 100 : 0;
+          return (
+            <div key={i} style={styles.patternStatsRow}>
+              <SplitGroupPreviewTile topology={group.topology} cfg={cfg} />
+              <div style={styles.patternStatsInfo}>
+                {titleKey && <div style={styles.patternStatsTitle}>{messageFor(titleKey)}</div>}
+                <StatRow label={m["analytics.split_pattern_stats_count"]()} count={group.count} />
+                <StatRow label={m["analytics.split_pattern_stats_pct_of_splits"]()} valueText={`${pctOfSplits.toFixed(1)}%`} />
+                <StatRow label={m["analytics.split_pattern_stats_pct_of_tiles"]()} valueText={`${pctOfTiles.toFixed(1)}%`} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
 
 const REGION_CLASS_LEGEND: { cls: keyof typeof canvas.region; label: () => string; desc: () => string }[] = [
   { cls: "path", label: () => m["analytics.region_class_path"](), desc: () => m["analytics.region_class_path_desc"]() },
@@ -67,18 +136,24 @@ export function AnalyticsFeature() {
   const generatedTeleportEdgeStats = useMazeStore((s) => s.teleportEdgeStats);
   const generatedRouteInfo = useMazeStore((s) => s.routeInfo);
   const generatedGraphAnalytics = useMazeStore((s) => s.graphAnalytics);
+  const generatedSplitAnalytics = useMazeStore((s) => s.splitAnalytics);
   const timing = useMazeStore((s) => s.timing);
   const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
   const issues = useMazeStore(useShallow(selectAnalyticsIssues));
+  const nodes = useMazeStore((s) => s.nodes);
+  const tessellationConfig = useMazeStore((s) => activeTessellationOf(s));
 
   const nodeStats = postEditAnalytics?.nodeStats ?? generatedNodeStats;
   const edgeStats = postEditAnalytics?.edgeStats ?? generatedEdgeStats;
   const teleportEdgeStats = postEditAnalytics?.teleportEdgeStats ?? generatedTeleportEdgeStats;
   const routeInfo = postEditAnalytics != null ? postEditAnalytics.routeInfo : generatedRouteInfo;
   const graphAnalytics = postEditAnalytics?.graphAnalytics ?? generatedGraphAnalytics;
+  const splitAnalytics = postEditAnalytics?.splitAnalytics ?? generatedSplitAnalytics;
   // Backend leaves region_classes empty whenever start or finish is unset — the same condition
   // the issue calls "unavailable otherwise" (independent of whether a route actually exists).
   const regionClassesUnavailable = Object.keys(graphAnalytics?.region_classes ?? {}).length === 0;
+  const [splitPatternStatsOpen, setSplitPatternStatsOpen] = React.useState(false);
+  const namedSplitGroups = (splitAnalytics?.groups ?? []).filter((g) => titleKeyForTopology(g.topology) != null);
 
   const showMazeOverlay = useMazeStore((s) => s.showMazeOverlay);
   const showComponentsOverlay = useMazeStore((s) => s.showComponentsOverlay);
@@ -222,6 +297,42 @@ export function AnalyticsFeature() {
         </>
       )}
 
+      {/* Splits block — GitHub issue #262 */}
+      {splitAnalytics != null && (
+        <>
+          <div style={styles.divider} />
+          <SectionHeader label={m["analytics.splits"]()} expanded={isExpanded("splits")} onToggle={() => toggleSection("splits")} />
+          {isExpanded("splits") && (
+            <div style={styles.statBlock}>
+              <StatRow label={m["analytics.split_tile_count"]()} count={splitAnalytics.tile_count} />
+              <StatRow label={m["analytics.split_node_count"]()} count={splitAnalytics.node_count} />
+              {namedSplitGroups.map((group, i) => (
+                <StatRow
+                  key={i}
+                  label={messageFor(titleKeyForTopology(group.topology)!)}
+                  count={group.count}
+                />
+              ))}
+              {splitAnalytics.groups.length > 0 && (
+                <button className="hoverable" style={{ ...sharedStyles.btnMuted, ...styles.patternStatsButton }} onClick={() => setSplitPatternStatsOpen(true)}>
+                  {m["analytics.split_pattern_stats_button"]()}
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {splitPatternStatsOpen && splitAnalytics != null && (
+        <SplitPatternStatsModal
+          groups={splitAnalytics.groups}
+          tileCount={splitAnalytics.tile_count}
+          nodes={nodes}
+          cfg={tessellationConfig}
+          onClose={() => setSplitPatternStatsOpen(false)}
+        />
+      )}
+
       {/* Timing block — generation runs only, see GitHub issue #56 */}
       {timing != null && (
         <>
@@ -273,4 +384,13 @@ const styles: Record<string, React.CSSProperties> = {
   legendSwatch: { width: 14, height: 14, borderRadius: 3, flexShrink: 0 },
   legendLabel: { ...typography.body, fontWeight: "bold" as const },
   legendDesc: { ...muted(typography.body) },
+  patternStatsButton: { width: "100%", boxSizing: "border-box" as const, marginTop: spacing.itemGap },
+  patternStatsList: { display: "flex", flexDirection: "column", gap: spacing.groupGap },
+  patternStatsRow: {
+    display: "flex", alignItems: "center", gap: spacing.groupGap,
+    padding: spacing.itemGap, border: `1px solid ${ui.border.default}`, borderRadius: 6,
+  },
+  previewTile: { width: 56, height: 56, flexShrink: 0 },
+  patternStatsInfo: { flex: 1, display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  patternStatsTitle: { ...typography.body, fontWeight: "bold" as const },
 };

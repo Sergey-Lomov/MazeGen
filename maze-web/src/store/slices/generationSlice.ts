@@ -23,6 +23,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   navNodes: [],
   navEdges: [],
   graphAnalytics: null,
+  splitAnalytics: null,
   showNodeIds: false,
   showCoords: false,
   showMaze: true,

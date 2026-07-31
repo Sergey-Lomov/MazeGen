@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { degreeFor, resizePatternNodes, removePatternNode } from "../pixi/splitPatternTile";
-import type { SplitPattern } from "../wasm/types";
+import { degreeFor, resizePatternNodes, removePatternNode, tileNodesForTopology } from "../pixi/splitPatternTile";
+import { titleKeyForTopology } from "../pixi/splitPatternTitles";
+import type { SplitPattern, SplitFaceRequirement } from "../wasm/types";
 
 describe("degreeFor", () => {
   it("returns 4 for square", () => {
@@ -95,5 +96,65 @@ describe("removePatternNode", () => {
     };
     const next = removePatternNode(p, 1);
     expect(next.faces[1]).toEqual([{ face_index: 0, requirement: { kind: "passage" }, sibling_target: 0 }]);
+  });
+});
+
+describe("tileNodesForTopology", () => {
+  const PASSAGE: SplitFaceRequirement = { kind: "passage" };
+  const WALL: SplitFaceRequirement = { kind: "wall" };
+  const cfg = { type: "square", width: 3, height: 3 } as const;
+
+  it("converts core face positions to web face positions per node", () => {
+    // Square core order is [N, S, E, W] (indices 0-3); splitFaceIndexToCore's web->core table is
+    // [2, 0, 3, 1], so web position 0 reads core position 2 (E), web 1 reads core 0 (N), web 2
+    // reads core 3 (W), web 3 reads core 1 (S).
+    const topology: SplitFaceRequirement[][] = [
+      [PASSAGE, WALL, WALL, PASSAGE], // core: N=passage, S=wall, E=wall, W=passage
+    ];
+    const nodes = tileNodesForTopology(topology, cfg);
+    expect(nodes).toHaveLength(1);
+    // web0(E)->core2=wall, web1(N)->core0=passage, web2(W)->core3=passage, web3(S)->core1=wall
+    expect(nodes[0].faces.map((f) => f.kind)).toEqual(["wall", "passage", "passage", "wall"]);
+  });
+
+  it("assigns each node a distinct color and no boundary flag", () => {
+    const topology: SplitFaceRequirement[][] = [[PASSAGE, WALL, WALL, WALL], [WALL, PASSAGE, WALL, WALL]];
+    const nodes = tileNodesForTopology(topology, cfg);
+    expect(nodes).toHaveLength(2);
+    expect(nodes[0].color).not.toBe(nodes[1].color);
+    expect(nodes.every((n) => n.faces.every((f) => f.boundary === false))).toBe(true);
+  });
+});
+
+describe("titleKeyForTopology", () => {
+  const PASSAGE: SplitFaceRequirement = { kind: "passage" };
+  const WALL: SplitFaceRequirement = { kind: "wall" };
+
+  it("matches the square Bridge topology by exact structural equality", () => {
+    const topology: SplitFaceRequirement[][] = [
+      [PASSAGE, PASSAGE, WALL, WALL],
+      [WALL, WALL, PASSAGE, PASSAGE],
+    ];
+    expect(titleKeyForTopology(topology)).toBe("split_pattern_title.bridge");
+  });
+
+  it("returns null for an unregistered topology", () => {
+    const topology: SplitFaceRequirement[][] = [
+      [PASSAGE, WALL, WALL, WALL],
+      [WALL, PASSAGE, WALL, WALL],
+    ];
+    expect(titleKeyForTopology(topology)).toBeNull();
+  });
+
+  it("returns null for an empty topology", () => {
+    expect(titleKeyForTopology([])).toBeNull();
+  });
+
+  it("distinguishes a one_way requirement from passage/wall by direction", () => {
+    const topology: SplitFaceRequirement[][] = [
+      [{ kind: "one_way", direction: "forward" }, PASSAGE, WALL, WALL],
+      [WALL, WALL, PASSAGE, PASSAGE],
+    ];
+    expect(titleKeyForTopology(topology)).toBeNull();
   });
 });
