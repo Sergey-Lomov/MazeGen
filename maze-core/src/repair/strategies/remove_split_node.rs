@@ -39,10 +39,14 @@ static PARAMS: &[StrategyParam] = &[
 ///   just redistributed onto them (`RemoveNode` clears every incident edge). A node merely flagged
 ///   but not actually removable (the tile's last remaining node, or a preset-protected sibling) is
 ///   *not* excluded — it's never touched by any `RemoveNode` in this batch, so it remains a
-///   perfectly safe target. Each edge draws its own random target — a multi-edge removed node's
-///   connections scatter across the remaining siblings rather than all landing on one. An edge
-///   that would connect its target to itself (the sibling edge between the removed node and that
-///   particular target, if any) is skipped — a self-loop is never proposed. Each redistribution
+///   perfectly safe target. Edges are grouped by (neighbor, `EdgeKind`) before picking a target —
+///   a bidirectional passage (forward + reverse edge to the same neighbor) redistributes onto one
+///   shared randomly-picked target, not two independently-drawn ones (GitHub issue #276), so a
+///   physical two-way connection is never silently split into two one-ways to different siblings.
+///   Different (neighbor, kind) groups still draw independent targets — a multi-edge removed
+///   node's connections scatter across the remaining siblings rather than all landing on one. An
+///   edge that would connect its target to itself (the sibling edge between the removed node and
+///   that particular target, if any) is skipped — a self-loop is never proposed. Each redistribution
 ///   command is independently revalidated by `apply_commands` same as any other (e.g. dropped if
 ///   it duplicates an edge the target already has), so this is "best-effort preservation," not a
 ///   guarantee. An empty candidate pool (every other node at the point is both flagged and
@@ -98,17 +102,28 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeIssue> for RemoveSplitNo
                     .filter(|&n| n != node)
                     .filter(|&n| !issue.invalid.contains(&n) || !crate::generation::remove_node_feasible(&maze.field, preset_state, n))
                     .collect();
-                // Each incident edge picks its own random target independently -- not one target
-                // shared across the whole node's edges -- so a multi-edge removed node's
-                // connections spread across the remaining siblings rather than all landing on one.
+                // Edges are grouped by (neighbor, kind) before picking a target -- a bidirectional
+                // passage (forward + reverse edge, same neighbor, same kind) must redistribute onto
+                // one shared randomly-picked target, not two independently-drawn ones, or a single
+                // physical two-way connection would silently split into two one-ways to different
+                // siblings (GitHub issue #276). Different (neighbor, kind) groups still draw
+                // independent targets, so a multi-edge removed node's connections still spread
+                // across the remaining siblings rather than all landing on one.
+                let mut groups: std::collections::BTreeMap<(NodeId, EdgeKind), Vec<(NodeId, NodeId)>> = std::collections::BTreeMap::new();
                 for edge in maze.graph.edges().filter(|e| e.from == node || e.to == node) {
+                    let neighbor = if edge.from == node { edge.to } else { edge.from };
+                    groups.entry((neighbor, edge.kind)).or_default().push((edge.from, edge.to));
+                }
+                for ((_, kind), dirs) in groups {
                     let Some(&target) = pick_random(&siblings, rng) else { continue };
-                    let (from, to) = if edge.from == node { (target, edge.to) } else { (edge.from, target) };
-                    if from == to { continue; } // the sibling edge to/from the chosen target itself
-                    commands.push(match edge.kind {
-                        EdgeKind::Basic => MutationCommand::AddDirectedEdge { from, to },
-                        EdgeKind::Teleport => MutationCommand::AddDirectedTeleport { from, to },
-                    });
+                    for (from, to) in dirs {
+                        let (from, to) = if from == node { (target, to) } else { (from, target) };
+                        if from == to { continue; } // the sibling edge to/from the chosen target itself
+                        commands.push(match kind {
+                            EdgeKind::Basic => MutationCommand::AddDirectedEdge { from, to },
+                            EdgeKind::Teleport => MutationCommand::AddDirectedTeleport { from, to },
+                        });
+                    }
                 }
             }
             commands.push(MutationCommand::RemoveNode { node });
@@ -264,9 +279,10 @@ mod tests {
 
     #[test]
     fn apply_with_redistribute_picks_an_independent_target_per_edge() {
-        // The removed node has two separate edges -- each one must draw its own random target,
-        // not one target shared across the whole node, so a multi-edge removal can scatter its
-        // connections across different remaining siblings instead of funneling them all onto one.
+        // The removed node has two separate bidirectional connections (to different neighbors) --
+        // each (neighbor, kind) group must draw its own random target, not one target shared
+        // across the whole node, so a multi-edge removal can scatter its connections across
+        // different remaining siblings instead of funneling them all onto one.
         let mut ids = IdGenerator::new();
         let mut field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
         let p = SquarePoint { x: 1, y: 0 };
@@ -285,7 +301,7 @@ mod tests {
         let params = params_with(&[(PARAM_REDISTRIBUTE, "true")]);
         // Seed chosen so the two edges land on different siblings -- asserts the split actually
         // happened rather than merely being possible.
-        let mut rng = MazeRng::seed_from_u64(3);
+        let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit(&RemoveSplitNodeStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
@@ -295,6 +311,39 @@ mod tests {
         assert!(right1_target.is_some(), "right1's connection must have been redistributed to some sibling");
         assert!(right2_target.is_some(), "right2's connection must have been redistributed to some sibling");
         assert_ne!(right1_target, right2_target, "the two edges must have drawn independent random targets and landed on different siblings for this seed");
+    }
+
+    #[test]
+    fn apply_with_redistribute_keeps_a_bidirectional_passage_on_one_shared_target() {
+        // Regression for GitHub issue #276: a bidirectional passage (forward + reverse edge to the
+        // same neighbor) must redistribute onto one shared randomly-picked target -- not have each
+        // direction independently draw its own target, which would silently split one physical
+        // two-way connection into two one-ways to different siblings.
+        // Try every seed in a small range -- with the bug present, at least one would show the
+        // forward and reverse edges landing on different siblings (slot0 vs extra2).
+        for seed in 0..50u64 {
+            let mut ids = IdGenerator::new();
+            let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+            let p = SquarePoint { x: 1, y: 0 };
+            let slot0 = field.node_at(p).unwrap();
+            let extra1 = field.add_node_at(p, &mut ids);
+            let extra2 = field.add_node_at(p, &mut ids);
+            let mut g = Graph::new();
+            field.build_nodes(&mut g);
+            let right = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+            g.add_bidirectional_edge(extra1, right, EdgeKind::Basic);
+            let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+            let issue = InvalidSplitNodeIssue::new_from_check("test", vec![extra1]);
+            let params = params_with(&[(PARAM_REDISTRIBUTE, "true")]);
+            let mut rng = MazeRng::seed_from_u64(seed);
+            let result = apply_and_commit(&RemoveSplitNodeStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+            assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+            let forward_target = if maze.graph.edge_between(slot0, right).is_some() { Some(slot0) } else if maze.graph.edge_between(extra2, right).is_some() { Some(extra2) } else { None };
+            let reverse_target = if maze.graph.edge_between(right, slot0).is_some() { Some(slot0) } else if maze.graph.edge_between(right, extra2).is_some() { Some(extra2) } else { None };
+            assert_eq!(forward_target, reverse_target, "seed {seed}: both directions of the bidirectional passage must land on the same sibling");
+        }
     }
 
     #[test]
