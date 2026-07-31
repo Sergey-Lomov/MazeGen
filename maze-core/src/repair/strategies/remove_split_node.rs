@@ -21,10 +21,10 @@ static PARAMS: &[StrategyParam] = &[
 ];
 
 /// Handles `INVALID_SPLIT_NODE` — see GitHub issue #250, epic #246. Removes each flagged split
-/// node entirely (`MutationCommand::RemoveNode`) — never a point's slot-0 original, mirroring the
-/// hard constraint every strategy in this epic shares (`remove_node_feasible` never allows it,
-/// same as `RemoveSplitStrategy`); a check flagging slot-0 itself simply has that entry declined
-/// here, rather than being special-cased out up front.
+/// node entirely (`MutationCommand::RemoveNode`) — never a tile's last remaining node, mirroring
+/// the hard constraint every strategy in this epic shares (`remove_node_feasible` never allows it,
+/// same as `RemoveSplitStrategy`); a check flagging a node that happens to be the tile's last one
+/// simply has that entry declined here, rather than being special-cased out up front.
 ///
 /// `redistribute` (default `true`): what happens to the removed node's own connections.
 /// - `false`: the node's edges simply disappear along with it (`RemoveNode` already clears every
@@ -32,23 +32,23 @@ static PARAMS: &[StrategyParam] = &[
 /// - `true`: before removing the node, this strategy proposes an equivalent edge/teleport (same
 ///   `EdgeKind`, same direction) for every one of the removed node's incident edges, each
 ///   independently redirected to/from a node picked uniformly at random from the other remaining
-///   nodes of the same split (any node still at the point after this node is gone, slot-0 included
-///   on equal footing — epic #246's "slot-0 is not otherwise special" rule). The candidate pool
-///   excludes every other node this same `issue` flags *and* that is actually feasible to remove
-///   (`remove_node_feasible`) — those get their own `RemoveNode` command later in this same batch,
-///   which would immediately wipe out any edge just redistributed onto them (`RemoveNode` clears
-///   every incident edge). A node merely flagged but not actually removable (slot-0, or a
-///   preset-protected sibling) is *not* excluded — it's never touched by any `RemoveNode` in this
-///   batch, so it remains a perfectly safe target. Each edge draws its own random target — a
-///   multi-edge removed node's connections scatter across the remaining siblings rather than all
-///   landing on one. An edge that would connect its target to itself (the sibling edge between the
-///   removed node and that particular target, if any) is skipped — a self-loop is never proposed.
-///   Each redistribution command is independently revalidated by `apply_commands` same as any
-///   other (e.g. dropped if it duplicates an edge the target already has), so this is
-///   "best-effort preservation," not a guarantee. An empty candidate pool (every other node at the
-///   point is both flagged and feasible) simply drops that edge's redistribution — slot-0's
-///   permanent presence and non-removability makes this practically unreachable, but the code
-///   path (`pick_random` returning `None`) is handled, not assumed impossible.
+///   nodes of the same split (any node still at the point after this node is gone, on equal
+///   footing regardless of slot). The candidate pool excludes every other node this same `issue`
+///   flags *and* that is actually feasible to remove (`remove_node_feasible`) — those get their
+///   own `RemoveNode` command later in this same batch, which would immediately wipe out any edge
+///   just redistributed onto them (`RemoveNode` clears every incident edge). A node merely flagged
+///   but not actually removable (the tile's last remaining node, or a preset-protected sibling) is
+///   *not* excluded — it's never touched by any `RemoveNode` in this batch, so it remains a
+///   perfectly safe target. Each edge draws its own random target — a multi-edge removed node's
+///   connections scatter across the remaining siblings rather than all landing on one. An edge
+///   that would connect its target to itself (the sibling edge between the removed node and that
+///   particular target, if any) is skipped — a self-loop is never proposed. Each redistribution
+///   command is independently revalidated by `apply_commands` same as any other (e.g. dropped if
+///   it duplicates an edge the target already has), so this is "best-effort preservation," not a
+///   guarantee. An empty candidate pool (every other node at the point is both flagged and
+///   feasible) simply drops that edge's redistribution — a tile always keeping at least one
+///   removal-ineligible node makes this practically unreachable, but the code path (`pick_random`
+///   returning `None`) is handled, not assumed impossible.
 pub struct RemoveSplitNodeStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeIssue> for RemoveSplitNodeStrategy {
@@ -73,10 +73,11 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeIssue> for RemoveSplitNo
         let mut any_removable = false;
         for &node in &issue.invalid {
             // `remove_node_feasible` is the exact predicate `try_remove_node` uses at apply time
-            // (preset locks/edges, never slot-0) -- checked here up front so this strategy's own
-            // `Fixed`/`Failed` verdict agrees with whether `RemoveNode` will actually be applied,
-            // same "declined command must not silently count as fixed" rationale as
-            // `RemoveSplitStrategy`. This also naturally declines a flagged slot-0 entry.
+            // (preset locks/edges, never a tile's last remaining node) -- checked here up front so
+            // this strategy's own `Fixed`/`Failed` verdict agrees with whether `RemoveNode` will
+            // actually be applied, same "declined command must not silently count as fixed"
+            // rationale as `RemoveSplitStrategy`. This also naturally declines a flagged entry that
+            // happens to be the tile's last remaining node.
             if !crate::generation::remove_node_feasible(&maze.field, preset_state, node) {
                 continue;
             }
@@ -88,11 +89,11 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeIssue> for RemoveSplitNo
                 // removed later in this batch (i.e. also passes remove_node_feasible) -- each of
                 // those gets its own RemoveNode command later on, which clears all of its incident
                 // edges, including one just redistributed onto it here. A node merely flagged but
-                // declined (e.g. slot-0, which a check may legitimately flag per epic #246's
-                // "slot-0 is not otherwise special" rule, or a preset-protected sibling) is never
-                // actually removed and remains a perfectly safe target -- excluding it too would
-                // wrongly shrink the candidate pool, even to empty for a 2-node split whose only
-                // other node is a flagged-but-undeletable slot-0.
+                // declined (e.g. the tile's last remaining node, which a check may legitimately
+                // flag like any other split node, or a preset-protected sibling) is never actually
+                // removed and remains a perfectly safe target -- excluding it too would wrongly
+                // shrink the candidate pool, even to empty for a 2-node split whose only other node
+                // is a flagged-but-undeletable last remaining node.
                 let siblings: Vec<NodeId> = maze.field.nodes_at(point).iter().copied()
                     .filter(|&n| n != node)
                     .filter(|&n| !issue.invalid.contains(&n) || !crate::generation::remove_node_feasible(&maze.field, preset_state, n))
@@ -114,8 +115,9 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeIssue> for RemoveSplitNo
         }
 
         // Every flagged node failed remove_node_feasible (already removed by an earlier command in
-        // this same batch, a stale issue, slot-0, or preset-protected) -- nothing could be fixed,
-        // same "Failed if nothing could be fixed" rationale as RemoveSplitStrategy/OneWayToWallStrategy.
+        // this same batch, a stale issue, the tile's last remaining node, or preset-protected) --
+        // nothing could be fixed, same "Failed if nothing could be fixed" rationale as
+        // RemoveSplitStrategy/OneWayToWallStrategy.
         let result = if issue.invalid.is_empty() || any_removable {
             RepairResult::Fixed { score: None }
         } else {
@@ -187,15 +189,34 @@ mod tests {
     }
 
     #[test]
-    fn apply_never_removes_slot0() {
-        let (mut maze, slot0, _extra) = maze_with_split_node();
-        // Even if a (buggy or legitimate, per epic #246) caller flagged slot0, RemoveNode must be
-        // declined by try_remove_node's own feasibility check.
+    fn apply_never_removes_slot0_when_it_is_the_last_node() {
+        let mut ids = IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let p = SquarePoint { x: 1, y: 0 };
+        let slot0 = field.node_at(p).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        // slot0 is the point's only node here -- RemoveNode must be declined by
+        // try_remove_node's own feasibility check, same as any other last-remaining node would be.
         let issue = InvalidSplitNodeIssue::new_from_check("test", vec![slot0]);
         let mut rng = MazeRng::seed_from_u64(1);
         apply_and_commit(&RemoveSplitNodeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
 
-        assert!(maze.field.point_of(slot0).is_some(), "slot-0 must never be removed");
+        assert!(maze.field.point_of(slot0).is_some(), "a point's last remaining node must never be removed");
+    }
+
+    #[test]
+    fn apply_removes_slot0_when_a_sibling_remains() {
+        let (mut maze, slot0, _extra) = maze_with_split_node();
+        // Slot-0 is no longer special: with a sibling (extra) still at the point, slot0 is just
+        // as removable as any other split node.
+        let issue = InvalidSplitNodeIssue::new_from_check("test", vec![slot0]);
+        let mut rng = MazeRng::seed_from_u64(1);
+        let result = apply_and_commit(&RemoveSplitNodeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+        assert!(maze.field.point_of(slot0).is_none(), "slot0 must be removed since it isn't the point's last remaining node");
     }
 
     #[test]
@@ -307,35 +328,29 @@ mod tests {
     }
 
     #[test]
-    fn apply_with_redistribute_still_uses_slot0_when_slot0_is_also_flagged_in_the_same_issue() {
-        // Regression: a check may legitimately flag slot-0 too (epic #246's "slot-0 is not
-        // otherwise special" rule) even though remove_node_feasible will always decline removing
-        // it. The exclusion filter must tell "flagged but will actually be removed" (a real other
-        // extra node) apart from "flagged but permanently undeletable" (slot-0) -- only the former
-        // should be excluded from the redistribute candidate pool. A 2-node split (slot0 + extra)
-        // where both are flagged has slot0 as the *only* possible sibling; if the filter wrongly
-        // excluded it too, the pool would be empty and redistribute would silently no-op.
+    fn apply_with_redistribute_when_both_nodes_of_a_2node_split_are_flagged() {
+        // A 2-node split (slot0 + extra) where both are flagged: `apply` evaluates
+        // remove_node_feasible for every entry against the pre-batch field, so both look feasible
+        // up front (each still sees the other as a live sibling) and both get their own RemoveNode
+        // command, with an empty redistribute pool each (their only sibling is the other flagged
+        // node). `apply_commands` revalidates each command against the actually-mutated field in
+        // order: the first RemoveNode succeeds, leaving the point with one node; the second is
+        // declined by `remove_node_feasible` since that remaining node is now the point's last one.
         let (mut maze, slot0, extra) = maze_with_split_node();
-        let right = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
         let issue = InvalidSplitNodeIssue::new_from_check("test", vec![extra, slot0]);
         let params = params_with(&[(PARAM_REDISTRIBUTE, "true")]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit(&RemoveSplitNodeStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-        assert!(maze.field.point_of(extra).is_none(), "extra must be removed");
-        assert!(maze.field.point_of(slot0).is_some(), "slot0 must survive (never removable)");
-        assert!(maze.graph.edge_between(slot0, right).is_some(), "slot0, though also flagged, remains a valid redistribute target since it's never actually removed");
-        assert!(maze.graph.edge_between(right, slot0).is_some());
+        assert!(maze.field.point_of(extra).is_none(), "extra is processed first and actually removed");
+        assert!(maze.field.point_of(slot0).is_some(), "slot0's own RemoveNode is declined once it becomes the point's last remaining node");
     }
 
     #[test]
     fn pick_random_returns_none_for_an_empty_slice() {
         // `apply`'s redistribute loop relies on this returning None (and simply skipping that
-        // edge, no panic) whenever a removed node's sibling pool is empty -- exercised directly
-        // here since slot-0's permanent presence makes that pool empty in `apply` only in
-        // configurations too contrived to construct realistically (see the strategy's own doc
-        // comment: a split point always has at least slot-0 plus one extra node).
+        // edge, no panic) whenever a removed node's sibling pool is empty.
         let empty: [NodeId; 0] = [];
         let mut rng = MazeRng::seed_from_u64(1);
         assert!(pick_random(&empty, &mut rng).is_none());

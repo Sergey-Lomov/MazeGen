@@ -13,10 +13,9 @@ use crate::repair::strategies::group_select::{group_select_apply, PARAM_PRIORITY
 
 /// Most/least voluminous: picks the split tile with the most/fewest total nodes (slot-0
 /// included). Most/least connected: picks the tile whose nodes carry the most/fewest incident
-/// edges in total (both directions, slot-0 included — see the epic #246 doc comment: slot-0 is an
-/// equal member of the tile for every metric except the removal step itself). Distinct from
-/// `PRIORITY_PROBLEMATIC` (membership-across-groups) — these four instead look at a tile's own
-/// shape, independent of how many groups it appears in.
+/// edges in total (both directions, slot-0 included — slot-0 is an equal member of the tile for
+/// every metric, issue #281). Distinct from `PRIORITY_PROBLEMATIC` (membership-across-groups) —
+/// these four instead look at a tile's own shape, independent of how many groups it appears in.
 pub const PRIORITY_MOST_VOLUMINOUS: &str = "most_voluminous";
 pub const PRIORITY_LEAST_VOLUMINOUS: &str = "least_voluminous";
 pub const PRIORITY_MOST_CONNECTED: &str = "most_connected";
@@ -62,13 +61,12 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 /// `element_invalidated`/`order_by_priority(params)`.
 ///
 /// Every candidate is a whole `SplitTileNodes` — *every* node at that point, slot-0 included (see
-/// the epic #246 doc comment: slot-0 is an equal member of the tile for every purpose except the
-/// removal step itself) — see GitHub issue #249's regression fix: the candidate unit is the tile,
-/// not any one of its individual nodes, so a single fix always collapses one whole tile rather
-/// than picking nodes across different tiles. There is no route-protection concept here (unlike
-/// one-way/teleport groups): a split node's own feasibility is entirely
-/// `RemoveSplitStrategy`'s/`remove_node_feasible`'s job (preset locks, never slot-0), so
-/// `element_allowed` always returns `true`.
+/// GitHub issue #249's regression fix: the candidate unit is the tile, not any one of its
+/// individual nodes, so a single fix always collapses one whole tile rather than picking nodes
+/// across different tiles). There is no route-protection concept here (unlike one-way/teleport
+/// groups): a whole tile's collapse feasibility is entirely `RemoveSplitStrategy`'s/
+/// `ReplacePointNodes`'s own job at apply time (preset locks block the whole tile, all-or-nothing
+/// — issue #281), so `element_allowed` always returns `true`.
 pub struct SplitGroupSelectStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidSplitTileGroupIssue> for SplitGroupSelectStrategy {
@@ -133,17 +131,13 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitTileGroupIssue> for SplitGro
                 _ => {} // PRIORITY_RANDOM: shuffle above is already the final order.
             }
         };
-        // A tile counts as invalidated once every one of its *extra* nodes has been removed --
-        // slot-0 is never removed by `RemoveSplitStrategy` (see `remove_node_feasible`), so
-        // requiring it to appear among the removed nodes too would make a tile that legitimately
-        // has a slot-0 never register as resolved.
-        let element_invalidated = |tile: &SplitTileNodes, nested_commands: &[MutationCommand], maze: &Maze<T>| {
-            tile.0.iter()
-                .filter(|&&node| maze.field.point_of(node).map(|p| maze.field.nodes_at(p).first() != Some(&node)).unwrap_or(false))
-                .all(|node| {
-                    nested_commands.iter().any(|c| matches!(c, MutationCommand::RemoveNode { node: n } if n == node))
-                })
-        };
+        // No other still-live candidate tile can ever be invalidated by resolving this one --
+        // `RemoveSplitStrategy` collapses exactly one point (`MutationCommand::ReplacePointNodes`
+        // keyed by that point's own `at`), and distinct `SplitTileNodes` candidates are always
+        // different points' node sets, so they never overlap. `group_select_apply`'s own
+        // "target always counts as invalidated" rule already retires this tile's own budget --
+        // this hook has nothing left to add.
+        let element_invalidated = |_tile: &SplitTileNodes, _nested_commands: &[MutationCommand], _maze: &Maze<T>| false;
 
         group_select_apply::<T, SplitGroupKind>(issue, maze, rng, preset_state, fix_target, |_| true, build_nested_issue, element_invalidated, order_candidates)
     }

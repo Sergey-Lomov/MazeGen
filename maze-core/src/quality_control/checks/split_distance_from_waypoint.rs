@@ -35,10 +35,10 @@ pub enum SplitWaypoint {
 /// flagged.
 ///
 /// Flags the whole tile (`SplitTileNodes`, every node at the point including slot-0 — GitHub
-/// issue #260) once a point's minimum distance trips the threshold — slot-0 is still never a
-/// removal candidate itself, mirroring the hard constraint every strategy in epic #246 shares (a
-/// repair strategy for this issue must never remove slot-0), but the issue now reports the tile
-/// as its unit of work, not the bare extra node(s).
+/// issue #260) once a point's minimum distance trips the threshold — the tile is the issue's unit
+/// of work, not the bare extra node(s); the repair strategy for this issue still only ever
+/// collapses the whole tile down to one surviving node, never emptying the point entirely (issue
+/// #281: no node, slot-0 included, has any special standing here beyond that).
 pub struct SplitDistanceFromWaypointCheck {
     pub instance_id: String,
     pub distance: u32,

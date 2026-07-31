@@ -570,6 +570,7 @@ describe("selectDebugMazeView", () => {
       new Uint8Array([1, 0, 0, 0]), // node count = 1 (little-endian u32)
       new Uint8Array([1, 0, 0, 0]), // edge count = 1
       new Uint8Array([0]), // direction = Forward
+      new Uint8Array([0]), // kind = Basic (issue #281)
       u64le(2n), // target = node 2
     ]);
     const pointNodesReplacedPayload = concatBytes([

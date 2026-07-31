@@ -767,8 +767,8 @@ mod tests {
 
     #[test]
     fn build_field_from_nodes_places_extra_slots_after_the_original_regardless_of_input_order() {
-        // Given out of i-order (i=1 before i=0) — the field must still put i=0 at position 0
-        // (Field's own "original node never removable" invariant depends on this).
+        // Given out of i-order (i=1 before i=0) — the field must still put i=0 at position 0,
+        // matching `nodes_at`'s creation-order contract regardless of input order.
         let nodes = vec![node(2, 0, 0, 1), node(1, 0, 0, 0)];
         let (field, _, _) = build_field_from_nodes::<SquareTessellation>(&nodes, &xy_to_square).unwrap();
 

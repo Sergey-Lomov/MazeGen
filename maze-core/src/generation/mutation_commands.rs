@@ -367,10 +367,21 @@ mod cmd_builders_tests {
     }
 
     #[test]
-    fn cmd_remove_node_empty_for_slot0() {
+    fn cmd_remove_node_proposes_slot0_when_a_sibling_remains() {
+        // Slot-0 is no longer special: with a sibling still at the point, slot0 is just as
+        // proposable for removal as any other node.
         let (field, slot0, _extra) = field_with_extra_node();
+        assert_eq!(cmd_remove_node(&field, &PresetState::empty(), slot0), vec![MutationCommand::RemoveNode { node: slot0 }]);
+    }
+
+    #[test]
+    fn cmd_remove_node_empty_for_a_points_last_remaining_node() {
+        let mut ids = crate::IdGenerator::new();
+        let field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let p = field.all_points().next().unwrap();
+        let slot0 = field.node_at(p).unwrap();
         assert!(cmd_remove_node(&field, &PresetState::empty(), slot0).is_empty(),
-            "slot-0 (the point's original node) must never be proposed for removal");
+            "a point's last remaining node must never be proposed for removal");
     }
 
     #[test]

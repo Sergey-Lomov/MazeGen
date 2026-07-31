@@ -11,11 +11,14 @@ export type RepairLimitKind = "MaxIterations" | "TimeBudget";
 
 /** Mirrors `repair::SplitNodeEdgeDirection`/`SplitNodeEdge` in `maze-core/src/repair/command.rs`
  *  — one new node's edge to an already-existing graph node, minted by
- *  `MutationCommand::ReplacePointNodes` (GitHub issue #247). */
+ *  `MutationCommand::ReplacePointNodes` (GitHub issue #247). `kind` added in issue #281, needed
+ *  once `RemoveSplitStrategy` started redistributing Teleport edges through this same command. */
 export type SplitNodeEdgeDirection = "Forward" | "Backward" | "Passage";
+export type SplitNodeEdgeKind = "Basic" | "Teleport";
 export interface SplitNodeEdge {
   target: bigint;
   direction: SplitNodeEdgeDirection;
+  kind: SplitNodeEdgeKind;
 }
 
 /** Mirrors `IssuePayload` in `maze-core/src/quality_control/issue_payload.rs` — `None` for the
@@ -142,7 +145,8 @@ function readStrKeyedRoutes(bytes: Uint8Array, offset: number): { value: Map<str
 
 /** Reads the `Vec<Vec<SplitNodeEdge>>` wire shape `write_split_nodes` produces — one new node's
  *  edge list per entry (entry 0 the new slot-0), each edge as one byte for `direction`
- *  (0=Forward, 1=Backward, 2=Passage) followed by the 8-byte `target` node id. */
+ *  (0=Forward, 1=Backward, 2=Passage), one byte for `kind` (0=Basic, 1=Teleport — issue #281),
+ *  followed by the 8-byte `target` node id. */
 export function readSplitNodes(bytes: Uint8Array, offset: number): { value: SplitNodeEdge[][]; next: number } {
   const nodeCount = readU32(bytes, offset);
   let pos = offset + 4;
@@ -154,9 +158,11 @@ export function readSplitNodes(bytes: Uint8Array, offset: number): { value: Spli
     for (let e = 0; e < edgeCount; e++) {
       const directionByte = bytes[pos];
       const direction: SplitNodeEdgeDirection = directionByte === 0 ? "Forward" : directionByte === 1 ? "Backward" : "Passage";
-      const target = readNodeId(bytes, pos + 1);
-      edges.push({ target, direction });
-      pos += 9;
+      const kindByte = bytes[pos + 1];
+      const kind: SplitNodeEdgeKind = kindByte === 0 ? "Basic" : "Teleport";
+      const target = readNodeId(bytes, pos + 2);
+      edges.push({ target, direction, kind });
+      pos += 10;
     }
     nodes.push(edges);
   }

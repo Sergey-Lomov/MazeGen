@@ -137,7 +137,7 @@ pub const MISSING_TELEPORTS: IssueKind = IssueKind::MissingTeleports;
 /// reasons and reuse this same kind. Carries `InvalidSplitTileIssue { invalid: Vec<SplitTileNodes>, .. }`
 /// — see that type's doc comment. Repaired by `RemoveSplitStrategy` (see `repair.md`), which
 /// collapses every removable node of each flagged tile back into its point's slot-0 original —
-/// never removes slot-0 itself (a hard constraint across every split-QC strategy, see GitHub epic #246).
+/// never removes a tile's last remaining node (a hard constraint across every split-QC strategy, see GitHub epic #246).
 pub const INVALID_SPLIT_TILE: IssueKind = IssueKind::InvalidSplitTile;
 
 /// A field-wide/aggregate condition over the set of split tiles — see GitHub issue #249, part of
@@ -155,7 +155,7 @@ pub const INVALID_SPLIT_TILE_GROUP: IssueKind = IssueKind::InvalidSplitTileGroup
 /// missing-count condition rather than a specific-tile one. Carries `MissingSplitTilesIssue {
 /// missing }` — see that type's doc comment. Repaired by `AddSplitStrategy`, which mints new split
 /// tiles at eligible points to close the deficit — never removes or alters any existing tile's
-/// slot-0 node (the hard constraint across every split-QC strategy in this epic).
+/// last remaining node (the hard constraint across every split-QC strategy in this epic).
 pub const MISSING_SPLIT_TILES: IssueKind = IssueKind::MissingSplitTiles;
 
 /// A single split node (any node of a split tile, slot-0 included) is invalid for some
@@ -163,10 +163,10 @@ pub const MISSING_SPLIT_TILES: IssueKind = IssueKind::MissingSplitTiles;
 /// filtered by direction, compares against a configured threshold, per a configured `Comparison`)
 /// — see GitHub issue #250, part of epic #246. Distinct from `INVALID_SPLIT_TILE`: that kind's
 /// unit of work is a whole tile (`SplitTileNodes`), this one's is a single node (`NodeId`) — a
-/// check here may flag slot-0 itself (epic #246's "slot-0 is not otherwise special" rule), but the
-/// registered repair strategy (`RemoveSplitNodeStrategy`) still never removes it, mirroring the
-/// hard constraint every strategy in this epic shares. Carries `InvalidSplitNodeIssue { invalid:
-/// Vec<NodeId>, .. }` — see that type's doc comment.
+/// check here may flag any node of the tile, including its last remaining one, but the registered
+/// repair strategy (`RemoveSplitNodeStrategy`) still never removes a tile's last remaining node,
+/// mirroring the hard constraint every strategy in this epic shares. Carries `InvalidSplitNodeIssue
+/// { invalid: Vec<NodeId>, .. }` — see that type's doc comment.
 pub const INVALID_SPLIT_NODE: IssueKind = IssueKind::InvalidSplitNode;
 
 /// A single connection (edge) from one node of a split tile out to an outside neighbor is
@@ -201,7 +201,7 @@ pub const INVALID_SPLIT_NODE_CONNECTION_GROUP: IssueKind = IssueKind::InvalidSpl
 /// single split tile, none of whose individual nodes is invalid on its own. Carries
 /// `InvalidSplitNodeGroupIssue` — see that type's doc comment. Repaired by
 /// `SplitNodeGroupSelectStrategy`, which delegates each candidate node's removal to a nested
-/// `INVALID_SPLIT_NODE` strategy (`RemoveSplitNodeStrategy`) — never selects a tile's slot-0.
+/// `INVALID_SPLIT_NODE` strategy (`RemoveSplitNodeStrategy`) — never selects a tile's last remaining node.
 pub const INVALID_SPLIT_NODE_GROUP: IssueKind = IssueKind::InvalidSplitNodeGroup;
 
 /// A graph path shorter than a configured minimum detour connects two split nodes of the same

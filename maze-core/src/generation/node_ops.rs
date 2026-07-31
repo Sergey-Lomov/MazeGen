@@ -3,7 +3,7 @@
 // node (unlike removing an edge) always touches `Field` as well as `Graph`.
 
 use crate::ids::{NodeId, IdGenerator};
-use crate::graph::{Graph, EdgeKind};
+use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
 use super::preset_state::PresetState;
 use super::edge_ops::{directed_edge_feasible, bidirectional_edge_feasible};
@@ -12,14 +12,15 @@ use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
 
 /// Shared predicate behind `remove_node_feasible` and `replace_point_nodes_feasible`: a node is
 /// removable if it isn't preset-protected (locked in/out, or the endpoint of a preset connection)
-/// and — unless `ignore_slot0` — isn't a point's slot-0 (original) node. `ignore_slot0` lets
-/// `replace_point_nodes_feasible` reuse the exact same preset checks for slot-0 too, since
-/// `ReplacePointNodes` is allowed to replace slot-0 (epic #246's "slot-0 is not special" rule),
-/// unlike single-node removal (`try_remove_node`) which never is.
-fn node_removal_allowed<T: Tessellation>(field: &Field<T>, preset_state: &PresetState, node: NodeId, ignore_slot0: bool) -> bool {
+/// and — unless `allow_last_node` — isn't the only node left at its point. `allow_last_node` lets
+/// `replace_point_nodes_feasible` reuse the exact same preset checks for a point's last node too,
+/// since `ReplacePointNodes` replaces every node at a point at once, with a guaranteed non-empty
+/// replacement set, so the point is never actually left empty — unlike single-node removal
+/// (`try_remove_node`), which would leave the point with zero nodes if its last one were removed.
+fn node_removal_allowed<T: Tessellation>(field: &Field<T>, preset_state: &PresetState, node: NodeId, allow_last_node: bool) -> bool {
     let Some(point) = field.point_of(node) else { return false; };
-    if !ignore_slot0 && field.nodes_at(point).first() == Some(&node) {
-        return false; // node is this point's slot-0 (original) — never removable by this path
+    if !allow_last_node && field.nodes_at(point).len() == 1 {
+        return false; // node is this point's only remaining node — never removable by this path
     }
     if preset_state.locked_out.contains(&node) || preset_state.locked_in.contains(&node) {
         return false;
@@ -31,10 +32,10 @@ fn node_removal_allowed<T: Tessellation>(field: &Field<T>, preset_state: &Preset
 }
 
 /// Feasibility shared by `try_remove_node`/`cmd_remove_node`: a node is only ever removable if
-/// it's not a point's slot-0 (original) node — the hard constraint every split-QC repair strategy
-/// in epic #246 shares — and isn't itself preset-protected (locked in/out, or the endpoint of a
-/// preset connection). Structural existence (`field.point_of(node).is_some()`) is checked by the
-/// caller, since only `try_remove_node` has a `&mut Field` to also act on that check's result.
+/// it isn't the last node left at its point — a point must always keep at least one node — and
+/// isn't itself preset-protected (locked in/out, or the endpoint of a preset connection).
+/// Structural existence (`field.point_of(node).is_some()`) is checked by the caller, since only
+/// `try_remove_node` has a `&mut Field` to also act on that check's result.
 pub(crate) fn remove_node_feasible<T: Tessellation>(field: &Field<T>, preset_state: &PresetState, node: NodeId) -> bool {
     node_removal_allowed(field, preset_state, node, false)
 }
@@ -65,18 +66,19 @@ pub(crate) fn try_remove_node<T: Tessellation>(
 
 /// Feasibility shared by `try_replace_point_nodes`/`cmd_replace_point_nodes` (`MutationCommand::
 /// ReplacePointNodes`, GitHub issue #247's pattern-mode fix, epic #246): `at`'s point must still
-/// exist, every node currently at that point (slot-0 included — `ignore_slot0: true`) must be
-/// removable per `node_removal_allowed` (not locked, not a preset-edge endpoint), `nodes` must be
-/// non-empty (a point always keeps at least one node — `Field::replace_nodes_at`'s own invariant),
-/// and every edge of every new node in `nodes` must be structurally permitted by `preset_state`
-/// against its `target` (new nodes are never themselves preset-addressable — they don't exist yet
-/// — so only each `target`'s own lock/block state can forbid a direction). All-or-nothing: a
-/// single infeasible old node, missing target, or new edge fails the whole check.
+/// exist, every node currently at that point (including its last remaining one —
+/// `allow_last_node: true`) must be removable per `node_removal_allowed` (not locked, not a
+/// preset-edge endpoint), `nodes` must be non-empty (a point always keeps at least one node —
+/// `Field::replace_nodes_at`'s own invariant), and every edge of every new node in `nodes` must be
+/// structurally permitted by `preset_state` against its `target` (new nodes are never themselves
+/// preset-addressable — they don't exist yet — so only each `target`'s own lock/block state can
+/// forbid a direction). All-or-nothing: a single infeasible old node, missing target, or new edge
+/// fails the whole check.
 ///
 /// **`target` must still structurally exist** (`field.point_of(edge.target).is_some()`) — unlike
 /// every other command in this crate, `ReplacePointNodes` can itself remove a node an *earlier*
-/// command in the same batch already targeted as an edge endpoint (it replaces slot-0 too, not
-/// just adds beside it), so a batch proposing splits at two adjacent points can have the second
+/// command in the same batch already targeted as an edge endpoint (it replaces every node at the
+/// point at once, not just adds beside them), so a batch proposing splits at two adjacent points can have the second
 /// command's `nodes` reference a `target` the first command already replaced out from under it by
 /// the time `apply_commands` gets here. Without this check the edge would silently wire to a
 /// vanished id instead of the still-live replacement, losing that connection outright — this
@@ -156,9 +158,9 @@ pub(crate) fn try_replace_point_nodes<T: Tessellation>(
         graph.add_node(node);
         for edge in edges {
             match edge.direction {
-                SplitNodeEdgeDirection::Forward => { graph.add_edge(node, edge.target, EdgeKind::Basic); }
-                SplitNodeEdgeDirection::Backward => { graph.add_edge(edge.target, node, EdgeKind::Basic); }
-                SplitNodeEdgeDirection::Passage => { graph.add_bidirectional_edge(node, edge.target, EdgeKind::Basic); }
+                SplitNodeEdgeDirection::Forward => { graph.add_edge(node, edge.target, edge.kind); }
+                SplitNodeEdgeDirection::Backward => { graph.add_edge(edge.target, node, edge.kind); }
+                SplitNodeEdgeDirection::Passage => { graph.add_bidirectional_edge(node, edge.target, edge.kind); }
             }
         }
     }
@@ -197,10 +199,24 @@ mod tests {
     }
 
     #[test]
-    fn try_remove_node_refuses_to_remove_slot0() {
+    fn try_remove_node_removes_slot0_when_a_sibling_remains() {
+        // Slot-0 is no longer special: with a sibling still at the point, slot0 is just as
+        // removable as any other node.
         let (mut field, mut g, slot0, _extra) = field_with_extra_node();
+        assert!(try_remove_node(&mut field, &mut g, slot0, &PresetState::empty()),
+            "slot0 must be removed since it isn't the point's last remaining node");
+    }
+
+    #[test]
+    fn try_remove_node_refuses_to_remove_a_points_last_remaining_node() {
+        let mut ids = IdGenerator::new();
+        let mut field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let p0 = SquarePoint { x: 0, y: 0 };
+        let slot0 = field.node_at(p0).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
         assert!(!try_remove_node(&mut field, &mut g, slot0, &PresetState::empty()),
-            "slot-0 (the point's original node) must never be removable");
+            "a point's last remaining node must never be removable");
     }
 
     #[test]
@@ -271,7 +287,7 @@ mod tests {
     fn try_replace_point_nodes_wires_forward_backward_and_passage_edges() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(4);
         let right = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
-        let edges = vec![SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Passage }];
+        let edges = vec![SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Passage, kind: EdgeKind::Basic }];
         let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &PresetState::empty(), None).unwrap();
         let new_node = new_nodes[0];
         assert!(g.edge_between(new_node, right).is_some());
@@ -282,7 +298,7 @@ mod tests {
     fn try_replace_point_nodes_forward_direction_is_one_way_from_new_node() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(4);
         let right = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
-        let edges = vec![SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Forward }];
+        let edges = vec![SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Forward, kind: EdgeKind::Basic }];
         let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &PresetState::empty(), None).unwrap();
         let new_node = new_nodes[0];
         assert!(g.edge_between(new_node, right).is_some());
@@ -293,7 +309,7 @@ mod tests {
     fn try_replace_point_nodes_backward_direction_is_one_way_into_new_node() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(4);
         let right = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
-        let edges = vec![SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Backward }];
+        let edges = vec![SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Backward, kind: EdgeKind::Basic }];
         let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &PresetState::empty(), None).unwrap();
         let new_node = new_nodes[0];
         assert!(g.edge_between(right, new_node).is_some());
@@ -372,7 +388,7 @@ mod tests {
         let mut preset_state = PresetState::empty();
         preset_state.locked_in.insert(right); // forbids Forward into `right`
         let edges = vec![
-            SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Forward },
+            SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Forward, kind: EdgeKind::Basic },
         ];
         assert!(try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &preset_state, None).is_none(),
             "a single infeasible edge must fail the whole command, replacing nothing at all");

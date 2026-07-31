@@ -887,6 +887,7 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "selection.random": m["param.selection.option.random"] as MessageFn,
   "selection.most_connected": m["param.selection.option.most_connected"] as MessageFn,
   "selection.least_connected": m["param.selection.option.least_connected"] as MessageFn,
+  "selection.merge": m["param.selection.option.merge"] as MessageFn,
 };
 
 // Explanations for individual option values of Enum-kind params, shown under the param's
@@ -957,6 +958,7 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "selection.random": m["param.selection.option.random.explanation"] as MessageFn,
   "selection.most_connected": m["param.selection.option.most_connected.explanation"] as MessageFn,
   "selection.least_connected": m["param.selection.option.least_connected.explanation"] as MessageFn,
+  "selection.merge": m["param.selection.option.merge.explanation"] as MessageFn,
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {
@@ -1004,6 +1006,7 @@ export function resolveParamLabel(id: string, fallback: string): string {
 // `paramI18n` entry. `contextId` is the owning strategy's id.
 const paramDescriptionOverrideI18n: Record<string, MessageFn> = {
   "priority.split_route_cut": m["param.priority.split_route_cut.description"] as MessageFn,
+  "selection.remove_split": m["param.selection.remove_split.description"] as MessageFn,
 };
 
 export function resolveParamDescription(id: string, contextId?: string): string | undefined {
@@ -1020,6 +1023,10 @@ export function resolveParamOptionLabel(paramId: string, value: string): string 
 const paramOptionExplanationOverrideI18n: Record<string, MessageFn> = {
   "priority.random.split_route_cut": m["param.priority.split_route_cut.option.random.explanation"] as MessageFn,
   "priority.problematic.split_route_cut": m["param.priority.split_route_cut.option.problematic.explanation"] as MessageFn,
+  "selection.random.remove_split": m["param.selection.remove_split.option.random.explanation"] as MessageFn,
+  "selection.most_connected.remove_split": m["param.selection.remove_split.option.most_connected.explanation"] as MessageFn,
+  "selection.least_connected.remove_split": m["param.selection.remove_split.option.least_connected.explanation"] as MessageFn,
+  "selection.merge.remove_split": m["param.selection.remove_split.option.merge.explanation"] as MessageFn,
 };
 
 export function resolveParamOptionExplanation(paramId: string, value: string, contextId?: string): string | undefined {

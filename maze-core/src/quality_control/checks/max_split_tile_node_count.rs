@@ -11,8 +11,9 @@ pub const MAX_SPLIT_TILE_NODE_COUNT_DEFAULT: u32 = 3;
 /// epic #246. Distinct from `SplitNodeConnectionPerNeighborCheck`/`SplitNodeConnectionPerFaceCheck`
 /// (which flag excess *connections*): this one flags excess *node count* within one tile,
 /// regardless of how those nodes are connected. Slot-0 counts toward the tile's node count like
-/// any other node (epic #246's "slot-0 is not otherwise special" rule), even though the paired
-/// repair strategy never selects it for removal. Fixed "too many" semantics only (unlike
+/// any other node, and is just as eligible for removal by the paired repair strategy — the only
+/// node a tile can never lose is whichever one happens to be its last remaining node (see epic
+/// #246 / issue #281). Fixed "too many" semantics only (unlike
 /// `SplitNodeConnectionCountCheck`'s generic `Comparison`) — the only registered repair strategy
 /// for `INVALID_SPLIT_NODE_GROUP` (`SplitNodeGroupSelectStrategy`) can only remove nodes, so a
 /// "too few" comparison would have no way to ever resolve and would spin the repair fixpoint to

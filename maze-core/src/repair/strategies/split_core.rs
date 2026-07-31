@@ -5,6 +5,7 @@ use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::generation::{SplitPattern, SplitFaceRequirement, OneWayDirection};
 use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
+use crate::graph::EdgeKind;
 
 /// Shared split-tile face-planning logic used by `AddSplitStrategy` (GitHub issue #247) and
 /// `MissingLoopsSplitStrategy` (GitHub issue #254) — factored out once the latter needed the same
@@ -64,8 +65,9 @@ pub(crate) fn existing_directions<T: Tessellation>(maze: &Maze<T>, at: NodeId) -
 
 /// Non-pattern candidate: `node_count` new nodes (index 0 becomes the new slot-0), each of `at`'s
 /// existing connections reassigned unchanged to one uniformly random node among all of them —
-/// index 0 is on equal footing with every other index here, no special weighting or reservation
-/// (epic #246's "slot-0 is not special" rule).
+/// index 0 is on equal footing with every other index here, no special weighting or reservation.
+/// (Split creation has no removal-eligibility rule to begin with — that only governs split
+/// modification/removal, see epic #246 / issue #281.)
 ///
 /// When `required` is set, one uniformly random node is chosen up front to carry the bridge: its
 /// existing connection to `required.neighbor`, if any, is reused; otherwise a brand-new
@@ -87,7 +89,7 @@ pub(crate) fn plan_unconstrained_split<T: Tessellation>(
     let Some(required) = required else {
         for (target, direction) in existing {
             let owner = rng.random_range(0..node_count);
-            per_node[owner].push(SplitNodeEdge { target, direction });
+            per_node[owner].push(SplitNodeEdge { target, direction, kind: EdgeKind::Basic });
         }
         return Some(per_node);
     };
@@ -108,10 +110,10 @@ pub(crate) fn plan_unconstrained_split<T: Tessellation>(
         if *target == required.neighbor {
             bridge_satisfied = true;
         }
-        per_node[owner].push(SplitNodeEdge { target: *target, direction: *direction });
+        per_node[owner].push(SplitNodeEdge { target: *target, direction: *direction, kind: EdgeKind::Basic });
     }
     if !bridge_satisfied {
-        per_node[bridge_owner].push(SplitNodeEdge { target: required.neighbor, direction: required.direction });
+        per_node[bridge_owner].push(SplitNodeEdge { target: required.neighbor, direction: required.direction, kind: EdgeKind::Basic });
     }
 
     if per_node[bridge_owner].len() < 2 {
@@ -137,7 +139,7 @@ fn pick_free_neighbor<T: Tessellation>(
     let claimed: HashSet<NodeId> = per_node.iter().flat_map(|edges| edges.iter().map(|e| e.target)).collect();
     maze.field.neighbors(at).into_iter()
         .find(|&n| n != exclude && n != at && !claimed.contains(&n) && !excluded.contains(&n))
-        .map(|target| SplitNodeEdge { target, direction: SplitNodeEdgeDirection::Passage })
+        .map(|target| SplitNodeEdge { target, direction: SplitNodeEdgeDirection::Passage, kind: EdgeKind::Basic })
 }
 
 /// Pattern-based candidate against `at`, trying every `rotation`/`mirror` combination in random
@@ -185,7 +187,7 @@ pub(crate) fn shuffle<X>(items: &mut [X], rng: &mut dyn RngCore) {
 
 /// One rotation/mirror candidate: resolves every one of the pattern's `node_count` new nodes' own
 /// faces to real neighbors (`T::step` off `point`) — including node 0, the new slot-0, on equal
-/// footing with every other node (epic #246's "slot-0 is not special" rule).
+/// footing with every other node (split creation has no removal-eligibility rule to apply here).
 ///
 /// When `required` is set, this candidate is only accepted if some node's resolved faces include
 /// an edge to `required.neighbor` in `required.direction` **and** that same node ends up with at
@@ -252,7 +254,7 @@ pub(crate) fn try_pattern_adaptation<T: Tessellation>(
                         return None;
                     }
                     claimed_directions.insert(neighbor);
-                    node_edges.push(SplitNodeEdge { target: neighbor, direction });
+                    node_edges.push(SplitNodeEdge { target: neighbor, direction, kind: EdgeKind::Basic });
                 }
             }
         }

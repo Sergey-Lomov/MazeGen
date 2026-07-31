@@ -40,8 +40,18 @@ fn maze_with_two_split_tiles() -> (Maze<SquareTessellation>, NodeId, NodeId) {
     (Maze::new(field, g), extra1, extra2)
 }
 
+/// Wraps `nodes` in a `SplitTileNodes` -- callers must pass every node of the tile, slot-0
+/// included, per `SplitTileNodes`'s own contract (`RemoveSplitStrategy` treats an incomplete tile
+/// as already collapsed).
 fn tile(nodes: Vec<NodeId>) -> SplitTileNodes {
     SplitTileNodes::new(nodes)
+}
+
+/// `tile()` plus the point's slot-0 (resolved from the field) -- for tests built around a single
+/// `extra` node where the fixture never bound its own `slot0` variable.
+fn tile_with_slot0(maze: &Maze<SquareTessellation>, extra: NodeId) -> SplitTileNodes {
+    let point = maze.field.point_of(extra).expect("extra must still be in the field");
+    tile(maze.field.nodes_at(point).to_vec())
 }
 
 fn group_issue(groups: Vec<(Vec<SplitTileNodes>, u32)>) -> InvalidSplitTileGroupIssue {
@@ -72,7 +82,7 @@ fn apply_succeeds_on_empty_groups_even_with_no_nested_configured() {
 #[test]
 fn apply_fails_when_nested_is_empty() {
     let (mut maze, extra1, extra2) = maze_with_two_split_tiles();
-    let issue = group_issue(vec![(vec![tile(vec![extra1]), tile(vec![extra2])], 2)]);
+    let issue = group_issue(vec![(vec![tile_with_slot0(&maze, extra1), tile_with_slot0(&maze, extra2)], 2)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let result = apply_and_commit(&SplitGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
@@ -81,7 +91,7 @@ fn apply_fails_when_nested_is_empty() {
 #[test]
 fn apply_removes_both_tiles_when_to_remove_covers_the_whole_group() {
     let (mut maze, extra1, extra2) = maze_with_two_split_tiles();
-    let issue = group_issue(vec![(vec![tile(vec![extra1]), tile(vec![extra2])], 2)]);
+    let issue = group_issue(vec![(vec![tile_with_slot0(&maze, extra1), tile_with_slot0(&maze, extra2)], 2)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
     let result = apply_and_commit(&SplitGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
@@ -94,7 +104,7 @@ fn apply_removes_both_tiles_when_to_remove_covers_the_whole_group() {
 #[test]
 fn apply_stops_once_to_remove_is_reached() {
     let (mut maze, extra1, extra2) = maze_with_two_split_tiles();
-    let issue = group_issue(vec![(vec![tile(vec![extra1]), tile(vec![extra2])], 1)]);
+    let issue = group_issue(vec![(vec![tile_with_slot0(&maze, extra1), tile_with_slot0(&maze, extra2)], 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
     let result = apply_and_commit(&SplitGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
@@ -105,15 +115,17 @@ fn apply_stops_once_to_remove_is_reached() {
 }
 
 #[test]
-fn apply_never_removes_slot0_even_if_flagged() {
+fn apply_collapses_the_selected_tile_to_exactly_one_node() {
     let (mut maze, extra1, _extra2) = maze_with_two_split_tiles();
-    let slot0 = maze.field.nodes_at(SquarePoint { x: 0, y: 0 })[0];
+    let point = maze.field.point_of(extra1).unwrap();
+    let slot0 = maze.field.nodes_at(point)[0];
     let issue = group_issue(vec![(vec![tile(vec![slot0, extra1])], 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    apply_and_commit(&SplitGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&SplitGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    assert!(maze.field.point_of(slot0).is_some(), "slot-0 must never be removed");
+    assert_eq!(maze.field.nodes_at(point).len(), 1, "the tile must collapse to exactly one node, slot-0 no longer guaranteed to be the survivor");
 }
 
 /// Two split points: `small` carries 1 extra node (2 nodes total), `big` carries 2 extra nodes
@@ -131,14 +143,23 @@ fn maze_with_a_small_and_a_big_split_tile() -> (Maze<SquareTessellation>, SplitT
     (Maze::new(field, g), small, big)
 }
 
-/// Whether every *extra* node of `tile` (slot-0 excluded -- it's never removed) is gone.
+/// Whether `tile`'s point has collapsed to exactly one node (which one survived doesn't matter --
+/// slot-0 is no longer guaranteed to be it).
 fn tile_collapsed(maze: &Maze<SquareTessellation>, tile: &SplitTileNodes) -> bool {
-    tile.0.iter().skip(1).all(|&n| maze.field.point_of(n).is_none())
+    let point = tile.0.iter().find_map(|&n| maze.field.point_of(n));
+    match point {
+        Some(p) => maze.field.nodes_at(p).len() == 1,
+        // Every old node of the tile is gone -- collapsed into a brand-new node at some point we
+        // can no longer address by any of `tile`'s own ids. Callers needing to inspect the
+        // survivor's own edges must resolve the point some other way (e.g. `only_surviving_node`
+        // in `remove_split_tests.rs`); this helper only answers "was it touched at all."
+        None => true,
+    }
 }
 
-/// Whether every *extra* node of `tile` still exists (nothing was touched).
+/// Whether `tile`'s point still has every one of its original nodes (nothing was touched).
 fn tile_untouched(maze: &Maze<SquareTessellation>, tile: &SplitTileNodes) -> bool {
-    tile.0.iter().skip(1).all(|&n| maze.field.point_of(n).is_some())
+    tile.0.iter().all(|&n| maze.field.point_of(n).is_some())
 }
 
 #[test]
@@ -217,7 +238,7 @@ fn least_connected_priority_picks_the_less_connected_tile() {
 #[test]
 fn random_priority_still_resolves_the_group() {
     let (mut maze, extra1, extra2) = maze_with_two_split_tiles();
-    let issue = group_issue(vec![(vec![tile(vec![extra1]), tile(vec![extra2])], 2)]);
+    let issue = group_issue(vec![(vec![tile_with_slot0(&maze, extra1), tile_with_slot0(&maze, extra2)], 2)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
     let result = apply_and_commit(&SplitGroupSelectStrategy, &issue, &mut maze,

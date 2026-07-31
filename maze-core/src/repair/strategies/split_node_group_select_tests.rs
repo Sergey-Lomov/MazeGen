@@ -74,18 +74,23 @@ fn apply_fails_when_nested_is_empty() {
 }
 
 #[test]
-fn never_selects_slot0_even_when_it_is_the_only_offered_candidate() {
-    let (mut maze, slot0, _extra1, _extra2) = maze_with_three_node_split();
+fn selects_slot0_when_it_is_the_only_offered_candidate_and_a_sibling_remains() {
+    // Slot-0 is no longer special: with siblings still at the point (not offered as candidates
+    // here, but still present in the field), slot0 isn't the point's last remaining node, so it's
+    // just as removable as any other split node.
+    let (mut maze, slot0, extra1, extra2) = maze_with_three_node_split();
     let issue = group_issue(vec![(vec![slot0], 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
     let result = apply_and_commit(&SplitNodeGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
-    assert!(matches!(result, RepairResult::Failed), "slot0 is never a valid candidate, so a group offering only slot0 has nothing fixable");
-    assert!(maze.field.point_of(slot0).is_some(), "slot0 must survive");
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+    assert!(maze.field.point_of(slot0).is_none(), "slot0 must be removed since it isn't the point's last remaining node");
+    assert!(maze.field.point_of(extra1).is_some());
+    assert!(maze.field.point_of(extra2).is_some());
 }
 
 #[test]
-fn removes_an_extra_node_and_leaves_slot0_untouched() {
+fn removes_exactly_one_node_of_the_group() {
     let (mut maze, slot0, extra1, extra2) = maze_with_three_node_split();
     let issue = group_issue(vec![(vec![slot0, extra1, extra2], 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
@@ -93,9 +98,8 @@ fn removes_an_extra_node_and_leaves_slot0_untouched() {
     let result = apply_and_commit(&SplitNodeGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    assert!(maze.field.point_of(slot0).is_some(), "slot0 must never be removed");
-    let removed_count = [extra1, extra2].iter().filter(|&&n| maze.field.point_of(n).is_none()).count();
-    assert_eq!(removed_count, 1, "to_remove=1 must remove exactly one extra node");
+    let removed_count = [slot0, extra1, extra2].iter().filter(|&&n| maze.field.point_of(n).is_none()).count();
+    assert_eq!(removed_count, 1, "to_remove=1 must remove exactly one node");
 }
 
 #[test]

@@ -264,8 +264,8 @@ impl<T: Tessellation> Field<T> {
     }
 
     /// Removes `node` from `point` (GitHub issue #221) — the inverse of `add_node_at`. Panics if
-    /// `node` isn't currently one of `point`'s nodes, or if it's `point`'s *first* (original)
-    /// node — a point's original node is never removable, only nodes added via `add_node_at` are.
+    /// `node` isn't currently one of `point`'s nodes, or if it's the *only* node left at `point` —
+    /// a point must always keep at least one node, regardless of which one it is.
     ///
     /// **Intended for stateful contexts where a single `Maze` is mutated step by step within one
     /// call** — e.g. a future repair strategy driven by `MutationCommand::RemoveNode` (see
@@ -285,8 +285,8 @@ impl<T: Tessellation> Field<T> {
             .unwrap_or_else(|| panic!("remove_node_at: point not in field"));
         let idx = nodes.iter().position(|&id| id == node)
             .unwrap_or_else(|| panic!("remove_node_at: node does not belong to point"));
-        if idx == 0 {
-            panic!("remove_node_at: cannot remove a point's original node");
+        if nodes.len() == 1 {
+            panic!("remove_node_at: cannot remove a point's last remaining node");
         }
         nodes.remove(idx);
         self.node_to_point.remove(&node);
@@ -301,7 +301,7 @@ impl<T: Tessellation> Field<T> {
     }
 
     /// Replaces every node at `point` with `new_ids`, wholesale — unlike `remove_node_at`, this has
-    /// no "never remove index 0" restriction, since the whole point's node list is being replaced
+    /// no "keep the last node" restriction, since the whole point's node list is being replaced
     /// at once, not shrunk by one. `new_ids[0]` becomes the point's new slot-0 (`nodes_at`'s own
     /// "original node first" ordering). Panics if `point` isn't in the field (mirrors
     /// `add_node_at`/`remove_node_at`'s own panic-on-bad-point convention) or if `new_ids` is empty
@@ -520,8 +520,8 @@ mod remove_node_at_tests {
     }
 
     #[test]
-    #[should_panic(expected = "cannot remove a point's original node")]
-    fn panics_when_removing_the_original_node() {
+    #[should_panic(expected = "cannot remove a point's last remaining node")]
+    fn panics_when_removing_a_points_last_remaining_node() {
         let mut ids = IdGenerator::new();
         let mut field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
         let p = SquarePoint { x: 0, y: 0 };

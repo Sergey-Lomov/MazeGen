@@ -2,6 +2,7 @@
 mod qc_wire;
 
 use crate::ids::NodeId;
+use crate::graph::EdgeKind;
 use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
 use super::issue::IssueKind;
 use super::issue_kinds::RepairLimitKind;
@@ -228,7 +229,8 @@ fn write_node_id(out: &mut Vec<u8>, id: NodeId) {
 /// Encodes `PointNodesReplaceProposed`/`PointNodesReplaced`/`PointNodesReplaceDeclined`'s shared
 /// `nodes` field —
 /// one sibling's edge list per entry, each edge as one byte for `direction` (0=Forward,
-/// 1=Backward, 2=Passage) followed by the `target` node.
+/// 1=Backward, 2=Passage), one byte for `kind` (0=Basic, 1=Teleport — issue #281), followed by
+/// the `target` node.
 fn write_split_nodes(out: &mut Vec<u8>, nodes: &[Vec<SplitNodeEdge>]) {
     out.extend_from_slice(&(nodes.len() as u32).to_le_bytes());
     for edges in nodes {
@@ -238,6 +240,10 @@ fn write_split_nodes(out: &mut Vec<u8>, nodes: &[Vec<SplitNodeEdge>]) {
                 SplitNodeEdgeDirection::Forward => 0,
                 SplitNodeEdgeDirection::Backward => 1,
                 SplitNodeEdgeDirection::Passage => 2,
+            });
+            out.push(match edge.kind {
+                EdgeKind::Basic => 0,
+                EdgeKind::Teleport => 1,
             });
             write_node_id(out, edge.target);
         }

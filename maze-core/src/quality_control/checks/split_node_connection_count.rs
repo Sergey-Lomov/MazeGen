@@ -182,8 +182,9 @@ mod tests {
 
     #[test]
     fn flags_slot0_too_when_it_trips_the_threshold() {
-        // Epic #246: slot-0 is not otherwise special -- the check must be able to flag it, even
-        // though the repair strategy will never actually remove it.
+        // Slot-0 is not otherwise special -- the check must be able to flag it like any other
+        // split node (whether the repair strategy can actually remove it depends only on whether
+        // it's the tile's last remaining node, unrelated to being slot-0).
         let (mut maze, slot0, extra) = maze_with_split_node();
         let right = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
         maze.graph.add_bidirectional_edge(extra, right, EdgeKind::Basic);

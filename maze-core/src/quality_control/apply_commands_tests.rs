@@ -446,7 +446,7 @@ fn replace_point_nodes_declines_when_a_prior_batch_command_already_replaced_its_
         MutationCommand::ReplacePointNodes { at: nodes[1], nodes: vec![vec![]] },
         MutationCommand::ReplacePointNodes {
             at: nodes[0],
-            nodes: vec![vec![SplitNodeEdge { target: nodes[1], direction: SplitNodeEdgeDirection::Passage }]],
+            nodes: vec![vec![SplitNodeEdge { target: nodes[1], direction: SplitNodeEdgeDirection::Passage, kind: EdgeKind::Basic }]],
         },
     ];
 

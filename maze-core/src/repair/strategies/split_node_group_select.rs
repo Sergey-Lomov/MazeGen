@@ -54,15 +54,15 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 ///   both an outgoing and incoming count map) rather than rescanned per candidate inside the sort
 ///   comparator.
 ///
-/// A tile's slot-0 (`Field::nodes_at(point)`'s first entry) is never offered as a candidate —
-/// `element_allowed` excludes it unconditionally (unlike
-/// `SplitNodeConnectionGroupSelectStrategy`'s `protect_original`, this has no toggle: epic #246's
-/// "never remove slot-0" rule is a hard constraint for this strategy's own unit of work, the node
-/// itself, not a configurable preference). A candidate whose removal is infeasible for any other
-/// reason (preset-locked) is excluded the same way, mirroring
-/// `SplitNodeConnectionGroupSelectStrategy`'s `removal_feasible` check, so a preset-locked split
-/// never falsely resolves the group's budget and loops the repair fixpoint to its limit instead of
-/// reporting `Failed`.
+/// A tile's last remaining node is never offered as a candidate — `element_allowed` excludes it
+/// unconditionally via `remove_node_feasible` (unlike `SplitNodeConnectionGroupSelectStrategy`'s
+/// `protect_original`, this has no toggle: "never remove a tile's last node" is a hard constraint
+/// for this strategy's own unit of work, the node itself, not a configurable preference — issue
+/// #281). Slot-0 has no special standing here beyond being whichever node happens to be first; a
+/// candidate whose removal is infeasible for any other reason (preset-locked) is excluded the same
+/// way, mirroring `SplitNodeConnectionGroupSelectStrategy`'s `removal_feasible` check, so a
+/// preset-locked split never falsely resolves the group's budget and loops the repair fixpoint to
+/// its limit instead of reporting `Failed`.
 pub struct SplitNodeGroupSelectStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeGroupIssue> for SplitNodeGroupSelectStrategy {

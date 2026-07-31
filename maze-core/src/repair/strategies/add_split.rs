@@ -47,8 +47,8 @@ static PARAMS: &[StrategyParam] = &[
 /// satisfied or `max_attempts` **failed** attempts have been spent (successful attempts don't
 /// count against the budget). Every node at the chosen
 /// point — slot-0 included — is replaced by the new tile's nodes in one atomic step (see
-/// `MutationCommand::ReplacePointNodes`); slot-0 is not special-cased (epic #246's "slot-0 is not
-/// special" rule, fixed here after a real bug: an earlier version left slot-0's real connections
+/// `MutationCommand::ReplacePointNodes`); slot-0 is not special-cased (split creation has no
+/// removal-eligibility rule to apply here, fixed here after a real bug: an earlier version left slot-0's real connections
 /// untouched regardless of what the configured pattern required, so a pattern-mode split could end
 /// up structurally not matching the only configured pattern at all).
 ///

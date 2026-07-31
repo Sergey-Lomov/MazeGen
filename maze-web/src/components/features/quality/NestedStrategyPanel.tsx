@@ -153,11 +153,12 @@ interface EntryRowProps {
   onSelect: (s: QualitySelection) => void;
 }
 
-// Three indentation levels per entry, `depth` being the first (weight row):
-//   depth      — "Weight" label + input + "N%" + remove button
-//   depth + 1  — "Merge strategy" label + name + edit (✎) button, hover/click-to-select target
+// Two indentation levels per entry, `depth` being the first:
+//   depth      — "Weight" label + input + "N%" + remove button, and (same level, no extra
+//                indent — a nested strategy stands in for its parent's own param row) the
+//                "Merge strategy" label + name + edit (✎) button, hover/click-to-select target
 //                spanning this row and everything below it in the same block
-//   depth + 2  — the nested strategy's own params / further-nested slots
+//   depth + 1  — the nested strategy's own params / further-nested slots
 function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, percent, removable, depth, selection, onSelect }: EntryRowProps) {
   const setNestedStrategyParam = useMazeStore((s) => s.setNestedStrategyParam);
   const removeNestedStrategy = useMazeStore((s) => s.removeNestedStrategy);
@@ -210,7 +211,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
           this entry's whole block (name + params + further-nested slots), ties the weight
           visually to exactly what it's weighing — only drawn when the weight row itself is
           shown. Separate from the weight row itself so the line starts under it, not beside it. */}
-      <div style={{ ...styles.entryStack, ...(showWeight ? styles.entryStackWithWeight : {}), marginLeft: showWeight ? indent.tree : 0 }}>
+      <div style={{ ...styles.entryStack, ...(showWeight ? styles.entryStackWithWeight : {}) }}>
         {/* Hover/selected highlight and the click-to-select target span the whole strategy
             block — name row, its params, and any further-nested slots — not just the name row
             itself, so the highlighted area matches what clicking anywhere in it actually

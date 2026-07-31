@@ -3,14 +3,15 @@ use crate::quality_control::issue::{IssueKind, INVALID_SPLIT_TILE, INVALID_SPLIT
 use crate::quality_control::issue_kinds::group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 
 /// One split tile's full node list — slot-0 included, see the epic #246 doc comment: slot-0 is
-/// an equal member of the tile for every purpose except the removal step itself — as a single
-/// `InvalidGroupIssueKind::Element` unit. See GitHub issue #249's regression: a flat
+/// an equal member of the tile for every purpose (issue #281: including removal-eligibility —
+/// only a tile's *last remaining node*, whichever one that happens to be, is ever protected) — as
+/// a single `InvalidGroupIssueKind::Element` unit. See GitHub issue #249's regression: a flat
 /// `Vec<NodeId>` group mixing several tiles' nodes together let `group_select_apply`'s
 /// per-element candidate pass pick nodes from *different* tiles independently, instead of
 /// resolving one whole tile at a time. Wrapping each tile's node list in its own `SplitTileNodes`
 /// makes the tile the candidate unit: `group_select_apply` picks one `SplitTileNodes` (i.e. one
-/// tile) per fix, and the nested `RemoveSplitStrategy` call collapses every removable node in it
-/// at once (slot-0 itself is never removed, see `remove_node_feasible`).
+/// tile) per fix, and the nested `RemoveSplitStrategy` call collapses the whole tile into one
+/// surviving node via a single `MutationCommand::ReplacePointNodes`.
 ///
 /// Canonicalized (sorted) on construction so two `SplitTileNodes` built from the same node set in
 /// different orders compare/hash equal — required for `Ord`/`Hash` (`canonical_group_key`'s own

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { ParamDescriptor, SplitPattern } from "../../wasm/types";
-import { sharedStyles, buttonStyle } from "../../styles/shared";
-import { typography, font, spacing } from "../../styles/theme";
+import { sharedStyles } from "../../styles/shared";
+import { typography, font, spacing, ui, radius } from "../../styles/theme";
 import { resolveParamOptionLabel, resolveParamOptionExplanation } from "./qualityI18n";
 import { Switch } from "../Switch";
 import { Inline } from "../Layout";
@@ -276,7 +276,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
               {p.kind.type === "pattern_list" && (
                 <button
                   className="hoverable"
-                  style={buttonStyle("toggle")}
+                  style={styles.paramButton}
                   disabled={disabled}
                   onClick={(e) => { e.stopPropagation(); setOpenPatternListParam(p.id); }}
                 >
@@ -286,7 +286,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
               {p.kind.type === "split_generation_config" && (
                 <button
                   className="hoverable"
-                  style={buttonStyle("toggle")}
+                  style={styles.paramButton}
                   disabled={disabled}
                   onClick={(e) => { e.stopPropagation(); setOpenSplitConfigParam(p.id); }}
                 >
@@ -378,6 +378,21 @@ const styles: Record<string, React.CSSProperties> = {
     boxSizing: "border-box",
     height: 22,
     padding: "2px 18px 2px 4px",
+  },
+  // `pattern_list`/`split_generation_config` edit buttons -- same row height as `input`/`select`
+  // (not `buttonStyle("toggle")`'s own `flex: 1` + unconstrained height, which stretches the row
+  // taller than every other param's control and reads as inconsistent).
+  paramButton: {
+    ...typography.control,
+    boxSizing: "border-box",
+    height: 22,
+    padding: "0 8px",
+    border: `1px solid ${ui.border.strong}`,
+    background: ui.bg.input,
+    color: ui.text.tertiary,
+    borderRadius: radius.sm,
+    cursor: "default",
+    flexShrink: 0,
   },
   // `display: flex` (not the default `inline`) so this stopPropagation wrapper doesn't disturb
   // `row`'s flex layout — `Switch`'s own `flexShrink: 0` still applies to it as a flex item.

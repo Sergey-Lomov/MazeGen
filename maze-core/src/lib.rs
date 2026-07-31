@@ -460,8 +460,8 @@ mod remove_node_at_tests {
     }
 
     #[test]
-    #[should_panic(expected = "cannot remove a point's original node")]
-    fn delegates_the_original_node_panic() {
+    #[should_panic(expected = "cannot remove a point's last remaining node")]
+    fn delegates_the_last_remaining_node_panic() {
         let mut ids = IdGenerator::new();
         let field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
         let mut g = Graph::new();

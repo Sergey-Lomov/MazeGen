@@ -1,4 +1,5 @@
 use crate::ids::{EdgeId, NodeId};
+use crate::graph::EdgeKind;
 
 /// A proposed mutation a `RepairStrategy::apply` returns instead of mutating `Maze` in place —
 /// see GitHub issue #118 and `Specs/repair.md`'s mutation-command contract. One variant per
@@ -45,14 +46,15 @@ pub enum MutationCommand {
     /// Idempotent — applied only if `meta.finish` is still unset at apply time. Same rationale
     /// as `SetStart` for having no paired helper.
     SetFinish(NodeId),
-    /// Removes an extra split node (`Field::add_node_at`'s minted node) and every edge incident
-    /// to it — mirrors `Maze::remove_node_at`'s atomic field+graph removal (GitHub issue #221).
-    /// Never valid for a point's slot-0 (original) node — `try_remove_node` refuses that case, the
-    /// same hard constraint every split-QC repair strategy shares (see GitHub epic #246). A
-    /// strategy wanting to preserve the removed node's connections (e.g. `RemoveSplitStrategy`'s
-    /// `redistribute` param) must propose the replacement `AddDirectedEdge`/
-    /// `AddBidirectionalEdge` commands itself, ahead of this one in its own returned batch — this
-    /// command only ever deletes, it never redirects.
+    /// Removes a split node (`Field::add_node_at`'s minted node, or a point's original slot-0 —
+    /// issue #281: no node has special standing here) and every edge incident to it — mirrors
+    /// `Maze::remove_node_at`'s atomic field+graph removal (GitHub issue #221). Never valid for a
+    /// point's *last remaining* node — `try_remove_node` refuses that case, the same hard
+    /// constraint every split-QC repair strategy shares (see GitHub epic #246). A strategy wanting
+    /// to preserve the removed node's connections (e.g. `RemoveSplitNodeStrategy`'s `redistribute`
+    /// param) must propose the replacement `AddDirectedEdge`/`AddBidirectionalEdge` commands
+    /// itself, ahead of this one in its own returned batch — this command only ever deletes, it
+    /// never redirects.
     RemoveNode { node: NodeId },
     /// Replaces every node currently at `at`'s point (all of them — slot-0 included, not just
     /// extra siblings) with a brand-new set of nodes, wiring each one's own edges in one atomic
@@ -87,14 +89,16 @@ pub enum MutationCommand {
     ReplacePointNodes { at: NodeId, nodes: Vec<Vec<SplitNodeEdge>> },
 }
 
-/// One edge a newly minted split node (`MutationCommand::ReplacePointNodes`) gets wired with, always
-/// `EdgeKind::Basic` (mirrors `apply_pattern_adaptation`'s own split-face edges, which are never
-/// `Teleport`) — `target` is the existing node on the other end, `direction` which way the edge
-/// points relative to the new node.
+/// One edge a newly minted split node (`MutationCommand::ReplacePointNodes`) gets wired with —
+/// `target` is the existing node on the other end, `direction` which way the edge points
+/// relative to the new node, `kind` whether it's a `Basic` passage or a `Teleport` (needed by
+/// callers redistributing a removed node's own edges regardless of kind, e.g.
+/// `RemoveSplitStrategy`; `AddSplitStrategy`'s pattern-adaptation edges are always `Basic`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SplitNodeEdge {
     pub target: NodeId,
     pub direction: SplitNodeEdgeDirection,
+    pub kind: EdgeKind,
 }
 
 /// `Forward`/`Backward` mirror `OneWayDirection`'s naming (relative to the new node); `Passage`
