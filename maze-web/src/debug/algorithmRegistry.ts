@@ -85,6 +85,13 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       const nodes = [...payload.nodes.values()].flat();
       return nodes.length > 0 ? { kind: "region", nodes } : null;
     }
+    case "InvalidSplitRoute": {
+      // Reuses the "cycle" shape, same rationale as InvalidTeleport/InvalidOneWay above — the
+      // route's own edge order and per-edge split-tile flag only matter to the repair strategy's
+      // candidate filtering, not to highlighting the whole path on hover.
+      const edges = [...payload.routes.values()].flat(2).map(([from, to]) => [from, to] as [bigint, bigint]);
+      return edges.length > 0 ? { kind: "cycle", edges } : null;
+    }
   }
 }
 

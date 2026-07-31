@@ -271,6 +271,10 @@ fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             out.push(6);
             write_str_keyed_flat_node_lists(out, nodes);
         }
+        IssuePayload::InvalidSplitRoute { routes } => {
+            out.push(7);
+            write_str_keyed_routes(out, routes);
+        }
     }
 }
 
@@ -337,6 +341,26 @@ fn write_str_keyed_flat_node_lists(out: &mut Vec<u8>, map: &std::collections::Ha
         out.extend_from_slice(&(nodes.len() as u32).to_le_bytes());
         for &node in nodes {
             out.extend_from_slice(&node.to_le_bytes());
+        }
+    }
+}
+
+/// Encodes `IssuePayload::InvalidSplitRoute`'s `routes` field — one ordered edge-triple sequence
+/// per route, each edge as `from`/`to` (both `u32` LE) followed by a 1-byte `is_split_edge` flag
+/// (0/1). Order is preserved exactly as stored (a route is a path, not a set — unlike every other
+/// `write_str_keyed_*` helper here, which encodes unordered cycles/groups).
+fn write_str_keyed_routes(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<Vec<(u32, u32, bool)>>>) {
+    out.extend_from_slice(&(map.len() as u32).to_le_bytes());
+    for (key, routes) in map {
+        write_str(out, key);
+        out.extend_from_slice(&(routes.len() as u32).to_le_bytes());
+        for route in routes {
+            out.extend_from_slice(&(route.len() as u32).to_le_bytes());
+            for &(from, to, is_split) in route {
+                out.extend_from_slice(&from.to_le_bytes());
+                out.extend_from_slice(&to.to_le_bytes());
+                out.push(is_split as u8);
+            }
         }
     }
 }
@@ -713,6 +737,40 @@ mod tests {
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // group has 1 edge pair
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // from
         assert_eq!(read_u32le(&bytes, &mut offset), 2); // to
+        assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
+        assert_eq!(bytes.len(), offset);
+    }
+
+    #[test]
+    fn check_ran_with_invalid_split_route_payload_encodes_the_full_str_keyed_routes_map() {
+        let mut routes = std::collections::HashMap::new();
+        routes.insert("check1".to_string(), vec![vec![(1u32, 2u32, true), (2u32, 3u32, false)]]);
+        let event = QcEvent::CheckRan {
+            check_id: "c1".to_string(),
+            issue: Some((IssueKind::from_str("invalid_split_route").unwrap(), IssuePayload::InvalidSplitRoute { routes }, HashMap::new())),
+        };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+
+        let mut offset = 0;
+        assert_eq!(read_str(&bytes, &mut offset), "c1");
+        assert_eq!(bytes[offset], 1); // issue present
+        offset += 1;
+        assert_eq!(read_str(&bytes, &mut offset), "invalid_split_route");
+        assert_eq!(bytes[offset], 7); // IssuePayload::InvalidSplitRoute variant tag
+        offset += 1;
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // map: 1 entry
+        assert_eq!(read_str(&bytes, &mut offset), "check1");
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // 1 route
+        assert_eq!(read_u32le(&bytes, &mut offset), 2); // route has 2 edges, order preserved
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // edge0 from
+        assert_eq!(read_u32le(&bytes, &mut offset), 2); // edge0 to
+        assert_eq!(bytes[offset], 1); // edge0 is_split_edge
+        offset += 1;
+        assert_eq!(read_u32le(&bytes, &mut offset), 2); // edge1 from
+        assert_eq!(read_u32le(&bytes, &mut offset), 3); // edge1 to
+        assert_eq!(bytes[offset], 0); // edge1 is_split_edge
+        offset += 1;
         assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
         assert_eq!(bytes.len(), offset);
     }

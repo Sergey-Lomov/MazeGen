@@ -59,6 +59,14 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const splitTileNodes = sourceCheck != null && issue.payload.kind === "invalid_split_tile"
     ? [issue.payload.nodes[sourceCheck] ?? []]
     : null;
+  // `invalid_split_route`'s payload is an ordered [from, to, is_split_edge] triple sequence per
+  // route — dropped down to the same [from, to] edge-pair shape `loopEdges`/`teleportEdges`/
+  // `oneWayEdges` use, since the highlight renderer only cares about which edges to draw, not
+  // traversal order or the split-edge flag (that distinction only matters to the repair
+  // strategy's own candidate filtering, not to hover highlighting).
+  const splitRouteEdges = sourceCheck != null && issue.payload.kind === "invalid_split_route"
+    ? (issue.payload.routes[sourceCheck] ?? []).map((route) => route.map(([from, to]) => [from, to] as [number, number]))
+    : null;
   const palette = notificationPalette(severity);
 
   const handleMouseEnter = loopEdges != null
@@ -67,12 +75,14 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ? () => setHoveredIssueLoopEdges(teleportEdges.flat())
     : oneWayEdges != null
     ? () => setHoveredIssueLoopEdges(oneWayEdges.flat())
+    : splitRouteEdges != null
+    ? () => setHoveredIssueLoopEdges(splitRouteEdges.flat())
     : regionNodes != null
     ? () => setHoveredIssueRegionGroups(regionNodes)
     : splitTileNodes != null
     ? () => setHoveredIssueRegionGroups(splitTileNodes)
     : undefined;
-  const handleMouseLeave = loopEdges != null || teleportEdges != null || oneWayEdges != null
+  const handleMouseLeave = loopEdges != null || teleportEdges != null || oneWayEdges != null || splitRouteEdges != null
     ? () => setHoveredIssueLoopEdges(null)
     : regionNodes != null || splitTileNodes != null
     ? () => setHoveredIssueRegionGroups(null)

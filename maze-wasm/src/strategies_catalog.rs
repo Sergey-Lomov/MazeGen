@@ -2,8 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy},
 };
 use crate::checks_catalog::{ParamDescriptor, ParamKindDto};
 
@@ -292,6 +292,13 @@ pub fn available_strategies() -> JsValue {
             params: strategy_params_dto(<SplitNodeGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeGroupIssue>>::params(&SplitNodeGroupSelectStrategy)),
             experimental: <SplitNodeGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeGroupIssue>>::is_experimental(&SplitNodeGroupSelectStrategy),
             nested_slots: nested_slots_dto(<SplitNodeGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeGroupIssue>>::expected_nested(&SplitNodeGroupSelectStrategy)),
+        },
+        StrategyDescriptor {
+            id: "split_route_cut",
+            handles: INVALID_SPLIT_ROUTE.as_str(),
+            params: strategy_params_dto(<SplitRouteCutStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitRouteIssue>>::params(&SplitRouteCutStrategy)),
+            experimental: <SplitRouteCutStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitRouteIssue>>::is_experimental(&SplitRouteCutStrategy),
+            nested_slots: nested_slots_dto(<SplitRouteCutStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitRouteIssue>>::expected_nested(&SplitRouteCutStrategy)),
         },
     ];
     strategies.serialize(&serde_wasm_bindgen::Serializer::json_compatible()).unwrap()

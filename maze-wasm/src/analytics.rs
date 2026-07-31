@@ -79,6 +79,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             IssuePayload::InvalidTeleport { groups } => IssuePayloadDto::InvalidTeleport { groups },
             IssuePayload::InvalidOneWay { groups } => IssuePayloadDto::InvalidOneWay { groups },
             IssuePayload::InvalidSplitTile { nodes } => IssuePayloadDto::InvalidSplitTile { nodes },
+            IssuePayload::InvalidSplitRoute { routes } => IssuePayloadDto::InvalidSplitRoute { routes },
         };
         let source_checks = issue.source_checks().iter().map(|s| s.to_string()).collect();
         let mut details: HashMap<String, HashMap<String, String>> = issue.details().iter()

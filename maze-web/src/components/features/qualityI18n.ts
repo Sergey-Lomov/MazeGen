@@ -179,6 +179,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.split_node_connection_per_face.label"] as MessageFn,
     description: m["check.split_node_connection_per_face.description"] as MessageFn,
   },
+  split_node_connection_traversal_distance: {
+    label: m["check.split_node_connection_traversal_distance.label"] as MessageFn,
+    description: m["check.split_node_connection_traversal_distance.description"] as MessageFn,
+  },
   max_split_tile_node_count: {
     label: m["check.max_split_tile_node_count.label"] as MessageFn,
     description: m["check.max_split_tile_node_count.description"] as MessageFn,
@@ -270,6 +274,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_split_node_group.label"] as MessageFn,
     description: m["issue.invalid_split_node_group.description"] as MessageFn,
   },
+  invalid_split_route: {
+    label: m["issue.invalid_split_route.label"] as MessageFn,
+    description: m["issue.invalid_split_route.description"] as MessageFn,
+  },
 };
 
 /** Section grouping for `IssueSelectDialog` only — distinct from `issueI18n`'s full labels,
@@ -296,6 +304,7 @@ export const issueSectionI18n: Record<string, MessageFn> = {
   invalid_split_node: m["issue_select.section.splits"] as MessageFn,
   invalid_split_node_connection_group: m["issue_select.section.splits"] as MessageFn,
   invalid_split_node_group: m["issue_select.section.splits"] as MessageFn,
+  invalid_split_route: m["issue_select.section.splits"] as MessageFn,
 };
 
 /** Short item labels for `IssueSelectDialog` only, indented under `issueSectionI18n`'s header —
@@ -322,6 +331,7 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   invalid_split_node: m["issue_select.short_label.validate_node"] as MessageFn,
   invalid_split_node_connection_group: m["issue_select.short_label.validate_connection_groups"] as MessageFn,
   invalid_split_node_group: m["issue_select.short_label.validate_node_groups"] as MessageFn,
+  invalid_split_route: m["issue_select.short_label.validate_route"] as MessageFn,
 };
 
 export const NO_FIX_STRATEGY_ID = "no_fix";
@@ -446,6 +456,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   split_node_group_select: {
     label: m["strategy.split_node_group_select.label"] as MessageFn,
     description: m["strategy.split_node_group_select.description"] as MessageFn,
+  },
+  split_route_cut: {
+    label: m["strategy.split_route_cut.label"] as MessageFn,
+    description: m["strategy.split_route_cut.description"] as MessageFn,
   },
 };
 
@@ -774,6 +788,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.max.label"] as MessageFn,
     description: m["param.max.description"] as MessageFn,
   },
+  min_detour: {
+    label: m["param.min_detour.label"] as MessageFn,
+    description: m["param.min_detour.description"] as MessageFn,
+  },
+  edge_scope: {
+    label: m["param.edge_scope.label"] as MessageFn,
+    description: m["param.edge_scope.description"] as MessageFn,
+  },
   selection: {
     label: m["param.selection.label"] as MessageFn,
     description: m["param.selection.description"] as MessageFn,
@@ -839,6 +861,9 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "priority.least_voluminous": m["param.priority.option.least_voluminous"] as MessageFn,
   "priority.most_connected": m["param.priority.option.most_connected"] as MessageFn,
   "priority.least_connected": m["param.priority.option.least_connected"] as MessageFn,
+  "edge_scope.split_only": m["param.edge_scope.option.split_only"] as MessageFn,
+  "edge_scope.other_only": m["param.edge_scope.option.other_only"] as MessageFn,
+  "edge_scope.any": m["param.edge_scope.option.any"] as MessageFn,
   "src_mode.random": m["param.src_mode.option.random"] as MessageFn,
   "src_mode.dead_end_priority": m["param.src_mode.option.dead_end_priority"] as MessageFn,
   "comparison.lt": m["param.comparison.option.lt"] as MessageFn,
@@ -913,6 +938,9 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "priority.least_voluminous": m["param.priority.option.least_voluminous.explanation"] as MessageFn,
   "priority.most_connected": m["param.priority.option.most_connected.explanation"] as MessageFn,
   "priority.least_connected": m["param.priority.option.least_connected.explanation"] as MessageFn,
+  "edge_scope.split_only": m["param.edge_scope.option.split_only.explanation"] as MessageFn,
+  "edge_scope.other_only": m["param.edge_scope.option.other_only.explanation"] as MessageFn,
+  "edge_scope.any": m["param.edge_scope.option.any.explanation"] as MessageFn,
   "cycle_kind.any": m["param.cycle_kind.option.any.explanation"] as MessageFn,
   "cycle_kind.two_way": m["param.cycle_kind.option.two_way.explanation"] as MessageFn,
   "cycle_kind.one_way": m["param.cycle_kind.option.one_way.explanation"] as MessageFn,
@@ -971,16 +999,32 @@ export function resolveParamLabel(id: string, fallback: string): string {
   return paramI18n[id]?.label() ?? fallback;
 }
 
-export function resolveParamDescription(id: string): string | undefined {
-  return paramI18n[id]?.description();
+// Per-strategy override for a shared param's description (e.g. `priority`, reused by
+// teleport/one-way/split strategies whose removal target differs) — checked before the generic
+// `paramI18n` entry. `contextId` is the owning strategy's id.
+const paramDescriptionOverrideI18n: Record<string, MessageFn> = {
+  "priority.split_route_cut": m["param.priority.split_route_cut.description"] as MessageFn,
+};
+
+export function resolveParamDescription(id: string, contextId?: string): string | undefined {
+  const override = contextId ? paramDescriptionOverrideI18n[`${id}.${contextId}`] : undefined;
+  return override?.() ?? paramI18n[id]?.description();
 }
 
 export function resolveParamOptionLabel(paramId: string, value: string): string {
   return paramOptionI18n[`${paramId}.${value}`]?.() ?? value;
 }
 
-export function resolveParamOptionExplanation(paramId: string, value: string): string | undefined {
-  return paramOptionExplanationI18n[`${paramId}.${value}`]?.();
+// Per-strategy override for a shared param's option explanations, same rationale as
+// `paramDescriptionOverrideI18n` — checked before the generic `paramOptionExplanationI18n` entry.
+const paramOptionExplanationOverrideI18n: Record<string, MessageFn> = {
+  "priority.random.split_route_cut": m["param.priority.split_route_cut.option.random.explanation"] as MessageFn,
+  "priority.problematic.split_route_cut": m["param.priority.split_route_cut.option.problematic.explanation"] as MessageFn,
+};
+
+export function resolveParamOptionExplanation(paramId: string, value: string, contextId?: string): string | undefined {
+  const override = contextId ? paramOptionExplanationOverrideI18n[`${paramId}.${value}.${contextId}`] : undefined;
+  return override?.() ?? paramOptionExplanationI18n[`${paramId}.${value}`]?.();
 }
 
 export function resolveNestedSlotDescription(slotId: string): string | undefined {

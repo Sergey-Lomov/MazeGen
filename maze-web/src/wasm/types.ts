@@ -137,6 +137,14 @@ export type IssuePayloadDto =
        * `region_needs_expansion`'s `nodes`) since a split-tile flag has no group structure — every
        * flagged node highlights independently. */
       nodes: Record<string, number[]>;
+    }
+  | {
+      kind: "invalid_split_route";
+      /** Keyed by source check id — each entry is one flagged route: an ordered sequence of
+       * [from, to, is_split_edge] triples, one per edge on the path, in traversal order (a route
+       * is a path, not a set — order carries meaning, unlike every other variant above).
+       * `is_split_edge` marks an edge incident to the split tile the route was found for. */
+      routes: Record<string, [number, number, boolean][][]>;
     };
 
 export interface IssueDto {

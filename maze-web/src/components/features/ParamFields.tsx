@@ -56,6 +56,9 @@ interface Props {
    * whose check is toggled off (`CheckInstance.disabled`). Values are still shown, just not
    * editable, until the check is re-enabled. */
   disabled?: boolean;
+  /** Owning strategy id, for shared params (e.g. `priority`) whose option explanations read
+   * differently per strategy — see `resolveParamOptionExplanation`'s per-strategy override. */
+  contextId?: string;
 }
 
 const SELECT_HORIZONTAL_CHROME = 4 + 18 + 2; // padding-left + padding-right + border
@@ -78,7 +81,7 @@ function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | u
   return Math.min(desired, Math.max(softCap, hardCap));
 }
 
-export function ParamFields({ params, values, getValue, onChange, getDescription, disabled }: Props) {
+export function ParamFields({ params, values, getValue, onChange, getDescription, disabled, contextId }: Props) {
   const tessellationConfig = useMazeStore((s) => activeTessellationOf(s));
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -295,7 +298,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
             {description && p.kind.type === "enum" && (
               <ul style={styles.optionList}>
                 {p.kind.options.map((opt) => {
-                  const explanation = resolveParamOptionExplanation(p.id, opt);
+                  const explanation = resolveParamOptionExplanation(p.id, opt, contextId);
                   if (!explanation) return null;
                   return (
                     <li key={opt}>

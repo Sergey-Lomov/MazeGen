@@ -111,6 +111,13 @@ pub enum IssuePayloadDto {
     InvalidSplitTile {
         nodes: HashMap<String, Vec<u32>>,
     },
+    /// Keyed by source check id — each inner Vec is one flagged route: an ordered sequence of
+    /// (from, to, is_split_edge) triples, one per edge on the path, in traversal order (a route
+    /// is a path, not a set — order carries meaning, unlike every other variant above). See
+    /// GitHub issue #277.
+    InvalidSplitRoute {
+        routes: HashMap<String, Vec<Vec<(u32, u32, bool)>>>,
+    },
 }
 
 #[derive(Serialize)]

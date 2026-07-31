@@ -27,7 +27,8 @@ export type IssuePayload =
   | { kind: "RegionNeedsShrink"; nodes: Map<string, bigint[][]> }
   | { kind: "InvalidTeleport"; groups: Map<string, [bigint, bigint][][]> }
   | { kind: "InvalidOneWay"; groups: Map<string, [bigint, bigint][][]> }
-  | { kind: "InvalidSplitTile"; nodes: Map<string, bigint[]> };
+  | { kind: "InvalidSplitTile"; nodes: Map<string, bigint[]> }
+  | { kind: "InvalidSplitRoute"; routes: Map<string, [bigint, bigint, boolean][][]> };
 
 /** Reads the `HashMap<String, Vec<Vec<[u32; 2]>>>` wire shape `write_str_keyed_edge_pairs`
  *  produces (`IssuePayload::InvalidLoop`'s `edges`). */
@@ -103,6 +104,38 @@ function readStrKeyedFlatNodeLists(bytes: Uint8Array, offset: number): { value: 
       pos += 4;
     }
     value.set(key, nodes);
+  }
+  return { value, next: pos };
+}
+
+/** Reads the `HashMap<String, Vec<Vec<(u32, u32, bool)>>>` wire shape `write_str_keyed_routes`
+ *  produces (`IssuePayload::InvalidSplitRoute`'s `routes`) — one ordered edge-triple sequence per
+ *  route, order preserved exactly as encoded (a route is a path, not a set, unlike every other
+ *  `readStrKeyed*` helper above). */
+function readStrKeyedRoutes(bytes: Uint8Array, offset: number): { value: Map<string, [bigint, bigint, boolean][][]>; next: number } {
+  const value = new Map<string, [bigint, bigint, boolean][][]>();
+  const entryCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  for (let i = 0; i < entryCount; i++) {
+    const { value: key, next: afterKey } = readStr(bytes, pos);
+    pos = afterKey;
+    const routeCount = readU32(bytes, pos);
+    pos += 4;
+    const routes: [bigint, bigint, boolean][][] = [];
+    for (let r = 0; r < routeCount; r++) {
+      const edgeCount = readU32(bytes, pos);
+      pos += 4;
+      const edges: [bigint, bigint, boolean][] = [];
+      for (let e = 0; e < edgeCount; e++) {
+        const from = BigInt(readU32(bytes, pos));
+        const to = BigInt(readU32(bytes, pos + 4));
+        const isSplit = bytes[pos + 8] !== 0;
+        edges.push([from, to, isSplit]);
+        pos += 9;
+      }
+      routes.push(edges);
+    }
+    value.set(key, routes);
   }
   return { value, next: pos };
 }
@@ -187,6 +220,10 @@ export function readIssuePayload(bytes: Uint8Array, offset: number): { value: Is
   if (tag === 6) {
     const { value: nodes, next } = readStrKeyedFlatNodeLists(bytes, offset + 1);
     return { value: { kind: "InvalidSplitTile", nodes }, next };
+  }
+  if (tag === 7) {
+    const { value: routes, next } = readStrKeyedRoutes(bytes, offset + 1);
+    return { value: { kind: "InvalidSplitRoute", routes }, next };
   }
   throw new Error(`IssuePayload: unknown tag ${tag}`);
 }

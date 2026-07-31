@@ -26,6 +26,7 @@ pub enum IssueKind {
     InvalidSplitNodeConnection,
     InvalidSplitNodeConnectionGroup,
     InvalidSplitNodeGroup,
+    InvalidSplitRoute,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -203,6 +204,18 @@ pub const INVALID_SPLIT_NODE_CONNECTION_GROUP: IssueKind = IssueKind::InvalidSpl
 /// `INVALID_SPLIT_NODE` strategy (`RemoveSplitNodeStrategy`) — never selects a tile's slot-0.
 pub const INVALID_SPLIT_NODE_GROUP: IssueKind = IssueKind::InvalidSplitNodeGroup;
 
+/// A graph path shorter than a configured minimum detour connects two split nodes of the same
+/// split tile — see GitHub issue #277, part of epic #246. Distinct from every other split-related
+/// kind: this one's unit of work is a whole traversal *route* (an ordered sequence of edges), not
+/// a single node, a single connection, or an unordered group — a repair strategy needs the full
+/// path (not just its two endpoint edges) to be able to cut any edge along the way, distinguishing
+/// edges incident to the split tile itself from every other edge on the route. Carries
+/// `InvalidSplitRouteIssue { routes, .. }` — see that type's doc comment. Repaired by
+/// `SplitRouteCutStrategy`, which delegates a chosen split-tile edge's removal to a nested
+/// `INVALID_SPLIT_NODE_CONNECTION` strategy (`RemoveSplitNodeConnectionStrategy`) and cuts any
+/// other chosen edge itself.
+pub const INVALID_SPLIT_ROUTE: IssueKind = IssueKind::InvalidSplitRoute;
+
 impl IssueKind {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -230,6 +243,7 @@ impl IssueKind {
             IssueKind::InvalidSplitNodeConnection => "invalid_split_node_connection",
             IssueKind::InvalidSplitNodeConnectionGroup => "invalid_split_node_connection_group",
             IssueKind::InvalidSplitNodeGroup => "invalid_split_node_group",
+            IssueKind::InvalidSplitRoute => "invalid_split_route",
         }
     }
 
@@ -267,6 +281,7 @@ impl IssueKind {
             "invalid_split_node_connection" => Some(IssueKind::InvalidSplitNodeConnection),
             "invalid_split_node_connection_group" => Some(IssueKind::InvalidSplitNodeConnectionGroup),
             "invalid_split_node_group" => Some(IssueKind::InvalidSplitNodeGroup),
+            "invalid_split_route" => Some(IssueKind::InvalidSplitRoute),
             _ => None,
         }
     }

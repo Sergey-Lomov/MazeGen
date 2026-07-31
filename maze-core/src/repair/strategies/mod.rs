@@ -34,6 +34,7 @@ pub mod remove_split_node;
 pub mod remove_split_node_connection;
 pub mod split_node_connection_group_select;
 pub mod split_node_group_select;
+pub mod split_route_cut;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -83,6 +84,13 @@ pub use split_node_group_select::{
     SELECTION_MOST_CONNECTED as SPLIT_NODE_GROUP_SELECTION_MOST_CONNECTED,
     SELECTION_LEAST_CONNECTED as SPLIT_NODE_GROUP_SELECTION_LEAST_CONNECTED,
     PARAM_SELECTION as SPLIT_NODE_GROUP_PARAM_SELECTION,
+};
+pub use split_route_cut::{
+    SplitRouteCutStrategy,
+    PARAM_EDGE_SCOPE as SPLIT_ROUTE_CUT_PARAM_EDGE_SCOPE,
+    EDGE_SCOPE_SPLIT_ONLY as SPLIT_ROUTE_CUT_EDGE_SCOPE_SPLIT_ONLY,
+    EDGE_SCOPE_OTHER_ONLY as SPLIT_ROUTE_CUT_EDGE_SCOPE_OTHER_ONLY,
+    EDGE_SCOPE_ANY as SPLIT_ROUTE_CUT_EDGE_SCOPE_ANY,
 };
 
 #[cfg(test)]

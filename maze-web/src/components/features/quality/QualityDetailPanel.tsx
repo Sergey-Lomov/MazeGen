@@ -88,6 +88,7 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
         storeValues={strategyParams[strategy.id] ?? {}}
         onCommit={(paramId, value) => setStrategyParam(strategy.id, paramId, value)}
         flushRef={flushRef}
+        contextId={strategy.id}
       >
         {strategy.nestedSlots.length > 0 && (
           // Same visual gap as between two params in `ParamFields` (`gap: 16` when descriptions
@@ -131,6 +132,7 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
         storeValues={rawNested?.params ?? {}}
         onCommit={(paramId, value) => setNestedStrategyParam(selection.ruleId, path, paramId, value)}
         flushRef={flushRef}
+        contextId={node.strategy.id}
       >
         {node.strategy.nestedSlots.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: spacing.sectionGap, marginTop: spacing.groupGap }}>

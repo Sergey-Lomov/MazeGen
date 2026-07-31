@@ -19,9 +19,11 @@ interface Props {
   /** Extra content rendered after the params (e.g. nested-strategy slots) — only a strategy with
    * nested slots passes this; a plain check never has any. */
   children?: React.ReactNode;
+  /** Owning strategy id — see `ParamFields`'s `contextId` doc comment. Absent for a plain check. */
+  contextId?: string;
 }
 
-export function ParamizedDetail({ id, label, description, warning, params, storeValues, onCommit, flushRef, children }: Props) {
+export function ParamizedDetail({ id, label, description, warning, params, storeValues, onCommit, flushRef, children, contextId }: Props) {
   const { values, onChange, flushRef: localFlushRef } = useParamEditor({
     entityId: id,
     params,
@@ -43,7 +45,8 @@ export function ParamizedDetail({ id, label, description, warning, params, store
             params={params}
             values={values}
             onChange={onChange}
-            getDescription={(p) => resolveParamDescription(p.id)}
+            getDescription={(p) => resolveParamDescription(p.id, contextId)}
+            contextId={contextId}
           />
         </>
       )}

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import type { CheckDescriptor, StrategyDescriptor } from "../wasm/types";
-import { checkI18n, strategyI18n, paramI18n, paramOptionI18n, paramOptionExplanationI18n } from "../components/features/qualityI18n";
+import { checkI18n, strategyI18n, paramI18n, paramOptionI18n, paramOptionExplanationI18n, resolveParamDescription, resolveParamOptionExplanation } from "../components/features/qualityI18n";
 import { resolveIssue, DETAIL_LABELS } from "../components/issueRegistry";
 
 // Every check whose maze-core implementation calls `.with_detail(...)` (grep for
@@ -117,6 +117,28 @@ describeIfWasmBuilt("wasm registry vs web i18n consistency", () => {
           expect(paramOptionExplanationI18n[key]().length).toBeGreaterThan(0);
         }
       }
+    }
+  });
+
+  // Regression guard for `resolveParamDescription`/`resolveParamOptionExplanation`'s per-strategy
+  // override registries (`paramDescriptionOverrideI18n`/`paramOptionExplanationOverrideI18n` in
+  // qualityI18n.ts) -- a typo in an override key, or a strategy id rename on the Rust side without
+  // updating the TS override key, would otherwise silently fall through to the generic text with
+  // no test failure. Confirms `split_route_cut` is still a live strategy id (guards the key itself
+  // against drift) and that its override actually overrides, not just falls back to generic.
+  it("split_route_cut's priority param override actually overrides the generic text", () => {
+    expect(strategies.some((s) => s.id === "split_route_cut"), "\"split_route_cut\" is not a registered wasm strategy id").toBe(true);
+
+    const generic = resolveParamDescription("priority");
+    const overridden = resolveParamDescription("priority", "split_route_cut");
+    expect(overridden).toBeDefined();
+    expect(overridden).not.toBe(generic);
+
+    for (const value of ["random", "problematic"]) {
+      const genericExplanation = resolveParamOptionExplanation("priority", value);
+      const overriddenExplanation = resolveParamOptionExplanation("priority", value, "split_route_cut");
+      expect(overriddenExplanation, `missing override explanation for priority.${value}.split_route_cut`).toBeDefined();
+      expect(overriddenExplanation).not.toBe(genericExplanation);
     }
   });
 });

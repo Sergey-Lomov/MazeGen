@@ -1135,6 +1135,27 @@ Handles `INVALID_SPLIT_NODE_GROUP` — see GitHub issue #252, epic #246. For eac
 
 Unlike `SplitNodeConnectionGroupSelectStrategy`'s `protect_original`, slot-0 exclusion here is **not a configurable toggle** — a tile's slot-0 (`Field::nodes_at(point)`'s first entry) is unconditionally excluded from the candidate pool via `element_allowed`, since epic #246's "never remove slot-0" rule is a hard constraint for this strategy's own unit of work (the node itself), not a preference. `element_allowed` also excludes any candidate `remove_node_feasible` rejects for any other reason (preset-locked) — same "a group must never falsely resolve its budget against an unremovable candidate" rationale as `SplitNodeConnectionGroupSelectStrategy`'s own preset-feasibility filter, so a preset-locked split reports `Failed` instead of spinning the repair fixpoint to `RepairLimitReached`.
 
+### SplitRouteCutStrategy
+
+Handles `INVALID_SPLIT_ROUTE` — see GitHub issue #277, epic #246. For each route flagged by `SplitNodeConnectionTraversalDistanceCheck` (`InvalidSplitRouteIssue.routes: Vec<Vec<SplitRouteEdge>>`, `SplitRouteEdge = (EdgeId, bool)`), picks one edge along the route to cut.
+
+**Parameters:**
+
+| id | type | default | description |
+|----|------|---------|-------------|
+| `edge_scope` | Enum(`split_only`/`other_only`/`any`) | `other_only` | Which edges of a flagged route are eligible to be cut. |
+| `priority` | Enum(`random`/`problematic`) | `problematic` | Which eligible edge to cut — the shared `group_select::PARAM_PRIORITY` param. |
+
+`edge_scope` filters a route's own `SplitRouteEdge` list before picking a candidate: `split_only` keeps only edges incident to *this* route's own split tile (`SplitRouteEdge.1 == true` — a sibling route found for a different split tile in the same issue is unaffected by this filter, each route's own flag only ever refers to its own tile), `other_only` (the default) keeps every other edge, `any` keeps the whole route. `other_only` is the default because cutting a route's own split connections changes the split tile's own topology (fewer/weaker connections to the outside world), where cutting some other passage along the way only removes a shortcut unrelated to the split itself — the least invasive fix by default.
+
+`priority` picks among the filtered candidates: `random` uniformly at random; `problematic` (the default) picks the candidate edge shared by the most *other* still-pending routes in the same issue (breaking one such edge is likely to resolve several routes at once), ties broken by ascending `EdgeId` for determinism — mirrors `InvalidLoopScoredStrategy`'s overlap-based scoring.
+
+**No nested strategy.** Every chosen edge, split or not, is cut directly by this strategy via `cmd_remove_edge_with_reverse` — no nested slot, a route's edge (split-incident or not) is a plain graph edge with no split-specific removal semantics to delegate to.
+
+**Shared-edge dedup across routes, same pattern as `InvalidLoopGroupSelectStrategy`.** Routes are processed as a queue (`issue.routes.clone()`, one at a time from the front). After each successful cut, `removed_edge_ids` on the returned commands (plus each removed edge's own reverse direction, resolved off the still-intact graph before mutation — a two-way passage severed by one cut breaks both directions at once) is used to drop every other still-pending route containing that same edge from the queue, rather than offering it a second, redundant cut. This is exactly the "assume a route sharing the cut edge is already fixed by the same cut" rule cycle-breaking strategies use, applied to routes instead of cycles — most relevant here because a single check pass can flag both `a -> b` and `b -> a` as separate routes (GitHub issue #277's own directionality rule), and the two directions often share an edge at their point of divergence.
+
+Reports `Fixed` if at least one route in the batch was actually cut (commands kept even if a later route in the same batch failed — e.g. no eligible candidate under `edge_scope`, or the chosen edge already stale in the graph), `Failed` only if every route failed to produce a command (nothing was fixed at all) — same "a mix of successes and failures within one batch is not itself surfaced beyond at least one worked" contract `InvalidLoopGroupSelectStrategy` uses.
+
 ### OneWayToPassageStrategy
 
 Handles `INVALID_ONE_WAY` — see GitHub issue #198. One of two strategies registered against this kind; a rule picks exactly one. Converts every flagged one-way edge into a full bidirectional passage by adding the missing reverse direction: `MutationCommand::AddBidirectionalEdge { a: edge.from, b: edge.to }` per flagged `EdgeId`, resolved from `maze.graph.edge(id)` (a stale id from a prior command in the same batch is silently skipped via `filter_map`, same revalidate-and-drop contract every strategy relies on — see "Mutation-command contract" above). Completion-aware, like every `AddBidirectionalEdge` use — a no-op for whichever direction already exists, so this never duplicates the flagged edge itself.

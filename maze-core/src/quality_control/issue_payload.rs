@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::ids::NodeId;
 use crate::graph::{Graph, scc::ConnectedComponents};
 use super::issue::Issue;
-use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue, InvalidSplitNodeConnectionGroupIssue};
+use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, SplitRouteEdge};
 
 /// Structural payload data for an `Issue`, resolved against the current `Graph`/`ConnectedComponents`
 /// — one shared source of truth for both `maze-wasm`'s JSON `IssuePayloadDto` (via a thin
@@ -54,6 +54,11 @@ pub enum IssuePayload {
     /// grouping) since the payload has no group/tile structure to preserve — every flagged node
     /// highlights independently. Mirrors `IssuePayloadDto::InvalidSplitTile`.
     InvalidSplitTile { nodes: HashMap<String, Vec<u32>> },
+    /// Keyed by source check id — each inner `Vec` is one flagged route: an ordered sequence of
+    /// `(from, to, is_split_edge)` triples, one per edge on the path, in traversal order.
+    /// `is_split_edge` mirrors `SplitRouteEdge`'s own flag (edge incident to the split tile the
+    /// route was found for). Mirrors `IssuePayloadDto::InvalidSplitRoute`.
+    InvalidSplitRoute { routes: HashMap<String, Vec<Vec<(u32, u32, bool)>>> },
 }
 
 /// Resolves `issue`'s structural payload against `graph`/`scc` — extracted from
@@ -254,6 +259,26 @@ fn resolve_invalid_split_node_payload(invalid: &[NodeId], invalid_sources: &Hash
     if nodes.is_empty() { None } else { Some(IssuePayload::InvalidSplitTile { nodes }) }
 }
 
+/// Resolves every flagged route's edges into `(from, to, is_split_edge)` triples, keyed by the
+/// specific check(s) that flagged *that* route (`invalid_sources`, keyed by the route's own exact
+/// `SplitRouteEdge` sequence — see `InvalidSplitRouteIssue::merge`'s doc comment for why no
+/// canonicalization applies here, unlike every cycle/group payload above).
+fn resolve_invalid_split_route_payload(routes: &[Vec<SplitRouteEdge>], invalid_sources: &HashMap<Vec<SplitRouteEdge>, Vec<String>>, graph: &Graph) -> Option<IssuePayload> {
+    let mut out: HashMap<String, Vec<Vec<(u32, u32, bool)>>> = HashMap::new();
+    for route in routes {
+        let resolved: Vec<(u32, u32, bool)> = route.iter().filter_map(|&(eid, is_split)| {
+            let edge = graph.edge(eid)?;
+            let from = u32::try_from(edge.from).ok()?;
+            let to = u32::try_from(edge.to).ok()?;
+            Some((from, to, is_split))
+        }).collect();
+        for source in invalid_sources.get(route).into_iter().flatten() {
+            out.entry(source.clone()).or_default().push(resolved.clone());
+        }
+    }
+    if out.is_empty() { None } else { Some(IssuePayload::InvalidSplitRoute { routes: out }) }
+}
+
 pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedComponents) -> IssuePayload {
     if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
         if let Some(payload) = resolve_invalid_loop_payload(all, invalid, invalid_sources, graph) {
@@ -339,6 +364,12 @@ pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedCo
 
     if let Some(InvalidSplitNodeConnectionGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitNodeConnectionGroupIssue>() {
         if let Some(payload) = resolve_invalid_one_way_group_payload(groups, invalid_sources, graph) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidSplitRouteIssue { routes, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitRouteIssue>() {
+        if let Some(payload) = resolve_invalid_split_route_payload(routes, invalid_sources, graph) {
             return payload;
         }
     }
@@ -681,5 +712,53 @@ mod tests {
         let payload = resolve_issue_payload(&issue, &graph, &scc);
         let IssuePayload::InvalidOneWay { groups } = payload else { panic!("expected InvalidOneWay, got {payload:?}") };
         assert_eq!(groups["one_way_group_graph_proximity"], vec![vec![[1, 2]]], "the stale edge id must be dropped, not panic, leaving only the resolvable edge");
+    }
+
+    #[test]
+    fn invalid_split_route_issue_with_no_flagged_routes_resolves_to_none() {
+        let (graph, scc) = empty_graph_and_scc();
+        let issue = InvalidSplitRouteIssue::new_from_check("check", vec![]);
+        assert_eq!(resolve_issue_payload(&issue, &graph, &scc), IssuePayload::None);
+    }
+
+    #[test]
+    fn invalid_split_route_issue_resolves_flagged_route_edges_keyed_by_source_check() {
+        use crate::graph::EdgeKind;
+        let mut graph = Graph::new();
+        graph.add_node(1);
+        graph.add_node(2);
+        graph.add_node(3);
+        let e0 = graph.add_edge(1, 2, EdgeKind::Basic);
+        let e1 = graph.add_edge(2, 3, EdgeKind::Basic);
+        let (_, scc) = empty_graph_and_scc();
+
+        let route: Vec<SplitRouteEdge> = vec![(e0, true), (e1, false)];
+        let issue = InvalidSplitRouteIssue::new_from_check("split_node_connection_traversal_distance", vec![route]);
+
+        let payload = resolve_issue_payload(&issue, &graph, &scc);
+        let IssuePayload::InvalidSplitRoute { routes } = payload else { panic!("expected InvalidSplitRoute, got {payload:?}") };
+        assert_eq!(routes.len(), 1);
+        let check_routes = &routes["split_node_connection_traversal_distance"];
+        assert_eq!(check_routes, &vec![vec![(1, 2, true), (2, 3, false)]], "edge order and the is_split_edge flag must be preserved exactly, not sorted or dropped");
+    }
+
+    #[test]
+    fn invalid_split_route_issue_silently_drops_a_stale_edge_id_from_the_middle_of_a_route() {
+        use crate::graph::EdgeKind;
+        let mut graph = Graph::new();
+        graph.add_node(1);
+        graph.add_node(2);
+        graph.add_node(3);
+        let e0 = graph.add_edge(1, 2, EdgeKind::Basic);
+        let e2 = graph.add_edge(2, 3, EdgeKind::Basic);
+        let (_, scc) = empty_graph_and_scc();
+        let stale_id = e2 + 1000;
+
+        let route: Vec<SplitRouteEdge> = vec![(e0, true), (stale_id, false), (e2, true)];
+        let issue = InvalidSplitRouteIssue::new_from_check("check", vec![route]);
+
+        let payload = resolve_issue_payload(&issue, &graph, &scc);
+        let IssuePayload::InvalidSplitRoute { routes } = payload else { panic!("expected InvalidSplitRoute, got {payload:?}") };
+        assert_eq!(routes["check"], vec![vec![(1, 2, true), (2, 3, true)]], "the stale edge id must be dropped, not panic, leaving the two resolvable edges");
     }
 }
