@@ -7,7 +7,7 @@ use crate::generation::PresetState;
 use crate::graph::scc::ConnectedComponents;
 use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig};
+use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::MutationCommand;
 use crate::repair::nested_dispatch::{dispatch_weighted, WeightedCandidate};
 
@@ -29,7 +29,7 @@ const DEFAULT_WEIGHT: f64 = 1.0;
 pub const SLOT_MERGE_TARGET: &str = "merge_target";
 
 static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot { slot_id: SLOT_MERGE_TARGET, kind: REGION_NEEDS_EXPANSION, min: 1, max: None },
+    NestedSlot { slot_id: SLOT_MERGE_TARGET, kind: REGION_NEEDS_EXPANSION, min: 1, max: None, dispatch_kind: NestedDispatchKind::Weighted },
 ];
 
 /// Resolves a nested candidate's selection weight from its `param_overrides`. Never returns a
@@ -268,7 +268,7 @@ mod tests {
         let mut maze = maze_4_singletons();
         let issue = issue_for(vec![0]);
         let mut rng = MazeRng::seed_from_u64(1);
-        static OTHER_SLOT: NestedSlot = NestedSlot { slot_id: "some_other_slot", kind: REGION_NEEDS_EXPANSION, min: 1, max: None };
+        static OTHER_SLOT: NestedSlot = NestedSlot { slot_id: "some_other_slot", kind: REGION_NEEDS_EXPANSION, min: 1, max: None, dispatch_kind: NestedDispatchKind::Weighted };
         let nested = vec![NestedStrategyConfig {
             slot: &OTHER_SLOT,
             strategy: Box::new(ExpandRegionPassageStrategy),

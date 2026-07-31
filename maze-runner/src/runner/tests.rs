@@ -236,7 +236,7 @@ mod nested_strategy_tests {
     mod build_nested_generic_shape_tests {
         use std::collections::HashMap;
         use maze_core::space::{SquareTessellation, Tessellation};
-        use maze_core::repair::{RepairResult, RepairStrategy, StrategyParams, NestedSlot, NestedStrategyConfig};
+        use maze_core::repair::{RepairResult, RepairStrategy, StrategyParams, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
         use maze_core::generation::PresetState;
         use maze_core::quality_control::{ExcessiveSccCountIssue, EXCESSIVE_SCC_COUNT};
         use maze_core::Maze;
@@ -250,7 +250,7 @@ mod nested_strategy_tests {
         // `three_level_nesting_resolves_through_a_real_second_level_strategy` below, which uses
         // this to reach 3 real levels without needing a test-only entry in `build_strategy_erased`.
         struct UnboundedSlotStrategy;
-        static UNBOUNDED_SLOT: &[NestedSlot] = &[NestedSlot { slot_id: "unbounded", kind: EXCESSIVE_SCC_COUNT, min: 0, max: None }];
+        static UNBOUNDED_SLOT: &[NestedSlot] = &[NestedSlot { slot_id: "unbounded", kind: EXCESSIVE_SCC_COUNT, min: 0, max: None, dispatch_kind: NestedDispatchKind::Unordered }];
         impl<T: Tessellation> RepairStrategy<T, ExcessiveSccCountIssue> for UnboundedSlotStrategy {
             fn strategy_id(&self) -> &'static str { "test_unbounded_slot_strategy" }
             fn expected_nested(&self) -> &'static [NestedSlot] { UNBOUNDED_SLOT }

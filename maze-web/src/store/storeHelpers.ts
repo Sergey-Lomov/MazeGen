@@ -63,11 +63,27 @@ export function buildPredefinedConfig(
   return { type: "triangle_hexagon", radius: base?.radius ?? 4, orientation: triOrientation };
 }
 
+// Memoized on its own inputs (last-call cache) — `activeTessellationOf` calls this on every
+// render while `isEditingField` is true (e.g. `ParamFields`' `useMazeStore` selector), so a fresh
+// object per call would fail zustand's reference-equality snapshot check on every render and loop
+// forever ("Maximum update depth exceeded" / "getSnapshot should be cached").
+let freeConfigCacheKey: string | null = null;
+let freeConfigCacheValue: TessellationConfig | null = null;
+
 export function buildFreeConfig(kind: TessellationKind, pts: Set<number>, hexOrientation: HexOrientation, triOrientation: TriOrientation): TessellationConfig {
+  const key = `${kind}|${hexOrientation}|${triOrientation}|${Array.from(pts).sort((a, b) => a - b).join(",")}`;
+  if (freeConfigCacheKey === key && freeConfigCacheValue) return freeConfigCacheValue;
+
   const points = Array.from(pts).map(k => decodePoint(k) as [number, number]);
-  if (kind === "square") return { type: "square_custom", points };
-  if (kind === "hex") return { type: "hex_custom", points, orientation: hexOrientation } as TessellationConfig;
-  return { type: "tri_custom", points, orientation: triOrientation } as TessellationConfig;
+  const config: TessellationConfig = kind === "square"
+    ? { type: "square_custom", points }
+    : kind === "hex"
+      ? ({ type: "hex_custom", points, orientation: hexOrientation } as TessellationConfig)
+      : ({ type: "tri_custom", points, orientation: triOrientation } as TessellationConfig);
+
+  freeConfigCacheKey = key;
+  freeConfigCacheValue = config;
+  return config;
 }
 
 export function buildPreviewConfig(kind: TessellationKind, hexOri: HexOrientation, triOri: TriOrientation): TessellationConfig {

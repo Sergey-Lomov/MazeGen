@@ -213,6 +213,23 @@ Each command is applied via the real `try_*` helper (the single source of truth 
 See GitHub issue #68. A repair strategy can delegate part of its work to other, nested strategies instead of only handling its own issue directly — e.g. a strategy that picks *which* regions need merging, then hands the actual merge off to a strategy that already knows how to merge two regions (`ReduceSccCountStrategy` delegating to `ExpandRegionPassageStrategy`, see "Built-in Strategies" below). The mechanism is general: it also covers a future strategy that owns *several* nested slots (e.g. picking one of N nested strategies at random, or choosing between a "direct passage" and a "teleport" nested strategy depending on region size).
 
 ```rust
+/// How a parent strategy picks which of a slot's several nested candidates to actually run —
+/// purely descriptive metadata for the UI (which controls/labels to show per candidate), never
+/// read by core's own dispatch logic (each dispatcher already has its selection order hard-wired
+/// into the strategy that calls it).
+pub enum NestedDispatchKind {
+    /// No ordering convention — either the slot holds at most one entry (`max: Some(1)`), or
+    /// there's exactly one required fixer with nothing to pick between. Default for every slot
+    /// that isn't `Weighted`/`Priority`.
+    Unordered,
+    /// Candidates are picked weighted-randomly, with retry-on-`Failed` — see `dispatch_weighted`
+    /// below (GitHub issue #90).
+    Weighted,
+    /// Candidates are tried strictly in configured list order, falling through to the next on
+    /// `Failed` — see `dispatch_priority` below (GitHub issue #259).
+    Priority,
+}
+
 /// Describes one nested-strategy slot a parent strategy accepts — what `IssueKind` the
 /// synthetic `Issue` the parent builds for it will carry, and how many strategies may fill
 /// this slot. A strategy with no nested slots (the overwhelming majority) returns `&[]` from
@@ -223,6 +240,9 @@ pub struct NestedSlot {
     pub min: usize,
     /// `None` = no upper bound.
     pub max: Option<usize>,
+    /// A slot's dispatch convention is never left to an implicit default — every `NestedSlot`
+    /// literal sets this explicitly.
+    pub dispatch_kind: NestedDispatchKind,
 }
 
 /// One nested strategy assignment — same shape as a `Rule`'s own strategy binding, minus the
@@ -317,6 +337,47 @@ actual fix is to stop bundling multiple sub-problems into one `Issue` in the fir
 GitHub issues #98–#101 (splitting `InvalidLoops`/`RegionsNeedingExpansion`/`InvalidTeleports`/
 `TeleportProximityPairs` into one `Issue` per element) — not to fragment dispatch inside a
 strategy that receives an already-bundled issue.
+
+### Priority nested dispatch (`dispatch_priority`)
+
+See GitHub issue #259, the priority-fallback companion to `dispatch_weighted` above.
+`maze-core/src/repair/nested_dispatch.rs` provides a second shared helper for a parent strategy
+that wants to pick *which* of several nested strategies filling one slot to actually run, this
+time by a fixed configured order rather than weighted-random — `PriorityRegionMergeStrategy` and
+`PriorityMissingLoopsStrategy` (below) are its users.
+
+```rust
+pub fn dispatch_priority<T: Tessellation>(
+    issue: &dyn Issue,
+    maze: &Maze<T>,
+    rng: &mut dyn RngCore,
+    preset_state: &PresetState,
+    candidates: &[&NestedStrategyConfig<T>],
+) -> (RepairResult, Vec<MutationCommand>);
+```
+
+Same erased-boundary shape as `dispatch_weighted` (`issue: &dyn Issue`, `candidates` borrowed, not
+owned), but `candidates` is a plain slice of references in already-configured order — there is no
+`WeightedCandidate`-style wrapper, since order alone (index 0, then 1, then 2, ...) *is* the
+selection convention. `dispatch_priority` itself carries no notion of priority beyond "try the
+next one in the slice" — the caller's `nested: &[NestedStrategyConfig<T>]` order, filtered down to
+the slot in question, is what actually encodes priority; the web UI's up/down reorder controls on
+a `Priority`-kind slot (`NestedStrategyPanel`) mutate exactly that stored order.
+
+- **Selection**: strictly in the given order, no randomness involved in *which* candidate is tried
+  next (unlike `dispatch_weighted`'s cumulative-weight pick). `rng` is still threaded through to
+  each candidate's own `apply()` — a candidate strategy may itself be randomized — just never
+  consulted by the dispatch loop to choose an order.
+- **Who builds `StrategyParams`**: same as `dispatch_weighted` — `dispatch_priority` itself, via
+  `build_params(strategy.params(), Some(&config.param_overrides))` for whichever candidate it is
+  about to try.
+- **No rollback bookkeeping needed**, **recursion**, and **only `Fixed`/`Failed`** — all three
+  points from `dispatch_weighted`'s doc comment apply here unchanged; see there for the rationale.
+- Empty `candidates` returns `Failed` immediately without touching `rng`, same as
+  `dispatch_weighted`.
+- **No weight resolution, no `"weight"` `param_overrides` convention** — a `Priority`-kind slot has
+  nothing analogous to `WeightedRegionMergeStrategy::resolve_weight`; a candidate's position in the
+  configured `nested` list is its entire selection signal.
 
 ### Rule, Stage, and the unified QualityControlEngine
 
@@ -842,6 +903,44 @@ No configurable parameters of its own — weights live per nested candidate (bel
 - If no candidate fills the slot after filtering: returns `Failed`.
 - Otherwise wraps each filtered candidate in a `WeightedCandidate` (config + resolved weight) and delegates to `dispatch_weighted` with the **original, unmodified** `issue` — one weighted pick decides the merge mechanism for the whole `invalid` batch at once; the chosen nested strategy's own `apply()` is responsible for merging as many regions in the batch as it can (see "Known limitation, not solved here" under "Weighted nested dispatch" above for why this isn't split per-region).
 
+### PriorityRegionMergeStrategy
+
+Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #259, the priority-fallback companion to
+`WeightedRegionMergeStrategy` above. Same role — picks *which* nested region-merge strategy
+actually runs — but selection is by configured order rather than weighted-random: it holds any
+number of nested strategies under one slot and delegates to `dispatch_priority` (see "Priority
+nested dispatch" above), trying them in list order and falling through to the next on `Failed`,
+until one succeeds or every candidate has been tried.
+
+No configurable parameters of its own — no weights to configure either, unlike
+`WeightedRegionMergeStrategy`; a candidate's position in the nested list is its entire selection
+signal.
+
+**Nested slot**: exactly one, `slot_id = "merge_target"` (its own constant, not a reuse of
+`WeightedRegionMergeStrategy::SLOT_MERGE_TARGET` — `slot_id` is part of each strategy's own public
+API per the "Nested strategies" section above, never shared indirectly even when the string value
+happens to coincide), `kind = REGION_NEEDS_EXPANSION`, `min = 1`, `max = None`,
+`dispatch_kind = Priority`.
+
+**One dispatch per region, not per `apply()` call** — unlike `WeightedRegionMergeStrategy`, which
+passes the whole `invalid` batch through to a single `dispatch_weighted` call, this strategy runs
+its own batch loop directly: `issue.invalid` can carry several independent undersized regions, and
+folding the whole batch into one dispatch would let the first-in-priority candidate's success or
+failure govern every region still left in the batch, not just decide the mechanism once per
+region. For each region still pending (processed via `Vec::pop`, skipping any already merged away
+by an earlier region's own merge in the same call), a single-region `RegionNeedsExpansionIssue` is
+synthesized and passed to its own `dispatch_priority` call against the shared candidate list. A
+merged-away neighbor is tracked the same way `WeightedRegionMergeStrategy`/`ExpandRegionPassageStrategy`
+do — via each command's endpoints resolved back to their SCC component index, computed once from a
+single fixed snapshot at the start of `apply()`.
+
+- If `invalid` is empty: returns `Fixed` immediately (idempotency), without touching `rng` or
+  `nested`.
+- Nested entries are filtered to `slot_id == SLOT_MERGE_TARGET` — same defensive runtime posture as
+  `WeightedRegionMergeStrategy`. If no candidate fills the slot after filtering: returns `Failed`.
+- Returns `Fixed` if at least one region in the batch was successfully merged (even if others
+  failed); `Failed` only if every region in the batch failed every candidate.
+
 ### graph::bisect (shared, not a strategy)
 
 `maze-core/src/graph/bisect.rs` — general-purpose helpers for splitting a node set into two
@@ -1352,6 +1451,34 @@ No `allow_lose_connections`/`allow_add_connections` params, unlike `AddSplitStra
 **Building the split tile**: `src` is replaced by a split tile (`MutationCommand::ReplacePointNodes`) built via `split_core::plan_unconstrained_split`/`plan_pattern_split` (pattern chosen via `pick_weighted_pattern` when `config.patterns` is non-empty), with `required: Some(RequiredConnection { neighbor: dst, direction: Passage })` and `excluded: &split_points`. One hard constraint on top of `split_core`'s own required-connection contract: whichever new node ends up carrying the bridge to `dst` must have at least one more edge of its own (a through-node, not a dead end) — drawn from `src`'s other existing connections if any land there, otherwise a brand-new edge to any other free geometric neighbor of `src`.
 
 Returns `Failed` if zero split tiles were added by the time `max_attempts` failed attempts are spent or the pool runs dry (including when no split-eligible candidate exists at all); otherwise `Fixed { score: None }` with every proposed command, even if fewer than `target` were actually added.
+
+### PriorityMissingLoopsStrategy
+
+Handles `MISSING_LOOPS` — see GitHub issue #259, the priority-fallback dispatch mechanism applied
+to the `MissingLoopsRandomStrategy`/`MissingLoopsSplitStrategy` pair. Picks *which* nested
+missing-loops strategy actually runs, trying its nested candidates in configured order
+(`dispatch_priority`, see "Priority nested dispatch" above) — the first candidate is attempted,
+only on `Failed` does it fall through to the next, until one succeeds or the list is exhausted.
+
+Unlike `PriorityRegionMergeStrategy`/`WeightedRegionMergeStrategy`, `MissingLoopsIssue` isn't a
+batch of independently-addressable items — it carries a single scalar `missing: u32` deficit for
+the whole maze, not a per-item list — so there is nothing to split per-item here: the incoming
+issue is passed through to `dispatch_priority` **unchanged**, one dispatch per `apply()` call.
+
+No configurable parameters of its own.
+
+**Nested slot**: exactly one, `slot_id = "loop_seed_target"` (its own constant, deliberately not a
+reuse of any `*GroupSelectStrategy`'s `"fix_target"` — that string already means "exactly one
+required fixer", `max: Some(1)`, a different semantic from this slot's "any number of
+priority-ordered candidates"), `kind = MISSING_LOOPS`, `min = 1`, `max = None`,
+`dispatch_kind = Priority`.
+
+- If `issue.missing == 0`: returns `Fixed` immediately (idempotency), without touching `rng` or
+  `nested`.
+- Nested entries are filtered to `slot_id == SLOT_LOOP_SEED_TARGET` — same defensive runtime
+  posture as `WeightedRegionMergeStrategy`/`PriorityRegionMergeStrategy` toward their own slots. If
+  no candidate fills the slot after filtering: returns `Failed`.
+- Otherwise delegates directly to `dispatch_priority` with the unmodified `issue`.
 
 ## Pipeline
 

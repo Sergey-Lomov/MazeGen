@@ -6,7 +6,7 @@ use crate::quality_control::{OneWayGroupKind, InvalidOneWayGroupIssue, InvalidOn
 use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig};
+use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::MutationCommand;
 use crate::repair::strategies::group_select::{group_select_apply, PARAM_PRIORITY, PRIORITY_PROBLEMATIC, PRIORITY_RANDOM, PRIORITY_OPTIONS};
 use crate::graph::route_protection::is_edge_on_route;
@@ -32,7 +32,7 @@ static PARAMS: &[StrategyParam] = &[
 pub const SLOT_FIX_TARGET: &str = "fix_target";
 
 static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot { slot_id: SLOT_FIX_TARGET, kind: INVALID_ONE_WAY, min: 1, max: Some(1) },
+    NestedSlot { slot_id: SLOT_FIX_TARGET, kind: INVALID_ONE_WAY, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered },
 ];
 
 /// Handles `INVALID_ONE_WAY_GROUP` — see GitHub issue #199, generalized in #200 and #202. Not

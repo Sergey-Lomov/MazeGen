@@ -7,7 +7,7 @@ import type { MazeStore, GenerationState, GenerationActions, QcRuleState, Nested
 import { debugStaleOf, buildResetMazeState } from "../storeHelpers";
 import {
   resolveCheckKind, isTypeAlreadyActive, defaultParamsFor, buildDefaultNestedStrategies,
-  newRule, newStage, appendRuleToStage, updateNestedAt,
+  newRule, newStage, appendRuleToStage, updateNestedAt, moveNestedAt,
 } from "./generationSliceHelpers";
 import { generateWithSeed } from "./generateConfigBuilder";
 
@@ -373,6 +373,13 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   removeNestedStrategy: (ruleId, path) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId
       ? { ...g, nestedStrategies: updateNestedAt(g.nestedStrategies, path, () => []) }
+      : g),
+    debugStale: debugStaleOf(state),
+  })),
+
+  moveNestedStrategy: (ruleId, path, direction) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId
+      ? { ...g, nestedStrategies: moveNestedAt(g.nestedStrategies, path, direction) }
       : g),
     debugStale: debugStaleOf(state),
   })),

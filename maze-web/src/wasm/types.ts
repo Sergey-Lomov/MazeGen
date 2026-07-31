@@ -264,11 +264,17 @@ export interface ParamDescriptor {
 /** Mirrors core's `NestedSlot` — one nested-strategy slot a strategy accepts. `slot_id` is a
  * stable, opaque identifier (part of the strategy's public config API — see
  * `Specs/repair.md`'s nested-strategy pattern), not meant for display. */
+/** Mirrors `maze_core::repair::NestedDispatchKind` — how the parent strategy picks which of a
+ * slot's several nested candidates to run. Drives which controls/labels `NestedStrategyPanel`
+ * renders per candidate (weight vs. priority-rank vs. neither). */
+export type NestedDispatchKind = "unordered" | "weighted" | "priority";
+
 export interface NestedSlotDescriptor {
   slot_id: string;
   kind: string;
   min: number;
   max: number | null;
+  dispatch_kind: NestedDispatchKind;
 }
 
 export interface StrategyDescriptor {

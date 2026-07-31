@@ -322,7 +322,7 @@ describe("mazeStore.generate", () => {
           handles: "region_needs_expansion",
           params: [],
           experimental: false,
-          nested_slots: [{ slot_id: "merge_target", kind: "region_needs_expansion", min: 1, max: null }],
+          nested_slots: [{ slot_id: "merge_target", kind: "region_needs_expansion", min: 1, max: null, dispatch_kind: "weighted" }],
         },
         {
           id: "expand_region_passage",
@@ -1362,7 +1362,7 @@ describe("mazeStore generation misc actions", () => {
           handles: "excessive_scc_count",
           params: [{ id: "merge_priority", label: "Merge priority", kind: { type: "enum", options: ["smallest", "largest", "random"], default: "smallest" } }],
           experimental: false,
-          nested_slots: [{ slot_id: "merge_target", kind: "region_needs_expansion", min: 1, max: 1 }],
+          nested_slots: [{ slot_id: "merge_target", kind: "region_needs_expansion", min: 1, max: 1, dispatch_kind: "unordered" }],
         },
         {
           id: "expand_region_passage",
@@ -1392,7 +1392,7 @@ describe("mazeStore generation misc actions", () => {
       handles: "excessive_scc_count",
       params: [{ id: "merge_priority", label: "Merge priority", kind: { type: "enum" as const, options: ["smallest", "largest"], default: "smallest" } }],
       experimental: false,
-      nested_slots: [{ slot_id: "merge_target", kind: "region_needs_expansion", min: 1, max: 1 }],
+      nested_slots: [{ slot_id: "merge_target", kind: "region_needs_expansion", min: 1, max: 1, dispatch_kind: "unordered" as const }],
     },
     {
       id: "expand_region_passage",
@@ -1525,6 +1525,91 @@ describe("mazeStore generation misc actions", () => {
     useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
     useMazeStore.getState().removeNestedStrategy("g1", [{ slotId: "merge_target", index: 1 }]);
     expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.nestedStrategies).toEqual(rule.nestedStrategies);
+  });
+
+  it("moveNestedStrategy 'up' swaps the entry with its immediate previous sibling", () => {
+    const rule = {
+      id: "g1", name: "Rule 1", kind: "region_needs_expansion",
+      checks: [], nextLocalCheckId: 0,
+      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false,
+      nestedStrategies: [
+        { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
+        { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
+      ],
+    };
+    useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
+    useMazeStore.getState().moveNestedStrategy("g1", [{ slotId: "merge_target", index: 1 }], "up");
+    const updated = useMazeStore.getState().rules.find((g) => g.id === "g1");
+    expect(updated?.nestedStrategies).toEqual([
+      { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
+      { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
+    ]);
+  });
+
+  it("moveNestedStrategy 'down' swaps the entry with its immediate next sibling", () => {
+    const rule = {
+      id: "g1", name: "Rule 1", kind: "region_needs_expansion",
+      checks: [], nextLocalCheckId: 0,
+      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false,
+      nestedStrategies: [
+        { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
+        { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
+      ],
+    };
+    useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
+    useMazeStore.getState().moveNestedStrategy("g1", [{ slotId: "merge_target", index: 0 }], "down");
+    const updated = useMazeStore.getState().rules.find((g) => g.id === "g1");
+    expect(updated?.nestedStrategies).toEqual([
+      { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
+      { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
+    ]);
+  });
+
+  it("moveNestedStrategy is a no-op when there's no sibling in that direction", () => {
+    const rule = {
+      id: "g1", name: "Rule 1", kind: "region_needs_expansion",
+      checks: [], nextLocalCheckId: 0,
+      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false,
+      nestedStrategies: [
+        { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
+        { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
+      ],
+    };
+    useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
+    useMazeStore.getState().moveNestedStrategy("g1", [{ slotId: "merge_target", index: 0 }], "up");
+    useMazeStore.getState().moveNestedStrategy("g1", [{ slotId: "merge_target", index: 1 }], "down");
+    expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.nestedStrategies).toEqual(rule.nestedStrategies);
+  });
+
+  it("moveNestedStrategy with a stale path is a no-op", () => {
+    const rule = ruleWithReduceSccCount();
+    useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
+    useMazeStore.getState().moveNestedStrategy("g1", [{ slotId: "no_such_slot", index: 0 }], "up");
+    expect(useMazeStore.getState().rules.find((g) => g.id === "g1")?.nestedStrategies).toEqual(rule.nestedStrategies);
+  });
+
+  it("moveNestedStrategy at a nested depth swaps siblings within the addressed parent's own list", () => {
+    const rule = {
+      id: "g1", name: "Rule 1", kind: "region_needs_expansion",
+      checks: [], nextLocalCheckId: 0,
+      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false,
+      nestedStrategies: [
+        {
+          slotId: "merge_target", strategyId: "expand_region_passage", params: {},
+          nested: [
+            { slotId: "inner_slot", strategyId: "a", params: {}, nested: [] },
+            { slotId: "inner_slot", strategyId: "b", params: {}, nested: [] },
+          ],
+        },
+      ],
+    };
+    useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
+    useMazeStore.getState().moveNestedStrategy("g1", [{ slotId: "merge_target", index: 0 }, { slotId: "inner_slot", index: 0 }], "down");
+    const updated = useMazeStore.getState().rules.find((g) => g.id === "g1");
+    expect(updated?.nestedStrategies[0].nested).toEqual([
+      { slotId: "inner_slot", strategyId: "b", params: {}, nested: [] },
+      { slotId: "inner_slot", strategyId: "a", params: {}, nested: [] },
+    ]);
   });
 
   it("setEdgeBasedParam updates param when method is custom_edge_based", () => {

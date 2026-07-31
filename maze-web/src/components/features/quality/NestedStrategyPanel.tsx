@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X } from "lucide-react";
+import { X, ChevronUp, ChevronDown } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useMazeStore } from "../../../store/mazeStore";
 import { useParamEditor } from "../useParamEditor";
@@ -76,7 +76,12 @@ export function resolveWeight(raw: string | undefined): number {
 export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, selection, onSelect }: Props) {
   const addNestedStrategy = useMazeStore((s) => s.addNestedStrategy);
   const atCapacity = slotDesc.max !== null && entries.length >= slotDesc.max;
-  const showWeight = slotDesc.max === null || slotDesc.max > 1;
+  // A weight/rank row only makes sense once more than one candidate can coexist in the slot — a
+  // single-entry slot has nothing else to be weighed/ranked against, so both stay hidden then,
+  // regardless of `dispatchKind` (mirrors the pre-existing `showWeight` gating).
+  const multiCandidate = slotDesc.max === null || slotDesc.max > 1;
+  const showWeight = multiCandidate && slotDesc.dispatchKind === "weighted";
+  const showPriority = multiCandidate && slotDesc.dispatchKind === "priority";
 
   // Every sibling's raw weight, read here (not per-row) so a change to any one entry's weight
   // re-renders every row's percentage in the same render pass — a per-row subscription would
@@ -87,6 +92,7 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
   // array/object from the selector on every call (e.g. via `entriesForSlot(...)` directly) would
   // fail zustand's reference-equality check on every render and loop forever.
   const rawWeights = useMazeStore(useShallow((s) => {
+    if (!showWeight) return [];
     const rule = s.rules.find((r) => r.id === ruleId);
     const parentList = parentPath.length === 0 ? rule?.nestedStrategies : findRawNested(rule, parentPath)?.nested;
     return entriesForSlot(parentList ?? [], slotDesc.slotId).map((n) => n.params[NESTED_STRATEGY_WEIGHT_PARAM_ID]);
@@ -112,11 +118,12 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
           path={[...path.slice(0, -1), { slotId: slotDesc.slotId, index }]}
           slotDesc={slotDesc}
           node={entry}
-          // The weight row only makes sense once more than one entry can coexist in this slot —
-          // a single-entry slot's "weight" would have no other candidate to be weighed against,
-          // so it stays hidden rather than showing a number/percentage nobody can act on.
           showWeight={showWeight}
           percent={showWeight && totalWeight > 0 ? Math.floor((weights[index] / totalWeight) * 100) : null}
+          showPriority={showPriority}
+          rank={index + 1}
+          canMoveUp={showPriority && index > 0}
+          canMoveDown={showPriority && index < entries.length - 1}
           removable={entries.length > 1 || slotDesc.min === 0}
           depth={depth}
           selection={selection}
@@ -147,6 +154,13 @@ interface EntryRowProps {
   /** Rounded-down percentage share of `node`'s weight among its slot siblings, or `null` when
    * `showWeight` is false (single-candidate slot — no percentage to show either). */
   percent: number | null;
+  /** Whether this slot dispatches by configured order (`dispatchKind: "priority"`) — shows a
+   * "Priority N" label plus up/down reorder buttons instead of a weight input. */
+  showPriority: boolean;
+  /** 1-based position among siblings — only meaningful when `showPriority`. */
+  rank: number;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   removable: boolean;
   depth: number;
   selection: QualitySelection;
@@ -154,15 +168,18 @@ interface EntryRowProps {
 }
 
 // Two indentation levels per entry, `depth` being the first:
-//   depth      — "Weight" label + input + "N%" + remove button, and (same level, no extra
-//                indent — a nested strategy stands in for its parent's own param row) the
-//                "Merge strategy" label + name + edit (✎) button, hover/click-to-select target
-//                spanning this row and everything below it in the same block
+//   depth      — "Weight"/"Priority" label + input/rank + "N%"/up-down buttons + remove button,
+//                and (same level, no extra indent — a nested strategy stands in for its parent's
+//                own param row) the "Merge strategy" label + name + edit (✎) button, hover/
+//                click-to-select target spanning this row and everything below it in the same
+//                block
 //   depth + 1  — the nested strategy's own params / further-nested slots
-function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, percent, removable, depth, selection, onSelect }: EntryRowProps) {
+function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, percent, showPriority, rank, canMoveUp, canMoveDown, removable, depth, selection, onSelect }: EntryRowProps) {
   const setNestedStrategyParam = useMazeStore((s) => s.setNestedStrategyParam);
   const removeNestedStrategy = useMazeStore((s) => s.removeNestedStrategy);
+  const moveNestedStrategy = useMazeStore((s) => s.moveNestedStrategy);
   const rawNested = useMazeStore((s) => findRawNested(s.rules.find((r) => r.id === ruleId), path));
+  const showRankRow = showWeight || showPriority;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const selected = selection?.type === "nested_strategy" && selection.ruleId === ruleId && pathsEqual(selection.path, path);
@@ -207,11 +224,44 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
           )}
         </Inline>
       )}
-      {/* A thin vertical line down the left, from just below the weight row to the bottom of
-          this entry's whole block (name + params + further-nested slots), ties the weight
-          visually to exactly what it's weighing — only drawn when the weight row itself is
-          shown. Separate from the weight row itself so the line starts under it, not beside it. */}
-      <div style={{ ...styles.entryStack, ...(showWeight ? styles.entryStackWithWeight : {}) }}>
+      {showPriority && (
+        <Inline gap="rowGap" justify="flex-start" style={{ borderRadius: 3 }}>
+          <label style={styles.weightLabel}>{m["quality.nested_strategy.priority_label"]({ rank })}</label>
+          <button
+            className="hoverable"
+            style={styles.reorderBtn}
+            title={m["quality.nested_strategy.move_up"]()}
+            disabled={!canMoveUp}
+            onClick={() => moveNestedStrategy(ruleId, path, "up")}
+          >
+            <ChevronUp size={16} color={canMoveUp ? ui.text.tertiary : ui.text.disabled} />
+          </button>
+          <button
+            className="hoverable"
+            style={styles.reorderBtn}
+            title={m["quality.nested_strategy.move_down"]()}
+            disabled={!canMoveDown}
+            onClick={() => moveNestedStrategy(ruleId, path, "down")}
+          >
+            <ChevronDown size={16} color={canMoveDown ? ui.text.tertiary : ui.text.disabled} />
+          </button>
+          {removable && (
+            <button
+              className="hoverable"
+              style={styles.removeBtn}
+              title={m["quality.nested_strategy.remove"]()}
+              onClick={() => removeNestedStrategy(ruleId, path)}
+            >
+              <X size={18} color={ui.text.tertiary} />
+            </button>
+          )}
+        </Inline>
+      )}
+      {/* A thin vertical line down the left, from just below the weight/priority row to the
+          bottom of this entry's whole block (name + params + further-nested slots), ties that
+          row visually to exactly what it governs — only drawn when that row itself is shown.
+          Separate from the row itself so the line starts under it, not beside it. */}
+      <div style={{ ...styles.entryStack, ...(showRankRow ? styles.entryStackWithWeight : {}) }}>
         {/* Hover/selected highlight and the click-to-select target span the whole strategy
             block — name row, its params, and any further-nested slots — not just the name row
             itself, so the highlighted area matches what clicking anywhere in it actually
@@ -236,7 +286,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
             </span>
             {node.strategy.experimental && <WarningIcon />}
             <button className="hoverable" style={styles.editBtn} title={m["quality.edit_strategy"]()} onClick={(e) => { e.stopPropagation(); flushRef.current(); setDialogOpen(true); }}>✎</button>
-            {!showWeight && removable && (
+            {!showRankRow && removable && (
               <button
                 className="hoverable"
                 style={styles.removeBtn}
@@ -374,6 +424,17 @@ const styles = {
   },
   // Mirrors `qualityCanvasStyles.removeBtn` exactly — same remove affordance as "Remove rule".
   removeBtn: {
+    background: "none",
+    border: "none",
+    cursor: "default",
+    padding: 0,
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+  },
+  // Up/down priority-reorder buttons — same shape as `removeBtn`, disabled (not hidden) at
+  // either end of the sibling list so the row's width stays stable as rank changes.
+  reorderBtn: {
     background: "none",
     border: "none",
     cursor: "default",

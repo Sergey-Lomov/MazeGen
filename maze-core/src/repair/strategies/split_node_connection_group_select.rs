@@ -9,7 +9,7 @@ use crate::quality_control::{SplitNodeConnectionGroupKind, InvalidSplitNodeConne
 use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig};
+use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::MutationCommand;
 use crate::repair::strategies::group_select::group_select_apply;
 
@@ -47,7 +47,7 @@ static PARAMS: &[StrategyParam] = &[
 pub const SLOT_FIX_TARGET: &str = "fix_target";
 
 static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot { slot_id: SLOT_FIX_TARGET, kind: INVALID_SPLIT_NODE_CONNECTION, min: 1, max: Some(1) },
+    NestedSlot { slot_id: SLOT_FIX_TARGET, kind: INVALID_SPLIT_NODE_CONNECTION, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered },
 ];
 
 /// Handles `INVALID_SPLIT_NODE_CONNECTION_GROUP` — see GitHub issue #251, epic #246. For each

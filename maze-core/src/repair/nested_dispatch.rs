@@ -90,6 +90,43 @@ pub fn dispatch_weighted<T: Tessellation>(
     (RepairResult::Failed, vec![])
 }
 
+/// Tries `candidates` in the order they're already given, until one succeeds (`Fixed`) or every
+/// candidate has been tried and failed — GitHub issue #259, the priority-fallback companion to
+/// `dispatch_weighted` above. Unlike weighted selection, order here carries the caller's entire
+/// selection convention: `dispatch_priority` itself has no notion of priority beyond "try index 0
+/// first, then 1, then 2, ...". Empty `candidates` returns `Failed` immediately without touching
+/// `rng`.
+///
+/// **Owns `StrategyParams` construction**, **no rollback bookkeeping needed**, **recursion**, and
+/// **only `Fixed`/`Failed`** — all four points from `dispatch_weighted`'s doc comment apply here
+/// unchanged; see there for the rationale. `rng` is still threaded through to each candidate's own
+/// `apply()` (a candidate strategy may itself be randomized), just never consulted by the dispatch
+/// loop itself to pick an order.
+pub fn dispatch_priority<T: Tessellation>(
+    issue: &dyn Issue,
+    maze: &Maze<T>,
+    rng: &mut dyn RngCore,
+    preset_state: &PresetState,
+    candidates: &[&NestedStrategyConfig<T>],
+) -> (RepairResult, Vec<MutationCommand>) {
+    for config in candidates {
+        let params = build_params(config.strategy.params(), Some(&config.param_overrides));
+        let (result, commands) = config.strategy.apply(
+            issue, maze, rng, &params, preset_state, &config.nested,
+        );
+        match result {
+            RepairResult::Fixed { .. } => {
+                return (result, commands);
+            }
+            RepairResult::Failed => {
+                // commands discarded — never applied against the real Maze in the first place.
+            }
+        }
+    }
+
+    (RepairResult::Failed, vec![])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,11 +137,11 @@ mod tests {
     use crate::ids::{IdGenerator, NodeId};
     use crate::space::{SquareTessellation, square_rect, Field};
     use crate::quality_control::{MissingEndpointsIssue, MISSING_ENDPOINTS};
-    use crate::repair::strategy::{RepairStrategy, ErasedRepairStrategy, NestedSlot};
+    use crate::repair::strategy::{RepairStrategy, ErasedRepairStrategy, NestedSlot, NestedDispatchKind};
     use crate::repair::params::StrategyParams;
     use std::collections::HashMap;
 
-    static DUMMY_SLOT: NestedSlot = NestedSlot { slot_id: "dummy", kind: MISSING_ENDPOINTS, min: 0, max: None };
+    static DUMMY_SLOT: NestedSlot = NestedSlot { slot_id: "dummy", kind: MISSING_ENDPOINTS, min: 0, max: None, dispatch_kind: NestedDispatchKind::Unordered };
 
     /// Proposes a command deterministically (add one fixed edge) then always fails — used to
     /// verify a failed candidate's commands are discarded, never applied.
@@ -283,5 +320,117 @@ mod tests {
         let (result, _commands) = dispatch_weighted(&issue(), &maze, &mut rng, &PresetState::empty(), &candidates);
         assert!(matches!(result, RepairResult::Fixed { .. }));
         assert_eq!(seen_len.get(), Some(1), "dispatch_weighted must pass config.nested through, not &[]");
+    }
+
+    mod dispatch_priority_tests {
+        use super::*;
+
+        #[test]
+        fn empty_candidates_returns_failed_without_touching_rng() {
+            let maze = maze_2_nodes();
+            let mut rng_a = MazeRng::seed_from_u64(1);
+            let mut rng_b = MazeRng::seed_from_u64(1);
+
+            let (result, commands) = dispatch_priority::<SquareTessellation>(
+                &issue(), &maze, &mut rng_a, &PresetState::empty(), &[],
+            );
+            assert!(matches!(result, RepairResult::Failed));
+            assert!(commands.is_empty());
+            assert_eq!(rng_a.next_u64(), rng_b.next_u64());
+        }
+
+        #[test]
+        fn all_failed_candidates_exhaust_pool_and_return_failed() {
+            let maze = maze_2_nodes();
+            let mut rng = MazeRng::seed_from_u64(1);
+            let configs = vec![
+                no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
+                no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
+                no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
+            ];
+            let candidates: Vec<&NestedStrategyConfig<SquareTessellation>> = configs.iter().collect();
+            let (result, commands) = dispatch_priority(&issue(), &maze, &mut rng, &PresetState::empty(), &candidates);
+            assert!(matches!(result, RepairResult::Failed));
+            assert!(commands.is_empty(), "every failed attempt's commands must be discarded");
+        }
+
+        #[test]
+        fn tries_candidates_in_configured_list_order() {
+            let maze = maze_2_nodes();
+            let mut rng = MazeRng::seed_from_u64(42);
+            struct Tracking { name: &'static str, order: std::rc::Rc<std::cell::RefCell<Vec<&'static str>>> }
+            impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for Tracking {
+                fn strategy_id(&self) -> &'static str { self.name }
+                fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<T>, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[NestedStrategyConfig<T>]) -> (RepairResult, Vec<MutationCommand>) {
+                    self.order.borrow_mut().push(self.name);
+                    (RepairResult::Failed, vec![])
+                }
+            }
+            crate::impl_erased_repair_strategy!(Tracking, MissingEndpointsIssue);
+            let order = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            let configs = vec![
+                no_params_config::<SquareTessellation>(Box::new(Tracking { name: "a", order: order.clone() })),
+                no_params_config::<SquareTessellation>(Box::new(Tracking { name: "b", order: order.clone() })),
+                no_params_config::<SquareTessellation>(Box::new(Tracking { name: "c", order: order.clone() })),
+            ];
+            let candidates: Vec<&NestedStrategyConfig<SquareTessellation>> = configs.iter().collect();
+            dispatch_priority(&issue(), &maze, &mut rng, &PresetState::empty(), &candidates);
+            assert_eq!(order.borrow().clone(), vec!["a", "b", "c"], "dispatch_priority must try candidates strictly in configured order");
+        }
+
+        #[test]
+        fn failed_then_fixed_candidate_ends_fixed_with_no_trace_of_failed_commands() {
+            let maze = maze_2_nodes();
+            let mut rng = MazeRng::seed_from_u64(7);
+            let configs = vec![
+                no_params_config::<SquareTessellation>(Box::new(AlwaysFailedStrategy)),
+                no_params_config::<SquareTessellation>(Box::new(AlwaysFixedStrategy)),
+            ];
+            let candidates: Vec<&NestedStrategyConfig<SquareTessellation>> = configs.iter().collect();
+            let (result, commands) = dispatch_priority(&issue(), &maze, &mut rng, &PresetState::empty(), &candidates);
+            assert!(matches!(result, RepairResult::Fixed { .. }));
+            assert!(commands.is_empty(), "AlwaysFailedStrategy's proposed command must not leak into the final Fixed result");
+        }
+
+        #[test]
+        fn a_later_candidate_is_never_tried_once_an_earlier_one_succeeds() {
+            let maze = maze_2_nodes();
+            let mut rng = MazeRng::seed_from_u64(3);
+            let tried = std::rc::Rc::new(Cell::new(false));
+            struct RecordsTried { tried: std::rc::Rc<Cell<bool>> }
+            impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for RecordsTried {
+                fn strategy_id(&self) -> &'static str { "test_records_tried" }
+                fn apply(&self, _: &MissingEndpointsIssue, _: &Maze<T>, _: &mut dyn RngCore, _: &StrategyParams, _: &PresetState, _: &[NestedStrategyConfig<T>]) -> (RepairResult, Vec<MutationCommand>) {
+                    self.tried.set(true);
+                    (RepairResult::Fixed { score: None }, vec![])
+                }
+            }
+            crate::impl_erased_repair_strategy!(RecordsTried, MissingEndpointsIssue);
+            let configs = vec![
+                no_params_config::<SquareTessellation>(Box::new(AlwaysFixedStrategy)),
+                no_params_config::<SquareTessellation>(Box::new(RecordsTried { tried: tried.clone() })),
+            ];
+            let candidates: Vec<&NestedStrategyConfig<SquareTessellation>> = configs.iter().collect();
+            dispatch_priority(&issue(), &maze, &mut rng, &PresetState::empty(), &candidates);
+            assert!(!tried.get(), "second candidate must not be tried once the first succeeds");
+        }
+
+        #[test]
+        fn nested_config_is_passed_through_to_the_candidate() {
+            let maze = maze_2_nodes();
+            let mut rng = MazeRng::seed_from_u64(9);
+            let seen_len = std::rc::Rc::new(Cell::new(None));
+            let inner_nested = vec![no_params_config::<SquareTessellation>(Box::new(AlwaysFixedStrategy))];
+            let config = NestedStrategyConfig {
+                slot: &DUMMY_SLOT,
+                strategy: Box::new(RecordsReceivedNestedStrategy { seen_len: seen_len.clone() }),
+                param_overrides: HashMap::new(),
+                nested: inner_nested,
+            };
+            let candidates = vec![&config];
+            let (result, _commands) = dispatch_priority(&issue(), &maze, &mut rng, &PresetState::empty(), &candidates);
+            assert!(matches!(result, RepairResult::Fixed { .. }));
+            assert_eq!(seen_len.get(), Some(1), "dispatch_priority must pass config.nested through, not &[]");
+        }
     }
 }

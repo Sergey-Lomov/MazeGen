@@ -373,6 +373,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.missing_loops_split.label"] as MessageFn,
     description: m["strategy.missing_loops_split.description"] as MessageFn,
   },
+  priority_missing_loops: {
+    label: m["strategy.priority_missing_loops.label"] as MessageFn,
+    description: m["strategy.priority_missing_loops.description"] as MessageFn,
+  },
   expand_region_passage: {
     label: m["strategy.expand_region_passage.label"] as MessageFn,
     description: m["strategy.expand_region_passage.description"] as MessageFn,
@@ -404,6 +408,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   weighted_region_merge: {
     label: m["strategy.weighted_region_merge.label"] as MessageFn,
     description: m["strategy.weighted_region_merge.description"] as MessageFn,
+  },
+  priority_region_merge: {
+    label: m["strategy.priority_region_merge.label"] as MessageFn,
+    description: m["strategy.priority_region_merge.description"] as MessageFn,
   },
   one_way_to_passage: {
     label: m["strategy.one_way_to_passage.label"] as MessageFn,
@@ -812,6 +820,9 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
 export const nestedSlotI18n: Record<string, { description: MessageFn }> = {
   merge_target: {
     description: m["quality.nested_slot.merge_target.description"] as MessageFn,
+  },
+  loop_seed_target: {
+    description: m["quality.nested_slot.loop_seed_target.description"] as MessageFn,
   },
 };
 

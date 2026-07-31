@@ -634,6 +634,12 @@ export interface GenerationActions {
    * — every sibling entry sharing this `slotId` with a higher `index` shifts down by one, since
    * `index` is a list position, not a stable id (see `PathSegment`). */
   removeNestedStrategy: (ruleId: string, path: PathSegment[]) => void;
+  /** Swaps the entry at `path` with its immediate sibling in `direction` — siblings share
+   * `path`'s last segment's `slotId`, addressed by list position (`index`), same addressing
+   * `PathSegment` uses everywhere else. Only meaningful for a `Priority`-dispatch slot (order IS
+   * the priority rank there), but not restricted to one — a no-op if there's no sibling in that
+   * direction (already first/last). */
+  moveNestedStrategy: (ruleId: string, path: PathSegment[], direction: "up" | "down") => void;
   toggleStrategyDisabled: (ruleId: string) => void;
   toggleRuleDisabled: (ruleId: string) => void;
   renameRule: (ruleId: string, name: string) => void;

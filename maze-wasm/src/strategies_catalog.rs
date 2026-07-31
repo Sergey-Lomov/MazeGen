@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
     quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy},
 };
 use crate::checks_catalog::{ParamDescriptor, ParamKindDto};
 
@@ -22,12 +22,31 @@ pub struct StrategyDescriptor {
     pub nested_slots: Vec<NestedSlotDto>,
 }
 
+/// Mirrors `maze_core::repair::NestedDispatchKind` — see its doc comment for what each variant
+/// means and why the UI needs it (which controls/labels to render per nested candidate).
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NestedDispatchKindDto {
+    Unordered,
+    Weighted,
+    Priority,
+}
+
+fn dispatch_kind_dto(k: maze_core::repair::NestedDispatchKind) -> NestedDispatchKindDto {
+    match k {
+        maze_core::repair::NestedDispatchKind::Unordered => NestedDispatchKindDto::Unordered,
+        maze_core::repair::NestedDispatchKind::Weighted => NestedDispatchKindDto::Weighted,
+        maze_core::repair::NestedDispatchKind::Priority => NestedDispatchKindDto::Priority,
+    }
+}
+
 #[derive(Serialize)]
 pub struct NestedSlotDto {
     pub slot_id: &'static str,
     pub kind: &'static str,
     pub min: usize,
     pub max: Option<usize>,
+    pub dispatch_kind: NestedDispatchKindDto,
 }
 
 fn nested_slots_dto(slots: &[maze_core::repair::NestedSlot]) -> Vec<NestedSlotDto> {
@@ -36,6 +55,7 @@ fn nested_slots_dto(slots: &[maze_core::repair::NestedSlot]) -> Vec<NestedSlotDt
         kind: s.kind.as_str(),
         min: s.min,
         max: s.max,
+        dispatch_kind: dispatch_kind_dto(s.dispatch_kind),
     }).collect()
 }
 
@@ -133,6 +153,13 @@ pub fn available_strategies() -> JsValue {
             nested_slots: vec![],
         },
         StrategyDescriptor {
+            id: "priority_missing_loops",
+            handles: MISSING_LOOPS.as_str(),
+            params: strategy_params_dto(<PriorityMissingLoopsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::params(&PriorityMissingLoopsStrategy)),
+            experimental: <PriorityMissingLoopsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::is_experimental(&PriorityMissingLoopsStrategy),
+            nested_slots: nested_slots_dto(<PriorityMissingLoopsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::expected_nested(&PriorityMissingLoopsStrategy)),
+        },
+        StrategyDescriptor {
             id: "expand_region_passage",
             handles: REGION_NEEDS_EXPANSION.as_str(),
             params: strategy_params_dto(<ExpandRegionPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&ExpandRegionPassageStrategy)),
@@ -208,6 +235,13 @@ pub fn available_strategies() -> JsValue {
             params: strategy_params_dto(<WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&WeightedRegionMergeStrategy)),
             experimental: <WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::is_experimental(&WeightedRegionMergeStrategy),
             nested_slots: nested_slots_dto(<WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::expected_nested(&WeightedRegionMergeStrategy)),
+        },
+        StrategyDescriptor {
+            id: "priority_region_merge",
+            handles: REGION_NEEDS_EXPANSION.as_str(),
+            params: strategy_params_dto(<PriorityRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&PriorityRegionMergeStrategy)),
+            experimental: <PriorityRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::is_experimental(&PriorityRegionMergeStrategy),
+            nested_slots: nested_slots_dto(<PriorityRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::expected_nested(&PriorityRegionMergeStrategy)),
         },
         StrategyDescriptor {
             id: "missing_one_ways_from_passage",

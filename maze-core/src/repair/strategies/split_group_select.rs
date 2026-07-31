@@ -7,7 +7,7 @@ use crate::quality_control::{SplitGroupKind, InvalidSplitTileGroupIssue, Invalid
 use crate::generation::PresetState;
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig};
+use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::MutationCommand;
 use crate::repair::strategies::group_select::{group_select_apply, PARAM_PRIORITY, PRIORITY_PROBLEMATIC, PRIORITY_RANDOM};
 
@@ -45,7 +45,7 @@ static PARAMS: &[crate::repair::params::StrategyParam] = &[
 pub const SLOT_FIX_TARGET: &str = "fix_target";
 
 static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot { slot_id: SLOT_FIX_TARGET, kind: INVALID_SPLIT_TILE, min: 1, max: Some(1) },
+    NestedSlot { slot_id: SLOT_FIX_TARGET, kind: INVALID_SPLIT_TILE, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered },
 ];
 
 /// Handles `INVALID_SPLIT_TILE_GROUP` — see GitHub issue #249, epic #246. Not tied to any one

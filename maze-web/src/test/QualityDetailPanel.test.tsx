@@ -67,7 +67,7 @@ describe("QualityDetailPanel", () => {
     const nestedStrategy: StrategyVM = { id: "expand_region_passage", label: "expand_region_passage", handles: "k2", params: [], experimental: false, nestedSlots: [] };
     const topLevel: StrategyVM = {
       id: "s1", label: "Strategy One", handles: "i1", params: [], experimental: false,
-      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: null }],
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: null, dispatchKind: "priority" }],
     };
     const vm = makeVm({
       strategySlots: [{
@@ -94,7 +94,7 @@ describe("QualityDetailPanel", () => {
     const nestedStrategy: StrategyVM = { id: "n1", label: "Nested One", handles: "k2", params: [], experimental: false, nestedSlots: [] };
     const topLevel: StrategyVM = {
       id: "s1", label: "Strategy One", handles: "i1", params: [], experimental: false,
-      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1 }],
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1, dispatchKind: "unordered" }],
     };
     const vm = makeVm({
       strategySlots: [{
@@ -114,7 +114,7 @@ describe("QualityDetailPanel", () => {
     };
     const topLevel: StrategyVM = {
       id: "s1", label: "Strategy One", handles: "i1", params: [], experimental: false,
-      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1 }],
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1, dispatchKind: "unordered" }],
     };
     const vm = makeVm({
       strategySlots: [{

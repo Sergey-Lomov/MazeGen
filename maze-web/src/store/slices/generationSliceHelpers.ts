@@ -149,3 +149,34 @@ export function updateNestedAt(
   }
   return list.map((n) => n === target ? { ...n, nested: updateNestedAt(n.nested, rest, transform) } : n);
 }
+
+// Swaps the entry addressed by `path` with its immediate sibling in `direction`, within the
+// sibling list that owns it (same `slotId`, addressed by `index` — see `PathSegment`). Unlike
+// `updateNestedAt` (which replaces one target entry via `transform`, at any depth), this mutates
+// the *parent* list's own ordering, so the walk stops one level higher than the target itself. A
+// no-op (returns `list` unchanged) if `path` is stale or the target has no sibling in `direction`.
+export function moveNestedAt(
+  list: NestedStrategyState[],
+  path: PathSegment[],
+  direction: "up" | "down",
+): NestedStrategyState[] {
+  const [{ slotId, index }, ...rest] = path;
+  if (rest.length === 0) {
+    const siblings = entriesForSlot(list, slotId);
+    const otherIndex = direction === "up" ? index - 1 : index + 1;
+    const target = siblings[index];
+    const other = siblings[otherIndex];
+    if (!target || !other) return list; // no sibling in that direction — no-op.
+    // Swap by identity within the full (mixed-slot) `list`, preserving every other entry's
+    // position — `entriesForSlot`'s own order is a view, not the source of truth for `list`.
+    const targetPos = list.indexOf(target);
+    const otherPos = list.indexOf(other);
+    const next = [...list];
+    next[targetPos] = other;
+    next[otherPos] = target;
+    return next;
+  }
+  const target = entriesForSlot(list, slotId)[index];
+  if (!target) return list;
+  return list.map((n) => n === target ? { ...n, nested: moveNestedAt(n.nested, rest, direction) } : n);
+}

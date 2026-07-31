@@ -5,7 +5,7 @@ use crate::quality_control::{ExcessiveSccCountIssue, RegionNeedsExpansionIssue, 
 use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams, build_params};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig};
+use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::MutationCommand;
 
 pub const PARAM_MERGE_PRIORITY: &str = "merge_priority";
@@ -30,7 +30,7 @@ static PARAMS: &[StrategyParam] = &[
 pub const SLOT_MERGE_TARGET: &str = "merge_target";
 
 static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot { slot_id: SLOT_MERGE_TARGET, kind: REGION_NEEDS_EXPANSION, min: 1, max: Some(1) },
+    NestedSlot { slot_id: SLOT_MERGE_TARGET, kind: REGION_NEEDS_EXPANSION, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered },
 ];
 
 /// Picks which of `sizes.len()` components to merge away, by `mode` (`smallest`/`largest`/
@@ -436,7 +436,7 @@ mod tests {
         let mut maze = maze_4_singletons();
         let issue = issue_for(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        static OTHER_SLOT: NestedSlot = NestedSlot { slot_id: "some_other_slot", kind: REGION_NEEDS_EXPANSION, min: 1, max: Some(1) };
+        static OTHER_SLOT: NestedSlot = NestedSlot { slot_id: "some_other_slot", kind: REGION_NEEDS_EXPANSION, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered };
         let nested = vec![NestedStrategyConfig {
             slot: &OTHER_SLOT,
             strategy: Box::new(ExpandRegionPassageStrategy),

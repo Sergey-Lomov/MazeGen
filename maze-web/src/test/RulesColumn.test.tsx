@@ -161,7 +161,7 @@ describe("RulesColumn", () => {
     const nestedStrategy: StrategyVM = { id: "expand_region_passage", label: "expand_region_passage", handles: "k2", params: [], experimental: false, nestedSlots: [] };
     const strategyWithSlot: StrategyVM = {
       id: "s1", label: "Strategy One", handles: "k1", params: [], experimental: false,
-      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1 }],
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1, dispatchKind: "unordered" }],
     };
     const slots: StrategySlotVM[] = [{
       ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: strategyWithSlot,
@@ -178,7 +178,7 @@ describe("RulesColumn", () => {
     const nestedStrategy: StrategyVM = { id: "expand_region_passage", label: "expand_region_passage", handles: "k2", params: [], experimental: false, nestedSlots: [] };
     const strategyWithSlot: StrategyVM = {
       id: "weighted_region_merge", label: "Strategy One", handles: "k1", params: [], experimental: false,
-      nestedSlots: [{ slotId: "merge_target", kind: "k2", min: 1, max: null }],
+      nestedSlots: [{ slotId: "merge_target", kind: "k2", min: 1, max: null, dispatchKind: "weighted" }],
     };
     const slots: StrategySlotVM[] = [{
       ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: strategyWithSlot,
@@ -190,6 +190,66 @@ describe("RulesColumn", () => {
     expect(onSelect).toHaveBeenCalledWith({ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "merge_target", index: 0 }] });
   });
 
+  it("a priority slot shows each entry's rank instead of a weight input, and clicking the up arrow reorders", () => {
+    const first: StrategyVM = { id: "missing_loops_random", label: "missing_loops_random", handles: "k2", params: [], experimental: false, nestedSlots: [] };
+    const second: StrategyVM = { id: "missing_loops_split", label: "missing_loops_split", handles: "k2", params: [], experimental: false, nestedSlots: [] };
+    const topLevel: StrategyVM = {
+      id: "priority_missing_loops", label: "Priority-fallback loop seeding", handles: "k1", params: [], experimental: false,
+      nestedSlots: [{ slotId: "loop_seed_target", kind: "k2", min: 1, max: null, dispatchKind: "priority" }],
+    };
+    const slots: StrategySlotVM[] = [{
+      ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy: topLevel,
+      disabled: false, ruleDisabled: false, producedBy: [checkA],
+      nestedStrategies: [
+        { slotId: "loop_seed_target", strategy: first, params: [], nested: [] },
+        { slotId: "loop_seed_target", strategy: second, params: [], nested: [] },
+      ],
+    }];
+    // The rendered slots above are a plain VM prop (not derived from the store), but
+    // moveNestedStrategy itself acts on the real store — seed a matching "g1" rule there too, or
+    // the click below would be a silent no-op against the untouched defaultRules() fixture.
+    useMazeStore.setState({
+      rules: [{
+        id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 0,
+        strategyId: "priority_missing_loops", disabled: false, ruleDisabled: false,
+        nestedStrategies: [
+          { slotId: "loop_seed_target", strategyId: "missing_loops_random", params: {}, nested: [] },
+          { slotId: "loop_seed_target", strategyId: "missing_loops_split", params: {}, nested: [] },
+        ],
+      }],
+    });
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
+
+    // Rank labels, not weight input — "Priority 1"/"Priority 2", no "Weight" label at all.
+    expect(screen.getByText("Priority 1")).toBeInTheDocument();
+    expect(screen.getByText("Priority 2")).toBeInTheDocument();
+    expect(screen.queryByText("Weight")).not.toBeInTheDocument();
+
+    // The first entry's "up" arrow must be disabled (already top rank); the second's "down"
+    // arrow must likewise be disabled (already lowest rank).
+    const upButtons = screen.getAllByTitle("Move up (higher priority)");
+    const downButtons = screen.getAllByTitle("Move down (lower priority)");
+    expect(upButtons[0]).toBeDisabled();
+    expect(upButtons[1]).not.toBeDisabled();
+    expect(downButtons[0]).not.toBeDisabled();
+    expect(downButtons[1]).toBeDisabled();
+
+    // The first entry's "down" arrow reorders it below the second.
+    fireEvent.click(downButtons[0]);
+    expect(useMazeStore.getState().rules.find((r) => r.id === "g1")?.nestedStrategies).toEqual([
+      { slotId: "loop_seed_target", strategyId: "missing_loops_split", params: {}, nested: [] },
+      { slotId: "loop_seed_target", strategyId: "missing_loops_random", params: {}, nested: [] },
+    ]);
+
+    // The (now second) entry's "up" arrow reorders it back above the first.
+    const upButtonsAfter = screen.getAllByTitle("Move up (higher priority)");
+    fireEvent.click(upButtonsAfter[1]);
+    expect(useMazeStore.getState().rules.find((r) => r.id === "g1")?.nestedStrategies).toEqual([
+      { slotId: "loop_seed_target", strategyId: "missing_loops_random", params: {}, nested: [] },
+      { slotId: "loop_seed_target", strategyId: "missing_loops_split", params: {}, nested: [] },
+    ]);
+  });
+
   it("swapping a nested strategy at the same path shows the new strategy's own default param value, not a stale one", () => {
     const strategyA: StrategyVM = { id: "expand_region_passage", label: "expand_region_passage", handles: "k2", experimental: false, nestedSlots: [], params: [] };
     const strategyB: StrategyVM = {
@@ -198,7 +258,7 @@ describe("RulesColumn", () => {
     };
     const topLevel: StrategyVM = {
       id: "s1", label: "Strategy One", handles: "k1", params: [], experimental: false,
-      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1 }],
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1, dispatchKind: "unordered" }],
     };
     function slotsWith(nested: StrategyVM): StrategySlotVM[] {
       return [{

@@ -247,7 +247,7 @@ mod tests {
     use crate::space::{SquareTessellation, square_rect};
     use crate::quality_control::issue::{IssueKind, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP};
     use crate::quality_control::{InvalidOneWayIssue, InvalidGroupIssue, InvalidGroupIssueKind};
-    use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig};
+    use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 
     struct TestKind;
     impl InvalidGroupIssueKind for TestKind {
@@ -258,7 +258,7 @@ mod tests {
     }
     type TestIssue = InvalidGroupIssue<TestKind>;
 
-    static TEST_SLOT: NestedSlot = NestedSlot { slot_id: "test_fix_target", kind: INVALID_ONE_WAY, min: 1, max: Some(1) };
+    static TEST_SLOT: NestedSlot = NestedSlot { slot_id: "test_fix_target", kind: INVALID_ONE_WAY, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered };
 
     fn empty_maze() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();

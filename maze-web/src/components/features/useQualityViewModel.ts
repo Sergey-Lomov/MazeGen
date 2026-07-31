@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { ParamDescriptor, StrategyDescriptor } from "../../wasm/types";
+import type { ParamDescriptor, StrategyDescriptor, NestedDispatchKind } from "../../wasm/types";
 import { MAX_NESTED_STRATEGY_DEPTH, type NestedStrategyState } from "../../store/storeTypes";
 import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveStrategyLabel, resolveParamLabel } from "./qualityI18n";
 
@@ -11,6 +11,7 @@ export interface NestedSlotVM {
   kind: string;
   min: number;
   max: number | null;
+  dispatchKind: NestedDispatchKind;
 }
 
 export interface StrategyVM {
@@ -126,7 +127,7 @@ export function useQualityViewModel(): QualityViewModel {
         handles: d.handles,
         params: localizeParams(d.params),
         experimental: d.experimental,
-        nestedSlots: d.nested_slots.map((s) => ({ slotId: s.slot_id, kind: s.kind, min: s.min, max: s.max })),
+        nestedSlots: d.nested_slots.map((s) => ({ slotId: s.slot_id, kind: s.kind, min: s.min, max: s.max, dispatchKind: s.dispatch_kind })),
       };
     }
 

@@ -7,7 +7,7 @@ use crate::quality_control::{InvalidLoopIssue, InvalidLoopGroupIssue, InvalidLoo
 use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
-use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig};
+use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::{MutationCommand, removed_edge_ids};
 
 pub const PARAM_SELECTION_MODE: &str = "selection_mode";
@@ -47,7 +47,7 @@ static PARAMS: &[StrategyParam] = &[
 pub const SLOT_CUT_TARGET: &str = "cut_target";
 
 static NESTED_SLOTS: &[NestedSlot] = &[
-    NestedSlot { slot_id: SLOT_CUT_TARGET, kind: INVALID_LOOP, min: 1, max: Some(1) },
+    NestedSlot { slot_id: SLOT_CUT_TARGET, kind: INVALID_LOOP, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered },
 ];
 
 /// Handles `INVALID_LOOP_GROUP` (see GitHub issue #183) by picking a *sample* of the flagged
@@ -440,7 +440,7 @@ mod tests {
         let (mut maze, triangle, square) = maze_with_two_disjoint_loops();
         let issue = group_issue(vec![triangle, square]);
         let mut rng = MazeRng::seed_from_u64(1);
-        static OTHER_SLOT: NestedSlot = NestedSlot { slot_id: "some_other_slot", kind: INVALID_LOOP, min: 1, max: Some(1) };
+        static OTHER_SLOT: NestedSlot = NestedSlot { slot_id: "some_other_slot", kind: INVALID_LOOP, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered };
         let nested = vec![NestedStrategyConfig {
             slot: &OTHER_SLOT,
             strategy: Box::new(InvalidLoopRandomStrategy),

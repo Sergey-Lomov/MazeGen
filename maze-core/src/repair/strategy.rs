@@ -32,13 +32,40 @@ use super::command::MutationCommand;
 /// nested strategy of a completely different issue type, e.g. `ReduceSccCountStrategy` handling
 /// `EXCESSIVE_SCC_COUNT` delegating to a `REGION_NEEDS_EXPANSION` nested strategy) — see
 /// `ErasedRepairStrategy` below.
+/// How a parent strategy picks which of a slot's several nested candidates to actually run —
+/// purely descriptive metadata for the UI (which controls/labels to show per candidate), never
+/// read by core's own dispatch logic (each dispatcher — `dispatch_weighted`/`dispatch_priority` —
+/// already has its selection order hard-wired into the strategy that calls it). Extend this enum,
+/// not an id allowlist, whenever a new dispatch-order convention ships alongside a new shared
+/// `nested_dispatch.rs` helper.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NestedDispatchKind {
+    /// No ordering convention among a slot's candidates — either the slot holds at most one
+    /// entry (`max: Some(1)`), or (as with a `*GroupSelectStrategy`'s own `fix_target`) there's
+    /// exactly one required fixer with nothing to pick between. Default for every existing slot
+    /// that isn't `Weighted`/`Priority`.
+    Unordered,
+    /// Candidates are picked weighted-randomly, with retry-on-`Failed` — see `dispatch_weighted`
+    /// (GitHub issue #90). UI shows each candidate's configured weight and its resulting share.
+    Weighted,
+    /// Candidates are tried strictly in configured list order, falling through to the next on
+    /// `Failed` — see `dispatch_priority` (GitHub issue #259). UI shows each candidate's rank and
+    /// lets the user reorder the list.
+    Priority,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NestedSlot {
     pub slot_id: &'static str,
     pub kind: IssueKind,
     pub min: usize,
-    /// `None` = no upper bound (e.g. a future "pick one of N nested at random" strategy).
+    /// `None` = no upper bound (e.g. a "pick one of N nested" strategy — `Weighted`/`Priority`).
     pub max: Option<usize>,
+    /// See `NestedDispatchKind`'s doc comment. Default `Unordered` via each slot literal simply
+    /// omitting this field is not possible for a `const`/`static` struct literal in current Rust,
+    /// so every `NestedSlot` literal must set this explicitly — a compile error otherwise, which
+    /// is the point: a slot's dispatch convention is never left to an implicit default.
+    pub dispatch_kind: NestedDispatchKind,
 }
 
 /// One nested strategy assignment — same shape as a `RepairRuleConfig`'s own strategy binding,
