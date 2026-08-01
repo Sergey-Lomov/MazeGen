@@ -3,9 +3,9 @@ use rand::RngCore;
 use crate::Maze;
 use crate::ids::{EdgeId, NodeId};
 use crate::space::Tessellation;
-use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids, density_per_100};
+use crate::graph::cycles::{find_fundamental_cycles, resolve_to_edge_ids, density_per_100};
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
+use crate::quality_control::{Issue, InvalidLoopGroupIssue, InvalidLoopGroupRequirement, CycleKind};
 use crate::quality_control::issue_kinds::canonical_cycle_key;
 
 pub const MAX_LOOP_DENSITY_DEFAULT: u32 = 30;
@@ -19,6 +19,7 @@ pub const MAX_LOOP_DENSITY_DEFAULT: u32 = 30;
 pub struct MaxLoopDensityCheck {
     pub instance_id: String,
     pub max_density: u32,
+    pub cycle_kind: CycleKind,
 }
 
 impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopDensityCheck {
@@ -33,8 +34,9 @@ impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopDensityCheck {
         }
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
-        // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
-        let Some(cycles) = find_deduped_simple_cycles(nav) else { return };
+        let cycles: Vec<Vec<usize>> = find_fundamental_cycles(nav).into_iter()
+            .filter(|cycle| self.cycle_kind.matches(nav, cycle))
+            .collect();
         if cycles.is_empty() {
             return;
         }
@@ -98,7 +100,7 @@ mod tests {
     #[test]
     fn fires_and_flags_every_loop_when_density_exceeds_max() {
         let maze = maze_with_two_disjoint_triangles();
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30 };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);
@@ -114,7 +116,7 @@ mod tests {
     #[test]
     fn silent_when_density_at_or_below_max() {
         let maze = maze_with_two_disjoint_triangles();
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 60 };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 60, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert!(issues.is_empty(), "60% density should clear a threshold of 60");
@@ -136,7 +138,7 @@ mod tests {
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
         let maze = Maze::new(field, g);
 
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 37 };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 37, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1, "37.5% rounds to 38, which exceeds max_density 37");
@@ -160,7 +162,7 @@ mod tests {
         g.add_edge(nodes[4], nodes[2], EdgeKind::Basic);
         let maze = Maze::new(field, g);
 
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30 };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);
@@ -177,37 +179,10 @@ mod tests {
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0 };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert!(issues.is_empty());
     }
 
-    #[test]
-    fn silent_when_cycle_enumeration_overflows() {
-        const SIDE: i32 = 6;
-        let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
-        let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        use crate::space::SquarePoint;
-        for y in 0..SIDE {
-            for x in 0..SIDE {
-                let here = field.node_at(SquarePoint { x, y }).unwrap();
-                if x + 1 < SIDE {
-                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
-                    g.add_bidirectional_edge(here, right, EdgeKind::Basic);
-                }
-                if y + 1 < SIDE {
-                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
-                    g.add_bidirectional_edge(here, up, EdgeKind::Basic);
-                }
-            }
-        }
-        let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0 };
-        let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
-        assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
-    }
 }

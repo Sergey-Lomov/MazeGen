@@ -18,8 +18,8 @@ describe("resolveIssue", () => {
     expect(resolveIssue("invalid_loop").severity).toBe("warning");
   });
 
-  it("returns critical severity for cycle_analysis_overflowed", () => {
-    expect(resolveIssue("cycle_analysis_overflowed").severity).toBe("critical");
+  it("returns critical severity for repair_limit_reached", () => {
+    expect(resolveIssue("repair_limit_reached").severity).toBe("critical");
   });
 
   it("returns warning severity for excessive_scc_count", () => {
@@ -36,7 +36,7 @@ describe("resolveIssue", () => {
       "unreachable_finish",
       "missing_loops",
       "invalid_loop",
-      "cycle_analysis_overflowed",
+      "repair_limit_reached",
       "excessive_scc_count",
       "region_needs_expansion",
     ];

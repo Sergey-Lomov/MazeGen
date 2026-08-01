@@ -80,10 +80,7 @@ fn endpoints_of(edge: TeleportProximityEdge, from: crate::ids::NodeId, to: crate
 /// teleport's own_edge endpoint is queried once per teleport it's scanned against, so without
 /// caching the same source would be re-run once per candidate). Cost is O(distinct own endpoints
 /// × nav-graph Dijkstra) — linear in teleport count (at most 2 endpoints per teleport with
-/// `EntryOrExit`, so bounded by 2 × teleport count), unlike the cycle-enumeration checks
-/// (`find_all_simple_cycles`), whose cost can grow exponentially in graph size and therefore need
-/// `MAX_SIMPLE_CYCLES`/`TooManyCycles` to cap runaway work. No equivalent cap is needed here since
-/// growth stays linear regardless of maze topology.
+/// `EntryOrExit`, so bounded by 2 × teleport count).
 ///
 /// Every Dijkstra pass excludes `Teleport`-edge hops from the traversal entirely (GitHub issue
 /// #190) — this check measures *pedestrian* topological proximity between teleport endpoints, not

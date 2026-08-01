@@ -286,12 +286,8 @@ export function AnalyticsFeature() {
               <StatRow label={m["analytics.graph_nodes"]()} count={graphAnalytics.node_count} />
               <StatRow label={m["analytics.graph_edges"]()} count={graphAnalytics.edge_count} />
               <StatRow label={m["analytics.graph_components"]()} count={graphAnalytics.component_count} />
-              {!graphAnalytics.cycle_analysis_overflowed && (
-                <>
-                  <StatRow label={m["analytics.graph_cycle_count"]()} count={graphAnalytics.cycle_count} />
-                  <StatRow label={m["analytics.graph_cycle_regions"]()} count={graphAnalytics.cycle_region_count} />
-                </>
-              )}
+              <StatRow label={m["analytics.graph_cycle_count"]()} count={graphAnalytics.cycle_count} />
+              <StatRow label={m["analytics.graph_cycle_regions"]()} count={graphAnalytics.cycle_region_count} />
             </div>
           )}
         </>

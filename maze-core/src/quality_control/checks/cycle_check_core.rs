@@ -3,7 +3,7 @@ use crate::ids::EdgeId;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::nav::NavGraph;
-use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
+use crate::graph::cycles::{find_fundamental_cycles, resolve_to_edge_ids};
 use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
 use crate::quality_control::issue_kinds::canonical_cycle_key;
 
@@ -12,18 +12,17 @@ use crate::quality_control::issue_kinds::canonical_cycle_key;
 /// `LoopDistanceFromFinishCheck`, `ExternalEscapeDiversityCheck`) — see GitHub issue #107. Each
 /// check owns only its predicate (what makes a cycle invalid) and its detail key/value.
 ///
-/// Builds the nav graph, enumerates simple cycles, restricts them to `cycle_kind` (GitHub issue
-/// #217 — `CycleKind::Any` reproduces the pre-#217 behavior of considering every cycle), and
-/// applies `invalid` to each of the surviving cycles — silently skipping (returning `None`) if
-/// enumeration overflows (see `CycleSearchResult::TooManyCycles`, issue #22) or no cycle is
-/// flagged.
+/// Builds the nav graph, enumerates the fundamental cycle basis (`find_fundamental_cycles`, see
+/// GitHub issue #244), restricts it to `cycle_kind` (GitHub issue #217 — `CycleKind::Any`
+/// reproduces the pre-#217 behavior of considering every cycle), and applies `invalid` to each
+/// of the surviving cycles — returns `None` if no cycle is flagged.
 pub fn find_invalid_cycles<T: Tessellation>(
     maze: &Maze<T>,
     cycle_kind: CycleKind,
     invalid: impl Fn(&NavGraph, &[usize]) -> bool,
 ) -> Option<(NavGraph, Vec<Vec<usize>>, Vec<usize>)> {
     let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-    let cycles = find_deduped_simple_cycles(&nav)?;
+    let cycles = find_fundamental_cycles(&nav);
 
     let flagged: Vec<usize> = cycles.iter().enumerate()
         .filter(|(_, cycle)| cycle_kind.matches(&nav, cycle) && invalid(&nav, cycle))

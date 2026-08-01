@@ -27,7 +27,6 @@ impl<T: Tessellation> Check<T, InvalidLoopIssue> for LoopLengthCheck {
     fn check_type_id(&self) -> &'static str { "loop_length" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore, requirement: InvalidLoopRequirement) {
-        // Silently skip on overflow (see `CycleSearchResult::TooManyCycles`) — issue #22.
         let Some((nav, cycles, flagged)) = find_invalid_cycles(maze, self.cycle_kind, |nav, cycle| {
             self.comparison.compare(tile_length(nav, cycle), self.length)
         }) else { return };
@@ -42,7 +41,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{Field, SquareTessellation, square_rect};
 
     const TEST_ID: &str = "loop_length";
 
@@ -142,36 +141,6 @@ mod tests {
         let mut issues2 = Vec::new();
         non_matching.repair_check(&maze, &mut issues2, &mut rng, InvalidLoopRequirement::all());
         assert!(issues2.is_empty());
-    }
-
-    #[test]
-    fn silent_when_cycle_enumeration_overflows() {
-        // Same 6x6 fully-bidirectional grid as the cycles.rs regression test for issue #22
-        // (2,444,782 simple cycles — far past MAX_SIMPLE_CYCLES).
-        const SIDE: i32 = 6;
-        let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
-        let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        for y in 0..SIDE {
-            for x in 0..SIDE {
-                let here = field.node_at(SquarePoint { x, y }).unwrap();
-                if x + 1 < SIDE {
-                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
-                    g.add_bidirectional_edge(here, right, EdgeKind::Basic);
-                }
-                if y + 1 < SIDE {
-                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
-                    g.add_bidirectional_edge(here, up, EdgeKind::Basic);
-                }
-            }
-        }
-        let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = LoopLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
-        let mut issues = Vec::new();
-        let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
-        assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 
     #[test]

@@ -58,19 +58,19 @@ describe("computeAnalyticsCard", () => {
     expect(card.subtitle).toBeUndefined();
   });
 
-  it("returns critical when cycle analysis overflowed, even with warnings present", () => {
-    const card = computeAnalyticsCard(true, ["missing_endpoints", "cycle_analysis_overflowed"]);
+  it("returns critical when repair limit reached, even with warnings present", () => {
+    const card = computeAnalyticsCard(true, ["missing_endpoints", "repair_limit_reached"]);
     expect(card.status).toBe("critical");
   });
 
   it("critical card still has a subtitle with the total issue count", () => {
-    const card = computeAnalyticsCard(true, ["missing_endpoints", "cycle_analysis_overflowed"]);
+    const card = computeAnalyticsCard(true, ["missing_endpoints", "repair_limit_reached"]);
     expect(card.subtitle).toBeDefined();
   });
 
   it("comment is the title of the critical issue, not the warning", () => {
-    const card = computeAnalyticsCard(true, ["missing_endpoints", "cycle_analysis_overflowed"]);
-    expect(card.comment).toBe(resolveIssue("cycle_analysis_overflowed").label);
+    const card = computeAnalyticsCard(true, ["missing_endpoints", "repair_limit_reached"]);
+    expect(card.comment).toBe(resolveIssue("repair_limit_reached").label);
   });
 });
 

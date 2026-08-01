@@ -96,7 +96,7 @@ export const mockSnapshot = {
   issues: [],
   nav_nodes: [],
   nav_edges: [],
-  graph_analytics: { node_count: 0, edge_count: 0, component_count: 0, cycle_count: 0, cycle_region_count: 0, node_component: {}, pure_cycle_node_ids: [], pure_cycle_edge_pairs: [], cycle_analysis_overflowed: false, region_classes: {} },
+  graph_analytics: { node_count: 0, edge_count: 0, component_count: 0, cycle_count: 0, cycle_region_count: 0, node_component: {}, pure_cycle_node_ids: [], pure_cycle_edge_pairs: [], region_classes: {} },
   split_analytics: { tile_count: 0, node_count: 0, groups: [] },
   node_stats: { dead_ends: 2, straight: 0, turns: 0, junctions: [], teleport_entries: 0 },
   edge_stats: { bidirectional: 0, one_way_passages: 1, walls: 0 },

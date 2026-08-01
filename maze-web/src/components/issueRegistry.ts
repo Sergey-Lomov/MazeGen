@@ -14,7 +14,6 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   missing_loops: () => ({ label: m["issue.missing_loops.label"](), description: m["issue.missing_loops.description"](), severity: "warning" }),
   invalid_loop: () => ({ label: m["issue.invalid_loop.label"](), description: m["issue.invalid_loop.description"](), severity: "warning" }),
   invalid_loop_group: () => ({ label: m["issue.invalid_loop_group.label"](), description: m["issue.invalid_loop_group.description"](), severity: "warning" }),
-  cycle_analysis_overflowed: () => ({ label: m["issue.cycle_analysis_overflowed.label"](), description: m["issue.cycle_analysis_overflowed.description"](), severity: "critical" }),
   repair_limit_reached: () => ({ label: m["issue.repair_limit_reached.label"](), description: m["issue.repair_limit_reached.description"](), severity: "critical" }),
   excessive_scc_count: () => ({ label: m["issue.excessive_scc_count.label"](), description: m["issue.excessive_scc_count.description"](), severity: "warning" }),
   region_needs_expansion: () => ({ label: m["issue.region_needs_expansion.label"](), description: m["issue.region_needs_expansion.description"](), severity: "warning" }),

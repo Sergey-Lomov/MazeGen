@@ -625,8 +625,6 @@
   "issue.invalid_loop_group.description": "Checks loops as a group and flags excess ones (e.g. when the combined coverage density across all loops exceeds the configured threshold).",
   "issue.invalid_loop_group.max_loop_density_label": "Excess loop (density above {max_density} per 100 cells)",
   "issue.invalid_loop_group.max_loops_count_label": "Excess loop (count above {max_loops_count})",
-  "issue.cycle_analysis_overflowed.label": "Cycle analysis overflowed",
-  "issue.cycle_analysis_overflowed.description": "Too many cycles to analyze - cycle metrics unavailable for this maze.",
   "issue.repair_limit_reached.label": "Repair loop stopped early",
   "issue.repair_limit_reached.description": "The quality-control repair loop was cut short by a configured limit before all issues could be resolved. Some issues below may remain unfixed because of this.",
   "issue.repair_limit_reached.max_iterations_label": "Repair loop stopped: max iterations reached",

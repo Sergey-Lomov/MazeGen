@@ -365,14 +365,16 @@ pub(crate) fn build_invalid_loop_group_check<T: Tessellation>(instance: &CheckIn
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.clamp(0, 100) as u32)
                 .unwrap_or(MAX_LOOP_DENSITY_DEFAULT);
-            Some(Box::new(MaxLoopDensityCheck { instance_id, max_density }))
+            let cycle_kind = parse_cycle_kind(instance.params.get("cycle_kind"));
+            Some(Box::new(MaxLoopDensityCheck { instance_id, max_density, cycle_kind }))
         }
         "max_loops_count" => {
             let max_loops_count = instance.params.get("max_loops_count")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(MAX_LOOPS_COUNT_DEFAULT);
-            Some(Box::new(MaxLoopsCountCheck { instance_id, max_loops_count }))
+            let cycle_kind = parse_cycle_kind(instance.params.get("cycle_kind"));
+            Some(Box::new(MaxLoopsCountCheck { instance_id, max_loops_count, cycle_kind }))
         }
         _ => None,
     }

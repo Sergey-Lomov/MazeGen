@@ -14,10 +14,10 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const setHoveredIssueLoopEdges = useMazeStore((s) => s.setHoveredIssueLoopEdges);
   const setHoveredIssueRegionGroups = useMazeStore((s) => s.setHoveredIssueRegionGroups);
   const { description, severity } = resolveIssue(issue.kind);
-  // No source check (e.g. `cycle_analysis_overflowed`, `repair_limit_reached` — neither is a
-  // toggleable `Check<T>`) still checks `details` under the issue's own kind string — the only
-  // way an issue without a check id can vary its label (see `repair_limit_reached`'s `limit`
-  // detail, keyed this way in `build_analytics_snapshot`).
+  // No source check (e.g. `repair_limit_reached` — not a toggleable `Check<T>`) still checks
+  // `details` under the issue's own kind string — the only way an issue without a check id can
+  // vary its label (see `repair_limit_reached`'s `limit` detail, keyed this way in
+  // `build_analytics_snapshot`).
   const detailsKey = sourceCheck ?? issue.kind;
   const details = issue.details[detailsKey];
   // No source check -> fall back to the issue's own kind string as the DETAIL_LABELS key (e.g.
@@ -119,7 +119,7 @@ export function IssuesBlock({ issues }: { issues: IssueDto[] }) {
   // One bubble per contributing check, not per issue -- a merged `invalid_loop` issue can carry
   // both `min_loop_length` and `max_loop_length` at once, and each reads as a distinct, specific
   // message (see `resolveIssueSourceLabel`). An issue with no source check (e.g.
-  // `cycle_analysis_overflowed`, not a toggleable check) renders as a single generic bubble.
+  // `repair_limit_reached`, not a toggleable check) renders as a single generic bubble.
   const bubbles = issues.flatMap((issue, i) =>
     issue.source_checks.length > 0
       ? issue.source_checks.map((sourceCheck) => (

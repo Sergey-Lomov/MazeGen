@@ -53,6 +53,7 @@ Use Grep/Glob/Explore only if:
   ```
 - To find all diagnostic logs: search for `// DIAG`
 - Remove all `// DIAG` logs before committing
+- **When fixing a bug whose root cause isn't obvious from reading the code**: don't guess or go on a long exploratory deep-dive first. Add `// DIAG` logs at the suspected boundaries (state updates, render triggers, effect deps, etc.), ask the user to reproduce, and read the actual log output before proposing a fix. Reserve pure code-reading investigation for bugs where the cause is already clear from the diff/call chain.
 
 ## Specs
 

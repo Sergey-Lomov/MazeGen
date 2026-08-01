@@ -6,7 +6,7 @@ use maze_core::random::MazeRng;
 use maze_core::{
     space::Tessellation,
     quality_control::{
-        QualityControlEngine, Issue, CycleAnalysisOverflowedIssue,
+        QualityControlEngine, Issue,
         RepairLimitReachedIssue, IssuePayload, resolve_issue_payload,
     },
     compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
@@ -56,14 +56,6 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     } else {
         vec![]
     };
-    // Not a toggleable QC check — `compute_graph_analytics` always runs, so this surfaces
-    // through the same Issue/IssuesBlock UI rather than a separate ad-hoc warning (see #22
-    // follow-up review): a dense, heavily preset-connected graph can exceed
-    // `find_all_simple_cycles`'s `MAX_SIMPLE_CYCLES` bound and abort cycle analysis.
-    if graph_analytics.cycle_analysis_overflowed {
-        raw_issues.push(Box::new(CycleAnalysisOverflowedIssue::default()));
-    }
-
     // Computed once here (before the issues map needs it for `RegionsNeedingExpansion`) and reused
     // below for `graph_analytics_dto.node_component` — cached per `graph.version()`, so the
     // second call is a cache hit, not a recomputation.
@@ -215,7 +207,6 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         node_component,
         pure_cycle_node_ids,
         pure_cycle_edge_pairs,
-        cycle_analysis_overflowed: graph_analytics.cycle_analysis_overflowed,
         region_classes,
     };
 
@@ -544,54 +535,6 @@ mod tests {
     use super::*;
     use maze_core::ids::IdGenerator;
     use maze_core::space::{SquareTessellation, SquarePoint, square_rect};
-    use maze_core::quality_control::CYCLE_ANALYSIS_OVERFLOWED;
-
-    #[test]
-    fn pushes_cycle_analysis_overflowed_issue_on_overflow() {
-        // Same 6x6 fully-bidirectional grid as the cycles.rs/min_loop_length.rs regression
-        // tests for issue #22 (2,444,782 simple cycles — far past MAX_SIMPLE_CYCLES).
-        const SIDE: i32 = 6;
-        let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
-        let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        for y in 0..SIDE {
-            for x in 0..SIDE {
-                let here = field.nodes_at(SquarePoint { x, y }).first().copied().unwrap();
-                if x + 1 < SIDE {
-                    let right = field.nodes_at(SquarePoint { x: x + 1, y }).first().copied().unwrap();
-                    g.build_initial_bidirectional_edge(here, right, EdgeKind::Basic);
-                }
-                if y + 1 < SIDE {
-                    let up = field.nodes_at(SquarePoint { x, y: y + 1 }).first().copied().unwrap();
-                    g.build_initial_bidirectional_edge(here, up, EdgeKind::Basic);
-                }
-            }
-        }
-        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
-
-        assert!(snapshot.graph_analytics.cycle_analysis_overflowed);
-        assert!(snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
-    }
-
-    #[test]
-    fn no_overflow_issue_on_sparse_graph() {
-        let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
-        let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
-        g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
-        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
-
-        assert!(!snapshot.graph_analytics.cycle_analysis_overflowed);
-        assert!(!snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
-    }
 
     #[test]
     fn snapshot_nodes_lists_a_split_points_nodes_exactly_once_each() {

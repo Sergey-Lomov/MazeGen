@@ -3,250 +3,20 @@ use crate::ids::EdgeId;
 use super::Graph;
 use super::nav::{NavGraph, NavNodeId, NavEdge};
 
-/// Result of `find_all_simple_cycles`: either the full list of simple cycles, or a signal
-/// that enumeration was aborted because it exceeded `MAX_SIMPLE_CYCLES` — see that constant's
-/// doc comment for why this exists.
-pub(crate) enum CycleSearchResult {
-    Cycles(Vec<Vec<usize>>),
-    TooManyCycles,
-}
-
-/// Hard cap on the number of simple cycles `find_all_simple_cycles` will enumerate before
-/// aborting. The number of simple cycles in a dense graph grows combinatorially with size —
-/// confirmed by measurement: a 5x5 fully-bidirectional grid yields 9349 *deduped* cycles (the
-/// raw, pre-dedup count this bound is checked against is higher — CW/CCW reverse-pairs count
-/// separately before `dedup_bidirectional_pairs` collapses them), a 6x6 grid yields 2,444,782
-/// (in 3.4s, release build), and a 7x7 fully-preset grid was observed to hang outright (issue
-/// #22). This is not a realistic maze topology (mazes are sparse by construction) but a
-/// fully-preset edit-mode grid can reach it, so enumeration must bail out rather than run
-/// unbounded. 20,000 comfortably covers the 5x5 raw count (so that topology still gets full
-/// analytics) while aborting well before the 6x6 regime, where a single call already takes
-/// seconds.
-const MAX_SIMPLE_CYCLES: usize = 20_000;
-
-/// Find ALL simple directed cycles in `nav` (Johnson's algorithm, 1975), or `TooManyCycles` if
-/// enumeration exceeds `MAX_SIMPLE_CYCLES` (see its doc comment) — callers must handle both
-/// outcomes; there is no length bound or per-consumer variant otherwise. Returns each cycle as
-/// a list of nav-edge indices, in traversal order (needed to splice tile paths in
-/// `resolve_to_edge_ids`). No length bound on individual cycles — callers filter the result
-/// themselves (see `MinLoopLengthCheck`).
-///
-/// Self-loop `NavEdge`s (`from == to`) are first-class cycles here, not a special case
-/// bolted on top: a self-loop node forms its own SCC of size 1 *with* a cycle (reachable
-/// from itself via that edge), unlike a size-1 SCC with no self-loop (no cycle, skipped).
-/// Self-loop `NavEdge`s only ever come from `build_ring` (nav/build.rs) representing a real
-/// junction-free ring — never a corridor-compression artifact — so a self-loop found here is
-/// always a genuine cycle. In practice a junction-free ring is only ever fully bidirectional
-/// (one-way-only segments fail the corridor-node criterion and force a junction), so it always
-/// produces a CW+CCW self-loop pair linked via `reverse_edge` — a self-loop with no reverse
-/// counterpart is not reachable through the current nav-graph builder.
-///
-/// Johnson's itself produces no duplicates: each simple directed cycle is visited exactly
-/// once (a property of the blocking mechanism, not something to clean up after the fact).
-/// If the graph has both directions of a bidirectional corridor (nav-edge u->v and a
-/// separate nav-edge v->u, linked via `reverse_edge`), Johnson's correctly returns BOTH as
-/// distinct simple cycles ([u->v->u] and [v->u->v]) — that is the directed-correct result,
-/// not an error. Collapsing such a pair into "one visual loop" is a deliberate domain-level
-/// step applied AFTER this function (see `dedup_bidirectional_pairs`), not part of the
-/// algorithm itself.
-pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
-    let edges: Vec<&NavEdge> = nav.edges().collect();
-    let n = nav.nodes.len();
-    if n == 0 {
-        return CycleSearchResult::Cycles(Vec::new());
-    }
-
-    // adjacency[node] = list of (edge_idx, to)
-    let mut adjacency: Vec<Vec<(usize, NavNodeId)>> = vec![Vec::new(); n];
-    for (idx, edge) in edges.iter().enumerate() {
-        adjacency[edge.from].push((idx, edge.to));
-    }
-
-    let mut cycles: Vec<Vec<usize>> = Vec::new();
-    let mut remaining: HashSet<NavNodeId> = (0..n).collect();
-
-    // Maintained incrementally across iterations instead of a full Tarjan rerun on every
-    // outer-loop step (see issue #25 / `Specs/graph-analytics.md` complexity section).
-    // Removing a single vertex can only split the SCC it belonged to — every other SCC is
-    // unaffected, since a path between two nodes in different SCCs never routes through a
-    // third SCC's interior (otherwise they'd already be one SCC) — so only the affected
-    // SCC's subgraph needs re-running through Tarjan, not the whole remaining graph.
-    let mut sccs = strongly_connected_components(&adjacency, &remaining);
-
-    while !remaining.is_empty() {
-        // Smallest-index nontrivial SCC first (deterministic order); also handles
-        // self-loop size-1 SCCs and drops size-1-no-self-loop SCCs from `remaining`.
-        let Some((scc_pos, _)) = sccs.iter()
-            .enumerate()
-            .filter(|(_, scc)| is_nontrivial(scc, &adjacency))
-            .min_by_key(|(_, scc)| *scc.iter().min().unwrap())
-        else {
-            break; // no SCC has any cycle left
-        };
-
-        let scc = &sccs[scc_pos];
-        let start = *scc.iter().min().unwrap();
-        let scc_set: HashSet<NavNodeId> = scc.iter().copied().collect();
-
-        if scc_set.len() == 1 {
-            // Self-loop: every edge start->start within this trivial SCC is its own cycle.
-            for &(idx, to) in &adjacency[start] {
-                if to == start {
-                    cycles.push(vec![idx]);
-                }
-            }
-        } else {
-            let mut blocked: HashSet<NavNodeId> = HashSet::new();
-            let mut block_map: std::collections::HashMap<NavNodeId, HashSet<NavNodeId>> = std::collections::HashMap::new();
-            let mut path_nodes: Vec<NavNodeId> = vec![start];
-            let mut path_edges: Vec<usize> = Vec::new();
-            blocked.insert(start);
-
-            // Return value (`None` on abort) is intentionally not consumed here: the
-            // `cycles.len() > MAX_SIMPLE_CYCLES` check right below catches the same abort
-            // condition (johnson_circuit only ever returns `None` after pushing past that
-            // bound), so re-checking it from the return value would be redundant.
-            johnson_circuit(
-                start, start, &adjacency, &scc_set,
-                &mut blocked, &mut block_map, &mut path_nodes, &mut path_edges, &mut cycles,
-            );
-        }
-
-        if cycles.len() > MAX_SIMPLE_CYCLES {
-            return CycleSearchResult::TooManyCycles;
-        }
-
-        remaining.remove(&start);
-
-        // Replace just the consumed SCC with the (possibly several) SCCs it splits into
-        // after removing `start` — every other entry in `sccs` is left untouched, since
-        // removing `start` cannot affect a node outside its own SCC.
-        let mut remainder_set = scc_set;
-        remainder_set.remove(&start);
-        let split_sccs = strongly_connected_components(&adjacency, &remainder_set);
-        sccs.swap_remove(scc_pos);
-        sccs.extend(split_sccs);
-    }
-
-    CycleSearchResult::Cycles(cycles)
-}
-
-/// True if `scc` can contain a cycle: size > 1, or size == 1 with a self-loop edge.
-fn is_nontrivial(scc: &[NavNodeId], adjacency: &[Vec<(usize, NavNodeId)>]) -> bool {
-    if scc.len() > 1 {
-        return true;
-    }
-    let node = scc[0];
-    adjacency[node].iter().any(|&(_, to)| to == node)
-}
-
-/// Johnson's blocking DFS: find all simple cycles from `start` back to `start`, restricted
-/// to nodes in `scc_set` (the current SCC), updating `cycles` directly. Returns `None` if the
-/// search was aborted because `cycles.len()` exceeded `MAX_SIMPLE_CYCLES`, otherwise
-/// `Some(found_cycle)` — `find_all_simple_cycles` checks the same bound after each SCC and
-/// converts to `TooManyCycles`, but that outer check alone would let a single pathologically
-/// dense SCC run unbounded before control ever returns to it; checking here too bounds the
-/// worst case to "a bit over the limit," not "however long this one SCC takes."
-///
-/// Abort (`None`) is kept structurally distinct from "no cycle found through this branch"
-/// (`Some(false)`): on abort, every still-open stack frame propagates `None` immediately
-/// without touching `block_map`, instead of folding the abort into `found_cycle` and letting
-/// callers wrongly record "no cycle, stay blocked" for a branch that was never actually
-/// resolved. That distinction is moot today — the whole `cycles` result is discarded on
-/// `TooManyCycles` regardless of `block_map`'s state — but keeping it means that stays true
-/// even if a future caller ever wants a partial result instead of discarding everything.
-///
-/// Deliberately does NOT forbid walking straight back via an edge's own `reverse_edge`
-/// (e.g. B->C->B through a corridor's forward+reverse edge pair) — doing that inside this
-/// DFS breaks the blocking invariant: a node whose only path back to `start` happens to be
-/// the forbidden reverse edge gets marked "no cycle found" and stays blocked, which then
-/// hides genuinely different longer cycles through that same node (confirmed by a bowtie
-/// fixture regression: B->D->C->B disappeared because C got blocked while only resolving
-/// the trivial B->C->B case). Johnson's itself is correct and complete only when every
-/// directed edge is eligible; trivial reverse-pair 2-cycles are filtered separately, after
-/// the full correct result is in hand (see `find_all_simple_cycles` doc comment).
-#[allow(clippy::too_many_arguments)]
-fn johnson_circuit(
-    start: NavNodeId,
-    v: NavNodeId,
-    adjacency: &[Vec<(usize, NavNodeId)>],
-    scc_set: &HashSet<NavNodeId>,
-    blocked: &mut HashSet<NavNodeId>,
-    block_map: &mut std::collections::HashMap<NavNodeId, HashSet<NavNodeId>>,
-    path_nodes: &mut Vec<NavNodeId>,
-    path_edges: &mut Vec<usize>,
-    cycles: &mut Vec<Vec<usize>>,
-) -> Option<bool> {
-    let mut found_cycle = false;
-
-    for &(edge_idx, w) in &adjacency[v] {
-        if cycles.len() > MAX_SIMPLE_CYCLES {
-            return None;
-        }
-        if !scc_set.contains(&w) {
-            continue;
-        }
-        if w == start {
-            path_edges.push(edge_idx);
-            cycles.push(path_edges.clone());
-            path_edges.pop();
-            found_cycle = true;
-        } else if !blocked.contains(&w) {
-            blocked.insert(w);
-            path_nodes.push(w);
-            path_edges.push(edge_idx);
-
-            let result = johnson_circuit(
-                start, w, adjacency, scc_set, blocked, block_map, path_nodes, path_edges, cycles,
-            );
-
-            path_edges.pop();
-            path_nodes.pop();
-
-            let Some(got_cycle) = result else {
-                return None;
-            };
-            found_cycle |= got_cycle;
-
-            if got_cycle {
-                unblock(w, blocked, block_map);
-            } else {
-                block_map.entry(v).or_default().insert(w);
-            }
-        }
-    }
-
-    if found_cycle {
-        unblock(v, blocked, block_map);
-    }
-
-    Some(found_cycle)
-}
-
-/// Recursive, unlike `strongly_connected_components` (explicitly iterative to avoid stack
-/// overflow). Recursion depth here is bounded by the length of the `block_map` dependency
-/// chain, which cannot exceed `V` (nav-node count) — on realistic maze sizes (hundreds to a
-/// few thousand nav-nodes) this is far below Rust's default stack limit. `johnson_circuit`'s
-/// own recursion is bounded the same way, by simple-cycle length (also `<= V`). Left
-/// recursive rather than rewritten iteratively to avoid risking the blocking invariant on a
-/// theoretical-only risk — see issue #24 if pathologically deep graphs ever become a concern.
-fn unblock(
-    node: NavNodeId,
-    blocked: &mut HashSet<NavNodeId>,
-    block_map: &mut std::collections::HashMap<NavNodeId, HashSet<NavNodeId>>,
-) {
-    blocked.remove(&node);
-    if let Some(dependents) = block_map.remove(&node) {
-        for dep in dependents {
-            if blocked.contains(&dep) {
-                unblock(dep, blocked, block_map);
-            }
-        }
+/// Canonical undirected index for dedup: the lower of an edge's own index and its
+/// `reverse_edge`'s, so a bidirectional corridor's forward and backward edge always
+/// map to the same value regardless of which one a cycle happened to use. Applies equally
+/// to self-loop CW/CCW pairs (linked via `reverse_edge` by the same path-reversal mechanism
+/// `link_reverse_edges` uses for ordinary corridors — no special case needed).
+fn canonical_index(edge: &NavEdge, idx: usize) -> usize {
+    match edge.reverse_edge {
+        Some(rev) => idx.min(rev),
+        None => idx,
     }
 }
 
-/// Tarjan's SCC, restricted to `nodes` (a subset of the full nav-graph, shrinking as
-/// `find_all_simple_cycles` consumes start vertices). Iterative to avoid stack overflow.
+/// Find nodes/edges partitioned into strongly-connected components, restricted to `nodes`.
+/// Iterative to avoid stack overflow.
 fn strongly_connected_components(
     adjacency: &[Vec<(usize, NavNodeId)>],
     nodes: &HashSet<NavNodeId>,
@@ -261,15 +31,11 @@ fn strongly_connected_components(
     let mut on_stack: HashSet<NavNodeId> = HashSet::new();
     let mut state: std::collections::HashMap<NavNodeId, State> = std::collections::HashMap::new();
     let mut components: Vec<Vec<NavNodeId>> = Vec::new();
-    // work frame: (node, next neighbor index)
     let mut work: Vec<(NavNodeId, usize)> = Vec::new();
 
     let mut sorted_nodes: Vec<NavNodeId> = nodes.iter().copied().collect();
     sorted_nodes.sort_unstable();
 
-    // Filtered neighbor list per node, computed once on first visit and reused for every
-    // subsequent `ni` step into that node — `adjacency[v]` is scanned once per node, not
-    // once per (node, step) pair (was O(degree) work repeated `degree` times per node).
     let mut neighbor_cache: std::collections::HashMap<NavNodeId, Vec<NavNodeId>> = std::collections::HashMap::new();
 
     for &root in &sorted_nodes {
@@ -332,72 +98,459 @@ fn strongly_connected_components(
     components
 }
 
-/// Canonical undirected index for dedup: the lower of an edge's own index and its
-/// `reverse_edge`'s, so a bidirectional corridor's forward and backward edge always
-/// map to the same value regardless of which one a cycle happened to use. Applies equally
-/// to self-loop CW/CCW pairs (linked via `reverse_edge` by the same path-reversal mechanism
-/// `link_reverse_edges` uses for ordinary corridors — no special case needed).
-fn canonical_index(edge: &NavEdge, idx: usize) -> usize {
-    match edge.reverse_edge {
-        Some(rev) => idx.min(rev),
-        None => idx,
-    }
+/// One physical connection inside an SCC: either a real nav-edge (bidirectional or one-way)
+/// or a fictitious reverse added on top of a one-way edge to make the working graph fully
+/// bidirectional for spanning-tree purposes (see `find_fundamental_cycles`'s doc comment).
+#[derive(Clone, Copy)]
+struct Link {
+    /// Nav-edge index to walk for this link's direction: the real edge whose own `from`/`to`
+    /// matches this `Link`'s `from`/`to`, or — for a fictitious link — the mirrored one-way
+    /// edge's own index (fictitious links have no `NavEdge` of their own to walk).
+    edge_idx: usize,
+    /// Canonical id of the physical connection this link belongs to (`canonical_index` of
+    /// either direction's real edge) — identical for both directions of the same connection,
+    /// used for tree/non-tree membership regardless of which direction was walked to reach it.
+    connection: usize,
+    from: NavNodeId,
+    to: NavNodeId,
+    /// True if this link is the fictitious reverse of a one-way edge — walking it does NOT
+    /// correspond to a real directed traversal; `edge_idx`/`from`/`to` describe the direction
+    /// this fictitious link points (opposite of the real edge).
+    fictitious: bool,
+    /// True if this link's underlying physical connection has a real edge in BOTH directions
+    /// (a bidirectional corridor) — false for a one-way connection's single real direction (or
+    /// its fictitious mirror). Used to prefer bidirectional real links over one-way real links
+    /// when building the spanning tree: a one-way connection picked as a tree edge can only ever
+    /// be walked forward, so if the tree later needs to cross it backward (an LCA tree-path
+    /// requiring child->parent on that edge), no real reverse exists — see `build_spanning_tree`.
+    bidirectional: bool,
 }
 
-/// True for a 2-edge cycle that is just an edge immediately followed by its own
-/// `reverse_edge` (e.g. B->C->B via a bidirectional corridor's forward+reverse pair). Not a
-/// real loop — just stepping into a corridor and immediately returning the way you came.
-/// Johnson's correctly finds this as a valid simple cycle (no repeated vertex), so it is
-/// excluded here as a deliberate domain-level rule, not an algorithm bug — see the
-/// `johnson_circuit` doc comment for why this can't be forbidden inside the DFS itself.
-fn is_trivial_reverse_pair(edges: &[&NavEdge], cycle: &[usize]) -> bool {
-    cycle.len() == 2 && edges[cycle[0]].reverse_edge == Some(cycle[1])
-}
+/// Build per-SCC adjacency of `Link`s: one entry per physical connection (an edge and its
+/// `reverse_edge` count once — via `canonical_index` — never as two separate links), plus one
+/// fictitious reverse `Link` for every one-way edge (no `reverse_edge`) so the graph used for
+/// spanning-tree construction is fully bidirectional. Real links are listed before fictitious
+/// ones for each node, so a priority-order neighbor scan naturally prefers them.
+fn build_scc_links(
+    edges: &[&NavEdge],
+    scc_set: &HashSet<NavNodeId>,
+) -> Vec<Vec<Link>> {
+    let n = edges.iter().map(|e| e.from.max(e.to)).max().map(|m| m + 1).unwrap_or(0);
+    let mut real: Vec<Vec<Link>> = vec![Vec::new(); n];
+    let mut fictitious: Vec<Vec<Link>> = vec![Vec::new(); n];
+    let mut seen_canonical: HashSet<usize> = HashSet::new();
 
-/// Drop only the trivial reverse-pair 2-cycles (see `is_trivial_reverse_pair`) — no
-/// canonical-index dedup. Used by `cycle_core` (`graph_analytics.rs`), which needs BOTH
-/// directions of every edge in a genuine cycle (for the Euler formula) but must still
-/// exclude a dead-end spur's "walk out and back" turn-around from counting as a cycle.
-pub(crate) fn drop_trivial_reverse_pairs(nav: &NavGraph, cycles: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
-    let edges: Vec<&NavEdge> = nav.edges().collect();
-    cycles.into_iter().filter(|cycle| !is_trivial_reverse_pair(&edges, cycle)).collect()
-}
-
-/// Combines `find_all_simple_cycles` + `dedup_bidirectional_pairs`, the pair every loop-based
-/// QC check (`MinLoopsCountCheck`, `MinLoopLengthCheck`, `MaxLoopLengthCheck`, etc.) needs
-/// before doing its own filtering. Returns `None` on `CycleSearchResult::TooManyCycles` — callers
-/// must silently skip (no issue raised) rather than fail, same rationale as `MinLoopLengthCheck`
-/// (issue #22); `CYCLE_ANALYSIS_OVERFLOWED` (raised independently by `build_analytics_snapshot`)
-/// already surfaces the overflow to the UI, so skipping here does not hide it.
-pub(crate) fn find_deduped_simple_cycles(nav: &NavGraph) -> Option<Vec<Vec<usize>>> {
-    match find_all_simple_cycles(nav) {
-        CycleSearchResult::Cycles(cycles) => Some(dedup_bidirectional_pairs(nav, cycles)),
-        CycleSearchResult::TooManyCycles => None,
-    }
-}
-
-/// Collapse cycles that are the same physical loop walked in opposite directions via
-/// `reverse_edge` pairs (ordinary bidirectional corridors, or a self-loop CW/CCW pair on
-/// the same nav-node) into one entry. A cycle using at least one one-way edge keeps its own
-/// distinct key (no reverse to fold into) — genuinely different directed cycles stay separate.
-/// Also drops trivial reverse-pair 2-cycles (see `is_trivial_reverse_pair`).
-pub(crate) fn dedup_bidirectional_pairs(nav: &NavGraph, cycles: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
-    let edges: Vec<&NavEdge> = nav.edges().collect();
-    let mut seen: HashSet<Vec<usize>> = HashSet::new();
-    let mut result: Vec<Vec<usize>> = Vec::new();
-
-    for cycle in cycles {
-        if is_trivial_reverse_pair(&edges, &cycle) {
+    for (idx, edge) in edges.iter().enumerate() {
+        if !scc_set.contains(&edge.from) || !scc_set.contains(&edge.to) {
             continue;
         }
-        let mut key: Vec<usize> = cycle.iter().map(|&i| canonical_index(edges[i], i)).collect();
-        key.sort_unstable();
-        if seen.insert(key) {
-            result.push(cycle);
+        let canon = canonical_index(edge, idx);
+        if canon != idx {
+            // This edge's reverse is the canonical representative; skip, the reverse's own
+            // iteration (or the fictitious-edge pass below) already covers this connection.
+            continue;
+        }
+        if !seen_canonical.insert(canon) {
+            continue;
+        }
+        let bidirectional = edge.reverse_edge.is_some();
+        real[edge.from].push(Link { edge_idx: idx, connection: canon, from: edge.from, to: edge.to, fictitious: false, bidirectional });
+
+        match edge.reverse_edge {
+            Some(rev) => {
+                // Bidirectional: the reverse nav-edge is the real link walking to->from.
+                real[edge.to].push(Link { edge_idx: rev, connection: canon, from: edge.to, to: edge.from, fictitious: false, bidirectional: true });
+            }
+            None => {
+                // One-way edge: to->from has no real edge — only a fictitious reverse, so the
+                // working graph stays fully bidirectional for spanning-tree purposes.
+                fictitious[edge.to].push(Link { edge_idx: idx, connection: canon, from: edge.to, to: edge.from, fictitious: true, bidirectional: false });
+            }
         }
     }
 
-    result
+    let mut links: Vec<Vec<Link>> = vec![Vec::new(); n];
+    for node in 0..n {
+        links[node].extend(real[node].iter().copied());
+        links[node].extend(fictitious[node].iter().copied());
+    }
+    links
+}
+
+/// Spanning tree over one SCC's `Link`s, built by a three-pass BFS: bidirectional real links
+/// across the whole frontier first, then one-way real links for whatever remains unvisited, then
+/// fictitious links for whatever still remains (only possible when an SCC's connectivity to a
+/// node relies on a one-way edge with no real path back — see `find_fundamental_cycles`'s doc
+/// comment). Bidirectional links are preferred over one-way ones so a tree edge can always be
+/// walked in EITHER direction when a later tree-path needs to cross it backward — a one-way tree
+/// edge can only be walked forward, and picking one when a bidirectional alternative existed
+/// would force an otherwise-avoidable fictitious step (or, before that was itself handled
+/// correctly, silently produce a wrong cycle — see the regression test
+/// `bidirectional_real_link_is_preferred_over_one_way_real_link_for_tree_edges`). Returns, per
+/// visited node, its parent node and the `Link` used to reach it from the parent (`None` for the
+/// root), plus the set of tree connections (by `Link::connection`) for fast non-tree membership
+/// testing.
+fn build_spanning_tree(
+    links: &[Vec<Link>],
+    root: NavNodeId,
+) -> (std::collections::HashMap<NavNodeId, Option<(NavNodeId, Link)>>, HashSet<usize>) {
+    let mut parent: std::collections::HashMap<NavNodeId, Option<(NavNodeId, Link)>> = std::collections::HashMap::new();
+    let mut tree_connections: HashSet<usize> = HashSet::new(); // by `connection` — one physical
+    // wire is one tree/non-tree slot regardless of which direction (real or fictitious) BFS
+    // happened to use to reach it.
+    parent.insert(root, None);
+    let mut queue: std::collections::VecDeque<NavNodeId> = std::collections::VecDeque::new();
+    queue.push_back(root);
+
+    // First pass: bidirectional real links only, across the WHOLE frontier, before one-way or
+    // fictitious links are considered — a single-pass BFS mixing tiers would let a lower-tier
+    // link discovered early (from a node with no other higher-tier link to that neighbor) claim
+    // a node that a higher-tier link from a node visited later in the same pass could have
+    // reached instead. Only once every bidirectional-reachable node is settled does a lower tier
+    // get to claim the rest.
+    while let Some(node) = queue.pop_front() {
+        for &link in &links[node] {
+            if link.fictitious || !link.bidirectional {
+                continue;
+            }
+            if !parent.contains_key(&link.to) {
+                parent.insert(link.to, Some((node, link)));
+                tree_connections.insert(link.connection);
+                queue.push_back(link.to);
+            }
+        }
+    }
+
+    // Second pass: one-way real links, for nodes still unvisited after the bidirectional pass.
+    // Sorted seed order, not raw `HashMap` iteration order — see the third pass below for why.
+    let mut seeded: Vec<NavNodeId> = parent.keys().copied().collect();
+    seeded.sort_unstable();
+    queue.extend(seeded);
+    while let Some(node) = queue.pop_front() {
+        for &link in &links[node] {
+            if link.fictitious || link.bidirectional {
+                continue;
+            }
+            if !parent.contains_key(&link.to) {
+                parent.insert(link.to, Some((node, link)));
+                tree_connections.insert(link.connection);
+                queue.push_back(link.to);
+            }
+        }
+    }
+
+    // Third pass: fictitious links only, for nodes still unvisited (only possible when an SCC's
+    // connectivity to that node relies on a one-way edge with no real path back). Sorted, not
+    // raw `HashMap` iteration order — that order can influence which fictitious link wins a
+    // contested node, and `HashMap`'s randomized per-process hasher would make that choice (and
+    // therefore the returned cycle) vary run-to-run for the same maze/seed.
+    let mut seeded: Vec<NavNodeId> = parent.keys().copied().collect();
+    seeded.sort_unstable();
+    queue.extend(seeded);
+    while let Some(node) = queue.pop_front() {
+        for &link in &links[node] {
+            if !link.fictitious {
+                continue;
+            }
+            if !parent.contains_key(&link.to) {
+                parent.insert(link.to, Some((node, link)));
+                tree_connections.insert(link.connection);
+                queue.push_back(link.to);
+            }
+        }
+    }
+
+    (parent, tree_connections)
+}
+
+/// Ancestor chain of `node` up to (and including) the tree root, nearest-first.
+fn ancestors(
+    parent: &std::collections::HashMap<NavNodeId, Option<(NavNodeId, Link)>>,
+    mut node: NavNodeId,
+) -> Vec<NavNodeId> {
+    let mut chain = vec![node];
+    while let Some(&Some((p, _))) = parent.get(&node) {
+        chain.push(p);
+        node = p;
+    }
+    chain
+}
+
+/// The single tree-path walk from `from_node` to `to_node`, as `CycleStep`s: `from_node`'s
+/// ancestor chain up to (excluding) the LCA, walked child->parent (reversed `Link`s), followed
+/// by `to_node`'s ancestor chain from (excluding) the LCA down to `to_node`, walked
+/// parent->child (`Link`s as stored).
+fn tree_path(
+    edges: &[&NavEdge],
+    parent: &std::collections::HashMap<NavNodeId, Option<(NavNodeId, Link)>>,
+    from_node: NavNodeId,
+    to_node: NavNodeId,
+) -> Vec<CycleStep> {
+    let from_chain = ancestors(parent, from_node);
+    let to_chain = ancestors(parent, to_node);
+    let from_set: HashSet<NavNodeId> = from_chain.iter().copied().collect();
+    let lca = to_chain.iter().copied().find(|n| from_set.contains(n)).unwrap_or(from_node);
+
+    let mut steps = Vec::new();
+    // from_node -> ... -> lca (child->parent, reversed links).
+    for &n in &from_chain {
+        if n == lca {
+            break;
+        }
+        let Some(Some((_, link))) = parent.get(&n) else { break };
+        steps.push(reverse_link(edges, *link));
+    }
+    // lca -> ... -> to_node (parent->child, links as stored) — walk to_chain from the
+    // element just before `lca` down to `to_node`, i.e. reverse of `to_chain` truncated
+    // at `lca`.
+    let to_prefix: Vec<NavNodeId> = to_chain.iter().copied().take_while(|&n| n != lca).collect();
+    for &n in to_prefix.iter().rev() {
+        let Some(Some((_, link))) = parent.get(&n) else { break };
+        steps.push(if link.fictitious { CycleStep::Fictitious(*link) } else { CycleStep::Real(link.edge_idx) });
+    }
+    steps
+}
+
+/// Fallback for when the tree-path between a non-tree link's endpoints is not direction-valid
+/// (see `find_fundamental_cycles`'s doc comment): a direct BFS over REAL links only, from
+/// `from_node` to `to_node`, restricted to `scc_set`. Always succeeds — every node in an SCC is
+/// reachable from every other via real directed edges alone, by definition — so this never
+/// returns `None` when called from `find_fundamental_cycles`.
+///
+/// `exclude_connection` must be the non-tree link's own `connection` — without excluding it, the
+/// BFS is free to walk straight back over that same physical connection's own reverse edge,
+/// producing a degenerate 2-step "there and back" cycle (an edge immediately followed by its own
+/// `reverse_edge`) instead of a real distinct cycle. This is exactly the trivial-reverse-pair
+/// case `canonical_index`-based dedup in `build_scc_links` otherwise structurally prevents — the
+/// BFS must honor that same exclusion, since it walks `links` directly rather than going through
+/// the tree/non-tree partition.
+fn real_path_bfs(
+    links: &[Vec<Link>],
+    scc_set: &HashSet<NavNodeId>,
+    from_node: NavNodeId,
+    to_node: NavNodeId,
+    exclude_connection: usize,
+) -> Option<Vec<usize>> {
+    if from_node == to_node {
+        return Some(Vec::new());
+    }
+    let mut prev: std::collections::HashMap<NavNodeId, (NavNodeId, usize)> = std::collections::HashMap::new();
+    let mut queue: std::collections::VecDeque<NavNodeId> = std::collections::VecDeque::new();
+    queue.push_back(from_node);
+    while let Some(node) = queue.pop_front() {
+        if node == to_node {
+            let mut steps = Vec::new();
+            let mut cur = to_node;
+            while cur != from_node {
+                let (p, edge_idx) = prev[&cur];
+                steps.push(edge_idx);
+                cur = p;
+            }
+            steps.reverse();
+            return Some(steps);
+        }
+        for &link in &links[node] {
+            if link.fictitious || !scc_set.contains(&link.to) || link.connection == exclude_connection {
+                continue;
+            }
+            if link.to != from_node && !prev.contains_key(&link.to) {
+                prev.insert(link.to, (node, link.edge_idx));
+                queue.push_back(link.to);
+            }
+        }
+    }
+    None
+}
+
+/// One step of a fundamental cycle's walk: either a real nav-edge index walked in its own
+/// stored direction, or a fictitious link (to be resolved/validated in
+/// `resolve_fundamental_cycle`).
+#[derive(Clone, Copy)]
+enum CycleStep {
+    Real(usize),
+    Fictitious(Link),
+}
+
+/// Turn a raw fundamental cycle (as `CycleStep`s, in walk order) into a real directed cycle
+/// (nav-edge indices). The `None` branch (a fictitious step outside position 0) means the
+/// straight LCA tree-path is not direction-valid — see `find_fundamental_cycles`'s doc comment
+/// for why this can genuinely happen even with an all-real tree, and how the caller recovers via
+/// `real_path_bfs` instead of dropping the cycle.
+fn resolve_fundamental_cycle(steps: &[CycleStep], non_tree_is_fictitious: bool) -> Option<Vec<usize>> {
+    let mut result = Vec::with_capacity(steps.len());
+    for (i, step) in steps.iter().enumerate() {
+        match step {
+            CycleStep::Real(idx) => result.push(*idx),
+            CycleStep::Fictitious(link) => {
+                // The non-tree edge itself, if fictitious, is walked in the fictitious
+                // direction by construction — that's always resolvable to the real one-way
+                // edge (see caller). Any OTHER fictitious link (inside the tree-path portion)
+                // means the walk needs the one-way edge backwards — invalid.
+                if non_tree_is_fictitious && i == 0 {
+                    result.push(link.edge_idx);
+                } else {
+                    return None;
+                }
+            }
+        }
+    }
+    Some(result)
+}
+
+/// Find the fundamental cycle basis of `nav`: at most one cycle per SCC's non-tree edge,
+/// instead of every simple cycle (Johnson's algorithm) including composite unions of
+/// independent loops. See `Specs/graph-analytics.md` for the full rationale.
+///
+/// **Construction**: per SCC, build a spanning tree over physical connections (an edge and
+/// its `reverse_edge` count as one connection). One-way edges (no `reverse_edge`) get a
+/// temporary fictitious reverse so the tree-building graph is fully bidirectional; the tree is
+/// built in two passes (`build_spanning_tree`) — real connections across the whole frontier
+/// first, fictitious ones only for whatever is left unvisited afterward. Each non-tree
+/// connection then closes exactly one fundamental cycle: itself plus the tree-path between its
+/// endpoints — exactly the SCC's topological β₁ (`E_core - V_core + 1`) cycles.
+///
+/// **Direction validity is always recovered, never silently discarded.** The straight tree-path
+/// (LCA-based, `tree_path`) is not always direction-valid on its own — even when every tree edge
+/// used is real (no fictitious link involved), the LCA split can require walking one side of the
+/// tree child->parent, and a real one-way tree edge has no real reverse to walk that way. When
+/// `resolve_fundamental_cycle` detects this (any fictitious step outside position 0),
+/// `find_fundamental_cycles` falls back to `real_path_bfs`: a direct real-edges-only BFS between
+/// the non-tree link's endpoints, independent of the tree shape. This always succeeds — every
+/// node in an SCC is, by definition, reachable from every other node via real directed edges
+/// alone — so no cycle is ever dropped, though the fallback path is not guaranteed to be the
+/// shortest one available. See `Specs/graph-analytics.md` and the regression tests
+/// `discards_are_recovered_via_fallback_bfs_not_dropped` (an 11-node one-way SCC where the LCA
+/// tree-path genuinely needs a backward real edge) and
+/// `one_way_only_scc_with_two_independent_loops_never_discards` (a smaller case where the
+/// fast path already succeeds) for both code paths recovering the full topological β₁.
+///
+/// **Trivial reverse-pair cycles** (an edge immediately followed by its own `reverse_edge`)
+/// cannot occur here: physical connections are deduped up front, so one connection can never
+/// be both a tree edge and someone else's non-tree edge.
+///
+/// **Self-loops** (`from == to`) are handled outside the spanning-tree machinery, same as
+/// before: each is its own one-edge cycle, one entry per self-loop edge.
+///
+/// No length bound, no ordering guarantee on the edges within a returned cycle beyond "a
+/// contiguous directed walk that starts and ends at the same nav-node" — callers
+/// (`resolve_to_edge_ids`, `tile_length`, `CycleKind::matches`, `cycle_min_distance`) only rely
+/// on that contract, not on any particular edge order.
+pub(crate) fn find_fundamental_cycles(nav: &NavGraph) -> Vec<Vec<usize>> {
+    let edges: Vec<&NavEdge> = nav.edges().collect();
+    let n = nav.nodes.len();
+    if n == 0 {
+        return Vec::new();
+    }
+
+    let mut adjacency: Vec<Vec<(usize, NavNodeId)>> = vec![Vec::new(); n];
+    for (idx, edge) in edges.iter().enumerate() {
+        adjacency[edge.from].push((idx, edge.to));
+    }
+
+    let all_nodes: HashSet<NavNodeId> = (0..n).collect();
+    let sccs = strongly_connected_components(&adjacency, &all_nodes);
+    crate::diag_log!("DIAG find_fundamental_cycles: n={} edges={} sccs={:?}", n, edges.len(), sccs); // DIAG
+    for (idx, edge) in edges.iter().enumerate() {
+        crate::diag_log!("DIAG edge[{}]: {}->{} rev={:?} path={:?}", idx, edge.from, edge.to, edge.reverse_edge, edge.path); // DIAG
+    }
+
+    let mut cycles: Vec<Vec<usize>> = Vec::new();
+
+    for scc in &sccs {
+        let scc_set: HashSet<NavNodeId> = scc.iter().copied().collect();
+        crate::diag_log!("DIAG --- scc={:?} ---", scc); // DIAG
+
+        if scc_set.len() == 1 {
+            let node = scc[0];
+            for &(idx, to) in &adjacency[node] {
+                if to == node {
+                    crate::diag_log!("DIAG self-loop scc: node={} edge_idx={}", node, idx); // DIAG
+                    cycles.push(vec![idx]);
+                }
+            }
+            continue;
+        }
+
+        let links = build_scc_links(&edges, &scc_set);
+        for node in scc.iter().copied() {
+            for &link in &links[node] {
+                crate::diag_log!("DIAG link node={} -> connection={} from={} to={} edge_idx={} fictitious={}", node, link.connection, link.from, link.to, link.edge_idx, link.fictitious); // DIAG
+            }
+        }
+        let root = *scc.iter().min().unwrap();
+        let (parent, tree_connections) = build_spanning_tree(&links, root);
+        crate::diag_log!("DIAG root={} tree_connections={:?}", root, tree_connections); // DIAG
+        for (&node, p) in parent.iter() {
+            crate::diag_log!("DIAG parent[{}]={:?}", node, p.map(|(pn, l)| (pn, l.connection, l.from, l.to, l.fictitious))); // DIAG
+        }
+
+        // Non-tree connections: every physical connection not in `tree_connections`. Each
+        // connection appears once or twice in `links` (real forward, and either a real reverse
+        // or a fictitious reverse) — prefer the real direction when choosing which one to walk
+        // as the non-tree step, so a one-way edge's non-tree cycle is always built from its
+        // actual direction, never its fictitious mirror. `BTreeMap`, not `HashMap` — iteration
+        // order feeds directly into the returned cycle list's order, and `HashMap`'s per-process
+        // random hasher seed would make that order (and therefore any order-sensitive downstream
+        // consumer, e.g. `InvalidLoopScoredStrategy`'s candidate scan) vary run-to-run for the
+        // same maze/seed, breaking reproducibility.
+        let mut best_non_tree: std::collections::BTreeMap<usize, Link> = std::collections::BTreeMap::new();
+        for node in scc.iter().copied() {
+            for &link in &links[node] {
+                if tree_connections.contains(&link.connection) {
+                    continue;
+                }
+                let entry = best_non_tree.entry(link.connection).or_insert(link);
+                if entry.fictitious && !link.fictitious {
+                    *entry = link;
+                }
+            }
+        }
+
+        crate::diag_log!("DIAG best_non_tree={:?}", best_non_tree.iter().map(|(k, v)| (*k, v.from, v.to, v.edge_idx, v.fictitious)).collect::<Vec<_>>()); // DIAG
+
+        for link in best_non_tree.into_values() {
+            // Walk: non-tree link (from -> to) + tree-path (to -> from), closing the loop.
+            let mut steps = vec![if link.fictitious { CycleStep::Fictitious(link) } else { CycleStep::Real(link.edge_idx) }];
+            steps.extend(tree_path(&edges, &parent, link.to, link.from));
+            crate::diag_log!("DIAG non-tree link connection={} from={} to={} edge_idx={} fictitious={} steps={:?}", link.connection, link.from, link.to, link.edge_idx, link.fictitious,
+                steps.iter().map(|s| match s { CycleStep::Real(i) => format!("Real({})", i), CycleStep::Fictitious(l) => format!("Fictitious(edge_idx={},from={},to={})", l.edge_idx, l.from, l.to) }).collect::<Vec<_>>()); // DIAG
+
+            let non_tree_fictitious = link.fictitious;
+            if let Some(cycle) = resolve_fundamental_cycle(&steps, non_tree_fictitious) {
+                crate::diag_log!("DIAG -> resolved via tree-path: cycle={:?}", cycle); // DIAG
+                cycles.push(cycle);
+            } else if let Some(path) = real_path_bfs(&links, &scc_set, link.to, link.from, link.connection) {
+                // Tree-path wasn't direction-valid (some tree edge needed walking backwards
+                // with no real reverse) — fall back to a direct real-edges-only BFS between the
+                // non-tree link's endpoints inside this SCC. Always succeeds (SCC reachability).
+                let mut cycle = vec![link.edge_idx];
+                cycle.extend(path.clone());
+                crate::diag_log!("DIAG -> tree-path invalid, fallback BFS path={:?} cycle={:?}", path, cycle); // DIAG
+                cycles.push(cycle);
+            } else {
+                crate::diag_log!("DIAG -> DROPPED (fallback BFS found no path!) connection={}", link.connection); // DIAG
+            }
+        }
+    }
+    crate::diag_log!("DIAG final cycles: {:?}", cycles); // DIAG
+
+    cycles
+}
+
+/// Walking a tree `Link` in the direction opposite to how it was stored (parent->child
+/// becomes child->parent, or vice versa): resolves to the real reverse nav-edge if one exists,
+/// otherwise the connection has no real edge in this direction and is treated as fictitious
+/// (direction-invalid unless later proven otherwise by the resolve step).
+fn reverse_link(edges: &[&NavEdge], link: Link) -> CycleStep {
+    if link.fictitious {
+        // Fictitious link reversed = the real one-way edge in its own (forward) direction.
+        return CycleStep::Real(link.edge_idx);
+    }
+    let edge = edges[link.edge_idx];
+    match edge.reverse_edge {
+        Some(rev) => CycleStep::Real(rev),
+        None => CycleStep::Fictitious(Link { edge_idx: link.edge_idx, connection: link.connection, from: link.to, to: link.from, fictitious: true, bidirectional: false }),
+    }
 }
 
 /// Expand each cycle's nav-edge indices into the full tile-path, splice consecutive

@@ -7,7 +7,6 @@ pub enum IssueKind {
     InvalidLoop,
     InvalidLoopGroup,
     MissingLoops,
-    CycleAnalysisOverflowed,
     RepairLimitReached,
     ExcessiveSccCount,
     RegionNeedsExpansion,
@@ -49,11 +48,6 @@ pub const INVALID_LOOP_GROUP: IssueKind = IssueKind::InvalidLoopGroup;
 /// of a specific-cycle one — future checks needing more loops added can reuse this kind. Carries
 /// `MissingLoopsIssue { missing }` — see that type's doc comment.
 pub const MISSING_LOOPS: IssueKind = IssueKind::MissingLoops;
-/// Not a toggleable QC check — raised directly by `build_analytics_snapshot`
-/// (maze-wasm/src/analytics.rs) whenever `GraphAnalytics::cycle_analysis_overflowed` is true.
-/// Unlike the other kinds here, no `Check<T, I>` implementation produces this; it surfaces a
-/// condition from the always-on analytics computation, not a user-selected check.
-pub const CYCLE_ANALYSIS_OVERFLOWED: IssueKind = IssueKind::CycleAnalysisOverflowed;
 /// Not a toggleable QC check — pushed directly by `build_maze` (`generation::pipeline`) when the
 /// repair fixpoint loop exits because a `RepairLimits` bound was hit (max iterations or time
 /// budget), rather than via convergence (no active issues) or no-progress. Carries
@@ -224,7 +218,6 @@ impl IssueKind {
             IssueKind::InvalidLoop => "invalid_loop",
             IssueKind::InvalidLoopGroup => "invalid_loop_group",
             IssueKind::MissingLoops => "missing_loops",
-            IssueKind::CycleAnalysisOverflowed => "cycle_analysis_overflowed",
             IssueKind::RepairLimitReached => "repair_limit_reached",
             IssueKind::ExcessiveSccCount => "excessive_scc_count",
             IssueKind::RegionNeedsExpansion => "region_needs_expansion",
@@ -247,14 +240,8 @@ impl IssueKind {
         }
     }
 
-    /// Round-trips every variant including `CycleAnalysisOverflowed`, even though the latter
-    /// can never have a registered `RepairStrategy` (it's not a toggleable QC check — see
-    /// `CYCLE_ANALYSIS_OVERFLOWED`'s doc comment). `IssueKind::from_str` is also used by
-    /// `maze-wasm/src/runner.rs` to validate `config.strategies` keys; a config naming this
-    /// kind will parse here, then fail downstream with "unknown strategy" the same way any
-    /// other kind with no matching strategy registration would — there is no dedicated
-    /// rejection at this layer, by design, since strategy availability is the repair engine's
-    /// concern, not `IssueKind`'s.
+    /// `IssueKind::from_str` is also used by `maze-wasm/src/runner.rs` to validate
+    /// `config.strategies` keys.
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "missing_endpoints"  => Some(IssueKind::MissingEndpoints),
@@ -262,7 +249,6 @@ impl IssueKind {
             "invalid_loop"       => Some(IssueKind::InvalidLoop),
             "invalid_loop_group" => Some(IssueKind::InvalidLoopGroup),
             "missing_loops"      => Some(IssueKind::MissingLoops),
-            "cycle_analysis_overflowed" => Some(IssueKind::CycleAnalysisOverflowed),
             "repair_limit_reached" => Some(IssueKind::RepairLimitReached),
             "excessive_scc_count" => Some(IssueKind::ExcessiveSccCount),
             "region_needs_expansion" => Some(IssueKind::RegionNeedsExpansion),
@@ -300,10 +286,10 @@ impl std::fmt::Display for IssueKind {
 pub struct IssueMeta {
     /// Opaque check id(s) that produced or contributed to this issue — the same id passed to
     /// `new_from_check`, expected to be `maze-wasm/src/runner.rs`'s composite routing key. Empty
-    /// for issues not raised by a toggleable `Check<T, I>` — currently only
-    /// `CYCLE_ANALYSIS_OVERFLOWED`, pushed directly by `build_analytics_snapshot` (see its doc
-    /// comment). Merging two issues of the same kind (within one `Rule`, see GitHub issue #106)
-    /// unions this list without duplicates.
+    /// for issues not raised by a toggleable `Check<T, I>` — e.g. `REPAIR_LIMIT_REACHED`, pushed
+    /// directly by `build_maze`'s repair fixpoint loop, not via a `Check`. Merging two issues of
+    /// the same kind (within one `Rule`, see GitHub issue #106) unions this list without
+    /// duplicates.
     ///
     /// Private — a raw (pre-merge) issue must carry exactly one source check, and
     /// `Rule::run_checks_typed` (`quality_control/rule.rs`) reads only the first element under
@@ -324,10 +310,10 @@ pub struct IssueMeta {
 }
 
 impl IssueMeta {
-    /// For issues not raised by a toggleable `Check<T, I>` (currently only
-    /// `CYCLE_ANALYSIS_OVERFLOWED`) — `source_checks` is empty since there is no check id to
-    /// attribute this to. Checks should use `new_from_check` instead. Also used for synthetic
-    /// issues built by a parent `RepairStrategy` for a nested-strategy call.
+    /// For issues not raised by a toggleable `Check<T, I>` (e.g. `REPAIR_LIMIT_REACHED`) —
+    /// `source_checks` is empty since there is no check id to attribute this to. Checks should
+    /// use `new_from_check` instead. Also used for synthetic issues built by a parent
+    /// `RepairStrategy` for a nested-strategy call.
     pub fn new() -> Self {
         Self::default()
     }

@@ -3,9 +3,9 @@ use rand::RngCore;
 use crate::Maze;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
-use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
+use crate::graph::cycles::{find_fundamental_cycles, resolve_to_edge_ids};
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
+use crate::quality_control::{Issue, InvalidLoopGroupIssue, InvalidLoopGroupRequirement, CycleKind};
 use crate::quality_control::issue_kinds::canonical_cycle_key;
 
 pub const MAX_LOOPS_COUNT_DEFAULT: u32 = 20;
@@ -16,18 +16,14 @@ pub const MAX_LOOPS_COUNT_DEFAULT: u32 = 20;
 /// not this check's. Once the count exceeds the maximum, every loop on the field is flagged, none
 /// stay valid.
 ///
-/// The threshold compares against `analytics.cycle_count` — the same independent-cycle count
-/// (Euler: E - V + C on the pure-cycle core) shown to the user as the "Cycle count" analytics
-/// stat, and what `MinLoopsCountCheck` already compares against — not the raw count of
-/// `find_deduped_simple_cycles`'s simple-cycle enumeration, which also includes every composite
-/// cycle (union of independent ones) and so is a much larger, unstable number to threshold
-/// against. The flagged set itself is still built from `find_deduped_simple_cycles` (a repair
-/// strategy needs concrete edge-id cycles to cut, and cutting any one of them lowers the
-/// independent-cycle count by exactly one) — only the fire/no-fire decision uses the independent
-/// count.
+/// The threshold compares against the fundamental cycle basis (`find_fundamental_cycles`, see
+/// GitHub issue #244), restricted to `cycle_kind` — the same independent-cycle list
+/// `MinLoopsCountCheck`'s `analytics.cycle_count` derives from, not the much larger, unstable
+/// composite-cycle enumeration a pre-#244 simple-cycle search would have produced.
 pub struct MaxLoopsCountCheck {
     pub instance_id: String,
     pub max_loops_count: u32,
+    pub cycle_kind: CycleKind,
 }
 
 impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopsCountCheck {
@@ -36,21 +32,14 @@ impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopsCountCheck {
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopGroupIssue>, _rng: &mut dyn RngCore, _requirement: InvalidLoopGroupRequirement) {
         // Not yet migrated to honor `_requirement` — this check always flags every loop it finds
         // (see the struct's doc comment), so there is never a "valid cycle" to skip computing.
-        let analytics = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
-        if analytics.cycle_analysis_overflowed {
-            return;
-        }
-        if (analytics.cycle_count as u32) <= self.max_loops_count {
-            return;
-        }
-
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
-        // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22). Should
-        // never actually trigger here in practice — `cycle_analysis_overflowed` above already
-        // covers the same underlying enumeration limit — but kept as a defensive fallback rather
-        // than an `expect`, consistent with every other loop-based check's handling of this `Option`.
-        let Some(cycles) = find_deduped_simple_cycles(nav) else { return };
+        let cycles: Vec<Vec<usize>> = find_fundamental_cycles(nav).into_iter()
+            .filter(|cycle| self.cycle_kind.matches(nav, cycle))
+            .collect();
+        if (cycles.len() as u32) <= self.max_loops_count {
+            return;
+        }
 
         let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
         let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();
@@ -95,7 +84,7 @@ mod tests {
     #[test]
     fn fires_and_flags_every_loop_when_count_exceeds_max() {
         let maze = maze_with_two_disjoint_triangles();
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 1 };
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 1, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);
@@ -111,18 +100,16 @@ mod tests {
     #[test]
     fn silent_when_count_at_or_below_max() {
         let maze = maze_with_two_disjoint_triangles();
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 2 };
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 2, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert!(issues.is_empty(), "count equal to the max must not fire");
     }
 
-    /// Two triangles sharing one vertex (a figure-8): 2 independent cycles by Euler's formula,
-    /// but `find_deduped_simple_cycles` also enumerates the composite (walk both triangles as
-    /// one bigger loop) — 3 simple cycles total. The fire/no-fire threshold must compare against
-    /// the independent count (2), not the raw simple-cycle count (3), or the check would never
-    /// settle: repeatedly firing on the composite cycle even after both underlying triangles are
-    /// already broken down to the independent-cycle target.
+    /// Two triangles sharing one vertex (a figure-8): 2 independent cycles. The fundamental
+    /// cycle basis (`find_fundamental_cycles`, GitHub issue #244) returns exactly these 2, not
+    /// a larger composite-cycle enumeration — the fire/no-fire threshold naturally compares
+    /// against the independent count.
     fn maze_with_shared_vertex_triangles() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let field = Field::new(square_rect(10, 1), &mut ids).unwrap();
@@ -139,25 +126,22 @@ mod tests {
     }
 
     #[test]
-    fn silent_when_independent_count_at_max_despite_more_simple_cycles() {
+    fn silent_when_independent_count_at_max() {
         let maze = maze_with_shared_vertex_triangles();
-        let analytics = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
-        assert_eq!(analytics.cycle_count, 2, "sanity check: 2 independent cycles by Euler's formula");
-
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 2 };
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 2, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
-        assert!(issues.is_empty(), "must not fire: independent count (2) is at the max, even though 3 simple cycles exist");
+        assert!(issues.is_empty(), "must not fire: independent count (2) is at the max");
     }
 
     #[test]
-    fn fires_when_independent_count_exceeds_max_on_composite_graph() {
+    fn fires_when_independent_count_exceeds_max() {
         let maze = maze_with_shared_vertex_triangles();
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 1 };
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 1, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);
-        assert!(issues[0].invalid.len() >= 2, "every simple cycle found is offered to the repair strategy to cut");
+        assert_eq!(issues[0].invalid.len(), 2, "both fundamental cycles are offered to the repair strategy to cut");
     }
 
     #[test]
@@ -170,37 +154,9 @@ mod tests {
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 0 };
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 0, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert!(issues.is_empty());
-    }
-
-    #[test]
-    fn silent_when_cycle_enumeration_overflows() {
-        const SIDE: i32 = 6;
-        let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
-        let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        use crate::space::SquarePoint;
-        for y in 0..SIDE {
-            for x in 0..SIDE {
-                let here = field.node_at(SquarePoint { x, y }).unwrap();
-                if x + 1 < SIDE {
-                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
-                    g.add_bidirectional_edge(here, right, EdgeKind::Basic);
-                }
-                if y + 1 < SIDE {
-                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
-                    g.add_bidirectional_edge(here, up, EdgeKind::Basic);
-                }
-            }
-        }
-        let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 0 };
-        let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
-        assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 }

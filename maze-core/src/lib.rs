@@ -142,9 +142,7 @@ impl MazeAnalysis {
     ///
     /// `compute_graph_analytics` has no toggle and is called on every analytics snapshot
     /// (`maze-wasm/src/analytics.rs`) — caching it avoids recomputing cycle structure from
-    /// scratch on every call within the same graph version (e.g. repeated UI refreshes), on
-    /// top of the `MAX_SIMPLE_CYCLES` bound in `find_all_simple_cycles` that keeps any single
-    /// computation from hanging (see issue #22).
+    /// scratch on every call within the same graph version (e.g. repeated UI refreshes).
     pub fn graph_analytics(&self, graph: &Graph, meta: &MazeMeta) -> GraphAnalytics {
         let key = (graph.version(), meta.start, meta.finish);
         let mut cache = self.graph_analytics.borrow_mut();

@@ -26,7 +26,6 @@ impl<T: Tessellation> Check<T, InvalidLoopIssue> for ExternalEscapeDiversityChec
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidLoopIssue>, _rng: &mut dyn RngCore, _requirement: InvalidLoopRequirement) {
         // Not yet migrated to honor `_requirement` — always computes all() (see GitHub issue
         // #105's "what does NOT change" section: only min/max_loop_length branch on it so far).
-        // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
         let Some((nav, cycles, low_diversity)) = find_invalid_cycles(maze, self.cycle_kind, |nav, cycle| {
             distinct_exit_count(nav, cycle) < self.min_distinct_exits
         }) else { return };
@@ -144,34 +143,6 @@ mod tests {
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
         assert!(issues.is_empty(), "a threshold of 0 should never flag any cycle");
-    }
-
-    #[test]
-    fn silent_when_cycle_enumeration_overflows() {
-        const SIDE: i32 = 6;
-        let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
-        let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        for y in 0..SIDE {
-            for x in 0..SIDE {
-                let here = field.node_at(SquarePoint { x, y }).unwrap();
-                if x + 1 < SIDE {
-                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
-                    g.add_bidirectional_edge(here, right, EdgeKind::Basic);
-                }
-                if y + 1 < SIDE {
-                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
-                    g.add_bidirectional_edge(here, up, EdgeKind::Basic);
-                }
-            }
-        }
-        let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = ExternalEscapeDiversityCheck { instance_id: TEST_ID.to_string(), min_distinct_exits: 3, cycle_kind: CycleKind::Any };
-        let mut issues = Vec::new();
-        let mut rng = crate::random::MazeRng::seed_from_u64(0);
-        check.repair_check(&maze, &mut issues, &mut rng, InvalidLoopRequirement::all());
-        assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 
     #[test]

@@ -3,7 +3,7 @@ use rand::RngCore;
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
-use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids, density_per_100};
+use crate::graph::cycles::{find_fundamental_cycles, resolve_to_edge_ids, density_per_100};
 use crate::quality_control::check::Check;
 use crate::quality_control::{Issue, MissingLoopsIssue};
 
@@ -33,17 +33,15 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
         }
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
-        // Silently skip on overflow, same rationale as MaxLoopDensityCheck (issue #22).
-        let covered: HashSet<NodeId> = match find_deduped_simple_cycles(nav) {
-            Some(cycles) if !cycles.is_empty() => {
-                let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
-                all.iter()
-                    .flat_map(|cycle| cycle.iter().filter_map(|&id| maze.graph.edge(id)))
-                    .flat_map(|edge| [edge.from, edge.to])
-                    .collect()
-            }
-            Some(_) => HashSet::new(),
-            None => return,
+        let cycles = find_fundamental_cycles(nav);
+        let covered: HashSet<NodeId> = if cycles.is_empty() {
+            HashSet::new()
+        } else {
+            let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
+            all.iter()
+                .flat_map(|cycle| cycle.iter().filter_map(|&id| maze.graph.edge(id)))
+                .flat_map(|edge| [edge.from, edge.to])
+                .collect()
         };
 
         let density = density_per_100(covered.len(), field_cells);
@@ -68,7 +66,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{Field, SquareTessellation, square_rect};
 
     const TEST_ID: &str = "min_loop_density";
 
@@ -140,33 +138,6 @@ mod tests {
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert!(issues[0].missing > 0);
-    }
-
-    #[test]
-    fn silent_when_cycle_enumeration_overflows() {
-        const SIDE: i32 = 6;
-        let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
-        let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        for y in 0..SIDE {
-            for x in 0..SIDE {
-                let here = field.node_at(SquarePoint { x, y }).unwrap();
-                if x + 1 < SIDE {
-                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
-                    g.add_bidirectional_edge(here, right, EdgeKind::Basic);
-                }
-                if y + 1 < SIDE {
-                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
-                    g.add_bidirectional_edge(here, up, EdgeKind::Basic);
-                }
-            }
-        }
-        let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 100, avg_loop_length_estimate: 1 };
-        let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 
     #[test]

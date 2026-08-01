@@ -64,7 +64,7 @@ export interface GraphAnalyticsDto {
   node_count: number;
   edge_count: number;
   component_count: number;
-  /** Number of independent cycles (E - V + C on the pure-cycle core). */
+  /** Number of independent cycles (fundamental cycle basis length — GitHub issue #244). */
   cycle_count: number;
   /** Number of connected cyclic regions. */
   cycle_region_count: number;
@@ -74,10 +74,6 @@ export interface GraphAnalyticsDto {
   pure_cycle_node_ids: number[];
   /** nav-edge pairs [from_maze_id, to_maze_id] in the pure-cycle core. */
   pure_cycle_edge_pairs: [number, number][];
-  /** True if cycle enumeration aborted (graph has too many simple cycles to analyze) — when
-   *  true, cycle_count/cycle_region_count/pure_cycle_node_ids/pure_cycle_edge_pairs are empty
-   *  placeholders, not real results. */
-  cycle_analysis_overflowed: boolean;
   /** SCC region class relative to start/finish — "path" | "alternative" | "unreachable" |
    *  "trap" — keyed by component_id (string key). Empty when start or finish is unset. */
   region_classes: Record<string, RegionClass>;

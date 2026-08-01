@@ -35,7 +35,7 @@ impl CycleKind {
         }
     }
 
-    /// Whether `cycle` (a list of nav-edge indices, as enumerated by `find_all_simple_cycles`)
+    /// Whether `cycle` (a list of nav-edge indices, as enumerated by `find_fundamental_cycles`)
     /// matches this kind.
     pub fn matches(self, nav: &NavGraph, cycle: &[usize]) -> bool {
         match self {

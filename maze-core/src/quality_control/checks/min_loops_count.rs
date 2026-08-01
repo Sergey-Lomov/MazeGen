@@ -18,15 +18,10 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopsCountCheck {
     fn check_type_id(&self) -> &'static str { "min_loops_count" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingLoopsIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        // Uses the same independent-cycle count (Euler: E - V + C on the pure-cycle core) shown
-        // to the user as the "Cycle count" analytics stat — not `find_deduped_simple_cycles`'s raw
-        // simple-cycle enumeration, which is a different (usually much larger) metric. Silently
-        // skips on `cycle_analysis_overflowed`, same rationale as the simple-cycle checks' overflow
-        // skip.
+        // Uses `analytics.cycle_count` — the direction-valid fundamental cycle count
+        // (`find_fundamental_cycles`, GitHub issue #244), shown to the user as the "Cycle count"
+        // analytics stat.
         let analytics = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
-        if analytics.cycle_analysis_overflowed {
-            return;
-        }
         let missing = self.min_loops.saturating_sub(analytics.cycle_count as u32);
         if missing == 0 {
             return;
@@ -43,7 +38,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{Field, SquareTessellation, square_rect};
 
     const TEST_ID: &str = "min_loops_count";
 
@@ -87,30 +82,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn silent_when_graph_analytics_overflows() {
-        const SIDE: i32 = 6;
-        let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
-        let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        for y in 0..SIDE {
-            for x in 0..SIDE {
-                let here = field.node_at(SquarePoint { x, y }).unwrap();
-                if x + 1 < SIDE {
-                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
-                    g.add_bidirectional_edge(here, right, EdgeKind::Basic);
-                }
-                if y + 1 < SIDE {
-                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
-                    g.add_bidirectional_edge(here, up, EdgeKind::Basic);
-                }
-            }
-        }
-        let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1 };
-        let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
-    }
 }

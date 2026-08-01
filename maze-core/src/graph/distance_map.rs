@@ -173,7 +173,7 @@ mod tests {
     use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
     use crate::graph::nav::build_nav_graph;
-    use crate::graph::cycles::{find_all_simple_cycles, CycleSearchResult};
+    use crate::graph::cycles::find_fundamental_cycles;
 
     /// Triangle a->b->c->a, with `a` also pinned (degree-2 corridor exemption is irrelevant
     /// here since every node in a 3-cycle has exactly one outgoing/incoming edge, already a
@@ -188,10 +188,7 @@ mod tests {
         g.add_edge(p(1), p(2), EdgeKind::Basic);
         g.add_edge(p(2), p(0), EdgeKind::Basic);
         let nav = build_nav_graph(&g);
-        let cycle = match find_all_simple_cycles(&nav) {
-            CycleSearchResult::Cycles(cycles) => cycles.into_iter().next().unwrap(),
-            CycleSearchResult::TooManyCycles => panic!("triangle must not overflow"),
-        };
+        let cycle = find_fundamental_cycles(&nav).into_iter().next().unwrap();
         (nav, cycle)
     }
 

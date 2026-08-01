@@ -543,11 +543,14 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             label: "Maximum loop density",
             description: "Fires if too large a share of the field is covered by loops; every loop is flagged when the maximum is exceeded.",
             issue_kinds: vec![kind_str(INVALID_LOOP_GROUP)],
-            params: vec![ParamDescriptor {
-                id: "max_density",
-                label: "Max loop density (per 100 cells)",
-                kind: ParamKindDto::Integer { default: MAX_LOOP_DENSITY_DEFAULT as i64, min: 0, max: 100 },
-            }],
+            params: vec![
+                ParamDescriptor {
+                    id: "max_density",
+                    label: "Max loop density (per 100 cells)",
+                    kind: ParamKindDto::Integer { default: MAX_LOOP_DENSITY_DEFAULT as i64, min: 0, max: 100 },
+                },
+                cycle_kind_param(),
+            ],
             allow_multiple_instances: false,
         },
         CheckDescriptor {
@@ -555,11 +558,14 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             label: "Maximum loop count",
             description: "Fires if the field has more simple loops than the allowed maximum; every loop is flagged when the maximum is exceeded.",
             issue_kinds: vec![kind_str(INVALID_LOOP_GROUP)],
-            params: vec![ParamDescriptor {
-                id: "max_loops_count",
-                label: "Max loop count",
-                kind: ParamKindDto::Integer { default: MAX_LOOPS_COUNT_DEFAULT as i64, min: 0, max: 100_000 },
-            }],
+            params: vec![
+                ParamDescriptor {
+                    id: "max_loops_count",
+                    label: "Max loop count",
+                    kind: ParamKindDto::Integer { default: MAX_LOOPS_COUNT_DEFAULT as i64, min: 0, max: 100_000 },
+                },
+                cycle_kind_param(),
+            ],
             allow_multiple_instances: false,
         },
         CheckDescriptor {

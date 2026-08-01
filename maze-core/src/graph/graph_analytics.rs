@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 #[cfg(test)]
 use std::collections::VecDeque;
 use super::nav::{NavEdge, NavGraph, NavNodeId};
-use super::cycles::{find_all_simple_cycles, drop_trivial_reverse_pairs, CycleSearchResult};
+use super::cycles::find_fundamental_cycles;
 use crate::dsu::Dsu;
 
 /// Iterate distinct *undirected* nav-edges: an edge and its `reverse_edge` are the same
@@ -71,41 +71,16 @@ fn trim_dead_ends(nav: &NavGraph) -> Vec<bool> {
 }
 
 /// Find nav-nodes and nav-edges participating in real directed cycles.
-/// Union of every nav-node/nav-edge appearing in any cycle found by `find_all_simple_cycles`
-/// (the single source of truth shared with overlay, metrics, and `MinLoopLengthCheck`) —
-/// not a separate BFS pass. Self-loops are included: they are first-class cycles there.
-///
-/// Returns `None` if enumeration aborted as `TooManyCycles` (see `find_all_simple_cycles`'s
-/// `MAX_SIMPLE_CYCLES` doc comment) — `compute_graph_analytics` has no toggle to disable this
-/// path, so a dense, fully-preset graph must surface as "analysis unavailable" rather than
-/// hang (see issue #22).
-///
-/// Two deliberate departures from a plain "union the deduped cycle list" approach, both
-/// needed for `compute_cycle_metrics`'s Euler formula (`E - V + C`) to produce correct
-/// results — confirmed by regressions when either was skipped:
-///
-/// 1. **Drops only trivial reverse-pair 2-cycles** (`drop_trivial_reverse_pairs`), not the
-///    full canonical-index dedup (`dedup_bidirectional_pairs`). A dead-end spur (a single
-///    bidirectional edge to a leaf with no other connection) only ever appears in the cycle
-///    list as its own trivial walk-out-and-back pair — dropping trivial pairs correctly
-///    excludes it from the core (it's not on any real cycle). But two genuinely different
-///    routes between the same junction pair (e.g. a direct corridor plus a detour) also
-///    produce trivial pairs (each route walked back on itself) ALONGSIDE the real cycle
-///    (route A forward + route B backward) — only the trivial pairs are dropped, the real
-///    cycle's edges remain.
-/// 2. **Keeps both directions of every surviving cycle's edges**, not just the one walking
-///    direction recorded in the cycle (which `dedup_bidirectional_pairs` would reduce to).
-///    `count_core_edges`/`count_core_regions` pair an edge with its `reverse_edge` to count
-///    one physical corridor once — if only one direction is present in `core_edges`, the
-///    pairing fails and miscounts E, producing a wrong cycle_count (confirmed on the
-///    parallel-corridors fixture: cycle_count came out 0 instead of 1 without this).
-fn cycle_core(nav: &NavGraph) -> Option<(HashSet<NavNodeId>, HashSet<usize>)> {
+/// Union of every nav-node/nav-edge appearing in any cycle found by `find_fundamental_cycles`
+/// (GitHub issue #244) — the fundamental cycle basis, not a separate BFS pass. Self-loops are
+/// included: they are first-class cycles there. Both directions of a cycle's edges are kept
+/// (an edge and its `reverse_edge`), matching `count_core_regions`'s pairing-based counting.
+/// Exactly covers the SCC's topological cycle structure — `find_fundamental_cycles` always
+/// recovers the full topological β₁ per SCC (see its doc comment), so this core is not
+/// narrower than the full cycle set.
+fn cycle_core(nav: &NavGraph) -> (HashSet<NavNodeId>, HashSet<usize>) {
     let edges: Vec<&NavEdge> = nav.edges().collect();
-    let cycles = match find_all_simple_cycles(nav) {
-        CycleSearchResult::Cycles(cycles) => cycles,
-        CycleSearchResult::TooManyCycles => return None,
-    };
-    let cycles = drop_trivial_reverse_pairs(nav, cycles);
+    let cycles = find_fundamental_cycles(nav);
 
     let mut cyclic_nodes: HashSet<NavNodeId> = HashSet::new();
     let mut cyclic_edges: HashSet<usize> = HashSet::new();
@@ -121,7 +96,7 @@ fn cycle_core(nav: &NavGraph) -> Option<(HashSet<NavNodeId>, HashSet<usize>)> {
         }
     }
 
-    Some((cyclic_nodes, cyclic_edges))
+    (cyclic_nodes, cyclic_edges)
 }
 
 /// Global graph analytics computed on the nav-graph.
@@ -129,7 +104,10 @@ fn cycle_core(nav: &NavGraph) -> Option<(HashSet<NavNodeId>, HashSet<usize>)> {
 pub struct GraphAnalytics {
     pub node_count: usize,
     pub edge_count: usize,
-    /// Number of independent cycles (E - V + C on the pure-cycle core).
+    /// Number of independent cycles: `find_fundamental_cycles`'s output length (GitHub issue
+    /// #244) — equal to the topological β₁ on the pure-cycle core (that function always
+    /// recovers the full count, see its doc comment), computed via the fundamental cycle basis
+    /// rather than the Euler formula.
     pub cycle_count: usize,
     /// Number of connected cyclic regions (WCC on the pure-cycle core subgraph).
     pub cycle_region_count: usize,
@@ -137,13 +115,6 @@ pub struct GraphAnalytics {
     pub pure_cycle_nav_nodes: HashSet<NavNodeId>,
     /// Nav-edge indices in the pure-cycle core (real cycles only, no bridges).
     pub pure_cycle_edge_indices: HashSet<usize>,
-    /// True if cycle enumeration aborted because the graph has too many simple cycles to
-    /// enumerate (see `find_all_simple_cycles`'s `MAX_SIMPLE_CYCLES`) — a dense, heavily
-    /// preset-connected graph (see issue #22) can exceed this. When `true`, `cycle_count`,
-    /// `cycle_region_count`, `pure_cycle_nav_nodes`, and `pure_cycle_edge_indices` are all
-    /// empty/zero placeholders, not real results — callers must check this flag before
-    /// trusting those fields, not infer "no cycles" from them being empty.
-    pub cycle_analysis_overflowed: bool,
 }
 
 impl GraphAnalytics {
@@ -155,27 +126,8 @@ impl GraphAnalytics {
             cycle_region_count: 0,
             pure_cycle_nav_nodes: HashSet::new(),
             pure_cycle_edge_indices: HashSet::new(),
-            cycle_analysis_overflowed: false,
         }
     }
-}
-
-/// Count undirected edges within the pure-cycle core. An edge and its `reverse_edge` are the
-/// same physical corridor and count once; edges with no reverse_edge in the core (one-way, or
-/// a corridor whose reverse direction simply isn't in the core) count via plain undirected-pair
-/// dedup. Distinct parallel corridors between the same node pair (e.g. a direct path plus a
-/// longer detour, each compressed from a different chain of corridor nodes) must each count
-/// separately — they're genuinely different cycle legs.
-fn count_core_edges(nav: &NavGraph, core_edges: &HashSet<usize>) -> usize {
-    let mut paired_count = 0usize;
-    let mut unpaired_pairs: HashSet<(NavNodeId, NavNodeId)> = HashSet::new();
-    for (_, edge) in distinct_undirected_edges(nav, |idx| core_edges.contains(&idx)) {
-        match edge.reverse_edge {
-            Some(rev) if core_edges.contains(&rev) => paired_count += 1,
-            _ => { unpaired_pairs.insert((edge.from.min(edge.to), edge.from.max(edge.to))); }
-        }
-    }
-    paired_count + unpaired_pairs.len()
 }
 
 /// Number of connected components (WCC) of the pure-cycle core subgraph, via DSU.
@@ -191,24 +143,10 @@ fn count_core_regions(core_nodes: &[NavNodeId], nav: &NavGraph, core_edges: &Has
     roots.len()
 }
 
-/// Cycle metrics on the pure-cycle core. Bridges never participate, so they never affect
-/// the cycle count or region count.
-/// cycle_count = E_core - V_core + C_core (number of independent cycles).
-/// cycle_region_count = number of connected components in the pure-cycle core (undirected).
-fn compute_cycle_metrics(nav: &NavGraph, core_nodes: &HashSet<NavNodeId>, core_edges: &HashSet<usize>) -> (usize, usize) {
-    if core_nodes.is_empty() {
-        return (0, 0);
-    }
-    let core_nodes: Vec<NavNodeId> = core_nodes.iter().copied().collect();
-    let v_core = core_nodes.len();
-    let e_core = count_core_edges(nav, core_edges);
-    let c_core = count_core_regions(&core_nodes, nav, core_edges);
-    let cycle_count = (e_core + c_core).saturating_sub(v_core);
-    (cycle_count, c_core)
-}
-
 /// Compute graph analytics on the nav-graph.
-/// Cycle metrics are based on the pure-cycle core (see `cycle_core`), not raw SCCs.
+/// `cycle_count` is the fundamental cycle basis's length (`find_fundamental_cycles`, GitHub
+/// issue #244), the same topological β₁ the Euler formula used to compute — see
+/// `cycle_core`'s doc comment.
 pub fn compute_graph_analytics(nav: &NavGraph) -> GraphAnalytics {
     let n = nav.nodes.len();
     if n == 0 {
@@ -221,22 +159,16 @@ pub fn compute_graph_analytics(nav: &NavGraph) -> GraphAnalytics {
     // corridors and must both be counted.
     let edge_count = distinct_undirected_edges(nav, |_| true).count();
 
-    // Pure-cycle core — nodes/edges participating in real directed cycles (no bridges).
-    // `None` means cycle enumeration overflowed (see `cycle_core`'s doc comment) — surface
-    // empty placeholders plus the overflow flag rather than propagating a hang.
-    let Some((pure_cycle_nav_nodes, pure_cycle_edge_indices)) = cycle_core(nav) else {
-        return GraphAnalytics {
-            node_count: n,
-            edge_count,
-            cycle_count: 0,
-            cycle_region_count: 0,
-            pure_cycle_nav_nodes: HashSet::new(),
-            pure_cycle_edge_indices: HashSet::new(),
-            cycle_analysis_overflowed: true,
-        };
+    let cycle_count = find_fundamental_cycles(nav).len();
+
+    // Pure-cycle core — nodes/edges participating in the fundamental cycle basis (no bridges).
+    let (pure_cycle_nav_nodes, pure_cycle_edge_indices) = cycle_core(nav);
+    let cycle_region_count = if pure_cycle_nav_nodes.is_empty() {
+        0
+    } else {
+        let core_nodes: Vec<NavNodeId> = pure_cycle_nav_nodes.iter().copied().collect();
+        count_core_regions(&core_nodes, nav, &pure_cycle_edge_indices)
     };
-    let (cycle_count, cycle_region_count) =
-        compute_cycle_metrics(nav, &pure_cycle_nav_nodes, &pure_cycle_edge_indices);
 
     GraphAnalytics {
         node_count: n,
@@ -245,7 +177,6 @@ pub fn compute_graph_analytics(nav: &NavGraph) -> GraphAnalytics {
         cycle_region_count,
         pure_cycle_nav_nodes,
         pure_cycle_edge_indices,
-        cycle_analysis_overflowed: false,
     }
 }
 

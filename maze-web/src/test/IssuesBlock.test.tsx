@@ -121,7 +121,7 @@ describe("IssueBubble", () => {
 
   it("a bubble with sourceCheck: null (no structural payload) is not hoverable -- no store field changes", () => {
     const issue: IssueDto = {
-      kind: "cycle_analysis_overflowed",
+      kind: "repair_limit_reached",
       payload: { kind: "none" },
       source_checks: [],
       source_check_types: {},
@@ -129,7 +129,7 @@ describe("IssueBubble", () => {
     };
     render(<IssueBubble issue={issue} sourceCheck={null} />);
 
-    const bubble = screen.getByText("Cycle analysis overflowed");
+    const bubble = screen.getByText("Repair loop stopped early");
     fireEvent.mouseEnter(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();

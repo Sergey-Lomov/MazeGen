@@ -635,8 +635,6 @@
   "issue.invalid_loop_group.description": "Проверяет петли как группу и помечает лишние (например, если суммарная плотность покрытия петлями превышает заданный порог).",
   "issue.invalid_loop_group.max_loop_density_label": "Избыточная петля (плотность выше {max_density} на 100 клеток)",
   "issue.invalid_loop_group.max_loops_count_label": "Избыточная петля (число петель выше {max_loops_count})",
-  "issue.cycle_analysis_overflowed.label": "Переполнение анализа циклов",
-  "issue.cycle_analysis_overflowed.description": "Слишком много циклов для анализа - метрики циклов недоступны для этого лабиринта.",
   "issue.repair_limit_reached.label": "Цикл правил качества остановлен досрочно",
   "issue.repair_limit_reached.description": "Цикл исправления качества был прерван заданным лимитом до того, как все проблемы удалось устранить. Некоторые проблемы ниже могут остаться неисправленными из-за этого.",
   "issue.repair_limit_reached.max_iterations_label": "Цикл правил качества остановлен: достигнут лимит итераций",
