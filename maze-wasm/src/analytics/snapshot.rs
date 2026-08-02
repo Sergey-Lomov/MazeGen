@@ -1,0 +1,399 @@
+use std::collections::HashMap;
+use rand::SeedableRng;
+use maze_core::random::MazeRng;
+use maze_core::{
+    space::Tessellation,
+    quality_control::{
+        QualityControlEngine, Issue, CycleAnalysisOverflowedIssue,
+        RepairLimitReachedIssue, IssuePayload, resolve_issue_payload,
+    },
+    compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
+    generation::{SplitFaceRequirement, OneWayDirection},
+    split_totals,
+    Maze,
+};
+use crate::dto::{
+    EdgeDto, EdgeKindDto, IssueDto, IssuePayloadDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
+    NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, JunctionBucket, GraphAnalyticsDto,
+    SplitFaceRequirementDto, OneWayDirectionDto, SplitGroupDto, SplitAnalyticsDto,
+};
+
+/// Compute analytics snapshot from a fully-built maze (GraphInput).
+/// Independent of the generation pipeline — accepts any Maze<T> with a populated graph.
+/// `qc_engine`: used to run quality checks (no repair). Pass None to skip QC (e.g. when
+/// caller already has authoritative issues from a repair cycle).
+pub fn build_analytics_snapshot<T: Tessellation>(
+    maze: &mut Maze<T>,
+    qc_engine: Option<&QualityControlEngine<T>>,
+    issues_override: Option<Vec<Box<dyn Issue>>>,
+    check_types: &HashMap<String, String>,
+    point_to_xy: impl Fn(T::Point) -> (i32, i32),
+    // Node's stable per-point index (GitHub issue #236, `NodeDto.i` doc comment) — `0` is always
+    // the point's original node. A fresh maze (generation) has no removal history yet, so a node's
+    // position within `nodes_at(point)` (the default every call site but `run_compute_analytics`
+    // passes) already equals its real `i`. `run_compute_analytics` instead passes a lookup built
+    // from the client's own `cfg.nodes`, since post-edit's removal history can leave a hole in the
+    // `i` sequence that a freshly recomputed position would wrongly compact away.
+    index_of: impl Fn(maze_core::ids::NodeId, T::Point, usize) -> u32,
+) -> Result<MazeSnapshot, String> {
+    let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
+    let graph_analytics = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
+
+    let mut raw_issues: Vec<Box<dyn Issue>> = if let Some(i) = issues_override {
+        i
+    } else if let Some(engine) = qc_engine {
+        // No generation seed exists on this path (the maze is already built, e.g. loaded from
+        // the editor) — a fixed seed keeps a randomized check (MaxLoopDensityCheck) at least
+        // deterministic per call, consistent with every other check's no-side-effects contract.
+        let mut rng = MazeRng::seed_from_u64(0);
+        engine.run_check_only(maze, &mut rng, maze_core::generation::pipeline::now_ms)
+    } else {
+        vec![]
+    };
+    // Not a toggleable QC check — `compute_graph_analytics` always runs, so this surfaces
+    // through the same Issue/IssuesBlock UI rather than a separate ad-hoc warning (see #22
+    // follow-up review): a dense, heavily preset-connected graph can exceed
+    // `find_all_simple_cycles`'s `MAX_SIMPLE_CYCLES` bound and abort cycle analysis.
+    if graph_analytics.cycle_analysis_overflowed {
+        raw_issues.push(Box::new(CycleAnalysisOverflowedIssue::default()));
+    }
+
+    // Computed once here (before the issues map needs it for `RegionsNeedingExpansion`) and reused
+    // below for `graph_analytics_dto.node_component` — cached per `graph.version()`, so the
+    // second call is a cache hit, not a recomputation.
+    let scc = maze.analysis.scc(&maze.graph);
+
+    let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
+        let issue = issue.as_ref();
+        let payload = match resolve_issue_payload(issue, &maze.graph, &scc) {
+            IssuePayload::None => IssuePayloadDto::None,
+            // Grouped by source check id (not one flat list) so a merged issue rendered as
+            // several bubbles (one per `source_checks` entry) highlights only the cycles *that
+            // check* flagged on hover — see `IssuePayloadDto::InvalidLoop`'s doc comment.
+            IssuePayload::InvalidLoop { edges } => IssuePayloadDto::InvalidLoop { edges },
+            IssuePayload::RegionNeedsExpansion { nodes } => IssuePayloadDto::RegionNeedsExpansion { nodes },
+            IssuePayload::RegionNeedsShrink { nodes } => IssuePayloadDto::RegionNeedsShrink { nodes },
+            IssuePayload::InvalidTeleport { groups } => IssuePayloadDto::InvalidTeleport { groups },
+            IssuePayload::InvalidOneWay { groups } => IssuePayloadDto::InvalidOneWay { groups },
+            IssuePayload::InvalidSplitTile { nodes } => IssuePayloadDto::InvalidSplitTile { nodes },
+            IssuePayload::InvalidSplitRoute { routes } => IssuePayloadDto::InvalidSplitRoute { routes },
+        };
+        let source_checks = issue.source_checks().iter().map(|s| s.to_string()).collect();
+        let mut details: HashMap<String, HashMap<String, String>> = issue.details().iter()
+            .map(|(check_id, kv)| (
+                check_id.to_string(),
+                kv.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
+            ))
+            .collect();
+        // `REPAIR_LIMIT_REACHED` carries no source check (pushed directly by `build_maze`, not a
+        // toggleable `Check<T, I>`), so its detail can't be keyed by a check instance id like the
+        // others — keyed by the issue's own kind string instead, the only stable key available here.
+        if let Some(RepairLimitReachedIssue { limit, .. }) = issue.as_any().downcast_ref::<RepairLimitReachedIssue>() {
+            details.insert(issue.kind().to_string(), HashMap::from([("limit".to_string(), limit.as_str().to_string())]));
+        }
+        // Invariant: every key in `source_checks` has a matching entry here, no extras — both
+        // come from the same composite-id set built while constructing the active checks (see
+        // `build_qc_and_repair_impl`/`check_types` in `runner.rs`), not a separate pass that
+        // could drift from it.
+        let source_check_types: HashMap<String, String> = issue.source_checks().iter()
+            .filter_map(|s| check_types.get(s).map(|t| (s.clone(), t.clone())))
+            .collect();
+        IssueDto { kind: issue.kind().to_string(), payload, source_checks, source_check_types, details }
+    }).collect();
+
+    // Iterates via `Field::all_points`/`nodes_at` (deterministic order — see their doc comments),
+    // not `maze.graph.nodes()` (insertion-order, an implementation detail) — GitHub issue #221:
+    // this makes "which node of a split point comes first in the snapshot" a real contract (the
+    // point's original node, then each `add_node_at` in creation order), which the web-side
+    // controller relies on to tell a point's original node apart from its extra split nodes.
+    //
+    // `all_points()` yields one entry per *NodeId* (see its doc comment), not per unique point —
+    // for a split point with N nodes it repeats that point N times. Deduping by point here (first
+    // occurrence wins, `all_points()`'s NodeId-sorted order is preserved) is required so
+    // `nodes_at(p)` isn't flat-mapped once per repeat, which would emit a split point's node list
+    // N times over (GitHub issue #223 surfaced this once split-junction rendering started reading
+    // every node of a point instead of just one).
+    let mut seen_points: std::collections::HashSet<T::Point> = std::collections::HashSet::new();
+    let nodes: Vec<NodeDto> = maze.field
+        .all_points()
+        .filter(|p| seen_points.insert(*p))
+        .flat_map(|p| maze.field.nodes_at(p).iter().enumerate().map(move |(pos, &id)| (id, p, pos)))
+        .filter_map(|(id, p, pos)| {
+            let id32 = u32::try_from(id).ok()?;
+            let (x, y) = point_to_xy(p);
+            let i = index_of(id, p, pos);
+            Some(NodeDto { id: id32, x, y, i })
+        })
+        .collect();
+
+    let edges: Vec<EdgeDto> = maze.graph
+        .edges()
+        .filter_map(|e| {
+            let kind = match e.kind {
+                maze_core::graph::EdgeKind::Basic => EdgeKindDto::Basic,
+                maze_core::graph::EdgeKind::Teleport => EdgeKindDto::Teleport,
+            };
+            Some(EdgeDto {
+                from: u32::try_from(e.from).ok()?,
+                to:   u32::try_from(e.to).ok()?,
+                kind,
+            })
+        })
+        .collect();
+
+    let meta_start  = maze.meta.start.and_then(|id| u32::try_from(id).ok());
+    let meta_finish = maze.meta.finish.and_then(|id| u32::try_from(id).ok());
+
+    let nav_nodes: Vec<NavNodeDto> = nav.nodes.iter()
+        .filter_map(|n| u32::try_from(n.node_id).ok().map(|id| NavNodeDto { node_id: id }))
+        .collect();
+
+    let nav_edges: Vec<NavEdgeDto> = nav.edges()
+        .filter_map(|e| {
+            let from = u32::try_from(e.from).ok()?;
+            let to   = u32::try_from(e.to).ok()?;
+            let path = e.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
+            Some(NavEdgeDto { from, to, path })
+        })
+        .collect();
+
+    let pure_cycle_node_ids: Vec<u32> = graph_analytics.pure_cycle_nav_nodes.iter()
+        .filter_map(|&nav_id| nav.nodes.get(nav_id))
+        .filter_map(|n| u32::try_from(n.node_id).ok())
+        .collect();
+
+    let pure_cycle_edge_pairs: Vec<[u32; 2]> = graph_analytics.pure_cycle_edge_indices.iter()
+        .filter_map(|&idx| {
+            let edge = nav.edge_by_idx(idx);
+            let from_node = nav.nodes.get(edge.from)?.node_id;
+            let to_node   = nav.nodes.get(edge.to)?.node_id;
+            let from = u32::try_from(from_node).ok()?;
+            let to   = u32::try_from(to_node).ok()?;
+            Some([from, to])
+        })
+        .collect();
+
+    let node_component: HashMap<String, usize> = scc.components.iter()
+        .enumerate()
+        .flat_map(|(comp_id, comp)| {
+            comp.iter().filter_map(move |&node_id| {
+                u32::try_from(node_id).ok().map(|id| (id.to_string(), comp_id))
+            })
+        })
+        .collect();
+
+    let region_classes: HashMap<String, String> = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta).into_iter()
+        .map(|(comp_id, class)| (comp_id.to_string(), class.as_str().to_string()))
+        .collect();
+
+    let (split_tile_count, split_node_count, split_groups) = split_totals(&maze.graph, &maze.field);
+    let split_analytics = SplitAnalyticsDto {
+        tile_count: split_tile_count,
+        node_count: split_node_count,
+        groups: split_groups.into_iter()
+            .map(|(topology, count)| SplitGroupDto {
+                topology: topology.into_iter()
+                    .map(|node_faces| node_faces.into_iter().map(split_face_requirement_dto).collect())
+                    .collect(),
+                count,
+            })
+            .collect(),
+    };
+
+    let graph_analytics_dto = GraphAnalyticsDto {
+        node_count:        graph_analytics.node_count,
+        edge_count:        graph_analytics.edge_count,
+        component_count:   scc.components.len(),
+        cycle_count:       graph_analytics.cycle_count,
+        cycle_region_count: graph_analytics.cycle_region_count,
+        simple_cycle_count: graph_analytics.simple_cycle_count,
+        node_component,
+        pure_cycle_node_ids,
+        pure_cycle_edge_pairs,
+        cycle_analysis_overflowed: graph_analytics.cycle_analysis_overflowed,
+        region_classes,
+    };
+
+    let raw_node_stats = compute_node_stats(&maze.graph, &maze.field);
+    let node_stats = NodeStatsDto {
+        dead_ends: raw_node_stats.dead_ends,
+        straight:  raw_node_stats.straight,
+        turns:     raw_node_stats.turns,
+        junctions: raw_node_stats.junctions.iter()
+            .map(|&(degree, count)| JunctionBucket { degree, count })
+            .collect(),
+        teleport_entries: raw_node_stats.teleport_entries,
+    };
+
+    let raw_edge_stats = compute_spatial_edge_stats(&maze.graph, &maze.field);
+    let edge_stats = SpatialEdgeStatsDto {
+        bidirectional:    raw_edge_stats.bidirectional,
+        one_way_passages: raw_edge_stats.one_way_passages,
+        walls:            raw_edge_stats.walls,
+    };
+
+    let raw_teleport_stats = compute_teleport_edge_stats(&maze.graph);
+    let teleport_edge_stats = TeleportEdgeStatsDto {
+        two_way: raw_teleport_stats.two_way,
+        one_way: raw_teleport_stats.one_way,
+    };
+
+    let route_info = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta).map(|r| RouteInfoDto {
+        path_length:    r.path_length,
+        junction_count: r.junction_count,
+        one_way_count:  r.one_way_count,
+        split_count:    r.split_count,
+        score:          maze.meta.route_score,
+        path:           r.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect(),
+    });
+
+    Ok(MazeSnapshot {
+        nodes,
+        edges,
+        start: meta_start,
+        finish: meta_finish,
+        issues,
+        nav_nodes,
+        nav_edges,
+        node_stats,
+        edge_stats,
+        teleport_edge_stats,
+        route_info,
+        graph_analytics: graph_analytics_dto,
+        split_analytics,
+        timing: None,
+    })
+}
+
+pub(crate) fn split_face_requirement_dto(req: SplitFaceRequirement) -> SplitFaceRequirementDto {
+    match req {
+        SplitFaceRequirement::Passage => SplitFaceRequirementDto::Passage,
+        SplitFaceRequirement::OneWay(OneWayDirection::Forward) =>
+            SplitFaceRequirementDto::OneWay { direction: OneWayDirectionDto::Forward },
+        SplitFaceRequirement::OneWay(OneWayDirection::Backward) =>
+            SplitFaceRequirementDto::OneWay { direction: OneWayDirectionDto::Backward },
+        SplitFaceRequirement::Wall => SplitFaceRequirementDto::Wall,
+        SplitFaceRequirement::Unspecified => SplitFaceRequirementDto::Unspecified,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use maze_core::ids::IdGenerator;
+    use maze_core::graph::{Graph, EdgeKind};
+    use maze_core::space::{SquareTessellation, SquarePoint, square_rect, Field};
+    use maze_core::quality_control::CYCLE_ANALYSIS_OVERFLOWED;
+
+    #[test]
+    fn pushes_cycle_analysis_overflowed_issue_on_overflow() {
+        // Same 6x6 fully-bidirectional grid as the cycles.rs/min_loop_length.rs regression
+        // tests for issue #22 (2,444,782 simple cycles — far past MAX_SIMPLE_CYCLES).
+        const SIDE: i32 = 6;
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        for y in 0..SIDE {
+            for x in 0..SIDE {
+                let here = field.nodes_at(SquarePoint { x, y }).first().copied().unwrap();
+                if x + 1 < SIDE {
+                    let right = field.nodes_at(SquarePoint { x: x + 1, y }).first().copied().unwrap();
+                    g.build_initial_bidirectional_edge(here, right, EdgeKind::Basic);
+                }
+                if y + 1 < SIDE {
+                    let up = field.nodes_at(SquarePoint { x, y: y + 1 }).first().copied().unwrap();
+                    g.build_initial_bidirectional_edge(here, up, EdgeKind::Basic);
+                }
+            }
+        }
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+
+        assert!(snapshot.graph_analytics.cycle_analysis_overflowed);
+        assert!(snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
+    }
+
+    #[test]
+    fn no_overflow_issue_on_sparse_graph() {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
+        g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+
+        assert!(!snapshot.graph_analytics.cycle_analysis_overflowed);
+        assert!(!snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
+    }
+
+    #[test]
+    fn snapshot_nodes_lists_a_split_points_nodes_exactly_once_each() {
+        // GitHub issue #223 regression: `Field::all_points()` yields one entry per NodeId, so a
+        // split point (2+ NodeIds at the same coordinate) used to make `nodes` list that point's
+        // node pair once per its own node count — a 2-node split point appeared 2x (4 entries
+        // instead of 2), a 3-node split point 3x, etc.
+        let mut ids = IdGenerator::new();
+        let mut field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let p = SquarePoint { x: 1, y: 0 };
+        let extra = field.add_node_at(p, &mut ids);
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        g.add_node(extra);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+
+        let at_split_point: Vec<_> = snapshot.nodes.iter().filter(|n| n.x == 1 && n.y == 0).collect();
+        assert_eq!(at_split_point.len(), 2, "split point's node list must appear exactly once, not once per its own node count");
+        let mut ids_seen: Vec<u32> = at_split_point.iter().map(|n| n.id).collect();
+        ids_seen.sort_unstable();
+        ids_seen.dedup();
+        assert_eq!(ids_seen.len(), 2, "no duplicate NodeIds within the split point's entries");
+    }
+
+    #[test]
+    fn region_classes_empty_when_start_or_finish_unset() {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
+        g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        // Neither start nor finish set.
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+
+        assert!(snapshot.graph_analytics.region_classes.is_empty());
+    }
+
+    #[test]
+    fn region_classes_populated_when_start_and_finish_set() {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
+        let c = field.nodes_at(SquarePoint { x: 2, y: 0 }).first().copied().unwrap();
+        g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(b, c, EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(a);
+        maze.meta.finish = Some(c);
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+
+        // Fully bidirectional 3-node line collapses into a single SCC — start and finish share
+        // a region, which is always "path" by definition.
+        assert!(!snapshot.graph_analytics.region_classes.is_empty());
+        assert!(snapshot.graph_analytics.region_classes.values().all(|c| c == "path"));
+    }
+}
