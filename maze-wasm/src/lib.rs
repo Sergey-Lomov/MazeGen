@@ -5,6 +5,7 @@ mod runner;
 mod tessellation_dispatch;
 mod analytics;
 mod checks_catalog;
+mod check_descriptor;
 mod strategies_catalog;
 mod geometry;
 

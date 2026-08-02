@@ -65,25 +65,30 @@ pub enum IssuePayload {
 /// `maze-wasm/src/analytics.rs`'s `build_analytics_snapshot` (GitHub issue #147) so the same
 /// downcast/resolve logic backs both the JSON analytics report and the binary QC event tape,
 /// instead of two independently-maintained copies.
+/// Resolves one `EdgeId` into a base-graph `[from, to]` node-id pair, or `None` if the edge is
+/// stale (already removed from `graph`) or either endpoint doesn't fit `u32` — shared by every
+/// resolve fn below that turns a flagged edge/cycle/group into wire-shape node-id pairs.
+fn edge_pair(graph: &Graph, eid: crate::ids::EdgeId) -> Option<[u32; 2]> {
+    let edge = graph.edge(eid)?;
+    let from = u32::try_from(edge.from).ok()?;
+    let to = u32::try_from(edge.to).ok()?;
+    Some([from, to])
+}
+
 /// Shared payload-building logic for the `all`/`invalid`/`invalid_sources` cycle-set shape common
 /// to `InvalidLoopIssue` and `InvalidLoopGroupIssue` — both resolve to the same
 /// `IssuePayload::InvalidLoop` wire shape (see that variant's doc comment), just sourced from
-/// different `Issue` types.
-fn resolve_invalid_loop_payload(
-    all: &[Vec<crate::ids::EdgeId>],
-    invalid: &[usize],
+/// different `Issue` types. `cycles` yields each flagged cycle's edges — for `InvalidLoopIssue`
+/// that's `all[idx]` per `invalid` index, for `InvalidLoopGroupIssue` `invalid` already holds the
+/// cycles directly (no index indirection).
+fn resolve_cycle_payload<'a>(
+    cycles: impl Iterator<Item = &'a Vec<crate::ids::EdgeId>>,
     invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>,
     graph: &Graph,
 ) -> Option<IssuePayload> {
     let mut edges: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
-    for &idx in invalid {
-        let Some(loop_edges) = all.get(idx) else { continue };
-        let edge_pairs: Vec<[u32; 2]> = loop_edges.iter().filter_map(|&eid| {
-            let edge = graph.edge(eid)?;
-            let from = u32::try_from(edge.from).ok()?;
-            let to = u32::try_from(edge.to).ok()?;
-            Some([from, to])
-        }).collect();
+    for loop_edges in cycles {
+        let edge_pairs: Vec<[u32; 2]> = loop_edges.iter().filter_map(|&eid| edge_pair(graph, eid)).collect();
         let key = canonical_cycle_key(loop_edges);
         for source in invalid_sources.get(&key).into_iter().flatten() {
             edges.entry(source.clone()).or_default().push(edge_pairs.clone());
@@ -92,108 +97,41 @@ fn resolve_invalid_loop_payload(
     if edges.is_empty() { None } else { Some(IssuePayload::InvalidLoop { edges }) }
 }
 
-/// `InvalidLoopGroupIssue`-specific variant of `resolve_invalid_loop_payload` — its `invalid`
-/// field is already the direct list of flagged cycles (no `all`/index indirection), so there's no
-/// index to resolve through.
-fn resolve_invalid_loop_group_payload(
-    invalid: &[Vec<crate::ids::EdgeId>],
-    invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>,
-    graph: &Graph,
-) -> Option<IssuePayload> {
-    let mut edges: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
-    for loop_edges in invalid {
-        let edge_pairs: Vec<[u32; 2]> = loop_edges.iter().filter_map(|&eid| {
-            let edge = graph.edge(eid)?;
-            let from = u32::try_from(edge.from).ok()?;
-            let to = u32::try_from(edge.to).ok()?;
-            Some([from, to])
-        }).collect();
-        let key = canonical_cycle_key(loop_edges);
-        for source in invalid_sources.get(&key).into_iter().flatten() {
-            edges.entry(source.clone()).or_default().push(edge_pairs.clone());
-        }
-    }
-    if edges.is_empty() { None } else { Some(IssuePayload::InvalidLoop { edges }) }
-}
-
-/// Resolves a single flagged teleport `EdgeId` into a one-edge group, keyed by the specific
-/// check(s) that flagged *that* edge (`invalid_sources`, not the issue's whole `source_checks`
-/// list) — shared by `InvalidTeleportIssue`'s resolve path below. See GitHub issue #195's
-/// follow-up: without per-edge attribution, a merged issue combining two checks' flagged edges
-/// would highlight every edge on every contributing check's bubble, not just the edges that
-/// specific check actually flagged (the bug `InvalidLoopIssue.invalid_sources` already avoids).
-fn resolve_invalid_teleport_payload(invalid: &[crate::ids::EdgeId], invalid_sources: &HashMap<crate::ids::EdgeId, Vec<String>>, graph: &Graph) -> Option<IssuePayload> {
+/// Resolves a single flagged edge (teleport or one-way) into a one-edge group, keyed by the
+/// specific check(s) that flagged *that* edge (`invalid_sources`, not the issue's whole
+/// `source_checks` list) — shared by `InvalidTeleportIssue`/`InvalidOneWayIssue`'s resolve paths
+/// below. See GitHub issue #195's follow-up: without per-edge attribution, a merged issue
+/// combining two checks' flagged edges would highlight every edge on every contributing check's
+/// bubble, not just the edges that specific check actually flagged (the bug
+/// `InvalidLoopIssue.invalid_sources` already avoids).
+fn resolve_single_edge_map(invalid: &[crate::ids::EdgeId], invalid_sources: &HashMap<crate::ids::EdgeId, Vec<String>>, graph: &Graph) -> HashMap<String, Vec<Vec<[u32; 2]>>> {
     let mut groups: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
     for &eid in invalid {
-        let Some(edge) = graph.edge(eid) else { continue };
-        let (Ok(from), Ok(to)) = (u32::try_from(edge.from), u32::try_from(edge.to)) else { continue };
+        let Some(pair) = edge_pair(graph, eid) else { continue };
         for source in invalid_sources.get(&eid).into_iter().flatten() {
-            groups.entry(source.clone()).or_default().push(vec![[from, to]]);
+            groups.entry(source.clone()).or_default().push(vec![pair]);
         }
     }
-    if groups.is_empty() { None } else { Some(IssuePayload::InvalidTeleport { groups }) }
+    groups
 }
 
-/// Resolves every flagged teleport group's edge set into base-graph edge pairs, keyed by the
-/// specific check(s) that flagged *that* group (`invalid_sources`, canonical-group-key-keyed) —
-/// shared by `InvalidTeleportGroupIssue`'s resolve path below. Same per-group attribution
-/// rationale as `resolve_invalid_one_way_group_payload`; `to_remove` (the group's fix-count)
-/// carries no highlight meaning and is dropped here — every edge in the group is highlighted
-/// regardless.
-fn resolve_invalid_teleport_group_payload(groups: &[(Vec<crate::ids::EdgeId>, u32)], invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>, graph: &Graph) -> Option<IssuePayload> {
+/// Resolves every flagged edge group (teleport or one-way proximity/super-hub/count-excess) into
+/// base-graph edge pairs, keyed by the specific check(s) that flagged *that* group
+/// (`invalid_sources`, canonical-group-key-keyed) — shared by `InvalidTeleportGroupIssue`/
+/// `InvalidOneWayGroupIssue`/`InvalidSplitNodeConnectionGroupIssue`'s resolve paths below.
+/// `to_remove` (the group's fix-count) carries no highlight meaning and is dropped here — every
+/// edge in the group is highlighted regardless.
+fn resolve_edge_group_map(groups: &[(Vec<crate::ids::EdgeId>, u32)], invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>, graph: &Graph) -> HashMap<String, Vec<Vec<[u32; 2]>>> {
     let mut out: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
     for (group, _to_remove) in groups {
-        let edge_pairs: Vec<[u32; 2]> = group.iter().filter_map(|&eid| {
-            let edge = graph.edge(eid)?;
-            let from = u32::try_from(edge.from).ok()?;
-            let to = u32::try_from(edge.to).ok()?;
-            Some([from, to])
-        }).collect();
+        let edge_pairs: Vec<[u32; 2]> = group.iter().filter_map(|&eid| edge_pair(graph, eid)).collect();
         let mut key = group.clone();
         key.sort_unstable();
         for source in invalid_sources.get(&key).into_iter().flatten() {
             out.entry(source.clone()).or_default().push(edge_pairs.clone());
         }
     }
-    if out.is_empty() { None } else { Some(IssuePayload::InvalidTeleport { groups: out }) }
-}
-
-/// Resolves a single flagged one-way edge into a one-edge group, keyed by the specific check(s)
-/// that flagged *that* edge — same per-edge attribution rationale as
-/// `resolve_invalid_teleport_payload`, shared by `InvalidOneWayIssue`'s resolve path below.
-fn resolve_invalid_one_way_payload(invalid: &[crate::ids::EdgeId], invalid_sources: &HashMap<crate::ids::EdgeId, Vec<String>>, graph: &Graph) -> Option<IssuePayload> {
-    let mut groups: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
-    for &eid in invalid {
-        let Some(edge) = graph.edge(eid) else { continue };
-        let (Ok(from), Ok(to)) = (u32::try_from(edge.from), u32::try_from(edge.to)) else { continue };
-        for source in invalid_sources.get(&eid).into_iter().flatten() {
-            groups.entry(source.clone()).or_default().push(vec![[from, to]]);
-        }
-    }
-    if groups.is_empty() { None } else { Some(IssuePayload::InvalidOneWay { groups }) }
-}
-
-/// Resolves every flagged one-way group's edge set into base-graph edge pairs, keyed by the
-/// specific check(s) that flagged *that* group (`invalid_sources`, canonical-group-key-keyed) —
-/// shared by `InvalidOneWayGroupIssue`'s resolve path below. Same per-group attribution rationale
-/// as `resolve_invalid_teleport_group_payload`; `to_remove` (the group's fix-count) carries no
-/// highlight meaning and is dropped here — every edge in the group is highlighted regardless.
-fn resolve_invalid_one_way_group_payload(groups: &[(Vec<crate::ids::EdgeId>, u32)], invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>, graph: &Graph) -> Option<IssuePayload> {
-    let mut out: HashMap<String, Vec<Vec<[u32; 2]>>> = HashMap::new();
-    for (group, _to_remove) in groups {
-        let edge_pairs: Vec<[u32; 2]> = group.iter().filter_map(|&eid| {
-            let edge = graph.edge(eid)?;
-            let from = u32::try_from(edge.from).ok()?;
-            let to = u32::try_from(edge.to).ok()?;
-            Some([from, to])
-        }).collect();
-        let mut key = group.clone();
-        key.sort_unstable();
-        for source in invalid_sources.get(&key).into_iter().flatten() {
-            out.entry(source.clone()).or_default().push(edge_pairs.clone());
-        }
-    }
-    if out.is_empty() { None } else { Some(IssuePayload::InvalidOneWay { groups: out }) }
+    out
 }
 
 /// Resolves flagged split tiles' `NodeId`s into a flat per-check list, keyed by the specific
@@ -279,68 +217,75 @@ fn resolve_invalid_split_route_payload(routes: &[Vec<SplitRouteEdge>], invalid_s
     if out.is_empty() { None } else { Some(IssuePayload::InvalidSplitRoute { routes: out }) }
 }
 
+/// Resolves flagged SCC regions' `NodeId`s into the shared `nodes: HashMap<String, Vec<Vec<u32>>>`
+/// shape used by both `RegionNeedsExpansion`/`RegionNeedsShrink` — shared by `resolve_issue_payload`'s
+/// two region-issue downcast arms below, which differ only in which `IssuePayload` variant wraps
+/// the result.
+fn resolve_region_map(invalid: &[usize], invalid_sources: &HashMap<usize, Vec<String>>, scc: &ConnectedComponents) -> HashMap<String, Vec<Vec<u32>>> {
+    let mut nodes: HashMap<String, Vec<Vec<u32>>> = HashMap::new();
+    for &idx in invalid {
+        let Some(region) = scc.components.get(idx) else { continue };
+        let node_ids: Vec<u32> = region.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
+        for source in invalid_sources.get(&idx).into_iter().flatten() {
+            nodes.entry(source.clone()).or_default().push(node_ids.clone());
+        }
+    }
+    nodes
+}
+
 pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedComponents) -> IssuePayload {
     if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
-        if let Some(payload) = resolve_invalid_loop_payload(all, invalid, invalid_sources, graph) {
+        let cycles = invalid.iter().filter_map(|&idx| all.get(idx));
+        if let Some(payload) = resolve_cycle_payload(cycles, invalid_sources, graph) {
             return payload;
         }
     }
 
     if let Some(InvalidLoopGroupIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopGroupIssue>() {
-        if let Some(payload) = resolve_invalid_loop_group_payload(invalid, invalid_sources, graph) {
+        if let Some(payload) = resolve_cycle_payload(invalid.iter(), invalid_sources, graph) {
             return payload;
         }
     }
 
     if let Some(RegionNeedsExpansionIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<RegionNeedsExpansionIssue>() {
-        let mut nodes: HashMap<String, Vec<Vec<u32>>> = HashMap::new();
-        for &idx in invalid {
-            let Some(region) = scc.components.get(idx) else { continue };
-            let node_ids: Vec<u32> = region.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
-            for source in invalid_sources.get(&idx).into_iter().flatten() {
-                nodes.entry(source.clone()).or_default().push(node_ids.clone());
-            }
-        }
+        let nodes = resolve_region_map(invalid, invalid_sources, scc);
         if !nodes.is_empty() {
             return IssuePayload::RegionNeedsExpansion { nodes };
         }
     }
 
     if let Some(RegionNeedsShrinkIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<RegionNeedsShrinkIssue>() {
-        let mut nodes: HashMap<String, Vec<Vec<u32>>> = HashMap::new();
-        for &idx in invalid {
-            let Some(region) = scc.components.get(idx) else { continue };
-            let node_ids: Vec<u32> = region.iter().filter_map(|&id| u32::try_from(id).ok()).collect();
-            for source in invalid_sources.get(&idx).into_iter().flatten() {
-                nodes.entry(source.clone()).or_default().push(node_ids.clone());
-            }
-        }
+        let nodes = resolve_region_map(invalid, invalid_sources, scc);
         if !nodes.is_empty() {
             return IssuePayload::RegionNeedsShrink { nodes };
         }
     }
 
     if let Some(InvalidTeleportIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidTeleportIssue>() {
-        if let Some(payload) = resolve_invalid_teleport_payload(invalid, invalid_sources, graph) {
-            return payload;
+        let groups = resolve_single_edge_map(invalid, invalid_sources, graph);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidTeleport { groups };
         }
     }
 
     if let Some(InvalidTeleportGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidTeleportGroupIssue>() {
-        if let Some(payload) = resolve_invalid_teleport_group_payload(groups, invalid_sources, graph) {
-            return payload;
+        let groups = resolve_edge_group_map(groups, invalid_sources, graph);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidTeleport { groups };
         }
     }
 
     if let Some(InvalidOneWayIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidOneWayIssue>() {
-        if let Some(payload) = resolve_invalid_one_way_payload(invalid, invalid_sources, graph) {
-            return payload;
+        let groups = resolve_single_edge_map(invalid, invalid_sources, graph);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidOneWay { groups };
         }
     }
 
     if let Some(InvalidOneWayGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidOneWayGroupIssue>() {
-        if let Some(payload) = resolve_invalid_one_way_group_payload(groups, invalid_sources, graph) {
-            return payload;
+        let groups = resolve_edge_group_map(groups, invalid_sources, graph);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidOneWay { groups };
         }
     }
 
@@ -363,8 +308,9 @@ pub fn resolve_issue_payload(issue: &dyn Issue, graph: &Graph, scc: &ConnectedCo
     }
 
     if let Some(InvalidSplitNodeConnectionGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitNodeConnectionGroupIssue>() {
-        if let Some(payload) = resolve_invalid_one_way_group_payload(groups, invalid_sources, graph) {
-            return payload;
+        let groups = resolve_edge_group_map(groups, invalid_sources, graph);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidOneWay { groups };
         }
     }
 

@@ -1,61 +1,8 @@
-use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
-    quality_control::{IssueKind, Comparison, CycleKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, INVALID_LOOP_GROUP, LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_LOOPS_COUNT_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, MAX_REGION_SIZE_DEFAULT, MAX_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, INVALID_TELEPORT_GROUP, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT, INVALID_ONE_WAY, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT, INVALID_ONE_WAY_GROUP, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, MISSING_ONE_WAYS, MIN_ONE_WAY_COUNT_DEFAULT, MIN_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_COUNT_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT, MISSING_TELEPORTS, MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT, INVALID_SPLIT_TILE, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, INVALID_SPLIT_TILE_GROUP, MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, MISSING_SPLIT_TILES, SPLIT_COUNT_DEFAULT, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT, INVALID_SPLIT_NODE, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, INVALID_SPLIT_NODE_CONNECTION_GROUP, SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT, SPLIT_NODE_CONNECTION_TRAVERSAL_DISTANCE_MIN_DETOUR_DEFAULT, INVALID_SPLIT_NODE_GROUP, MAX_SPLIT_TILE_NODE_COUNT_DEFAULT, INVALID_SPLIT_ROUTE},
-    RegionClass,
+    quality_control::{IssueKind, Comparison, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, INVALID_LOOP_GROUP, LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_LOOPS_COUNT_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, MAX_REGION_SIZE_DEFAULT, MAX_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, INVALID_TELEPORT_GROUP, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT, INVALID_ONE_WAY, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT, INVALID_ONE_WAY_GROUP, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, MISSING_ONE_WAYS, MIN_ONE_WAY_COUNT_DEFAULT, MIN_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_COUNT_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT, MISSING_TELEPORTS, MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT, INVALID_SPLIT_TILE, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, INVALID_SPLIT_TILE_GROUP, MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, MISSING_SPLIT_TILES, SPLIT_COUNT_DEFAULT, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT, INVALID_SPLIT_NODE, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, INVALID_SPLIT_NODE_CONNECTION_GROUP, SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT, SPLIT_NODE_CONNECTION_TRAVERSAL_DISTANCE_MIN_DETOUR_DEFAULT, INVALID_SPLIT_NODE_GROUP, MAX_SPLIT_TILE_NODE_COUNT_DEFAULT, INVALID_SPLIT_ROUTE},
 };
-
-#[derive(Serialize)]
-pub struct ParamDescriptor {
-    pub id: &'static str,
-    pub label: &'static str,
-    pub kind: ParamKindDto,
-}
-
-#[derive(Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ParamKindDto {
-    Float { default: f64, min: f64, max: f64 },
-    Integer { default: i64, min: i64, max: i64 },
-    Bool { default: bool },
-    Enum { options: Vec<&'static str>, default: &'static str },
-    Interval { default_min: f64, default_max: f64, min: f64, max: f64 },
-    /// A split-pattern list (GitHub issue #247) — signals the web UI to render the dedicated
-    /// pattern-list dialog instead of a generic input. Value is carried as a JSON-serialized
-    /// `Vec<SplitPatternDto>` string in the check/strategy's own `params` map (the same wire shape
-    /// `SplitGenerationConfigDto.patterns` uses; see `maze-runner`'s `parse_split_patterns_param`).
-    /// `with_weights` distinguishes a plain "all vs this list" filter (a check's own pattern-list
-    /// param, no weights) from a full weighted pattern pool with an unconstrained-mode switch (a
-    /// strategy's own pattern-selection config).
-    PatternList { with_weights: bool },
-    /// A full split-generation config — pattern mode toggle, `max_split_nodes` (unconstrained
-    /// mode), and a weighted pattern list (pattern mode) — bundled behind one settings button that
-    /// opens the same dialog generation's own split settings use (`AddSplitStrategy`'s `patterns`
-    /// param, GitHub issue #247). Value round-trips as a JSON-serialized
-    /// `SplitGenerationConfigDto` string (the same wire shape `GenerateConfig.split_generation`
-    /// uses; see `maze-runner`'s `parse_split_config_param`), not the flat `PatternList` shape
-    /// above — a `PatternList` param has no mode switch or node-count field of its own.
-    SplitGenerationConfig,
-}
-
-#[derive(Serialize)]
-pub struct CheckDescriptor {
-    pub id: &'static str,
-    pub label: &'static str,
-    pub description: &'static str,
-    pub issue_kinds: Vec<&'static str>,
-    pub params: Vec<ParamDescriptor>,
-    /// Whether more than one independent instance of this check type may be active at once
-    /// (across rules, or within the same rule) — see GitHub issue #60. `false` for every check
-    /// except `min_region_count`: a second `min_region_count` instance with a different
-    /// `region_class` is a legitimate, common configuration ("at least 2 trap regions" AND
-    /// separately "at least 2 alternative regions"); no other check has an analogous use case
-    /// for running twice with different params, so this stays opt-in per check rather than a
-    /// blanket allowance. The web store/UI enforce this (see `addCheck`/`createRule` in
-    /// `generationSlice.ts`) — wasm/core themselves don't reject a duplicate, since nothing
-    /// downstream of this flag depends on it being correct for repair/QC to function.
-    pub allow_multiple_instances: bool,
-}
+use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, protect_route_param, comparison_param, cycle_kind_param, split_patterns_filter_param};
 
 // Helper to turn IssueKind into a &'static str for JSON serialization.
 fn kind_str(k: IssueKind) -> &'static str {
@@ -65,78 +12,6 @@ fn kind_str(k: IssueKind) -> &'static str {
 #[wasm_bindgen]
 pub fn available_checks() -> JsValue {
     serde_wasm_bindgen::to_value(&available_checks_list()).unwrap()
-}
-
-/// Dropdown restricting `min_region_size`/`min_region_ratio` to one `RegionClass`, defaulting to
-/// `"all"` (every class, the checks' pre-#54 behavior) — see GitHub issue #54.
-fn region_class_filter_param() -> ParamDescriptor {
-    ParamDescriptor {
-        id: "region_class",
-        label: "Region class",
-        kind: ParamKindDto::Enum {
-            options: vec![
-                "all",
-                RegionClass::Path.as_str(),
-                RegionClass::Alternative.as_str(),
-                RegionClass::Unreachable.as_str(),
-                RegionClass::Trap.as_str(),
-            ],
-            default: "all",
-        },
-    }
-}
-
-/// Shared `protect_route` param descriptor (GitHub issue #78) — every per-teleport check gets
-/// this exact id/label/default, so it's declared once instead of repeated per `CheckDescriptor`.
-fn protect_route_param() -> ParamDescriptor {
-    ParamDescriptor {
-        id: "protect_route",
-        label: "Protect route teleports",
-        kind: ParamKindDto::Bool { default: true },
-    }
-}
-
-/// Shared `comparison` param descriptor — GitHub issue #177: checks merged around `Comparison`
-/// (min/max validating a single entity, both flagging the same issue kind) expose one `comparison`
-/// enum param instead of being two near-duplicate check types. `default` is the merged check's
-/// pre-#177 fixed operator, so an unset param reproduces the old check's exact behavior.
-fn comparison_param(default: Comparison) -> ParamDescriptor {
-    ParamDescriptor {
-        id: "comparison",
-        label: "Comparison",
-        kind: ParamKindDto::Enum {
-            options: Comparison::ALL.iter().map(|c| c.as_str()).collect(),
-            default: default.as_str(),
-        },
-    }
-}
-
-/// Shared `cycle_kind` param descriptor — GitHub issue #217: every loop-based check built on
-/// `cycle_check_core::find_invalid_cycles` (`loop_length`, `external_escape_diversity`,
-/// `loop_distance_from_start`, `loop_distance_from_finish`) exposes this same enum so a user can
-/// restrict evaluation to bidirectional loops, one-way shortcuts, or every cycle regardless of
-/// directionality. Default `"any"` reproduces the pre-#217 behavior.
-fn cycle_kind_param() -> ParamDescriptor {
-    ParamDescriptor {
-        id: "cycle_kind",
-        label: "Cycle kind",
-        kind: ParamKindDto::Enum {
-            options: CycleKind::ALL.iter().map(|k| k.as_str()).collect(),
-            default: CycleKind::Any.as_str(),
-        },
-    }
-}
-
-/// Shared `patterns` param descriptor for `SplitCountCheck`/`SplitDensityCheck` (GitHub issue
-/// #247) — "all splits count" (empty list, the default) vs. "only splits matching one of these
-/// patterns". No weights: a check's pattern list is a pure membership filter, unlike
-/// `AddSplitStrategy`'s own weighted selection pool.
-fn split_patterns_filter_param() -> ParamDescriptor {
-    ParamDescriptor {
-        id: "patterns",
-        label: "Split patterns",
-        kind: ParamKindDto::PatternList { with_weights: false },
-    }
 }
 
 pub fn available_checks_list() -> Vec<CheckDescriptor> {
