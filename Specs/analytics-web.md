@@ -172,17 +172,24 @@ One row per `splitAnalytics.groups` entry (sorted by `count` descending), each s
 
 ### Timing Block
 
-Shown only when `timing != null` — see GitHub issue #56 and `repair.md`'s "Timing Instrumentation" section for the core data source. `timing` comes straight from the store's generation-run value (`MazeSnapshot.timing`), with **no `postEditAnalytics` fallback** — post-edit/`compute_analytics` snapshots never run the generation pipeline, so they carry no timing data; this is the one analytics block that doesn't follow the `postEditAnalytics?.x ?? state.x` pattern used everywhere else in this file.
+Shown only when `timing != null` — see GitHub issue #285 (originally #56) and `repair.md`'s "Timing Instrumentation" section for the core data source. `timing` comes straight from the store's generation-run value (`MazeSnapshot.timing`), with **no `postEditAnalytics` fallback** — post-edit/`compute_analytics` snapshots never run the generation pipeline, so they carry no timing data; this is the one analytics block that doesn't follow the `postEditAnalytics?.x ?? state.x` pattern used everywhere else in this file.
+
+The block itself is trimmed to three top-level rows:
 
 | Row | Value |
 |---|---|
-| Initial build | `timing.initial_build_ms` |
-| Quality control | `timing.qc_total_ms` |
-| Repair | `timing.repair_total_ms` |
-| Per check (one row per entry) | `timing.per_check[id].total_ms` and `.calls`, keyed by check type id |
-| Per strategy (one row per entry) | `timing.per_strategy[id].total_ms` and `.calls`, keyed by strategy id |
+| Total | `timing.initial_build_ms` + sum of `timing.qc[*].total_ms` |
+| Initial generation | `timing.initial_build_ms` |
+| Quality control | sum of `timing.qc[*].total_ms` |
 
-Per-check/per-strategy rows are rendered directly from the raw type/strategy id string (no i18n label lookup) — unlike `IssuesBlock`'s check-label resolution, this is a diagnostics view, not user-facing terminology.
+A "Detailed report" button opens `TimingDetailedReportModal`, a `size="complex"` `Modal` using `rawBody` (a fixed, non-scrolling header row above a separately-scrolling tree, so a tall report never scrolls its own column headers out of view). The table has four columns — Task, Calls, Time, % — with one row per node in the tree, recursively:
+
+- Two synthetic root rows: "Initial generation" (`timing.initial_build_ms`, a leaf) and "Quality control" (sum of `timing.qc[*].total_ms`, containing `timing.qc` as its children).
+- `timing.qc`'s own nodes: one per stage, containing one child per rule, each rule containing its checks and (if dispatched) its one strategy as leaf children — the same tree `TimingNode` describes in `repair.md`.
+- Each row is prefixed by its kind, resolved via i18n templates taking the resolved name as a parameter: `"Stage: {name}"`, `"Rule: {name}"`, `"Check: {name}"`, `"Strategy: {name}"` (`analytics.timing_report_prefix_*`). Stage/rule names are resolved from the store's own `stages`/`rules` lists by id (falling back to the raw id if not found — e.g. a stage/rule since removed from the current config); check/strategy names go through `resolveCheckLabel`/`resolveStrategyLabel` (`qualityI18n.ts`), also falling back to the raw id. A leaf id is classified as a check if it's present in `availableChecks`, a strategy otherwise (`leafKind`) — the `per_check`/`per_strategy` accumulators feeding one rule's children are otherwise indistinguishable once merged into one `children` array.
+- `%` is always relative to the whole run's total time (the same `Total` row's value), at every nesting level — never to the immediate parent — so any row's contribution is directly comparable to any other row's regardless of depth.
+- `Calls` is blank (not `0`) for a node whose `entry.calls` is `0` — true for every rule node (a pure time container) and for a stage node that converged on its very first pass.
+- Vertical hierarchy lines (mirroring `NestedStrategyPanel`'s `entryStackWithWeight` pattern) run down the left of each node's own children block as one continuous `borderLeft`, not a per-row dashed segment — ties every descendant row visually to the parent it's nested under. Rows highlight on hover only (`"hoverable"`), no permanent striping.
 
 ## Canvas Renderer — AnalyticsRenderer
 

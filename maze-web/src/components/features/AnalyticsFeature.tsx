@@ -3,7 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { activeTessellationOf } from "../../store/storeHelpers";
-import { ui, typography, muted, disabled, spacing } from "../../styles/theme";
+import { ui, typography, muted, disabled, spacing, indent, dialogSpacing } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
@@ -13,7 +13,8 @@ import { canvas } from "../../pixi/colorTokens";
 import { TileFaceEditor } from "./TileFaceEditor";
 import { tileNodesForTopology } from "../../pixi/splitPatternTile";
 import { titleKeyForTopology } from "../../pixi/splitPatternTitles";
-import type { SplitGroupDto } from "../../wasm/types";
+import { resolveCheckLabel, resolveStrategyLabel } from "./qualityI18n";
+import type { SplitGroupDto, TimingNodeDto, GenerationTimingDto } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 
 const SPLIT_PREVIEW_ANCHOR: [number, number] = [0, 0];
@@ -127,7 +128,102 @@ function StatRow({ label, count, pct, valueText }: { label: string; count?: numb
 }
 
 function formatMs(ms: number): string {
-  return `${ms.toFixed(1)} ms`;
+  return `${Math.round(ms)} ms`;
+}
+
+/** Nesting level of one `TimingNodeDto` in the report tree, used to pick the right label resolver
+ *  and prefix — depth 0 is the two synthetic top rows (already-localized labels, no prefix), 1 is
+ *  a stage id, 2 is a rule id, 3 is a check-type or strategy id. A rule's children are its own
+ *  `per_check` entries plus (if dispatched) one `per_strategy` entry — `checkIds` (this run's
+ *  `availableChecks` id set) is what tells the two apart at that leaf level. */
+export type TimingRowKind = "root" | "stage" | "rule" | "check" | "strategy";
+
+// Exported for direct unit testing — pure, no React/store involved.
+export function leafKind(id: string, checkIds: Set<string>): TimingRowKind {
+  return checkIds.has(id) ? "check" : "strategy";
+}
+
+// Exported for direct unit testing — pure, no React/store involved.
+export function resolveTimingRowLabel(kind: TimingRowKind, id: string, stageNames: Map<string, string>, ruleNames: Map<string, string>): string {
+  switch (kind) {
+    case "root": return id;
+    case "stage": return m["analytics.timing_report_prefix_stage"]({ name: stageNames.get(id) ?? id });
+    case "rule": return m["analytics.timing_report_prefix_rule"]({ name: ruleNames.get(id) ?? id });
+    case "check": return m["analytics.timing_report_prefix_check"]({ name: resolveCheckLabel(id, id) });
+    case "strategy": return m["analytics.timing_report_prefix_strategy"]({ name: resolveStrategyLabel(id) });
+  }
+}
+
+/** One row of the timing detailed-report table plus its own children, recursively — mirrors
+ *  `NestedStrategyPanel`'s `entryStackWithWeight` pattern: the *children wrapper* (not each row
+ *  individually) carries the `borderLeft`, so the line runs unbroken through every descendant
+ *  row instead of one dashed segment per row. `pct` is always relative to the whole run's total
+ *  time (`totalMs`), at every nesting level — see GitHub issue #285 — never to the immediate
+ *  parent, so any row's contribution is directly comparable to any other row's regardless of
+ *  depth. Highlights on hover only (`"hoverable"`, the shared class every other row/section in
+ *  this feature uses) rather than a permanent striped background. */
+function TimingReportRow({ node, kind, totalMs, stageNames, ruleNames, checkIds }: {
+  node: TimingNodeDto; kind: TimingRowKind; totalMs: number;
+  stageNames: Map<string, string>; ruleNames: Map<string, string>; checkIds: Set<string>;
+}) {
+  const pct = totalMs > 0 ? (node.total_ms / totalMs) * 100 : 0;
+  const label = resolveTimingRowLabel(kind, node.id, stageNames, ruleNames);
+  return (
+    <div style={styles.timingReportNode}>
+      <div className="hoverable" style={styles.timingReportRow}>
+        <span style={styles.timingReportLabel}>{label}</span>
+        <span style={styles.timingReportCalls}>{node.calls > 0 ? node.calls : ""}</span>
+        <span style={styles.timingReportMs}>{formatMs(node.total_ms)}</span>
+        <span style={styles.timingReportPct}>{pct.toFixed(1)}%</span>
+      </div>
+      {node.children.length > 0 && (
+        <div style={styles.timingReportChildren}>
+          {node.children.map((child, i) => (
+            <TimingReportRow
+              key={`${child.id}-${i}`} node={child}
+              kind={kind === "root" ? "stage" : kind === "stage" ? "rule" : leafKind(child.id, checkIds)}
+              totalMs={totalMs} stageNames={stageNames} ruleNames={ruleNames} checkIds={checkIds}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Exported for direct RTL testing of the recursive stage/rule/check-or-strategy kind flow.
+export function TimingDetailedReportModal({ timing, onClose }: { timing: GenerationTimingDto; onClose: () => void }) {
+  const stages = useMazeStore((s) => s.stages);
+  const rules = useMazeStore((s) => s.rules);
+  const availableChecks = useMazeStore((s) => s.availableChecks);
+  const stageNames = React.useMemo(() => new Map(stages.map((s) => [s.id, s.name])), [stages]);
+  const ruleNames = React.useMemo(() => new Map(rules.map((r) => [r.id, r.name])), [rules]);
+  const checkIds = React.useMemo(() => new Set(availableChecks.map((c) => c.id)), [availableChecks]);
+  const qcTotalMs = timing.qc.reduce((s, n) => s + n.total_ms, 0);
+  const totalMs = timing.initial_build_ms + qcTotalMs;
+  const generationNode: TimingNodeDto = { id: m["analytics.timing_initial_build"](), total_ms: timing.initial_build_ms, calls: 0, children: [] };
+  const qcNode: TimingNodeDto = { id: m["analytics.timing_qc_total"](), total_ms: qcTotalMs, calls: 0, children: timing.qc };
+  return (
+    <Modal
+      title={m["analytics.timing_detailed_report_title"]()}
+      size="complex"
+      onClose={onClose}
+      rawBody={
+        <div style={styles.timingReportRoot}>
+          <div style={styles.timingReportHeader}>
+            <span style={styles.timingReportLabel}>{m["analytics.timing_report_task"]()}</span>
+            <span style={styles.timingReportCalls}>{m["analytics.timing_report_calls"]()}</span>
+            <span style={styles.timingReportMs}>{m["analytics.timing_report_time"]()}</span>
+            <span style={styles.timingReportPct}>{m["analytics.timing_report_pct"]()}</span>
+          </div>
+          <div style={styles.timingReportScroll}>
+            <TimingReportRow node={generationNode} kind="root" totalMs={totalMs} stageNames={stageNames} ruleNames={ruleNames} checkIds={checkIds} />
+            <TimingReportRow node={qcNode} kind="root" totalMs={totalMs} stageNames={stageNames} ruleNames={ruleNames} checkIds={checkIds} />
+          </div>
+        </div>
+      }
+    />
+  );
 }
 
 export function AnalyticsFeature() {
@@ -153,6 +249,7 @@ export function AnalyticsFeature() {
   // the issue calls "unavailable otherwise" (independent of whether a route actually exists).
   const regionClassesUnavailable = Object.keys(graphAnalytics?.region_classes ?? {}).length === 0;
   const [splitPatternStatsOpen, setSplitPatternStatsOpen] = React.useState(false);
+  const [timingReportOpen, setTimingReportOpen] = React.useState(false);
   const namedSplitGroups = (splitAnalytics?.groups ?? []).filter((g) => titleKeyForTopology(g.topology) != null);
 
   const showMazeOverlay = useMazeStore((s) => s.showMazeOverlay);
@@ -335,34 +432,29 @@ export function AnalyticsFeature() {
       )}
 
       {/* Timing block — generation runs only, see GitHub issue #56 */}
-      {timing != null && (
-        <>
-          <div style={styles.divider} />
-          <SectionHeader label={m["analytics.timing"]()} expanded={isExpanded("timing")} onToggle={() => toggleSection("timing")} />
-          {isExpanded("timing") && (
-            <div style={styles.statBlock}>
-              <StatRow label={m["analytics.timing_initial_build"]()} valueText={formatMs(timing.initial_build_ms)} />
-              <StatRow label={m["analytics.timing_qc_total"]()} valueText={formatMs(timing.qc_total_ms)} />
-              <StatRow label={m["analytics.timing_repair_total"]()} valueText={formatMs(timing.repair_total_ms)} />
-              {Object.entries(timing.per_check).length > 0 && (
-                <>
-                  <div style={styles.timingSubheader}>{m["analytics.timing_per_check"]()}</div>
-                  {Object.entries(timing.per_check).map(([id, entry]) => (
-                    <StatRow key={id} label={id} valueText={`${formatMs(entry.total_ms)} (${entry.calls}×)`} />
-                  ))}
-                </>
-              )}
-              {Object.entries(timing.per_strategy).length > 0 && (
-                <>
-                  <div style={styles.timingSubheader}>{m["analytics.timing_per_strategy"]()}</div>
-                  {Object.entries(timing.per_strategy).map(([id, entry]) => (
-                    <StatRow key={id} label={id} valueText={`${formatMs(entry.total_ms)} (${entry.calls}×)`} />
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-        </>
+      {timing != null && (() => {
+        const qcTotalMs = timing.qc.reduce((s, n) => s + n.total_ms, 0);
+        const totalMs = timing.initial_build_ms + qcTotalMs;
+        return (
+          <>
+            <div style={styles.divider} />
+            <SectionHeader label={m["analytics.timing"]()} expanded={isExpanded("timing")} onToggle={() => toggleSection("timing")} />
+            {isExpanded("timing") && (
+              <div style={styles.statBlock}>
+                <StatRow label={m["analytics.timing_total"]()} valueText={formatMs(totalMs)} />
+                <StatRow label={m["analytics.timing_initial_build"]()} valueText={formatMs(timing.initial_build_ms)} />
+                <StatRow label={m["analytics.timing_qc_total"]()} valueText={formatMs(qcTotalMs)} />
+                <button className="hoverable" style={{ ...sharedStyles.btnMuted, ...styles.patternStatsButton }} onClick={() => setTimingReportOpen(true)}>
+                  {m["analytics.timing_detailed_report_button"]()}
+                </button>
+              </div>
+            )}
+          </>
+        );
+      })()}
+
+      {timingReportOpen && timing != null && (
+        <TimingDetailedReportModal timing={timing} onClose={() => setTimingReportOpen(false)} />
       )}
 
     </div>
@@ -371,14 +463,48 @@ export function AnalyticsFeature() {
 
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
-  sectionHeaderRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3 },
+  sectionHeaderRow: {
+    display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3,
+    padding: `${spacing.itemGap}px 0`, margin: `-${spacing.itemGap}px 0`,
+  },
   statBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   statRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
   statLabel: { flex: 1, ...muted(typography.body) },
   statCount: { ...typography.caption, minWidth: 32, textAlign: "right" },
   statPct: { ...disabled(typography.body), minWidth: 44, textAlign: "right" },
-  timingSubheader: { ...disabled(typography.body), marginTop: spacing.itemGap },
   scoreRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
+  // `rawBody` layout (see `TimingDetailedReportModal`) — the header row sits outside the
+  // scrolling area so only the tree itself scrolls when the report is tall, and the two root
+  // nodes ("Initial generation"/"Quality control") stack with no gap between them, matching every
+  // other row-to-row gap in the tree.
+  timingReportRoot: { display: "flex", flexDirection: "column" as const, flex: 1, minHeight: 0 },
+  timingReportScroll: { flex: 1, overflowY: "auto" as const, minHeight: 0, padding: `0 ${dialogSpacing.paddingX}px ${dialogSpacing.bodyPadding}px` },
+  timingReportHeader: {
+    display: "flex", alignItems: "center", gap: spacing.groupGap, flexShrink: 0,
+    padding: `${dialogSpacing.bodyPadding}px ${dialogSpacing.paddingX}px ${spacing.itemGap}px`,
+    borderBottom: `1px solid ${ui.border.default}`,
+    ...disabled(typography.body),
+  },
+  // One node's own row plus its children wrapper, stacked with no gap — rows must sit flush
+  // against each other with no gap of their own — the taller row height below (via padding, not
+  // a gap) is what gives the table breathing room instead.
+  timingReportNode: { display: "flex", flexDirection: "column" as const },
+  timingReportRow: {
+    display: "flex", alignItems: "center", gap: spacing.groupGap, minHeight: 20,
+    padding: `${spacing.itemGap}px 0 ${spacing.itemGap}px ${spacing.groupGap}px`,
+    borderRadius: 3,
+  },
+  // Mirrors `NestedStrategyPanel`'s `entryStackWithWeight` — one continuous vertical line down
+  // the left of a node's *entire* children block (not one dashed segment per row), ties every
+  // descendant row visually to the parent it's nested under.
+  timingReportChildren: {
+    display: "flex", flexDirection: "column" as const,
+    borderLeft: `1px solid ${ui.border.default}`, marginLeft: spacing.groupGap, paddingLeft: indent.tree - spacing.groupGap,
+  },
+  timingReportLabel: { flex: 1, ...typography.body, minWidth: 0, overflowWrap: "break-word" as const },
+  timingReportCalls: { ...typography.caption, minWidth: 48, textAlign: "center" as const },
+  timingReportMs: { ...typography.caption, minWidth: 64, textAlign: "right" as const },
+  timingReportPct: { ...typography.caption, minWidth: 56, textAlign: "right" as const },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
   toggleBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   legendRow: { display: "flex", alignItems: "center", gap: spacing.groupGap },

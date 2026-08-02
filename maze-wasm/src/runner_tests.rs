@@ -659,3 +659,56 @@ mod build_qc_and_repair_tests {
         assert_eq!(qc_engine.stages()[1].id, "stage_2");
     }
 }
+
+/// `timing_node_to_dto`/`timing_to_dto` are plain struct-to-struct conversions with no
+/// `JsValue`/`serde_wasm_bindgen` involved, so — unlike most of this module — they're exercisable
+/// directly by `cargo test` (see GitHub issue #285).
+mod timing_dto_tests {
+    use super::super::{timing_node_to_dto, timing_to_dto};
+    use maze_core::{GenerationTiming, TimingEntry, TimingNode};
+
+    #[test]
+    fn leaf_node_converts_with_empty_children() {
+        let node = TimingNode::new("min_loop_length", TimingEntry { total_ms: 12.5, calls: 3 }, vec![]);
+        let dto = timing_node_to_dto(node);
+        assert_eq!(dto.id, "min_loop_length");
+        assert_eq!(dto.total_ms, 12.5);
+        assert_eq!(dto.calls, 3);
+        assert!(dto.children.is_empty());
+    }
+
+    #[test]
+    fn nested_children_convert_recursively_preserving_order() {
+        let check = TimingNode::new("check_a", TimingEntry { total_ms: 1.0, calls: 1 }, vec![]);
+        let strategy = TimingNode::new("strategy_a", TimingEntry { total_ms: 2.0, calls: 1 }, vec![]);
+        let rule = TimingNode::new("rule_1", TimingEntry { total_ms: 3.0, calls: 0 }, vec![check, strategy]);
+        let stage = TimingNode::new("stage_1", TimingEntry { total_ms: 3.0, calls: 5 }, vec![rule]);
+
+        let dto = timing_node_to_dto(stage);
+        assert_eq!(dto.id, "stage_1");
+        assert_eq!(dto.calls, 5);
+        assert_eq!(dto.children.len(), 1);
+        let rule_dto = &dto.children[0];
+        assert_eq!(rule_dto.id, "rule_1");
+        assert_eq!(rule_dto.children.len(), 2);
+        assert_eq!(rule_dto.children[0].id, "check_a");
+        assert_eq!(rule_dto.children[1].id, "strategy_a");
+    }
+
+    #[test]
+    fn generation_timing_converts_initial_build_ms_and_qc_tree() {
+        let stage = TimingNode::new("stage_1", TimingEntry { total_ms: 5.0, calls: 2 }, vec![]);
+        let timing = GenerationTiming { initial_build_ms: 42.0, qc: vec![stage] };
+        let dto = timing_to_dto(timing);
+        assert_eq!(dto.initial_build_ms, 42.0);
+        assert_eq!(dto.qc.len(), 1);
+        assert_eq!(dto.qc[0].id, "stage_1");
+    }
+
+    #[test]
+    fn generation_timing_with_no_stages_converts_to_empty_qc() {
+        let timing = GenerationTiming { initial_build_ms: 0.0, qc: vec![] };
+        let dto = timing_to_dto(timing);
+        assert!(dto.qc.is_empty());
+    }
+}

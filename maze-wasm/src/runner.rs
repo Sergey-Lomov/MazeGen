@@ -367,18 +367,18 @@ pub fn build_qc_and_repair_with_types<T: Tessellation + 'static>(
     Ok((qc_engine, check_types))
 }
 
+fn timing_node_to_dto(node: maze_core::TimingNode) -> crate::dto::TimingNodeDto {
+    crate::dto::TimingNodeDto {
+        id: node.id,
+        total_ms: node.entry.total_ms,
+        calls: node.entry.calls,
+        children: node.children.into_iter().map(timing_node_to_dto).collect(),
+    }
+}
+
 fn timing_to_dto(timing: maze_core::GenerationTiming) -> crate::dto::GenerationTimingDto {
-    use crate::dto::{GenerationTimingDto, TimingEntryDto};
-    let to_dto_map = |map: std::collections::HashMap<&'static str, maze_core::TimingEntry>| {
-        map.into_iter()
-            .map(|(id, entry)| (id.to_string(), TimingEntryDto { total_ms: entry.total_ms, calls: entry.calls }))
-            .collect()
-    };
-    GenerationTimingDto {
+    crate::dto::GenerationTimingDto {
         initial_build_ms: timing.initial_build_ms,
-        qc_total_ms: timing.qc_total_ms,
-        repair_total_ms: timing.repair_total_ms,
-        per_check: to_dto_map(timing.per_check),
-        per_strategy: to_dto_map(timing.per_strategy),
+        qc: timing.qc.into_iter().map(timing_node_to_dto).collect(),
     }
 }

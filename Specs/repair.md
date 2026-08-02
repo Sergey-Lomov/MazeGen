@@ -1588,7 +1588,7 @@ Two rules producing the same concrete `Issue` type are fully independent through
 
 ## Timing Instrumentation
 
-See GitHub issue #56. `build_maze` collects a per-call timing breakdown — stage totals plus per-check/per-strategy aggregates (total time and call count) — and returns it as a third tuple element:
+See GitHub issue #56, extended into a hierarchical tree by GitHub issue #285. `build_maze` collects a per-call timing breakdown and returns it as a third tuple element:
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -1598,27 +1598,30 @@ pub struct TimingEntry {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct TimingNode {
+    pub id: String,
+    pub entry: TimingEntry,
+    pub children: Vec<TimingNode>,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct GenerationTiming {
     pub initial_build_ms: f64,
-    pub qc_total_ms: f64,
-    pub repair_total_ms: f64,
-    pub per_check: HashMap<&'static str, TimingEntry>,
-    pub per_strategy: HashMap<&'static str, TimingEntry>,
+    pub qc: Vec<TimingNode>,
 }
 
 pub fn build_maze<T: Tessellation>(..., event_log: Option<&mut EventLog<QcEvent>>) -> (Maze<T>, Vec<Box<dyn Issue>>, GenerationTiming)
 ```
 
 - `initial_build_ms` is left at `0.0` by `build_maze` itself — it only runs the QC/repair fixpoint loop, not the initial `generate_maze` call. `maze-wasm::run_generate` is the only caller that also runs that stage; it times it with the same `now_ms()` clock and fills `timing.initial_build_ms` in after `build_maze` returns.
-- `qc_total_ms`/`per_check` cover every check-running step across the whole `run_full` call — every fixpoint iteration's QC pass (`run_repair_stages` → `Stage::check_and_dispatch` → `RuleTrait::check_and_repair`'s internal `run_checks_typed` step) plus the final unconditional report pass (`collect_final_report`, `RuleTrait::report_checks`) that computes `remaining`. Since GitHub issue #106, this is `QualityControlEngine::run_full`'s single accumulator, not a separate timed/untimed method pair — see "Rule, Stage, and the unified QualityControlEngine" above. Since GitHub issue #170, `check_and_repair`/`check_and_repair_typed` take separate `qc_ms`/`repair_ms` (and separate `per_check`/`per_strategy` maps) as explicit out-parameters, so `Stage` can still fold each into the right `GenerationTiming` accumulator despite checking and dispatching happening in one call.
-- `repair_total_ms`/`per_strategy` cover every strategy-dispatch step inside `RuleTrait::check_and_repair` (one per fixpoint iteration's rule that found an issue and has a strategy).
-- `per_check` is keyed by **check type id** (`Check::check_type_id()`, e.g. `"loop_length"` — the same string as `available_checks()`'s `CheckDescriptor.id`), not by instance id — two active instances of the same type (GitHub issue #60) aggregate into one entry, since the issue calls for per-check-*type* timing, not per-configured-instance.
-- `per_strategy` is keyed by **strategy id** (`RepairStrategy::strategy_id()`, e.g. `"invalid_loop_random"` — the same string as `StrategyConfig.id`), not by rule id — two rules backed by the same strategy aggregate into one entry.
-- **Nested strategies (see "Nested strategies" above) are not timed separately.** `Rule::check_and_repair_typed` only wraps the top-level `strategy.apply` call in a timer; whatever time a parent strategy spends inside a nested `apply()` call it makes internally is included in the elapsed time attributed to the *parent's* `strategy_id` entry, with no separate entry for the nested strategy's own share — even when that same strategy is also independently registered elsewhere as a top-level strategy. A user reading `per_strategy` cannot distinguish a parent's own work from its nested delegate's.
-- `QualityControlEngine::run_full` (timed, drives repair) and `run_check_only` (untimed — check-only callers, e.g. `build_analytics_snapshot`, have no generation to time and pass a throwaway one-off accumulator internally) are the two entry points — there is no separate `run`/`run_timed` method pair anymore; each `Rule`'s own `run_checks_typed`/`report_checks_typed`/`check_and_repair_typed` methods (exposed to `Stage` via the erased `RuleTrait` wrappers) take the timing accumulator(s) and `now_ms` clock as parameters (injected so the same wasm/native-aware clock from `pipeline.rs` is reused) and wrap each `Check::repair_check`/`report_check`/`RepairStrategy::apply` call internally.
+- `qc` is a tree: one `TimingNode` per stage that actually dispatched a rule (a stage nothing ever ran against is simply absent, not an empty node — see `stage_node`'s doc comment), each stage node's `children` are its own rules, each rule node's `children` are its checks (keyed by **check type id**, `Check::check_type_id()`, e.g. `"loop_length"` — the same string as `available_checks()`'s `CheckDescriptor.id`) plus, if dispatched, its one strategy (keyed by **strategy id**, `RepairStrategy::strategy_id()`, e.g. `"invalid_loop_random"` — the same string as `StrategyConfig.id`). A stage/rule node's own `entry.total_ms` is the sum of its children's; a stage node's `entry.calls` is the number of repair-dispatching iterations that stage actually ran (see `StageOutcome`'s doc comment: the final convergence pass that finds nothing does **not** increment it — a stage that converges on its very first pass reports `0`, not `1`); a rule node's `entry.calls` is always `0` (a pure time container, never itself "called"); a check/strategy leaf's `entry.calls` is its real dispatch count.
+- Both `run_full`'s repair-loop pass (`run_repair_stages` → `Stage::run_repair` → `Stage::check_and_dispatch` → `RuleTrait::check_and_repair`) and its final unconditional report pass (`collect_final_report`, `RuleTrait::report_checks`) fold into the *same* per-stage/per-rule accumulator (`RuleTimingAcc`, keyed by rule id) before it's turned into a `TimingNode` — a rule's leaf entries reflect its total time across both passes, not just one.
+- Two active instances of the same check type in different rules (GitHub issue #60) each get their own leaf entry under their own rule — aggregation by type only happens *within* one rule's own accumulator, not across rules.
+- **Nested strategies (see "Nested strategies" above) are not timed separately.** `Rule::check_and_repair_typed` only wraps the top-level `strategy.apply` call in a timer; whatever time a parent strategy spends inside a nested `apply()` call it makes internally is included in the elapsed time attributed to the *parent's* `strategy_id` leaf, with no separate leaf for the nested strategy's own share — even when that same strategy is also independently registered elsewhere as a top-level strategy. A user reading the tree cannot distinguish a parent's own work from its nested delegate's.
+- `QualityControlEngine::run_full` (timed, drives repair) and `run_check_only` (untimed — check-only callers, e.g. `build_analytics_snapshot`, have no generation to time and pass a throwaway one-off accumulator internally) are the two entry points — there is no separate `run`/`run_timed` method pair. Each `Rule`'s own `run_checks_typed`/`report_checks_typed`/`check_and_repair_typed` methods (exposed to `Stage` via the erased `RuleTrait` wrappers) take the `per_check`/`per_strategy` accumulator(s) and `now_ms` clock as parameters (injected so the same wasm/native-aware clock from `pipeline.rs` is reused) and wrap each `Check::repair_check`/`report_check`/`RepairStrategy::apply` call internally.
 - `now_ms()` (`pipeline.rs`) is `pub`, not private, specifically so `maze-wasm::run_generate` can time the initial-build stage with the same clock.
 
-`maze-wasm`'s `GenerationTimingDto` (see `analytics-web.md`) is the serialized form, surfaced on `MazeSnapshot.timing` — `Some` only for snapshots from a full generation run (`run_generate`); `None` for analytics-only paths (post-edit, `compute_analytics`) that never call `build_maze`.
+`maze-wasm`'s `GenerationTimingDto`/`TimingNodeDto` (see `analytics-web.md`) is the serialized form, surfaced on `MazeSnapshot.timing` — `Some` only for snapshots from a full generation run (`run_generate`); `None` for analytics-only paths (post-edit, `compute_analytics`) that never call `build_maze`.
 
 ## Determinism Contract
 

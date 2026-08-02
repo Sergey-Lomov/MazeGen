@@ -191,22 +191,24 @@ export interface IssueDto {
   details: Record<string, Record<string, string>>;
 }
 
-export interface TimingEntryDto {
+/** One node in the hierarchical timing tree — see GitHub issue #285. `id` is a stage id, rule id,
+ *  check type id, or strategy id depending on nesting depth; `children` is empty for a leaf
+ *  (check/strategy) node. */
+export interface TimingNodeDto {
+  id: string;
   total_ms: number;
   calls: number;
+  children: TimingNodeDto[];
 }
 
-/** Per-stage and per-check/per-strategy timing breakdown for one generation run — only present
- *  on snapshots from `runGenerate` (the full generate→QC→repair pipeline). Post-edit/
- *  compute-analytics snapshots never run generation, so `MazeSnapshot.timing` is `null` there. */
+/** Hierarchical timing breakdown for one generation run — only present on snapshots from
+ *  `runGenerate` (the full generate→QC→repair pipeline). Post-edit/compute-analytics snapshots
+ *  never run generation, so `MazeSnapshot.timing` is `null` there. */
 export interface GenerationTimingDto {
   initial_build_ms: number;
-  qc_total_ms: number;
-  repair_total_ms: number;
-  /** Keyed by check type id (e.g. "min_loop_length"), aggregated across every active instance. */
-  per_check: Record<string, TimingEntryDto>;
-  /** Keyed by strategy id (e.g. "invalid_loop_random"). */
-  per_strategy: Record<string, TimingEntryDto>;
+  /** One entry per stage that ran at least one rule — each stage node's `children` are its own
+   *  rules, each rule node's `children` are its checks and (if dispatched) its strategy. */
+  qc: TimingNodeDto[];
 }
 
 export interface MazeSnapshot {

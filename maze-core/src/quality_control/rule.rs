@@ -382,12 +382,10 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
     /// below never sees a `Box<dyn Issue>`), unlike the pre-#170 split, where `Stage` held the
     /// issue between a separate `run_checks`/`dispatch_repair` call pair.
     ///
-    /// `per_check`/`per_strategy` are separate accumulators (not one shared map) so
-    /// `GenerationTiming.per_check`/`per_strategy` stay distinct on the caller side, matching the
-    /// pre-#170 split where `Stage` timed `collect_active`/`dispatch` independently. `qc_ms`/
-    /// `repair_ms` accumulate this call's own elapsed time into the caller's stage-level totals
-    /// (`GenerationTiming.qc_total_ms`/`repair_total_ms`) — split the same way: `qc_ms` covers
-    /// `run_checks_typed`, `repair_ms` covers `apply`+`apply_commands`.
+    /// `per_check`/`per_strategy` accumulate this call's own check/strategy timing — the caller
+    /// (`Stage::check_and_dispatch`) folds them into this rule's own `TimingNode` in the
+    /// hierarchical tree (see GitHub issue #285, `GenerationTiming::qc`), keyed by this rule's
+    /// `self.id`.
     ///
     /// `event_log` (GitHub issue #147): the dispatched strategy gets its own nested `"strategy
     /// <id>"` scope, holding one `QcEvent::*Proposed` per command the strategy's `apply()`
@@ -411,19 +409,14 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         preset_state: &PresetState,
         per_check: &mut HashMap<&'static str, (f64, u32)>,
         per_strategy: &mut HashMap<&'static str, (f64, u32)>,
-        qc_ms: &mut f64,
-        repair_ms: &mut f64,
         now_ms: &dyn Fn() -> f64,
         mut event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
         mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RuleIterationOutcome {
-        let qc_start = now_ms();
         let issue = self.run_checks_typed(maze, rng, per_check, now_ms, event_log.as_deref_mut());
-        *qc_ms += now_ms() - qc_start;
         let Some(issue) = issue else { return RuleIterationOutcome::NoIssue };
         let Some(rule_strategy) = self.strategy.as_ref() else { return RuleIterationOutcome::NoStrategy };
 
-        let repair_start = now_ms();
         let (result, commands) = timed(per_strategy, rule_strategy.strategy.strategy_id(), now_ms, || {
             rule_strategy.strategy.apply(&issue, maze, rng, &rule_strategy.params, preset_state, &rule_strategy.nested)
         });
@@ -448,7 +441,6 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
             let mut apply_scope = event_log.as_mut().map(|log| log.enter("apply requests"));
             apply_commands(maze, preset_state, commands, apply_scope.as_mut(), debug_state.as_deref_mut())
         };
-        *repair_ms += now_ms() - repair_start;
         RuleIterationOutcome::Repaired(result, outcome)
     }
 
@@ -486,7 +478,6 @@ pub trait RuleTrait<T: Tessellation> {
         preset_state: &PresetState,
         per_check: &mut HashMap<&'static str, (f64, u32)>,
         per_strategy: &mut HashMap<&'static str, (f64, u32)>,
-        qc_ms: &mut f64, repair_ms: &mut f64,
         now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
         debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RuleIterationOutcome;
@@ -511,11 +502,10 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge + 'static> RuleTrait<T> f
         preset_state: &PresetState,
         per_check: &mut HashMap<&'static str, (f64, u32)>,
         per_strategy: &mut HashMap<&'static str, (f64, u32)>,
-        qc_ms: &mut f64, repair_ms: &mut f64,
         now_ms: &dyn Fn() -> f64, event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
         debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RuleIterationOutcome {
-        self.check_and_repair_typed(maze, rng, preset_state, per_check, per_strategy, qc_ms, repair_ms, now_ms, event_log, debug_state)
+        self.check_and_repair_typed(maze, rng, preset_state, per_check, per_strategy, now_ms, event_log, debug_state)
     }
 }
 

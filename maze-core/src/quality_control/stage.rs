@@ -4,6 +4,7 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::generation::PresetState;
+use crate::generation::pipeline::{TimingEntry, TimingNode};
 use crate::repair::RepairResult;
 use crate::quality_control::issue_kinds::RepairLimitKind;
 use super::engine::RepairBudget;
@@ -14,23 +15,57 @@ use super::rule::{RuleTrait, RuleIterationOutcome};
 /// Result of one `Stage::run_repair` call — what happened to this stage's own fixpoint loop.
 /// `QualityControlEngine::run_repair_stages` decides what to do next (advance, or stop the whole
 /// stage sequence) based on this — a `Stage` never knows whether it is the last one or not.
+/// `iterations` (both variants) is the number of repair-dispatching passes this stage actually
+/// ran — see GitHub issue #285's timing tree, where it becomes the stage `TimingNode`'s own
+/// `calls` count. Not the same as the loop's total pass count: the final convergence check (the
+/// pass that finds nothing and returns `Done`) doesn't increment it, matching `run_repair`'s own
+/// `iteration` counter semantics.
 pub(crate) enum StageOutcome {
-    Done,
-    LimitReached(RepairLimitKind),
+    Done { iterations: u32 },
+    LimitReached { kind: RepairLimitKind, iterations: u32 },
 }
 
-/// Bundles the timing accumulators `Stage::run_repair` threads through one fixpoint loop —
-/// `per_check`/`per_strategy` in the same `(total_ms, calls)` tuple form the pre-#106 `run_timed`
-/// used, `qc_total_ms`/`repair_total_ms` the stage-level totals. The caller
-/// (`QualityControlEngine::run_repair_stages`) folds `per_check`/`per_strategy` into
-/// `GenerationTiming`'s `TimingEntry` maps once, after every stage has run. Bundled into one
-/// struct rather than four separate `&mut` parameters purely to keep `run_repair`'s signature
-/// from growing every time a new timing dimension is added.
-pub(crate) struct TimingSink<'a> {
-    pub per_check: &'a mut HashMap<&'static str, (f64, u32)>,
-    pub per_strategy: &'a mut HashMap<&'static str, (f64, u32)>,
-    pub qc_total_ms: &'a mut f64,
-    pub repair_total_ms: &'a mut f64,
+/// Per-rule timing accumulated across an entire fixpoint loop (all iterations summed) — see
+/// GitHub issue #285. Keyed by rule id in `Stage::run_repair`'s `HashMap<String, RuleTimingAcc>`,
+/// one entry per rule that actually ran at least once. Folded into a `TimingNode` tree by
+/// `into_node` once the loop (or the final report pass) is done.
+#[derive(Default)]
+pub(crate) struct RuleTimingAcc {
+    pub per_check: HashMap<&'static str, (f64, u32)>,
+    pub per_strategy: HashMap<&'static str, (f64, u32)>,
+}
+
+impl RuleTimingAcc {
+    fn into_node(self, rule_id: &str) -> TimingNode {
+        let mut children: Vec<TimingNode> = self.per_check.into_iter()
+            .map(|(id, (total_ms, calls))| TimingNode::new(id, TimingEntry { total_ms, calls }, Vec::new()))
+            .collect();
+        children.extend(self.per_strategy.into_iter()
+            .map(|(id, (total_ms, calls))| TimingNode::new(id, TimingEntry { total_ms, calls }, Vec::new())));
+        let entry = TimingEntry {
+            total_ms: children.iter().map(|c| c.entry.total_ms).sum(),
+            calls: 0,
+        };
+        TimingNode::new(rule_id, entry, children)
+    }
+}
+
+/// Folds a per-rule accumulator map into one stage-level `TimingNode`, one child per rule that
+/// actually ran. `None` (not an empty `TimingNode`) when no rule in this stage ran at all — a
+/// stage never dispatched during this pass has nothing to show in the tree. `iterations` becomes
+/// this node's own `calls` — see `StageOutcome`'s doc comment.
+pub(crate) fn stage_node(stage_id: &str, rules: HashMap<String, RuleTimingAcc>, iterations: u32) -> Option<TimingNode> {
+    if rules.is_empty() {
+        return None;
+    }
+    let children: Vec<TimingNode> = rules.into_iter()
+        .map(|(rule_id, acc)| acc.into_node(&rule_id))
+        .collect();
+    let entry = TimingEntry {
+        total_ms: children.iter().map(|c| c.entry.total_ms).sum(),
+        calls: iterations,
+    };
+    Some(TimingNode::new(stage_id, entry, children))
 }
 
 /// A user-defined, named, ordered group of `Rule`s — drives its own fixpoint repair loop over
@@ -68,7 +103,7 @@ impl<T: Tessellation> Stage<T> {
         rng: &mut dyn RngCore,
         preset_state: &PresetState,
         budget: &mut RepairBudget,
-        timing: &mut TimingSink,
+        timing: &mut HashMap<String, RuleTimingAcc>,
         now_ms: impl Fn() -> f64,
         mut event_log: Option<&mut crate::event_log::ScopeGuard<QcEvent>>,
         mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
@@ -81,7 +116,7 @@ impl<T: Tessellation> Stage<T> {
                 if let Some(log) = event_log.as_mut() {
                     log.emit(QcEvent::IterationLimitReached(limit));
                 }
-                return StageOutcome::LimitReached(limit);
+                return StageOutcome::LimitReached { kind: limit, iterations: iteration };
             }
             budget.iterations_done += 1;
 
@@ -97,7 +132,7 @@ impl<T: Tessellation> Stage<T> {
                 let found_any = self.check_and_dispatch(maze, rng, preset_state, timing, now_ms, &mut failed, iteration_scope.as_mut(), debug_state.as_deref_mut());
 
                 if !found_any {
-                    return StageOutcome::Done;
+                    return StageOutcome::Done { iterations: iteration };
                 }
             }
             iteration += 1;
@@ -111,13 +146,14 @@ impl<T: Tessellation> Stage<T> {
         &self,
         maze: &Maze<T>,
         rng: &mut dyn RngCore,
-        timing: &mut HashMap<&'static str, (f64, u32)>,
+        timing: &mut HashMap<String, RuleTimingAcc>,
         now_ms: impl Fn() -> f64,
     ) -> Vec<Box<dyn Issue>> {
         let now_ms: &dyn Fn() -> f64 = &now_ms;
         let mut issues = Vec::new();
         for rule in &self.rules {
-            issues.append(&mut rule.report_checks(maze, rng, timing, now_ms));
+            let rule_acc = timing.entry(rule.id().to_string()).or_default();
+            issues.append(&mut rule.report_checks(maze, rng, &mut rule_acc.per_check, now_ms));
         }
         issues
     }
@@ -147,7 +183,7 @@ impl<T: Tessellation> Stage<T> {
         maze: &mut Maze<T>,
         rng: &mut dyn RngCore,
         preset_state: &PresetState,
-        timing: &mut TimingSink,
+        timing: &mut HashMap<String, RuleTimingAcc>,
         now_ms: &dyn Fn() -> f64,
         failed: &mut HashSet<String>,
         mut event_log: Option<&mut crate::event_log::ScopeGuard<QcEvent>>,
@@ -160,9 +196,10 @@ impl<T: Tessellation> Stage<T> {
             }
             let version_before = maze.graph.version();
             let mut rule_scope = event_log.as_mut().map(|g| g.enter(format!("rule {}", rule.id())));
+            let rule_acc = timing.entry(rule.id().to_string()).or_default();
             let outcome = rule.check_and_repair(
-                maze, rng, preset_state, timing.per_check, timing.per_strategy,
-                timing.qc_total_ms, timing.repair_total_ms, now_ms, rule_scope.as_mut(),
+                maze, rng, preset_state, &mut rule_acc.per_check, &mut rule_acc.per_strategy,
+                now_ms, rule_scope.as_mut(),
                 debug_state.as_deref_mut(),
             );
             match outcome {
@@ -197,5 +234,72 @@ impl<T: Tessellation> Stage<T> {
             }
         }
         found_any
+    }
+}
+
+/// Pure unit tests for the timing-tree fold logic (`RuleTimingAcc::into_node`/`stage_node`) — see
+/// GitHub issue #285. No `Maze`/`RngCore`/`Tessellation` setup needed since both functions are
+/// plain data transformations over already-collected `(f64, u32)` accumulators.
+#[cfg(test)]
+mod timing_tree_tests {
+    use super::*;
+
+    #[test]
+    fn stage_node_is_none_when_no_rule_ran() {
+        assert!(stage_node("s1", HashMap::new(), 3).is_none());
+    }
+
+    #[test]
+    fn into_node_sums_check_and_strategy_totals_into_the_rule_entry() {
+        let mut acc = RuleTimingAcc::default();
+        acc.per_check.insert("check_a", (10.0, 2));
+        acc.per_check.insert("check_b", (5.0, 1));
+        acc.per_strategy.insert("strategy_a", (7.0, 3));
+        let node = acc.into_node("rule_1");
+        assert_eq!(node.id, "rule_1");
+        assert_eq!(node.entry.total_ms, 22.0);
+        assert_eq!(node.entry.calls, 0);
+        assert_eq!(node.children.len(), 3);
+        let child = |id: &str| node.children.iter().find(|c| c.id == id).unwrap();
+        assert_eq!(child("check_a").entry, TimingEntry { total_ms: 10.0, calls: 2 });
+        assert_eq!(child("check_b").entry, TimingEntry { total_ms: 5.0, calls: 1 });
+        assert_eq!(child("strategy_a").entry, TimingEntry { total_ms: 7.0, calls: 3 });
+    }
+
+    #[test]
+    fn into_node_with_no_strategy_has_only_check_children() {
+        let mut acc = RuleTimingAcc::default();
+        acc.per_check.insert("check_a", (4.0, 1));
+        let node = acc.into_node("rule_1");
+        assert_eq!(node.children.len(), 1);
+        assert_eq!(node.children[0].id, "check_a");
+    }
+
+    #[test]
+    fn stage_node_sums_rule_totals_and_carries_iterations_as_calls() {
+        let mut rule_acc = RuleTimingAcc::default();
+        rule_acc.per_check.insert("check_a", (10.0, 1));
+        let mut rules = HashMap::new();
+        rules.insert("rule_1".to_string(), rule_acc);
+        let node = stage_node("stage_1", rules, 5).unwrap();
+        assert_eq!(node.id, "stage_1");
+        assert_eq!(node.entry.total_ms, 10.0);
+        assert_eq!(node.entry.calls, 5);
+        assert_eq!(node.children.len(), 1);
+        assert_eq!(node.children[0].id, "rule_1");
+    }
+
+    #[test]
+    fn stage_node_sums_across_multiple_rules() {
+        let mut acc_a = RuleTimingAcc::default();
+        acc_a.per_check.insert("check_a", (10.0, 1));
+        let mut acc_b = RuleTimingAcc::default();
+        acc_b.per_strategy.insert("strategy_b", (3.0, 1));
+        let mut rules = HashMap::new();
+        rules.insert("rule_a".to_string(), acc_a);
+        rules.insert("rule_b".to_string(), acc_b);
+        let node = stage_node("stage_1", rules, 0).unwrap();
+        assert_eq!(node.entry.total_ms, 13.0);
+        assert_eq!(node.children.len(), 2);
     }
 }

@@ -256,9 +256,7 @@ fn rule_check_and_repair_runs_its_own_strategy() {
     let rule = rule_with_strategy("g1", Box::new(RandomEndpointsStrategy));
     let mut per_check = HashMap::new();
     let mut per_strategy = HashMap::new();
-    let mut qc_ms = 0.0;
-    let mut repair_ms = 0.0;
-    let outcome = rule.check_and_repair_typed(&mut maze, &mut rng, &PresetState::empty(), &mut per_check, &mut per_strategy, &mut qc_ms, &mut repair_ms, &now_ms_stub, None, None);
+    let outcome = rule.check_and_repair_typed(&mut maze, &mut rng, &PresetState::empty(), &mut per_check, &mut per_strategy, &now_ms_stub, None, None);
     assert!(matches!(outcome, RuleIterationOutcome::Repaired(RepairResult::Fixed { score: _ }, _)));
     assert!(maze.meta.start.is_some());
     assert!(maze.meta.finish.is_some());
@@ -272,9 +270,7 @@ fn rule_check_and_repair_none_when_no_strategy() {
     let rule: Rule<SquareTessellation, MissingEndpointsIssue> = Rule::new("g1".to_string(), checks, None, HashMap::new(), vec![]);
     let mut per_check = HashMap::new();
     let mut per_strategy = HashMap::new();
-    let mut qc_ms = 0.0;
-    let mut repair_ms = 0.0;
-    let outcome = rule.check_and_repair_typed(&mut maze, &mut rng, &PresetState::empty(), &mut per_check, &mut per_strategy, &mut qc_ms, &mut repair_ms, &now_ms_stub, None, None);
+    let outcome = rule.check_and_repair_typed(&mut maze, &mut rng, &PresetState::empty(), &mut per_check, &mut per_strategy, &now_ms_stub, None, None);
     assert!(matches!(outcome, RuleIterationOutcome::NoStrategy));
     assert!(maze.meta.start.is_none());
 }
@@ -294,12 +290,8 @@ fn two_rules_same_kind_get_different_strategies() {
     let mut per_strategy_a = HashMap::new();
     let mut per_check_b = HashMap::new();
     let mut per_strategy_b = HashMap::new();
-    let mut qc_ms_a = 0.0;
-    let mut repair_ms_a = 0.0;
-    let mut qc_ms_b = 0.0;
-    let mut repair_ms_b = 0.0;
-    let outcome_a = rule_a.check_and_repair_typed(&mut maze_a, &mut rng_a, &PresetState::empty(), &mut per_check_a, &mut per_strategy_a, &mut qc_ms_a, &mut repair_ms_a, &now_ms_stub, None, None);
-    let outcome_b = rule_b.check_and_repair_typed(&mut maze_b, &mut rng_b, &PresetState::empty(), &mut per_check_b, &mut per_strategy_b, &mut qc_ms_b, &mut repair_ms_b, &now_ms_stub, None, None);
+    let outcome_a = rule_a.check_and_repair_typed(&mut maze_a, &mut rng_a, &PresetState::empty(), &mut per_check_a, &mut per_strategy_a, &now_ms_stub, None, None);
+    let outcome_b = rule_b.check_and_repair_typed(&mut maze_b, &mut rng_b, &PresetState::empty(), &mut per_check_b, &mut per_strategy_b, &now_ms_stub, None, None);
     assert!(matches!(outcome_a, RuleIterationOutcome::Repaired(RepairResult::Fixed { score: _ }, _)));
     assert!(matches!(outcome_b, RuleIterationOutcome::Repaired(RepairResult::Fixed { score: _ }, _)));
 }

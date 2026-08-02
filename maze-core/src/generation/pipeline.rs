@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use rand::SeedableRng;
 use crate::random::MazeRng;
 use crate::{Graph, Maze};
@@ -77,18 +76,33 @@ pub struct TimingEntry {
     pub calls: u32,
 }
 
-/// Per-stage and per-check/per-strategy timing breakdown for one `build_maze` call — see GitHub
-/// issue #56. `initial_build_ms` is left at `0.0` by `build_maze` itself (it only runs QC/repair,
-/// not the initial `generate_maze` stage) — `maze-wasm::run_generate` fills it in after the fact,
-/// since it's the only caller that also runs `generate_maze` before `build_maze`. Every other
-/// field is fully populated by `build_maze`.
+/// One node in the hierarchical timing tree — see GitHub issue #285, `Specs/repair.md`'s "Timing
+/// Instrumentation" section. `id` is a stage id, rule id, check type id, or strategy id depending
+/// on nesting depth; `entry.calls` is `0` for a stage/rule node (a pure time container, never
+/// itself "called") and the real dispatch count for a check/strategy leaf.
+#[derive(Debug, Clone, Default)]
+pub struct TimingNode {
+    pub id: String,
+    pub entry: TimingEntry,
+    pub children: Vec<TimingNode>,
+}
+
+impl TimingNode {
+    pub fn new(id: impl Into<String>, entry: TimingEntry, children: Vec<TimingNode>) -> Self {
+        Self { id: id.into(), entry, children }
+    }
+}
+
+/// Hierarchical timing breakdown for one `build_maze` call — see GitHub issue #285.
+/// `initial_build_ms` is left at `0.0` by `build_maze` itself (it only runs QC/repair, not the
+/// initial `generate_maze` stage) — `maze-wasm::run_generate` fills it in after the fact, since
+/// it's the only caller that also runs `generate_maze` before `build_maze`. `qc` is fully
+/// populated by `build_maze`: one child `TimingNode` per stage, each holding one child per rule,
+/// each rule holding its checks' and (if any) its strategy's own leaf nodes.
 #[derive(Debug, Clone, Default)]
 pub struct GenerationTiming {
     pub initial_build_ms: f64,
-    pub qc_total_ms: f64,
-    pub repair_total_ms: f64,
-    pub per_check: HashMap<&'static str, TimingEntry>,
-    pub per_strategy: HashMap<&'static str, TimingEntry>,
+    pub qc: Vec<TimingNode>,
 }
 
 /// Runs the full check+repair process on an already-generated graph — see GitHub issue #106.

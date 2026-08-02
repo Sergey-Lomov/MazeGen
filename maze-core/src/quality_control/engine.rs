@@ -3,12 +3,12 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::generation::PresetState;
-use crate::generation::pipeline::{RepairLimits, GenerationTiming, TimingEntry};
+use crate::generation::pipeline::{RepairLimits, GenerationTiming};
 use crate::event_log::EventLog;
 use crate::quality_control::issue_kinds::{RepairLimitKind, RepairLimitReachedIssue};
 use super::event::QcEvent;
 use super::issue::Issue;
-use super::stage::{Stage, StageOutcome, TimingSink};
+use super::stage::{Stage, StageOutcome, RuleTimingAcc, stage_node};
 
 /// Shared repair budget across every stage in one `QualityControlEngine::run_full` call —
 /// `iterations_done`/`start_ms` are NOT reset per stage (see `Specs/repair.md`'s "Stages and the
@@ -86,12 +86,18 @@ impl<T: Tessellation> QualityControlEngine<T> {
         mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> (Vec<Box<dyn Issue>>, GenerationTiming) {
         let mut timing = GenerationTiming::default();
-        let budget = self.run_repair_stages(maze, rng, preset_state, limits, &mut timing, &now_ms, event_log.as_deref_mut(), debug_state.as_deref_mut());
+        let (budget, mut repair_timing, iterations) = self.run_repair_stages(maze, rng, preset_state, limits, &now_ms, event_log.as_deref_mut(), debug_state.as_deref_mut());
 
-        let mut remaining = self.collect_final_report(maze, rng, &mut timing.per_check, &now_ms);
+        let mut remaining = self.collect_final_report(maze, rng, &mut repair_timing, &now_ms);
         if let Some(limit) = budget.limit_reached {
             remaining.push(Box::new(RepairLimitReachedIssue::new(limit)));
         }
+        timing.qc = self.stages.iter()
+            .filter_map(|stage| {
+                let rules = repair_timing.remove(&stage.id)?;
+                stage_node(&stage.id, rules, iterations.get(&stage.id).copied().unwrap_or(0))
+            })
+            .collect();
         (remaining, timing)
     }
 
@@ -118,64 +124,50 @@ impl<T: Tessellation> QualityControlEngine<T> {
         rng: &mut dyn RngCore,
         preset_state: &PresetState,
         limits: RepairLimits,
-        timing: &mut GenerationTiming,
         now_ms: &impl Fn() -> f64,
         mut event_log: Option<&mut EventLog<QcEvent>>,
         mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
-    ) -> RepairBudget {
+    ) -> (RepairBudget, HashMap<String, HashMap<String, RuleTimingAcc>>, HashMap<String, u32>) {
         let mut budget = RepairBudget::new(limits, now_ms);
-        let mut per_check: HashMap<&'static str, (f64, u32)> = HashMap::new();
-        let mut per_strategy: HashMap<&'static str, (f64, u32)> = HashMap::new();
-        let mut qc_total_ms = 0.0;
-        let mut repair_total_ms = 0.0;
+        let mut timing: HashMap<String, HashMap<String, RuleTimingAcc>> = HashMap::new();
+        let mut iterations: HashMap<String, u32> = HashMap::new();
         for stage in &self.stages {
-            let mut sink = TimingSink {
-                per_check: &mut per_check,
-                per_strategy: &mut per_strategy,
-                qc_total_ms: &mut qc_total_ms,
-                repair_total_ms: &mut repair_total_ms,
-            };
+            let stage_timing = timing.entry(stage.id.clone()).or_default();
             let outcome = {
                 let mut stage_scope = event_log.as_deref_mut().map(|log| log.enter(format!("stage {}", stage.id)));
-                stage.run_repair(maze, rng, preset_state, &mut budget, &mut sink, now_ms, stage_scope.as_mut(), debug_state.as_deref_mut())
+                stage.run_repair(maze, rng, preset_state, &mut budget, stage_timing, now_ms, stage_scope.as_mut(), debug_state.as_deref_mut())
             };
             match outcome {
-                StageOutcome::Done => continue,
-                StageOutcome::LimitReached(kind) => { budget.limit_reached = Some(kind); break; }
+                StageOutcome::Done { iterations: n } => { iterations.insert(stage.id.clone(), n); continue; }
+                StageOutcome::LimitReached { kind, iterations: n } => {
+                    iterations.insert(stage.id.clone(), n);
+                    budget.limit_reached = Some(kind);
+                    break;
+                }
             }
         }
-        timing.qc_total_ms += qc_total_ms;
-        timing.repair_total_ms += repair_total_ms;
-        fold_timing(&mut timing.per_check, per_check);
-        fold_timing(&mut timing.per_strategy, per_strategy);
-        budget
+        (budget, timing, iterations)
     }
 
     /// Unconditional report pass over every stage's every rule (`report_check` semantics) —
     /// not a flat pass over all checks like the pre-#106 code, but the same effective check set,
-    /// now reached by walking the same stage/rule hierarchy as the repair loop.
+    /// now reached by walking the same stage/rule hierarchy as the repair loop. `timing` is the
+    /// same per-stage/per-rule accumulator map `run_repair_stages` built — a final-report check
+    /// call folds straight into the same rule entry the repair loop already timed, so one rule's
+    /// `TimingNode` reflects its total time across both passes.
     fn collect_final_report(
         &self,
         maze: &Maze<T>,
         rng: &mut dyn RngCore,
-        timing_out: &mut HashMap<&'static str, TimingEntry>,
+        timing: &mut HashMap<String, HashMap<String, RuleTimingAcc>>,
         now_ms: &impl Fn() -> f64,
     ) -> Vec<Box<dyn Issue>> {
-        let mut per_check: HashMap<&'static str, (f64, u32)> = HashMap::new();
         let mut issues = Vec::new();
         for stage in &self.stages {
-            issues.append(&mut stage.run_report(maze, rng, &mut per_check, now_ms));
+            let stage_timing = timing.entry(stage.id.clone()).or_default();
+            issues.append(&mut stage.run_report(maze, rng, stage_timing, now_ms));
         }
-        fold_timing(timing_out, per_check);
         issues
-    }
-}
-
-fn fold_timing(target: &mut HashMap<&'static str, TimingEntry>, source: HashMap<&'static str, (f64, u32)>) {
-    for (id, (total_ms, calls)) in source {
-        let entry = target.entry(id).or_default();
-        entry.total_ms += total_ms;
-        entry.calls += calls;
     }
 }
 

@@ -415,9 +415,7 @@ fn check_and_repair_typed_applies_every_returned_command_to_the_real_maze() {
     let mut rng = MazeRng::seed_from_u64(0);
     let mut per_check = HashMap::new();
     let mut per_strategy = HashMap::new();
-    let mut qc_ms = 0.0;
-    let mut repair_ms = 0.0;
-    let outcome = rule.check_and_repair_typed(&mut maze, &mut rng, &PresetState::empty(), &mut per_check, &mut per_strategy, &mut qc_ms, &mut repair_ms, &|| 0.0, None, None);
+    let outcome = rule.check_and_repair_typed(&mut maze, &mut rng, &PresetState::empty(), &mut per_check, &mut per_strategy, &|| 0.0, None, None);
 
     let crate::quality_control::RuleIterationOutcome::Repaired(repair_result, apply_outcome) = outcome else {
         panic!("rule found an issue and has a strategy, must return Repaired")

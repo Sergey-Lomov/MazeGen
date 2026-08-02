@@ -143,26 +143,27 @@ pub struct IssueDto {
     pub details: HashMap<String, HashMap<String, String>>,
 }
 
+/// One node in the hierarchical timing tree — see GitHub issue #285. `id` is a stage id, rule id,
+/// check type id, or strategy id depending on nesting depth; `children` is empty for a leaf
+/// (check/strategy) node.
 #[derive(Serialize)]
-pub struct TimingEntryDto {
+pub struct TimingNodeDto {
+    pub id: String,
     pub total_ms: f64,
     pub calls: u32,
+    pub children: Vec<TimingNodeDto>,
 }
 
-/// Per-stage and per-check/per-strategy timing breakdown for one generation run — see GitHub
-/// issue #56. Only populated by `run_generate` (the only path that runs the full
-/// generate→QC→repair pipeline); analytics-only snapshots (post-edit, `compute_analytics`) have
-/// no generation pass to time, so `MazeSnapshot.timing` is `None` there.
+/// Hierarchical timing breakdown for one generation run — see GitHub issue #285. Only populated
+/// by `run_generate` (the only path that runs the full generate→QC→repair pipeline);
+/// analytics-only snapshots (post-edit, `compute_analytics`) have no generation pass to time, so
+/// `MazeSnapshot.timing` is `None` there.
 #[derive(Serialize)]
 pub struct GenerationTimingDto {
     pub initial_build_ms: f64,
-    pub qc_total_ms: f64,
-    pub repair_total_ms: f64,
-    /// Keyed by check **type** id (e.g. "min_loop_length"), not instance id — aggregated across
-    /// every active instance of that type, same rationale as `Check::check_type_id`.
-    pub per_check: HashMap<String, TimingEntryDto>,
-    /// Keyed by strategy id (e.g. "invalid_loop_random").
-    pub per_strategy: HashMap<String, TimingEntryDto>,
+    /// One entry per stage that ran at least one rule — each stage node's `children` are its own
+    /// rules, each rule node's `children` are its checks and (if dispatched) its strategy.
+    pub qc: Vec<TimingNodeDto>,
 }
 
 #[derive(Serialize)]
