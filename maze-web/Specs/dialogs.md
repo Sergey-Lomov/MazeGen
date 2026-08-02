@@ -34,6 +34,7 @@ overlay (fixed fullscreen, semi-transparent)
 - Overlay click → `onClose`
 - Click inside modal → propagation stopped
 - Close button (✕) → `onClose`
+- `Escape` key → `onClose` (same path as ✕; when multiple modals are stacked, only the topmost responds)
 - `body`: `overflowY: auto`, padded, flex column with gap
 - `bodyRaw`: no padding, `overflow: hidden`, flex column — consumer is responsible for internal scroll
 

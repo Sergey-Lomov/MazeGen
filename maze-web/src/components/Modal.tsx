@@ -1,10 +1,14 @@
-import React from "react";
+import React, { useEffect, useId } from "react";
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { ui, radius, overlay, shadow, dialogSpacing, dialogSize, typography } from "../styles/theme";
 import { sharedStyles } from "../styles/shared";
 
 type DialogSizeKey = keyof typeof dialogSize;
+
+/** Stack of currently mounted Modal instance ids, topmost (most recently opened) last.
+ *  Lets Esc close only the topmost modal when several are stacked. */
+const openModalStack: string[] = [];
 
 interface Props {
   title: string;
@@ -17,6 +21,25 @@ interface Props {
 
 export function Modal({ title, size = "info", rawBody, onClose, children }: Props) {
   const sizeTokens = dialogSize[size];
+  const id = useId();
+
+  useEffect(() => {
+    openModalStack.push(id);
+    return () => {
+      const i = openModalStack.indexOf(id);
+      if (i !== -1) openModalStack.splice(i, 1);
+    };
+  }, [id]);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (openModalStack[openModalStack.length - 1] !== id) return;
+      onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [id, onClose]);
 
   return createPortal(
     <div style={styles.overlay} onClick={onClose}>
