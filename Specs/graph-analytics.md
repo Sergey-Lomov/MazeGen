@@ -14,6 +14,8 @@ pub struct GraphAnalytics {
     pub cycle_region_count: usize,          // connected components (undirected) of the pure-cycle core
     pub pure_cycle_nav_nodes: HashSet<NavNodeId>,
     pub pure_cycle_edge_indices: HashSet<usize>,
+    pub pure_cycle_basis: Vec<Vec<usize>>,  // GF(2) independent cycle basis (GitHub issue #284) — see below
+    pub simple_cycle_count: usize,          // fully-deduped composite-inclusive simple-cycle count (GitHub issue #284) — see below
     pub cycle_analysis_overflowed: bool,    // true if cycle enumeration aborted (see below) — other cycle fields are empty placeholders, not real results
 }
 ```
@@ -27,6 +29,7 @@ pub struct GraphAnalyticsDto {
     pub component_count: usize,
     pub cycle_count: usize,
     pub cycle_region_count: usize,
+    pub simple_cycle_count: usize,             // fully-deduped composite-inclusive simple-cycle count, always >= cycle_count
     pub node_component: HashMap<String, usize>, // maze node id (as string — see below) → SCC component id
     pub pure_cycle_node_ids: Vec<u32>,         // maze node ids in the pure-cycle core
     pub pure_cycle_edge_pairs: Vec<[u32; 2]>,  // [from_maze_id, to_maze_id] pure-cycle nav-edges
@@ -58,7 +61,7 @@ Dense graphs can have a very large number of simple cycles — confirmed by meas
 
 ```rust
 pub(crate) enum CycleSearchResult {
-    Cycles(Vec<Vec<usize>>),
+    Cycles { cycles: Vec<Vec<usize>>, basis: Vec<Vec<usize>> },
     TooManyCycles,
 }
 ```
@@ -92,6 +95,33 @@ It aborts and returns `TooManyCycles` once the running cycle count exceeds `MAX_
 - Cycle metrics (`count_core_edges`/`count_core_regions`): linear in core size once the core is known.
 - `MazeAnalysis::graph_analytics` (`maze-core/src/lib.rs`) caches the result per `(graph.version(), meta.start, meta.finish)`, same key as `nav_graph` — `compute_graph_analytics` has no toggle and runs on every analytics snapshot, so repeated calls within the same graph version reuse the cached result instead of re-running cycle enumeration.
 
+## Independent Cycle Basis (`basis` / `pure_cycle_basis`, GitHub issue #284)
+
+Investigation in [issue #244](https://github.com/Sergey-Lomov/MazeGen/issues/244) established that deriving a basis *independently* of the full simple-cycle enumeration (e.g. via a spanning tree) gives an arbitrary, non-natural basis, and that most consumers of `find_all_simple_cycles` genuinely need the full simple-cycle list (a basis can miss a real bad cycle, an unacceptable false negative for health checks like `LoopLengthCheck`). #284 instead derives a GF(2) independent basis **on top of** the already-running Johnson's enumeration — additive, not a replacement — used only where independence specifically matters.
+
+### Where the basis is used
+
+- `GraphAnalytics.pure_cycle_basis` / `cycle_core` — additive alongside `pure_cycle_nav_nodes`/`pure_cycle_edge_indices` (the full pure-cycle core). `cycle_count` itself stays computed via the Euler formula (cheaper, no elimination needed), not `pure_cycle_basis.len()` — though they are always equal by construction.
+- `MinLoopsCountCheck` — reads `analytics.cycle_count` only, no cycle list involved; unaffected.
+- `MaxLoopsCountCheck` / `MaxLoopDensityCheck` — the flagged `InvalidLoopGroupIssue.all`/`invalid` set is now built from `analytics.pure_cycle_basis` / `find_all_simple_cycles`'s `basis` field, not the full composite-inclusive enumeration — the flagged set is now exactly `cycle_count` cycles, so cutting any one of them reduces the independent count by exactly one (unlike a composite-inclusive list, where cutting an edge shared by several linearly-dependent composite cycles does not reduce the independent count by the raw overlap amount).
+- `MinLoopDensityCheck` — field-coverage computed from `basis` instead of the full list. This does not change the density number: a composite cycle's edge-set is always the symmetric difference (in GF(2)) of its basis components' edge-sets, hence always a subset of their union — no cell touched by a composite cycle is ever outside the union of cells touched by its basis components, so basis-only coverage equals full-list coverage by construction, never a strict subset. Basis-only is simply cheaper (fewer cycles to walk).
+- `InvalidLoopScoredStrategy` (`Specs/repair.md`) — the `valid_overlap` valid-cycle penalty term is computed against the GF(2) basis of the *valid* subset of the issue's own cycle list (a separate, `EdgeId`-domain elimination, not `pure_cycle_basis`), not the raw valid list. See `Specs/repair.md` for the rationale.
+- **Left unchanged (full list, not basis)**: `LoopLengthCheck`, `LoopDistanceFromStartCheck`, `LoopDistanceFromFinishCheck`, `ExternalEscapeDiversityCheck` (need every real simple cycle — a basis can omit a real cycle that happens to be linearly dependent on others), `PureCyclesOverlay` (needs every node/edge on any real cycle).
+
+### `simple_cycle_count` — the composite-inclusive counterpart
+
+`GraphAnalytics.simple_cycle_count` (built in `cycle_core`) is the fully-deduped (`dedup_bidirectional_pairs`, canonical-key dedup — not just `drop_trivial_reverse_pairs`) simple-cycle count, surfaced to the UI ("Complex cycles") alongside `cycle_count`'s independent count, so composite noise is visible. It is computed from a clone of the raw `cycles` list *before* `cycle_core`'s own `drop_trivial_reverse_pairs` pass — that pass deliberately keeps both directions of every surviving cycle's edges for the Euler-formula core (see `cycle_core`'s own doc comment), a different list shape than `dedup_bidirectional_pairs`'s canonical-key-deduped one. Using `drop_trivial_reverse_pairs` alone (or the raw pre-dedup `cycles.len()`) would double-count every bidirectional cycle, since a CW and CCW walk of the same physical loop are two distinct entries in Johnson's raw output — only the full dedup collapses them to one, matching what a user visually perceives as "one loop."
+
+### Construction: incremental GF(2) elimination inside Johnson's
+
+`maze-core/src/graph/cycles.rs`'s `GF2Basis` — a small, domain-agnostic reduced row-echelon GF(2) elimination core (`try_insert(vector: Vec<u64>) -> bool`, bit-vectors as `Vec<u64>` words). `find_all_simple_cycles` uses one `GF2Basis` instance (`bit_count = nav.edges().count()`) for the entire call — every cycle it pushes to `cycles` is also offered to this basis via `offer_to_basis` (the single insertion point shared by both places a new cycle is found: the self-loop branch and `johnson_circuit`'s cycle-found branch), as a bit-vector built from each edge's `canonical_index` (the same undirected-pairing helper `dedup_bidirectional_pairs`/`count_core_edges` already use: an edge and its `reverse_edge`, if both present, map to the same bit). Using the raw directed `edge_idx` instead would be a bug: a self-loop ring's CW and CCW directed cycles (or a bidirectional corridor walked either way) are the *same physical loop* and must cancel to the zero vector under XOR, not register as two independent basis members — canonical-index bits make that cancellation automatic, with no separate dedup pass needed for the basis specifically (unlike `cycles`, which is deduped afterward on demand via `drop_trivial_reverse_pairs`/`dedup_bidirectional_pairs`).
+
+**One basis instance for the whole call, not one per SCC-fragment.** The outer per-SCC loop consumes one start vertex per iteration and re-runs Tarjan's on the remainder, splitting the current SCC into smaller fragments (see "Complexity" above) — but those fragments still share the *same* underlying cycle space as the original, pre-split SCC. An earlier version of this code reset the basis and recomputed a fresh Euler-formula target per fragment; this double-counted rank, since a fragment's own local target does not account for dimensions the parent SCC's cycles, found before the split, already spanned — confirmed by a bowtie-graph regression where summing per-fragment targets let a 3rd, linearly-dependent cycle slip into a true rank-2 basis. The fix: `global_basis_target` is computed once, before the outer loop runs at all, as the sum of each *initial* SCC's own Euler-formula rank (`E_scc_canonical - V_scc + 1`); the single shared `GF2Basis`/running count persist across every fragment the outer loop later derives from that SCC.
+
+**Early-exit**: once the running basis count reaches `global_basis_target`, further `try_insert` calls are skipped for the rest of enumeration — `cycles` (the full list) is completely unaffected, every simple cycle Johnson's finds is still pushed to it as before; only the elimination bookkeeping is skipped. This is provably safe, not an approximation: `global_basis_target` is the exact GF(2) rank of the whole canonical edge space, so once it's reached the space is fully spanned — any cycle found afterward is necessarily a linear combination of what's already in the basis (otherwise the rank would exceed the target, a contradiction), so skipping its `try_insert` check can never omit a genuinely independent cycle.
+
+**Traversal-order selection, not length-sorted.** Which specific cycles end up in the basis (among several valid choices — the linear-algebra sense of "a basis" is not unique) depends on the order Johnson's happens to find them in, not on cycle length or any other secondary criterion. Per #244's own conclusion, there is no canonical "human-natural" basis to aim for regardless; simplicity (no secondary sort pass) was chosen over an unreachable canonicalness goal.
+
 ## NavGraph Domain
 
 All metrics are in NavGraph domain (nav-nodes/nav-edges; corridor nodes already compressed away), then translated to maze `NodeId` for the DTO.
@@ -102,7 +132,7 @@ One read-only overlay in the Analytics feature, owned by `AnalyticsRenderer` (`m
 
 - **`PureCyclesOverlay`** — draws nodes in `pure_cycle_node_ids` and edges keyed by `pure_cycle_edge_pairs`. Green (`0x44dd88`).
 
-Toggled via `showPureCyclesOverlay` in `mazeStore`. Stats block in `AnalyticsFeature` shows `node_count`, `edge_count`, `component_count`, `cycle_count`, `cycle_region_count`.
+Toggled via `showPureCyclesOverlay` in `mazeStore`. Stats block in `AnalyticsFeature` shows `node_count`, `edge_count`, `component_count`, `cycle_count` ("Basic cycles"), `simple_cycle_count` ("Complex cycles"), `cycle_region_count`.
 
 Base-graph SCC (`maze.analysis.scc`) is computed separately for the `RegionsRenderer` overlay (regions are derived client-side from `graph_analytics.node_component`).
 

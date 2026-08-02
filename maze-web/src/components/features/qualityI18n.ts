@@ -536,13 +536,13 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.split_weight.label"] as MessageFn,
     description: m["param.split_weight.description"] as MessageFn,
   },
-  short_overlap_weight: {
-    label: m["param.short_overlap_weight.label"] as MessageFn,
-    description: m["param.short_overlap_weight.description"] as MessageFn,
+  invalid_overlap_weight: {
+    label: m["param.invalid_overlap_weight.label"] as MessageFn,
+    description: m["param.invalid_overlap_weight.description"] as MessageFn,
   },
-  other_overlap_weight: {
-    label: m["param.other_overlap_weight.label"] as MessageFn,
-    description: m["param.other_overlap_weight.description"] as MessageFn,
+  valid_overlap_weight: {
+    label: m["param.valid_overlap_weight.label"] as MessageFn,
+    description: m["param.valid_overlap_weight.description"] as MessageFn,
   },
   reserve_percent: {
     label: m["param.reserve_percent.label"] as MessageFn,

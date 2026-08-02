@@ -3,7 +3,7 @@ use rand::RngCore;
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
-use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids, density_per_100};
+use crate::graph::cycles::{find_all_simple_cycles, resolve_to_edge_ids, density_per_100, CycleSearchResult};
 use crate::quality_control::check::Check;
 use crate::quality_control::{Issue, MissingLoopsIssue};
 
@@ -33,17 +33,22 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
         }
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
-        // Silently skip on overflow, same rationale as MaxLoopDensityCheck (issue #22).
-        let covered: HashSet<NodeId> = match find_deduped_simple_cycles(nav) {
-            Some(cycles) if !cycles.is_empty() => {
-                let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
+        // GitHub issue #284: coverage is built from the GF(2) independent basis, not the full
+        // composite-inclusive simple-cycle list — a composite cycle's edge-set is always a
+        // subset of the union of its basis components' edges (symmetric difference in GF(2)),
+        // so basis-only coverage is identical to full-list coverage by construction, never a
+        // strict subset. Cheaper: fewer cycles to walk. Silently skip on overflow, same
+        // rationale as MaxLoopDensityCheck (issue #22).
+        let covered: HashSet<NodeId> = match find_all_simple_cycles(nav) {
+            CycleSearchResult::Cycles { basis, .. } if !basis.is_empty() => {
+                let all = resolve_to_edge_ids(nav, &basis, &maze.graph);
                 all.iter()
                     .flat_map(|cycle| cycle.iter().filter_map(|&id| maze.graph.edge(id)))
                     .flat_map(|edge| [edge.from, edge.to])
                     .collect()
             }
-            Some(_) => HashSet::new(),
-            None => return,
+            CycleSearchResult::Cycles { .. } => HashSet::new(),
+            CycleSearchResult::TooManyCycles => return,
         };
 
         let density = density_per_100(covered.len(), field_cells);

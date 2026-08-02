@@ -48,6 +48,46 @@ fn two_disjoint_bowtie_clusters_have_two_cycle_regions() {
     assert_eq!(analytics.pure_cycle_nav_nodes.len(), 8, "all 8 nodes participate in a cycle");
 }
 
+/// GitHub issue #284: `pure_cycle_basis` must contain exactly `cycle_count` cycles (never the
+/// composite route through each bowtie), and stay empty on an acyclic/empty graph.
+#[test]
+fn pure_cycle_basis_matches_cycle_count_on_bowtie_clusters() {
+    let g = two_bowtie_clusters();
+    let analytics = analyze(&g);
+    assert_eq!(analytics.pure_cycle_basis.len(), analytics.cycle_count, "basis size must equal the independent cycle count");
+    assert_eq!(analytics.pure_cycle_basis.len(), 4);
+}
+
+/// GitHub issue #284: `simple_cycle_count` must be the fully deduped simple-cycle count (each
+/// bowtie contributes 3 distinct simple cycles: 2 triangles + 1 composite route, so 6 across two
+/// clusters), never the raw pre-dedup count (which would double-count every cycle as its CW and
+/// CCW directed walk) and never the independent `cycle_count` (4).
+#[test]
+fn simple_cycle_count_is_fully_deduped_not_double_counted() {
+    let g = two_bowtie_clusters();
+    let analytics = analyze(&g);
+    assert_eq!(analytics.simple_cycle_count, 6, "3 simple cycles per bowtie (2 triangles + composite) times 2 clusters");
+    assert!(analytics.simple_cycle_count > analytics.cycle_count, "composite-inclusive count must exceed the independent count");
+}
+
+#[test]
+fn pure_cycle_basis_empty_on_acyclic_graph() {
+    let mut g = Graph::new();
+    for id in 0..3 { g.add_node(id); }
+    g.add_edge(0, 1, EdgeKind::Basic);
+    g.add_edge(1, 2, EdgeKind::Basic);
+    let analytics = analyze(&g);
+    assert_eq!(analytics.cycle_count, 0);
+    assert!(analytics.pure_cycle_basis.is_empty());
+}
+
+#[test]
+fn pure_cycle_basis_empty_on_empty_graph() {
+    let g = Graph::new();
+    let analytics = analyze(&g);
+    assert!(analytics.pure_cycle_basis.is_empty());
+}
+
 /// Real post-edit graph from a 6x6 maze: two disjoint simple cycles
 /// (no shared edge), connected to each other only by non-cyclic corridors.
 /// Cycle A: 1-7-8-14-13-12-6-0-1. Cycle B: 34-28-22-21-20-26-27-33-34.

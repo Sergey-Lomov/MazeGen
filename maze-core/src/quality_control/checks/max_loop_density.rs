@@ -3,19 +3,26 @@ use rand::RngCore;
 use crate::Maze;
 use crate::ids::{EdgeId, NodeId};
 use crate::space::Tessellation;
-use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids, density_per_100};
+use crate::graph::cycles::{find_all_simple_cycles, resolve_to_edge_ids, density_per_100, CycleSearchResult};
 use crate::quality_control::check::Check;
 use crate::quality_control::{Issue, InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
 use crate::quality_control::issue_kinds::canonical_cycle_key;
 
 pub const MAX_LOOP_DENSITY_DEFAULT: u32 = 30;
 
-/// Flags every simple loop invalid when too large a share of the field is covered by loops
+/// Flags every basis loop invalid when too large a share of the field is covered by loops
 /// overall — see GitHub issue #37. Density is the count of distinct field cells touched by any
 /// loop (each cell counted once, even if covered by several loops), per 100 field cells. This is
 /// a group-level decision (which loops to actually break is a repair strategy's job, e.g.
 /// `InvalidLoopGroupSelectStrategy` — see GitHub issue #183): once density exceeds `max_density`,
-/// every loop on the field is flagged, none stay valid.
+/// every basis loop is flagged, none stay valid.
+///
+/// Since GitHub issue #284, both the density computation and the flagged set are built from the
+/// GF(2) independent basis (`find_all_simple_cycles`'s `basis`), not the full composite-inclusive
+/// list — a composite cycle's edge-set is always a subset of the union of its basis components'
+/// edges (symmetric difference in GF(2)), so basis-only coverage is identical to full-list
+/// coverage by construction, never a strict subset; the flagged set is cheaper to compute and
+/// exactly `cycle_count` cycles instead of every composite variant.
 pub struct MaxLoopDensityCheck {
     pub instance_id: String,
     pub max_density: u32,
@@ -34,12 +41,15 @@ impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopDensityCheck {
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
         // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22).
-        let Some(cycles) = find_deduped_simple_cycles(nav) else { return };
-        if cycles.is_empty() {
+        let basis = match find_all_simple_cycles(nav) {
+            CycleSearchResult::Cycles { basis, .. } => basis,
+            CycleSearchResult::TooManyCycles => return,
+        };
+        if basis.is_empty() {
             return;
         }
 
-        let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
+        let all = resolve_to_edge_ids(nav, &basis, &maze.graph);
         let covered: HashSet<NodeId> = all.iter()
             .flat_map(|cycle| cycle_cells(&maze.graph, cycle))
             .collect();

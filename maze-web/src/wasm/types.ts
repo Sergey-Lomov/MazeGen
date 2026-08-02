@@ -68,6 +68,8 @@ export interface GraphAnalyticsDto {
   cycle_count: number;
   /** Number of connected cyclic regions. */
   cycle_region_count: number;
+  /** Raw count of all simple cycles (composite-inclusive) — always >= cycle_count. */
+  simple_cycle_count: number;
   /** maze node id (as string key) → component_id. Covers junctions and corridor nodes. */
   node_component: Record<string, number>;
   /** maze node ids in the pure-cycle core (real cycles only, no bridges). */

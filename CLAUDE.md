@@ -47,9 +47,10 @@ Use Grep/Glob/Explore only if:
 
 ## Debugging
 
-- Temporary diagnostic logs must be prefixed with `// DIAG` comment on the same line:
+- Temporary diagnostic logs must be prefixed with `// DIAG` comment on the same line
+- Use the `diag_log!` macro (`maze-core/src/diag.rs`), never bare `println!` — `println!` is silently swallowed on `wasm32` (no stdout in the browser); `diag_log!` prints to stdout natively and to the browser console (`console.log` via `web_sys`) when built for wasm:
   ```rust
-  println!("value={x}"); // DIAG
+  crate::diag_log!("value={x}"); // DIAG
   ```
 - To find all diagnostic logs: search for `// DIAG`
 - Remove all `// DIAG` logs before committing

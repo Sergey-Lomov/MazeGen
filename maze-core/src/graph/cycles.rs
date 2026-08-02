@@ -3,11 +3,18 @@ use crate::ids::EdgeId;
 use super::Graph;
 use super::nav::{NavGraph, NavNodeId, NavEdge};
 
-/// Result of `find_all_simple_cycles`: either the full list of simple cycles, or a signal
+/// Result of `find_all_simple_cycles`: either the full list of simple cycles plus the
+/// independent GF(2) basis derived incrementally alongside it (see `GF2Basis`), or a signal
 /// that enumeration was aborted because it exceeded `MAX_SIMPLE_CYCLES` — see that constant's
 /// doc comment for why this exists.
+///
+/// `basis` is a subset of `cycles`' own raw traversal-order `Vec<usize>` values (cloned, not
+/// indices into `cycles`) — deliberately not index-based, so any later filtering of `cycles`
+/// (e.g. `drop_trivial_reverse_pairs`) never needs an index remap; `basis` is filtered
+/// independently by the same predicate when needed, or (see GitHub issue #284) simply used
+/// as-is where it is already known to be free of what that filter would drop.
 pub(crate) enum CycleSearchResult {
-    Cycles(Vec<Vec<usize>>),
+    Cycles { cycles: Vec<Vec<usize>>, basis: Vec<Vec<usize>> },
     TooManyCycles,
 }
 
@@ -23,6 +30,102 @@ pub(crate) enum CycleSearchResult {
 /// analytics) while aborting well before the 6x6 regime, where a single call already takes
 /// seconds.
 const MAX_SIMPLE_CYCLES: usize = 20_000;
+
+/// Reduced row-echelon GF(2) basis over an abstract bit-universe — knows nothing about what a
+/// bit represents (a nav-edge's `canonical_index` here, an `EdgeId`-remap index in
+/// `InvalidLoopScoredStrategy`); each caller maps its own domain to bit positions before
+/// calling `try_insert`. See GitHub issue #284: this is the shared elimination core reused by
+/// both `find_all_simple_cycles`'s incremental basis construction and the repair-strategy's
+/// batch elimination over an already-known cycle list — only the XOR/pivot mechanics are
+/// shared; each call site's domain-to-bit mapping is its own, not abstracted into this type.
+pub(crate) struct GF2Basis {
+    words_per_row: usize,
+    /// Indexed by pivot bit position; `None` until that bit becomes some row's pivot.
+    rows: Vec<Option<Vec<u64>>>,
+}
+
+impl GF2Basis {
+    pub(crate) fn new(bit_count: usize) -> Self {
+        GF2Basis {
+            words_per_row: bit_count.div_ceil(64).max(1),
+            rows: (0..bit_count).map(|_| None).collect(),
+        }
+    }
+
+    /// Reduces `vector` against existing pivot rows (highest bit first); if a nonzero
+    /// remainder survives, inserts it as a new pivot row (at its own highest set bit) and
+    /// returns `true` (independent of everything inserted so far). If it reduces to zero,
+    /// returns `false` (linearly dependent, already spanned) and `vector` is discarded.
+    pub(crate) fn try_insert(&mut self, mut vector: Vec<u64>) -> bool {
+        debug_assert_eq!(vector.len(), self.words_per_row);
+        loop {
+            let Some(pivot) = highest_set_bit(&vector) else {
+                return false; // reduced to the zero vector: dependent
+            };
+            match &self.rows[pivot] {
+                Some(row) => xor_into(&mut vector, row),
+                None => {
+                    self.rows[pivot] = Some(vector);
+                    return true;
+                }
+            }
+        }
+    }
+}
+
+fn highest_set_bit(vector: &[u64]) -> Option<usize> {
+    for (word_idx, &word) in vector.iter().enumerate().rev() {
+        if word != 0 {
+            let bit_in_word = 63 - word.leading_zeros() as usize;
+            return Some(word_idx * 64 + bit_in_word);
+        }
+    }
+    None
+}
+
+fn xor_into(vector: &mut [u64], other: &[u64]) {
+    for (a, &b) in vector.iter_mut().zip(other.iter()) {
+        *a ^= b;
+    }
+}
+
+/// Sets bit `bit` (word-index `bit / 64`, in-word `bit % 64`) in a fresh zeroed bit-vector of
+/// `words_per_row` words. Shared helper for building the bit-vector `GF2Basis::try_insert`
+/// expects from a domain-specific caller — `words_per_row` must match the `GF2Basis` it will be
+/// inserted into (i.e. `bit_count.div_ceil(64).max(1)` for that basis' own `bit_count`).
+pub(crate) fn set_bit(words_per_row: usize, bits: impl Iterator<Item = usize>) -> Vec<u64> {
+    let mut v = vec![0u64; words_per_row];
+    for bit in bits {
+        v[bit / 64] |= 1u64 << (bit % 64);
+    }
+    v
+}
+
+/// Offers `cycle` to the running GF(2) basis, skipping the check entirely once `*basis_count`
+/// has already reached `basis_target` (the early-exit — see `find_all_simple_cycles`'s doc
+/// comment for why this is provably safe). On success (`cycle` independent of everything
+/// inserted so far), clones `cycle` into `basis` and increments `*basis_count`. Shared by both
+/// places `find_all_simple_cycles` pushes a newly found cycle (the self-loop branch and
+/// `johnson_circuit`'s cycle-found branch) so the insertion logic exists in exactly one place.
+#[allow(clippy::too_many_arguments)]
+fn offer_to_basis(
+    cycle: &[usize],
+    edges: &[&NavEdge],
+    words_per_row: usize,
+    basis_target: usize,
+    basis_gf2: &mut GF2Basis,
+    basis_count: &mut usize,
+    basis: &mut Vec<Vec<usize>>,
+) {
+    if *basis_count >= basis_target {
+        return;
+    }
+    let bits = set_bit(words_per_row, cycle.iter().map(|&i| canonical_index(edges[i], i)));
+    if basis_gf2.try_insert(bits) {
+        basis.push(cycle.to_vec());
+        *basis_count += 1;
+    }
+}
 
 /// Find ALL simple directed cycles in `nav` (Johnson's algorithm, 1975), or `TooManyCycles` if
 /// enumeration exceeds `MAX_SIMPLE_CYCLES` (see its doc comment) — callers must handle both
@@ -53,7 +156,7 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     let edges: Vec<&NavEdge> = nav.edges().collect();
     let n = nav.nodes.len();
     if n == 0 {
-        return CycleSearchResult::Cycles(Vec::new());
+        return CycleSearchResult::Cycles { cycles: Vec::new(), basis: Vec::new() };
     }
 
     // adjacency[node] = list of (edge_idx, to)
@@ -63,6 +166,8 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     }
 
     let mut cycles: Vec<Vec<usize>> = Vec::new();
+    let mut basis: Vec<Vec<usize>> = Vec::new();
+    let words_per_row = edges.len().div_ceil(64).max(1);
     let mut remaining: HashSet<NavNodeId> = (0..n).collect();
 
     // Maintained incrementally across iterations instead of a full Tarjan rerun on every
@@ -72,6 +177,37 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     // third SCC's interior (otherwise they'd already be one SCC) — so only the affected
     // SCC's subgraph needs re-running through Tarjan, not the whole remaining graph.
     let mut sccs = strongly_connected_components(&adjacency, &remaining);
+
+    // GF(2) basis over the canonical (undirected) edge universe (see `canonical_index`) — ONE
+    // instance for the whole call, with a target rank computed ONCE up front from the initial
+    // SCC decomposition (before the outer loop consumes any vertex). Critical: when the outer
+    // loop consumes a start vertex, the remaining SCC(s) it splits into still share the *same*
+    // underlying cycle space as the original (pre-split) SCC — a fragment's own Euler-formula
+    // rank, computed from ITS OWN (already-shrunk) vertex/edge counts, is not additively
+    // meaningful on top of what was already found in the parent SCC before the split: the
+    // fragment excludes `start` and every edge incident to it, but a cycle already recorded in
+    // the parent may have used those same excluded edges — so the fragment's local rank
+    // double-counts dimensions the parent's cycles already spanned (confirmed by a
+    // bowtie-graph regression: summing 2 + 1 fragment targets falsely allowed a 3rd, dependent
+    // cycle into a true rank-2 space). The only correct target is the WHOLE graph's rank,
+    // known in full before any vertex is consumed — computed here from the initial `sccs`.
+    let global_basis_target: usize = sccs.iter()
+        .filter(|scc| is_nontrivial(scc, &adjacency))
+        .map(|scc| {
+            let scc_set: HashSet<NavNodeId> = scc.iter().copied().collect();
+            let mut e_canonical: HashSet<usize> = HashSet::new();
+            for &node in &scc_set {
+                for &(idx, to) in &adjacency[node] {
+                    if scc_set.contains(&to) {
+                        e_canonical.insert(canonical_index(edges[idx], idx));
+                    }
+                }
+            }
+            (e_canonical.len() + 1).saturating_sub(scc_set.len())
+        })
+        .sum();
+    let mut global_basis = GF2Basis::new(edges.len());
+    let mut global_basis_count = 0usize;
 
     while !remaining.is_empty() {
         // Smallest-index nontrivial SCC first (deterministic order); also handles
@@ -92,7 +228,9 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
             // Self-loop: every edge start->start within this trivial SCC is its own cycle.
             for &(idx, to) in &adjacency[start] {
                 if to == start {
-                    cycles.push(vec![idx]);
+                    let cycle = vec![idx];
+                    offer_to_basis(&cycle, &edges, words_per_row, global_basis_target, &mut global_basis, &mut global_basis_count, &mut basis);
+                    cycles.push(cycle);
                 }
             }
         } else {
@@ -109,6 +247,7 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
             johnson_circuit(
                 start, start, &adjacency, &scc_set,
                 &mut blocked, &mut block_map, &mut path_nodes, &mut path_edges, &mut cycles,
+                &edges, words_per_row, global_basis_target, &mut global_basis, &mut global_basis_count, &mut basis,
             );
         }
 
@@ -128,7 +267,7 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
         sccs.extend(split_sccs);
     }
 
-    CycleSearchResult::Cycles(cycles)
+    CycleSearchResult::Cycles { cycles, basis }
 }
 
 /// True if `scc` can contain a cycle: size > 1, or size == 1 with a self-loop edge.
@@ -165,6 +304,12 @@ fn is_nontrivial(scc: &[NavNodeId], adjacency: &[Vec<(usize, NavNodeId)>]) -> bo
 /// the trivial B->C->B case). Johnson's itself is correct and complete only when every
 /// directed edge is eligible; trivial reverse-pair 2-cycles are filtered separately, after
 /// the full correct result is in hand (see `find_all_simple_cycles` doc comment).
+/// `edges`/`words_per_row`/`basis_target`/`scc_basis`/`scc_basis_count`/`basis` thread through
+/// the incremental GF(2) basis construction (GitHub issue #284) — every cycle this function
+/// pushes to `cycles` is also offered to `scc_basis` (via a canonical-index bit-vector, see
+/// `GF2Basis`) until `scc_basis_count` reaches `basis_target`, after which insertion is skipped
+/// for the rest of this SCC (see `find_all_simple_cycles`'s early-exit comment — provably safe,
+/// not an approximation).
 #[allow(clippy::too_many_arguments)]
 fn johnson_circuit(
     start: NavNodeId,
@@ -176,6 +321,12 @@ fn johnson_circuit(
     path_nodes: &mut Vec<NavNodeId>,
     path_edges: &mut Vec<usize>,
     cycles: &mut Vec<Vec<usize>>,
+    edges: &[&NavEdge],
+    words_per_row: usize,
+    basis_target: usize,
+    scc_basis: &mut GF2Basis,
+    scc_basis_count: &mut usize,
+    basis: &mut Vec<Vec<usize>>,
 ) -> Option<bool> {
     let mut found_cycle = false;
 
@@ -188,6 +339,7 @@ fn johnson_circuit(
         }
         if w == start {
             path_edges.push(edge_idx);
+            offer_to_basis(path_edges, edges, words_per_row, basis_target, scc_basis, scc_basis_count, basis);
             cycles.push(path_edges.clone());
             path_edges.pop();
             found_cycle = true;
@@ -198,6 +350,7 @@ fn johnson_circuit(
 
             let result = johnson_circuit(
                 start, w, adjacency, scc_set, blocked, block_map, path_nodes, path_edges, cycles,
+                edges, words_per_row, basis_target, scc_basis, scc_basis_count, basis,
             );
 
             path_edges.pop();
@@ -371,7 +524,7 @@ pub(crate) fn drop_trivial_reverse_pairs(nav: &NavGraph, cycles: Vec<Vec<usize>>
 /// already surfaces the overflow to the UI, so skipping here does not hide it.
 pub(crate) fn find_deduped_simple_cycles(nav: &NavGraph) -> Option<Vec<Vec<usize>>> {
     match find_all_simple_cycles(nav) {
-        CycleSearchResult::Cycles(cycles) => Some(dedup_bidirectional_pairs(nav, cycles)),
+        CycleSearchResult::Cycles { cycles, .. } => Some(dedup_bidirectional_pairs(nav, cycles)),
         CycleSearchResult::TooManyCycles => None,
     }
 }

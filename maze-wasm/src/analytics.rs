@@ -212,6 +212,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         component_count:   scc.components.len(),
         cycle_count:       graph_analytics.cycle_count,
         cycle_region_count: graph_analytics.cycle_region_count,
+        simple_cycle_count: graph_analytics.simple_cycle_count,
         node_component,
         pure_cycle_node_ids,
         pure_cycle_edge_pairs,

@@ -13,10 +13,21 @@ fn triangle(a: u64, b: u64, c: u64) -> Graph {
 
 fn all_cycles(g: &Graph) -> Vec<Vec<usize>> {
     let nav = build_nav_graph(g);
-    let CycleSearchResult::Cycles(cycles) = find_all_simple_cycles(&nav) else {
+    let CycleSearchResult::Cycles { cycles, .. } = find_all_simple_cycles(&nav) else {
         panic!("test fixture unexpectedly exceeded MAX_SIMPLE_CYCLES");
     };
     dedup_bidirectional_pairs(&nav, cycles)
+}
+
+/// Basis-only counterpart of `all_cycles` — reads the `basis` field directly, no dedup applied
+/// (basis is already free of trivial reverse-pairs and CW/CCW duplicates by construction, see
+/// `find_all_simple_cycles`'s doc comment).
+fn basis_cycles(g: &Graph) -> Vec<Vec<usize>> {
+    let nav = build_nav_graph(g);
+    let CycleSearchResult::Cycles { basis, .. } = find_all_simple_cycles(&nav) else {
+        panic!("test fixture unexpectedly exceeded MAX_SIMPLE_CYCLES");
+    };
+    basis
 }
 
 #[test]
@@ -151,10 +162,11 @@ fn bidirectional_self_loop_ring_cw_ccw_dedups_to_one_cycle() {
     let nav = build_nav_graph(&g);
     assert_eq!(nav.nodes.len(), 1, "pure bidirectional ring with no junction compresses to one nav-node");
 
-    let CycleSearchResult::Cycles(cycles) = find_all_simple_cycles(&nav) else {
+    let CycleSearchResult::Cycles { cycles, basis } = find_all_simple_cycles(&nav) else {
         panic!("test fixture unexpectedly exceeded MAX_SIMPLE_CYCLES");
     };
     assert_eq!(cycles.len(), 2, "Johnson's correctly finds both CW and CCW self-loops as distinct directed cycles");
+    assert_eq!(basis.len(), 1, "CW/CCW self-loop pair is one canonical edge — GF(2) basis must not double-count it");
 
     let deduped = dedup_bidirectional_pairs(&nav, cycles);
     assert_eq!(deduped.len(), 1, "CW/CCW self-loop pair on the same ring is one visual loop");
@@ -315,4 +327,125 @@ fn many_independent_small_sccs_all_found() {
     }
     let cycles = all_cycles(&g);
     assert_eq!(cycles.len(), TRIANGLES as usize);
+}
+
+// GitHub issue #284: GF(2) independent cycle basis, built incrementally alongside Johnson's.
+
+#[test]
+fn basis_of_single_triangle_is_the_one_cycle() {
+    let g = triangle(0, 1, 2);
+    let basis = basis_cycles(&g);
+    assert_eq!(basis.len(), 1);
+}
+
+#[test]
+fn basis_of_two_disjoint_triangles_is_both() {
+    let mut g = Graph::new();
+    for id in 0..6u64 { g.add_node(id); }
+    for &(a, b) in &[(0,1),(1,2),(2,0)] { g.add_edge(a, b, EdgeKind::Basic); }
+    for &(a, b) in &[(3,4),(4,5),(5,3)] { g.add_edge(a, b, EdgeKind::Basic); }
+
+    let basis = basis_cycles(&g);
+    assert_eq!(basis.len(), 2, "two independent SCCs, each contributing its own 1-cycle basis");
+}
+
+/// Two triangles sharing one vertex, each walked in a consistent rotational direction through
+/// the shared vertex (0->1->2->0 and 2->3->4->2) — both directed 3-cycles route through node 2
+/// in the SAME direction (arriving via 1->2, leaving via 2->3/2->0), so Johnson's can also walk
+/// them as one 6-edge composite directed cycle: 0->1->2->3->4->2->0 is NOT simple (node 2
+/// repeats) — but 0->1->2->3->4->... only closes back to 0 by reusing 2, so no simple composite
+/// exists in this exact wiring. Bowtie composites need the shared vertex only once per simple
+/// cycle; see `bowtie_graph_finds_all_distinct_simple_cycles` for a topology where a genuine
+/// longer composite route does exist (via a bidirectional shared edge, not a shared vertex).
+fn shared_vertex_triangles() -> Graph {
+    let mut g = Graph::new();
+    for id in 0..5u64 { g.add_node(id); }
+    g.add_edge(0, 1, EdgeKind::Basic);
+    g.add_edge(1, 2, EdgeKind::Basic);
+    g.add_edge(2, 0, EdgeKind::Basic);
+    g.add_edge(2, 3, EdgeKind::Basic);
+    g.add_edge(3, 4, EdgeKind::Basic);
+    g.add_edge(4, 2, EdgeKind::Basic);
+    g
+}
+
+#[test]
+fn basis_of_shared_vertex_triangles_is_both_triangles() {
+    let g = shared_vertex_triangles();
+    let basis = basis_cycles(&g);
+    assert_eq!(basis.len(), 2, "two independent triangles sharing one vertex, no linear dependence between them");
+    assert!(basis.iter().all(|c| c.len() == 3), "each basis member is a 3-edge triangle");
+}
+
+/// Bowtie fixture (see `bowtie_graph_finds_all_distinct_simple_cycles`) has 3 simple cycles —
+/// A->B->C->A, B->D->C->B, and A->B->D->C->A (the longer composite route) — spanning a rank-2
+/// GF(2) space (any 2 are a linear combination of the third: their canonical edge-sets XOR to
+/// zero). The basis is exactly 2 of these 3 — which 2 depends on traversal order, not
+/// necessarily the two 3-edge triangles specifically (greedy insertion is order-dependent by
+/// design, see `find_all_simple_cycles`'s doc comment) — but it must never contain all 3.
+#[test]
+fn basis_of_bowtie_is_exactly_two_of_the_three_cycles() {
+    let mut g = Graph::new();
+    for id in 0..4u64 { g.add_node(id); }
+    g.add_edge(0, 1, EdgeKind::Basic); // A->B
+    g.add_edge(1, 2, EdgeKind::Basic); // B->C
+    g.add_edge(2, 0, EdgeKind::Basic); // C->A
+    g.add_edge(1, 3, EdgeKind::Basic); // B->D
+    g.add_edge(3, 2, EdgeKind::Basic); // D->C
+    g.add_edge(2, 1, EdgeKind::Basic); // C->B
+
+    let all = all_cycles(&g);
+    assert_eq!(all.len(), 3, "sanity check: 2 short loops + 1 longer composite route (see bowtie test above)");
+
+    let basis = basis_cycles(&g);
+    assert_eq!(basis.len(), 2, "rank-2 space (Euler: E_canonical=5, V=4, C=1 -> 5-4+1=2) — basis must never contain all 3 linearly-dependent cycles");
+}
+
+#[test]
+fn basis_early_exit_does_not_shrink_the_full_cycle_list() {
+    // A 5x5 fully-bidirectional grid has thousands of simple cycles but a small Euler-formula
+    // independent count — this fixture is dense enough to trigger the per-SCC early-exit
+    // (basis target reached well before all simple cycles are enumerated). `cycles` must still
+    // contain every simple cycle Johnson's finds — early-exit only skips elimination bookkeeping,
+    // never the search itself (see `find_all_simple_cycles`'s doc comment).
+    const SIDE: u64 = 5;
+    let mut g = Graph::new();
+    for id in 0..(SIDE * SIDE) { g.add_node(id); }
+    for row in 0..SIDE {
+        for col in 0..SIDE {
+            let id = row * SIDE + col;
+            if col + 1 < SIDE { g.add_bidirectional_edge(id, id + 1, EdgeKind::Basic); }
+            if row + 1 < SIDE { g.add_bidirectional_edge(id, id + SIDE, EdgeKind::Basic); }
+        }
+    }
+    let nav = build_nav_graph(&g);
+    let CycleSearchResult::Cycles { cycles, basis } = find_all_simple_cycles(&nav) else {
+        panic!("test fixture unexpectedly exceeded MAX_SIMPLE_CYCLES");
+    };
+    // Deterministic pinning for this fixed 5x5 grid — mirrors
+    // `dense_grid_completes_quickly_and_reports_observed_cycle_count`'s own pinned constant
+    // (9349, post-dedup); this is the raw pre-dedup count basis construction runs alongside.
+    // Any change signals either a correctness regression or a deliberate algorithm change.
+    assert_eq!(cycles.len(), 18734, "raw pre-dedup cycle count must be unaffected by early-exit — investigate any change");
+    // Euler formula for this single-SCC grid: E - V + 1, E counting each bidirectional
+    // corridor once (undirected pairs, matching the basis' own canonical-index bit universe).
+    let e_canonical = 2 * SIDE as usize * (SIDE as usize - 1);
+    let expected_basis_size = e_canonical + 1 - (SIDE * SIDE) as usize;
+    assert_eq!(basis.len(), expected_basis_size, "basis size must equal the exact Euler-formula independent count");
+}
+
+#[test]
+fn too_many_cycles_yields_no_partial_basis() {
+    const SIDE: u64 = 6;
+    let mut g = Graph::new();
+    for id in 0..(SIDE * SIDE) { g.add_node(id); }
+    for row in 0..SIDE {
+        for col in 0..SIDE {
+            let id = row * SIDE + col;
+            if col + 1 < SIDE { g.add_bidirectional_edge(id, id + 1, EdgeKind::Basic); }
+            if row + 1 < SIDE { g.add_bidirectional_edge(id, id + SIDE, EdgeKind::Basic); }
+        }
+    }
+    let nav = build_nav_graph(&g);
+    assert!(matches!(find_all_simple_cycles(&nav), CycleSearchResult::TooManyCycles));
 }

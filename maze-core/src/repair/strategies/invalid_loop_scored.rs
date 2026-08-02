@@ -5,23 +5,24 @@ use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
 use crate::generation::PresetState;
+use crate::graph::cycles::{GF2Basis, set_bit};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::cycle_cut_set::{edge_to_cycles_map, discard_cycles_with_edge, candidate_edges};
 
-pub const PARAM_SHORT_OVERLAP_WEIGHT: &str = "short_overlap_weight";
-pub const PARAM_OTHER_OVERLAP_WEIGHT: &str = "other_overlap_weight";
+pub const PARAM_INVALID_OVERLAP_WEIGHT: &str = "invalid_overlap_weight";
+pub const PARAM_VALID_OVERLAP_WEIGHT: &str = "valid_overlap_weight";
 
 static PARAMS: &[StrategyParam] = &[
     StrategyParam {
-        id: PARAM_SHORT_OVERLAP_WEIGHT,
-        label: "Shared short-loop weight",
+        id: PARAM_INVALID_OVERLAP_WEIGHT,
+        label: "Shared invalid-loop weight",
         kind: StrategyParamKind::Float { default: 5.0, min: 0.0, max: 100.0 },
     },
     StrategyParam {
-        id: PARAM_OTHER_OVERLAP_WEIGHT,
+        id: PARAM_VALID_OVERLAP_WEIGHT,
         label: "Shared valid-loop penalty",
         kind: StrategyParamKind::Float { default: 6.0, min: 0.0, max: 100.0 },
     },
@@ -33,12 +34,18 @@ static PARAMS: &[StrategyParam] = &[
 /// time (à la `ScoredEndpointsStrategy`) — keep new criteria additive into the same score
 /// rather than introducing a separate strategy per criterion.
 ///
-/// For a candidate edge within the cycle being cut, `short_overlap` counts how many *other*
-/// short cycles (also in `short`) also contain that edge, and `other_overlap` counts how many
-/// *non-short* (valid, long-enough) cycles in `all` contain it. Score is
-/// `short_overlap * short_overlap_weight - other_overlap * other_overlap_weight`; the
+/// For a candidate edge within the cycle being cut, `invalid_overlap` counts how many *other*
+/// invalid cycles (also in `invalid`) also contain that edge — raw, uncorrected: every
+/// invalid-cycle intersection is a real win regardless of linear dependence between invalid
+/// cycles, since `invalid` already names the concrete cycles that must be broken. `valid_overlap`
+/// counts how many valid cycles a candidate edge would break, but — since GitHub issue #284 —
+/// only against the GF(2) independent basis of the valid subset of `all`, not every valid cycle:
+/// a naive raw count overstates an edge's real impact when several valid cycles sharing it are
+/// linearly dependent (cutting it can never reduce the valid subset's independent-cycle count by
+/// more than its basis membership implies). Score is
+/// `invalid_overlap * invalid_overlap_weight - valid_overlap * valid_overlap_weight`; the
 /// highest-scoring candidate is cut. This biases cuts toward edges that simultaneously break
-/// several short loops (fewer total cuts needed) while avoiding edges that would also break a
+/// several invalid loops (fewer total cuts needed) while avoiding edges that would also break a
 /// cycle the maze is meant to keep.
 pub struct InvalidLoopScoredStrategy;
 
@@ -50,7 +57,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
     }
 
     /// Needs every valid cycle, not just invalid ones — `apply` walks the full `all` to compute
-    /// `other_overlap` (how many valid cycles a candidate edge would also break), so
+    /// `valid_overlap` (how many valid cycles a candidate edge would also break), so
     /// `VALID_CYCLES` is required by the algorithm itself, not left set out of inertia.
     fn requirement(&self, _params: &StrategyParams) -> InvalidLoopRequirement {
         InvalidLoopRequirement::VALID_CYCLES
@@ -67,17 +74,20 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
     ) -> (RepairResult, Vec<MutationCommand>) {
         let (all, invalid) = (&issue.all, &issue.invalid);
 
-        let short_overlap_weight = params.get(PARAM_SHORT_OVERLAP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(5.0);
-        let other_overlap_weight = params.get(PARAM_OTHER_OVERLAP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(6.0);
+        let invalid_overlap_weight = params.get(PARAM_INVALID_OVERLAP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(5.0);
+        let valid_overlap_weight = params.get(PARAM_VALID_OVERLAP_WEIGHT).and_then(|v| v.as_float()).unwrap_or(6.0);
 
-        // edge -> (how many invalid cycles contain it, how many valid cycles contain it)
+        // edge -> (how many invalid cycles contain it, how many *basis* valid cycles contain it)
         let invalid_set: std::collections::HashSet<usize> = invalid.iter().copied().collect();
+        let valid_basis_indices = valid_cycle_basis_indices(all, &invalid_set);
         let mut overlap: HashMap<EdgeId, (u32, u32)> = HashMap::new();
         for (idx, cycle) in all.iter().enumerate() {
             let is_invalid = invalid_set.contains(&idx);
+            let is_valid_basis_member = !is_invalid && valid_basis_indices.contains(&idx);
             for &eid in cycle {
                 let entry = overlap.entry(eid).or_insert((0, 0));
-                if is_invalid { entry.0 += 1; } else { entry.1 += 1; }
+                if is_invalid { entry.0 += 1; }
+                if is_valid_basis_member { entry.1 += 1; }
             }
         }
 
@@ -88,9 +98,13 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
 
         while let Some(idx) = pending.pop() {
             let Some(cycle) = all.get(idx) else { continue };
-            if let Some(cut) = apply_cut(cycle, &overlap, short_overlap_weight, other_overlap_weight, maze, rng, preset_state, &already_cut, &mut commands) {
+            if let Some((cut, reverse)) = apply_cut(cycle, &overlap, invalid_overlap_weight, valid_overlap_weight, maze, rng, preset_state, &already_cut, &mut commands) {
                 already_cut.insert(cut);
                 discard_cycles_with_edge(&mut pending, &owners, cut);
+                if let Some(reverse) = reverse {
+                    already_cut.insert(reverse);
+                    discard_cycles_with_edge(&mut pending, &owners, reverse);
+                }
             }
         }
 
@@ -105,43 +119,99 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopScoredS
 
 crate::impl_erased_repair_strategy!(InvalidLoopScoredStrategy, InvalidLoopIssue);
 
-/// Pure scoring formula, kept standalone so new terms can be unit-tested in isolation as the
-/// strategy grows (see the struct-level doc comment on why this is meant to be additive).
-/// `short_overlap`/`other_overlap` are the counts from the `overlap` map for one candidate edge.
-fn score(short_overlap: u32, other_overlap: u32, short_overlap_weight: f64, other_overlap_weight: f64) -> f64 {
-    short_overlap as f64 * short_overlap_weight - other_overlap as f64 * other_overlap_weight
+/// GitHub issue #284: returns the indices (into `all`) of a GF(2) independent basis of the
+/// valid subset of `all` (every index not in `invalid_set`) — used so `valid_overlap` reflects
+/// real independent-cycle-count impact instead of raw (possibly linearly-dependent) overlap.
+///
+/// `EdgeId` is not a dense index (arbitrary values, not 0..N), so this builds its own local
+/// dense remap (`EdgeId -> bit position`) over the `EdgeId`s actually appearing in the valid
+/// subset, then runs each valid cycle through `GF2Basis::try_insert` as a bit-vector under that
+/// remap. No canonical (forward/reverse) edge merging is applied here, unlike `cycles.rs`'s
+/// nav-edge-index basis — this domain is base-`Graph` `EdgeId`s, where a forward and reverse
+/// edge are already two distinct `EdgeId`s with no automatic pairing, and the penalty is about
+/// concrete cut `EdgeId`s, not physical corridors, so no such merging is needed or wanted here.
+fn valid_cycle_basis_indices(all: &[Vec<EdgeId>], invalid_set: &std::collections::HashSet<usize>) -> std::collections::HashSet<usize> {
+    let mut remap: HashMap<EdgeId, usize> = HashMap::new();
+    for (idx, cycle) in all.iter().enumerate() {
+        if invalid_set.contains(&idx) {
+            continue;
+        }
+        for &eid in cycle {
+            let next = remap.len();
+            remap.entry(eid).or_insert(next);
+        }
+    }
+
+    let bit_count = remap.len().max(1);
+    let words_per_row = bit_count.div_ceil(64).max(1);
+    let mut gf2 = GF2Basis::new(bit_count);
+    let mut basis_indices = std::collections::HashSet::new();
+    for (idx, cycle) in all.iter().enumerate() {
+        if invalid_set.contains(&idx) {
+            continue;
+        }
+        let bits = set_bit(words_per_row, cycle.iter().map(|eid| remap[eid]));
+        if gf2.try_insert(bits) {
+            basis_indices.insert(idx);
+        }
+    }
+    basis_indices
 }
 
-/// Returns the cut edge's id on success (also pushed onto `commands` as one
-/// `MutationCommand::RemoveEdgeWithReverse` when the cut edge's reverse direction also exists, or
-/// a plain `RemoveEdge` otherwise — GitHub issue #185), so the caller can drop any other pending
-/// cycle that shares it (see `discard_cycles_with_edge`) — `None` means every candidate was protected.
+/// Pure scoring formula, kept standalone so new terms can be unit-tested in isolation as the
+/// strategy grows (see the struct-level doc comment on why this is meant to be additive).
+/// `invalid_overlap`/`valid_overlap` are the counts from the `overlap` map for one candidate edge.
+fn score(invalid_overlap: u32, valid_overlap: u32, invalid_overlap_weight: f64, valid_overlap_weight: f64) -> f64 {
+    invalid_overlap as f64 * invalid_overlap_weight - valid_overlap as f64 * valid_overlap_weight
+}
+
+/// Returns `(cut, reverse)` on success — `cut` is the removed edge's own id, `reverse` is its
+/// opposite-direction id when that leg was also removed (`RemoveEdgeWithReverse`, GitHub issue
+/// #185), `None` when only `cut` itself was removed (`RemoveEdge`). Both pushed onto `commands`.
+/// The caller must drop any other pending cycle sharing *either* id (see
+/// `discard_cycles_with_edge`) — a cycle that only traverses the reverse leg of the same physical
+/// corridor is broken by this cut too. `None` (outer) means every candidate was protected.
 /// Never mutates `maze` (GitHub issue #118, `Specs/repair.md`'s immutable-snapshot contract);
 /// `already_cut` stands in for what an earlier real mutation would have made observable.
 #[allow(clippy::too_many_arguments)]
 fn apply_cut<T: Tessellation>(
     cycle: &[EdgeId],
     overlap: &HashMap<EdgeId, (u32, u32)>,
-    short_overlap_weight: f64,
-    other_overlap_weight: f64,
+    invalid_overlap_weight: f64,
+    valid_overlap_weight: f64,
     maze: &Maze<T>,
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
     already_cut: &std::collections::HashSet<EdgeId>,
     commands: &mut Vec<MutationCommand>,
-) -> Option<EdgeId> {
+) -> Option<(EdgeId, Option<EdgeId>)> {
     // Drop preset-protected and already-cut edges upfront, same as InvalidLoopRandomStrategy.
     let mut candidates = candidate_edges(cycle, maze, preset_state, already_cut);
 
     while !candidates.is_empty() {
-        // This cycle's own membership counts toward `short_overlap`/`other_overlap` too — it's
-        // always in `short`, so every candidate gets +1 short_overlap from itself. That's a
+        // This cycle's own membership counts toward `invalid_overlap`/`valid_overlap` too — it's
+        // always in `invalid`, so every candidate gets +1 invalid_overlap from itself. That's a
         // constant offset shared by every candidate in this cycle, so it doesn't affect which
         // one scores highest; left in rather than special-cased for simplicity.
+        //
+        // A bidirectional corridor is two distinct `EdgeId`s (forward and `edge_between`'s
+        // reverse) — two cycles sharing that corridor but each traversing it in the opposite
+        // direction land on different `EdgeId`s in `overlap`, so a raw per-id lookup would miss
+        // that they actually share a cut. Cutting `id` always also cuts its reverse (see the
+        // `RemoveEdgeWithReverse` dispatch below), so a candidate's real overlap is its own
+        // entry's plus its reverse's.
         let scores: Vec<f64> = candidates.iter()
             .map(|&id| {
-                let (short_overlap, other_overlap) = overlap.get(&id).copied().unwrap_or((0, 0));
-                score(short_overlap, other_overlap, short_overlap_weight, other_overlap_weight)
+                let (invalid_overlap, valid_overlap) = overlap.get(&id).copied().unwrap_or((0, 0));
+                let reverse_overlap = maze.graph.edge(id)
+                    .and_then(|edge| maze.graph.edge_between(edge.to, edge.from))
+                    .filter(|&rev| rev != id)
+                    .and_then(|rev| overlap.get(&rev))
+                    .copied()
+                    .unwrap_or((0, 0));
+                let invalid_overlap = invalid_overlap + reverse_overlap.0;
+                let valid_overlap = valid_overlap + reverse_overlap.1;
+                score(invalid_overlap, valid_overlap, invalid_overlap_weight, valid_overlap_weight)
             })
             .collect();
         let best_score = scores.iter().copied().fold(f64::NEG_INFINITY, f64::max);
@@ -158,13 +228,18 @@ fn apply_cut<T: Tessellation>(
             (edge.from, edge.to)
         };
         if !preset_state.preset_edges.contains(&(from, to)) {
-            let reverse_id = maze.graph.edge_between(to, from);
-            match reverse_id {
-                Some(reverse_id) if reverse_id != cut && !already_cut.contains(&reverse_id) =>
-                    commands.push(MutationCommand::RemoveEdgeWithReverse { id: cut }),
-                _ => commands.push(MutationCommand::RemoveEdge { id: cut }),
-            }
-            return Some(cut);
+            let reverse_id = maze.graph.edge_between(to, from).filter(|&rev| rev != cut);
+            let reverse_actually_removed = match reverse_id {
+                Some(reverse_id) if !already_cut.contains(&reverse_id) => {
+                    commands.push(MutationCommand::RemoveEdgeWithReverse { id: cut });
+                    Some(reverse_id)
+                }
+                _ => {
+                    commands.push(MutationCommand::RemoveEdge { id: cut });
+                    None
+                }
+            };
+            return Some((cut, reverse_actually_removed));
         }
         // Protected after all (shouldn't happen given the upfront filter, but stay defensive).
         candidates.swap_remove(pick);
@@ -191,8 +266,56 @@ mod tests {
         build_params(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, InvalidLoopIssue>>::params(&InvalidLoopScoredStrategy), None)
     }
 
+    // GitHub issue #284: `valid_cycle_basis_indices` unit tests — direct coverage of the
+    // GF(2)-elimination adapter `valid_overlap` is built from, independent of the full
+    // strategy/check pipeline above.
+    mod valid_cycle_basis_indices_tests {
+        use super::*;
+
+        #[test]
+        fn all_independent_valid_cycles_are_all_selected() {
+            // Two disjoint triangles as EdgeId lists (arbitrary EdgeId values, not dense 0..N —
+            // exercises the dense remap) — both independent, neither zero-invalid.
+            let all: Vec<Vec<EdgeId>> = vec![vec![10, 11, 12], vec![20, 21, 22]];
+            let invalid_set = std::collections::HashSet::new();
+            let basis_indices = valid_cycle_basis_indices(&all, &invalid_set);
+            assert_eq!(basis_indices, [0, 1].into_iter().collect());
+        }
+
+        #[test]
+        fn a_composite_valid_cycle_dependent_on_two_others_is_excluded() {
+            // Bowtie-shaped EdgeId sets: cycle 0 = {A,B,C}, cycle 1 = {B,D,E} (shares B with
+            // cycle 0), cycle 2 = {A,C,D,E} — the symmetric difference of 0 and 1 (drop the
+            // shared B, keep the rest) — linearly dependent on cycles 0 and 1.
+            let all: Vec<Vec<EdgeId>> = vec![
+                vec![1, 2, 3],       // A, B, C
+                vec![2, 4, 5],       // B, D, E
+                vec![1, 3, 4, 5],    // A, C, D, E (= cycle0 XOR cycle1)
+            ];
+            let invalid_set = std::collections::HashSet::new();
+            let basis_indices = valid_cycle_basis_indices(&all, &invalid_set);
+            assert_eq!(basis_indices.len(), 2, "rank-2 space: composite must never be selected once 0 and 1 already span it");
+            assert!(!basis_indices.contains(&2), "the composite (index 2) is the one that should be excluded, since it's inserted last and 0/1 already span the space");
+        }
+
+        #[test]
+        fn invalid_indices_are_never_considered() {
+            let all: Vec<Vec<EdgeId>> = vec![vec![1, 2, 3], vec![1, 2, 3]];
+            let invalid_set: std::collections::HashSet<usize> = [0, 1].into_iter().collect();
+            let basis_indices = valid_cycle_basis_indices(&all, &invalid_set);
+            assert!(basis_indices.is_empty(), "both indices are invalid, so neither is a candidate for the valid basis");
+        }
+
+        #[test]
+        fn empty_valid_subset_yields_empty_basis() {
+            let all: Vec<Vec<EdgeId>> = vec![];
+            let invalid_set = std::collections::HashSet::new();
+            assert!(valid_cycle_basis_indices(&all, &invalid_set).is_empty());
+        }
+    }
+
     /// Guards the `requirement()` override itself (see GitHub issue #105) — `apply` reads
-    /// `other_overlap` from every valid cycle in `all`, so a regression to `empty()` (or anything
+    /// `valid_overlap` from every valid cycle in `all`, so a regression to `empty()` (or anything
     /// short of `VALID_CYCLES`) would silently break scoring without failing any behavioral test
     /// that always constructs its issue via `all()` directly.
     #[test]
@@ -266,6 +389,59 @@ mod tests {
         }
     }
 
+    /// Bowtie where the two triangles traverse the shared corridor in *opposite* directions:
+    /// A->B->C->A (uses A->B, the forward leg) and A->D->B->A (uses B->A, the reverse leg — a
+    /// distinct `EdgeId` from A->B, unlike `maze_with_shared_edge_triangles` where both triangles
+    /// use the same forward id). Cutting either leg removes both via `RemoveEdgeWithReverse`, so
+    /// the shared corridor must still score as overlapping two short cycles and be preferred over
+    /// an edge unique to one triangle — this is the scenario a raw per-`EdgeId` overlap count
+    /// misses. Built with only these two edges as `all`/`invalid` (no third, composite cycle) to
+    /// isolate the mechanism under test from unrelated basis/composite behavior.
+    fn opposite_direction_shared_triangles() -> (Maze<SquareTessellation>, InvalidLoopIssue) {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes = shared_edge_triangle_nodes(&field);
+        let ab = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B (shared corridor, forward leg)
+        let bc = g.add_edge(nodes[1], nodes[2], EdgeKind::Basic); // B->C
+        let ca = g.add_edge(nodes[2], nodes[0], EdgeKind::Basic); // C->A
+        let ad = g.add_edge(nodes[0], nodes[3], EdgeKind::Basic); // A->D
+        let db = g.add_edge(nodes[3], nodes[1], EdgeKind::Basic); // D->B
+        let ba = g.add_edge(nodes[1], nodes[0], EdgeKind::Basic); // B->A (shared corridor, reverse leg)
+        let maze = Maze::new(field, g);
+
+        let triangle_1 = vec![ab, bc, ca];
+        let triangle_2 = vec![ad, db, ba];
+        let issue = InvalidLoopIssue::new_from_check("min_loop_length", vec![triangle_1, triangle_2], vec![0, 1], Default::default());
+        (maze, issue)
+    }
+
+    #[test]
+    fn prefers_cutting_the_shared_corridor_even_when_cycles_traverse_it_in_opposite_directions() {
+        let (maze, issue) = opposite_direction_shared_triangles();
+        let nodes = shared_edge_triangle_nodes(&maze.field);
+
+        for seed in 0..20 {
+            let (mut maze_try, _) = opposite_direction_shared_triangles();
+            let mut rng = MazeRng::seed_from_u64(seed);
+            let result = apply_and_commit(&InvalidLoopScoredStrategy, &issue, &mut maze_try, &mut rng, &no_params(), &PresetState::empty(), &[]);
+            assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+            // Exactly one *cut* (removing both directions of the corridor at once via
+            // `RemoveEdgeWithReverse`, i.e. 2 of the graph's 6 edges) must happen — proves
+            // `invalid_overlap` counted the corridor's two opposite-direction legs as one shared
+            // cut, not zero (which would instead cut one edge per triangle separately, still
+            // leaving 2 edges removed but from *different* physical corridors).
+            let removed_count = 6 - maze_try.graph.edges().count();
+            assert_eq!(removed_count, 2, "seed {seed}: cutting the corridor removes both its directions at once");
+
+            let corridor_gone = maze_try.graph.edge_between(nodes[0], nodes[1]).is_none()
+                && maze_try.graph.edge_between(nodes[1], nodes[0]).is_none();
+            assert!(corridor_gone, "seed {seed}: the shared corridor (either direction) must be the one cut, breaking both triangles in a single cut");
+        }
+    }
+
     #[test]
     fn cutting_a_shared_edge_spares_the_other_cycle_from_a_second_cut() {
         // Same bowtie as above: node D has exactly two edges (B->D, D->A), both belonging only
@@ -304,7 +480,7 @@ mod tests {
     /// Triangle A->B->C->A (short, the cycle to break) where edge C->A also continues into a
     /// long valid loop C->A->E->F->G->H->I->J->C (>= 10 tile-hops, must NOT be broken). A->B
     /// and B->C are "plain" — they belong only to the short triangle, no other cycle. With
-    /// default weights (short_overlap_weight=5, other_overlap_weight=6), C->A's penalty alone
+    /// default weights (invalid_overlap_weight=5, valid_overlap_weight=6), C->A's penalty alone
     /// (-6) already loses to a plain edge's score (0), with no shared-short-cycle bonus
     /// involved at all — this isolates the penalty term from the bonus term tested above.
     fn maze_with_plain_edge_and_penalized_edge() -> Maze<SquareTessellation> {

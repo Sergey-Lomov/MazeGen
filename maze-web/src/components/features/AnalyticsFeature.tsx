@@ -205,6 +205,28 @@ export function AnalyticsFeature() {
 
       {regionClassLegendOpen && <RegionClassLegendModal onClose={() => setRegionClassLegendOpen(false)} />}
 
+      {/* Graph analytics block */}
+      {graphAnalytics != null && (
+        <>
+          <div style={styles.divider} />
+          <SectionHeader label={m["analytics.graph"]()} expanded={isExpanded("graph")} onToggle={() => toggleSection("graph")} />
+          {isExpanded("graph") && (
+            <div style={styles.statBlock}>
+              <StatRow label={m["analytics.graph_nodes"]()} count={graphAnalytics.node_count} />
+              <StatRow label={m["analytics.graph_edges"]()} count={graphAnalytics.edge_count} />
+              <StatRow label={m["analytics.graph_components"]()} count={graphAnalytics.component_count} />
+              {!graphAnalytics.cycle_analysis_overflowed && (
+                <>
+                  <StatRow label={m["analytics.graph_cycle_count"]()} count={graphAnalytics.cycle_count} />
+                  <StatRow label={m["analytics.graph_simple_cycle_count"]()} count={graphAnalytics.simple_cycle_count} />
+                  <StatRow label={m["analytics.graph_cycle_regions"]()} count={graphAnalytics.cycle_region_count} />
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
       <div style={styles.divider} />
 
       {/* Path block — hidden when no route */}
@@ -275,27 +297,6 @@ export function AnalyticsFeature() {
           </div>
         );
       })() : null}
-
-      {/* Graph analytics block */}
-      {graphAnalytics != null && (
-        <>
-          <div style={styles.divider} />
-          <SectionHeader label={m["analytics.graph"]()} expanded={isExpanded("graph")} onToggle={() => toggleSection("graph")} />
-          {isExpanded("graph") && (
-            <div style={styles.statBlock}>
-              <StatRow label={m["analytics.graph_nodes"]()} count={graphAnalytics.node_count} />
-              <StatRow label={m["analytics.graph_edges"]()} count={graphAnalytics.edge_count} />
-              <StatRow label={m["analytics.graph_components"]()} count={graphAnalytics.component_count} />
-              {!graphAnalytics.cycle_analysis_overflowed && (
-                <>
-                  <StatRow label={m["analytics.graph_cycle_count"]()} count={graphAnalytics.cycle_count} />
-                  <StatRow label={m["analytics.graph_cycle_regions"]()} count={graphAnalytics.cycle_region_count} />
-                </>
-              )}
-            </div>
-          )}
-        </>
-      )}
 
       {/* Splits block — GitHub issue #262 */}
       {splitAnalytics != null && (

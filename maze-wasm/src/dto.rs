@@ -213,6 +213,9 @@ pub struct GraphAnalyticsDto {
     pub cycle_count: usize,
     /// Number of connected cyclic regions (WCC on the pure-cycle core).
     pub cycle_region_count: usize,
+    /// Raw count of all simple cycles (composite-inclusive, GitHub issue #284) — see
+    /// `GraphAnalytics::simple_cycle_count`. Always `>= cycle_count`.
+    pub simple_cycle_count: usize,
     /// maze node id (as string — `json_compatible()` serialization requires string map keys)
     /// → component_id. Covers junction nodes and corridor nodes.
     pub node_component: HashMap<String, usize>,
@@ -222,8 +225,8 @@ pub struct GraphAnalyticsDto {
     pub pure_cycle_edge_pairs: Vec<[u32; 2]>,
     /// True if cycle enumeration aborted because the graph has too many simple cycles to
     /// analyze (see `GraphAnalytics::cycle_analysis_overflowed`) — when `true`, `cycle_count`,
-    /// `cycle_region_count`, `pure_cycle_node_ids`, and `pure_cycle_edge_pairs` are all
-    /// empty/zero placeholders, not real results.
+    /// `cycle_region_count`, `simple_cycle_count`, `pure_cycle_node_ids`, and
+    /// `pure_cycle_edge_pairs` are all empty/zero placeholders, not real results.
     pub cycle_analysis_overflowed: bool,
     /// SCC region class relative to `start`/`finish` — "path" | "alternative" | "unreachable" |
     /// "trap" — keyed by `component_id` (as string, same `json_compatible()` requirement as

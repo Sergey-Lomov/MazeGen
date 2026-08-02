@@ -189,7 +189,7 @@ mod tests {
         g.add_edge(p(2), p(0), EdgeKind::Basic);
         let nav = build_nav_graph(&g);
         let cycle = match find_all_simple_cycles(&nav) {
-            CycleSearchResult::Cycles(cycles) => cycles.into_iter().next().unwrap(),
+            CycleSearchResult::Cycles { cycles, .. } => cycles.into_iter().next().unwrap(),
             CycleSearchResult::TooManyCycles => panic!("triangle must not overflow"),
         };
         (nav, cycle)

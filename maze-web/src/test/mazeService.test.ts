@@ -45,7 +45,7 @@ const validSnapshot = {
   issues: [],
   nav_nodes: [{ node_id: 0 }, { node_id: 1 }],
   nav_edges: [{ from: 0, to: 1, path: [0, 1] }],
-  graph_analytics: { node_count: 2, edge_count: 1, component_count: 1, cycle_count: 0, cycle_region_count: 0, node_component: {}, pure_cycle_node_ids: [], pure_cycle_edge_pairs: [], cycle_analysis_overflowed: false, region_classes: {} },
+  graph_analytics: { node_count: 2, edge_count: 1, component_count: 1, cycle_count: 0, cycle_region_count: 0, simple_cycle_count: 0, node_component: {}, pure_cycle_node_ids: [], pure_cycle_edge_pairs: [], cycle_analysis_overflowed: false, region_classes: {} },
 };
 
 describe("generateMaze / validateSnapshot", () => {

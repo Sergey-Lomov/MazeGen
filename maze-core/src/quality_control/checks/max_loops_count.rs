@@ -3,28 +3,28 @@ use rand::RngCore;
 use crate::Maze;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
-use crate::graph::cycles::{find_deduped_simple_cycles, resolve_to_edge_ids};
+use crate::graph::cycles::resolve_to_edge_ids;
 use crate::quality_control::check::Check;
 use crate::quality_control::{Issue, InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
 use crate::quality_control::issue_kinds::canonical_cycle_key;
 
 pub const MAX_LOOPS_COUNT_DEFAULT: u32 = 20;
 
-/// Flags every simple loop invalid when the field has more independent loops than
+/// Flags every basis loop invalid when the field has more independent loops than
 /// `max_loops_count` allows — a group-level decision (see `MaxLoopDensityCheck`'s identical
 /// rationale, GitHub issue #37/#183): which loops to actually break is a repair strategy's job,
-/// not this check's. Once the count exceeds the maximum, every loop on the field is flagged, none
-/// stay valid.
+/// not this check's. Once the count exceeds the maximum, every basis loop is flagged, none stay
+/// valid.
 ///
 /// The threshold compares against `analytics.cycle_count` — the same independent-cycle count
 /// (Euler: E - V + C on the pure-cycle core) shown to the user as the "Cycle count" analytics
-/// stat, and what `MinLoopsCountCheck` already compares against — not the raw count of
-/// `find_deduped_simple_cycles`'s simple-cycle enumeration, which also includes every composite
-/// cycle (union of independent ones) and so is a much larger, unstable number to threshold
-/// against. The flagged set itself is still built from `find_deduped_simple_cycles` (a repair
-/// strategy needs concrete edge-id cycles to cut, and cutting any one of them lowers the
-/// independent-cycle count by exactly one) — only the fire/no-fire decision uses the independent
-/// count.
+/// stat, and what `MinLoopsCountCheck` already compares against. Since GitHub issue #284, the
+/// flagged set itself is built from `analytics.pure_cycle_basis` (the GF(2) independent
+/// representatives), not the raw `find_deduped_simple_cycles` composite-inclusive enumeration —
+/// the set is now exactly `cycle_count` cycles, one cut per cycle reduces the independent count
+/// by exactly one (unlike a naive composite-inclusive list, where cutting an edge shared by
+/// several linearly-dependent composite cycles does not reduce the independent count by that
+/// many).
 pub struct MaxLoopsCountCheck {
     pub instance_id: String,
     pub max_loops_count: u32,
@@ -45,14 +45,7 @@ impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopsCountCheck {
         }
 
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-        let nav = &nav;
-        // Silently skip on overflow, same rationale as MinLoopLengthCheck (issue #22). Should
-        // never actually trigger here in practice — `cycle_analysis_overflowed` above already
-        // covers the same underlying enumeration limit — but kept as a defensive fallback rather
-        // than an `expect`, consistent with every other loop-based check's handling of this `Option`.
-        let Some(cycles) = find_deduped_simple_cycles(nav) else { return };
-
-        let all = resolve_to_edge_ids(nav, &cycles, &maze.graph);
+        let all = resolve_to_edge_ids(&nav, &analytics.pure_cycle_basis, &maze.graph);
         let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();
         for cycle in &all {
             invalid_sources.entry(canonical_cycle_key(cycle)).or_default().push(self.instance_id.clone());
@@ -157,7 +150,22 @@ mod tests {
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);
-        assert!(issues[0].invalid.len() >= 2, "every simple cycle found is offered to the repair strategy to cut");
+        assert_eq!(issues[0].invalid.len(), 2, "GitHub issue #284: flagged set is the GF(2) basis, exactly cycle_count cycles — not every simple cycle (3, including the composite)");
+    }
+
+    /// GitHub issue #284: the composite cycle (the third simple cycle on this fixture, walking
+    /// both triangles as one bigger loop) must not appear in the flagged set — it is linearly
+    /// dependent on the two basis triangles, so it is never selected by `GF2Basis::try_insert`.
+    #[test]
+    fn composite_cycle_is_excluded_when_its_basis_components_are_already_selected() {
+        let maze = maze_with_shared_vertex_triangles();
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 1 };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
+        assert_eq!(issues.len(), 1);
+        // Each basis triangle has 3 edges; the composite (walking both triangles as one loop)
+        // has 6. A flagged cycle with 6 edges would mean the composite leaked into the basis.
+        assert!(issues[0].invalid.iter().all(|cycle| cycle.len() == 3), "every flagged cycle must be a basis triangle (3 edges), never the 6-edge composite walk");
     }
 
     #[test]
