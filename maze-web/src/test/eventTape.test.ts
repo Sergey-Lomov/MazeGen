@@ -95,6 +95,40 @@ function buildFixture(nodes: FixtureNode[]): ParsedTape {
   return parseTape(nodeTable, payload);
 }
 
+/** A flat tape (no scopes beyond root) of `count` sequential single-tag events, `tag`/`payloadFor`
+ *  supplying the per-algorithm event shape — shared by every `buildLong*ChainTape` fixture that
+ *  exercises `resolveDebugArenaMetadata`'s internal `CHECKPOINT_INTERVAL` pacing (500 mutating
+ *  events) for a given algorithm's event stream. */
+function buildLongChainTape(count: number, tag: number, payloadFor: (i: number) => Uint8Array): ParsedTape {
+  const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
+  for (let i = 0; i < count; i++) {
+    nodes.push({
+      parent: 0,
+      firstChild: null,
+      nextSibling: i + 1 < count ? i + 2 : null,
+      tag,
+      payloadBytes: payloadFor(i),
+    });
+  }
+  return buildFixture(nodes);
+}
+
+/** Builds a `resolveDebugArenaMetadata` wrapper bound to one algorithm's decode/isMutating/apply
+ *  triple — shared by every `resolve*Metadata` convenience function in this file, each of which
+ *  mirrors that algorithm's real `*_ADAPTER.resolveMetadata` (`algorithmRegistry.ts`). */
+function makeMetadataResolver<TEvent, TResult extends { step: number; nodeIndex: number }>(
+  decode: (tag: number, bytes: Uint8Array) => TEvent,
+  isMutating: (event: TEvent) => boolean,
+  apply: (tape: ParsedTape, step: number, previous?: TResult) => TResult,
+) {
+  return (tape: ParsedTape) => resolveDebugArenaMetadata<TResult>(
+    tape,
+    (t, s, e) => countMutatingEvents(t, decode, isMutating, s, e),
+    (step, previous) => apply(tape, step, previous),
+    0, tape.nodeCount,
+  );
+}
+
 // Tree shape used by the exact-sequence test and several invariant tests:
 //   root (0)
 //     -> "step" scope (1) -> EdgeAdded(1,2) (2) -> VertexVisited(2) (3) -> VertexPushed(2) (4)
@@ -359,17 +393,7 @@ describe("nodeAt", () => {
  *  `i -> i+1` for `i` in `[1, count]` — long enough to exercise `resolveDebugArenaMetadata`'s
  *  internal `CHECKPOINT_INTERVAL` pacing when `count >= 500`. */
 function buildLongEdgeChainTape(count: number): ParsedTape {
-  const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
-  for (let i = 0; i < count; i++) {
-    nodes.push({
-      parent: 0,
-      firstChild: null,
-      nextSibling: i + 1 < count ? i + 2 : null,
-      tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED,
-      payloadBytes: edgeAddedPayload(BigInt(i + 1), BigInt(i + 2), false),
-    });
-  }
-  return buildFixture(nodes);
+  return buildLongChainTape(count, RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, (i) => edgeAddedPayload(BigInt(i + 1), BigInt(i + 2), false));
 }
 
 /** Convenience wrapper mirroring `RB_ADAPTER.resolveMetadata` (`algorithmRegistry.ts`) — every
@@ -643,27 +667,12 @@ describe("applyKruskal", () => {
      *  (mirrors `buildLongEdgeChainTape` above, RB-tag'd) — `EdgeAdded` alone is mutating for
      *  Kruskal, so this is enough to cross `CHECKPOINT_INTERVAL` without a real DSU-merge shape. */
     function buildLongKruskalChainTape(count: number): ParsedTape {
-      const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
-      for (let i = 0; i < count; i++) {
-        nodes.push({
-          parent: 0,
-          firstChild: null,
-          nextSibling: i + 1 < count ? i + 2 : null,
-          tag: KRUSKAL_EVENT_TAG.EDGE_ADDED,
-          payloadBytes: edgeAddedPayload(BigInt(i + 1), BigInt(i + 2)),
-        });
-      }
-      return buildFixture(nodes);
+      return buildLongChainTape(count, KRUSKAL_EVENT_TAG.EDGE_ADDED, (i) => edgeAddedPayload(BigInt(i + 1), BigInt(i + 2)));
     }
 
-    function resolveKruskalMetadata(tape: ParsedTape) {
-      return resolveDebugArenaMetadata<KruskalApplyResult>(
-        tape,
-        (t, s, e) => countMutatingEvents(t, decodeKruskalEvent, isMutatingKruskalEvent, s, e),
-        (step, previous) => applyKruskal(tape, step, previous),
-        0, tape.nodeCount,
-      );
-    }
+    const resolveKruskalMetadata = makeMetadataResolver<ReturnType<typeof decodeKruskalEvent>, KruskalApplyResult>(
+      decodeKruskalEvent, isMutatingKruskalEvent, applyKruskal,
+    );
 
     it("caches a snapshot every CHECKPOINT_INTERVAL (500) mutating events, each matching a full replay to that step", () => {
       const tape = buildLongKruskalChainTape(1000);
@@ -842,27 +851,12 @@ describe("mutatingWilsonEvents / applyWilson", () => {
      *  mutating for Wilson and inserts into the "visited" (Region-kind) debug value, exercising
      *  the presence-Set resume path this issue's Wilson fix specifically targeted. */
     function buildLongWilsonChainTape(count: number): ParsedTape {
-      const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
-      for (let i = 0; i < count; i++) {
-        nodes.push({
-          parent: 0,
-          firstChild: null,
-          nextSibling: i + 1 < count ? i + 2 : null,
-          tag: WILSON_EVENT_TAG.NODE_VISITED,
-          payloadBytes: vertexPayload(BigInt(i + 1)),
-        });
-      }
-      return buildFixture(nodes);
+      return buildLongChainTape(count, WILSON_EVENT_TAG.NODE_VISITED, (i) => vertexPayload(BigInt(i + 1)));
     }
 
-    function resolveWilsonMetadata(tape: ParsedTape) {
-      return resolveDebugArenaMetadata<WilsonApplyResult>(
-        tape,
-        (t, s, e) => countMutatingEvents(t, decodeWilsonEvent, isMutatingWilsonEvent, s, e),
-        (step, previous) => applyWilson(tape, step, previous),
-        0, tape.nodeCount,
-      );
-    }
+    const resolveWilsonMetadata = makeMetadataResolver<ReturnType<typeof decodeWilsonEvent>, WilsonApplyResult>(
+      decodeWilsonEvent, isMutatingWilsonEvent, applyWilson,
+    );
 
     it("caches a snapshot every CHECKPOINT_INTERVAL (500) mutating events, each matching a full replay to that step", () => {
       const tape = buildLongWilsonChainTape(1000);
@@ -1156,27 +1150,12 @@ describe("mutatingEdgeBasedEvents / applyEdgeBased", () => {
      *  debug value, independent of "visited" (only `SrcExhausted(EmptyPool)` touches that one) —
      *  exercises the per-name presence-Map resume path. */
     function buildLongEdgeBasedChainTape(count: number): ParsedTape {
-      const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
-      for (let i = 0; i < count; i++) {
-        nodes.push({
-          parent: 0,
-          firstChild: null,
-          nextSibling: i + 1 < count ? i + 2 : null,
-          tag: EDGE_BASED_EVENT_TAG.NODE_ACTIVATED,
-          payloadBytes: concatBytes([u64le(BigInt(i + 1)), optionalNodeIdPayload(null), u32le(0)]),
-        });
-      }
-      return buildFixture(nodes);
+      return buildLongChainTape(count, EDGE_BASED_EVENT_TAG.NODE_ACTIVATED, (i) => concatBytes([u64le(BigInt(i + 1)), optionalNodeIdPayload(null), u32le(0)]));
     }
 
-    function resolveEdgeBasedMetadata(tape: ParsedTape) {
-      return resolveDebugArenaMetadata<EdgeBasedApplyResult>(
-        tape,
-        (t, s, e) => countMutatingEvents(t, decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, s, e),
-        (step, previous) => applyEdgeBased(tape, step, previous),
-        0, tape.nodeCount,
-      );
-    }
+    const resolveEdgeBasedMetadata = makeMetadataResolver<ReturnType<typeof decodeEdgeBasedEvent>, EdgeBasedApplyResult>(
+      decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, applyEdgeBased,
+    );
 
     it("caches a snapshot every CHECKPOINT_INTERVAL (500) mutating events, each matching a full replay to that step", () => {
       const tape = buildLongEdgeBasedChainTape(1000);
@@ -1495,27 +1474,12 @@ describe("mutatingVertexBasedEvents / applyVertexBased", () => {
      *  once (insert/insert/remove), exercising the Set-per-name resume path built from
      *  `from.debugValues`. */
     function buildLongVertexBasedChainTape(count: number): ParsedTape {
-      const nodes: FixtureNode[] = [{ parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") }];
-      for (let i = 0; i < count; i++) {
-        nodes.push({
-          parent: 0,
-          firstChild: null,
-          nextSibling: i + 1 < count ? i + 2 : null,
-          tag: VERTEX_BASED_EVENT_TAG.NODE_VISITED,
-          payloadBytes: concatBytes([u64le(BigInt(i + 1)), u64le(BigInt(i))]),
-        });
-      }
-      return buildFixture(nodes);
+      return buildLongChainTape(count, VERTEX_BASED_EVENT_TAG.NODE_VISITED, (i) => concatBytes([u64le(BigInt(i + 1)), u64le(BigInt(i))]));
     }
 
-    function resolveVertexBasedMetadata(tape: ParsedTape) {
-      return resolveDebugArenaMetadata<VertexBasedApplyResult>(
-        tape,
-        (t, s, e) => countMutatingEvents(t, decodeVertexBasedEvent, isMutatingVertexBasedEvent, s, e),
-        (step, previous) => applyVertexBased(tape, step, previous),
-        0, tape.nodeCount,
-      );
-    }
+    const resolveVertexBasedMetadata = makeMetadataResolver<ReturnType<typeof decodeVertexBasedEvent>, VertexBasedApplyResult>(
+      decodeVertexBasedEvent, isMutatingVertexBasedEvent, applyVertexBased,
+    );
 
     it("caches a snapshot every CHECKPOINT_INTERVAL (500) mutating events, each matching a full replay to that step", () => {
       const tape = buildLongVertexBasedChainTape(1000);

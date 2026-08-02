@@ -41,6 +41,17 @@ fn test_ctx<'a>(committed_nodes: &'a HashSet<NodeId>, preset_state: &'a PresetSt
     GrowContext { committed_nodes, preset_state, inbound_requires_geometry: true, outbound_requires_geometry: true }
 }
 
+/// Builds a `1xN` row field with an empty graph and returns its nodes in x-order — the shared
+/// boilerplate every linear `maze_with_*` fixture in this file starts from.
+fn linear_field(n: usize) -> (Field<SquareTessellation>, G, Vec<NodeId>) {
+    let mut ids = IdGenerator::new();
+    let field = Field::new(square_rect(n, 1), &mut ids).unwrap();
+    let mut g = G::new();
+    field.build_nodes(&mut g);
+    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    (field, g, nodes)
+}
+
 /// Builds a `MISSING_REGIONS` issue from shortfall counts — `missing` values are how many
 /// regions short of the minimum each class is (always positive), converted to the `-N`
 /// balance convention internally so existing tests keep their original "missing count" call
@@ -58,11 +69,7 @@ fn issue_with_balance(balance: Vec<(RegionClass, i32)>) -> MissingRegionsIssue {
 /// 1x6 row: start(0) -> 1 -> finish(2), each a singleton; nodes 3,4,5 unconnected (each a
 /// singleton Unreachable region) and geometrically adjacent in a chain.
 fn maze_with_path_and_unreachables() -> (Maze<SquareTessellation>, Vec<NodeId>) {
-    let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(6, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(6);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     g.add_edge(nodes[1], nodes[2], EK::Basic);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -111,11 +118,7 @@ fn apply_path_class_is_skipped_not_failed() {
 #[test]
 fn apply_fails_when_no_candidates_at_all() {
     // Path-only maze with no spare nodes to reuse or grow from.
-    let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(3);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     g.add_edge(nodes[1], nodes[2], EK::Basic);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -190,11 +193,7 @@ fn apply_grows_when_no_reusable_unreachable_region_exists() {
     // adjacent to each other but not to the path -- forces growth (front expansion)
     // since reuse alone (a single singleton) still works, so use min_region_size=2
     // to force growth to actually expand the frontier.
-    let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(5, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(5);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
     maze.meta.start = Some(nodes[0]);
@@ -283,11 +282,7 @@ fn apply_grows_from_a_tree_shaped_maze_with_no_non_path_regions_at_all() {
 /// geometrically chained, and one more singleton (7) chained after them -- enough spare
 /// regions for multi-item scenarios.
 fn maze_with_many_unreachables() -> (Maze<SquareTessellation>, Vec<NodeId>) {
-    let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(8, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(8);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     g.add_edge(nodes[1], nodes[2], EK::Basic);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -337,11 +332,7 @@ fn apply_partial_success_within_one_class_is_fixed() {
     // before a later item in the same class runs out of fresh (non-committed) candidates
     // and fails -- overall result must still be `Fixed` because at least one item in the
     // whole call succeeded, not `Failed` just because the full `missing` count wasn't met.
-    let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(4, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(4);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     // Only nodes[2],nodes[3] left as Unreachable singletons -- but they are geometrically
     // adjacent to each other (node[2]-node[3]), so once one becomes Trap (and is added to
@@ -382,11 +373,7 @@ fn apply_growth_never_crosses_into_a_different_scc_component() {
     // Unreachable node 5 (5 is a field-neighbor of 4, but no edge connects them, so it's
     // its own SCC). With min_region_size=2, growth seeded inside the 3-node component
     // must stay within {2,3,4} and never pull in node 5 from the neighboring component.
-    let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(6, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(6);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     g.add_bidirectional_edge(nodes[2], nodes[3], EK::Basic);
     g.add_bidirectional_edge(nodes[3], nodes[4], EK::Basic);
@@ -423,11 +410,7 @@ fn apply_growth_never_crosses_into_a_different_scc_component() {
 /// Unreachable SCC (3<->4<->5, chained), 6=region6 a separate singleton Unreachable SCC
 /// (field-neighbor of node 5 only, no graph edge to it).
 fn maze_with_two_isolated_unreachable_components() -> (Maze<SquareTessellation>, Vec<NodeId>) {
-    let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(7, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(7);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     g.add_bidirectional_edge(nodes[1], nodes[2], EK::Basic);
     g.add_bidirectional_edge(nodes[3], nodes[4], EK::Basic);
@@ -551,11 +534,7 @@ fn apply_does_not_leak_inbound_edge_from_a_failed_unreachable_to_alternative_can
     // regardless of rng -- the bug only manifests when a failing candidate is tried before
     // a succeeding one in the same call.
     for seed in 0..30u64 {
-        let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(6, 1), &mut ids).unwrap();
-        let mut g = G::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let (field, mut g, nodes) = linear_field(6);
         g.add_edge(nodes[0], nodes[1], EK::Basic);
         g.add_edge(nodes[1], nodes[2], EK::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -590,11 +569,7 @@ fn apply_does_not_leak_inbound_edge_from_a_failed_unreachable_to_alternative_can
 /// into Trap. A gap at node 9 (left disconnected) separates it from 7 decoy Unreachable
 /// singletons at nodes 10..16, with zero adjacency to the path or to the big region.
 fn maze_with_one_bordering_region_and_decoys() -> (Maze<SquareTessellation>, Vec<NodeId>) {
-    let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(17, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(17);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     g.add_edge(nodes[1], nodes[2], EK::Basic);
     for i in 3..8 {
@@ -641,11 +616,7 @@ fn apply_makes_trap_from_unreachable_region_with_existing_outbound_edge_to_finis
     // Layout (1x5 row): 0 -> 1 -> 2 is the path (start=0, finish=2). Node 3 is an
     // Unreachable singleton (nobody can reach it) with a directed edge 3 -> 2 already
     // present -- so node 3 already "reaches" finish, it's just unreachable FROM start.
-    let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(5, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(5);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     g.add_edge(nodes[1], nodes[2], EK::Basic);
     g.add_edge(nodes[3], nodes[2], EK::Basic); // pre-existing outbound edge to finish-reachable
@@ -846,11 +817,7 @@ fn filter_by_border_keeps_everything_when_both_geometry_flags_are_disabled() {
 /// 4 is left disconnected/unused as a geometric buffer so `trap_neighbor` has exactly one
 /// bordering component (`candidate`) to be absorbed by.
 fn maze_with_candidate_and_different_class_neighbor() -> (Maze<SquareTessellation>, Vec<NodeId>) {
-    let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(5);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     g.add_edge(nodes[1], nodes[3], EK::Basic);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -1004,11 +971,7 @@ fn prioritize_candidates_orders_by_border_count_within_the_same_size_tier() {
 /// of finish only, no graph edge to it). 3 is a geometric buffer so candidate has exactly one
 /// field-neighbor outside itself (finish).
 fn maze_with_isolated_candidate() -> (Maze<SquareTessellation>, Vec<NodeId>) {
-    let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(4);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
     maze.meta.start = Some(nodes[0]);
@@ -1157,11 +1120,7 @@ fn convert_region_trap_to_unreachable_cuts_inbound() {
 /// 1x4 row: 0=start, 1=finish. Directed edges 0->2 (inbound from start) and 2->1 (outbound to
 /// finish) make candidate=2 reachable from start AND able to reach finish -- Alternative.
 fn maze_with_alternative_candidate() -> (Maze<SquareTessellation>, Vec<NodeId>) {
-    let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(4);
     let n = |i: usize| nodes[i];
     // start(0) -> finish(1) not directly connected; route must go through candidate(2) itself
     // being reachable and able to reach finish, without candidate being ON the shortest path --
@@ -1213,11 +1172,7 @@ fn convert_region_alternative_to_unreachable_cuts_inbound() {
 /// single inbound-bridge would make it reachable both ways -> Alternative, not Trap; the audit
 /// step must cut this pre-existing outbound edge first since target=Trap doesn't need outbound.
 fn maze_with_unreachable_candidate_holding_hidden_outbound() -> (Maze<SquareTessellation>, Vec<NodeId>) {
-    let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(5);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     g.add_edge(nodes[2], nodes[1], EK::Basic); // pre-existing outbound edge to finish-reachable
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -1489,11 +1444,7 @@ fn grow_front_fails_when_only_one_way_neighbors_are_available() {
 /// `neighbor`(3) is a geometric neighbor of node 2, its own singleton Unreachable component,
 /// with no edge to node 2 yet (candidate for bridging).
 fn maze_with_bridgeable_neighbor() -> (Maze<SquareTessellation>, Vec<NodeId>) {
-    let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(4);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
     maze.meta.start = Some(nodes[0]);
@@ -1662,11 +1613,7 @@ fn grow_front_crosses_into_excess_budgeted_neighbor_component_and_continues_grow
     // `neighbor`'s component AND continuing to grow from there via `neighbor`'s own
     // bidirectional edge to a third node, proving growth resumes past the crossed-in node
     // rather than stopping at exactly one absorbed node.
-    let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(5);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     g.add_bidirectional_edge(nodes[3], nodes[4], EK::Basic);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -1869,11 +1816,7 @@ fn sever_from_parent_fails_when_a_required_cut_is_preset_blocked() {
 /// window entirely, making growth (and therefore the whole `MissingRegions` conversion) fail
 /// more often across seeds.
 fn maze_with_one_bordering_seed_and_decoys() -> (Maze<SquareTessellation>, Vec<NodeId>) {
-    let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(9, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(9);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     // nodes[2] is a field-neighbor of finish (nodes[1]) -- the only seed with a border. Decoys
     // 3..8 are only adjacent to the path through node 2 (not directly), and `border_score` only
@@ -1941,11 +1884,7 @@ fn apply_end_to_end_grown_region_has_no_leftover_edge_to_its_original_neighborho
     // Full apply() through try_grow: confirm the end-to-end committed region also ends up
     // severed from anything outside `members` in the final graph, not just in the
     // `sever_from_parent` unit test above.
-    let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
-    let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let (field, mut g, nodes) = linear_field(5);
     g.add_edge(nodes[0], nodes[1], EK::Basic);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
     maze.meta.start = Some(nodes[0]);

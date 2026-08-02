@@ -2,8 +2,25 @@ import { emptyFreePoints } from "../store/storeHelpers";
 import { RECURSIVE_BACKTRACKER_EVENT_TAG, NO_NODE } from "../debug/eventTape";
 import type { DebugValueDescriptor } from "../debug/eventTape";
 import type { NodeDto } from "../wasm/types";
+import type { QcRuleState, CheckInstance } from "../store/storeTypes";
 
 export { emptyFreePoints };
+
+/** Builds a `QcRuleState` with sensible defaults, overridable per-field — replaces the
+ *  repeated full-shape rule object literal inlined across generationSlice tests. */
+export function makeRule(overrides: Partial<QcRuleState> = {}): QcRuleState {
+  return {
+    id: "g1", name: "Rule 1", kind: "k1",
+    checks: [], nextLocalCheckId: 0,
+    strategyId: null, disabled: false, ruleDisabled: false, nestedStrategies: [],
+    ...overrides,
+  };
+}
+
+/** Builds a `CheckInstance` with sensible defaults, overridable per-field. */
+export function makeCheck(overrides: Partial<CheckInstance> = {}): CheckInstance {
+  return { localId: 0, typeId: "check_a", params: {}, disabled: false, ...overrides };
+}
 
 function u64le(v: bigint): Uint8Array {
   const bytes = new Uint8Array(8);
