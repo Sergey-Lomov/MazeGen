@@ -13,6 +13,9 @@ mod node_ops;
 mod mutation_commands;
 mod split_pattern;
 mod split_logic;
+mod split_shared;
+mod split_non_pattern;
+mod split_pattern_logic;
 mod debug_state;
 
 pub use debug_state::DebugGenerationState;
