@@ -6,6 +6,7 @@ import { createPresetConnectionsSlice } from "./slices/presetConnectionsSlice";
 import { createGenerationSlice, generateWithSeed } from "./slices/generationSlice";
 import { createAnalyticsOverlaySlice } from "./slices/analyticsOverlaySlice";
 import { createPostEditSlice } from "./slices/postEditSlice";
+import { createImageExportSlice } from "./slices/imageExportSlice";
 import { buildPreviewState, buildResetMazeState, deriveTessellationFromConfig, recomputeAutoLock } from "./storeHelpers";
 import { warmCartesianCache } from "../pixi/cartesianCache";
 
@@ -13,7 +14,7 @@ export type {
   PostEditEdgeKind, PostEditTool, PostEditEdge, PostEditMeta, PostEditAnalytics,
   PostEditTeleportDirection, PostEditTeleportEntry, PostEditTeleportEndpointHit,
   TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation,
-  FieldPrimitive, FeatureId, MazeState,
+  FieldPrimitive, FeatureId, RenderModeId, MazeState,
 } from "./storeTypes";
 
 export { decodePoint };
@@ -24,6 +25,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
   ...createGenerationSlice(...a),
   ...createAnalyticsOverlaySlice(...a),
   ...createPostEditSlice(...a),
+  ...createImageExportSlice(...a),
 
   loadProject: (file) => {
     const [set, get] = a;

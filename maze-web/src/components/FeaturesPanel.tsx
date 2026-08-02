@@ -12,6 +12,8 @@ import { QualityFeature } from "./features/QualityFeature";
 import { GenerationFeature } from "./features/GenerationFeature";
 import { PostEditFeature } from "./features/PostEditFeature";
 import { AnalyticsFeature } from "./features/AnalyticsFeature";
+import { ImageExportFeature } from "./features/ImageExportFeature";
+import { resolveRenderMode } from "./features/imageExportRegistry";
 import { resolveIssue } from "./issueRegistry";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId } from "../store/mazeStore";
@@ -110,6 +112,20 @@ export function computeGenerationCard(
   return { status: "set", comment: m["status.ready_to_generate"]() };
 }
 
+export interface ImageExportCardData {
+  status: FeatureStatus;
+  comment: string;
+}
+
+/// A stale/unknown activeRenderMode (e.g. a project file naming a since-removed mode — see
+/// `imageExportRegistry.ts`'s `resolveRenderMode`) falls back to the same "not selected" reading
+/// as `null` — never crashes, never silently pretends a mode is active.
+export function computeImageExportCard(hasNodes: boolean, resolvedRenderMode: { label: () => string } | null): ImageExportCardData {
+  if (!hasNodes) return { status: "unavailable", comment: m["status.post_edit_unavailable"]() };
+  if (resolvedRenderMode === null) return { status: "warning", comment: m["status.render_mode_not_selected"]() };
+  return { status: "set", comment: m["status.render_mode_active"]({ mode: resolvedRenderMode.label() }) };
+}
+
 export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const openCard = useMazeStore((s) => s.openCard);
   const setOpenCard = useMazeStore((s) => s.setOpenCard);
@@ -139,6 +155,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
   const repairMaxIterations = useMazeStore((s) => s.repairMaxIterations);
   const repairTimeBudgetSecs = useMazeStore((s) => s.repairTimeBudgetSecs);
   const nodes = useMazeStore((s) => s.nodes);
+  const activeRenderMode = useMazeStore((s) => s.activeRenderMode);
   const analyticsIssues = useMazeStore(useShallow(selectAnalyticsIssues));
   const loadProject = useMazeStore((s) => s.loadProject);
   const setError = useMazeStore((s) => s.setError);
@@ -254,6 +271,9 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
     analyticsIssues.map((issue) => issue.kind),
   );
 
+  const resolvedRenderMode = activeRenderMode !== null ? resolveRenderMode(activeRenderMode) : null;
+  const imageExportCard = computeImageExportCard(nodes.length > 0, resolvedRenderMode);
+
   // No checks beats an unbounded repair loop — both are "warning", but having nothing to check
   // at all is the more fundamental gap, so its message takes priority when both are true.
   const repairUnbounded = repairMaxIterations == null && repairTimeBudgetSecs == null;
@@ -344,6 +364,15 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
         onOpen={() => handleToggle("analytics")}
       >
         <AnalyticsFeature />
+      </FeatureCard>
+      <FeatureCard
+        title={m["image_export.title"]()}
+        status={imageExportCard.status}
+        comment={imageExportCard.comment}
+        expanded={openCard === "image_export"}
+        onOpen={() => handleToggle("image_export")}
+      >
+        <ImageExportFeature />
       </FeatureCard>
       </div>
       <div style={styles.footer}>

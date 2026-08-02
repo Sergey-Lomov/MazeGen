@@ -1,0 +1,189 @@
+import { Container } from "pixi.js";
+import { useMazeStore } from "../../store/mazeStore";
+import { CellFillRenderer } from "../renderers/CellFillRenderer";
+import { WallRenderer } from "../renderers/WallRenderer";
+import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
+import { TeleportRenderer } from "../renderers/TeleportRenderer";
+import { GridRenderer } from "../renderers/GridRenderer";
+import { SplitJunctionRenderer } from "../renderers/SplitJunctionRenderer";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages } from "../selectors/mazeSelectors";
+import type { NodeDto, EdgeDto } from "../../wasm/types";
+import type { Viewport, WallEdge, TeleportEdge, SplitPassage } from "../renderers/types";
+import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import { canvas } from "../colorTokens";
+
+/** The "Vector by walls" image-export rendering mode (GitHub issue #287) — renders the maze
+ * identically to the main generation/post-edit view (same walls, same colors), built from the
+ * same low-level render primitives (`GridRenderer`, `CellFillRenderer`, `WallRenderer`, etc.) as
+ * `GenerationRenderer`. Per `maze-web/CLAUDE.md`'s feature-renderer ownership rule this is its
+ * own renderer with its own primitive instances — it must not share instances with
+ * `GenerationRenderer` or any other feature-renderer, even though the visual output matches. */
+export class VectorByWallsRenderer {
+  private readonly gridContainer: Container;
+  private readonly floorContainer: Container;
+  private readonly closedCellsContainer: Container;
+  private readonly wallsContainer: Container;
+  private readonly splitJunctionContainer: Container;
+  private readonly teleportContainer: Container;
+  private readonly markersContainer: Container;
+
+  private readonly grid: GridRenderer;
+  private readonly floor: CellFillRenderer;
+  private readonly closedCells: CellFillRenderer;
+  private readonly walls: WallRenderer;
+  private readonly splitJunctions: SplitJunctionRenderer;
+  private readonly teleports: TeleportRenderer;
+  private readonly markers: WaypointsRenderer;
+
+  private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
+  private unsubscribe: (() => void) | null = null;
+
+  private geometryCache: {
+    nodes: NodeDto[];
+    edges: EdgeDto[];
+    cfg: TessellationConfig;
+    start: number | null;
+    finish: number | null;
+    closedCells: [number, number][];
+    wallEdges: WallEdge[];
+    teleportEdges: TeleportEdge[];
+    splitPassages: SplitPassage[];
+    splitWallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
+  } | null = null;
+
+  constructor(container: Container) {
+    this.gridContainer = new Container();
+    this.floorContainer = new Container();
+    this.closedCellsContainer = new Container();
+    this.wallsContainer = new Container();
+    this.splitJunctionContainer = new Container();
+    this.teleportContainer = new Container();
+    this.markersContainer = new Container();
+
+    container.addChild(this.gridContainer);
+    container.addChild(this.floorContainer);
+    container.addChild(this.closedCellsContainer);
+    container.addChild(this.wallsContainer);
+    container.addChild(this.splitJunctionContainer);
+    container.addChild(this.teleportContainer);
+    container.addChild(this.markersContainer);
+
+    this.grid = new GridRenderer(this.gridContainer);
+    this.floor = new CellFillRenderer(this.floorContainer);
+    this.closedCells = new CellFillRenderer(this.closedCellsContainer);
+    this.walls = new WallRenderer(this.wallsContainer);
+    this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
+    this.teleports = new TeleportRenderer(this.teleportContainer);
+    this.markers = new WaypointsRenderer(this.markersContainer);
+
+    this.syncVisibility(useMazeStore.getState());
+    this.subscribe();
+  }
+
+  private subscribe(): void {
+    let prev = useMazeStore.getState();
+    this.unsubscribe = useMazeStore.subscribe((state) => {
+      const visibilityChanged = state.openCard !== prev.openCard;
+      if (visibilityChanged) this.syncVisibility(state);
+
+      const dataChanged =
+        state.nodes !== prev.nodes ||
+        state.edges !== prev.edges ||
+        state.start !== prev.start ||
+        state.finish !== prev.finish ||
+        state.activeTessellationConfig !== prev.activeTessellationConfig;
+
+      if (dataChanged && state.openCard === "image_export") {
+        this.renderAll(state);
+      }
+
+      prev = state;
+    });
+  }
+
+  private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): void {
+    const visible = state.openCard === "image_export";
+    this.gridContainer.visible = visible;
+    this.floorContainer.visible = visible;
+    this.closedCellsContainer.visible = visible;
+    this.wallsContainer.visible = visible;
+    this.splitJunctionContainer.visible = visible;
+    this.teleportContainer.visible = visible;
+    this.markersContainer.visible = visible;
+    if (visible) this.renderAll(state);
+  }
+
+  onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
+    this.viewport = { x, y, w, h, scale };
+    const state = useMazeStore.getState();
+    if (state.openCard === "image_export") {
+      this.grid.render({ viewport: this.viewport }, state.activeTessellationConfig);
+    }
+  }
+
+  private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
+    const cfg = state.activeTessellationConfig;
+    this.grid.render({ viewport: this.viewport }, cfg);
+
+    const { nodes, edges, start, finish } = state;
+    const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
+    this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
+
+    const nodeById = new Map(nodes.map(n => [n.id, n]));
+
+    if (
+      !this.geometryCache ||
+      this.geometryCache.nodes !== nodes ||
+      this.geometryCache.edges !== edges ||
+      this.geometryCache.cfg !== cfg ||
+      this.geometryCache.start !== start ||
+      this.geometryCache.finish !== finish
+    ) {
+      const specialNodeIds = new Set<number>();
+      if (start !== null) specialNodeIds.add(start);
+      if (finish !== null) specialNodeIds.add(finish);
+      for (const e of edges) {
+        if (e.kind === "teleport") { specialNodeIds.add(e.from); specialNodeIds.add(e.to); }
+      }
+
+      const { passages: splitPassages, wallFaces: splitWallFaces } = buildSplitPassages(nodes, edges, cfg, specialNodeIds);
+      this.geometryCache = {
+        nodes,
+        edges,
+        cfg,
+        start,
+        finish,
+        closedCells: buildClosedCells(nodes, edges),
+        wallEdges: buildMazeWalls(nodes, edges, cfg),
+        teleportEdges: buildTeleportEdges(nodeById, edges, cfg),
+        splitPassages,
+        splitWallFaces,
+      };
+    }
+    this.closedCells.render({ cells: this.geometryCache.closedCells, color: canvas.wall.default, alpha: 1 }, cfg);
+    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg);
+    this.splitJunctions.render({ passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces });
+    this.teleports.render({ edges: this.geometryCache.teleportEdges });
+
+    const markerData = buildMazeMarkers(nodeById, start, finish, cfg);
+    this.markers.render({ markers: markerData });
+  }
+
+  destroy(): void {
+    this.unsubscribe?.();
+    this.grid.destroy();
+    this.floor.destroy();
+    this.closedCells.destroy();
+    this.walls.destroy();
+    this.splitJunctions.destroy();
+    this.teleports.destroy();
+    this.markers.destroy();
+    this.gridContainer.destroy();
+    this.floorContainer.destroy();
+    this.closedCellsContainer.destroy();
+    this.wallsContainer.destroy();
+    this.splitJunctionContainer.destroy();
+    this.teleportContainer.destroy();
+    this.markersContainer.destroy();
+  }
+}

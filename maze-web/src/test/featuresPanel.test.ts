@@ -3,6 +3,7 @@ import {
   computeFieldStatus,
   computeAnalyticsCard,
   computeGenerationCard,
+  computeImageExportCard,
   presetConnectionsSubtitle,
   getTessellationKindLabel,
 } from "../components/FeaturesPanel";
@@ -132,6 +133,36 @@ describe("computeGenerationCard", () => {
     // this combination shouldn't occur in practice, but the check must still gate on method.
     const result = computeGenerationCard(true, "custom_edge_based", true, 0.5, 0);
     expect(result.status).toBe("set");
+  });
+});
+
+describe("computeImageExportCard", () => {
+  it("is unavailable when no maze has been generated", () => {
+    const card = computeImageExportCard(false, null);
+    expect(card.status).toBe("unavailable");
+  });
+
+  it("is unavailable even if a render mode was somehow resolved, when there are no nodes", () => {
+    const card = computeImageExportCard(false, { label: () => "Vector by walls" });
+    expect(card.status).toBe("unavailable");
+  });
+
+  it("warns when a maze exists but no render mode is resolved (null — nothing selected yet)", () => {
+    const card = computeImageExportCard(true, null);
+    expect(card.status).toBe("warning");
+  });
+
+  it("is set when a maze exists and a render mode resolved, comment names it", () => {
+    const card = computeImageExportCard(true, { label: () => "Vector by walls" });
+    expect(card.status).toBe("set");
+    expect(card.comment).toContain("Vector by walls");
+  });
+
+  it("treats a stale/unknown activeRenderMode (resolves to null) the same as no selection — never crashes", () => {
+    // Mirrors resolveRenderMode's fallback for an id no longer in the registry (e.g. a project
+    // file saved with a since-removed mode) — the card must read as "not selected", not throw.
+    const card = computeImageExportCard(true, null);
+    expect(card.status).toBe("warning");
   });
 });
 

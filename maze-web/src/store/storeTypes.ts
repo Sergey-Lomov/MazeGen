@@ -61,7 +61,11 @@ export type TriangleShape = "rect" | "triangle" | "hexagon" | "free";
 export type HexOrientation = "flat_top" | "pointy_top";
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive = "point" | "square_rect" | "hex_parallelogram" | "hex_hexagon" | "tri_rect" | "tri_triangle" | "tri_hexagon";
-export type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics";
+export type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
+
+/** Registry id of a maze image-export rendering mode (see `Specs/image-export.md` and
+ * `imageExportRegistry.ts`) — one entry per switcher item in the Image Export feature card. */
+export type RenderModeId = "vector_by_walls";
 
 /** One active check, declared inline inside the `QcRuleState` it belongs to — see GitHub issue
  * #60. A check only ever exists inside exactly one rule's `checks`; there is no separate flat
@@ -821,10 +825,28 @@ export interface PostEditActions {
   applySplitBlueprint: (point: [number, number], blueprint: SplitNodeBlueprint) => void;
 }
 
+export interface ImageExportState {
+  /** Currently active rendering mode in the Image Export feature card's switcher, or `null` if
+   * the user hasn't picked one yet — a radio group with no default selection, not independent
+   * toggles. */
+  activeRenderMode: RenderModeId | null;
+  /** Which mode's settings panel is open as a `SidePanel` beside the canvas, or `null` if none —
+   * set by clicking the active switcher item (clicking an inactive item switches the active mode
+   * instead, per the issue's interaction spec). Independent of `openCard`: closing the Image
+   * Export card does not by itself clear this, but the panel only renders while the card is open
+   * (see `ImageExportFeature.tsx`). */
+  openRenderModeSettings: RenderModeId | null;
+}
+
+export interface ImageExportActions {
+  setActiveRenderMode: (mode: RenderModeId) => void;
+  setOpenRenderModeSettings: (mode: RenderModeId | null) => void;
+}
+
 export interface RootActions {
   loadProject: (file: import("./projectExport").ProjectFile) => void;
 }
 
-export type MazeState = TessellationState & PresetConnectionsState & GenerationState & AnalyticsOverlayState & PostEditState;
-export type MazeActions = RootActions & TessellationActions & PresetConnectionsActions & GenerationActions & AnalyticsOverlayActions & PostEditActions;
+export type MazeState = TessellationState & PresetConnectionsState & GenerationState & AnalyticsOverlayState & PostEditState & ImageExportState;
+export type MazeActions = RootActions & TessellationActions & PresetConnectionsActions & GenerationActions & AnalyticsOverlayActions & PostEditActions & ImageExportActions;
 export type MazeStore = MazeState & MazeActions;

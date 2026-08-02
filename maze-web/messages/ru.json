@@ -1121,5 +1121,10 @@
   "project.load": "Загрузить проект",
   "project.load_error": "Ошибка загрузки проекта: {message}",
   "project.load_error_io": "Не удалось прочитать файл",
-  "project.load_error_json": "Неверный формат файла (не валидный JSON)"
+  "project.load_error_json": "Неверный формат файла (не валидный JSON)",
+  "image_export.title": "Экспорт изображения",
+  "image_export.mode.vector_by_walls.label": "Вектор по стенам",
+  "image_export.settings_empty": "У этого режима рендера пока нет настроек",
+  "status.render_mode_not_selected": "Режим рендера не выбран",
+  "status.render_mode_active": "Активен: {mode}"
 }

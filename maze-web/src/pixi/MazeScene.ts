@@ -9,6 +9,7 @@ import { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { PresetConnectionsController } from "./PresetConnectionsController";
 import { PostEditRenderer } from "./PostEditRenderer";
 import { PostEditController } from "./PostEditController";
+import { ImageExportRenderer } from "./imageExport/ImageExportRenderer";
 import { fitFieldViewport } from "./FieldEditorOverlay";
 import { fitMazeViewport } from "./viewportFit";
 import { makeProjection } from "./tessellationProjection";
@@ -31,6 +32,7 @@ export const TESSELLATION_CONFIG_BY_CARD: Record<FeatureId, ConfigResolver> = {
   generation: (st) => st.activeTessellationConfig,
   post_edit: (st) => st.activeTessellationConfig,
   analytics: (st) => st.activeTessellationConfig,
+  image_export: (st) => st.activeTessellationConfig,
 };
 
 export class MazeScene {
@@ -52,6 +54,8 @@ export class MazeScene {
   private postEditController: PostEditController;
   private analyticsRenderer: AnalyticsRenderer;
   private analyticsContainer: Container;
+  private imageExportRenderer: ImageExportRenderer;
+  private imageExportContainer: Container;
   private interaction: SceneInteraction;
   private hoverProvider: DefaultHoverProvider;
   private hoverCallback: ((info: HoverInfo | null) => void) | null = null;
@@ -79,6 +83,7 @@ export class MazeScene {
     this.postEditContainer = new Container();
     this.tessellationContainer = new Container();
     this.analyticsContainer = new Container();
+    this.imageExportContainer = new Container();
 
     this.syncedLayers = [
       this.fieldEditorOverlayContainer,
@@ -87,6 +92,7 @@ export class MazeScene {
       this.postEditContainer,
       this.tessellationContainer,
       this.analyticsContainer,
+      this.imageExportContainer,
     ];
 
     this.app.stage.addChild(this.viewport);
@@ -101,6 +107,7 @@ export class MazeScene {
     this.generationRenderer = new GenerationRenderer(this.viewport);
     this.tessellationRenderer = new TessellationRenderer(this.tessellationContainer);
     this.analyticsRenderer = new AnalyticsRenderer(this.analyticsContainer);
+    this.imageExportRenderer = new ImageExportRenderer(this.imageExportContainer);
 
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
     this.primitivePreviewOverlay = new PrimitivePreviewOverlay(this.primitivePreviewContainer);
@@ -115,6 +122,7 @@ export class MazeScene {
       this.postEditRenderer,
       this.tessellationRenderer,
       this.analyticsRenderer,
+      this.imageExportRenderer,
     ];
 
     this.presetConnectionsController = new PresetConnectionsController(
@@ -327,7 +335,7 @@ export class MazeScene {
   refit(): void {
     this.app.resize();
     const { nodes, activeTessellationConfig, tessellationConfig, previewTessellationConfig, openCard } = useMazeStore.getState();
-    const showsMaze = (openCard === "generation" || openCard === "post_edit" || openCard === "analytics") && nodes.length > 0;
+    const showsMaze = (openCard === "generation" || openCard === "post_edit" || openCard === "analytics" || openCard === "image_export") && nodes.length > 0;
     const fieldCfg = openCard === "basic_config" ? previewTessellationConfig : tessellationConfig;
     const { x, y, scale } = showsMaze
       ? fitMazeViewport(activeTessellationConfig, nodes, this.app.screen.width, this.app.screen.height)
@@ -348,6 +356,7 @@ export class MazeScene {
     this.generationRenderer.destroy();
     this.tessellationRenderer.destroy();
     this.analyticsRenderer.destroy();
+    this.imageExportRenderer.destroy();
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();
