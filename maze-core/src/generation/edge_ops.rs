@@ -28,6 +28,30 @@ pub(crate) fn add_edge(graph: &mut Graph, src: NodeId, dst: NodeId, elements: &E
     add_edge_kind(graph, src, dst, EdgeKind::Basic, elements.one_way_chance, rng);
 }
 
+/// Runs `add_fn` (a `try_add_edge`/`try_add_edge_kind` call), then detects what actually happened
+/// by comparing `graph.edge_between` in both directions before/after — the only way to know, since
+/// those functions return `()` and a one-way coin flip may add `dst->src` instead of `src->dst`
+/// (GitHub issue #144's direction-mismatch fix). Returns `Some((from, to, bidirectional))` with the
+/// graph's actual direction when an edge was added, `None` when the attempt was silently declined
+/// by a preset conflict. Shared by `vertex_based`'s and `edge_based`'s `generate` (and their split
+/// paths) — every direction-detection call site needs the exact same before/after comparison, only
+/// which `add_fn` they call differs.
+pub(crate) fn add_edge_and_detect_direction(
+    graph: &mut Graph,
+    src: NodeId,
+    dst: NodeId,
+    add_fn: impl FnOnce(&mut Graph),
+) -> Option<(NodeId, NodeId, bool)> {
+    let fwd_existed_before = graph.edge_between(src, dst).is_some();
+    let bwd_existed_before = graph.edge_between(dst, src).is_some();
+    add_fn(graph);
+    let fwd_added = !fwd_existed_before && graph.edge_between(src, dst).is_some();
+    let bwd_added = !bwd_existed_before && graph.edge_between(dst, src).is_some();
+    if !fwd_added && !bwd_added { return None; }
+    let (from, to) = if fwd_added { (src, dst) } else { (dst, src) };
+    Some((from, to, fwd_added && bwd_added))
+}
+
 /// `field.neighbors(node)`, filtered for split-point safety (GitHub issue #242). `Field` has no
 /// notion of which face belongs to which of a split point's several nodes (see `Field::neighbors`'s
 /// own doc comment) — for a point with more than one node, plain geometric adjacency returns every

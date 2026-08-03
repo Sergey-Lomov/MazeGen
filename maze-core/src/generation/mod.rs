@@ -43,7 +43,7 @@ pub(crate) use edge_ops::{
     try_add_edge, try_add_edge_kind, try_add_bidirectional_edge,
     try_add_directed_edge, try_add_directed_teleport, try_add_bidirectional_teleport,
     try_remove_edge, try_remove_edge_by_id, try_remove_edge_with_reverse, try_remove_teleport_with_reverse,
-    bidirectional_edge_feasible, directed_edge_feasible,
+    bidirectional_edge_feasible, directed_edge_feasible, add_edge_and_detect_direction,
 };
 pub(crate) use node_ops::{try_remove_node, remove_node_feasible, try_replace_point_nodes, replace_point_nodes_feasible};
 #[cfg(test)]
