@@ -1,12 +1,13 @@
 import type React from "react";
 import type { RenderModeId } from "../../store/mazeStore";
+import { VectorByWallsSettingsPanel } from "./VectorByWallsSettingsPanel";
 import * as m from "~/paraglide/messages";
 
 export interface RenderModeDescriptor {
   id: RenderModeId;
   label: () => string;
   /** Settings panel content shown in the mode's `SidePanel`, or `null` for a mode with no
-   * settings yet (e.g. "Vector by walls" in this ticket — future tickets add real controls). */
+   * settings yet. */
   SettingsPanel: React.ComponentType | null;
 }
 
@@ -14,7 +15,7 @@ export interface RenderModeDescriptor {
 /// Adding a mode means adding one entry here (plus its own renderer, wired into
 /// `ImageExportRenderer.createModeRenderer`) — no other list to keep in sync.
 export const RENDER_MODES: RenderModeDescriptor[] = [
-  { id: "vector_by_walls", label: () => m["image_export.mode.vector_by_walls.label"](), SettingsPanel: null },
+  { id: "vector_by_walls", label: () => m["image_export.mode.vector_by_walls.label"](), SettingsPanel: VectorByWallsSettingsPanel },
 ];
 
 /** Looks up a mode's descriptor, or `null` if `id` isn't registered — e.g. a project file saved

@@ -1,6 +1,5 @@
 import React from "react";
 import { useShallow } from "zustand/react/shallow";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { activeTessellationOf } from "../../store/storeHelpers";
 import { ui, typography, muted, disabled, spacing, indent, dialogSpacing } from "../../styles/theme";
@@ -8,6 +7,7 @@ import { sharedStyles } from "../../styles/shared";
 import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
 import { ToggleRow } from "../ToggleRow";
+import { SectionHeader } from "../SectionHeader";
 import { Modal } from "../Modal";
 import { canvas } from "../../pixi/colorTokens";
 import { TileFaceEditor } from "./TileFaceEditor";
@@ -105,15 +105,6 @@ function RegionClassLegendModal({ onClose }: { onClose: () => void }) {
         </div>
       ))}
     </Modal>
-  );
-}
-
-function SectionHeader({ label, expanded, onToggle }: { label: string; expanded: boolean; onToggle: () => void }) {
-  return (
-    <div className="hoverable" style={styles.sectionHeaderRow} onClick={onToggle}>
-      {expanded ? <ChevronDown size={14} color={ui.text.tertiary} /> : <ChevronRight size={14} color={ui.text.tertiary} />}
-      <div style={sharedStyles.sectionHeader}>{label}</div>
-    </div>
   );
 }
 
@@ -463,10 +454,6 @@ export function AnalyticsFeature() {
 
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
-  sectionHeaderRow: {
-    display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3,
-    padding: `${spacing.itemGap}px 0`, margin: `-${spacing.itemGap}px 0`,
-  },
   statBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   statRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
   statLabel: { flex: 1, ...muted(typography.body) },

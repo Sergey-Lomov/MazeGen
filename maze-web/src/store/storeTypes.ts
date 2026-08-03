@@ -825,6 +825,18 @@ export interface PostEditActions {
   applySplitBlueprint: (point: [number, number], blueprint: SplitNodeBlueprint) => void;
 }
 
+/** "Vector by walls" mode's own settings (GitHub issue #289) — background appearance only so
+ * far ("general settings" section of #288's panel). Defaults match the editor's normal grid
+ * appearance (`canvas.stage.background`/`canvas.grid.line`) so the exported image looks identical
+ * to the editor view until the user changes something. Kept as its own type (not folded into a
+ * shared per-mode settings shape) since each render mode's settings are expected to differ
+ * entirely — a future mode adds its own sibling `xxxSettings` field, not a new case of this type. */
+export interface VectorByWallsSettings {
+  background: number;
+  showGrid: boolean;
+  gridColor: number;
+}
+
 export interface ImageExportState {
   /** Currently active rendering mode in the Image Export feature card's switcher, or `null` if
    * the user hasn't picked one yet — a radio group with no default selection, not independent
@@ -836,11 +848,19 @@ export interface ImageExportState {
    * Export card does not by itself clear this, but the panel only renders while the card is open
    * (see `ImageExportFeature.tsx`). */
   openRenderModeSettings: RenderModeId | null;
+  /** Expanded/collapsed state per "Vector by walls" settings section, keyed by section id —
+   * mirrors `AnalyticsOverlayState.analyticsSectionsExpanded`. */
+  vectorByWallsSectionsExpanded: Record<string, boolean>;
+  vectorByWallsSettings: VectorByWallsSettings;
 }
 
 export interface ImageExportActions {
   setActiveRenderMode: (mode: RenderModeId) => void;
   setOpenRenderModeSettings: (mode: RenderModeId | null) => void;
+  setVectorByWallsSectionExpanded: (id: string, expanded: boolean) => void;
+  setVectorByWallsBackground: (color: number) => void;
+  setVectorByWallsShowGrid: (v: boolean) => void;
+  setVectorByWallsGridColor: (color: number) => void;
 }
 
 export interface RootActions {

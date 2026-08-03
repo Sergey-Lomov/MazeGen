@@ -1125,6 +1125,10 @@
   "image_export.title": "Экспорт изображения",
   "image_export.mode.vector_by_walls.label": "Вектор по стенам",
   "image_export.settings_empty": "У этого режима рендера пока нет настроек",
+  "image_export.vector_by_walls.section_background": "Фон",
+  "image_export.vector_by_walls.background_color": "Цвет фона",
+  "image_export.vector_by_walls.show_grid": "Показывать сетку",
+  "image_export.vector_by_walls.grid_color": "Цвет сетки",
   "status.render_mode_not_selected": "Режим рендера не выбран",
   "status.render_mode_active": "Активен: {mode}"
 }

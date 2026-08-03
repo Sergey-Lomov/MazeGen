@@ -17,7 +17,7 @@ Computed by `computeImageExportCard` (`FeaturesPanel.tsx`), covered by `features
 `activeRenderMode: RenderModeId | null` (`imageExportSlice.ts`) starts as `null` — the switcher has **no default selection**. The user must explicitly pick a mode; until then the card shows the `warning` status above.
 
 Clicking a switcher item (`ImageExportFeature.tsx`):
-- **Inactive item** → becomes the active mode (`setActiveRenderMode`), and any open settings panel is closed (`setOpenRenderModeSettings(null)`) — a panel left open for the previously active mode would show stale/mismatched settings.
+- **Inactive item** → becomes the active mode (`setActiveRenderMode`) and its own settings `SidePanel` opens (`setOpenRenderModeSettings(mode)`) — one click both switches and shows that mode's settings, never leaving a panel open for the previously active mode.
 - **Active item** → toggles its own settings `SidePanel` open/closed (`setOpenRenderModeSettings`).
 
 `openRenderModeSettings: RenderModeId | null` is independent of `openCard` — closing the whole Image Export card doesn't clear it, but the panel itself only renders while the card is open (rendered on the canvas's `SidePanel` slot, same interaction pattern as post-edit/preset split-node panels).

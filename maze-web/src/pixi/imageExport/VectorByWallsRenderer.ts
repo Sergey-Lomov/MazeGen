@@ -1,4 +1,4 @@
-import { Container } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
 import { CellFillRenderer } from "../renderers/CellFillRenderer";
 import { WallRenderer } from "../renderers/WallRenderer";
@@ -12,6 +12,17 @@ import type { Viewport, WallEdge, TeleportEdge, SplitPassage } from "../renderer
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { canvas } from "../colorTokens";
 
+/** World-space rect covering the whole visible viewport — the inverse of the pan/zoom transform
+ *  applied to the scene container (`x`/`y` are the container's own screen-space offset, so the
+ *  world-space origin sits at `-x/scale, -y/scale`). Exported as a pure function (not inlined in
+ *  `renderBackground`) so the viewport→world formula itself is unit-testable — see GitHub issue
+ *  #289, where an earlier version of this formula used the raw screen-space `x`/`y` directly and
+ *  drew the background rect in the wrong place. */
+export function viewportWorldRect(viewport: Viewport): { x: number; y: number; w: number; h: number } {
+  const { x, y, w, h, scale } = viewport;
+  return { x: -x / scale, y: -y / scale, w: w / scale, h: h / scale };
+}
+
 /** The "Vector by walls" image-export rendering mode (GitHub issue #287) — renders the maze
  * identically to the main generation/post-edit view (same walls, same colors), built from the
  * same low-level render primitives (`GridRenderer`, `CellFillRenderer`, `WallRenderer`, etc.) as
@@ -19,6 +30,7 @@ import { canvas } from "../colorTokens";
  * own renderer with its own primitive instances — it must not share instances with
  * `GenerationRenderer` or any other feature-renderer, even though the visual output matches. */
 export class VectorByWallsRenderer {
+  private readonly backgroundContainer: Container;
   private readonly gridContainer: Container;
   private readonly floorContainer: Container;
   private readonly closedCellsContainer: Container;
@@ -27,6 +39,7 @@ export class VectorByWallsRenderer {
   private readonly teleportContainer: Container;
   private readonly markersContainer: Container;
 
+  private readonly background: Graphics;
   private readonly grid: GridRenderer;
   private readonly floor: CellFillRenderer;
   private readonly closedCells: CellFillRenderer;
@@ -52,6 +65,7 @@ export class VectorByWallsRenderer {
   } | null = null;
 
   constructor(container: Container) {
+    this.backgroundContainer = new Container();
     this.gridContainer = new Container();
     this.floorContainer = new Container();
     this.closedCellsContainer = new Container();
@@ -60,6 +74,7 @@ export class VectorByWallsRenderer {
     this.teleportContainer = new Container();
     this.markersContainer = new Container();
 
+    container.addChild(this.backgroundContainer);
     container.addChild(this.gridContainer);
     container.addChild(this.floorContainer);
     container.addChild(this.closedCellsContainer);
@@ -67,6 +82,9 @@ export class VectorByWallsRenderer {
     container.addChild(this.splitJunctionContainer);
     container.addChild(this.teleportContainer);
     container.addChild(this.markersContainer);
+
+    this.background = new Graphics();
+    this.backgroundContainer.addChild(this.background);
 
     this.grid = new GridRenderer(this.gridContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
@@ -93,7 +111,9 @@ export class VectorByWallsRenderer {
         state.finish !== prev.finish ||
         state.activeTessellationConfig !== prev.activeTessellationConfig;
 
-      if (dataChanged && state.openCard === "image_export") {
+      const settingsChanged = state.vectorByWallsSettings !== prev.vectorByWallsSettings;
+
+      if ((dataChanged || settingsChanged) && state.openCard === "image_export") {
         this.renderAll(state);
       }
 
@@ -103,6 +123,7 @@ export class VectorByWallsRenderer {
 
   private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): void {
     const visible = state.openCard === "image_export";
+    this.backgroundContainer.visible = visible;
     this.gridContainer.visible = visible;
     this.floorContainer.visible = visible;
     this.closedCellsContainer.visible = visible;
@@ -113,17 +134,31 @@ export class VectorByWallsRenderer {
     if (visible) this.renderAll(state);
   }
 
+  private renderBackground(settings: ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]): void {
+    const { x, y, w, h } = viewportWorldRect(this.viewport);
+    this.background.clear();
+    this.background.rect(x, y, w, h).fill({ color: settings.background });
+  }
+
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
     this.viewport = { x, y, w, h, scale };
     const state = useMazeStore.getState();
     if (state.openCard === "image_export") {
-      this.grid.render({ viewport: this.viewport }, state.activeTessellationConfig);
+      this.renderBackground(state.vectorByWallsSettings);
+      this.gridContainer.visible = state.vectorByWallsSettings.showGrid;
+      if (state.vectorByWallsSettings.showGrid) {
+        this.grid.render({ viewport: this.viewport, color: state.vectorByWallsSettings.gridColor }, state.activeTessellationConfig);
+      }
     }
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const cfg = state.activeTessellationConfig;
-    this.grid.render({ viewport: this.viewport }, cfg);
+    this.renderBackground(state.vectorByWallsSettings);
+    this.gridContainer.visible = state.vectorByWallsSettings.showGrid;
+    if (state.vectorByWallsSettings.showGrid) {
+      this.grid.render({ viewport: this.viewport, color: state.vectorByWallsSettings.gridColor }, cfg);
+    }
 
     const { nodes, edges, start, finish } = state;
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
@@ -171,6 +206,7 @@ export class VectorByWallsRenderer {
 
   destroy(): void {
     this.unsubscribe?.();
+    this.background.destroy();
     this.grid.destroy();
     this.floor.destroy();
     this.closedCells.destroy();
@@ -185,5 +221,6 @@ export class VectorByWallsRenderer {
     this.splitJunctionContainer.destroy();
     this.teleportContainer.destroy();
     this.markersContainer.destroy();
+    this.backgroundContainer.destroy();
   }
 }

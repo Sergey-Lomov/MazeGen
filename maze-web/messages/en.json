@@ -1115,6 +1115,10 @@
   "image_export.title": "Image Export",
   "image_export.mode.vector_by_walls.label": "Vector by walls",
   "image_export.settings_empty": "No settings for this rendering mode yet",
+  "image_export.vector_by_walls.section_background": "Background",
+  "image_export.vector_by_walls.background_color": "Background color",
+  "image_export.vector_by_walls.show_grid": "Show grid",
+  "image_export.vector_by_walls.grid_color": "Grid color",
   "status.render_mode_not_selected": "Render mode not selected",
   "status.render_mode_active": "Active: {mode}"
 }

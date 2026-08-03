@@ -17,7 +17,7 @@ export function ImageExportFeature() {
       setOpenRenderModeSettings(openRenderModeSettings === mode ? null : mode);
     } else {
       setActiveRenderMode(mode);
-      setOpenRenderModeSettings(null);
+      setOpenRenderModeSettings(mode);
     }
   }
 
