@@ -8,8 +8,9 @@ import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer } from "../renderers/SplitJunctionRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages } from "../selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { Viewport, WallEdge, TeleportEdge, SplitPassage, WallStyleOverride } from "../renderers/types";
+import type { Viewport, WallEdge, TeleportEdge, SplitPassage, WallStyleOverride, OneWayStyleOverride } from "../renderers/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import { TILE_SIZE } from "../constants";
 
 /** World-space rect covering the whole visible viewport — the inverse of the pan/zoom transform
  *  applied to the scene container (`x`/`y` are the container's own screen-space offset, so the
@@ -20,6 +21,35 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 export function viewportWorldRect(viewport: Viewport): { x: number; y: number; w: number; h: number } {
   const { x, y, w, h, scale } = viewport;
   return { x: -x / scale, y: -y / scale, w: w / scale, h: h / scale };
+}
+
+/** Builds `WallRenderer`'s `WallStyleOverride` from `VectorByWallsSettings` — exported as a pure
+ *  function (not inlined in `renderAll`) so the join→cap derivation is unit-testable on its own,
+ *  same rationale as `viewportWorldRect`. */
+export function buildWallStyle(settings: ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]): WallStyleOverride {
+  return {
+    color: settings.wallColor,
+    width: settings.wallThickness,
+    join: settings.wallJoin,
+    cap: settings.wallJoin === "miter" ? "square" : "round",
+  };
+}
+
+/** Builds `WallRenderer`'s `OneWayStyleOverride` from `VectorByWallsSettings` — exported as a pure
+ *  function for the same testability reason as `buildWallStyle`. The border color always mirrors
+ *  `floorColor` (not independently settable — GitHub issue #292) and `size` is scaled from the
+ *  settings' tile-fraction into world-space via `TILE_SIZE`. */
+export function buildOneWayStyle(settings: ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]): OneWayStyleOverride {
+  return {
+    pattern: settings.oneWayPattern,
+    color: settings.oneWayColor,
+    borderColor: settings.floorColor,
+    borderWidth: settings.oneWayBorderWidth,
+    size: TILE_SIZE * settings.oneWaySize,
+    thickness: settings.oneWayThickness,
+    join: settings.oneWayJoin,
+    cap: settings.oneWayJoin === "miter" ? "square" : "round",
+  };
 }
 
 /** The "Vector by walls" image-export rendering mode (GitHub issue #287) — renders the maze
@@ -194,14 +224,10 @@ export class VectorByWallsRenderer {
         splitWallFaces,
       };
     }
-    const wallStyle: WallStyleOverride = {
-      color: state.vectorByWallsSettings.wallColor,
-      width: state.vectorByWallsSettings.wallThickness,
-      join: state.vectorByWallsSettings.wallJoin,
-      cap: state.vectorByWallsSettings.wallJoin === "miter" ? "square" : "round",
-    };
+    const wallStyle = buildWallStyle(state.vectorByWallsSettings);
+    const oneWayStyle = buildOneWayStyle(state.vectorByWallsSettings);
     this.closedCells.render({ cells: this.geometryCache.closedCells, color: state.vectorByWallsSettings.wallColor, alpha: 1 }, cfg);
-    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg, wallStyle);
+    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg, wallStyle, oneWayStyle);
     this.splitJunctions.render({ passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces }, wallStyle);
     this.teleports.render({ edges: this.geometryCache.teleportEdges });
 

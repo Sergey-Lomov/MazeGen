@@ -15,6 +15,12 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     wallColor: canvas.wall.default,
     wallJoin: "round",
     wallThickness: WALL_THICKNESS,
+    oneWayPattern: "triangle",
+    oneWayColor: 0xffaa00,
+    oneWayBorderWidth: 3,
+    oneWaySize: 0.3,
+    oneWayThickness: 4,
+    oneWayJoin: "round",
     startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 },
     finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 },
   },
@@ -37,6 +43,18 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, wallJoin: join } })),
   setVectorByWallsWallThickness: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, wallThickness: v } })),
+  setVectorByWallsOneWayPattern: (pattern) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayPattern: pattern } })),
+  setVectorByWallsOneWayColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayColor: color } })),
+  setVectorByWallsOneWayBorderWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayBorderWidth: v } })),
+  setVectorByWallsOneWaySize: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWaySize: v } })),
+  setVectorByWallsOneWayThickness: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayThickness: v } })),
+  setVectorByWallsOneWayJoin: (join) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayJoin: join } })),
   setVectorByWallsStartMarkerShape: (shape) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, shape } } })),
   setVectorByWallsStartMarkerFillColor: (color) =>

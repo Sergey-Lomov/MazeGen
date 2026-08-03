@@ -1,10 +1,11 @@
 import { Container, Graphics } from "pixi.js";
-import type { WallEdge, WallStyleOverride } from "./types";
+import type { WallEdge, WallStyleOverride, OneWayStyleOverride } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellVertices, getNeighborData } from "../tessellationGeometry";
-import { drawOneWayTriangle } from "./wallUtils";
+import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow } from "./wallUtils";
 import { WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
+import { TILE_SIZE } from "../constants";
 
 const WALL_STYLES = {
   solid:      { color: canvas.wall.default,     cap: "round" as const, join: "round" as const },
@@ -79,11 +80,17 @@ export class WallRenderer {
     container.addChild(this.g);
   }
 
-  render(data: { edges: WallEdge[] }, cfg?: TessellationConfig, solidStyleOverride?: WallStyleOverride): void {
+  render(
+    data: { edges: WallEdge[] },
+    cfg?: TessellationConfig,
+    solidStyleOverride?: WallStyleOverride,
+    oneWayStyleOverride?: OneWayStyleOverride,
+  ): void {
     this.g.clear();
     if (!cfg) return;
 
     const solidSegs: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] = [];
+    const oneWays: { cx: number; cy: number; dx: number; dy: number }[] = [];
     for (const edge of data.edges) {
       const seg = this.getEdgeSegment(edge, cfg);
       if (!seg) continue;
@@ -96,12 +103,17 @@ export class WallRenderer {
       }
 
       if (edge.oneWayDir) {
-        const midX = (seg.v0.x + seg.v1.x) / 2;
-        const midY = (seg.v0.y + seg.v1.y) / 2;
-        drawOneWayTriangle(this.g, midX, midY, edge.oneWayDir.dx, edge.oneWayDir.dy);
+        oneWays.push({
+          cx: (seg.v0.x + seg.v1.x) / 2,
+          cy: (seg.v0.y + seg.v1.y) / 2,
+          dx: edge.oneWayDir.dx,
+          dy: edge.oneWayDir.dy,
+        });
       }
     }
 
+    // Walls are stroked before one-way indicators (drawn further below) so the indicator always
+    // renders on top of the wall it sits on, not underneath it.
     if (!solidStyleOverride) {
       // No caller-supplied style: keep every other feature-renderer's exact prior per-segment
       // draw (independent round caps, no join) — vertex-chaining below is only meaningful once a
@@ -110,19 +122,57 @@ export class WallRenderer {
       for (const seg of solidSegs) {
         this.g.moveTo(seg.v0.x, seg.v0.y).lineTo(seg.v1.x, seg.v1.y).stroke({ width: WALL_THICKNESS, ...WALL_STYLES.solid });
       }
-      return;
+    } else {
+      const strokeOpts = {
+        width: solidStyleOverride.width ?? WALL_THICKNESS,
+        color: solidStyleOverride.color ?? WALL_STYLES.solid.color,
+        join: solidStyleOverride.join ?? WALL_STYLES.solid.join,
+        cap: solidStyleOverride.cap ?? WALL_STYLES.solid.cap,
+      };
+      for (const path of chainSegmentsAtSharedVertices(solidSegs)) {
+        this.g.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) this.g.lineTo(path[i].x, path[i].y);
+        this.g.stroke(strokeOpts);
+      }
     }
 
-    const strokeOpts = {
-      width: solidStyleOverride.width ?? WALL_THICKNESS,
-      color: solidStyleOverride.color ?? WALL_STYLES.solid.color,
-      join: solidStyleOverride.join ?? WALL_STYLES.solid.join,
-      cap: solidStyleOverride.cap ?? WALL_STYLES.solid.cap,
+    for (const { cx, cy, dx, dy } of oneWays) {
+      this.drawOneWayIndicator(cx, cy, dx, dy, oneWayStyleOverride);
+    }
+  }
+
+  private drawOneWayIndicator(
+    cx: number,
+    cy: number,
+    dx: number,
+    dy: number,
+    override?: OneWayStyleOverride,
+  ): void {
+    if (!override) {
+      // Default look (GenerationRenderer/PostEditRenderer/PresetConnectionsRenderer/
+      // MazeOverlayRenderer, none of which pass an override): a triangle bordered in the floor
+      // color — GitHub issue #292 follow-up.
+      drawOneWayTriangle(this.g, cx, cy, dx, dy, { borderColor: canvas.floor.default, borderWidth: 3, size: TILE_SIZE * 0.3 });
+      return;
+    }
+    const style = {
+      color: override.color,
+      borderColor: override.borderColor,
+      borderWidth: override.borderWidth,
+      size: override.size,
+      thickness: override.thickness,
+      join: override.join,
+      cap: override.cap,
     };
-    for (const path of chainSegmentsAtSharedVertices(solidSegs)) {
-      this.g.moveTo(path[0].x, path[0].y);
-      for (let i = 1; i < path.length; i++) this.g.lineTo(path[i].x, path[i].y);
-      this.g.stroke(strokeOpts);
+    switch (override.pattern) {
+      case "chevron":
+        drawOneWayChevron(this.g, cx, cy, dx, dy, style);
+        break;
+      case "arrow":
+        drawOneWayArrow(this.g, cx, cy, dx, dy, style);
+        break;
+      default:
+        drawOneWayTriangle(this.g, cx, cy, dx, dy, style);
     }
   }
 

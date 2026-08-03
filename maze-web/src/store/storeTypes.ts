@@ -6,7 +6,7 @@ import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry }
 import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../pixi/presetEndpoint";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
-import type { MarkerShape } from "../pixi/renderers/types";
+import type { MarkerShape, OneWayPattern } from "../pixi/renderers/types";
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 
@@ -855,6 +855,22 @@ export interface VectorByWallsSettings {
    *  `miter`->`square` cap) when built into a `WallStyleOverride` in `VectorByWallsRenderer`. */
   wallJoin: "round" | "miter";
   wallThickness: number;
+  /** One-way indicator drawn on a directed passage's wall segment — shape/color/border/size/
+   *  join/cap, applied via `OneWayStyleOverride` (`pixi/renderers/types.ts`) to `WallRenderer`'s
+   *  plain wall one-ways only, never a split passage's connector arrow. Always has its own color
+   *  (no fallback to `wallColor` — GitHub issue #292). */
+  oneWayPattern: OneWayPattern;
+  oneWayColor: number;
+  /** Border/outline color — always mirrors `floorColor`, not independently settable. */
+  oneWayBorderWidth: number;
+  oneWaySize: number;
+  /** Chevron/arrow's own line thickness — independent of `oneWaySize` (geometric scale). No
+   *  effect on the `triangle` pattern. */
+  oneWayThickness: number;
+  /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
+   *  `wallJoin`/`wallCap` — applied to the indicator's own strokes (chevron/arrow lines, or a
+   *  filled triangle's border stroke), independent of the Tiles section's wall join/cap. */
+  oneWayJoin: "round" | "miter";
   startMarker: MarkerSettings;
   finishMarker: MarkerSettings;
 }
@@ -887,6 +903,12 @@ export interface ImageExportActions {
   setVectorByWallsWallColor: (color: number) => void;
   setVectorByWallsWallJoin: (join: "round" | "miter") => void;
   setVectorByWallsWallThickness: (v: number) => void;
+  setVectorByWallsOneWayPattern: (pattern: OneWayPattern) => void;
+  setVectorByWallsOneWayColor: (color: number) => void;
+  setVectorByWallsOneWayBorderWidth: (v: number) => void;
+  setVectorByWallsOneWaySize: (v: number) => void;
+  setVectorByWallsOneWayThickness: (v: number) => void;
+  setVectorByWallsOneWayJoin: (join: "round" | "miter") => void;
   setVectorByWallsStartMarkerShape: (shape: MarkerShape) => void;
   setVectorByWallsStartMarkerFillColor: (color: number) => void;
   setVectorByWallsStartMarkerBorderColor: (color: number) => void;

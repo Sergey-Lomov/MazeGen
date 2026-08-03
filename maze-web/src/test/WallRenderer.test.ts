@@ -14,6 +14,9 @@ vi.mock("pixi.js", () => {
     moveTo(...args: unknown[]) { this.calls.push({ fn: "moveTo", args }); return this; }
     lineTo(...args: unknown[]) { this.calls.push({ fn: "lineTo", args }); return this; }
     stroke(...args: unknown[]) { this.calls.push({ fn: "stroke", args }); return this; }
+    poly(...args: unknown[]) { this.calls.push({ fn: "poly", args }); return this; }
+    roundPoly(...args: unknown[]) { this.calls.push({ fn: "roundPoly", args }); return this; }
+    fill(...args: unknown[]) { this.calls.push({ fn: "fill", args }); return this; }
     clear() { this.calls = []; return this; }
   }
   class FakeContainer {
@@ -25,7 +28,7 @@ vi.mock("pixi.js", () => {
 
 const { WallRenderer } = await import("../pixi/renderers/WallRenderer");
 const { Container, Graphics } = await import("pixi.js");
-import type { WallEdge } from "../pixi/renderers/types";
+import type { WallEdge, OneWayStyleOverride } from "../pixi/renderers/types";
 
 const squareCfg = { type: "square" as const, width: 3, height: 3 };
 
@@ -72,5 +75,63 @@ describe("WallRenderer.render", () => {
     const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
 
     expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(1);
+  });
+
+  it("draws a one-way indicator (roundPoly triangle, bordered) for an edge with oneWayDir, even without a style override", () => {
+    const renderer = new WallRenderer(new Container());
+    const oneWayEdges: WallEdge[] = [{ a: [0, 0], b: [1, 0], kind: "forward", style: "solid", oneWayDir: { dx: 1, dy: 0 } }];
+    renderer.render({ edges: oneWayEdges }, squareCfg);
+    const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
+
+    const roundPolyCalls = g.calls.filter((c) => c.fn === "roundPoly");
+    // One roundPoly call for the fill, one for the border stroke (GitHub issue #292 follow-up:
+    // the default look always has a border, so both passes always run).
+    expect(roundPolyCalls).toHaveLength(2);
+    const strokeAfterFill = g.calls.filter((c) => c.fn === "stroke");
+    expect(strokeAfterFill.length).toBeGreaterThan(0);
+    expect(strokeAfterFill[strokeAfterFill.length - 1].args[0]).toMatchObject({ width: 3 });
+  });
+
+  it("draws walls before the one-way indicator so the indicator renders on top", () => {
+    const renderer = new WallRenderer(new Container());
+    const oneWayEdges: WallEdge[] = [{ a: [0, 0], b: [1, 0], kind: "forward", style: "solid", oneWayDir: { dx: 1, dy: 0 } }];
+    renderer.render({ edges: oneWayEdges }, squareCfg);
+    const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
+
+    const wallStrokeIndex = g.calls.findIndex((c) => c.fn === "stroke");
+    const roundPolyIndex = g.calls.findIndex((c) => c.fn === "roundPoly");
+    expect(wallStrokeIndex).toBeGreaterThanOrEqual(0);
+    expect(roundPolyIndex).toBeGreaterThan(wallStrokeIndex);
+  });
+
+  it("dispatches to the chevron/arrow pattern instead of the triangle when the override says so", () => {
+    const renderer = new WallRenderer(new Container());
+    const oneWayEdges: WallEdge[] = [{ a: [0, 0], b: [1, 0], kind: "forward", style: "solid", oneWayDir: { dx: 1, dy: 0 } }];
+    const chevronStyle: OneWayStyleOverride = {
+      pattern: "chevron", color: 0x1, borderColor: 0x2, borderWidth: 0, size: 10, thickness: 4, join: "round", cap: "round",
+    };
+    renderer.render({ edges: oneWayEdges }, squareCfg, undefined, chevronStyle);
+    const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
+
+    // Chevron draws via moveTo/lineTo/stroke, never roundPoly/poly/fill.
+    expect(g.calls.filter((c) => c.fn === "roundPoly")).toHaveLength(0);
+    expect(g.calls.filter((c) => c.fn === "poly")).toHaveLength(0);
+    expect(g.calls.filter((c) => c.fn === "fill")).toHaveLength(0);
+    expect(g.calls.filter((c) => c.fn === "stroke").length).toBeGreaterThan(0);
+  });
+
+  it("passes the override's color/size/thickness/join/cap through to the triangle pattern", () => {
+    const renderer = new WallRenderer(new Container());
+    const oneWayEdges: WallEdge[] = [{ a: [0, 0], b: [1, 0], kind: "forward", style: "solid", oneWayDir: { dx: 1, dy: 0 } }];
+    const triangleStyle: OneWayStyleOverride = {
+      pattern: "triangle", color: 0xaaaaaa, borderColor: 0xbbbbbb, borderWidth: 5, size: 30, thickness: 4, join: "miter", cap: "square",
+    };
+    renderer.render({ edges: oneWayEdges }, squareCfg, undefined, triangleStyle);
+    const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
+
+    const [fillCall] = g.calls.filter((c) => c.fn === "fill");
+    expect(fillCall.args[0]).toBe(0xaaaaaa);
+    const strokeCalls = g.calls.filter((c) => c.fn === "stroke");
+    expect(strokeCalls[strokeCalls.length - 1].args[0]).toMatchObject({ width: 5, color: 0xbbbbbb, join: "miter" });
   });
 });

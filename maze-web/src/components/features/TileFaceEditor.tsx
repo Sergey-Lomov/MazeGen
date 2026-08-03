@@ -104,9 +104,11 @@ export function TileFaceEditor({ point, cfg, nodes, activeIndex, onFaceClick, on
     const dir = out ? 1 : -1;
     const ux = (dx / len) * dir, uy = (dy / len) * dir;
     const perpX = -uy, perpY = ux;
-    // Wide, near-equilateral triangle (base ~= length) — same read as the canvas's own one-way
-    // arrow (`drawOneWayTriangle`), just scaled to this editor's own stroke width instead of
-    // `TILE_SIZE`; the canvas rendering itself is untouched.
+    // Wide, near-equilateral triangle (base ~= length), scaled to this editor's own stroke width
+    // instead of `TILE_SIZE`. Independent of the canvas's own one-way triangle
+    // (`drawOneWayTriangle`, `wallUtils.ts`) — that one uses `roundPoly` for optional corner
+    // rounding and a border; this hand-rolled path is simpler by design and not meant to match it
+    // pixel-for-pixel, only to read as the same kind of directional marker.
     const size = strokeWidth * 1.6;
     const tipX = c.x + ux * size, tipY = c.y + uy * size;
     const baseX = c.x - ux * size * 0.6, baseY = c.y - uy * size * 0.6;

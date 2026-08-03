@@ -20,6 +20,32 @@ export type WallStyle = "solid" | "faint" | "background";
  *  edges into per-vertex paths precisely so this override has somewhere to show up. */
 export type WallStyleOverride = { color?: number; width?: number; join?: "round" | "miter"; cap?: "round" | "square" };
 
+export type OneWayPattern = "triangle" | "chevron" | "arrow";
+
+/** Optional per-call override for the one-way indicator drawn on a `WallEdge`'s wall segment
+ *  midpoint — pattern (shape), color, border (color/width, `borderWidth: 0` draws no border),
+ *  size (world-space scale along the pointing direction), thickness (chevron/arrow's own line
+ *  width, independent of size) and join/cap (own stroke ends for chevron/arrow, the filled
+ *  triangle's border stroke for triangle). Used by `VectorByWallsRenderer` (GitHub issue #292) to
+ *  expose the one-way indicator as user settings — never applied to a split passage's own
+ *  connector arrow (`SplitJunctionRenderer` keeps drawing that with the node's own identity color
+ *  via `drawDirectionArrow`, unaffected by this override). When no override is passed at all (every
+ *  feature-renderer besides `VectorByWallsRenderer`), `WallRenderer.drawOneWayIndicator` still
+ *  draws a bordered triangle by default (GitHub issue #292 follow-up) — this is a deliberate,
+ *  shared visual change to every caller's one-way look, not something this override opts into. */
+export type OneWayStyleOverride = {
+  pattern: OneWayPattern;
+  color: number;
+  borderColor: number;
+  borderWidth: number;
+  size: number;
+  /** Chevron/arrow's own line thickness — independent of `size` (geometric scale). Has no effect
+   *  on the `triangle` pattern (a filled shape, no line stroke of its own). */
+  thickness: number;
+  join: "round" | "miter";
+  cap: "round" | "square";
+};
+
 export type WallEdge = {
   a: [number, number];
   b: [number, number];

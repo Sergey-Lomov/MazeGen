@@ -1,7 +1,7 @@
 import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { MarkerSettings } from "../../store/storeTypes";
-import type { MarkerShape } from "../../pixi/renderers/types";
+import type { MarkerShape, OneWayPattern } from "../../pixi/renderers/types";
 import { inset, spacing, ui, typography } from "../../styles/theme";
 import { ToggleRow } from "../ToggleRow";
 import { SectionHeader } from "../SectionHeader";
@@ -53,20 +53,29 @@ function MarkerSettingsGroup({ title, settings, onChange }: {
   );
 }
 
-/** "Background", "Tiles" and "Markers" sections of the "Vector by walls" render mode's settings
- * panel (GitHub issue #289 for background, #290/#291 for floor/wall settings — folded into one
- * "Tiles" section since both draw on the maze's cells/tiles, unlike background/grid which draw on
- * the viewport — #296 for start/finish markers — all part of #288's epic). Background covers
- * background color, grid visibility, grid color. Tiles covers the floor's fill color, wall color,
- * corners & ends (round/miter join, paired with a round/square cap) and wall thickness — wall
- * settings applied via `WallStyleOverride` to solid walls, split-junction wall faces and
- * closed-cells fill only (see `renderers/types.ts`), never the faint/background wall styles or
- * split-passage node-identity colors. Markers covers the start/finish marker's shape, fill color,
- * border color and border width, as two plain-label sub-groups ("Start"/"Finish") within the one
- * collapsible section — not two separate `SectionHeader`s, since they're too small to warrant
- * independent collapse. Defaults are set in `imageExportSlice.ts` to match the editor's normal
- * grid/floor/wall/marker appearance exactly. Section layout (row gap, divider between sections)
- * mirrors `AnalyticsFeature`'s collapsible sections. */
+/** "Background", "Tiles", "Markers" and "One-ways" sections of the "Vector by walls" render mode's
+ * settings panel (GitHub issue #289 for background, #290/#291 for floor/wall settings — folded
+ * into one "Tiles" section since both draw on the maze's cells/tiles, unlike background/grid which
+ * draw on the viewport — #296 for start/finish markers — #292 for one-ways — all part of #288's
+ * epic). Background covers background color, grid visibility, grid color. Tiles covers the floor's
+ * fill color, wall color, corners & ends (round/miter join, paired with a round/square cap) and
+ * wall thickness — wall settings applied via `WallStyleOverride` to solid walls, split-junction
+ * wall faces and closed-cells fill only (see `renderers/types.ts`), never the faint/background wall
+ * styles or split-passage node-identity colors. Markers covers the start/finish marker's shape,
+ * fill color, border color and border width, as two plain-label sub-groups ("Start"/"Finish")
+ * within the one collapsible section — not two separate `SectionHeader`s, since they're too small
+ * to warrant independent collapse. One-ways (placed after Markers, not before, matching the issue's
+ * own section order) covers the one-way indicator's pattern (triangle/chevron/arrow —
+ * `OneWayStyleOverride`, applied to `WallRenderer`'s plain wall one-ways only, never a split
+ * passage's own connector arrow), its own color (always set, no fallback toggle), a border whose
+ * color always mirrors the Tiles section's floor color (only its width is settable — `0` draws no
+ * border), corners & ends (round/miter join, independent of the Tiles section's own wall join),
+ * indicator size (as a fraction of the tile size, geometric scale) and thickness (chevron/arrow's
+ * own line width in pixels, independent of size — no effect on the triangle pattern, a filled
+ * shape with no line stroke of its own). Defaults are set in `imageExportSlice.ts` to
+ * match the editor's normal grid/floor/wall/marker appearance exactly (except the one-way color,
+ * which uses a brighter standalone default — GitHub issue #292). Section layout (row gap, divider
+ * between sections) mirrors `AnalyticsFeature`'s collapsible sections. */
 export function VectorByWallsSettingsPanel() {
   const settings = useMazeStore((s) => s.vectorByWallsSettings);
   const setBackground = useMazeStore((s) => s.setVectorByWallsBackground);
@@ -76,6 +85,12 @@ export function VectorByWallsSettingsPanel() {
   const setWallColor = useMazeStore((s) => s.setVectorByWallsWallColor);
   const setWallJoin = useMazeStore((s) => s.setVectorByWallsWallJoin);
   const setWallThickness = useMazeStore((s) => s.setVectorByWallsWallThickness);
+  const setOneWayPattern = useMazeStore((s) => s.setVectorByWallsOneWayPattern);
+  const setOneWayColor = useMazeStore((s) => s.setVectorByWallsOneWayColor);
+  const setOneWayBorderWidth = useMazeStore((s) => s.setVectorByWallsOneWayBorderWidth);
+  const setOneWaySize = useMazeStore((s) => s.setVectorByWallsOneWaySize);
+  const setOneWayThickness = useMazeStore((s) => s.setVectorByWallsOneWayThickness);
+  const setOneWayJoin = useMazeStore((s) => s.setVectorByWallsOneWayJoin);
   const setStartMarkerShape = useMazeStore((s) => s.setVectorByWallsStartMarkerShape);
   const setStartMarkerFillColor = useMazeStore((s) => s.setVectorByWallsStartMarkerFillColor);
   const setStartMarkerBorderColor = useMazeStore((s) => s.setVectorByWallsStartMarkerBorderColor);
@@ -87,7 +102,7 @@ export function VectorByWallsSettingsPanel() {
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);
-  const isExpanded = (id: string) => sectionsExpanded[id] ?? true;
+  const isExpanded = (id: string) => sectionsExpanded[id] ?? false;
   const toggleSection = (id: string) => setSectionExpanded(id, !isExpanded(id));
 
   return (
@@ -170,6 +185,65 @@ export function VectorByWallsSettingsPanel() {
               if (patch.borderColor !== undefined) setFinishMarkerBorderColor(patch.borderColor);
               if (patch.borderWidth !== undefined) setFinishMarkerBorderWidth(patch.borderWidth);
             }}
+          />
+        </div>
+      )}
+
+      <div style={styles.divider} />
+
+      <SectionHeader
+        label={m["image_export.vector_by_walls.section_one_ways"]()}
+        expanded={isExpanded("one_ways")}
+        onToggle={() => toggleSection("one_ways")}
+      />
+      {isExpanded("one_ways") && (
+        <div style={styles.block}>
+          <SelectRow
+            label={m["image_export.vector_by_walls.one_way_pattern"]()}
+            value={settings.oneWayPattern}
+            options={[
+              { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+              { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+              { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+            ]}
+            onChange={setOneWayPattern}
+          />
+          <ColorRow label={m["image_export.vector_by_walls.one_way_color"]()} color={settings.oneWayColor} onChange={setOneWayColor} />
+          <SliderRow
+            label={m["image_export.vector_by_walls.one_way_border_width"]()}
+            value={settings.oneWayBorderWidth}
+            onChange={setOneWayBorderWidth}
+            min={0}
+            max={10}
+            step={1}
+            format={(v) => String(v)}
+          />
+          <SelectRow
+            label={m["image_export.vector_by_walls.one_way_join"]()}
+            value={settings.oneWayJoin}
+            options={[
+              { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
+              { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
+            ]}
+            onChange={setOneWayJoin}
+          />
+          <SliderRow
+            label={m["image_export.vector_by_walls.one_way_size"]()}
+            value={settings.oneWaySize}
+            onChange={setOneWaySize}
+            min={0.05}
+            max={0.5}
+            step={0.01}
+            format={(v) => v.toFixed(2)}
+          />
+          <SliderRow
+            label={m["image_export.vector_by_walls.one_way_thickness"]()}
+            value={settings.oneWayThickness}
+            onChange={setOneWayThickness}
+            min={1}
+            max={10}
+            step={1}
+            format={(v) => String(v)}
           />
         </div>
       )}

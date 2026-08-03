@@ -28,6 +28,12 @@ beforeEach(() => {
       wallColor: canvas.wall.default,
       wallJoin: "round",
       wallThickness: WALL_THICKNESS,
+      oneWayPattern: "triangle",
+      oneWayColor: 0xffaa00,
+      oneWayBorderWidth: 3,
+      oneWaySize: 0.3,
+      oneWayThickness: 4,
+      oneWayJoin: "round",
       startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 },
       finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 },
     },
@@ -77,6 +83,12 @@ describe("mazeStore vectorByWallsSettings", () => {
       wallColor: canvas.wall.default,
       wallJoin: "round",
       wallThickness: WALL_THICKNESS,
+      oneWayPattern: "triangle",
+      oneWayColor: 0xffaa00,
+      oneWayBorderWidth: 3,
+      oneWaySize: 0.3,
+      oneWayThickness: 4,
+      oneWayJoin: "round",
       startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 },
       finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 },
     });
@@ -127,6 +139,28 @@ describe("mazeStore vectorByWallsSettings", () => {
     useMazeStore.getState().setVectorByWallsWallThickness(7);
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.wallThickness).toBe(7);
+    expect(settings.background).toBe(canvas.stage.background);
+  });
+
+  it("setVectorByWallsOneWayPattern updates only the one-way pattern field", () => {
+    useMazeStore.getState().setVectorByWallsOneWayPattern("chevron");
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.oneWayPattern).toBe("chevron");
+    expect(settings.background).toBe(canvas.stage.background);
+  });
+
+  it("setVectorByWallsOneWayColor/BorderWidth/Size/Thickness/Join update only the one-way fields", () => {
+    useMazeStore.getState().setVectorByWallsOneWayColor(0x555555);
+    useMazeStore.getState().setVectorByWallsOneWayBorderWidth(3);
+    useMazeStore.getState().setVectorByWallsOneWaySize(0.3);
+    useMazeStore.getState().setVectorByWallsOneWayThickness(6);
+    useMazeStore.getState().setVectorByWallsOneWayJoin("miter");
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.oneWayColor).toBe(0x555555);
+    expect(settings.oneWayBorderWidth).toBe(3);
+    expect(settings.oneWaySize).toBe(0.3);
+    expect(settings.oneWayThickness).toBe(6);
+    expect(settings.oneWayJoin).toBe("miter");
     expect(settings.background).toBe(canvas.stage.background);
   });
 

@@ -18,7 +18,10 @@ vi.mock("../wasm/wasmLoader", () => ({
 beforeEach(() => {
   useMazeStore.setState({
     ...baseStoreState(),
-    vectorByWallsSectionsExpanded: {},
+    // All sections start collapsed (GitHub issue #292 follow-up) — expanded here so the
+    // field-interaction tests below don't each need their own expand step. Collapsed-by-default
+    // itself is covered by the dedicated "all sections start collapsed" test.
+    vectorByWallsSectionsExpanded: { background: true, tiles: true, markers: true, one_ways: true },
     vectorByWallsSettings: {
       background: 0x1a1a1a,
       showGrid: true,
@@ -27,6 +30,12 @@ beforeEach(() => {
       wallColor: 0x0a0a0a,
       wallJoin: "round",
       wallThickness: 3,
+      oneWayPattern: "triangle",
+      oneWayColor: 0xff0000,
+      oneWayBorderWidth: 0,
+      oneWaySize: 0.18,
+      oneWayThickness: 4,
+      oneWayJoin: "round",
       startMarker: { shape: "circle", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0 },
       finishMarker: { shape: "circle", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0 },
     },
@@ -34,7 +43,16 @@ beforeEach(() => {
 });
 
 describe("VectorByWallsSettingsPanel", () => {
-  it("renders the background section expanded by default (no stored expand state yet)", () => {
+  it("all sections start collapsed (no stored expand state yet)", () => {
+    useMazeStore.setState({ vectorByWallsSectionsExpanded: {} });
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.queryByText(m["image_export.vector_by_walls.background_color"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.floor_color"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.markers_start"]())).not.toBeInTheDocument();
+    expect(screen.queryByText(m["image_export.vector_by_walls.one_way_pattern"]())).not.toBeInTheDocument();
+  });
+
+  it("renders the background section's fields when expanded", () => {
     render(<VectorByWallsSettingsPanel />);
     expect(screen.getByText(m["image_export.vector_by_walls.background_color"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.show_grid"]())).toBeInTheDocument();
@@ -50,7 +68,7 @@ describe("VectorByWallsSettingsPanel", () => {
 
   it("toggling 'show grid' off updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
-    const checkbox = screen.getByRole("checkbox");
+    const checkbox = screen.getAllByRole("checkbox")[0];
     fireEvent.click(checkbox);
     expect(useMazeStore.getState().vectorByWallsSettings.showGrid).toBe(false);
   });
@@ -59,6 +77,7 @@ describe("VectorByWallsSettingsPanel", () => {
     useMazeStore.setState({
       vectorByWallsSettings: {
         background: 0, showGrid: false, gridColor: 0, floorColor: 0, wallColor: 0, wallJoin: "round", wallThickness: 3,
+        oneWayPattern: "triangle", oneWayColor: 0, oneWayBorderWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
         startMarker: { shape: "circle", fillColor: 0, borderColor: 0, borderWidth: 0 },
         finishMarker: { shape: "circle", fillColor: 0, borderColor: 0, borderWidth: 0 },
       },
@@ -75,11 +94,11 @@ describe("VectorByWallsSettingsPanel", () => {
     expect(swatches[1]).toHaveAttribute("aria-disabled", "false");
   });
 
-  it("renders the tiles section expanded by default with floor color, wall color, join and thickness fields", () => {
+  it("renders the tiles section's floor color, wall color, join and thickness fields when expanded", () => {
     render(<VectorByWallsSettingsPanel />);
     expect(screen.getByText(m["image_export.vector_by_walls.floor_color"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.wall_color"]())).toBeInTheDocument();
-    expect(screen.getByText(m["image_export.vector_by_walls.wall_join"]())).toBeInTheDocument();
+    expect(screen.getAllByText(m["image_export.vector_by_walls.wall_join"]())[0]).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.wall_thickness"]())).toBeInTheDocument();
   });
 
@@ -108,7 +127,7 @@ describe("VectorByWallsSettingsPanel", () => {
 
   it("changing the wall join updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
-    const select = screen.getByDisplayValue(m["image_export.vector_by_walls.wall_join_round"]());
+    const select = screen.getAllByDisplayValue(m["image_export.vector_by_walls.wall_join_round"]())[0];
     fireEvent.change(select, { target: { value: "miter" } });
     expect(useMazeStore.getState().vectorByWallsSettings.wallJoin).toBe("miter");
   });
@@ -121,14 +140,15 @@ describe("VectorByWallsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByWallsSettings.wallThickness).toBe(7);
   });
 
-  it("renders the markers section expanded by default with Start and Finish sub-groups", () => {
+  it("renders the markers section's Start and Finish sub-groups when expanded", () => {
     render(<VectorByWallsSettingsPanel />);
     expect(screen.getByText(m["image_export.vector_by_walls.markers_start"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.markers_finish"]())).toBeInTheDocument();
     expect(screen.getAllByText(m["image_export.vector_by_walls.marker_shape"]())).toHaveLength(2);
     expect(screen.getAllByText(m["image_export.vector_by_walls.marker_fill_color"]())).toHaveLength(2);
     expect(screen.getAllByText(m["image_export.vector_by_walls.marker_border_color"]())).toHaveLength(2);
-    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_border_width"]())).toHaveLength(2);
+    // Two marker border-width sliders + one one-way border-width slider share this label text.
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_border_width"]())).toHaveLength(3);
   });
 
   it("collapsing the markers section hides its fields", () => {
@@ -156,7 +176,7 @@ describe("VectorByWallsSettingsPanel", () => {
   it("changing the start marker fill color updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
     const inputs = document.querySelectorAll('input[type="color"]');
-    // Swatch order: background, grid, floor, wall, start fill, start border, finish fill, finish border.
+    // Swatch order: background, grid, floor, wall, start fill, start border, finish fill, finish border, one-way.
     fireEvent.change(inputs[4], { target: { value: "#123456" } });
     expect(useMazeStore.getState().vectorByWallsSettings.startMarker.fillColor).toBe(0x123456);
   });
@@ -187,5 +207,69 @@ describe("VectorByWallsSettingsPanel", () => {
     const inputs = document.querySelectorAll('input[type="color"]');
     fireEvent.change(inputs[7], { target: { value: "#fedcba" } });
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.borderColor).toBe(0xfedcba);
+  });
+
+  it("renders the one-ways section's pattern, color, border width, join, size and thickness fields when expanded", () => {
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.getByText(m["image_export.vector_by_walls.one_way_pattern"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.one_way_color"]())).toBeInTheDocument();
+    expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_border_width"]()).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_join"]()).length).toBeGreaterThan(0);
+    expect(screen.getByText(m["image_export.vector_by_walls.one_way_size"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.one_way_thickness"]())).toBeInTheDocument();
+  });
+
+  it("collapsing the one-ways section hides its fields", () => {
+    render(<VectorByWallsSettingsPanel />);
+    fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_one_ways"]()));
+    expect(screen.queryByText(m["image_export.vector_by_walls.one_way_pattern"]())).not.toBeInTheDocument();
+    expect(useMazeStore.getState().vectorByWallsSectionsExpanded.one_ways).toBe(false);
+  });
+
+  it("changing the one-way pattern updates the store", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const select = screen.getByDisplayValue(m["image_export.vector_by_walls.one_way_pattern_triangle"]());
+    fireEvent.change(select, { target: { value: "chevron" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.oneWayPattern).toBe("chevron");
+  });
+
+  it("changing the one-way color updates the store", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const inputs = document.querySelectorAll('input[type="color"]');
+    // Last swatch: one-way color.
+    fireEvent.change(inputs[8], { target: { value: "#112233" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.oneWayColor).toBe(0x112233);
+  });
+
+  it("changing the one-way border width updates the store", () => {
+    render(<VectorByWallsSettingsPanel />);
+    // Last "Border width" label in DOM order is the one-way section's (after the two marker groups).
+    const labels = screen.getAllByText(m["image_export.vector_by_walls.one_way_border_width"]());
+    const slider = labels[labels.length - 1].parentElement!.querySelector('input[type="range"]')!;
+    fireEvent.change(slider, { target: { value: "4" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.oneWayBorderWidth).toBe(4);
+  });
+
+  it("changing the one-way join updates the store", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const select = screen.getAllByDisplayValue(m["image_export.vector_by_walls.wall_join_round"]())[1];
+    fireEvent.change(select, { target: { value: "miter" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.oneWayJoin).toBe("miter");
+  });
+
+  it("changing the one-way size updates the store", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const slider = screen.getByText(m["image_export.vector_by_walls.one_way_size"]())
+      .parentElement!.querySelector('input[type="range"]')!;
+    fireEvent.change(slider, { target: { value: "0.3" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.oneWaySize).toBe(0.3);
+  });
+
+  it("changing the one-way thickness updates the store", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const slider = screen.getByText(m["image_export.vector_by_walls.one_way_thickness"]())
+      .parentElement!.querySelector('input[type="range"]')!;
+    fireEvent.change(slider, { target: { value: "6" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.oneWayThickness).toBe(6);
   });
 });
