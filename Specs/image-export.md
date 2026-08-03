@@ -44,7 +44,13 @@ Per `maze-web/CLAUDE.md`'s feature-renderer ownership rule, `ImageExportRenderer
 
 ### "Vector by walls" (`VectorByWallsRenderer`)
 
-Renders the maze **1:1 identically** to the main generation/post-edit view — same walls, same colors — built from the same low-level primitives `GenerationRenderer` uses (`GridRenderer`, `CellFillRenderer` ×2 for floor/closed-cells, `WallRenderer`, `SplitJunctionRenderer`, `TeleportRenderer`, `WaypointsRenderer` for markers), but as its own instances in its own container tree. Visible only while `openCard === "image_export"`. Has no settings yet (`SettingsPanel: null`) — future tickets add style controls (line thickness, wall/floor colors).
+Renders the maze **1:1 identically** to the main generation/post-edit view — same walls, same colors — built from the same low-level primitives `GenerationRenderer` uses (`GridRenderer`, `CellFillRenderer` ×2 for floor/closed-cells, `WallRenderer`, `SplitJunctionRenderer`, `TeleportRenderer`, `WaypointsRenderer` for markers), but as its own instances in its own container tree. Visible only while `openCard === "image_export"`.
+
+Its settings panel (`VectorByWallsSettingsPanel.tsx`) has two collapsible sections, backed by `VectorByWallsSettings` (`imageExportSlice.ts`):
+- **Background** (issue #289) — background color, grid visibility, grid color. Defaults match the editor's own canvas/grid colors (`canvas.stage.background`/`canvas.grid.line`) so the exported image looks identical to the editor view until changed.
+- **Floor** (issue #290) — floor fill color. Defaults to `canvas.floor.default`.
+
+Future tickets may add further style controls (e.g. line thickness, wall color).
 
 ## Scene integration
 

@@ -10,6 +10,7 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     background: canvas.stage.background,
     showGrid: true,
     gridColor: canvas.grid.line,
+    floorColor: canvas.floor.default,
   },
 
   setActiveRenderMode: (mode) => set({ activeRenderMode: mode }),
@@ -22,4 +23,6 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, showGrid: v } })),
   setVectorByWallsGridColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, gridColor: color } })),
+  setVectorByWallsFloorColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, floorColor: color } })),
 });

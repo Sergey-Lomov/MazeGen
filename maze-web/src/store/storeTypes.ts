@@ -825,16 +825,18 @@ export interface PostEditActions {
   applySplitBlueprint: (point: [number, number], blueprint: SplitNodeBlueprint) => void;
 }
 
-/** "Vector by walls" mode's own settings (GitHub issue #289) — background appearance only so
- * far ("general settings" section of #288's panel). Defaults match the editor's normal grid
- * appearance (`canvas.stage.background`/`canvas.grid.line`) so the exported image looks identical
- * to the editor view until the user changes something. Kept as its own type (not folded into a
- * shared per-mode settings shape) since each render mode's settings are expected to differ
- * entirely — a future mode adds its own sibling `xxxSettings` field, not a new case of this type. */
+/** "Vector by walls" mode's own settings (GitHub issue #289, floor color added in #290) —
+ * background appearance and floor appearance ("general settings" and "floor" sections of #288's
+ * panel). Defaults match the editor's normal grid/floor appearance (`canvas.stage.background`,
+ * `canvas.grid.line`, `canvas.floor.default`) so the exported image looks identical to the editor
+ * view until the user changes something. Kept as its own type (not folded into a shared per-mode
+ * settings shape) since each render mode's settings are expected to differ entirely — a future
+ * mode adds its own sibling `xxxSettings` field, not a new case of this type. */
 export interface VectorByWallsSettings {
   background: number;
   showGrid: boolean;
   gridColor: number;
+  floorColor: number;
 }
 
 export interface ImageExportState {
@@ -861,6 +863,7 @@ export interface ImageExportActions {
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;
+  setVectorByWallsFloorColor: (color: number) => void;
 }
 
 export interface RootActions {

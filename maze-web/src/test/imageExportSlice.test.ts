@@ -19,7 +19,12 @@ beforeEach(() => {
     activeRenderMode: null,
     openRenderModeSettings: null,
     vectorByWallsSectionsExpanded: {},
-    vectorByWallsSettings: { background: canvas.stage.background, showGrid: true, gridColor: canvas.grid.line },
+    vectorByWallsSettings: {
+      background: canvas.stage.background,
+      showGrid: true,
+      gridColor: canvas.grid.line,
+      floorColor: canvas.floor.default,
+    },
   });
 });
 
@@ -62,6 +67,7 @@ describe("mazeStore vectorByWallsSettings", () => {
       background: canvas.stage.background,
       showGrid: true,
       gridColor: canvas.grid.line,
+      floorColor: canvas.floor.default,
     });
   });
 
@@ -82,6 +88,13 @@ describe("mazeStore vectorByWallsSettings", () => {
     useMazeStore.getState().setVectorByWallsGridColor(0xabcdef);
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.gridColor).toBe(0xabcdef);
+    expect(settings.background).toBe(canvas.stage.background);
+  });
+
+  it("setVectorByWallsFloorColor updates only the floor color field", () => {
+    useMazeStore.getState().setVectorByWallsFloorColor(0x111111);
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.floorColor).toBe(0x111111);
     expect(settings.background).toBe(canvas.stage.background);
   });
 

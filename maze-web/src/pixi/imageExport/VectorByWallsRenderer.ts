@@ -162,7 +162,7 @@ export class VectorByWallsRenderer {
 
     const { nodes, edges, start, finish } = state;
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
-    this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
+    this.floor.render({ cells, color: state.vectorByWallsSettings.floorColor, alpha: 1 }, cfg);
 
     const nodeById = new Map(nodes.map(n => [n.id, n]));
 
