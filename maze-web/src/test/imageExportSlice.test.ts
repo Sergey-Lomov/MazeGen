@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { canvas } from "../pixi/colorTokens";
+import { WALL_THICKNESS } from "../pixi/renderConstants";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -24,6 +25,9 @@ beforeEach(() => {
       showGrid: true,
       gridColor: canvas.grid.line,
       floorColor: canvas.floor.default,
+      wallColor: canvas.wall.default,
+      wallJoin: "round",
+      wallThickness: WALL_THICKNESS,
     },
   });
 });
@@ -68,6 +72,9 @@ describe("mazeStore vectorByWallsSettings", () => {
       showGrid: true,
       gridColor: canvas.grid.line,
       floorColor: canvas.floor.default,
+      wallColor: canvas.wall.default,
+      wallJoin: "round",
+      wallThickness: WALL_THICKNESS,
     });
   });
 
@@ -95,6 +102,27 @@ describe("mazeStore vectorByWallsSettings", () => {
     useMazeStore.getState().setVectorByWallsFloorColor(0x111111);
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.floorColor).toBe(0x111111);
+    expect(settings.background).toBe(canvas.stage.background);
+  });
+
+  it("setVectorByWallsWallColor updates only the wall color field", () => {
+    useMazeStore.getState().setVectorByWallsWallColor(0x222222);
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.wallColor).toBe(0x222222);
+    expect(settings.background).toBe(canvas.stage.background);
+  });
+
+  it("setVectorByWallsWallJoin updates only the wall join field", () => {
+    useMazeStore.getState().setVectorByWallsWallJoin("miter");
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.wallJoin).toBe("miter");
+    expect(settings.background).toBe(canvas.stage.background);
+  });
+
+  it("setVectorByWallsWallThickness updates only the wall thickness field", () => {
+    useMazeStore.getState().setVectorByWallsWallThickness(7);
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.wallThickness).toBe(7);
     expect(settings.background).toBe(canvas.stage.background);
   });
 

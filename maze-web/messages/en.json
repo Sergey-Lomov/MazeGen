@@ -1119,8 +1119,13 @@
   "image_export.vector_by_walls.background_color": "Background color",
   "image_export.vector_by_walls.show_grid": "Show grid",
   "image_export.vector_by_walls.grid_color": "Grid color",
-  "image_export.vector_by_walls.section_floor": "Floor",
+  "image_export.vector_by_walls.section_tiles": "Tiles",
   "image_export.vector_by_walls.floor_color": "Floor color",
+  "image_export.vector_by_walls.wall_color": "Wall color",
+  "image_export.vector_by_walls.wall_join": "Corners & ends",
+  "image_export.vector_by_walls.wall_join_round": "Round",
+  "image_export.vector_by_walls.wall_join_miter": "Miter",
+  "image_export.vector_by_walls.wall_thickness": "Wall thickness",
   "status.render_mode_not_selected": "Render mode not selected",
   "status.render_mode_active": "Active: {mode}"
 }

@@ -1,6 +1,7 @@
 import { Container, Graphics } from "pixi.js";
-import type { SplitPassage } from "./types";
+import type { SplitPassage, WallStyleOverride } from "./types";
 import { drawDirectionArrow } from "./wallUtils";
+import { chainSegmentsAtSharedVertices } from "./WallRenderer";
 import { WALL_THICKNESS } from "../renderConstants";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
@@ -24,13 +25,32 @@ export class SplitJunctionRenderer {
     container.addChild(this.g);
   }
 
-  render(data: { passages: SplitPassage[]; wallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] }): void {
+  render(
+    data: { passages: SplitPassage[]; wallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] },
+    wallFaceStyleOverride?: WallStyleOverride,
+  ): void {
     this.g.clear();
-    for (const face of data.wallFaces) {
-      this.g
-        .moveTo(face.v0.x, face.v0.y)
-        .lineTo(face.v1.x, face.v1.y)
-        .stroke({ width: WALL_THICKNESS, color: canvas.wall.default, cap: "round", join: "round" });
+    if (!wallFaceStyleOverride) {
+      // No caller-supplied style: keep every other feature-renderer's exact prior per-segment
+      // draw — see the matching guard in WallRenderer.render for why.
+      for (const face of data.wallFaces) {
+        this.g
+          .moveTo(face.v0.x, face.v0.y)
+          .lineTo(face.v1.x, face.v1.y)
+          .stroke({ width: WALL_THICKNESS, color: canvas.wall.default, cap: "round", join: "round" });
+      }
+    } else {
+      const wallFaceStrokeOpts = {
+        width: wallFaceStyleOverride.width ?? WALL_THICKNESS,
+        color: wallFaceStyleOverride.color ?? canvas.wall.default,
+        cap: wallFaceStyleOverride.cap ?? "round",
+        join: wallFaceStyleOverride.join ?? "round",
+      } as const;
+      for (const path of chainSegmentsAtSharedVertices(data.wallFaces)) {
+        this.g.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) this.g.lineTo(path[i].x, path[i].y);
+        this.g.stroke(wallFaceStrokeOpts);
+      }
     }
 
     for (const passage of data.passages) {

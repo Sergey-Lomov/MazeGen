@@ -24,6 +24,9 @@ beforeEach(() => {
       showGrid: true,
       gridColor: 0x333333,
       floorColor: 0x2a2a2a,
+      wallColor: 0x0a0a0a,
+      wallJoin: "round",
+      wallThickness: 3,
     },
   });
 });
@@ -52,7 +55,7 @@ describe("VectorByWallsSettingsPanel", () => {
 
   it("grid color swatch is disabled (aria-disabled) when showGrid is off", () => {
     useMazeStore.setState({
-      vectorByWallsSettings: { background: 0, showGrid: false, gridColor: 0, floorColor: 0 },
+      vectorByWallsSettings: { background: 0, showGrid: false, gridColor: 0, floorColor: 0, wallColor: 0, wallJoin: "round", wallThickness: 3 },
     });
     render(<VectorByWallsSettingsPanel />);
     const swatches = screen.getAllByRole("button");
@@ -66,23 +69,49 @@ describe("VectorByWallsSettingsPanel", () => {
     expect(swatches[1]).toHaveAttribute("aria-disabled", "false");
   });
 
-  it("renders the floor section expanded by default with the floor color field", () => {
+  it("renders the tiles section expanded by default with floor color, wall color, join and thickness fields", () => {
     render(<VectorByWallsSettingsPanel />);
     expect(screen.getByText(m["image_export.vector_by_walls.floor_color"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.wall_color"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.wall_join"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.wall_thickness"]())).toBeInTheDocument();
   });
 
-  it("collapsing the floor section header hides its fields", () => {
+  it("collapsing the tiles section header hides its fields", () => {
     render(<VectorByWallsSettingsPanel />);
-    fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_floor"]()));
+    fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_tiles"]()));
     expect(screen.queryByText(m["image_export.vector_by_walls.floor_color"]())).not.toBeInTheDocument();
-    expect(useMazeStore.getState().vectorByWallsSectionsExpanded.floor).toBe(false);
+    expect(screen.queryByText(m["image_export.vector_by_walls.wall_color"]())).not.toBeInTheDocument();
+    expect(useMazeStore.getState().vectorByWallsSectionsExpanded.tiles).toBe(false);
   });
 
   it("changing the floor color updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
     const inputs = document.querySelectorAll('input[type="color"]');
-    // Swatch order: background, grid, floor.
+    // Swatch order: background, grid, floor, wall.
     fireEvent.change(inputs[2], { target: { value: "#ff00aa" } });
     expect(useMazeStore.getState().vectorByWallsSettings.floorColor).toBe(0xff00aa);
+  });
+
+  it("changing the wall color updates the store", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const inputs = document.querySelectorAll('input[type="color"]');
+    fireEvent.change(inputs[3], { target: { value: "#00ff00" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.wallColor).toBe(0x00ff00);
+  });
+
+  it("changing the wall join updates the store", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const select = screen.getByDisplayValue(m["image_export.vector_by_walls.wall_join_round"]());
+    fireEvent.change(select, { target: { value: "miter" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.wallJoin).toBe("miter");
+  });
+
+  it("changing the wall thickness updates the store", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const slider = screen.getByText(m["image_export.vector_by_walls.wall_thickness"]())
+      .parentElement!.querySelector('input[type="range"]')!;
+    fireEvent.change(slider, { target: { value: "7" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.wallThickness).toBe(7);
   });
 });

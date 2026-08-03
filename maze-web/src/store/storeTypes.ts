@@ -837,6 +837,14 @@ export interface VectorByWallsSettings {
   showGrid: boolean;
   gridColor: number;
   floorColor: number;
+  /** Applied to every "wall"-colored stroke (solid walls, split-junction wall faces, closed-cells
+   *  fill) via `WallStyleOverride` — never the `faint`/`background` `WallStyle` variants or a split
+   *  passage's own node-identity color. See GitHub issue #291. */
+  wallColor: number;
+  /** Drives both the pixi stroke `join` and the derived `cap` together (`round`->`round` cap,
+   *  `miter`->`square` cap) when built into a `WallStyleOverride` in `VectorByWallsRenderer`. */
+  wallJoin: "round" | "miter";
+  wallThickness: number;
 }
 
 export interface ImageExportState {
@@ -864,6 +872,9 @@ export interface ImageExportActions {
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;
   setVectorByWallsFloorColor: (color: number) => void;
+  setVectorByWallsWallColor: (color: number) => void;
+  setVectorByWallsWallJoin: (join: "round" | "miter") => void;
+  setVectorByWallsWallThickness: (v: number) => void;
 }
 
 export interface RootActions {

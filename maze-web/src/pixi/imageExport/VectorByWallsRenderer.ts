@@ -8,9 +8,8 @@ import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer } from "../renderers/SplitJunctionRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages } from "../selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { Viewport, WallEdge, TeleportEdge, SplitPassage } from "../renderers/types";
+import type { Viewport, WallEdge, TeleportEdge, SplitPassage, WallStyleOverride } from "../renderers/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { canvas } from "../colorTokens";
 
 /** World-space rect covering the whole visible viewport — the inverse of the pan/zoom transform
  *  applied to the scene container (`x`/`y` are the container's own screen-space offset, so the
@@ -195,9 +194,15 @@ export class VectorByWallsRenderer {
         splitWallFaces,
       };
     }
-    this.closedCells.render({ cells: this.geometryCache.closedCells, color: canvas.wall.default, alpha: 1 }, cfg);
-    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg);
-    this.splitJunctions.render({ passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces });
+    const wallStyle: WallStyleOverride = {
+      color: state.vectorByWallsSettings.wallColor,
+      width: state.vectorByWallsSettings.wallThickness,
+      join: state.vectorByWallsSettings.wallJoin,
+      cap: state.vectorByWallsSettings.wallJoin === "miter" ? "square" : "round",
+    };
+    this.closedCells.render({ cells: this.geometryCache.closedCells, color: state.vectorByWallsSettings.wallColor, alpha: 1 }, cfg);
+    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg, wallStyle);
+    this.splitJunctions.render({ passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces }, wallStyle);
     this.teleports.render({ edges: this.geometryCache.teleportEdges });
 
     const markerData = buildMazeMarkers(nodeById, start, finish, cfg);

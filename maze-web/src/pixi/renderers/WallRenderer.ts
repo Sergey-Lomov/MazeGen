@@ -1,5 +1,5 @@
 import { Container, Graphics } from "pixi.js";
-import type { WallEdge } from "./types";
+import type { WallEdge, WallStyleOverride } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellVertices, getNeighborData } from "../tessellationGeometry";
 import { drawOneWayTriangle } from "./wallUtils";
@@ -12,6 +12,65 @@ const WALL_STYLES = {
   background: { color: canvas.stage.background, cap: "round" as const, join: "round" as const },
 };
 
+type Point = { x: number; y: number };
+type Segment = { v0: Point; v1: Point };
+
+/** A `join` (round/miter) only renders where two segments meet inside the same continuous stroked
+ *  path — separate `moveTo`/`stroke` calls at a shared vertex draw independent caps, not a join
+ *  (GitHub issue #291 follow-up: "corner join does nothing"). Chains wall segments into polylines
+ *  wherever exactly two segments meet at a vertex (an ordinary corridor corner) so the join shows
+ *  up there; a vertex touched by any other segment count (T-junctions, isolated dead-ends) is left
+ *  as a path endpoint, where `cap` applies instead — both maze-cell shapes with such junctions and
+ *  plain corners are common, so neither case is treated as an error. */
+export function chainSegmentsAtSharedVertices(segs: Segment[]): Point[][] {
+  const key = (p: Point) => `${Math.round(p.x * 100)},${Math.round(p.y * 100)}`;
+  const byVertex = new Map<string, { seg: Segment; end: 0 | 1 }[]>();
+  for (const seg of segs) {
+    for (const end of [0, 1] as const) {
+      const p = end === 0 ? seg.v0 : seg.v1;
+      const k = key(p);
+      const list = byVertex.get(k);
+      if (list) list.push({ seg, end });
+      else byVertex.set(k, [{ seg, end }]);
+    }
+  }
+
+  const used = new Set<Segment>();
+  const paths: Point[][] = [];
+  for (const seg of segs) {
+    if (used.has(seg)) continue;
+    used.add(seg);
+    const path: Point[] = [seg.v0, seg.v1];
+
+    // Extend forward from path's current tail — only when that vertex's total degree is exactly 2
+    // (a plain corner), checked against the full unfiltered list so a T-junction's third branch
+    // still blocks chaining even after one of its other two segments has already been consumed
+    // by an earlier iteration (processing order must not change the result).
+    for (;;) {
+      const tail = path[path.length - 1];
+      const atVertex = byVertex.get(key(tail))!;
+      if (atVertex.length !== 2) break;
+      const next = atVertex.find((t) => !used.has(t.seg))?.seg;
+      if (!next) break;
+      used.add(next);
+      path.push(key(next.v0) === key(tail) ? next.v1 : next.v0);
+    }
+    // Extend backward from path's current head, same rule.
+    for (;;) {
+      const head = path[0];
+      const atVertex = byVertex.get(key(head))!;
+      if (atVertex.length !== 2) break;
+      const prev = atVertex.find((t) => !used.has(t.seg))?.seg;
+      if (!prev) break;
+      used.add(prev);
+      path.unshift(key(prev.v0) === key(head) ? prev.v1 : prev.v0);
+    }
+
+    paths.push(path);
+  }
+  return paths;
+}
+
 export class WallRenderer {
   private readonly g: Graphics;
 
@@ -20,24 +79,50 @@ export class WallRenderer {
     container.addChild(this.g);
   }
 
-  render(data: { edges: WallEdge[] }, cfg?: TessellationConfig): void {
+  render(data: { edges: WallEdge[] }, cfg?: TessellationConfig, solidStyleOverride?: WallStyleOverride): void {
     this.g.clear();
+    if (!cfg) return;
+
+    const solidSegs: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] = [];
     for (const edge of data.edges) {
-      if (!cfg) continue;
       const seg = this.getEdgeSegment(edge, cfg);
       if (!seg) continue;
 
-      const styleBase = WALL_STYLES[edge.style];
-      this.g
-        .moveTo(seg.v0.x, seg.v0.y)
-        .lineTo(seg.v1.x, seg.v1.y)
-        .stroke({ width: WALL_THICKNESS, ...styleBase });
+      if (edge.style === "solid") {
+        solidSegs.push(seg);
+      } else {
+        const styleBase = WALL_STYLES[edge.style];
+        this.g.moveTo(seg.v0.x, seg.v0.y).lineTo(seg.v1.x, seg.v1.y).stroke({ width: WALL_THICKNESS, ...styleBase });
+      }
 
       if (edge.oneWayDir) {
         const midX = (seg.v0.x + seg.v1.x) / 2;
         const midY = (seg.v0.y + seg.v1.y) / 2;
         drawOneWayTriangle(this.g, midX, midY, edge.oneWayDir.dx, edge.oneWayDir.dy);
       }
+    }
+
+    if (!solidStyleOverride) {
+      // No caller-supplied style: keep every other feature-renderer's exact prior per-segment
+      // draw (independent round caps, no join) — vertex-chaining below is only meaningful once a
+      // caller actually asks for a `join`/`cap`, so it must not change GenerationRenderer's,
+      // PostEditRenderer's, PresetConnectionsRenderer's, or MazeOverlayRenderer's rendering.
+      for (const seg of solidSegs) {
+        this.g.moveTo(seg.v0.x, seg.v0.y).lineTo(seg.v1.x, seg.v1.y).stroke({ width: WALL_THICKNESS, ...WALL_STYLES.solid });
+      }
+      return;
+    }
+
+    const strokeOpts = {
+      width: solidStyleOverride.width ?? WALL_THICKNESS,
+      color: solidStyleOverride.color ?? WALL_STYLES.solid.color,
+      join: solidStyleOverride.join ?? WALL_STYLES.solid.join,
+      cap: solidStyleOverride.cap ?? WALL_STYLES.solid.cap,
+    };
+    for (const path of chainSegmentsAtSharedVertices(solidSegs)) {
+      this.g.moveTo(path[0].x, path[0].y);
+      for (let i = 1; i < path.length; i++) this.g.lineTo(path[i].x, path[i].y);
+      this.g.stroke(strokeOpts);
     }
   }
 

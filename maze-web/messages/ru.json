@@ -1129,8 +1129,13 @@
   "image_export.vector_by_walls.background_color": "Цвет фона",
   "image_export.vector_by_walls.show_grid": "Показывать сетку",
   "image_export.vector_by_walls.grid_color": "Цвет сетки",
-  "image_export.vector_by_walls.section_floor": "Пол",
+  "image_export.vector_by_walls.section_tiles": "Ячейки",
   "image_export.vector_by_walls.floor_color": "Цвет пола",
+  "image_export.vector_by_walls.wall_color": "Цвет стен",
+  "image_export.vector_by_walls.wall_join": "Углы и концы",
+  "image_export.vector_by_walls.wall_join_round": "Скругление",
+  "image_export.vector_by_walls.wall_join_miter": "Заострение",
+  "image_export.vector_by_walls.wall_thickness": "Толщина стен",
   "status.render_mode_not_selected": "Режим рендера не выбран",
   "status.render_mode_active": "Активен: {mode}"
 }

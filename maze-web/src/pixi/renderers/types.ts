@@ -9,6 +9,17 @@ export type Viewport = {
 export type PassageKind = "both" | "forward" | "backward" | "none";
 export type WallStyle = "solid" | "faint" | "background";
 
+/** Optional per-call override for a "wall"-colored stroke's color/thickness/join/cap, applied only
+ *  to the `solid` `WallStyle` in `WallRenderer` and to `wallFaces` in `SplitJunctionRenderer` — the
+ *  `faint`/`background` wall styles and a split passage's own node-identity `color` are never
+ *  overridden by this. Used by `VectorByWallsRenderer` (GitHub issue #291) to expose wall
+ *  color/join/thickness as user settings without changing any other feature-renderer's fixed
+ *  `canvas.wall.default`/`WALL_THICKNESS` look. `join`/`cap` are always set together (`round`+
+ *  `round` or `miter`+`square`) — a `join` only becomes visible where two wall segments meet at a
+ *  shared vertex within the same continuous stroked path, so `WallRenderer.render` groups solid
+ *  edges into per-vertex paths precisely so this override has somewhere to show up. */
+export type WallStyleOverride = { color?: number; width?: number; join?: "round" | "miter"; cap?: "round" | "square" };
+
 export type WallEdge = {
   a: [number, number];
   b: [number, number];
