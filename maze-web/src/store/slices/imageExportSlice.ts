@@ -15,6 +15,8 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     wallColor: canvas.wall.default,
     wallJoin: "round",
     wallThickness: WALL_THICKNESS,
+    startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 },
+    finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 },
   },
 
   setActiveRenderMode: (mode) => set({ activeRenderMode: mode }),
@@ -35,4 +37,20 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, wallJoin: join } })),
   setVectorByWallsWallThickness: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, wallThickness: v } })),
+  setVectorByWallsStartMarkerShape: (shape) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, shape } } })),
+  setVectorByWallsStartMarkerFillColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, fillColor: color } } })),
+  setVectorByWallsStartMarkerBorderColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, borderColor: color } } })),
+  setVectorByWallsStartMarkerBorderWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, borderWidth: v } } })),
+  setVectorByWallsFinishMarkerShape: (shape) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, shape } } })),
+  setVectorByWallsFinishMarkerFillColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, fillColor: color } } })),
+  setVectorByWallsFinishMarkerBorderColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, borderColor: color } } })),
+  setVectorByWallsFinishMarkerBorderWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, borderWidth: v } } })),
 });

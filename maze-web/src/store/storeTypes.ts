@@ -6,6 +6,7 @@ import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry }
 import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../pixi/presetEndpoint";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
+import type { MarkerShape } from "../pixi/renderers/types";
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 
@@ -825,6 +826,15 @@ export interface PostEditActions {
   applySplitBlueprint: (point: [number, number], blueprint: SplitNodeBlueprint) => void;
 }
 
+/** One start/finish marker's appearance (GitHub issue #296) — `borderWidth: 0` (the default) draws
+ *  no border, so there is no separate show-border toggle. */
+export interface MarkerSettings {
+  shape: MarkerShape;
+  fillColor: number;
+  borderColor: number;
+  borderWidth: number;
+}
+
 /** "Vector by walls" mode's own settings (GitHub issue #289, floor color added in #290) —
  * background appearance and floor appearance ("general settings" and "floor" sections of #288's
  * panel). Defaults match the editor's normal grid/floor appearance (`canvas.stage.background`,
@@ -845,6 +855,8 @@ export interface VectorByWallsSettings {
    *  `miter`->`square` cap) when built into a `WallStyleOverride` in `VectorByWallsRenderer`. */
   wallJoin: "round" | "miter";
   wallThickness: number;
+  startMarker: MarkerSettings;
+  finishMarker: MarkerSettings;
 }
 
 export interface ImageExportState {
@@ -875,6 +887,14 @@ export interface ImageExportActions {
   setVectorByWallsWallColor: (color: number) => void;
   setVectorByWallsWallJoin: (join: "round" | "miter") => void;
   setVectorByWallsWallThickness: (v: number) => void;
+  setVectorByWallsStartMarkerShape: (shape: MarkerShape) => void;
+  setVectorByWallsStartMarkerFillColor: (color: number) => void;
+  setVectorByWallsStartMarkerBorderColor: (color: number) => void;
+  setVectorByWallsStartMarkerBorderWidth: (v: number) => void;
+  setVectorByWallsFinishMarkerShape: (shape: MarkerShape) => void;
+  setVectorByWallsFinishMarkerFillColor: (color: number) => void;
+  setVectorByWallsFinishMarkerBorderColor: (color: number) => void;
+  setVectorByWallsFinishMarkerBorderWidth: (v: number) => void;
 }
 
 export interface RootActions {

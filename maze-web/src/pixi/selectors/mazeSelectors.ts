@@ -1,7 +1,7 @@
 ﻿import type { NodeDto, EdgeDto, IssueDto } from "../../wasm/types";
 import type { MazeState, PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import type { WallEdge, MarkerData, PassageKind, TeleportEdge, SplitPassage } from "../renderers/types";
+import type { WallEdge, MarkerData, MarkerShape, PassageKind, TeleportEdge, SplitPassage } from "../renderers/types";
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
 import { getCellCenter, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment, splitHubPoint, SPLIT_HUB_RADIUS } from "../tessellationGeometry";
 import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../splitFaceLayout";
@@ -496,25 +496,52 @@ export function buildLinkHoverHighlight(
   }];
 }
 
+/** Same field shape as `MarkerSettings` (`storeTypes.ts`) by design — kept as its own type since
+ *  this lower-level selector module must not depend on the store layer, but the identical field
+ *  names let a `VectorByWallsSettings` marker be passed straight through without manual zipping. */
+export interface MarkerStyle {
+  shape: MarkerShape;
+  fillColor: number;
+  borderColor: number;
+  borderWidth: number;
+}
+
+const DEFAULT_START_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 };
+const DEFAULT_FINISH_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 };
+
 /** A start/finish marker on a split point (GitHub issue #223) anchors to that node's own hub
  *  point (`getSplitAwareNodePosition`), not the tile's plain center — `nodeById`'s full value set
  *  stands in for `nodes` (see `buildTeleportEdges`'s doc comment for why this is safe for
- *  unsplit callers). */
+ *  unsplit callers). `startStyle`/`finishStyle` default to a plain circle with no border (every
+ *  caller except `VectorByWallsRenderer`, whose marker appearance is user-configurable — see
+ *  GitHub issue #296), so passing them is opt-in. */
 export function buildMazeMarkers(
   nodeById: Map<number, NodeDto>,
   start: number | null,
   finish: number | null,
   cfg: TessellationConfig,
+  startStyle: MarkerStyle = DEFAULT_START_STYLE,
+  finishStyle: MarkerStyle = DEFAULT_FINISH_STYLE,
 ): MarkerData[] {
   const markers: MarkerData[] = [];
   const allNodes = Array.from(nodeById.values());
   if (start !== null) {
     const c = getSplitAwareNodePosition(allNodes, start, cfg);
-    if (c) markers.push({ pos: [c.x, c.y], color: canvas.node.start, radius: NODE_RADIUS * 1.5 });
+    if (c) {
+      markers.push({
+        pos: [c.x, c.y], radius: NODE_RADIUS * 1.5,
+        shape: startStyle.shape, color: startStyle.fillColor, borderColor: startStyle.borderColor, borderWidth: startStyle.borderWidth,
+      });
+    }
   }
   if (finish !== null) {
     const c = getSplitAwareNodePosition(allNodes, finish, cfg);
-    if (c) markers.push({ pos: [c.x, c.y], color: canvas.node.finish, radius: NODE_RADIUS * 1.5 });
+    if (c) {
+      markers.push({
+        pos: [c.x, c.y], radius: NODE_RADIUS * 1.5,
+        shape: finishStyle.shape, color: finishStyle.fillColor, borderColor: finishStyle.borderColor, borderWidth: finishStyle.borderWidth,
+      });
+    }
   }
   return markers;
 }

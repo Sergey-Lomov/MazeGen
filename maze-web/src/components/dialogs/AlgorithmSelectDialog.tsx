@@ -115,7 +115,7 @@ const styles: Record<string, React.CSSProperties> = {
   paramsSection: {
     display: "flex",
     flexDirection: "column",
-    gap: spacing.groupGap,
+    gap: spacing.sectionGap,
   },
   paramsSeparator: {
     borderTop: `1px solid ${ui.border.default}`,

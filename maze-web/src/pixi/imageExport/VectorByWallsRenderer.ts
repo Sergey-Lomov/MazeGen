@@ -205,7 +205,8 @@ export class VectorByWallsRenderer {
     this.splitJunctions.render({ passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces }, wallStyle);
     this.teleports.render({ edges: this.geometryCache.teleportEdges });
 
-    const markerData = buildMazeMarkers(nodeById, start, finish, cfg);
+    const { startMarker, finishMarker } = state.vectorByWallsSettings;
+    const markerData = buildMazeMarkers(nodeById, start, finish, cfg, startMarker, finishMarker);
     this.markers.render({ markers: markerData });
   }
 

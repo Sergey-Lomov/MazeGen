@@ -1126,6 +1126,18 @@
   "image_export.vector_by_walls.wall_join_round": "Round",
   "image_export.vector_by_walls.wall_join_miter": "Miter",
   "image_export.vector_by_walls.wall_thickness": "Wall thickness",
+  "image_export.vector_by_walls.section_markers": "Waypoints",
+  "image_export.vector_by_walls.markers_start": "Start",
+  "image_export.vector_by_walls.markers_finish": "Finish",
+  "image_export.vector_by_walls.marker_shape": "Shape",
+  "image_export.vector_by_walls.marker_fill_color": "Fill color",
+  "image_export.vector_by_walls.marker_border_color": "Border color",
+  "image_export.vector_by_walls.marker_border_width": "Border width",
+  "image_export.vector_by_walls.marker_shape_circle": "Circle",
+  "image_export.vector_by_walls.marker_shape_square": "Square",
+  "image_export.vector_by_walls.marker_shape_diamond": "Diamond",
+  "image_export.vector_by_walls.marker_shape_triangle": "Triangle",
+  "image_export.vector_by_walls.marker_shape_star5": "Star",
   "status.render_mode_not_selected": "Render mode not selected",
   "status.render_mode_active": "Active: {mode}"
 }

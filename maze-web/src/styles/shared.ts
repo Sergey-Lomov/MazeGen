@@ -1,5 +1,5 @@
 import type React from "react";
-import { ui, font, radius, typography, spacing, inset } from "./theme";
+import { ui, font, radius, typography, spacing, inset, controlRowHeight } from "./theme";
 
 const selectArrow = {
   appearance: "none",
@@ -41,10 +41,12 @@ export const sharedStyles = {
 
   selectSm: {
     ...typography.field,
+    height: controlRowHeight,
+    boxSizing: "border-box",
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     borderRadius: radius.sm,
-    padding: "1px 18px 1px 4px",
+    padding: "0 18px 0 4px",
     ...selectArrow,
   } satisfies React.CSSProperties,
 
@@ -122,19 +124,19 @@ export const sharedStyles = {
   sliderRow: {
     display: "flex",
     alignItems: "center",
-    gap: spacing.itemGap,
+    gap: spacing.rowGap,
     marginBottom: spacing.itemGap,
   } satisfies React.CSSProperties,
 
   sliderRowLabel: {
-    fontSize: font.sm,
-    color: ui.text.secondary,
+    fontSize: font.lg,
+    color: ui.text.primary,
     width: 110,
     flexShrink: 0,
   } satisfies React.CSSProperties,
 
   sliderRowValue: {
-    fontSize: font.sm,
+    fontSize: font.lg,
     color: ui.text.tertiary,
     width: 32,
     textAlign: "right" as const,

@@ -74,7 +74,17 @@ export type EdgeHL = {
   bidirectional?: boolean;
 };
 
-export type MarkerData = { pos: [number, number]; color: number; radius: number };
+export type MarkerShape = "circle" | "square" | "diamond" | "triangle" | "star5";
+
+/** `borderWidth: 0` (the default) draws no border — see GitHub issue #296. */
+export type MarkerData = {
+  pos: [number, number];
+  color: number;
+  radius: number;
+  shape?: MarkerShape;
+  borderColor?: number;
+  borderWidth?: number;
+};
 
 /** A cell draws half-filled when the markers landing on it disagree: some edge wants a filled
  * square there and some (other) edge wants an outline square there. */

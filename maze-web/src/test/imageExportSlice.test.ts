@@ -28,6 +28,8 @@ beforeEach(() => {
       wallColor: canvas.wall.default,
       wallJoin: "round",
       wallThickness: WALL_THICKNESS,
+      startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 },
+      finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 },
     },
   });
 });
@@ -75,6 +77,8 @@ describe("mazeStore vectorByWallsSettings", () => {
       wallColor: canvas.wall.default,
       wallJoin: "round",
       wallThickness: WALL_THICKNESS,
+      startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 },
+      finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 },
     });
   });
 
@@ -124,6 +128,32 @@ describe("mazeStore vectorByWallsSettings", () => {
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.wallThickness).toBe(7);
     expect(settings.background).toBe(canvas.stage.background);
+  });
+
+  it("setVectorByWallsStartMarkerShape updates only the start marker's shape", () => {
+    useMazeStore.getState().setVectorByWallsStartMarkerShape("diamond");
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.startMarker.shape).toBe("diamond");
+    expect(settings.finishMarker.shape).toBe("circle");
+  });
+
+  it("setVectorByWallsStartMarkerFillColor/BorderColor/BorderWidth update only the start marker", () => {
+    useMazeStore.getState().setVectorByWallsStartMarkerFillColor(0x111111);
+    useMazeStore.getState().setVectorByWallsStartMarkerBorderColor(0x222222);
+    useMazeStore.getState().setVectorByWallsStartMarkerBorderWidth(3);
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.startMarker).toEqual({ shape: "circle", fillColor: 0x111111, borderColor: 0x222222, borderWidth: 3 });
+    expect(settings.finishMarker.fillColor).toBe(canvas.node.finish);
+  });
+
+  it("setVectorByWallsFinishMarkerShape/FillColor/BorderColor/BorderWidth update only the finish marker", () => {
+    useMazeStore.getState().setVectorByWallsFinishMarkerShape("star5");
+    useMazeStore.getState().setVectorByWallsFinishMarkerFillColor(0x333333);
+    useMazeStore.getState().setVectorByWallsFinishMarkerBorderColor(0x444444);
+    useMazeStore.getState().setVectorByWallsFinishMarkerBorderWidth(5);
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.finishMarker).toEqual({ shape: "star5", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 5 });
+    expect(settings.startMarker.fillColor).toBe(canvas.node.start);
   });
 
   it("reset() does NOT clear vectorByWallsSettings — export settings are an independent layer from maze data", () => {

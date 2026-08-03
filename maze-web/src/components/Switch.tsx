@@ -1,5 +1,5 @@
 import React from "react";
-import { ui } from "../styles/theme";
+import { ui, controlRowHeight } from "../styles/theme";
 
 interface Props {
   checked: boolean;
@@ -24,6 +24,10 @@ export function Switch({ checked, onChange, disabled }: Props) {
   );
 }
 
+const TRACK_WIDTH = 36;
+const THUMB_INSET = 2;
+const THUMB_SIZE = controlRowHeight - THUMB_INSET * 2;
+
 const styles: Record<string, React.CSSProperties> = {
   wrap: {
     position: "relative",
@@ -44,27 +48,28 @@ const styles: Record<string, React.CSSProperties> = {
   },
   track: {
     display: "inline-block",
-    width: 32,
-    height: 18,
+    width: TRACK_WIDTH,
+    height: controlRowHeight,
     background: ui.border.strong,
-    borderRadius: 9,
+    borderRadius: controlRowHeight / 2,
     position: "relative",
     transition: "background 0.2s",
+    boxSizing: "border-box",
   },
   trackOn: {
     background: ui.accent.base,
   },
   thumb: {
     position: "absolute",
-    top: 2,
-    left: 2,
-    width: 14,
-    height: 14,
+    top: THUMB_INSET,
+    left: THUMB_INSET,
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
     background: ui.text.inverse,
     borderRadius: "50%",
     transition: "left 0.2s",
   },
   thumbOn: {
-    left: 16,
+    left: TRACK_WIDTH - THUMB_INSET - THUMB_SIZE,
   },
 };

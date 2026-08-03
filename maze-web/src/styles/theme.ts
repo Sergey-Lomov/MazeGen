@@ -89,6 +89,10 @@ export const spacing = {
   sectionGap: 16, // independent sub-section / param-with-description spacing
 } as const;
 
+// Fixed height every param-row control (color swatch, toggle switch, select) shares, so rows with
+// different control types line up at the same height in the same settings list.
+export const controlRowHeight = 22;
+
 export const inset = {
   // Dialog/modal action-button family (footer Confirm/Cancel/OK-style buttons).
   buttonInsetX: 12,

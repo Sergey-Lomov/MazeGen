@@ -375,8 +375,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   select: {
     ...sharedStyles.selectSm,
-    boxSizing: "border-box",
-    height: 22,
     padding: "2px 18px 2px 4px",
   },
   // `pattern_list`/`split_generation_config` edit buttons -- same row height as `input`/`select`

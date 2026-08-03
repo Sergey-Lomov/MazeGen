@@ -1136,6 +1136,18 @@
   "image_export.vector_by_walls.wall_join_round": "Скругление",
   "image_export.vector_by_walls.wall_join_miter": "Заострение",
   "image_export.vector_by_walls.wall_thickness": "Толщина стен",
+  "image_export.vector_by_walls.section_markers": "Путевые точки",
+  "image_export.vector_by_walls.markers_start": "Старт",
+  "image_export.vector_by_walls.markers_finish": "Финиш",
+  "image_export.vector_by_walls.marker_shape": "Форма",
+  "image_export.vector_by_walls.marker_fill_color": "Цвет заливки",
+  "image_export.vector_by_walls.marker_border_color": "Цвет рамки",
+  "image_export.vector_by_walls.marker_border_width": "Ширина рамки",
+  "image_export.vector_by_walls.marker_shape_circle": "Круг",
+  "image_export.vector_by_walls.marker_shape_square": "Квадрат",
+  "image_export.vector_by_walls.marker_shape_diamond": "Ромб",
+  "image_export.vector_by_walls.marker_shape_triangle": "Треугольник",
+  "image_export.vector_by_walls.marker_shape_star5": "Звезда",
   "status.render_mode_not_selected": "Режим рендера не выбран",
   "status.render_mode_active": "Активен: {mode}"
 }
