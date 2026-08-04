@@ -6,7 +6,7 @@ import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry }
 import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../pixi/presetEndpoint";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
-import type { MarkerShape, OneWayPattern } from "../pixi/renderers/types";
+import type { MarkerShape, OneWayPattern, TeleportGroupOverride, TeleportCornerStyle, TeleportConnectorStyle, TeleportArrowMode } from "../pixi/renderers/types";
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 
@@ -873,6 +873,43 @@ export interface VectorByWallsSettings {
   oneWayJoin: "round" | "miter";
   startMarker: MarkerSettings;
   finishMarker: MarkerSettings;
+  /** Teleports section (GitHub issue #293, restructured in a follow-up that removed the standalone
+   *  `"line"`/`"grouped"` pattern switch) — `teleportLine*`/`teleportConnector*`/`teleportEdge*`
+   *  ("Edges"/"Connector" subsections) are always the base look; `teleportConnectorStyle: "none"`
+   *  draws no connector line at all. `teleportGroupCustomization` (its own subsection, off by
+   *  default) layers a per-group shape/fill-color/border-color override on top wherever an endpoint
+   *  coordinate coincides (see `buildTeleportGroups`) — combined with `connectorStyle: "none"` this
+   *  reproduces the old standalone `"grouped"` pattern's look. `teleportGroupOverrides` holds those
+   *  overrides, keyed by `TeleportGroup.key` (stable across renders, not across a maze
+   *  regenerate/reload — entries for groups no longer present are simply never looked up again, not
+   *  pruned). */
+  teleportLineCornerStyle: TeleportCornerStyle;
+  teleportLineShape: MarkerShape;
+  /** Marker radius, as a fraction of the tile size (0-1, GitHub issue #293 follow-up — matches
+   *  `OneWayStyleOverride.size`'s convention, not a fixed pixel radius). */
+  teleportLineSize: number;
+  teleportEdgeColor: number;
+  teleportEdgeBorderColor: number;
+  teleportEdgeBorderWidth: number;
+  /** The connector line's own color/width — GitHub issue #293 follow-up renamed from
+   *  `teleportConnection*` ("connector" is the settings panel's own term for it). */
+  teleportConnectorColor: number;
+  teleportConnectorWidth: number;
+  /** `"none"` (no connector), `"straight"` (direct center-to-center) or `"orthogonal"`
+   *  (single-bend, axis-aligned, with a local collision offset — see `teleportConnectorRouting.ts`). */
+  teleportConnectorStyle: TeleportConnectorStyle;
+  /** How a one-way connector draws its direction arrow(s) — see `TeleportArrowMode`. */
+  teleportArrowMode: TeleportArrowMode;
+  /** Tile-width period between arrows in `"periodic"` mode — unused (and hidden in the settings
+   *  panel) otherwise. */
+  teleportArrowPeriod: number;
+  teleportArrowSize: number;
+  /** Connector border width — `0` (the default) draws no border, replacing a separate on/off
+   *  toggle (GitHub issue #293 follow-up: "if it's not needed, just set it to zero"). */
+  teleportConnectorBorderWidth: number;
+  /** Off by default — see this interface's own Teleports-section doc comment above. */
+  teleportGroupCustomization: boolean;
+  teleportGroupOverrides: Record<string, TeleportGroupOverride>;
 }
 
 export interface ImageExportState {
@@ -890,6 +927,12 @@ export interface ImageExportState {
    * mirrors `AnalyticsOverlayState.analyticsSectionsExpanded`. */
   vectorByWallsSectionsExpanded: Record<string, boolean>;
   vectorByWallsSettings: VectorByWallsSettings;
+  /** Currently *selected* (clicked, not hovered — GitHub issue #293 follow-up) teleport connection
+   *  group, by `TeleportGroup.key` — set either by clicking a row in the Teleports section's group
+   *  list or by clicking that group's own marker(s) on the canvas (two-way selection sync). `Escape`
+   *  or clicking empty canvas clears it. `null` when nothing is selected, meaning every group draws
+   *  normally. */
+  selectedTeleportGroupKey: string | null;
 }
 
 export interface ImageExportActions {
@@ -917,6 +960,22 @@ export interface ImageExportActions {
   setVectorByWallsFinishMarkerFillColor: (color: number) => void;
   setVectorByWallsFinishMarkerBorderColor: (color: number) => void;
   setVectorByWallsFinishMarkerBorderWidth: (v: number) => void;
+  setVectorByWallsTeleportLineCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByWallsTeleportLineShape: (shape: MarkerShape) => void;
+  setVectorByWallsTeleportLineSize: (v: number) => void;
+  setVectorByWallsTeleportEdgeColor: (color: number) => void;
+  setVectorByWallsTeleportEdgeBorderColor: (color: number) => void;
+  setVectorByWallsTeleportEdgeBorderWidth: (v: number) => void;
+  setVectorByWallsTeleportConnectorColor: (color: number) => void;
+  setVectorByWallsTeleportConnectorWidth: (v: number) => void;
+  setVectorByWallsTeleportConnectorStyle: (style: TeleportConnectorStyle) => void;
+  setVectorByWallsTeleportArrowMode: (mode: TeleportArrowMode) => void;
+  setVectorByWallsTeleportArrowPeriod: (v: number) => void;
+  setVectorByWallsTeleportArrowSize: (v: number) => void;
+  setVectorByWallsTeleportConnectorBorderWidth: (v: number) => void;
+  setVectorByWallsTeleportGroupCustomization: (v: boolean) => void;
+  setVectorByWallsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
+  setSelectedTeleportGroupKey: (key: string | null) => void;
 }
 
 export interface RootActions {

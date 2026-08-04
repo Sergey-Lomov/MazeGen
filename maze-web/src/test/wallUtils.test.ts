@@ -166,11 +166,18 @@ describe("drawDirectionArrow", () => {
     const g = newG();
     drawDirectionArrow(g, 0, 0, 1, 0, 10);
     const [fillCall] = g.calls.filter((c) => c.fn === "fill");
-    expect(fillCall.args[0]).toBe(canvas.edge.oneWay);
+    expect(fillCall.args[0]).toEqual({ color: canvas.edge.oneWay, alpha: 1 });
 
     const g2 = newG();
     drawDirectionArrow(g2, 0, 0, 1, 0, 10, 0x123456);
     const [fillCall2] = g2.calls.filter((c) => c.fn === "fill");
-    expect(fillCall2.args[0]).toBe(0x123456);
+    expect(fillCall2.args[0]).toEqual({ color: 0x123456, alpha: 1 });
+  });
+
+  it("fills at the given alpha", () => {
+    const g = newG();
+    drawDirectionArrow(g, 0, 0, 1, 0, 10, 0x123456, 0.4);
+    const [fillCall] = g.calls.filter((c) => c.fn === "fill");
+    expect(fillCall.args[0]).toEqual({ color: 0x123456, alpha: 0.4 });
   });
 });

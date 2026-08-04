@@ -5,11 +5,16 @@ import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import * as m from "~/paraglide/messages";
 
+// getCellCenter (via squareGeometry's getCartesian, used by buildTeleportEdges for the Teleports
+// section's group list) delegates to wasm, unavailable in this unit-test environment — mocked with
+// the canonical square formula (see `maze-core/src/space/square.rs`'s `cartesian`), same as
+// `issueHighlightSelectors.test.ts`.
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
+  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
 }));
 vi.mock("../wasm/wasmLoader", () => ({
   initWasm: vi.fn(() => Promise.resolve()),
@@ -38,6 +43,21 @@ beforeEach(() => {
       oneWayJoin: "round",
       startMarker: { shape: "circle", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0 },
       finishMarker: { shape: "circle", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0 },
+      teleportLineCornerStyle: "sharp",
+      teleportLineShape: "square",
+      teleportLineSize: 0.3,
+      teleportEdgeColor: 0,
+      teleportEdgeBorderColor: 0,
+      teleportEdgeBorderWidth: 3,
+      teleportConnectorColor: 0,
+      teleportConnectorWidth: 3,
+      teleportConnectorStyle: "straight",
+      teleportArrowMode: "center",
+      teleportArrowPeriod: 5,
+      teleportArrowSize: 6,
+      teleportConnectorBorderWidth: 0,
+      teleportGroupCustomization: false,
+      teleportGroupOverrides: {},
     },
   });
 });
@@ -80,6 +100,12 @@ describe("VectorByWallsSettingsPanel", () => {
         oneWayPattern: "triangle", oneWayColor: 0, oneWayBorderWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
         startMarker: { shape: "circle", fillColor: 0, borderColor: 0, borderWidth: 0 },
         finishMarker: { shape: "circle", fillColor: 0, borderColor: 0, borderWidth: 0 },
+        teleportLineCornerStyle: "sharp",
+        teleportLineShape: "square", teleportLineSize: 0.3,
+        teleportEdgeColor: 0, teleportEdgeBorderColor: 0, teleportEdgeBorderWidth: 3,
+        teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight",
+        teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6, teleportConnectorBorderWidth: 0,
+        teleportGroupCustomization: false, teleportGroupOverrides: {},
       },
     });
     render(<VectorByWallsSettingsPanel />);
@@ -191,8 +217,8 @@ describe("VectorByWallsSettingsPanel", () => {
   it("changing the finish marker shape updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
     const select = screen.getAllByDisplayValue(m["image_export.vector_by_walls.marker_shape_circle"]())[1];
-    fireEvent.change(select, { target: { value: "star5" } });
-    expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.shape).toBe("star5");
+    fireEvent.change(select, { target: { value: "star" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.shape).toBe("star");
   });
 
   it("changing the finish marker fill color updates the store", () => {
@@ -271,5 +297,206 @@ describe("VectorByWallsSettingsPanel", () => {
       .parentElement!.querySelector('input[type="range"]')!;
     fireEvent.change(slider, { target: { value: "6" } });
     expect(useMazeStore.getState().vectorByWallsSettings.oneWayThickness).toBe(6);
+  });
+
+  describe("Teleports section", () => {
+    beforeEach(() => {
+      useMazeStore.setState({ vectorByWallsSectionsExpanded: { teleports: true } });
+    });
+
+    it("shows the base connector fields, no group list, by default (group customization off)", () => {
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.teleport_arrow_mode"]())).toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.teleport_group_customization"]())).toBeInTheDocument();
+    });
+
+    it("changing the corner style updates the store", () => {
+      render(<VectorByWallsSettingsPanel />);
+      const select = screen.getByDisplayValue(m["image_export.vector_by_walls.teleport_corner_style_sharp"]());
+      fireEvent.change(select, { target: { value: "round" } });
+      expect(useMazeStore.getState().vectorByWallsSettings.teleportLineCornerStyle).toBe("round");
+    });
+
+    it("changing the marker size updates the store", () => {
+      render(<VectorByWallsSettingsPanel />);
+      // `teleport_size` (marker size) and `teleport_arrow_size` (GitHub issue #293 follow-up: the
+      // arrow subsection's own labels dropped the redundant "arrow" word since the subsection
+      // heading already says it) both render as the same "Size" text — this is the first (and
+      // only marker-size) match, `teleport_arrow_size`'s own field appears later in the DOM.
+      const slider = screen.getAllByText(m["image_export.vector_by_walls.teleport_size"]())[0]
+        .parentElement!.querySelector('input[type="range"]')!;
+      fireEvent.change(slider, { target: { value: "0.6" } });
+      expect(useMazeStore.getState().vectorByWallsSettings.teleportLineSize).toBe(0.6);
+    });
+
+    it("toggling group customization on shows the group list once groups exist", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0 },
+          { id: 1, x: 5, y: 5, i: 0 },
+        ],
+        edges: [
+          { from: 0, to: 1, kind: "teleport" },
+          { from: 1, to: 0, kind: "teleport" },
+        ],
+      });
+      render(<VectorByWallsSettingsPanel />);
+      const toggle = screen.getByText(m["image_export.vector_by_walls.teleport_group_customization"]())
+        .parentElement!.querySelector('input[type="checkbox"]')!;
+      fireEvent.click(toggle);
+      expect(useMazeStore.getState().vectorByWallsSettings.teleportGroupCustomization).toBe(true);
+    });
+
+    it("lets a group row's fill color be overridden once group customization is on", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0 },
+          { id: 1, x: 5, y: 5, i: 0 },
+        ],
+        edges: [
+          { from: 0, to: 1, kind: "teleport" },
+          { from: 1, to: 0, kind: "teleport" },
+        ],
+        vectorByWallsSettings: { ...useMazeStore.getState().vectorByWallsSettings, teleportGroupCustomization: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+
+      const inputs = document.querySelectorAll('input[type="color"]');
+      // Last two color inputs on the group row are fill color then border color.
+      const fillColorInput = inputs[inputs.length - 2];
+      fireEvent.change(fillColorInput, { target: { value: "#abcdef" } });
+      const groupKey = Object.keys(useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides)[0];
+      expect(useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides[groupKey].fillColor).toBe(0xabcdef);
+    });
+
+    it("clicking a group row sets selectedTeleportGroupKey, clicking it again clears it", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0 },
+          { id: 1, x: 5, y: 5, i: 0 },
+        ],
+        edges: [
+          { from: 0, to: 1, kind: "teleport" },
+          { from: 1, to: 0, kind: "teleport" },
+        ],
+        vectorByWallsSettings: { ...useMazeStore.getState().vectorByWallsSettings, teleportGroupCustomization: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      const row = document.querySelector(".teleport-group-row")!;
+      fireEvent.click(row);
+      expect(useMazeStore.getState().selectedTeleportGroupKey).not.toBeNull();
+      fireEvent.click(row);
+      expect(useMazeStore.getState().selectedTeleportGroupKey).toBeNull();
+    });
+
+    it("Escape clears a selected group", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0 },
+          { id: 1, x: 5, y: 5, i: 0 },
+        ],
+        edges: [
+          { from: 0, to: 1, kind: "teleport" },
+          { from: 1, to: 0, kind: "teleport" },
+        ],
+        vectorByWallsSettings: { ...useMazeStore.getState().vectorByWallsSettings, teleportGroupCustomization: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      const row = document.querySelector(".teleport-group-row")!;
+      fireEvent.click(row);
+      expect(useMazeStore.getState().selectedTeleportGroupKey).not.toBeNull();
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(useMazeStore.getState().selectedTeleportGroupKey).toBeNull();
+    });
+
+    it("collapsing the Teleports section clears a selected group", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0 },
+          { id: 1, x: 5, y: 5, i: 0 },
+        ],
+        edges: [
+          { from: 0, to: 1, kind: "teleport" },
+          { from: 1, to: 0, kind: "teleport" },
+        ],
+        vectorByWallsSettings: { ...useMazeStore.getState().vectorByWallsSettings, teleportGroupCustomization: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      const row = document.querySelector(".teleport-group-row")!;
+      fireEvent.click(row);
+      expect(useMazeStore.getState().selectedTeleportGroupKey).not.toBeNull();
+      fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_teleports"]()));
+      expect(useMazeStore.getState().vectorByWallsSectionsExpanded.teleports).toBe(false);
+      expect(useMazeStore.getState().selectedTeleportGroupKey).toBeNull();
+    });
+
+    it("turning group customization off clears a selected group", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0 },
+          { id: 1, x: 5, y: 5, i: 0 },
+        ],
+        edges: [
+          { from: 0, to: 1, kind: "teleport" },
+          { from: 1, to: 0, kind: "teleport" },
+        ],
+        vectorByWallsSettings: { ...useMazeStore.getState().vectorByWallsSettings, teleportGroupCustomization: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      const row = document.querySelector(".teleport-group-row")!;
+      fireEvent.click(row);
+      expect(useMazeStore.getState().selectedTeleportGroupKey).not.toBeNull();
+      // This describe block's own `beforeEach` sets `vectorByWallsSectionsExpanded` to just
+      // `{ teleports: true }`, so the background section (and its "show grid" checkbox) isn't
+      // rendered here — group customization's toggle is the only checkbox on screen.
+      const customizationCheckbox = screen.getAllByRole("checkbox")[0];
+      fireEvent.click(customizationCheckbox);
+      expect(useMazeStore.getState().vectorByWallsSettings.teleportGroupCustomization).toBe(false);
+      expect(useMazeStore.getState().selectedTeleportGroupKey).toBeNull();
+    });
+
+    it("shows a collision warning when two groups resolve to the same color+shape and the connector is \"none\"", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0 },
+          { id: 1, x: 5, y: 5, i: 0 },
+          { id: 2, x: 9, y: 9, i: 0 },
+          { id: 3, x: 3, y: 3, i: 0 },
+        ],
+        edges: [
+          { from: 0, to: 1, kind: "teleport" },
+          { from: 2, to: 3, kind: "teleport" },
+        ],
+        vectorByWallsSettings: {
+          ...useMazeStore.getState().vectorByWallsSettings,
+          teleportGroupCustomization: true,
+          teleportConnectorStyle: "none",
+        },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.getAllByTitle(m["image_export.vector_by_walls.teleport_group_collision"]())).toHaveLength(2);
+    });
+
+    it("does not show a collision warning when a connector line is drawn (groups already distinguishable)", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0 },
+          { id: 1, x: 5, y: 5, i: 0 },
+          { id: 2, x: 9, y: 9, i: 0 },
+          { id: 3, x: 3, y: 3, i: 0 },
+        ],
+        edges: [
+          { from: 0, to: 1, kind: "teleport" },
+          { from: 2, to: 3, kind: "teleport" },
+        ],
+        vectorByWallsSettings: {
+          ...useMazeStore.getState().vectorByWallsSettings,
+          teleportGroupCustomization: true,
+          teleportConnectorStyle: "straight",
+        },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.queryAllByTitle(m["image_export.vector_by_walls.teleport_group_collision"]())).toHaveLength(0);
+    });
   });
 });

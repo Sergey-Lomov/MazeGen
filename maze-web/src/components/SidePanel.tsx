@@ -160,6 +160,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     minHeight: 0,
-    overflow: "hidden",
+    overflowY: "auto",
+    overflowX: "hidden",
   },
 };

@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { computeMixedCells, clipDistance } from "../pixi/renderers/TeleportRenderer";
+import { computeMixedCells, clipDistance, resolvePointFillState, planGroupDrawOrder } from "../pixi/renderers/TeleportRenderer";
+import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
 import type { TeleportEdge } from "../pixi/renderers/types";
+import type { RoutedConnector } from "../pixi/renderers/teleportConnectorRouting";
 
 describe("computeMixedCells", () => {
   it("no edges — no mixed cells", () => {
@@ -54,6 +56,35 @@ describe("computeMixedCells", () => {
   });
 });
 
+describe("resolvePointFillState", () => {
+  // GitHub issue #293 follow-up: the "grouped" pattern's points now resolve fill/outline/mixed the
+  // same way "line"-pattern endpoints do, instead of always drawing filled.
+  it("a two-way teleport's endpoint resolves filled", () => {
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [1, 1], oneWay: false }];
+    expect(resolvePointFillState(edges, 0, 0)).toBe("filled");
+    expect(resolvePointFillState(edges, 1, 1)).toBe("filled");
+  });
+
+  it("a one-way teleport's origin resolves filled, destination resolves outline", () => {
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [1, 1], oneWay: true }];
+    expect(resolvePointFillState(edges, 0, 0)).toBe("filled");
+    expect(resolvePointFillState(edges, 1, 1)).toBe("outline");
+  });
+
+  it("a point with no edges landing on it resolves outline (no filled edge wants it)", () => {
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [1, 1], oneWay: true }];
+    expect(resolvePointFillState(edges, 9, 9)).toBe("outline");
+  });
+
+  it("a point wanted filled by one edge and outline by another resolves mixed", () => {
+    const edges: TeleportEdge[] = [
+      { from: [5, 5], to: [9, 9], oneWay: true },
+      { from: [1, 1], to: [5, 5], oneWay: true },
+    ];
+    expect(resolvePointFillState(edges, 5, 5)).toBe("mixed");
+  });
+});
+
 describe("clipDistance", () => {
   const half = 5.6;
   const strokeWidth = 3;
@@ -75,5 +106,71 @@ describe("clipDistance", () => {
     expect(clip).toBeGreaterThan(half + strokeWidth / 2);
     const geometricClip = clip - strokeWidth / 2;
     expect(Math.max(Math.abs(ux * geometricClip), Math.abs(uy * geometricClip))).toBeCloseTo(half);
+  });
+});
+
+// `planGroupDrawOrder` resolves `TeleportRenderer.renderGroups`'s per-group interleave (a group's
+// own connectors drawn immediately before its own points, then the next group — GitHub issue #293
+// follow-up: previously "every connector, then every marker" globally) — pure, so testable without
+// a `Graphics` mock.
+describe("planGroupDrawOrder", () => {
+  const routed = (): RoutedConnector => ({ points: [0, 0, 1, 1] });
+
+  it("one group, one connector — single plan entry carrying that connector", () => {
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [5, 5], oneWay: false, fromNode: 1, toNode: 2 }];
+    const groups = buildTeleportGroups(edges);
+    const connectors = [{ edge: edges[0], routed: routed(), color: 0 }];
+    const plan = planGroupDrawOrder(groups, connectors, null);
+    expect(plan).toHaveLength(1);
+    expect(plan[0].group.key).toBe(groups[0].key);
+    expect(plan[0].connectors).toEqual(connectors);
+  });
+
+  it("two independent groups — plan preserves groups' own order, each with only its own connector", () => {
+    const edges: TeleportEdge[] = [
+      { from: [0, 0], to: [5, 5], oneWay: false, fromNode: 1, toNode: 2 },
+      { from: [9, 9], to: [3, 3], oneWay: false, fromNode: 10, toNode: 11 },
+    ];
+    const groups = buildTeleportGroups(edges);
+    const connectors = edges.map((edge) => ({ edge, routed: routed(), color: 0 }));
+    const plan = planGroupDrawOrder(groups, connectors, null);
+    expect(plan).toHaveLength(2);
+    expect(plan.map((p) => p.group.key)).toEqual(groups.map((g) => g.key));
+    // Each group's bucket contains only the connector whose endpoints land in that group — not
+    // every connector globally (the bug this interleave replaces would draw all connectors first).
+    for (const entry of plan) {
+      expect(entry.connectors).toHaveLength(1);
+      expect(groups.find((g) => g.key === entry.group.key)!.edgeKeys).toContain(
+        entry.connectors[0].edge.fromNode! < entry.connectors[0].edge.toNode!
+          ? `${entry.connectors[0].edge.fromNode}-${entry.connectors[0].edge.toNode}`
+          : `${entry.connectors[0].edge.toNode}-${entry.connectors[0].edge.fromNode}`,
+      );
+    }
+  });
+
+  it("selectedKey filters to just the matching group, in visibility order", () => {
+    const edges: TeleportEdge[] = [
+      { from: [0, 0], to: [5, 5], oneWay: false, fromNode: 1, toNode: 2 },
+      { from: [9, 9], to: [3, 3], oneWay: false, fromNode: 10, toNode: 11 },
+    ];
+    const groups = buildTeleportGroups(edges);
+    const connectors = edges.map((edge) => ({ edge, routed: routed(), color: 0 }));
+    const plan = planGroupDrawOrder(groups, connectors, groups[0].key);
+    expect(plan).toHaveLength(1);
+    expect(plan[0].group.key).toBe(groups[0].key);
+  });
+
+  it("a connector whose endpoints match no group is dropped from the plan, not thrown", () => {
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [5, 5], oneWay: false, fromNode: 1, toNode: 2 }];
+    const groups = buildTeleportGroups(edges);
+    const strayEdge: TeleportEdge = { from: [50, 50], to: [60, 60], oneWay: false, fromNode: 99, toNode: 100 };
+    const connectors = [{ edge: strayEdge, routed: routed(), color: 0 }];
+    const plan = planGroupDrawOrder(groups, connectors, null);
+    expect(plan).toHaveLength(1);
+    expect(plan[0].connectors).toHaveLength(0);
+  });
+
+  it("no groups — empty plan", () => {
+    expect(planGroupDrawOrder([], [], null)).toEqual([]);
   });
 });

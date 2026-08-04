@@ -36,6 +36,21 @@ beforeEach(() => {
       oneWayJoin: "round",
       startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 },
       finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 },
+      teleportLineCornerStyle: "sharp",
+      teleportLineShape: "square",
+      teleportLineSize: 0.3,
+      teleportEdgeColor: canvas.teleport.default,
+      teleportEdgeBorderColor: canvas.teleport.default,
+      teleportEdgeBorderWidth: 3,
+      teleportConnectorColor: canvas.teleport.default,
+      teleportConnectorWidth: 3,
+      teleportConnectorStyle: "straight",
+      teleportArrowMode: "center",
+      teleportArrowPeriod: 5,
+      teleportArrowSize: 6,
+      teleportConnectorBorderWidth: 0,
+      teleportGroupCustomization: false,
+      teleportGroupOverrides: {},
     },
   });
 });
@@ -91,6 +106,21 @@ describe("mazeStore vectorByWallsSettings", () => {
       oneWayJoin: "round",
       startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 },
       finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 },
+      teleportLineCornerStyle: "sharp",
+      teleportLineShape: "square",
+      teleportLineSize: 0.3,
+      teleportEdgeColor: canvas.teleport.default,
+      teleportEdgeBorderColor: canvas.teleport.default,
+      teleportEdgeBorderWidth: 3,
+      teleportConnectorColor: canvas.teleport.default,
+      teleportConnectorWidth: 3,
+      teleportConnectorStyle: "straight",
+      teleportArrowMode: "center",
+      teleportArrowPeriod: 5,
+      teleportArrowSize: 6,
+      teleportConnectorBorderWidth: 0,
+      teleportGroupCustomization: false,
+      teleportGroupOverrides: {},
     });
   });
 
@@ -181,12 +211,12 @@ describe("mazeStore vectorByWallsSettings", () => {
   });
 
   it("setVectorByWallsFinishMarkerShape/FillColor/BorderColor/BorderWidth update only the finish marker", () => {
-    useMazeStore.getState().setVectorByWallsFinishMarkerShape("star5");
+    useMazeStore.getState().setVectorByWallsFinishMarkerShape("star");
     useMazeStore.getState().setVectorByWallsFinishMarkerFillColor(0x333333);
     useMazeStore.getState().setVectorByWallsFinishMarkerBorderColor(0x444444);
     useMazeStore.getState().setVectorByWallsFinishMarkerBorderWidth(5);
     const settings = useMazeStore.getState().vectorByWallsSettings;
-    expect(settings.finishMarker).toEqual({ shape: "star5", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 5 });
+    expect(settings.finishMarker).toEqual({ shape: "star", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 5 });
     expect(settings.startMarker.fillColor).toBe(canvas.node.start);
   });
 

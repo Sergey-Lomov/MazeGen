@@ -23,7 +23,23 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     oneWayJoin: "round",
     startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 },
     finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 },
+    teleportLineCornerStyle: "round",
+    teleportLineShape: "diamond",
+    teleportLineSize: 0.16,
+    teleportEdgeColor: canvas.teleport.default,
+    teleportEdgeBorderColor: canvas.teleport.default,
+    teleportEdgeBorderWidth: 3,
+    teleportConnectorColor: canvas.teleport.default,
+    teleportConnectorWidth: 3,
+    teleportConnectorStyle: "orthogonal",
+    teleportArrowMode: "periodic",
+    teleportArrowPeriod: 5,
+    teleportArrowSize: 10,
+    teleportConnectorBorderWidth: 3,
+    teleportGroupCustomization: false,
+    teleportGroupOverrides: {},
   },
+  selectedTeleportGroupKey: null,
 
   setActiveRenderMode: (mode) => set({ activeRenderMode: mode }),
   setOpenRenderModeSettings: (mode) => set({ openRenderModeSettings: mode }),
@@ -71,4 +87,40 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, borderColor: color } } })),
   setVectorByWallsFinishMarkerBorderWidth: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, borderWidth: v } } })),
+  setVectorByWallsTeleportLineCornerStyle: (style) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportLineCornerStyle: style } })),
+  setVectorByWallsTeleportLineShape: (shape) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportLineShape: shape } })),
+  setVectorByWallsTeleportLineSize: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportLineSize: v } })),
+  setVectorByWallsTeleportEdgeColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportEdgeColor: color } })),
+  setVectorByWallsTeleportEdgeBorderColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportEdgeBorderColor: color } })),
+  setVectorByWallsTeleportEdgeBorderWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportEdgeBorderWidth: v } })),
+  setVectorByWallsTeleportConnectorColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportConnectorColor: color } })),
+  setVectorByWallsTeleportConnectorWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportConnectorWidth: v } })),
+  setVectorByWallsTeleportConnectorStyle: (style) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportConnectorStyle: style } })),
+  setVectorByWallsTeleportArrowMode: (mode) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportArrowMode: mode } })),
+  setVectorByWallsTeleportArrowPeriod: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportArrowPeriod: v } })),
+  setVectorByWallsTeleportArrowSize: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportArrowSize: v } })),
+  setVectorByWallsTeleportConnectorBorderWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportConnectorBorderWidth: v } })),
+  setVectorByWallsTeleportGroupCustomization: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportGroupCustomization: v } })),
+  setVectorByWallsTeleportGroupOverride: (groupKey, patch) =>
+    set((s) => {
+      const overrides = { ...s.vectorByWallsSettings.teleportGroupOverrides };
+      if (patch === null) delete overrides[groupKey];
+      else overrides[groupKey] = { ...overrides[groupKey], ...patch };
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportGroupOverrides: overrides } };
+    }),
+  setSelectedTeleportGroupKey: (key) => set({ selectedTeleportGroupKey: key }),
 });

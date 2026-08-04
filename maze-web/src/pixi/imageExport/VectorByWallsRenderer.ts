@@ -8,7 +8,7 @@ import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer } from "../renderers/SplitJunctionRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages } from "../selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { Viewport, WallEdge, TeleportEdge, SplitPassage, WallStyleOverride, OneWayStyleOverride } from "../renderers/types";
+import type { Viewport, WallEdge, TeleportEdge, SplitPassage, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle } from "../renderers/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 
@@ -49,6 +49,27 @@ export function buildOneWayStyle(settings: ReturnType<typeof useMazeStore.getSta
     thickness: settings.oneWayThickness,
     join: settings.oneWayJoin,
     cap: settings.oneWayJoin === "miter" ? "square" : "round",
+  };
+}
+
+/** Builds `TeleportRenderer`'s style from `VectorByWallsSettings` — exported for the same
+ *  testability reason as `buildWallStyle`/`buildOneWayStyle` (GitHub issue #293). */
+export function buildTeleportLineStyle(settings: ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]): TeleportLineStyle {
+  return {
+    shape: settings.teleportLineShape,
+    cornerStyle: settings.teleportLineCornerStyle,
+    size: settings.teleportLineSize,
+    edgeColor: settings.teleportEdgeColor,
+    edgeBorderColor: settings.teleportEdgeBorderColor,
+    borderWidth: settings.teleportEdgeBorderWidth,
+    connectorColor: settings.teleportConnectorColor,
+    connectorWidth: settings.teleportConnectorWidth,
+    connectorStyle: settings.teleportConnectorStyle,
+    arrowMode: settings.teleportArrowMode,
+    arrowPeriod: settings.teleportArrowPeriod,
+    arrowSize: settings.teleportArrowSize,
+    connectorBorderWidth: settings.teleportConnectorBorderWidth,
+    floorColor: settings.floorColor,
   };
 }
 
@@ -141,8 +162,13 @@ export class VectorByWallsRenderer {
         state.activeTessellationConfig !== prev.activeTessellationConfig;
 
       const settingsChanged = state.vectorByWallsSettings !== prev.vectorByWallsSettings;
+      // Teleports section's own expand/collapse flips `interactive` on group customization's
+      // canvas hover wiring (GitHub issue #293) — a plain `sectionsExpanded` change wouldn't
+      // otherwise trigger `renderAll` since it isn't part of `vectorByWallsSettings`.
+      const teleportsSectionChanged =
+        (state.vectorByWallsSectionsExpanded["teleports"] ?? false) !== (prev.vectorByWallsSectionsExpanded["teleports"] ?? false);
 
-      if ((dataChanged || settingsChanged) && state.openCard === "image_export") {
+      if ((dataChanged || settingsChanged || teleportsSectionChanged) && state.openCard === "image_export") {
         this.renderAll(state);
       }
 
@@ -229,7 +255,13 @@ export class VectorByWallsRenderer {
     this.closedCells.render({ cells: this.geometryCache.closedCells, color: state.vectorByWallsSettings.wallColor, alpha: 1 }, cfg);
     this.walls.render({ edges: this.geometryCache.wallEdges }, cfg, wallStyle, oneWayStyle);
     this.splitJunctions.render({ passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces }, wallStyle);
-    this.teleports.render({ edges: this.geometryCache.teleportEdges });
+    this.teleports.render({
+      edges: this.geometryCache.teleportEdges,
+      lineStyle: buildTeleportLineStyle(state.vectorByWallsSettings),
+      groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
+      groupOverrides: state.vectorByWallsSettings.teleportGroupOverrides,
+      interactive: state.vectorByWallsSectionsExpanded["teleports"] ?? false,
+    });
 
     const { startMarker, finishMarker } = state.vectorByWallsSettings;
     const markerData = buildMazeMarkers(nodeById, start, finish, cfg, startMarker, finishMarker);

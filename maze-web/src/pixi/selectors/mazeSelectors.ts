@@ -459,6 +459,8 @@ export function buildTeleportEdges(
       from: [fromPos.x, fromPos.y],
       to: [toPos.x, toPos.y],
       oneWay: !reverseExists,
+      fromNode: e.from,
+      toNode: e.to,
     });
   }
 

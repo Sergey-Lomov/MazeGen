@@ -100,7 +100,14 @@ export type EdgeHL = {
   bidirectional?: boolean;
 };
 
-export type MarkerShape = "circle" | "square" | "diamond" | "triangle" | "star5";
+/** Shared point-marker shape set (GitHub issue #293 follow-up) — one enum for every drawn "point"
+ *  marker: start/finish waypoints (`WaypointsRenderer`) and both teleport patterns
+ *  (`TeleportRenderer`). Previously two separate types (`MarkerShape` with 5 values for waypoints,
+ *  `TeleportShape` with 9 for teleports, including `crescent` — removed per issue #293 follow-up,
+ *  a moon shape that read poorly at marker scale); unified into this one 8-value set so both
+ *  pickers offer the exact same shapes and neither renderer's drawing code diverges from the
+ *  other's for shapes both use. */
+export type MarkerShape = "circle" | "triangle" | "square" | "diamond" | "pentagon" | "star" | "hexagon" | "cross";
 
 /** `borderWidth: 0` (the default) draws no border — see GitHub issue #296. */
 export type MarkerData = {
@@ -113,7 +120,89 @@ export type MarkerData = {
 };
 
 /** A cell draws half-filled when the markers landing on it disagree: some edge wants a filled
- * square there and some (other) edge wants an outline square there. */
-export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean };
+ * square there and some (other) edge wants an outline square there. `fromNode`/`toNode` (GitHub
+ * issue #293) are the underlying node ids — optional since only `VectorByWallsRenderer` needs them
+ * (for `buildTeleportGroups`' point-coincidence merging); every other caller (`GenerationRenderer`,
+ * `PresetConnectionsRenderer`) omits them. */
+export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean; fromNode?: number; toNode?: number };
+
+/** Sharp (plain polygon corners) vs. round (`Graphics.roundPoly`-rounded) corners — one shared
+ *  setting for every teleport marker (GitHub issue #293 follow-up). Only affects the four
+ *  regular-polygon `MarkerShape`s (`triangle`/`square`/`diamond`/`pentagon`/`hexagon` — see
+ *  `drawMarkerShape`'s `rounded` param); `circle` has no corners, `star`/`cross` have no
+ *  regular-polygon equivalent to round. */
+export type TeleportCornerStyle = "sharp" | "round";
+
+/** `"none"`: no connector line at all, just the two endpoint markers — with "group customization"
+ *  enabled (see `TeleportGroupOverride`) this reproduces the old, now-removed `"grouped"` pattern's
+ *  look. `"straight"`: connector runs directly center-to-center. `"orthogonal"`: connector runs as
+ *  a single-bend axis-aligned path (horizontal segment then vertical, or vice versa — whichever
+ *  orientation collides with fewer other connectors' segments, see `routeOrthogonalConnector` in
+ *  `teleportConnectorRouting.ts`), offset perpendicular to itself wherever it locally overlaps
+ *  another connector's segment, so parallel runs read as distinct lines instead of one merged
+ *  stroke. */
+export type TeleportConnectorStyle = "none" | "straight" | "orthogonal";
+
+/** How a one-way connector draws its direction arrow(s) (GitHub issue #293 follow-up):
+ *  - `"none"`: no arrow.
+ *  - `"center"`: one arrow at the path's length-weighted midpoint (the original, still-default
+ *    look).
+ *  - `"double"`: two arrows, at 33% and 66% of the path's length.
+ *  - `"periodic"`: arrows repeating every `arrowPeriod` tile-widths along the path, starting
+ *    `arrowPeriod / 2` in (so a short connector still gets at least one arrow instead of none). */
+export type TeleportArrowMode = "none" | "center" | "double" | "periodic";
+
+/** The teleport renderer's one and only per-call style now (GitHub issue #293 follow-up removed the
+ *  separate `"grouped"` pattern and its own style — group customization is an overlay on top of
+ *  this, see `TeleportGroupOverride`), built from `VectorByWallsSettings` — mirrors
+ *  `OneWayStyleOverride`'s shape. `borderWidth: 0` draws no border around the endpoint shape.
+ *  `connectorColor`/`connectorWidth` are unused when `connectorStyle` is `"none"` or a teleport
+ *  pair's two endpoints coincide (zero-length line, nothing to draw). `size` is the marker's own
+ *  radius as a fraction of the tile size (0-1, same convention as `OneWayStyleOverride.size` —
+ *  scaled into world-space via `TILE_SIZE` by the caller), not a fixed pixel radius, so it scales
+ *  with tessellation the same way the one-way indicator does. */
+export type TeleportLineStyle = {
+  shape: MarkerShape;
+  cornerStyle: TeleportCornerStyle;
+  size: number;
+  edgeColor: number;
+  /** Independent from `edgeColor` — a marker's border doesn't have to mirror its fill color. */
+  edgeBorderColor: number;
+  borderWidth: number;
+  connectorColor: number;
+  connectorWidth: number;
+  connectorStyle: TeleportConnectorStyle;
+  arrowMode: TeleportArrowMode;
+  /** Tile-width period between arrows in `"periodic"` mode — unused otherwise. */
+  arrowPeriod: number;
+  /** Arrow size, independent of `connectorWidth` (previously always `connectorWidth * 2`) — passed
+   *  straight through to `drawDirectionArrow`'s own `size` param. */
+  arrowSize: number;
+  /** Connector border width (GitHub issue #293 follow-up) — `0` (the default) draws no border.
+   *  When positive, the connector (line and every arrow it draws) is drawn twice: once at
+   *  `connectorWidth + 2 * connectorBorderWidth` in `floorColor` (underneath, the `2x` since the
+   *  border wraps both sides of the stroke, same convention as a filled shape's own inward
+   *  border), then again at `connectorWidth` in `connectorColor` on top — reads as a floor-colored
+   *  outline around the whole connector including its arrowheads, not just the line. */
+  connectorBorderWidth: number;
+  /** Floor color (GitHub issue #293 follow-up) — the connecting line now runs center-to-center
+   *  (not clipped to the marker's border), drawn *underneath* every marker shape, so an outline
+   *  (unfilled) marker needs its own floor-colored fill to occlude the line segment passing through
+   *  its center; a filled marker already occludes it with `edgeColor`. */
+  floorColor: number;
+};
+
+/** "Group customization" (GitHub issue #293 follow-up, replacing the old standalone `"grouped"`
+ *  pattern) — an optional per-group override layered on top of the normal `TeleportLineStyle`
+ *  drawing, active when `VectorByWallsSettings.teleportGroupCustomization` is on. Teleport pairs
+ *  are still merged into groups wherever an endpoint coordinate coincides (see
+ *  `buildTeleportGroups`), each group's own key (sorted, joined edge keys of its members) indexing
+ *  into `VectorByWallsSettings.teleportGroupOverrides` so the override survives group-list
+ *  reordering across renders. `fillColor`/`shape` each fall back to the base `TeleportLineStyle`'s
+ *  `edgeColor`/`shape` when unset; `borderColor` (fallback: `edgeBorderColor`) drives *both* the
+ *  marker's own border and, if this group's points have a connector running through them, that
+ *  connector's color too — one swatch, not two, since a mismatched border/connector color on the
+ *  same group reads as a mistake rather than a deliberate choice. */
+export type TeleportGroupOverride = { fillColor?: number; borderColor?: number; shape?: MarkerShape };
 
 export type LockEntry = { x: number; y: number; type: "in" | "out" | "both" };

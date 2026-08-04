@@ -120,3 +120,19 @@ input[type="number"]::-webkit-inner-spin-button {
 .hoverable-selected:hover {
   filter: none;
 }
+
+/* Teleport group row (VectorByWallsSettingsPanel, GitHub issue #293 follow-up) — plain mouse-over
+   feedback for the row's own click affordance (independent of selection state). */
+.teleport-group-row:hover {
+  border-color: #666;
+}
+
+/* Selected state — click-driven (`selectedTeleportGroupKey`, not hover — see the row component's
+   own doc comment for why the earlier hover-based version was replaced), set by either clicking the
+   row itself or clicking the matching group's marker(s) on the canvas. A `data-*` attribute driven
+   by React state rather than an inline style purely for consistency with the row's own `:hover`
+   rule (both can be true at once without one overriding the other's specificity). */
+.teleport-group-row[data-selected="true"] {
+  border-color: #888;
+  background: #2d2d2d;
+}

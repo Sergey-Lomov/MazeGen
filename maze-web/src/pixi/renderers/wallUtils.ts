@@ -40,6 +40,7 @@ export function drawDirectionArrow(
   dy: number,
   size: number,
   color?: number,
+  alpha = 1,
 ): void {
   const px = -dy;
   const py = dx;
@@ -52,7 +53,7 @@ export function drawDirectionArrow(
     baseX + px * size * 0.6, baseY + py * size * 0.6,
     baseX - px * size * 0.6, baseY - py * size * 0.6,
   ]);
-  g.fill(color ?? canvas.edge.oneWay);
+  g.fill({ color: color ?? canvas.edge.oneWay, alpha });
 }
 
 // Draws a filled equilateral triangle one-way indicator, optionally bordered, centered at

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { viewportWorldRect, buildWallStyle, buildOneWayStyle } from "../pixi/imageExport/VectorByWallsRenderer";
+import { viewportWorldRect, buildWallStyle, buildOneWayStyle, buildTeleportLineStyle } from "../pixi/imageExport/VectorByWallsRenderer";
 import { TILE_SIZE } from "../pixi/constants";
 import type { VectorByWallsSettings } from "../store/storeTypes";
 
@@ -20,6 +20,21 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     oneWayJoin: "round",
     startMarker: { shape: "circle", fillColor: 0, borderColor: 0, borderWidth: 0 },
     finishMarker: { shape: "circle", fillColor: 0, borderColor: 0, borderWidth: 0 },
+    teleportLineCornerStyle: "sharp",
+    teleportLineShape: "square",
+    teleportLineSize: 0.3,
+    teleportEdgeColor: 0,
+    teleportEdgeBorderColor: 0,
+    teleportEdgeBorderWidth: 3,
+    teleportConnectorColor: 0,
+    teleportConnectorWidth: 3,
+    teleportConnectorStyle: "straight",
+    teleportArrowMode: "center",
+    teleportArrowPeriod: 5,
+    teleportArrowSize: 6,
+    teleportConnectorBorderWidth: 0,
+    teleportGroupCustomization: false,
+    teleportGroupOverrides: {},
     ...overrides,
   };
 }
@@ -65,3 +80,30 @@ describe("buildOneWayStyle", () => {
     expect(buildOneWayStyle(baseSettings({ oneWayJoin: "round" })).cap).toBe("round");
   });
 });
+
+describe("buildTeleportLineStyle", () => {
+  it("maps line-pattern settings straight through", () => {
+    const style = buildTeleportLineStyle(baseSettings({
+      teleportLineCornerStyle: "round",
+      teleportLineShape: "star",
+      teleportLineSize: 0.4,
+      teleportEdgeColor: 0x111,
+      teleportEdgeBorderColor: 0x112,
+      teleportEdgeBorderWidth: 5,
+      teleportConnectorColor: 0x222,
+      teleportConnectorWidth: 7,
+      teleportConnectorStyle: "orthogonal",
+      teleportArrowMode: "periodic",
+      teleportArrowPeriod: 8,
+      teleportArrowSize: 11,
+      teleportConnectorBorderWidth: 9,
+      floorColor: 0x999,
+    }));
+    expect(style).toEqual({
+      shape: "star", cornerStyle: "round", size: 0.4, edgeColor: 0x111, edgeBorderColor: 0x112, borderWidth: 5,
+      connectorColor: 0x222, connectorWidth: 7, connectorStyle: "orthogonal",
+      arrowMode: "periodic", arrowPeriod: 8, arrowSize: 11, connectorBorderWidth: 9, floorColor: 0x999,
+    });
+  });
+});
+

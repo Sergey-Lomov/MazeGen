@@ -120,12 +120,15 @@ export const sharedStyles = {
     cursor: "not-allowed",
   } satisfies React.CSSProperties,
 
-  // Slider row (label + range + value)
+  // Slider row (label + range + value) — explicit `controlRowHeight` so it lines up with
+  // `ColorRow`/`SelectRow`/`ToggleRow`, which all size their own control (`ColorSwatch`, `select`,
+  // `Switch`) to that same height; the range `<input>` has no equivalent sizing of its own.
   sliderRow: {
     display: "flex",
     alignItems: "center",
     gap: spacing.rowGap,
-    marginBottom: spacing.itemGap,
+    height: controlRowHeight,
+    boxSizing: "border-box",
   } satisfies React.CSSProperties,
 
   sliderRowLabel: {
