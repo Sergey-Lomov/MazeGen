@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { viewportWorldRect, buildWallStyle, buildOneWayStyle, buildTeleportLineStyle } from "../pixi/imageExport/VectorByWallsRenderer";
+import { viewportWorldRect, buildWallStyle, buildOneWayStyle, buildTeleportLineStyle, buildEffectiveSplitNodeColors } from "../pixi/imageExport/VectorByWallsRenderer";
 import { TILE_SIZE } from "../pixi/constants";
+import { splitSlotColor } from "../pixi/colorUtils";
+import { canvas } from "../pixi/colorTokens";
 import type { VectorByWallsSettings } from "../store/storeTypes";
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
@@ -35,6 +37,8 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportConnectorBorderWidth: 0,
     teleportGroupCustomization: false,
     teleportGroupOverrides: {},
+    splitNodeColors: [],
+    splitSpecialShapes: false,
     ...overrides,
   };
 }
@@ -104,6 +108,23 @@ describe("buildTeleportLineStyle", () => {
       connectorColor: 0x222, connectorWidth: 7, connectorStyle: "orthogonal",
       arrowMode: "periodic", arrowPeriod: 8, arrowSize: 11, connectorBorderWidth: 9, floorColor: 0x999,
     });
+  });
+});
+
+describe("buildEffectiveSplitNodeColors", () => {
+  it("an untouched (empty) splitNodeColors falls back to splitSlotColor's own default palette — GitHub issue: colors mismatched panel vs. canvas until first edit", () => {
+    const result = buildEffectiveSplitNodeColors([], 2);
+    expect(result).toEqual([splitSlotColor(0, canvas.node.splitSlots), splitSlotColor(1, canvas.node.splitSlots)]);
+  });
+
+  it("a user-set slot overrides the default, untouched slots still fall back", () => {
+    const result = buildEffectiveSplitNodeColors([0xabcdef], 3);
+    expect(result).toEqual([0xabcdef, splitSlotColor(1, canvas.node.splitSlots), splitSlotColor(2, canvas.node.splitSlots)]);
+  });
+
+  it("returns at least splitNodeColors.length entries even when maxSplit is smaller (e.g. after a maze regenerate shrinks the point)", () => {
+    const result = buildEffectiveSplitNodeColors([0x111, 0x222, 0x333], 1);
+    expect(result).toEqual([0x111, 0x222, 0x333]);
   });
 });
 

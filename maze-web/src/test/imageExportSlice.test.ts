@@ -3,6 +3,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { canvas } from "../pixi/colorTokens";
 import { WALL_THICKNESS } from "../pixi/renderConstants";
+import { splitSlotColor } from "../pixi/colorUtils";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -51,6 +52,8 @@ beforeEach(() => {
       teleportConnectorBorderWidth: 0,
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
+      splitNodeColors: [],
+      splitSpecialShapes: false,
     },
   });
 });
@@ -121,6 +124,8 @@ describe("mazeStore vectorByWallsSettings", () => {
       teleportConnectorBorderWidth: 0,
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
+      splitNodeColors: [],
+      splitSpecialShapes: false,
     });
   });
 
@@ -218,6 +223,39 @@ describe("mazeStore vectorByWallsSettings", () => {
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.finishMarker).toEqual({ shape: "star", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 5 });
     expect(settings.startMarker.fillColor).toBe(canvas.node.start);
+  });
+
+  it("setVectorByWallsSplitNodeColor sets a slot directly adjacent to the current array end", () => {
+    useMazeStore.getState().setVectorByWallsSplitNodeColor(0, 0xaaaaaa);
+    expect(useMazeStore.getState().vectorByWallsSettings.splitNodeColors).toEqual([0xaaaaaa]);
+    useMazeStore.getState().setVectorByWallsSplitNodeColor(1, 0xbbbbbb);
+    expect(useMazeStore.getState().vectorByWallsSettings.splitNodeColors).toEqual([0xaaaaaa, 0xbbbbbb]);
+  });
+
+  it("setVectorByWallsSplitNodeColor backfills any skipped intermediate slots with splitSlotColor's own default", () => {
+    // Setting index 2 directly (array starts empty) must fill slots 0/1 with their default
+    // palette color, not leave them undefined/sparse.
+    useMazeStore.getState().setVectorByWallsSplitNodeColor(2, 0xcccccc);
+    const colors = useMazeStore.getState().vectorByWallsSettings.splitNodeColors;
+    expect(colors).toEqual([
+      splitSlotColor(0, canvas.node.splitSlots),
+      splitSlotColor(1, canvas.node.splitSlots),
+      0xcccccc,
+    ]);
+  });
+
+  it("setVectorByWallsSplitNodeColor overwrites an already-set slot without touching others", () => {
+    useMazeStore.getState().setVectorByWallsSplitNodeColor(0, 0x111111);
+    useMazeStore.getState().setVectorByWallsSplitNodeColor(1, 0x222222);
+    useMazeStore.getState().setVectorByWallsSplitNodeColor(0, 0x999999);
+    expect(useMazeStore.getState().vectorByWallsSettings.splitNodeColors).toEqual([0x999999, 0x222222]);
+  });
+
+  it("setVectorByWallsSplitSpecialShapes toggles the flag", () => {
+    useMazeStore.getState().setVectorByWallsSplitSpecialShapes(true);
+    expect(useMazeStore.getState().vectorByWallsSettings.splitSpecialShapes).toBe(true);
+    useMazeStore.getState().setVectorByWallsSplitSpecialShapes(false);
+    expect(useMazeStore.getState().vectorByWallsSettings.splitSpecialShapes).toBe(false);
   });
 
   it("reset() does NOT clear vectorByWallsSettings — export settings are an independent layer from maze data", () => {

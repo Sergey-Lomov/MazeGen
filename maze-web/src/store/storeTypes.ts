@@ -910,6 +910,20 @@ export interface VectorByWallsSettings {
   /** Off by default — see this interface's own Teleports-section doc comment above. */
   teleportGroupCustomization: boolean;
   teleportGroupOverrides: Record<string, TeleportGroupOverride>;
+  /** Splits section (GitHub issue #294) — per-split-node-slot identity colors, indexed by slot
+   *  (0 = original node, 1 = first extra node, ...), overriding `splitSlotColor`'s default palette
+   *  one-to-one; a point with more nodes than this array's length falls back to the default
+   *  palette for the overflow slots. The settings panel sizes this array to the maximum split-node
+   *  count actually present in the current maze (0 nodes when there's no maze/no split points),
+   *  defaulting each slot's initial value to `splitSlotColor`'s own default so the exported image
+   *  matches the editor's look until changed. */
+  splitNodeColors: number[];
+  /** On by default (mirrors `SplitJunctionRenderer.render`'s own default for every other
+   *  split-drawing feature). When on, recognized degree-4 split topologies ("bridge": two nodes
+   *  each a straight-through opposite-face pair; "diagonal divider": two nodes each an
+   *  adjacent-face pair) draw as a dedicated shape (see `SplitSpecialShapeKind`) instead of the
+   *  generic per-node segment/connector reading. */
+  splitSpecialShapes: boolean;
 }
 
 export interface ImageExportState {
@@ -976,6 +990,11 @@ export interface ImageExportActions {
   setVectorByWallsTeleportGroupCustomization: (v: boolean) => void;
   setVectorByWallsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
   setSelectedTeleportGroupKey: (key: string | null) => void;
+  /** Sets slot `index`'s color, growing `splitNodeColors` (filling any new intermediate slots with
+   *  `splitSlotColor`'s own default) if `index` is past the array's current end — see GitHub issue
+   *  #294. */
+  setVectorByWallsSplitNodeColor: (index: number, color: number) => void;
+  setVectorByWallsSplitSpecialShapes: (v: boolean) => void;
 }
 
 export interface RootActions {

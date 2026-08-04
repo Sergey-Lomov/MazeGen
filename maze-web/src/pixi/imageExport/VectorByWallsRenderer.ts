@@ -6,11 +6,28 @@ import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer } from "../renderers/SplitJunctionRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages } from "../selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, maxSplitNodeCount } from "../selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { Viewport, WallEdge, TeleportEdge, SplitPassage, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle } from "../renderers/types";
+import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle } from "../renderers/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
+import { canvas } from "../colorTokens";
+import { splitSlotColor } from "../colorUtils";
+
+/** Fills in `splitNodeColors`' missing slots with `splitSlotColor`'s own default palette (GitHub
+ *  issue #294 follow-up) — `splitNodeColors` only holds entries for slots the user has actually
+ *  edited (starts `[]`), so passing it straight through to `buildSplitPassages` would make
+ *  `splitSlotColor` treat every slot as "past the fixed set" (empty `fixedSlots`), landing on
+ *  `buildPalette`'s rotating-hue colors instead of `canvas.node.splitSlots` — visibly different
+ *  from what the settings panel itself shows for an untouched slot, until the user edits every
+ *  slot at least once. Exported as a pure function for unit-testability, same rationale as
+ *  `viewportWorldRect`/`buildWallStyle`. */
+export function buildEffectiveSplitNodeColors(splitNodeColors: readonly number[], maxSplit: number): number[] {
+  return Array.from(
+    { length: Math.max(splitNodeColors.length, maxSplit) },
+    (_, i) => splitNodeColors[i] ?? splitSlotColor(i, canvas.node.splitSlots),
+  );
+}
 
 /** World-space rect covering the whole visible viewport — the inverse of the pan/zoom transform
  *  applied to the scene container (`x`/`y` are the container's own screen-space offset, so the
@@ -107,11 +124,13 @@ export class VectorByWallsRenderer {
     cfg: TessellationConfig;
     start: number | null;
     finish: number | null;
+    splitNodeColors: readonly number[];
     closedCells: [number, number][];
     wallEdges: WallEdge[];
     teleportEdges: TeleportEdge[];
     splitPassages: SplitPassage[];
     splitWallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
+    splitSpecialShapes: SplitSpecialShape[];
   } | null = null;
 
   constructor(container: Container) {
@@ -221,13 +240,15 @@ export class VectorByWallsRenderer {
 
     const nodeById = new Map(nodes.map(n => [n.id, n]));
 
+    const splitNodeColors = state.vectorByWallsSettings.splitNodeColors;
     if (
       !this.geometryCache ||
       this.geometryCache.nodes !== nodes ||
       this.geometryCache.edges !== edges ||
       this.geometryCache.cfg !== cfg ||
       this.geometryCache.start !== start ||
-      this.geometryCache.finish !== finish
+      this.geometryCache.finish !== finish ||
+      this.geometryCache.splitNodeColors !== splitNodeColors
     ) {
       const specialNodeIds = new Set<number>();
       if (start !== null) specialNodeIds.add(start);
@@ -236,25 +257,34 @@ export class VectorByWallsRenderer {
         if (e.kind === "teleport") { specialNodeIds.add(e.from); specialNodeIds.add(e.to); }
       }
 
-      const { passages: splitPassages, wallFaces: splitWallFaces } = buildSplitPassages(nodes, edges, cfg, specialNodeIds);
+      const effectiveNodeColors = buildEffectiveSplitNodeColors(splitNodeColors, maxSplitNodeCount(nodes));
+      const { passages: splitPassages, wallFaces: splitWallFaces, specialShapes: splitSpecialShapes } =
+        buildSplitPassages(nodes, edges, cfg, specialNodeIds, {}, {}, effectiveNodeColors);
       this.geometryCache = {
         nodes,
         edges,
         cfg,
         start,
         finish,
+        splitNodeColors,
         closedCells: buildClosedCells(nodes, edges),
         wallEdges: buildMazeWalls(nodes, edges, cfg),
         teleportEdges: buildTeleportEdges(nodeById, edges, cfg),
         splitPassages,
         splitWallFaces,
+        splitSpecialShapes,
       };
     }
     const wallStyle = buildWallStyle(state.vectorByWallsSettings);
     const oneWayStyle = buildOneWayStyle(state.vectorByWallsSettings);
+    const splitStyle: SplitStyleOverride = { specialShapes: state.vectorByWallsSettings.splitSpecialShapes };
     this.closedCells.render({ cells: this.geometryCache.closedCells, color: state.vectorByWallsSettings.wallColor, alpha: 1 }, cfg);
     this.walls.render({ edges: this.geometryCache.wallEdges }, cfg, wallStyle, oneWayStyle);
-    this.splitJunctions.render({ passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces }, wallStyle);
+    this.splitJunctions.render(
+      { passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces, specialShapes: this.geometryCache.splitSpecialShapes },
+      wallStyle,
+      splitStyle,
+    );
     this.teleports.render({
       edges: this.geometryCache.teleportEdges,
       lineStyle: buildTeleportLineStyle(state.vectorByWallsSettings),

@@ -64,8 +64,8 @@ export class MazeOverlayRenderer {
     for (const e of edges) {
       if (e.kind === "teleport") { specialNodeIds.add(e.from); specialNodeIds.add(e.to); }
     }
-    const { passages: splitPassages, wallFaces } = buildSplitPassages(nodes, edges, cfg, specialNodeIds);
-    this.splitJunctions.render({ passages: splitPassages, wallFaces });
+    const { passages: splitPassages, wallFaces, specialShapes } = buildSplitPassages(nodes, edges, cfg, specialNodeIds);
+    this.splitJunctions.render({ passages: splitPassages, wallFaces, specialShapes });
 
     const nodeById = new Map(nodes.map(n => [n.id, n]));
     const teleportEdges = buildTeleportEdges(nodeById, edges, cfg);

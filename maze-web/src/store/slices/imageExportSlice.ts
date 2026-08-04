@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import type { MazeStore, ImageExportState, ImageExportActions } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
 import { WALL_THICKNESS } from "../../pixi/renderConstants";
+import { splitSlotColor } from "../../pixi/colorUtils";
 
 export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExportState & ImageExportActions> = (set) => ({
   activeRenderMode: null,
@@ -38,6 +39,8 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     teleportConnectorBorderWidth: 3,
     teleportGroupCustomization: false,
     teleportGroupOverrides: {},
+    splitNodeColors: [],
+    splitSpecialShapes: true,
   },
   selectedTeleportGroupKey: null,
 
@@ -123,4 +126,13 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       return { vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportGroupOverrides: overrides } };
     }),
   setSelectedTeleportGroupKey: (key) => set({ selectedTeleportGroupKey: key }),
+  setVectorByWallsSplitNodeColor: (index, color) =>
+    set((s) => {
+      const colors = [...s.vectorByWallsSettings.splitNodeColors];
+      while (colors.length <= index) colors.push(splitSlotColor(colors.length, canvas.node.splitSlots));
+      colors[index] = color;
+      return { vectorByWallsSettings: { ...s.vectorByWallsSettings, splitNodeColors: colors } };
+    }),
+  setVectorByWallsSplitSpecialShapes: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, splitSpecialShapes: v } })),
 });

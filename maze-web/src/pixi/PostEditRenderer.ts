@@ -274,8 +274,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const wallEdges = buildMazeWalls(nodes, activeEdges, cfg);
     this.walls.render({ edges: wallEdges }, cfg);
 
-    const { passages: splitPassages, wallFaces } = buildSplitPassages(nodes, activeEdges, cfg, specialNodeIds, state.postEditActiveSplitNode, postEditDraftSplitPoints);
-    this.splitJunctions.render({ passages: splitPassages, wallFaces });
+    const { passages: splitPassages, wallFaces, specialShapes } = buildSplitPassages(nodes, activeEdges, cfg, specialNodeIds, state.postEditActiveSplitNode, postEditDraftSplitPoints);
+    this.splitJunctions.render({ passages: splitPassages, wallFaces, specialShapes });
 
     const nodeById = new Map<number, NodeDto>(nodes.map(n => [n.id, n]));
     const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg);

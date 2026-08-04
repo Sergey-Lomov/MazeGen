@@ -125,7 +125,7 @@ export function buildPresetSplitPassages(
   cells: [number, number][] = [],
 ): SplitPassagesResult {
   const splitPointKeys = new Set(Object.keys(presetSplitPoints).filter((k) => presetSplitPoints[k].length > 0));
-  if (splitPointKeys.size === 0) return { passages: [], wallFaces: [] };
+  if (splitPointKeys.size === 0) return { passages: [], wallFaces: [], specialShapes: [] };
 
   // `buildSplitPassagesCore` needs every node a split point's nodes might connect to in the
   // `nodes` list, not just the split points themselves — mirrors `buildSplitPassages` (NodeDto),

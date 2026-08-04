@@ -1,11 +1,39 @@
 import { Container, Graphics } from "pixi.js";
-import type { SplitPassage, WallStyleOverride } from "./types";
+import type { SplitPassage, SplitSpecialShape, SplitStyleOverride, WallStyleOverride } from "./types";
 import { drawDirectionArrow } from "./wallUtils";
 import { chainSegmentsAtSharedVertices } from "./WallRenderer";
 import { WALL_THICKNESS } from "../renderConstants";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { disabledOfNumber } from "../../styles/palette";
+
+/** Draws one degree-4 split point recognized as a "bridge" or "diagonal divider" (GitHub issue
+ *  #294) instead of the generic per-node segment/connector reading — drawn in the plain wall
+ *  style (`strokeOpts`, same one `wallFaces` uses), never a node's own identity color: neither
+ *  shape reads as "belonging" to one node over the other.
+ *
+ *  `"diagonal"`: a single straight wall segment, `corner0 -> corner1`, the tile's real opposite
+ *  corners.
+ *
+ *  `"bridge"`: the through corridor draws nothing (an ordinary passage straight across the tile);
+ *  the cross corridor draws as its own two 4-point polyline edges (`edge0`/`edge1`) — the classic
+ *  card-map bridge silhouette (full width, narrows in, flat deck, widens back out). */
+function drawSplitSpecialShape(
+  g: Graphics,
+  shape: SplitSpecialShape,
+  strokeOpts: { width: number; color: number; cap: "round" | "square" | "butt"; join: "round" | "miter" },
+): void {
+  if (shape.kind === "diagonal") {
+    g.moveTo(shape.corner0.x, shape.corner0.y).lineTo(shape.corner1.x, shape.corner1.y).stroke(strokeOpts);
+    return;
+  }
+
+  for (const edge of [shape.edge0, shape.edge1]) {
+    g.moveTo(edge[0].x, edge[0].y);
+    for (let i = 1; i < edge.length; i++) g.lineTo(edge[i].x, edge[i].y);
+    g.stroke(strokeOpts);
+  }
+}
 
 /** Draws a split point's independent passages (GitHub issue #223, arrow moved onto the connector
  *  for #234) — for each node, its own share of the wall on every geometric face it connects across
@@ -26,10 +54,22 @@ export class SplitJunctionRenderer {
   }
 
   render(
-    data: { passages: SplitPassage[]; wallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] },
+    data: {
+      passages: SplitPassage[];
+      wallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
+      specialShapes?: SplitSpecialShape[];
+    },
     wallFaceStyleOverride?: WallStyleOverride,
+    splitStyleOverride?: SplitStyleOverride,
   ): void {
     this.g.clear();
+
+    // wallFaces draw first, special shapes (below) draw on top — GitHub issue #294 follow-up: an
+    // ordinary neighboring wall's own join (miter/square, e.g. at a T-junction or tile corner) can
+    // protrude slightly into this tile past the shared face boundary; drawing a special shape
+    // afterward, with its own end sitting exactly on that boundary, paints over the protrusion
+    // instead of being cut off by it. The reverse order (special shape first, walls after) is
+    // what previously caused the walls' own corners to visibly poke past the special shape's line.
     if (!wallFaceStyleOverride) {
       // No caller-supplied style: keep every other feature-renderer's exact prior per-segment
       // draw — see the matching guard in WallRenderer.render for why.
@@ -53,7 +93,32 @@ export class SplitJunctionRenderer {
       }
     }
 
+    // Special-shapes toggle (GitHub issue #294, on by default) — recognized bridge/diagonal-divider
+    // points draw via `drawSplitSpecialShape` instead of their ordinary per-node passages; every
+    // other point is unaffected. `specialPointKeys` lets the ordinary passage loop below skip them.
+    // Drawn in the same plain wall style `wallFaces` uses (never a node's own identity color).
+    // Defaults on (`specialShapes` unset) so every split-drawing feature — not just
+    // `VectorByWallsRenderer`, the only caller that ever passes an explicit override — gets the
+    // dedicated bridge/diagonal look automatically; pass `{ specialShapes: false }` to opt out.
+    const specialShapes = splitStyleOverride?.specialShapes !== false ? data.specialShapes ?? [] : [];
+    const specialPointKeys = new Set(specialShapes.map((s) => s.pointKey));
+    // `cap: "butt"` (never `"round"`/`"square"`, regardless of the caller's own wall style) — every
+    // special shape's own free ends (the diagonal's two corners, a bridge edge's two cross-face
+    // ends) sit exactly on the tile's own face boundary already; a round or square cap would
+    // protrude past it into the neighboring tile/wall. `join` still follows the caller's own style
+    // (a bridge edge's internal taper/deck corners aren't on any tile boundary, so a miter join
+    // there reads as a real sharp corner with no protrusion issue).
+    const specialShapeStrokeOpts = {
+      width: wallFaceStyleOverride?.width ?? WALL_THICKNESS,
+      color: wallFaceStyleOverride?.color ?? canvas.wall.default,
+      cap: "butt",
+      join: wallFaceStyleOverride?.join ?? "round",
+    } as const;
+    for (const shape of specialShapes) drawSplitSpecialShape(this.g, shape, specialShapeStrokeOpts);
+
     for (const passage of data.passages) {
+      if (specialPointKeys.has(passage.pointKey)) continue;
+
       // Computed once per passage, not per segment/connector — `disabledOfNumber` round-trips
       // through hex/HSL conversion, and every share of the same node always disables to the same
       // color.

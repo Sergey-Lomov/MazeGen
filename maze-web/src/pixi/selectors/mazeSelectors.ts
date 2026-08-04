@@ -1,15 +1,21 @@
 ﻿import type { NodeDto, EdgeDto, IssueDto } from "../../wasm/types";
 import type { MazeState, PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import type { WallEdge, MarkerData, MarkerShape, PassageKind, TeleportEdge, SplitPassage } from "../renderers/types";
+import type { WallEdge, MarkerData, MarkerShape, PassageKind, TeleportEdge, SplitPassage, SplitSpecialShape, SplitSpecialShapeKind } from "../renderers/types";
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
-import { getCellCenter, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment, splitHubPoint, SPLIT_HUB_RADIUS } from "../tessellationGeometry";
+import { getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment, splitHubPoint, SPLIT_HUB_RADIUS } from "../tessellationGeometry";
 import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../splitFaceLayout";
 import { buildCellSet } from "./sharedSelectors";
 import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
 import { splitSlotColor } from "../colorUtils";
 import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "../postEditEndpoint";
+
+/** Bridge shape proportions (GitHub issue #294) — the taper (narrowing/widening) each take the
+ *  first/last 20% of the tile's length; the flat deck spans the middle 60% at 60% of the cross
+ *  corridor's full width. */
+const BRIDGE_TAPER_FRAC = 0.2;
+const BRIDGE_DECK_WIDTH_FRAC = 0.6;
 
 // Teleport edges are never part of `postEditEdges` — they're tracked separately (see
 // `postEditDraftTeleportEdges`/`postEditTeleportEdges` in storeTypes.ts) since a Teleport and a
@@ -77,6 +83,20 @@ function buildSplitPointKeys(nodes: NodeDto[]): Set<string> {
   const keys = new Set<string>();
   for (const [key, count] of counts) if (count > 1) keys.add(key);
   return keys;
+}
+
+/** Largest node count at any one split point in `nodes` (0 if there's no split point at all) —
+ *  used by `VectorByWallsSettingsPanel`'s Splits section (GitHub issue #294) to size its per-slot
+ *  color list to what the current maze actually needs. */
+export function maxSplitNodeCount(nodes: NodeDto[]): number {
+  const counts = new Map<string, number>();
+  for (const n of nodes) {
+    const key = `${n.x},${n.y}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  let max = 0;
+  for (const count of counts.values()) if (count > 1 && count > max) max = count;
+  return max;
 }
 
 export function buildMazeWalls(
@@ -236,7 +256,64 @@ export type SplitPassagesResult = {
    *  solid wall spanning the whole face, same as an ordinary (non-split) wall, since it isn't
    *  attributable to any single node's color. Mirrors `TileFaceEditor`'s `allWall` case. */
   wallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
+  /** One entry per split point recognized as a "bridge"/"diagonal divider" topology (GitHub issue
+   *  #294) — always populated regardless of `SplitStyleOverride.specialShapes`, so the renderer
+   *  decides whether to use it without a second geometry pass. Empty unless the point is degree-4
+   *  with exactly 2 nodes, each a straight-through opposite-face (bridge) or adjacent-face
+   *  (diagonal) pair — see `SplitSpecialShapeKind`. */
+  specialShapes: SplitSpecialShape[];
 };
+
+/** Recognizes a degree-4 split point's two-node topology as `"bridge"` (each node an
+ *  opposite-face pair) or `"diagonal"` (each node an adjacent-face pair) — GitHub issue #294.
+ *  `faceKindsByNode[nodeIndex]` is that node's kind on every one of the point's faces, in the same
+ *  order as `offsets`/`faceInputs`; a node only counts as "connected" on a face for `passage`/
+ *  `one_way_out`/`one_way_in` (mirrors `NO_OWN_SEGMENT_KINDS`). Returns `null` for anything else
+ *  (wrong degree/node count, not exactly 2 connected faces per node, or connected faces that are
+ *  neither opposite nor adjacent). */
+function detectSplitSpecialShapeKind(faceKindsByNode: SplitFaceKind[][]): SplitSpecialShapeKind | null {
+  const degree = faceKindsByNode[0]?.length ?? 0;
+  if (degree !== 4 || faceKindsByNode.length !== 2) return null;
+
+  const connectedIndices = faceKindsByNode.map((kinds) =>
+    kinds.reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []),
+  );
+  if (connectedIndices.some((idxs) => idxs.length !== 2)) return null;
+
+  const [a0, a1] = connectedIndices[0];
+  const [b0, b1] = connectedIndices[1];
+  const aOpposite = Math.abs(a0 - a1) === 2;
+  const bOpposite = Math.abs(b0 - b1) === 2;
+  if (aOpposite !== bOpposite) return null; // one node opposite, the other adjacent — not a recognized shape
+  return aOpposite ? "bridge" : "diagonal";
+}
+
+/** The tile's own vertex index shared by two adjacent faces (GitHub issue #294's diagonal-divider
+ *  shape needs the real tile corner, not a face-midpoint-to-center bend) — `edgeVerts[i]` is that
+ *  face's `[vi, vj]` vertex-index pair; two adjacent faces share exactly one of those four indices.
+ *  Returns `null` if the faces don't actually share a vertex (shouldn't happen for the adjacent
+ *  pair `detectSplitSpecialShapeKind` already validated, but keeps this total). */
+function sharedCornerIndex(edgeVerts: [number, number][], faceA: number, faceB: number): number | null {
+  const [a0, a1] = edgeVerts[faceA];
+  const [b0, b1] = edgeVerts[faceB];
+  if (a0 === b0 || a0 === b1) return a0;
+  if (a1 === b0 || a1 === b1) return a1;
+  return null;
+}
+
+/** Pairs `facesA`'s two endpoints with `facesB`'s two endpoints by nearest distance (GitHub issue
+ *  #294's bridge shape) — for two parallel opposite faces of a tile, this picks the "same side"
+ *  pairing (left edge to left edge, right to right) so the two resulting bridge edges run side by
+ *  side instead of crossing through the middle. Returns `[bIndexForA0, bIndexForA1]`. */
+function nearestEndpointPairing(
+  a: { v0: { x: number; y: number }; v1: { x: number; y: number } },
+  b: { v0: { x: number; y: number }; v1: { x: number; y: number } },
+): [0 | 1, 0 | 1] {
+  const dist = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.hypot(p.x - q.x, p.y - q.y);
+  const straight = dist(a.v0, b.v0) + dist(a.v1, b.v1);
+  const crossed = dist(a.v0, b.v1) + dist(a.v1, b.v0);
+  return straight <= crossed ? [0, 1] : [1, 0];
+}
 
 export function buildSplitPassagesCore<Id>(
   nodes: SplitPassageNode<Id>[],
@@ -246,6 +323,7 @@ export function buildSplitPassagesCore<Id>(
   activeId: (pointKey: string) => Id | undefined = () => undefined,
   defaultKind: SplitFaceKind = "wall",
   wallPairs: ReadonlySet<string> = new Set(),
+  nodeColors: readonly number[] = canvas.node.splitSlots,
 ): SplitPassagesResult {
   const nodeById = new Map<Id, SplitPassageNode<Id>>();
   for (const n of nodes) nodeById.set(n.id, n);
@@ -292,6 +370,7 @@ export function buildSplitPassagesCore<Id>(
 
   const result: SplitPassage[] = [];
   const wallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] = [];
+  const specialShapes: SplitSpecialShape[] = [];
 
   for (const [pointKey, pointNodes] of byPoint) {
     if (pointNodes.length <= 1) continue; // unsplit point — rendered by buildMazeWalls instead
@@ -299,7 +378,7 @@ export function buildSplitPassagesCore<Id>(
     const [px, py] = [pointNodes[0].x, pointNodes[0].y];
     const center = getCellCenter(px, py, cfg);
     const count = pointNodes.length;
-    const { offsets } = getNeighborData(cfg, px, py);
+    const { offsets, edgeVerts } = getNeighborData(cfg, px, py);
 
     // Per-offset-index face geometry + per-node kind, mirroring TileFaceEditor's model exactly —
     // a face this point has no actual geometric neighbor for (or whose neighbor isn't in `nodes`)
@@ -325,6 +404,75 @@ export function buildSplitPassagesCore<Id>(
       }));
     }
 
+    // Per-node face-kind matrix (dense, `"wall"` for a face this point has no geometric neighbor
+    // for) — only needed for special-shape detection, not the ordinary segment/connector layout,
+    // which works off the sparse `kindsByFace` above.
+    const faceKindsByNode: SplitFaceKind[][] = pointNodes.map((_, nodeIndex) =>
+      kindsByFace.map((faceKinds) => faceKinds.find((k) => k.nodeIndex === nodeIndex)?.kind ?? "wall"),
+    );
+    const specialShapeKind = detectSplitSpecialShapeKind(faceKindsByNode);
+    if (specialShapeKind === "diagonal") {
+      // The diagonal must run through the two corners where a face of node 0 meets a face of
+      // node 1 (so every one of node 0's faces ends up strictly on one side, node 1's on the
+      // other) — NOT the corner shared between node 0's own two faces (that corner is where both
+      // of node 0's own faces meet each other, putting it on the wrong side of the cut). With the
+      // faces split into two adjacent pairs there are exactly two such node0/node1 corners
+      // (degree 4: each node's pair borders the other's pair on both sides going around the tile).
+      const node0Faces = faceKindsByNode[0].reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []);
+      const node1Faces = faceKindsByNode[1].reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []);
+      const verts = getCellVertices(px, py, cfg);
+      const cornerIdxs: number[] = [];
+      for (const fa of node0Faces) {
+        for (const fb of node1Faces) {
+          const c = sharedCornerIndex(edgeVerts, fa, fb);
+          if (c !== null) cornerIdxs.push(c);
+        }
+      }
+      if (verts && cornerIdxs.length === 2) {
+        specialShapes.push({ kind: "diagonal", pointKey, corner0: verts[cornerIdxs[0]], corner1: verts[cornerIdxs[1]] });
+      }
+    } else if (specialShapeKind === "bridge") {
+      // Node 0 is the "through" pair (opposite faces, drawn as nothing — an ordinary passage);
+      // node 1 is the "cross" pair, drawn as the bridge's own two edges: full width at the cross
+      // faces (100%), narrowing to 60% over the tile's first/last 20% of length, a flat 60%-wide
+      // deck across the middle 60%.
+      const crossIdx = faceKindsByNode[1].reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []);
+      const crossFaces: [{ v0: { x: number; y: number }; v1: { x: number; y: number } }, { v0: { x: number; y: number }; v1: { x: number; y: number } }] =
+        [faceInputs[crossIdx[0]], faceInputs[crossIdx[1]]];
+      const [pairB0, pairB1] = nearestEndpointPairing(crossFaces[0], crossFaces[1]);
+      const endsAt = (face: typeof crossFaces[0], slot: 0 | 1) => (slot === 0 ? face.v0 : face.v1);
+      const end0 = { v0: endsAt(crossFaces[0], 0), v1: endsAt(crossFaces[0], 1) };
+      const end1 = { v0: endsAt(crossFaces[1], pairB0), v1: endsAt(crossFaces[1], pairB1) };
+
+      // Corridor axis: face-midpoint to face-midpoint (not `.v0`, which needn't lie on the axis) —
+      // `along(t)` interpolates a point at fraction `t` of the corridor's own length.
+      const mid0 = { x: (end0.v0.x + end0.v1.x) / 2, y: (end0.v0.y + end0.v1.y) / 2 };
+      const mid1 = { x: (end1.v0.x + end1.v1.x) / 2, y: (end1.v0.y + end1.v1.y) / 2 };
+      const along = (t: number) => ({ x: mid0.x + (mid1.x - mid0.x) * t, y: mid0.y + (mid1.y - mid0.y) * t });
+
+      // Each edge's own perpendicular half-width at a given axis point, scaled by `widthFrac`
+      // (1.0 at the cross faces, `BRIDGE_DECK_WIDTH_FRAC` on the flat deck) — computed per side
+      // (`sideSign` = +1 for edge0, -1 for edge1) from that side's own full-width offset at the
+      // matching cross face, so an asymmetric face (off-center split point) still narrows evenly.
+      const buildEdge = (endAt0: { x: number; y: number }, endAt1: { x: number; y: number }): [
+        { x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number },
+      ] => {
+        const lerp = (p: { x: number; y: number }, q: { x: number; y: number }, t: number) => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t });
+        const axisAt0 = along(0), axisAt20 = along(BRIDGE_TAPER_FRAC), axisAt80 = along(1 - BRIDGE_TAPER_FRAC), axisAt100 = along(1);
+        const narrowedAt = (axisPoint: { x: number; y: number }, fullWidthEnd: { x: number; y: number }, fullWidthAxis: { x: number; y: number }) =>
+          lerp(axisPoint, { x: axisPoint.x + (fullWidthEnd.x - fullWidthAxis.x), y: axisPoint.y + (fullWidthEnd.y - fullWidthAxis.y) }, BRIDGE_DECK_WIDTH_FRAC);
+        return [endAt0, narrowedAt(axisAt20, endAt0, axisAt0), narrowedAt(axisAt80, endAt1, axisAt100), endAt1];
+      };
+
+      specialShapes.push({
+        kind: "bridge",
+        pointKey,
+        crossFaces: [end0, end1],
+        edge0: buildEdge(end0.v0, end1.v0),
+        edge1: buildEdge(end0.v1, end1.v1),
+      });
+    }
+
     const activeNodeId = activeId(pointKey);
     const activeIndexRaw = activeNodeId === undefined ? -1 : pointNodes.findIndex((n) => n.id === activeNodeId);
     const activeIndex = activeIndexRaw < 0 ? null : activeIndexRaw;
@@ -340,7 +488,7 @@ export function buildSplitPassagesCore<Id>(
     for (const { nodeIndex, lines } of nodeConnectors) {
       if (lines.length === 0) continue; // no connections — draws nothing
 
-      const color = splitSlotColor(nodeIndex, canvas.node.splitSlots);
+      const color = splitSlotColor(nodeIndex, nodeColors);
       const wallSegments = faceLayouts
         .flatMap((layout) => layout.segments.filter((s) => s.nodeIndex === nodeIndex))
         .map((s) => ({
@@ -350,11 +498,11 @@ export function buildSplitPassagesCore<Id>(
         }));
       const connectors = lines.map((line) => ({ from: line.from, to: line.to, oneWayOut: line.oneWayOut, isUndefined: line.isUndefined }));
 
-      result.push({ color, wallSegments, connectors });
+      result.push({ color, pointKey, wallSegments, connectors });
     }
   }
 
-  return { passages: result, wallFaces };
+  return { passages: result, wallFaces, specialShapes };
 }
 
 /** Post-generation adapter over `buildSplitPassagesCore` — `NodeDto`'s own `id: number` is the
@@ -363,8 +511,10 @@ export function buildSplitPassagesCore<Id>(
  *  (mirrors `postEditActiveSplitNode`) resolves which of a point's nodes draws on top (GitHub
  *  issue #234 follow-up) — a `split` entry is resolved to its real `NodeId` via
  *  `buildSplitNodeResolver` (needs `postEditDraftSplitPoints` for the point's sorted slotId
- *  order); absence for a point means its original (first) node. See `buildSplitPassagesCore`'s doc
- *  comment for the shared algorithm. */
+ *  order); absence for a point means its original (first) node. `nodeColors` (default
+ *  `canvas.node.splitSlots`) overrides `splitSlotColor`'s per-slot palette — GitHub issue #294,
+ *  used by `VectorByWallsRenderer` to expose split-node colors as a user setting. See
+ *  `buildSplitPassagesCore`'s doc comment for the shared algorithm. */
 export function buildSplitPassages(
   nodes: NodeDto[],
   edges: EdgeDto[],
@@ -372,6 +522,7 @@ export function buildSplitPassages(
   specialNodeIds: ReadonlySet<number> = new Set(),
   activeSplitNode: Record<string, PostEditEndpoint> = {},
   postEditDraftSplitPoints: Record<string, number[]> = {},
+  nodeColors: readonly number[] = canvas.node.splitSlots,
 ): SplitPassagesResult {
   const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
 
@@ -388,7 +539,7 @@ export function buildSplitPassages(
     return resolveEndpoint(active, resolveSplit);
   };
 
-  return buildSplitPassagesCore(nodes, directedPairs, cfg, specialNodeIds, activeId);
+  return buildSplitPassagesCore(nodes, directedPairs, cfg, specialNodeIds, activeId, "wall", new Set(), nodeColors);
 }
 
 // --- Loss-detection predicates ---

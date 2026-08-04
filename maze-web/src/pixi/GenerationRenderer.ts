@@ -13,7 +13,7 @@ import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells,
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { Viewport, WallEdge, TeleportEdge, SplitPassage } from "./renderers/types";
+import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape } from "./renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
 import { canvas } from "./colorTokens";
@@ -60,6 +60,7 @@ export class GenerationRenderer {
     teleportEdges: TeleportEdge[];
     splitPassages: SplitPassage[];
     splitWallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
+    splitSpecialShapes: SplitSpecialShape[];
   } | null = null;
 
   // Keyed on `debugArena.debugValueNames` array identity, which is stable for a whole debug
@@ -210,7 +211,8 @@ export class GenerationRenderer {
         if (e.kind === "teleport") { specialNodeIds.add(e.from); specialNodeIds.add(e.to); }
       }
 
-      const { passages: splitPassages, wallFaces: splitWallFaces } = buildSplitPassages(view.nodes, view.edges, cfg, specialNodeIds);
+      const { passages: splitPassages, wallFaces: splitWallFaces, specialShapes: splitSpecialShapes } =
+        buildSplitPassages(view.nodes, view.edges, cfg, specialNodeIds);
       this.geometryCache = {
         nodes: view.nodes,
         edges: view.edges,
@@ -222,11 +224,16 @@ export class GenerationRenderer {
         teleportEdges: buildTeleportEdges(nodeById, view.edges, cfg),
         splitPassages,
         splitWallFaces,
+        splitSpecialShapes,
       };
     }
     this.closedCells.render({ cells: this.geometryCache.closedCells, color: canvas.wall.default, alpha: 1 }, cfg);
     this.walls.render({ edges: this.geometryCache.wallEdges }, cfg);
-    this.splitJunctions.render({ passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces });
+    this.splitJunctions.render({
+      passages: this.geometryCache.splitPassages,
+      wallFaces: this.geometryCache.splitWallFaces,
+      specialShapes: this.geometryCache.splitSpecialShapes,
+    });
     this.teleports.render({ edges: this.geometryCache.teleportEdges });
 
     const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg);

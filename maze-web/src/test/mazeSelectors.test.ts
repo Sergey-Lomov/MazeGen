@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, maxSplitNodeCount } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
@@ -338,6 +338,117 @@ describe("buildSplitPassages", () => {
 
     // Each sub-segment's own center differs -- not both collapsing to the full edge's midpoint.
     expect(seg0.center).not.toEqual(seg1.center);
+  });
+
+  it("recognizes a degree-4 bridge topology (each node an opposite-face pair)", () => {
+    // Point (0,0) split into node 0 (slot 0: east+west) and node 4 (slot 1: north+south).
+    const nodes = [
+      n(0, 0, 0), n(1, 1, 0), n(2, -1, 0),
+      n(3, 0, 1), n(4, 0, 0), n(5, 0, -1),
+    ];
+    const edges: EdgeDto[] = [e(0, 1), e(1, 0), e(0, 2), e(2, 0), e(4, 3), e(3, 4), e(4, 5), e(5, 4)];
+    const { specialShapes } = buildSplitPassages(nodes, edges, squareCfg);
+    expect(specialShapes).toHaveLength(1);
+    const shape = specialShapes[0];
+    expect(shape.kind).toBe("bridge");
+    expect(shape.pointKey).toBe("0,0");
+    if (shape.kind !== "bridge") throw new Error("unreachable");
+    // The cross corridor is north/south (the through corridor, east/west, draws nothing of its
+    // own). Each edge is a 4-point polyline: full width at the cross faces (y = 0 and y = -40 in
+    // this test's cartesian mock, i.e. the tile's own top/bottom edges), narrowing to 60% width at
+    // 20%/80% of the tile's length, flat in between.
+    expect(shape.edge0).toHaveLength(4);
+    expect(shape.edge1).toHaveLength(4);
+    const [e0start, e0taperIn, e0taperOut, e0end] = shape.edge0;
+    const [e1start, e1taperIn, e1taperOut, e1end] = shape.edge1;
+    // Full-width endpoints match the cross faces' own v0/v1 exactly.
+    expect(e0start).toEqual(shape.crossFaces[0].v0);
+    expect(e0end).toEqual(shape.crossFaces[1].v0);
+    expect(e1start).toEqual(shape.crossFaces[0].v1);
+    expect(e1end).toEqual(shape.crossFaces[1].v1);
+    // The deck (taperIn -> taperOut) is flat: same width apart as it is at both ends of the deck.
+    const width = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+    const fullWidth = width(e0start, e1start);
+    const deckWidth = width(e0taperIn, e1taperIn);
+    expect(width(e0taperOut, e1taperOut)).toBeCloseTo(deckWidth, 5);
+    expect(deckWidth).toBeCloseTo(fullWidth * 0.6, 5);
+    expect(deckWidth).toBeLessThan(fullWidth);
+
+    // edge0/edge1 must run side by side, never crossing -- `nearestEndpointPairing` (mazeSelectors.ts)
+    // picks which of crossFaces[1]'s two ends pairs with which of crossFaces[0]'s; picking the wrong
+    // one draws a self-crossing "bowtie" bridge instead of two parallel edges. Checked by comparing
+    // each edge's own x-offset from the shared corridor axis at both the start and end: same-sign
+    // (never swapping sides) means non-crossing. The corridor axis here runs along y (north-south),
+    // so "side" is which side of that vertical line each edge's x sits on.
+    const axisX = (e0start.x + e1start.x) / 2;
+    const e0StartSide = Math.sign(e0start.x - axisX);
+    const e0EndSide = Math.sign(e0end.x - axisX);
+    const e1StartSide = Math.sign(e1start.x - axisX);
+    const e1EndSide = Math.sign(e1end.x - axisX);
+    expect(e0StartSide).toBe(e0EndSide);
+    expect(e1StartSide).toBe(e1EndSide);
+    expect(e0StartSide).not.toBe(e1StartSide);
+  });
+
+  it("recognizes a degree-4 diagonal-divider topology (each node an adjacent-face pair)", () => {
+    // Point (0,0) split into node 0 (slot 0: east+north) and node 4 (slot 1: west+south).
+    const nodes = [
+      n(0, 0, 0), n(1, 1, 0), n(2, 0, 1),
+      n(3, -1, 0), n(4, 0, 0), n(5, 0, -1),
+    ];
+    const edges: EdgeDto[] = [e(0, 1), e(1, 0), e(0, 2), e(2, 0), e(4, 3), e(3, 4), e(4, 5), e(5, 4)];
+    const { specialShapes } = buildSplitPassages(nodes, edges, squareCfg);
+    expect(specialShapes).toHaveLength(1);
+    const shape = specialShapes[0];
+    expect(shape.kind).toBe("diagonal");
+    if (shape.kind !== "diagonal") throw new Error("unreachable");
+    // A real geometric diagonal between two opposite tile corners -- corner0 != corner1, and
+    // both sit at the tile's own half-diagonal distance from center (10*sqrt(2) for a 20-wide
+    // square tile in this test's cartesian mock).
+    expect(shape.corner0).not.toEqual(shape.corner1);
+    const center = { x: 20, y: -20 };
+    const dist0 = Math.hypot(shape.corner0.x - center.x, shape.corner0.y - center.y);
+    const dist1 = Math.hypot(shape.corner1.x - center.x, shape.corner1.y - center.y);
+    expect(dist0).toBeCloseTo(dist1, 5);
+    expect(dist0).toBeGreaterThan(10); // farther than the mid-face distance (10)
+
+    // The diagonal must run through the corners where an east/north face (node 0) meets a
+    // west/south face (node 1) -- (0,0)'s vertices are TL=(0,-40), TR=(40,-40), BR=(40,0),
+    // BL=(0,0); node 0's own corner (E+N meet) is TR, node 1's own corner (W+S meet) is BL, but
+    // the *dividing* diagonal must be the other pair: TL (N meets W) and BR (S meets E) -- so
+    // every one of node 0's faces (E, N) ends up strictly on one side, node 1's (W, S) on the
+    // other. Getting TR/BL here instead would put a face on the wrong side of the cut.
+    const corners = [shape.corner0, shape.corner1];
+    expect(corners).toContainEqual({ x: 0, y: -40 }); // TL
+    expect(corners).toContainEqual({ x: 40, y: 0 }); // BR
+  });
+
+  it("a degree-4 point with 3+ nodes, or a mismatched opposite/adjacent pairing, is not recognized as a special shape", () => {
+    // 3-node split point -- `detectSplitSpecialShapeKind` only ever matches exactly 2 nodes.
+    const threeNodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 1), n(3, 0, 0), n(4, -1, 0), n(5, 0, 0), n(6, 0, -1)];
+    const threeEdges: EdgeDto[] = [e(0, 1), e(1, 0), e(3, 4), e(4, 3), e(5, 6), e(6, 5)];
+    expect(buildSplitPassages(threeNodes, threeEdges, squareCfg).specialShapes).toEqual([]);
+
+    // 2 nodes, but one an opposite pair and the other adjacent -- doesn't match either shape.
+    const mismatched = [n(0, 0, 0), n(1, 1, 0), n(2, -1, 0), n(3, 0, 0), n(4, 0, 1)];
+    const mismatchedEdges: EdgeDto[] = [e(0, 1), e(1, 0), e(0, 2), e(2, 0), e(3, 4), e(4, 3)];
+    expect(buildSplitPassages(mismatched, mismatchedEdges, squareCfg).specialShapes).toEqual([]);
+  });
+});
+
+describe("maxSplitNodeCount", () => {
+  it("returns 0 for an empty node list or a maze with no split points", () => {
+    expect(maxSplitNodeCount([])).toBe(0);
+    expect(maxSplitNodeCount([n(0, 0, 0), n(1, 1, 0)])).toBe(0);
+  });
+
+  it("returns the largest node count at any one split point", () => {
+    const nodes = [
+      n(0, 0, 0), n(1, 0, 0), // 2-node split point
+      n(2, 1, 0), n(3, 1, 0), n(4, 1, 0), // 3-node split point
+      n(5, 2, 0), // unsplit
+    ];
+    expect(maxSplitNodeCount(nodes)).toBe(3);
   });
 });
 

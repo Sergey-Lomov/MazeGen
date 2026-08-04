@@ -58,6 +58,8 @@ beforeEach(() => {
       teleportConnectorBorderWidth: 0,
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
+      splitNodeColors: [],
+      splitSpecialShapes: false,
     },
   });
 });
@@ -106,6 +108,7 @@ describe("VectorByWallsSettingsPanel", () => {
         teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight",
         teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6, teleportConnectorBorderWidth: 0,
         teleportGroupCustomization: false, teleportGroupOverrides: {},
+        splitNodeColors: [], splitSpecialShapes: false,
       },
     });
     render(<VectorByWallsSettingsPanel />);
@@ -497,6 +500,70 @@ describe("VectorByWallsSettingsPanel", () => {
       });
       render(<VectorByWallsSettingsPanel />);
       expect(screen.queryAllByTitle(m["image_export.vector_by_walls.teleport_group_collision"]())).toHaveLength(0);
+    });
+  });
+
+  describe("Splits section", () => {
+    it("is hidden entirely when the current maze has no split points", () => {
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.queryByText(m["image_export.vector_by_walls.section_splits"]())).not.toBeInTheDocument();
+    });
+
+    it("shows one color row per slot, sized to the maze's largest split point", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 },
+          { id: 2, x: 5, y: 5, i: 0 }, { id: 3, x: 5, y: 5, i: 0 }, { id: 4, x: 5, y: 5, i: 0 },
+        ],
+        vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, splits: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.section_splits"]())).toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.split_node_color"]({ index: "1" }))).toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.split_node_color"]({ index: "2" }))).toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.split_node_color"]({ index: "3" }))).toBeInTheDocument();
+      expect(screen.queryByText(m["image_export.vector_by_walls.split_node_color"]({ index: "4" }))).not.toBeInTheDocument();
+    });
+
+    it("collapsing the splits section header hides its fields", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 5, y: 5, i: 0 }, { id: 1, x: 5, y: 5, i: 0 },
+        ],
+        vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, splits: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.split_special_shapes"]())).toBeInTheDocument();
+      fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_splits"]()));
+      expect(screen.queryByText(m["image_export.vector_by_walls.split_special_shapes"]())).not.toBeInTheDocument();
+      expect(useMazeStore.getState().vectorByWallsSectionsExpanded.splits).toBe(false);
+    });
+
+    it("changing a slot's color updates the store", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 5, y: 5, i: 0 }, { id: 1, x: 5, y: 5, i: 0 },
+        ],
+        vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, splits: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      const inputs = document.querySelectorAll('input[type="color"]');
+      fireEvent.change(inputs[inputs.length - 1], { target: { value: "#123456" } });
+      expect(useMazeStore.getState().vectorByWallsSettings.splitNodeColors[1]).toBe(0x123456);
+    });
+
+    it("toggling special shapes updates the store", () => {
+      useMazeStore.setState({
+        nodes: [
+          { id: 0, x: 5, y: 5, i: 0 }, { id: 1, x: 5, y: 5, i: 0 },
+        ],
+        vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, splits: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      const checkbox = screen.getByText(m["image_export.vector_by_walls.split_special_shapes"]())
+        .parentElement!.querySelector('input[type="checkbox"]')!;
+      fireEvent.click(checkbox);
+      expect(useMazeStore.getState().vectorByWallsSettings.splitSpecialShapes).toBe(true);
     });
   });
 });

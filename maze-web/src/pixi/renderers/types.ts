@@ -65,6 +65,9 @@ export type WallEdge = {
  *  tile diagram (`TileFaceEditor`) via the shared algorithm in `splitFaceLayout.ts`. */
 export type SplitPassage = {
   color: number;
+  /** The split point's own `"${x},${y}"` key (GitHub issue #294) — lets `SplitJunctionRenderer`
+   *  skip a point's ordinary passages when it's drawn via `SplitSpecialShape` instead. */
+  pointKey: string;
   /** This node's own share of each geometric edge it connects across, as a sub-segment of the
    *  full shared edge — when several nodes of the same split point cross the same face, the
    *  face's own span is divided evenly among them in slot order, each getting one contiguous
@@ -88,6 +91,61 @@ export type SplitPassage = {
    *  state, drawn in the same disabled color as its segment. */
   connectors: { from: { x: number; y: number }; to: { x: number; y: number }; oneWayOut?: boolean; isUndefined: boolean }[];
 };
+
+/** Recognized degree-4 split topology drawn with a dedicated shape instead of the generic
+ *  per-node segment/connector reading, when `SplitStyleOverride.specialShapes` is on (GitHub issue
+ *  #294) — `"bridge"`: two nodes, each a straight-through opposite-face pair (one node's corridor
+ *  literally crosses the other's at the tile center). `"diagonal"`: two nodes, each an
+ *  adjacent-face pair (the tile is cut in half by one diagonal wall). Matches
+ *  `splitPatternTitles.ts`'s `"bridge"`/`"diagonal_divider"` square topologies — same shape
+ *  vocabulary, this is the canvas-drawing side of it. */
+export type SplitSpecialShapeKind = "bridge" | "diagonal";
+
+/** Dedicated-shape draw data for one split point recognized as `kind` (GitHub issue #294) — emitted
+ *  by `buildSplitPassagesCore` alongside (not instead of) the point's ordinary `SplitPassage`
+ *  entries, so the renderer can choose per the `specialShapes` toggle without needing a second
+ *  geometry pass. Entirely self-contained within the tile — drawn as a plain wall-colored/-width
+ *  shape (`WallStyleOverride`-driven, same as `SplitJunctionRenderer`'s `wallFaces`), never in a
+ *  node's own identity color: neither shape reads as "belonging" to one node over the other.
+ *
+ *  `"diagonal"`: one straight wall segment, `corner0 -> corner1`, the tile's own two opposite
+ *  corners where the through/cross face pairs each meet — a real geometric diagonal, not two
+ *  face-midpoint-to-center legs.
+ *
+ *  `"bridge"`: the through corridor draws nothing of its own (it's an ordinary passage straight
+ *  across the tile). The cross corridor draws as a classic card-map bridge silhouette — its two
+ *  edges (`edge0`/`edge1`, matching `crossFaces[*].v0`/`.v1`), each a 4-point polyline along the
+ *  cross corridor's own axis: full width at the cross faces, narrowing over the first 20% of the
+ *  tile's length, a flat deck for the middle 60%, widening back out over the last 20%. */
+export type SplitSpecialShape =
+  | {
+      kind: "diagonal";
+      pointKey: string;
+      corner0: { x: number; y: number };
+      corner1: { x: number; y: number };
+    }
+  | {
+      kind: "bridge";
+      pointKey: string;
+      /** The cross corridor's two faces — only kept for `pointKey`-adjacent context, drawing
+       *  itself uses `edge0`/`edge1` below. */
+      crossFaces: [{ v0: { x: number; y: number }; v1: { x: number; y: number } }, { v0: { x: number; y: number }; v1: { x: number; y: number } }];
+      /** 4-point polyline: `[crossFaces[0].v0, deckStart, deckEnd, crossFaces[1].v0]` (or the
+       *  paired endpoint after `nearestEndpointPairing`) — full-width end, narrowing-in point at
+       *  20% length, narrowing-in point at 80% length (deck start), full-width other end. */
+      edge0: [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
+      /** Same shape as `edge0`, the corridor's other edge. */
+      edge1: [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
+    };
+
+/** Optional per-call override for `SplitJunctionRenderer` (GitHub issue #294) — `nodeColors`
+ *  replaces `splitSlotColor`'s default palette lookup one-to-one by slot index (a point with more
+ *  nodes than `nodeColors.length` falls back to the default palette for the overflow slots, same
+ *  rule `splitSlotColor` itself uses for slots past its own fixed set). `specialShapes` defaults to
+ *  **on** (unset or `true`) — recognized degree-4 topologies (see `SplitSpecialShapeKind`) draw as
+ *  their dedicated shape instead of the generic per-node reading; pass `false` explicitly to opt a
+ *  caller out. */
+export type SplitStyleOverride = { nodeColors?: readonly number[]; specialShapes?: boolean };
 
 export type EdgeHL = {
   from: [number, number];

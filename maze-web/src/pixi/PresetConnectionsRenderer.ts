@@ -280,8 +280,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.undecidedWalls.render({ edges: undecided }, cfg);
     this.presetWalls.render({ edges: preset }, cfg);
 
-    const { passages: splitPassages, wallFaces } = buildPresetSplitPassages(state.presetSplitPoints, state.presetConnections, cfg, state.presetActiveSplitNode, cells);
-    this.splitJunctions.render({ passages: splitPassages, wallFaces });
+    const { passages: splitPassages, wallFaces, specialShapes } = buildPresetSplitPassages(state.presetSplitPoints, state.presetConnections, cfg, state.presetActiveSplitNode, cells);
+    this.splitJunctions.render({ passages: splitPassages, wallFaces, specialShapes });
 
     const lockEntries = buildLocks(state.lockedNodes, state.autoLockedNodes);
     this.locks.render({ locks: lockEntries }, cfg);

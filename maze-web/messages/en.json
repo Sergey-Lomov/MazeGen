@@ -1122,7 +1122,7 @@
   "image_export.vector_by_walls.section_tiles": "Tiles",
   "image_export.vector_by_walls.floor_color": "Floor color",
   "image_export.vector_by_walls.wall_color": "Wall color",
-  "image_export.vector_by_walls.wall_join": "Corners & ends",
+  "image_export.vector_by_walls.wall_join": "Style",
   "image_export.vector_by_walls.wall_join_round": "Round",
   "image_export.vector_by_walls.wall_join_miter": "Miter",
   "image_export.vector_by_walls.wall_thickness": "Wall thickness",
@@ -1185,6 +1185,9 @@
   "image_export.vector_by_walls.teleport_group_override_border_color": "Border color",
   "image_export.vector_by_walls.teleport_group_override_shape": "Shape",
   "image_export.vector_by_walls.teleport_group_override_shape_default": "Default",
+  "image_export.vector_by_walls.section_splits": "Splits",
+  "image_export.vector_by_walls.split_node_color": "Node {index} color",
+  "image_export.vector_by_walls.split_special_shapes": "Special shapes",
   "status.render_mode_not_selected": "Render mode not selected",
   "status.render_mode_active": "Active: {mode}"
 }

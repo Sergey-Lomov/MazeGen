@@ -1132,7 +1132,7 @@
   "image_export.vector_by_walls.section_tiles": "Ячейки",
   "image_export.vector_by_walls.floor_color": "Цвет пола",
   "image_export.vector_by_walls.wall_color": "Цвет стен",
-  "image_export.vector_by_walls.wall_join": "Углы и концы",
+  "image_export.vector_by_walls.wall_join": "Стиль",
   "image_export.vector_by_walls.wall_join_round": "Скругление",
   "image_export.vector_by_walls.wall_join_miter": "Заострение",
   "image_export.vector_by_walls.wall_thickness": "Толщина стен",
@@ -1195,6 +1195,9 @@
   "image_export.vector_by_walls.teleport_group_override_border_color": "Цвет рамки",
   "image_export.vector_by_walls.teleport_group_override_shape": "Форма",
   "image_export.vector_by_walls.teleport_group_override_shape_default": "По умолчанию",
+  "image_export.vector_by_walls.section_splits": "Разделения",
+  "image_export.vector_by_walls.split_node_color": "Цвет узла {index}",
+  "image_export.vector_by_walls.split_special_shapes": "Специальные формы",
   "status.render_mode_not_selected": "Режим рендера не выбран",
   "status.render_mode_active": "Активен: {mode}"
 }

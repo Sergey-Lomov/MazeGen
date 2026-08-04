@@ -11,7 +11,9 @@ import { ColorRow } from "../ColorRow";
 import { ColorSwatch } from "../ColorSwatch";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
-import { buildTeleportEdges } from "../../pixi/selectors/mazeSelectors";
+import { buildTeleportEdges, maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
+import { splitSlotColor } from "../../pixi/colorUtils";
+import { canvas } from "../../pixi/colorTokens";
 import { buildTeleportGroups, type TeleportGroup } from "../../pixi/selectors/teleportGroups";
 import * as m from "~/paraglide/messages";
 
@@ -214,6 +216,8 @@ export function VectorByWallsSettingsPanel() {
   const setTeleportGroupCustomization = useMazeStore((s) => s.setVectorByWallsTeleportGroupCustomization);
   const setTeleportGroupOverride = useMazeStore((s) => s.setVectorByWallsTeleportGroupOverride);
   const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
+  const setSplitNodeColor = useMazeStore((s) => s.setVectorByWallsSplitNodeColor);
+  const setSplitSpecialShapes = useMazeStore((s) => s.setVectorByWallsSplitSpecialShapes);
 
   // `Escape` clears a click-selected teleport group (GitHub issue #293 follow-up) — global, not
   // scoped to a focused row, so it works regardless of what has focus (including the canvas itself,
@@ -253,6 +257,10 @@ export function VectorByWallsSettingsPanel() {
     });
     return collisions;
   }, [teleportGroups, settings.teleportConnectorStyle, settings.teleportGroupOverrides, settings.teleportEdgeColor, settings.teleportEdgeBorderColor, settings.teleportLineShape]);
+
+  // Splits section (GitHub issue #294) — the panel only ever shows as many color slots as the
+  // current maze actually needs (0 hides the section entirely, see below).
+  const maxSplit = useMemo(() => maxSplitNodeCount(nodes), [nodes]);
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);
@@ -557,6 +565,35 @@ export function VectorByWallsSettingsPanel() {
             </div>
           )}
         </div>
+      )}
+
+      {maxSplit > 0 && (
+        <>
+          <div style={styles.divider} />
+
+          <SectionHeader
+            label={m["image_export.vector_by_walls.section_splits"]()}
+            expanded={isExpanded("splits")}
+            onToggle={() => toggleSection("splits")}
+          />
+          {isExpanded("splits") && (
+            <div style={styles.block}>
+              {Array.from({ length: maxSplit }, (_, i) => (
+                <ColorRow
+                  key={i}
+                  label={m["image_export.vector_by_walls.split_node_color"]({ index: String(i + 1) })}
+                  color={settings.splitNodeColors[i] ?? splitSlotColor(i, canvas.node.splitSlots)}
+                  onChange={(color) => setSplitNodeColor(i, color)}
+                />
+              ))}
+              <ToggleRow
+                label={m["image_export.vector_by_walls.split_special_shapes"]()}
+                checked={settings.splitSpecialShapes}
+                onChange={setSplitSpecialShapes}
+              />
+            </div>
+          )}
+        </>
       )}
     </div>
   );
