@@ -179,7 +179,7 @@ fn non_pattern_max_split_nodes_one_is_a_valid_noop() {
 
 #[test]
 fn split_is_eligible_false_when_locked() {
-    let (mut field, _graph, mut ids) = make_field_graph_ids(3, 3);
+    let (field, _graph, mut ids) = make_field_graph_ids(3, 3);
     let node = field.node_at(SquarePoint { x: 1, y: 1 }).unwrap();
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(node);

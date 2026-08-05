@@ -4,7 +4,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::region_class::{RegionClass, ALL_REGION_CLASSES};
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, MissingRegionsIssue};
+use crate::quality_control::{MissingRegionsIssue};
 
 pub const MIN_REGION_COUNT_DEFAULT: u32 = 0;
 
@@ -85,6 +85,7 @@ impl<T: Tessellation> Check<T, MissingRegionsIssue> for MinRegionCountCheck {
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;

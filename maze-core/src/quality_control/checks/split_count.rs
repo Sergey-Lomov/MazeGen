@@ -3,7 +3,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::generation::SplitPattern;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, MissingSplitTilesIssue};
+use crate::quality_control::MissingSplitTilesIssue;
 use crate::quality_control::split_pattern_match::split_tile_matches_any;
 
 pub const SPLIT_COUNT_DEFAULT: u32 = 1;
@@ -56,6 +56,7 @@ pub(super) fn count_matching_split_tiles<T: Tessellation>(maze: &Maze<T>, patter
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};

@@ -3,7 +3,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::region_class::RegionClass;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, RegionNeedsShrinkIssue};
+use crate::quality_control::RegionNeedsShrinkIssue;
 use super::region_shrink_check_core::{find_oversized_regions, build_issue};
 
 pub const MAX_REGION_RATIO_DEFAULT: u32 = 100;
@@ -39,6 +39,7 @@ impl<T: Tessellation> Check<T, RegionNeedsShrinkIssue> for MaxRegionRatioCheck {
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;

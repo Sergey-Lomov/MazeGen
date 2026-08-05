@@ -24,6 +24,7 @@ pub(crate) fn add_edge_kind(graph: &mut Graph, src: NodeId, dst: NodeId, kind: E
     }
 }
 
+#[cfg(test)]
 pub(crate) fn add_edge(graph: &mut Graph, src: NodeId, dst: NodeId, elements: &ElementsConfig, rng: &mut MazeRng) {
     add_edge_kind(graph, src, dst, EdgeKind::Basic, elements.one_way_chance, rng);
 }

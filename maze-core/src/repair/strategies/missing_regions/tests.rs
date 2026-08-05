@@ -828,7 +828,7 @@ fn maze_with_candidate_and_different_class_neighbor() -> (Maze<SquareTessellatio
 
 #[test]
 fn absorb_until_min_size_absorbs_a_neighbor_of_a_different_class_when_it_has_budget() {
-    let (mut maze, nodes) = maze_with_candidate_and_different_class_neighbor();
+    let (maze, nodes) = maze_with_candidate_and_different_class_neighbor();
     let candidate = nodes[2];
     let trap_neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
@@ -853,7 +853,7 @@ fn absorb_until_min_size_absorbs_a_neighbor_of_a_different_class_when_it_has_bud
 
 #[test]
 fn absorb_until_min_size_does_not_absorb_when_the_neighbor_has_no_budget() {
-    let (mut maze, nodes) = maze_with_candidate_and_different_class_neighbor();
+    let (maze, nodes) = maze_with_candidate_and_different_class_neighbor();
     let candidate = nodes[2];
     let trap_neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
@@ -981,7 +981,7 @@ fn maze_with_isolated_candidate() -> (Maze<SquareTessellation>, Vec<NodeId>) {
 
 #[test]
 fn convert_region_unreachable_to_trap_adds_inbound_from_scratch() {
-    let (mut maze, nodes) = maze_with_isolated_candidate();
+    let (maze, nodes) = maze_with_isolated_candidate();
     let candidate = nodes[2];
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let mut rng = MazeRng::seed_from_u64(1);
@@ -1030,7 +1030,7 @@ fn maze_with_isolated_candidate_having_two_distinct_neighbors() -> (Maze<SquareT
 
 #[test]
 fn convert_region_unreachable_to_alternative_adds_both_inbound_and_outbound() {
-    let (mut maze, nodes) = maze_with_isolated_candidate_having_two_distinct_neighbors();
+    let (maze, nodes) = maze_with_isolated_candidate_having_two_distinct_neighbors();
     let candidate = nodes[2];
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let mut rng = MazeRng::seed_from_u64(1);
@@ -1083,7 +1083,7 @@ fn maze_with_trap_candidate() -> (Maze<SquareTessellation>, Vec<NodeId>) {
 
 #[test]
 fn convert_region_trap_to_alternative_adds_outbound_only() {
-    let (mut maze, nodes) = maze_with_trap_candidate();
+    let (maze, nodes) = maze_with_trap_candidate();
     let mid = nodes[1];
     let candidate = nodes[2];
     let other = nodes[3];
@@ -1104,7 +1104,7 @@ fn convert_region_trap_to_alternative_adds_outbound_only() {
 
 #[test]
 fn convert_region_trap_to_unreachable_cuts_inbound() {
-    let (mut maze, nodes) = maze_with_trap_candidate();
+    let (maze, nodes) = maze_with_trap_candidate();
     let mid = nodes[1];
     let candidate = nodes[2];
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
@@ -1136,7 +1136,7 @@ fn maze_with_alternative_candidate() -> (Maze<SquareTessellation>, Vec<NodeId>) 
 
 #[test]
 fn convert_region_alternative_to_trap_cuts_outbound() {
-    let (mut maze, nodes) = maze_with_alternative_candidate();
+    let (maze, nodes) = maze_with_alternative_candidate();
     let candidate = nodes[2];
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let scc = maze.analysis.scc(&maze.graph);
@@ -1154,7 +1154,7 @@ fn convert_region_alternative_to_trap_cuts_outbound() {
 
 #[test]
 fn convert_region_alternative_to_unreachable_cuts_inbound() {
-    let (mut maze, nodes) = maze_with_alternative_candidate();
+    let (maze, nodes) = maze_with_alternative_candidate();
     let candidate = nodes[2];
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let mut rng = MazeRng::seed_from_u64(1);
@@ -1183,7 +1183,7 @@ fn maze_with_unreachable_candidate_holding_hidden_outbound() -> (Maze<SquareTess
 
 #[test]
 fn convert_region_audits_away_a_hidden_outbound_edge_before_landing_on_trap() {
-    let (mut maze, nodes) = maze_with_unreachable_candidate_holding_hidden_outbound();
+    let (maze, nodes) = maze_with_unreachable_candidate_holding_hidden_outbound();
     let candidate = nodes[2];
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let scc = maze.analysis.scc(&maze.graph);
@@ -1204,7 +1204,7 @@ fn convert_region_audits_away_a_hidden_outbound_edge_before_landing_on_trap() {
 
 #[test]
 fn convert_region_fails_when_audit_removal_is_preset_blocked() {
-    let (mut maze, nodes) = maze_with_trap_candidate();
+    let (maze, nodes) = maze_with_trap_candidate();
     let mid = nodes[1];
     let candidate = nodes[2];
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
@@ -1221,7 +1221,7 @@ fn convert_region_fails_when_audit_removal_is_preset_blocked() {
 
 #[test]
 fn convert_region_fails_when_every_add_candidate_is_preset_blocked() {
-    let (mut maze, nodes) = maze_with_isolated_candidate();
+    let (maze, nodes) = maze_with_isolated_candidate();
     let candidate = nodes[2];
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let mut preset_state = PresetState::empty();
@@ -1237,7 +1237,7 @@ fn convert_region_fails_when_every_add_candidate_is_preset_blocked() {
 
 #[test]
 fn convert_region_no_op_when_already_the_target_class() {
-    let (mut maze, nodes) = maze_with_isolated_candidate();
+    let (maze, nodes) = maze_with_isolated_candidate();
     let candidate = nodes[2];
     let members: HashSet<NodeId> = [candidate].into_iter().collect();
     let mut rng = MazeRng::seed_from_u64(1);
@@ -1316,7 +1316,7 @@ fn grow_front_with_locality_one_stays_depth_first_on_a_single_arm() {
     // locality=1.0 always continues from the most recently added node (DFS) -- growing to
     // arm_len+1 nodes (hub + the whole arm) from a 3-armed star must consume one entire arm
     // before ever touching another, regardless of which arm it picks.
-    let (mut maze, hub, arms) = maze_with_three_armed_star(4);
+    let (maze, hub, arms) = maze_with_three_armed_star(4);
     let scc = maze.analysis.scc(&maze.graph);
     let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
     let seed_component = scc.component_of(hub).unwrap();
@@ -1345,7 +1345,7 @@ fn grow_front_with_locality_zero_spreads_breadth_first_across_arms() {
     // after the first expansion the frontier holds one candidate per arm all at once.
     let mut touched_multiple_arms = false;
     for seed in 0..30u64 {
-        let (mut maze, hub, arms) = maze_with_three_armed_star(6);
+        let (maze, hub, arms) = maze_with_three_armed_star(6);
         let scc = maze.analysis.scc(&maze.graph);
         let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
         let seed_component = scc.component_of(hub).unwrap();
@@ -1393,7 +1393,7 @@ fn maze_with_one_way_and_two_way_neighbor() -> (Maze<SquareTessellation>, Vec<No
 
 #[test]
 fn grow_front_only_expands_through_bidirectional_edges() {
-    let (mut maze, nodes) = maze_with_one_way_and_two_way_neighbor();
+    let (maze, nodes) = maze_with_one_way_and_two_way_neighbor();
     let seed = nodes[2];
     let two_way = nodes[3];
     let one_way = nodes[4];
@@ -1421,7 +1421,7 @@ fn grow_front_fails_when_only_one_way_neighbors_are_available() {
     // Same fixture, but ask for min_region_size=3 (seed + two_way + one more) -- once two_way
     // is exhausted (it has no further non-critical bidirectional neighbors of its own) and no
     // excess budget exists to cross into one_way's component, growth must fail outright.
-    let (mut maze, nodes) = maze_with_one_way_and_two_way_neighbor();
+    let (maze, nodes) = maze_with_one_way_and_two_way_neighbor();
     let seed = nodes[2];
     let scc = maze.analysis.scc(&maze.graph);
     let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
@@ -1454,7 +1454,7 @@ fn maze_with_bridgeable_neighbor() -> (Maze<SquareTessellation>, Vec<NodeId>) {
 
 #[test]
 fn try_open_excess_neighbor_bridges_a_single_node_and_debits_full_component_size() {
-    let (mut maze, nodes) = maze_with_bridgeable_neighbor();
+    let (maze, nodes) = maze_with_bridgeable_neighbor();
     let seed = nodes[2];
     let neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
@@ -1480,7 +1480,7 @@ fn try_open_excess_neighbor_bridges_a_single_node_and_debits_full_component_size
 
 #[test]
 fn try_open_excess_neighbor_returns_none_without_budget_for_the_bordering_class() {
-    let (mut maze, nodes) = maze_with_bridgeable_neighbor();
+    let (maze, nodes) = maze_with_bridgeable_neighbor();
     let seed = nodes[2];
     let neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
@@ -1504,7 +1504,7 @@ fn try_open_excess_neighbor_returns_none_without_budget_for_the_bordering_class(
 
 #[test]
 fn try_open_excess_neighbor_skips_a_critical_bordering_node() {
-    let (mut maze, nodes) = maze_with_bridgeable_neighbor();
+    let (maze, nodes) = maze_with_bridgeable_neighbor();
     let seed = nodes[2];
     let neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
@@ -1529,7 +1529,7 @@ fn try_open_excess_neighbor_skips_a_critical_bordering_node() {
 
 #[test]
 fn try_open_excess_neighbor_skips_a_committed_bordering_node() {
-    let (mut maze, nodes) = maze_with_bridgeable_neighbor();
+    let (maze, nodes) = maze_with_bridgeable_neighbor();
     let seed = nodes[2];
     let neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
@@ -1553,7 +1553,7 @@ fn try_open_excess_neighbor_skips_a_committed_bordering_node() {
 
 #[test]
 fn try_open_excess_neighbor_respects_preset_blocked_bridge() {
-    let (mut maze, nodes) = maze_with_bridgeable_neighbor();
+    let (maze, nodes) = maze_with_bridgeable_neighbor();
     let seed = nodes[2];
     let neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
@@ -1583,7 +1583,7 @@ fn try_open_excess_neighbor_respects_preset_blocked_return_direction() {
     // Forward direction (seed -> neighbor) is allowed, only the return edge is blocked --
     // the candidate must still be rejected as a whole (bidirectional bridge required), and the
     // speculative forward edge must be rolled back, not left dangling as a one-way leak.
-    let (mut maze, nodes) = maze_with_bridgeable_neighbor();
+    let (maze, nodes) = maze_with_bridgeable_neighbor();
     let seed = nodes[2];
     let neighbor = nodes[3];
     let scc = maze.analysis.scc(&maze.graph);
@@ -1692,7 +1692,7 @@ fn grow_front_does_not_cross_into_a_neighbor_component_while_other_frontier_node
     let critical: HashSet<NodeId> = [nodes[0], nodes[1]].into_iter().collect();
 
     for seed_val in 0..30u64 {
-        let (mut maze, _) = maze_with_uneven_branches_and_a_bridgeable_neighbor();
+        let (maze, _) = maze_with_uneven_branches_and_a_bridgeable_neighbor();
         let mut budget = HashMap::from([(RegionClass::Unreachable, 100)]);
         let mut rng = MazeRng::seed_from_u64(seed_val);
         let mut draft = DraftMaze::new(maze);
@@ -1709,7 +1709,7 @@ fn grow_front_does_not_cross_into_a_neighbor_component_while_other_frontier_node
 
 #[test]
 fn grow_front_fails_when_frontier_exhausted_and_no_excess_budget_to_cross() {
-    let (mut maze, nodes) = maze_with_bridgeable_neighbor();
+    let (maze, nodes) = maze_with_bridgeable_neighbor();
     let seed = nodes[2];
     let scc = maze.analysis.scc(&maze.graph);
     let region_classes = maze.analysis.region_classes(&maze.graph, &maze.field, &maze.meta);
@@ -1762,7 +1762,7 @@ fn maze_with_plus_shaped_region_and_external_edge() -> (Maze<SquareTessellation>
 
 #[test]
 fn sever_from_parent_removes_external_edges_but_keeps_internal_connectivity() {
-    let (mut maze, nodes) = maze_with_plus_shaped_region_and_external_edge();
+    let (maze, nodes) = maze_with_plus_shaped_region_and_external_edge();
     let center = nodes[2];
     let up = nodes[3];
     let down = nodes[4];
@@ -1791,7 +1791,7 @@ fn sever_from_parent_removes_external_edges_but_keeps_internal_connectivity() {
 
 #[test]
 fn sever_from_parent_fails_when_a_required_cut_is_preset_blocked() {
-    let (mut maze, nodes) = maze_with_plus_shaped_region_and_external_edge();
+    let (maze, nodes) = maze_with_plus_shaped_region_and_external_edge();
     let center = nodes[2];
     let up = nodes[3];
     let down = nodes[4];
@@ -1831,7 +1831,7 @@ fn maze_with_one_bordering_seed_and_decoys() -> (Maze<SquareTessellation>, Vec<N
 #[test]
 fn try_grow_border_priority_on_always_picks_the_bordering_seed_first() {
     for seed in 0..20u64 {
-        let (mut maze, nodes) = maze_with_one_bordering_seed_and_decoys();
+        let (maze, nodes) = maze_with_one_bordering_seed_and_decoys();
         let bordering = nodes[2];
         let mut rng = MazeRng::seed_from_u64(seed);
         let mut excess_budget: HashMap<RegionClass, i32> = HashMap::new();
@@ -1859,7 +1859,7 @@ fn try_grow_border_priority_off_sometimes_fails_by_missing_the_bordering_seed() 
     // border-priority is genuinely doing the work of guaranteeing success, not a no-op.
     let mut saw_a_failure = false;
     for seed in 0..40u64 {
-        let (mut maze, _) = maze_with_one_bordering_seed_and_decoys();
+        let (maze, _) = maze_with_one_bordering_seed_and_decoys();
         let mut rng = MazeRng::seed_from_u64(seed);
         let mut excess_budget: HashMap<RegionClass, i32> = HashMap::new();
         let ctx = GrowContext {

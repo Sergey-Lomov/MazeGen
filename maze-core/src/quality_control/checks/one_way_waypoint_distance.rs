@@ -6,7 +6,7 @@ use crate::graph::route_protection::is_edge_on_route;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::comparison::Comparison;
-use crate::quality_control::{Issue, InvalidOneWayIssue};
+use crate::quality_control::{InvalidOneWayIssue};
 
 pub const ONE_WAY_WAYPOINT_DISTANCE_DEFAULT: u32 = 0;
 pub const ONE_WAY_WAYPOINT_DISTANCE_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
@@ -105,6 +105,7 @@ impl<T: Tessellation> Check<T, InvalidOneWayIssue> for OneWayWaypointDistanceChe
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};

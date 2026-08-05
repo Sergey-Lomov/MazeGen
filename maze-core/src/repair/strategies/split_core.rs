@@ -384,7 +384,7 @@ mod tests {
         // 1x5 line: node at x=2 is isolated (no existing edges at all). Bridge to node at x=0
         // (not a geometric neighbor, but required doesn't need it to be) plus a second edge drawn
         // from a real free neighbor (x=1 or x=3).
-        let mut maze = maze_line(5);
+        let maze = maze_line(5);
         let nodes: Vec<NodeId> = (0..5).map(|x| maze.field.node_at(SquarePoint { x, y: 0 }).unwrap()).collect();
         let at = nodes[2];
         let bridge_target = nodes[0];
@@ -440,7 +440,7 @@ mod tests {
     fn plan_unconstrained_split_rejects_a_required_neighbor_already_excluded() {
         // A caller must never plan a bridge to a point another command in the same batch already
         // committed to replace — that node's id won't exist by apply time.
-        let mut maze = maze_line(3);
+        let maze = maze_line(3);
         let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(SquarePoint { x, y: 0 }).unwrap()).collect();
         let at = nodes[1];
         let bridge_target = nodes[0];
@@ -457,7 +457,7 @@ mod tests {
         // 1x5 line, node at x=2 isolated. Bridge to x=0 (required), but x=1 (the only real
         // geometric neighbor that could supply a second edge on one side) is excluded — the only
         // remaining free neighbor is x=3.
-        let mut maze = maze_line(5);
+        let maze = maze_line(5);
         let nodes: Vec<NodeId> = (0..5).map(|x| maze.field.node_at(SquarePoint { x, y: 0 }).unwrap()).collect();
         let at = nodes[2];
         let bridge_target = nodes[0];

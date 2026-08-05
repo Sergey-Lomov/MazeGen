@@ -7,6 +7,7 @@ use crate::space::{SquareTessellation, square_rect};
 use crate::meta::MazeMeta;
 use crate::repair::strategies::{OneWayToWallStrategy, OneWayToPassageStrategy};
 use crate::repair::strategies::test_utils::apply_and_commit;
+use crate::repair::strategies::group_select::PRIORITY_RANDOM;
 
 fn no_params() -> StrategyParams {
     crate::repair::params::build_params(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidOneWayGroupIssue>>::params(&OneWayGroupSelectStrategy), None)

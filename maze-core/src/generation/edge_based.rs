@@ -9,7 +9,7 @@ use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
 use crate::space::{Field, Tessellation};
-use crate::event_log::{DebugEvent, EventLog, ScopeGuard};
+use crate::event_log::{EventLog, ScopeGuard};
 use super::{EdgeBasedParams, ElementsConfig, PresetState, try_add_edge, try_add_edge_kind, can_connect, gaussian_weighted_index, add_edge_and_detect_direction};
 pub use edge_based_event::{EdgeBasedEvent, debug_value_names};
 

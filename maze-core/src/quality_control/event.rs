@@ -8,7 +8,7 @@ use crate::repair::command::SplitNodeEdge;
 use super::issue::IssueKind;
 use super::issue_kinds::RepairLimitKind;
 use super::issue_payload::IssuePayload;
-pub(crate) use event_encode::{write_check_issue, write_details_map, write_issue_kind, write_issue_payload, write_repair_limit_kind, write_split_nodes, write_str};
+pub(crate) use event_encode::{write_check_issue, write_details_map, write_issue_kind, write_issue_payload, write_repair_limit_kind, write_split_nodes};
 
 /// Narration-level events for the quality-control/repair pipeline (GitHub issue #147) — see
 /// `Specs/quality_control.md` for `Stage`/`Rule`/`QualityControlEngine`'s own structure and
@@ -227,6 +227,7 @@ pub enum QcEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use event_encode::write_str;
     use crate::event_log::{DebugEvent, EncodeEventPayload};
     use std::collections::HashMap;
 

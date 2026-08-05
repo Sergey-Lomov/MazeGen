@@ -8,7 +8,7 @@ use crate::quality_control::MissingSplitTilesIssue;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-use crate::repair::command::{MutationCommand, SplitNodeEdge};
+use crate::repair::command::MutationCommand;
 use super::split_core::{pick_weighted_pattern, plan_unconstrained_split as core_plan_unconstrained_split, plan_pattern_split as core_plan_pattern_split};
 
 pub const PARAM_ALLOW_LOSE_CONNECTIONS: &str = "allow_lose_connections";

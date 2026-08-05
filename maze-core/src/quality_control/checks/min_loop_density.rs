@@ -5,7 +5,7 @@ use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::graph::cycles::{find_all_simple_cycles, resolve_to_edge_ids, density_per_100, CycleSearchResult};
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, MissingLoopsIssue};
+use crate::quality_control::{MissingLoopsIssue};
 
 pub const MIN_LOOP_DENSITY_DEFAULT: u32 = 30;
 pub const AVG_LOOP_LENGTH_ESTIMATE_DEFAULT: u32 = 10;
@@ -69,6 +69,7 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;

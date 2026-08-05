@@ -476,7 +476,7 @@ fn remove_node_notes_the_removed_nodes_coordinates_into_the_debug_ledger() {
 
     let (mut maze, _nodes) = maze_n(1);
     let point = SquarePoint { x: 0, y: 0 };
-    let slot0 = maze.field.node_at(point).unwrap();
+    let _slot0 = maze.field.node_at(point).unwrap();
     let extra = maze.field.add_node_at(point, &mut maze.ids);
     maze.graph.add_node(extra);
 

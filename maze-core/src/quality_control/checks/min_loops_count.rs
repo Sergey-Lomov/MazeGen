@@ -2,7 +2,7 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, MissingLoopsIssue};
+use crate::quality_control::{MissingLoopsIssue};
 
 pub const MIN_LOOPS_DEFAULT: u32 = 1;
 
@@ -39,6 +39,7 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopsCountCheck {
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;

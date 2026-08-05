@@ -7,7 +7,7 @@ use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
-use crate::event_log::{DebugEvent, DebugMapDelta, DebugMapOp, DebugValueDelta, DebugValueKind, DebugValueOp, DebugVertexDelta, DebugVertexOp, EventLog};
+use crate::event_log::{DebugMapDelta, DebugMapOp, DebugValueDelta, DebugValueKind, DebugValueOp, DebugVertexDelta, DebugVertexOp, EventLog};
 use super::{PresetState, try_add_bidirectional_edge, bidirectional_edge_feasible, split_aware_neighbors};
 
 /// Narration-level events for Wilson's algorithm (see GitHub issue #145). Wilson's decision shape

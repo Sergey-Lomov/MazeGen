@@ -2,7 +2,7 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, ExcessiveSccCountIssue};
+use crate::quality_control::ExcessiveSccCountIssue;
 
 pub const MAX_SCC_COUNT_DEFAULT: u32 = 1;
 
@@ -29,6 +29,7 @@ impl<T: Tessellation> Check<T, ExcessiveSccCountIssue> for SccCountCheck {
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;

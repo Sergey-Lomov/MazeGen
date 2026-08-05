@@ -1,5 +1,5 @@
 use super::*;
-use super::tests::{rng, default_params, generate_default_split, empty_presets};
+use super::tests::{default_params, generate_default_split, empty_presets};
 use crate::generation::test_utils::make_field_graph_ids;
 
 fn teleport_edges(graph: &Graph) -> Vec<(NodeId, NodeId)> {

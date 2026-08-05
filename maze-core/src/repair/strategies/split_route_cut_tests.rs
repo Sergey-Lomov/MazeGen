@@ -5,10 +5,7 @@ use crate::graph::EdgeKind;
 use crate::{Graph, IdGenerator};
 use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
 use crate::repair::strategies::test_utils::{apply_and_commit, apply_and_commit_default};
-
-fn no_params() -> StrategyParams {
-    crate::repair::params::build_params(<SplitRouteCutStrategy as RepairStrategy<SquareTessellation, InvalidSplitRouteIssue>>::params(&SplitRouteCutStrategy), None)
-}
+use crate::repair::strategies::group_select::PRIORITY_RANDOM;
 
 fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
     let mut map = std::collections::HashMap::new();

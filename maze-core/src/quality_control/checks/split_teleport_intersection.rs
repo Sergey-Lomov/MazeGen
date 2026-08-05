@@ -93,7 +93,7 @@ mod tests {
         let mut ids = IdGenerator::new();
         let mut field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
         let split_point = SquarePoint { x: 0, y: 0 };
-        let base = field.node_at(split_point).unwrap();
+        let _base = field.node_at(split_point).unwrap();
         let extra = field.add_node_at(split_point, &mut ids);
         (field, ids, extra)
     }

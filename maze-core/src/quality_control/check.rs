@@ -1,7 +1,7 @@
 use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
-use super::issue::{Issue, IssueRequirement};
+use super::issue::IssueRequirement;
 
 pub trait Check<T: Tessellation, I: IssueRequirement> {
     /// Check **type** id — matches `maze-wasm`'s `CheckInstanceConfig.type_id` / `available_checks()`'s

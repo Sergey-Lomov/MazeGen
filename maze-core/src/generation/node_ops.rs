@@ -6,7 +6,6 @@ use crate::ids::{NodeId, IdGenerator};
 use crate::graph::Graph;
 use crate::space::{Field, Tessellation};
 use super::preset_state::PresetState;
-use super::edge_ops::{directed_edge_feasible, bidirectional_edge_feasible};
 use super::debug_state::DebugGenerationState;
 use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
 

@@ -5,7 +5,7 @@ use crate::ids::{EdgeId, NodeId};
 use crate::space::Tessellation;
 use crate::graph::cycles::{find_all_simple_cycles, resolve_to_edge_ids, density_per_100, CycleSearchResult};
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
+use crate::quality_control::{InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
 use crate::quality_control::issue_kinds::canonical_cycle_key;
 
 pub const MAX_LOOP_DENSITY_DEFAULT: u32 = 30;
@@ -77,6 +77,7 @@ fn cycle_cells(graph: &crate::Graph, cycle: &[EdgeId]) -> HashSet<NodeId> {
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;

@@ -8,7 +8,7 @@ use crate::graph::route_protection::is_teleport_route_protected;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidTeleportGroupIssue};
+use crate::quality_control::{InvalidTeleportGroupIssue};
 
 pub const TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 

@@ -4,7 +4,7 @@ use crate::graph::EdgeKind;
 use crate::graph::route_protection::is_teleport_route_protected;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidTeleportIssue};
+use crate::quality_control::{InvalidTeleportIssue};
 
 /// Flags a teleport edge as invalid when a regular (`EdgeKind::Basic`) connection already exists
 /// between the same pair of vertices in the same direction — see GitHub issue #74. Redundant: a
@@ -45,6 +45,7 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportDuplicatesConne
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};

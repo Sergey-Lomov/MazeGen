@@ -9,7 +9,7 @@ use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams, St
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig};
 use crate::repair::command::{MutationCommand, removed_edge_ids};
-use crate::repair::strategies::group_select::{PARAM_PRIORITY, PRIORITY_RANDOM, PRIORITY_PROBLEMATIC, PRIORITY_OPTIONS};
+use crate::repair::strategies::group_select::{PARAM_PRIORITY, PRIORITY_PROBLEMATIC, PRIORITY_OPTIONS};
 
 pub const PARAM_EDGE_SCOPE: &str = "edge_scope";
 

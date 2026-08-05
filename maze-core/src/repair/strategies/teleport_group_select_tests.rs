@@ -4,10 +4,10 @@ use crate::random::MazeRng;
 use crate::graph::EdgeKind;
 use crate::{Graph, IdGenerator};
 use crate::space::{SquareTessellation, square_rect};
-use crate::quality_control::Issue as _;
 use crate::quality_control::IssueKindConst;
 use crate::repair::strategies::RemoveTeleportStrategy;
 use crate::repair::strategies::test_utils::apply_and_commit;
+use crate::repair::strategies::group_select::PRIORITY_RANDOM;
 
 fn no_params() -> StrategyParams {
     crate::repair::params::build_params(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidTeleportGroupIssue>>::params(&TeleportGroupSelectStrategy), None)

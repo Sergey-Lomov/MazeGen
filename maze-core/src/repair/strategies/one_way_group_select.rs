@@ -8,7 +8,7 @@ use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::MutationCommand;
-use crate::repair::strategies::group_select::{group_select_apply, PARAM_PRIORITY, PRIORITY_PROBLEMATIC, PRIORITY_RANDOM, PRIORITY_OPTIONS};
+use crate::repair::strategies::group_select::{group_select_apply, PARAM_PRIORITY, PRIORITY_PROBLEMATIC, PRIORITY_OPTIONS};
 use crate::graph::route_protection::is_edge_on_route;
 
 pub const PARAM_PROTECT_ROUTE: &str = "protect_route";

@@ -3,7 +3,6 @@ use crate::ids::EdgeId;
 use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, INVALID_LOOP};
 #[cfg(test)]
 use crate::quality_control::issue::Issue;
-use super::canonical_cycle_key;
 
 /// Produced by any check that flags cycles invalid for a check-specific reason (currently
 /// `MinLoopLengthCheck`/`MaxLoopLengthCheck`; future checks may flag cycles invalid for other
@@ -98,6 +97,7 @@ impl IssueMerge for InvalidLoopIssue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::canonical_cycle_key;
 
     fn issue(source_check: &str, all: Vec<Vec<EdgeId>>, invalid: Vec<usize>) -> InvalidLoopIssue {
         let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();

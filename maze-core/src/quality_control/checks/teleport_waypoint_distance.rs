@@ -6,7 +6,7 @@ use crate::graph::route_protection::is_teleport_route_protected;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::comparison::Comparison;
-use crate::quality_control::{Issue, InvalidTeleportIssue};
+use crate::quality_control::{InvalidTeleportIssue};
 
 pub const TELEPORT_WAYPOINT_DISTANCE_DEFAULT: u32 = 0;
 pub const TELEPORT_WAYPOINT_DISTANCE_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
@@ -109,6 +109,7 @@ impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportWaypointDistanc
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};

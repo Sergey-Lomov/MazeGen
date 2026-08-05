@@ -3,7 +3,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::region_class::RegionClass;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, RegionNeedsExpansionIssue};
+use crate::quality_control::RegionNeedsExpansionIssue;
 use super::region_size_check_core::{find_invalid_regions, build_issue};
 
 pub const MIN_REGION_SIZE_DEFAULT: u32 = 20;
@@ -32,6 +32,7 @@ impl<T: Tessellation> Check<T, RegionNeedsExpansionIssue> for MinRegionSizeCheck
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;

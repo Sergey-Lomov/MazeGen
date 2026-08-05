@@ -9,7 +9,7 @@ use crate::random::MazeRng;
 use crate::ids::{NodeId, IdGenerator};
 use crate::graph::{Graph, EdgeKind};
 use crate::space::{Field, Tessellation};
-use crate::event_log::{DebugEvent, EventLog, ScopeGuard};
+use crate::event_log::{EventLog, ScopeGuard};
 use super::{ElementsConfig, GenerationParams, PresetState, try_add_edge, try_add_edge_kind, can_connect, gaussian_weighted_index};
 pub(super) use super::add_edge_and_detect_direction;
 use super::split_pattern::SplitGenerationConfig;

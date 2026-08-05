@@ -2,7 +2,7 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, MissingTeleportsIssue};
+use crate::quality_control::MissingTeleportsIssue;
 use super::teleport_count_core::count_distinct_teleports;
 
 pub const MIN_TELEPORT_COUNT_DEFAULT: u32 = 1;
@@ -34,6 +34,7 @@ impl<T: Tessellation> Check<T, MissingTeleportsIssue> for MinTeleportCountCheck 
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};

@@ -3,7 +3,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::graph::distance_map::cycle_min_distance;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
+use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
 use super::cycle_check_core::{find_invalid_cycles, build_issue};
 
 pub const LOOP_DISTANCE_FROM_FINISH_DEFAULT: u32 = 0;
@@ -37,6 +37,7 @@ impl<T: Tessellation> Check<T, InvalidLoopIssue> for LoopDistanceFromFinishCheck
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;

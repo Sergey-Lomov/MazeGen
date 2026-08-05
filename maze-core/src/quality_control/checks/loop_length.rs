@@ -3,7 +3,7 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::comparison::Comparison;
-use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
+use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
 use super::cycle_check_core::{find_invalid_cycles, build_issue, tile_length};
 
 pub const LOOP_LENGTH_DEFAULT: u32 = 10;
@@ -38,6 +38,7 @@ impl<T: Tessellation> Check<T, InvalidLoopIssue> for LoopLengthCheck {
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;

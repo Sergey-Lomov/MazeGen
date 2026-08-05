@@ -4,7 +4,7 @@ use crate::graph::EdgeKind;
 use crate::graph::route_protection::is_edge_on_route;
 use crate::space::{Tessellation, geometric_edge_distance};
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidOneWayGroupIssue};
+use crate::quality_control::{InvalidOneWayGroupIssue};
 
 pub const ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 

@@ -5,7 +5,7 @@ use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::graph::cycles::resolve_to_edge_ids;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
+use crate::quality_control::{InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
 use crate::quality_control::issue_kinds::canonical_cycle_key;
 
 pub const MAX_LOOPS_COUNT_DEFAULT: u32 = 20;
@@ -58,6 +58,7 @@ impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopsCountCheck {
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;

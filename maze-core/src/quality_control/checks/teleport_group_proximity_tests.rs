@@ -1,4 +1,5 @@
 use super::*;
+use crate::quality_control::Issue;
 use rand::SeedableRng;
 use crate::{Graph, IdGenerator};
 use crate::ids::NodeId;

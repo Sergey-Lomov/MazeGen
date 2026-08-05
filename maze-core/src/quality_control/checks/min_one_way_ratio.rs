@@ -3,7 +3,7 @@ use crate::Maze;
 use crate::graph::EdgeKind;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, MissingOneWaysIssue};
+use crate::quality_control::{MissingOneWaysIssue};
 
 pub const MIN_ONE_WAY_RATIO_DEFAULT: u32 = 10;
 
@@ -59,6 +59,7 @@ impl<T: Tessellation> Check<T, MissingOneWaysIssue> for MinOneWayRatioCheck {
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};

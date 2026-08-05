@@ -4,7 +4,7 @@ use crate::space::Tessellation;
 use crate::graph::cycles::density_per_100;
 use crate::generation::SplitPattern;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, MissingSplitTilesIssue};
+use crate::quality_control::MissingSplitTilesIssue;
 use super::split_count::count_matching_split_tiles;
 
 pub const SPLIT_DENSITY_DEFAULT: u32 = 10;

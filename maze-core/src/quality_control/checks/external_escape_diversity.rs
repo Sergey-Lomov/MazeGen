@@ -4,7 +4,7 @@ use crate::Maze;
 use crate::graph::nav::NavNodeId;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{Issue, InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
+use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement, CycleKind};
 use super::cycle_check_core::{find_invalid_cycles, build_issue};
 
 pub const EXTERNAL_ESCAPE_DIVERSITY_DEFAULT: u32 = 3;
@@ -59,6 +59,7 @@ fn distinct_exit_count(nav: &crate::graph::nav::NavGraph, cycle: &[usize]) -> u3
 
 #[cfg(test)]
 mod tests {
+    use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
