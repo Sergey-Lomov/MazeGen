@@ -23,6 +23,12 @@ vi.mock("../wasm/wasmLoader", () => ({
 beforeEach(() => {
   useMazeStore.setState({
     ...baseStoreState(),
+    // One-ways/Teleports sections only render when the maze actually has that kind of edge
+    // (GitHub issue #298 follow-up, mirrors the pre-existing Splits section gating) — a one-way
+    // edge here so the top-level One-ways tests below don't need their own maze setup; the
+    // "Teleports section" describe block below adds its own teleport edges.
+    nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
+    edges: [{ from: 0, to: 1, kind: "basic" as const }],
     // All sections start collapsed (GitHub issue #292 follow-up) — expanded here so the
     // field-interaction tests below don't each need their own expand step. Collapsed-by-default
     // itself is covered by the dedicated "all sections start collapsed" test.
@@ -289,6 +295,18 @@ describe("VectorByWallsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByWallsSectionsExpanded.one_ways).toBe(false);
   });
 
+  it("hides the one-ways section entirely when the maze has no one-way edges (GitHub issue #298)", () => {
+    useMazeStore.setState({ edges: [{ from: 0, to: 1, kind: "basic" }, { from: 1, to: 0, kind: "basic" }] });
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.queryByText(m["image_export.vector_by_walls.section_one_ways"]())).not.toBeInTheDocument();
+  });
+
+  it("hides the teleports section entirely when the maze has no teleport edges (GitHub issue #298)", () => {
+    useMazeStore.setState({ edges: [{ from: 0, to: 1, kind: "basic" }] });
+    render(<VectorByWallsSettingsPanel />);
+    expect(screen.queryByText(m["image_export.vector_by_walls.section_teleports"]())).not.toBeInTheDocument();
+  });
+
   it("changing the one-way pattern updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
     const select = screen.getByDisplayValue(m["image_export.vector_by_walls.one_way_pattern_triangle"]());
@@ -337,7 +355,11 @@ describe("VectorByWallsSettingsPanel", () => {
 
   describe("Teleports section", () => {
     beforeEach(() => {
-      useMazeStore.setState({ vectorByWallsSectionsExpanded: { teleports: true } });
+      useMazeStore.setState({
+        vectorByWallsSectionsExpanded: { teleports: true },
+        nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 3, y: 3, i: 0 }],
+        edges: [{ from: 0, to: 1, kind: "teleport" as const }],
+      });
     });
 
     it("shows the base connector fields, no group list, by default (group customization off)", () => {
@@ -605,6 +627,58 @@ describe("VectorByWallsSettingsPanel", () => {
         .parentElement!.querySelector('input[type="checkbox"]')!;
       fireEvent.click(checkbox);
       expect(useMazeStore.getState().vectorByWallsSettings.splitSpecialShapes).toBe(true);
+    });
+  });
+
+  describe("Warnings section", () => {
+    // A one-way teleport with border width 0 -- its exit endpoint (node 1) draws with a
+    // floor-colored fill (see `resolvePointFillState`), so it's invisible with no border.
+    const teleportMaze = () =>
+      useMazeStore.setState({
+        nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 3, y: 3, i: 0 }],
+        edges: [{ from: 0, to: 1, kind: "teleport" as const }],
+        vectorByWallsSettings: {
+          ...useMazeStore.getState().vectorByWallsSettings,
+          teleportEdgeBorderWidth: 0,
+        },
+      });
+
+    it("hides the section entirely when there are no warnings", () => {
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.queryByText(/Warnings/)).not.toBeInTheDocument();
+    });
+
+    it("shows the section header with a warning count, collapsed by default", () => {
+      teleportMaze();
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" }))).toBeInTheDocument();
+      expect(screen.queryByText(m["image_export.vector_by_walls.warning_teleport_marker_invisible"]())).not.toBeInTheDocument();
+    });
+
+    it("expands to show one bubble per warning", () => {
+      teleportMaze();
+      render(<VectorByWallsSettingsPanel />);
+      fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" })));
+      expect(screen.getByText(m["image_export.vector_by_walls.warning_teleport_marker_invisible"]())).toBeInTheDocument();
+    });
+
+    it("clicking a warning bubble opens a modal with its description", () => {
+      teleportMaze();
+      render(<VectorByWallsSettingsPanel />);
+      fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" })));
+      fireEvent.click(screen.getByText(m["image_export.vector_by_walls.warning_teleport_marker_invisible"]()));
+      expect(screen.getByText(m["image_export.vector_by_walls.warning_teleport_marker_invisible_description"]())).toBeInTheDocument();
+    });
+
+    it("hovering a warning bubble sets the hovered export-warning key in the store", () => {
+      teleportMaze();
+      render(<VectorByWallsSettingsPanel />);
+      fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_warnings"]({ count: "1" })));
+      const bubble = screen.getByText(m["image_export.vector_by_walls.warning_teleport_marker_invisible"]()).closest("div")!;
+      fireEvent.mouseEnter(bubble);
+      expect(useMazeStore.getState().hoveredExportWarningKey).toBe("teleport_marker_invisible");
+      fireEvent.mouseLeave(bubble);
+      expect(useMazeStore.getState().hoveredExportWarningKey).toBeNull();
     });
   });
 });

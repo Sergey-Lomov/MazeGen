@@ -1203,6 +1203,17 @@
   "image_export.vector_by_walls.section_splits": "Разделения",
   "image_export.vector_by_walls.split_node_color": "Цвет узла {index}",
   "image_export.vector_by_walls.split_special_shapes": "Специальные формы",
+  "image_export.vector_by_walls.section_warnings": "Предупреждения ({count})",
+  "image_export.vector_by_walls.warning_teleport_marker_invisible": "Маркер выхода телепорта невидим",
+  "image_export.vector_by_walls.warning_teleport_marker_invisible_description": "Точка выхода одностороннего телепорта рисуется заливкой цвета пола, а не цветом телепорта, поэтому при толщине рамки 0 её нечем отрисовать.",
+  "image_export.vector_by_walls.warning_teleport_group_ambiguous": "Группа телепортов неотличима от другой",
+  "image_export.vector_by_walls.warning_teleport_group_ambiguous_description": "Эта группа телепортов совпадает по цвету и форме с другой группой, а стиль коннектора выключен (\"None\") — без соединительной линии группы больше нечем отличить друг от друга на экспортированном изображении.",
+  "image_export.vector_by_walls.warning_teleport_waypoint_overlap": "Маркер телепорта пересекается с маркером старта/финиша",
+  "image_export.vector_by_walls.warning_teleport_waypoint_overlap_description": "Маркер телепорта накладывается на маркер старта/финиша. На экспортированном изображении они визуально наложатся друг на друга.",
+  "image_export.vector_by_walls.warning_waypoint_on_split": "Маркер старта/финиша находится на точке разделения",
+  "image_export.vector_by_walls.warning_waypoint_on_split_description": "Маркер старта/финиша находится на точке разделения, такая ситуация может отображаться некорректно.",
+  "image_export.vector_by_walls.warning_teleport_on_special_split": "Край телепорта находится на точке разделения",
+  "image_export.vector_by_walls.warning_teleport_on_special_split_description": "Край телепорта находится на точке разделения, такая ситуация может отображаться некорректно.",
   "status.render_mode_not_selected": "Режим рендера не выбран",
   "status.render_mode_active": "Активен: {mode}"
 }

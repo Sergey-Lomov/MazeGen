@@ -46,6 +46,7 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     splitSpecialShapes: true,
   },
   selectedTeleportGroupKey: null,
+  hoveredExportWarningKey: null,
 
   setActiveRenderMode: (mode) => set({ activeRenderMode: mode }),
   setOpenRenderModeSettings: (mode) => set({ openRenderModeSettings: mode }),
@@ -154,4 +155,5 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     }),
   setVectorByWallsSplitSpecialShapes: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, splitSpecialShapes: v } })),
+  setHoveredExportWarningKey: (key) => set({ hoveredExportWarningKey: key }),
 });

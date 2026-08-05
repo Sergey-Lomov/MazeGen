@@ -6,7 +6,9 @@ import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer } from "../renderers/SplitJunctionRenderer";
+import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, maxSplitNodeCount } from "../selectors/mazeSelectors";
+import { computeVectorByWallsWarnings } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle } from "../renderers/types";
 import type { MarkerSettings } from "../../store/storeTypes";
@@ -15,6 +17,11 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { splitSlotColor } from "../colorUtils";
+
+/** Cell-fill highlight color for a hovered export warning (GitHub issue #298 follow-up) — same
+ *  yellow as `styles/palette.ts`'s `warning` token, duplicated here since the pixi render layer
+ *  must not import the web-styling layer. */
+const WARNING_HIGHLIGHT_COLOR = 0xffaa44;
 
 /** Fills in `splitNodeColors`' missing slots with `splitSlotColor`'s own default palette (GitHub
  *  issue #294 follow-up) — `splitNodeColors` only holds entries for slots the user has actually
@@ -115,6 +122,7 @@ export class VectorByWallsRenderer {
   private readonly splitJunctionContainer: Container;
   private readonly teleportContainer: Container;
   private readonly markersContainer: Container;
+  private readonly warningHighlightContainer: Container;
 
   private readonly background: Graphics;
   private readonly grid: GridRenderer;
@@ -124,9 +132,29 @@ export class VectorByWallsRenderer {
   private readonly splitJunctions: SplitJunctionRenderer;
   private readonly teleports: TeleportRenderer;
   private readonly markers: WaypointsRenderer;
+  /** Own instance, not shared with `AnalyticsRenderer`'s issue-highlight overlay — per
+   *  `maze-web/CLAUDE.md`'s feature-renderer ownership rule. Highlights the currently hovered
+   *  export warning's cells (GitHub issue #298 follow-up — cell fill reads much more clearly than
+   *  a small marker circle), see `computeVectorByWallsWarnings`. */
+  private readonly warningHighlight: RegionHighlightRenderer;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
+
+  /** Memoizes `computeVectorByWallsWarnings` by reference-equality of its inputs — hover/unhover
+   *  (`hoveredExportWarningKey` changes) re-enters `renderWarningHighlight` without any of `nodes`/
+   *  `edges`/`cfg`/`vectorByWallsSettings`/`start`/`finish` having changed, so recomputing the full
+   *  warning list on every hover would repeat real work for no reason (GitHub issue #298
+   *  follow-up). */
+  private warningsCache: {
+    nodes: NodeDto[];
+    edges: EdgeDto[];
+    cfg: TessellationConfig;
+    settings: ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"];
+    start: number | null;
+    finish: number | null;
+    warnings: ReturnType<typeof computeVectorByWallsWarnings>;
+  } | null = null;
 
   private geometryCache: {
     nodes: NodeDto[];
@@ -161,6 +189,8 @@ export class VectorByWallsRenderer {
     container.addChild(this.splitJunctionContainer);
     container.addChild(this.teleportContainer);
     container.addChild(this.markersContainer);
+    this.warningHighlightContainer = new Container();
+    container.addChild(this.warningHighlightContainer);
 
     this.background = new Graphics();
     this.backgroundContainer.addChild(this.background);
@@ -172,6 +202,7 @@ export class VectorByWallsRenderer {
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);
     this.markers = new WaypointsRenderer(this.markersContainer);
+    this.warningHighlight = new RegionHighlightRenderer(this.warningHighlightContainer);
 
     this.syncVisibility(useMazeStore.getState());
     this.subscribe();
@@ -199,6 +230,8 @@ export class VectorByWallsRenderer {
 
       if ((dataChanged || settingsChanged || teleportsSectionChanged) && state.openCard === "image_export") {
         this.renderAll(state);
+      } else if (state.hoveredExportWarningKey !== prev.hoveredExportWarningKey && state.openCard === "image_export") {
+        this.renderWarningHighlight(state);
       }
 
       prev = state;
@@ -215,6 +248,7 @@ export class VectorByWallsRenderer {
     this.splitJunctionContainer.visible = visible;
     this.teleportContainer.visible = visible;
     this.markersContainer.visible = visible;
+    this.warningHighlightContainer.visible = visible;
     if (visible) this.renderAll(state);
   }
 
@@ -314,6 +348,54 @@ export class VectorByWallsRenderer {
     });
 
     this.markers.render({ markers: markerData });
+
+    this.renderWarningHighlight(state);
+  }
+
+  /** Highlights the currently hovered export warning's flagged cell(s) (GitHub issue #298
+   *  follow-up — a small marker-circle highlight read too weakly, cell fill is much clearer) —
+   *  recomputes the warning list rather than reading cached geometry off the store, since a
+   *  warning's `nodes` are cheap to derive and this only runs on hover/settings changes, not every
+   *  frame. Each flagged node is its own singleton region group (not one shared group) so
+   *  `RegionHighlightRenderer` never draws a perimeter connecting two unrelated cells. */
+  private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
+    const { hoveredExportWarningKey, nodes, edges, start, finish } = state;
+    if (!hoveredExportWarningKey) {
+      this.warningHighlight.clear();
+      return;
+    }
+    const cfg = state.activeTessellationConfig;
+    const settings = state.vectorByWallsSettings;
+    let warnings: ReturnType<typeof computeVectorByWallsWarnings>;
+    if (
+      this.warningsCache &&
+      this.warningsCache.nodes === nodes &&
+      this.warningsCache.edges === edges &&
+      this.warningsCache.cfg === cfg &&
+      this.warningsCache.settings === settings &&
+      this.warningsCache.start === start &&
+      this.warningsCache.finish === finish
+    ) {
+      warnings = this.warningsCache.warnings;
+    } else {
+      warnings = computeVectorByWallsWarnings(nodes, edges, cfg, settings, start, finish);
+      this.warningsCache = { nodes, edges, cfg, settings, start, finish, warnings };
+    }
+    const warning = warnings.find((w) => w.key === hoveredExportWarningKey);
+    if (!warning || warning.nodes.length === 0) {
+      this.warningHighlight.clear();
+      return;
+    }
+
+    this.warningHighlight.render({
+      nodes,
+      regionGroups: warning.nodes.map((id) => [id]),
+      color: WARNING_HIGHLIGHT_COLOR,
+      width: 0,
+      alpha: 0,
+      cfg,
+      skipPerimeter: true,
+    });
   }
 
   destroy(): void {
@@ -326,6 +408,7 @@ export class VectorByWallsRenderer {
     this.splitJunctions.destroy();
     this.teleports.destroy();
     this.markers.destroy();
+    this.warningHighlight.destroy();
     this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
@@ -333,6 +416,7 @@ export class VectorByWallsRenderer {
     this.splitJunctionContainer.destroy();
     this.teleportContainer.destroy();
     this.markersContainer.destroy();
+    this.warningHighlightContainer.destroy();
     this.backgroundContainer.destroy();
   }
 }

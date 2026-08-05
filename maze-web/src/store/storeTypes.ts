@@ -973,6 +973,13 @@ export interface ImageExportState {
    *  or clicking empty canvas clears it. `null` when nothing is selected, meaning every group draws
    *  normally. */
   selectedTeleportGroupKey: string | null;
+  /** Currently hovered export-warning list entry, by `ExportWarning.key` (GitHub issue #298) — set
+   *  by hovering a warning row in the settings panel, drives `VectorByWallsRenderer`'s own warning
+   *  highlight overlay. `null` when nothing is hovered. Mirrors `hoveredIssueLoopEdges`'s role for
+   *  the Analytics feature's issue list, but keyed by warning identity rather than carrying raw
+   *  edges/nodes directly, since the highlighted geometry is recomputed from
+   *  `computeVectorByWallsWarnings`'s own result rather than duplicated into the store. */
+  hoveredExportWarningKey: string | null;
 }
 
 export interface ImageExportActions {
@@ -1029,6 +1036,7 @@ export interface ImageExportActions {
    *  #294. */
   setVectorByWallsSplitNodeColor: (index: number, color: number) => void;
   setVectorByWallsSplitSpecialShapes: (v: boolean) => void;
+  setHoveredExportWarningKey: (key: string | null) => void;
 }
 
 export interface RootActions {

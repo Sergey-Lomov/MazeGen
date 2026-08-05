@@ -15,6 +15,9 @@ import { buildTeleportEdges, maxSplitNodeCount } from "../../pixi/selectors/maze
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { buildTeleportGroups, type TeleportGroup } from "../../pixi/selectors/teleportGroups";
+import { computeVectorByWallsWarnings } from "../../pixi/selectors/exportWarnings";
+import { resolveExportWarningsSectionTitle } from "./exportWarningsI18n";
+import { ExportWarningBubble } from "./ExportWarningBubble";
 import * as m from "~/paraglide/messages";
 
 /** Shared shape option list (GitHub issue #293 follow-up unified `MarkerShape` for both start/
@@ -269,7 +272,18 @@ export function VectorByWallsSettingsPanel() {
 
   const nodes = useMazeStore((s) => s.nodes);
   const edges = useMazeStore((s) => s.edges);
+  const start = useMazeStore((s) => s.start);
+  const finish = useMazeStore((s) => s.finish);
   const cfg = useMazeStore((s) => s.activeTessellationConfig);
+
+  // Export-specific rendering caveats (GitHub issue #298) — maze-valid but this render mode can't
+  // depict the case correctly (e.g. an invisible teleport marker). Distinct from the QC issue list
+  // (Analytics feature) — see `exportWarnings.ts`'s doc comment.
+  const exportWarnings = useMemo(
+    () => computeVectorByWallsWarnings(nodes, edges, cfg, settings, start, finish),
+    [nodes, edges, cfg, settings, start, finish],
+  );
+
   const teleportGroups = useMemo(() => {
     if (!settings.teleportGroupCustomization) return [];
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -298,6 +312,15 @@ export function VectorByWallsSettingsPanel() {
   // Splits section (GitHub issue #294) — the panel only ever shows as many color slots as the
   // current maze actually needs (0 hides the section entirely, see below).
   const maxSplit = useMemo(() => maxSplitNodeCount(nodes), [nodes]);
+
+  // One-ways/Teleports sections only make sense when the maze actually has that kind of edge —
+  // mirrors the Splits section's own "hide when there's nothing to configure" rule.
+  const hasOneWays = useMemo(() => {
+    const basicEdges = edges.filter((e) => e.kind === "basic");
+    const forward = new Set(basicEdges.map((e) => `${e.from}->${e.to}`));
+    return basicEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
+  }, [edges]);
+  const hasTeleports = useMemo(() => edges.some((e) => e.kind === "teleport"), [edges]);
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);
@@ -404,73 +427,79 @@ export function VectorByWallsSettingsPanel() {
         </div>
       )}
 
-      <div style={styles.divider} />
+      {hasOneWays && (
+        <>
+          <div style={styles.divider} />
 
-      <SectionHeader
-        label={m["image_export.vector_by_walls.section_one_ways"]()}
-        expanded={isExpanded("one_ways")}
-        onToggle={() => toggleSection("one_ways")}
-      />
-      {isExpanded("one_ways") && (
-        <div style={styles.block}>
-          <SelectRow
-            label={m["image_export.vector_by_walls.one_way_pattern"]()}
-            value={settings.oneWayPattern}
-            options={[
-              { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
-              { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
-              { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
-            ]}
-            onChange={setOneWayPattern}
+          <SectionHeader
+            label={m["image_export.vector_by_walls.section_one_ways"]()}
+            expanded={isExpanded("one_ways")}
+            onToggle={() => toggleSection("one_ways")}
           />
-          <ColorRow label={m["image_export.vector_by_walls.one_way_color"]()} color={settings.oneWayColor} onChange={setOneWayColor} />
-          <SliderRow
-            label={m["image_export.vector_by_walls.one_way_gap_width"]()}
-            value={settings.oneWayGapWidth}
-            onChange={setOneWayGapWidth}
-            min={0}
-            max={10}
-            step={1}
-            format={(v) => String(v)}
-          />
-          <SelectRow
-            label={m["image_export.vector_by_walls.one_way_join"]()}
-            value={settings.oneWayJoin}
-            options={[
-              { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
-              { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
-            ]}
-            onChange={setOneWayJoin}
-          />
-          <SliderRow
-            label={m["image_export.vector_by_walls.one_way_size"]()}
-            value={settings.oneWaySize}
-            onChange={setOneWaySize}
-            min={0.05}
-            max={0.5}
-            step={0.01}
-            format={(v) => v.toFixed(2)}
-          />
-          <SliderRow
-            label={m["image_export.vector_by_walls.one_way_thickness"]()}
-            value={settings.oneWayThickness}
-            onChange={setOneWayThickness}
-            min={1}
-            max={10}
-            step={1}
-            format={(v) => String(v)}
-          />
-        </div>
+          {isExpanded("one_ways") && (
+            <div style={styles.block}>
+              <SelectRow
+                label={m["image_export.vector_by_walls.one_way_pattern"]()}
+                value={settings.oneWayPattern}
+                options={[
+                  { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+                  { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+                  { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                ]}
+                onChange={setOneWayPattern}
+              />
+              <ColorRow label={m["image_export.vector_by_walls.one_way_color"]()} color={settings.oneWayColor} onChange={setOneWayColor} />
+              <SliderRow
+                label={m["image_export.vector_by_walls.one_way_gap_width"]()}
+                value={settings.oneWayGapWidth}
+                onChange={setOneWayGapWidth}
+                min={0}
+                max={10}
+                step={1}
+                format={(v) => String(v)}
+              />
+              <SelectRow
+                label={m["image_export.vector_by_walls.one_way_join"]()}
+                value={settings.oneWayJoin}
+                options={[
+                  { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
+                  { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
+                ]}
+                onChange={setOneWayJoin}
+              />
+              <SliderRow
+                label={m["image_export.vector_by_walls.one_way_size"]()}
+                value={settings.oneWaySize}
+                onChange={setOneWaySize}
+                min={0.05}
+                max={0.5}
+                step={0.01}
+                format={(v) => v.toFixed(2)}
+              />
+              <SliderRow
+                label={m["image_export.vector_by_walls.one_way_thickness"]()}
+                value={settings.oneWayThickness}
+                onChange={setOneWayThickness}
+                min={1}
+                max={10}
+                step={1}
+                format={(v) => String(v)}
+              />
+            </div>
+          )}
+        </>
       )}
 
-      <div style={styles.divider} />
+      {hasTeleports && (
+        <>
+          <div style={styles.divider} />
 
-      <SectionHeader
-        label={m["image_export.vector_by_walls.section_teleports"]()}
-        expanded={isExpanded("teleports")}
-        onToggle={() => toggleSection("teleports")}
-      />
-      {isExpanded("teleports") && (
+          <SectionHeader
+            label={m["image_export.vector_by_walls.section_teleports"]()}
+            expanded={isExpanded("teleports")}
+            onToggle={() => toggleSection("teleports")}
+          />
+          {isExpanded("teleports") && (
         <div style={styles.block}>
           <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_edges"]()}</div>
           <div style={styles.subsection}>
@@ -624,6 +653,8 @@ export function VectorByWallsSettingsPanel() {
             </div>
           )}
         </div>
+          )}
+        </>
       )}
 
       {maxSplit > 0 && (
@@ -654,6 +685,25 @@ export function VectorByWallsSettingsPanel() {
           )}
         </>
       )}
+
+      {exportWarnings.length > 0 && (
+        <>
+          <div style={styles.divider} />
+
+          <SectionHeader
+            label={resolveExportWarningsSectionTitle(exportWarnings.length)}
+            expanded={isExpanded("warnings")}
+            onToggle={() => toggleSection("warnings")}
+          />
+          {isExpanded("warnings") && (
+            <div style={styles.warningsBlock}>
+              {exportWarnings.map((w) => (
+                <ExportWarningBubble key={w.key} warning={w} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -661,6 +711,7 @@ export function VectorByWallsSettingsPanel() {
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: spacing.itemGap, padding: `${inset.panelInsetY}px ${inset.panelInsetX}px` },
   block: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  warningsBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
   markerGroupWrap: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   markerGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },

@@ -2,8 +2,10 @@ import type { TeleportEdge } from "../renderers/types";
 
 /** Rounds a world-space coordinate into a stable string key — mirrors `TeleportRenderer`'s
  *  pre-#293 `coordKey`, kept as its own copy here since `teleportGroups.ts` must not import from
- *  the renderer layer (selectors stay renderer-agnostic). */
-function coordKey(x: number, y: number): string {
+ *  the renderer layer (selectors stay renderer-agnostic). Exported so other selector-layer callers
+ *  needing the exact same point identity (e.g. `exportWarnings.ts`) don't hand-roll their own
+ *  rounding at a different precision. */
+export function coordKey(x: number, y: number): string {
   return `${Math.round(x * 1000)},${Math.round(y * 1000)}`;
 }
 
