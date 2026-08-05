@@ -9,6 +9,7 @@ import { SplitJunctionRenderer } from "../renderers/SplitJunctionRenderer";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, maxSplitNodeCount } from "../selectors/mazeSelectors";
 import { computeVectorByWallsWarnings } from "../selectors/exportWarnings";
+import { resolveEndpoint, buildSplitNodeResolver } from "../postEditEndpoint";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle } from "../renderers/types";
 import type { MarkerSettings } from "../../store/storeTypes";
@@ -105,6 +106,32 @@ export function buildTeleportLineStyle(settings: ReturnType<typeof useMazeStore.
  *  not independently settable, same convention as the one-way indicator's own border color). */
 export function buildMarkerStyle(settings: MarkerSettings, floorColor: number): MarkerStyle {
   return { ...settings, gapColor: floorColor };
+}
+
+/** Resolves the currently effective start/finish node ids — `postEditMeta`'s confirmed endpoints
+ *  when post-edit has ever confirmed (same fallback rule `AnalyticsRenderer` uses), else the
+ *  as-generated `state.start`/`state.finish`. GitHub issue #303 — this renderer previously read
+ *  `state.start`/`state.finish` directly, which `confirmPostEdit` never updates (only
+ *  `postEditMeta` reflects a post-edit start/finish move), so a moved marker never propagated to
+ *  the exported image. */
+export function resolveEffectiveEndpoints(
+  state: Pick<ReturnType<typeof useMazeStore.getState>, "nodes" | "start" | "finish" | "postEditMeta" | "postEditDraftSplitPoints">,
+): { start: number | null; finish: number | null } {
+  const pointNodeMap = new Map<string, number[]>();
+  for (const n of state.nodes) {
+    const key = `${n.x},${n.y}`;
+    const list = pointNodeMap.get(key);
+    if (list) list.push(n.id);
+    else pointNodeMap.set(key, [n.id]);
+  }
+  const resolveSplit = buildSplitNodeResolver(pointNodeMap, state.postEditDraftSplitPoints);
+
+  const startEp = state.postEditMeta != null ? state.postEditMeta.start : (state.start !== null ? { kind: "node" as const, id: state.start } : null);
+  const finishEp = state.postEditMeta != null ? state.postEditMeta.finish : (state.finish !== null ? { kind: "node" as const, id: state.finish } : null);
+  return {
+    start: startEp !== null ? resolveEndpoint(startEp, resolveSplit) ?? null : null,
+    finish: finishEp !== null ? resolveEndpoint(finishEp, resolveSplit) ?? null : null,
+  };
 }
 
 /** The "Vector by walls" image-export rendering mode (GitHub issue #287) — renders the maze
@@ -219,6 +246,8 @@ export class VectorByWallsRenderer {
         state.edges !== prev.edges ||
         state.start !== prev.start ||
         state.finish !== prev.finish ||
+        state.postEditMeta !== prev.postEditMeta ||
+        state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
         state.activeTessellationConfig !== prev.activeTessellationConfig;
 
       const settingsChanged = state.vectorByWallsSettings !== prev.vectorByWallsSettings;
@@ -278,7 +307,8 @@ export class VectorByWallsRenderer {
       this.grid.render({ viewport: this.viewport, color: state.vectorByWallsSettings.gridColor }, cfg);
     }
 
-    const { nodes, edges, start, finish } = state;
+    const { nodes, edges } = state;
+    const { start, finish } = resolveEffectiveEndpoints(state);
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: state.vectorByWallsSettings.floorColor, alpha: 1 }, cfg);
 
@@ -359,7 +389,8 @@ export class VectorByWallsRenderer {
    *  frame. Each flagged node is its own singleton region group (not one shared group) so
    *  `RegionHighlightRenderer` never draws a perimeter connecting two unrelated cells. */
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
-    const { hoveredExportWarningKey, nodes, edges, start, finish } = state;
+    const { hoveredExportWarningKey, nodes, edges } = state;
+    const { start, finish } = resolveEffectiveEndpoints(state);
     if (!hoveredExportWarningKey) {
       this.warningHighlight.clear();
       return;

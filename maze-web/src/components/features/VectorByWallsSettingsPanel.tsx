@@ -16,6 +16,7 @@ import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { buildTeleportGroups, type TeleportGroup } from "../../pixi/selectors/teleportGroups";
 import { computeVectorByWallsWarnings } from "../../pixi/selectors/exportWarnings";
+import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { resolveExportWarningsSectionTitle } from "./exportWarningsI18n";
 import { ExportWarningBubble } from "./ExportWarningBubble";
 import * as m from "~/paraglide/messages";
@@ -272,9 +273,19 @@ export function VectorByWallsSettingsPanel() {
 
   const nodes = useMazeStore((s) => s.nodes);
   const edges = useMazeStore((s) => s.edges);
-  const start = useMazeStore((s) => s.start);
-  const finish = useMazeStore((s) => s.finish);
+  const rawStart = useMazeStore((s) => s.start);
+  const rawFinish = useMazeStore((s) => s.finish);
+  const postEditMeta = useMazeStore((s) => s.postEditMeta);
+  const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
   const cfg = useMazeStore((s) => s.activeTessellationConfig);
+
+  // Effective start/finish — `postEditMeta`'s confirmed endpoints once post-edit has confirmed,
+  // else the as-generated `start`/`finish` (GitHub issue #303 — `confirmPostEdit` never updates
+  // `state.start`/`state.finish`, only `postEditMeta` reflects a post-edit marker move).
+  const { start, finish } = useMemo(
+    () => resolveEffectiveEndpoints({ nodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
+    [nodes, rawStart, rawFinish, postEditMeta, postEditDraftSplitPoints],
+  );
 
   // Export-specific rendering caveats (GitHub issue #298) — maze-valid but this render mode can't
   // depict the case correctly (e.g. an invisible teleport marker). Distinct from the QC issue list

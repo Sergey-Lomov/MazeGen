@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { viewportWorldRect, buildWallStyle, buildOneWayStyle, buildTeleportLineStyle, buildEffectiveSplitNodeColors, buildMarkerStyle } from "../pixi/imageExport/VectorByWallsRenderer";
+import { viewportWorldRect, buildWallStyle, buildOneWayStyle, buildTeleportLineStyle, buildEffectiveSplitNodeColors, buildMarkerStyle, resolveEffectiveEndpoints } from "../pixi/imageExport/VectorByWallsRenderer";
+import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
+import type { NodeDto } from "../wasm/types";
 import { TILE_SIZE } from "../pixi/constants";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
@@ -142,6 +144,64 @@ describe("buildEffectiveSplitNodeColors", () => {
   it("returns at least splitNodeColors.length entries even when maxSplit is smaller (e.g. after a maze regenerate shrinks the point)", () => {
     const result = buildEffectiveSplitNodeColors([0x111, 0x222, 0x333], 1);
     expect(result).toEqual([0x111, 0x222, 0x333]);
+  });
+});
+
+describe("resolveEffectiveEndpoints", () => {
+  const nodes: NodeDto[] = [
+    { id: 1, x: 0, y: 0, i: 0 },
+    { id: 2, x: 1, y: 0, i: 0 },
+    { id: 3, x: 2, y: 0, i: 0 },
+  ];
+
+  it("falls back to state.start/finish when post-edit was never confirmed", () => {
+    expect(resolveEffectiveEndpoints({ nodes, start: 1, finish: 2, postEditMeta: null, postEditDraftSplitPoints: {} }))
+      .toEqual({ start: 1, finish: 2 });
+  });
+
+  it("uses postEditMeta's endpoints once post-edit has confirmed, ignoring the stale generated start/finish — GitHub issue #303", () => {
+    expect(resolveEffectiveEndpoints({
+      nodes,
+      start: 1,
+      finish: 2,
+      postEditMeta: { start: nodeEndpoint(3), finish: nodeEndpoint(2) },
+      postEditDraftSplitPoints: {},
+    })).toEqual({ start: 3, finish: 2 });
+  });
+
+  it("resolves a null postEditMeta endpoint (cleared marker) to null even though state.start/finish still holds the generated id", () => {
+    expect(resolveEffectiveEndpoints({
+      nodes,
+      start: 1,
+      finish: 2,
+      postEditMeta: { start: null, finish: nodeEndpoint(2) },
+      postEditDraftSplitPoints: {},
+    })).toEqual({ start: null, finish: 2 });
+  });
+
+  it("resolves a split-endpoint start to its confirmed slot node, not the point's original node", () => {
+    const splitNodes: NodeDto[] = [
+      { id: 1, x: 0, y: 0, i: 0 },
+      { id: 4, x: 0, y: 0, i: 1 }, // confirmed slot 7 at the same point
+      { id: 2, x: 1, y: 0, i: 0 },
+    ];
+    expect(resolveEffectiveEndpoints({
+      nodes: splitNodes,
+      start: 1,
+      finish: 2,
+      postEditMeta: { start: splitEndpoint([0, 0], 7), finish: nodeEndpoint(2) },
+      postEditDraftSplitPoints: { "0,0": [7] },
+    })).toEqual({ start: 4, finish: 2 });
+  });
+
+  it("resolves an unconfirmed split-endpoint start to null rather than falling back to the stale generated id", () => {
+    expect(resolveEffectiveEndpoints({
+      nodes,
+      start: 1,
+      finish: 2,
+      postEditMeta: { start: splitEndpoint([0, 0], 7), finish: nodeEndpoint(2) },
+      postEditDraftSplitPoints: { "0,0": [7] },
+    })).toEqual({ start: null, finish: 2 });
   });
 });
 
