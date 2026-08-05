@@ -898,6 +898,11 @@ export interface VectorByWallsSettings {
   /** `"none"` (no connector), `"straight"` (direct center-to-center) or `"orthogonal"`
    *  (single-bend, axis-aligned, with a local collision offset — see `teleportConnectorRouting.ts`). */
   teleportConnectorStyle: TeleportConnectorStyle;
+  /** "Avoid field exit" toggle (GitHub issue #300, `"orthogonal"` connectors only) — off by default.
+   *  When on, a candidate leaving the maze field's own cell footprint gets a top-priority penalty
+   *  outranking every other routing weight (see `FIELD_EXIT_WEIGHT` in `teleportConnectorRouter.ts`),
+   *  so a connector prefers any in-field detour over stepping outside the field. */
+  teleportAvoidFieldExit: boolean;
   /** How a one-way connector draws its direction arrow(s) — see `TeleportArrowMode`. */
   teleportArrowMode: TeleportArrowMode;
   /** Tile-width period between arrows in `"periodic"` mode — unused (and hidden in the settings
@@ -983,6 +988,7 @@ export interface ImageExportActions {
   setVectorByWallsTeleportConnectorColor: (color: number) => void;
   setVectorByWallsTeleportConnectorWidth: (v: number) => void;
   setVectorByWallsTeleportConnectorStyle: (style: TeleportConnectorStyle) => void;
+  setVectorByWallsTeleportAvoidFieldExit: (v: boolean) => void;
   setVectorByWallsTeleportArrowMode: (mode: TeleportArrowMode) => void;
   setVectorByWallsTeleportArrowPeriod: (v: number) => void;
   setVectorByWallsTeleportArrowSize: (v: number) => void;

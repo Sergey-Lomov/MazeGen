@@ -195,6 +195,17 @@ export class TeleportRenderer {
      *  face directions (GitHub issue #297) instead of always assuming a square grid. Omitted by
      *  callers without a config in hand, which falls back to the original square (h/v) behavior. */
     cfg?: TessellationConfig;
+    /** World positions of the start/finish markers (GitHub issue #300) — an `"orthogonal"`
+     *  connector always avoids cutting through these, same weight as another connector's own
+     *  endpoint. Omitted by callers without waypoint markers in hand (no penalty applied). */
+    waypoints?: [number, number][];
+    /** "Avoid field exit" toggle (GitHub issue #300) — when on, an `"orthogonal"` connector strongly
+     *  prefers any candidate that stays within the maze field's own cell footprint (`fieldCells`)
+     *  over one that steps outside it. */
+    avoidFieldExit?: boolean;
+    /** The maze's own node cell coordinates, backing the `avoidFieldExit` check above — omitted or
+     *  empty is the same as leaving `avoidFieldExit` off (nothing to be outside of). */
+    fieldCells?: [number, number][];
   }): void {
     this.view.clear();
     // `drawMarker`'s mixed-cell split adds throwaway mask/fill children (see its own comment) —
@@ -209,6 +220,9 @@ export class TeleportRenderer {
       data.groupOverrides ?? {},
       data.interactive ?? false,
       data.cfg,
+      data.waypoints ?? [],
+      data.avoidFieldExit ?? false,
+      data.fieldCells ?? [],
     );
   }
 
@@ -219,6 +233,9 @@ export class TeleportRenderer {
     groupOverrides: Record<string, TeleportGroupOverride>,
     interactive: boolean,
     cfg: TessellationConfig | undefined,
+    waypoints: [number, number][],
+    avoidFieldExit: boolean,
+    fieldCells: [number, number][],
   ): void {
     // Grouping (`buildTeleportGroups`, merging teleport pairs wherever an endpoint coordinate
     // coincides) drives draw order regardless of whether group *customization* (per-group shape/
@@ -232,7 +249,10 @@ export class TeleportRenderer {
     this.selectionGroupOverrides = groupCustomization ? groupOverrides : {};
     this.selectionEdges = edges;
     this.selectionInteractive = groupCustomization && interactive;
-    this.selectionConnectors = style.connectorStyle !== "none" ? this.computeConnectors(edges, style, groupCustomization, groupOverrides, cfg) : [];
+    this.selectionConnectors =
+      style.connectorStyle !== "none"
+        ? this.computeConnectors(edges, style, groupCustomization, groupOverrides, cfg, waypoints, avoidFieldExit, fieldCells)
+        : [];
 
     this.renderGroups(groupCustomization ? useMazeStore.getState().selectedTeleportGroupKey : null);
     if (this.selectionInteractive) this.subscribeSelectionHighlight();
@@ -249,6 +269,9 @@ export class TeleportRenderer {
     groupCustomization: boolean,
     groupOverrides: Record<string, TeleportGroupOverride>,
     cfg: TessellationConfig | undefined,
+    waypoints: [number, number][],
+    avoidFieldExit: boolean,
+    fieldCells: [number, number][],
   ): { edge: TeleportEdge; routed: RoutedConnector; color: number }[] {
     const groups = groupCustomization ? buildTeleportGroups(edges) : [];
     const groupKeyByPoint = new Map<string, string>();
@@ -271,7 +294,7 @@ export class TeleportRenderer {
     };
     const routed =
       style.connectorStyle === "orthogonal"
-        ? this.connectorRouter.route(edges, gap, style.size * TILE_SIZE, cfg, endpointStyle)
+        ? this.connectorRouter.route(edges, gap, style.size * TILE_SIZE, cfg, endpointStyle, waypoints, avoidFieldExit, fieldCells)
         : routeStraightConnectors(edges);
 
     const result: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];

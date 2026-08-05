@@ -1,8 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { TeleportConnectorRouter, axisIntersection, pointToSegmentDistance } from "../pixi/renderers/teleportConnectorRouter";
 import { getConnectorAxes } from "../pixi/renderers/teleportConnectorAxes";
 import type { TeleportEdge } from "../pixi/renderers/types";
 import type { FieldConfig } from "../fieldConfig";
+
+// `getCellVertices` (square) delegates to wasm for cartesian coords via `getCartesian` — mocked with
+// the identity mapping square uses (see `maze-core/src/space/square.rs`'s `cartesian`), same
+// rationale as `VectorByWallsSettingsPanel.test.tsx`.
+vi.mock("../wasm/mazeService", () => ({
+  getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]: [number, number]) => [x, y]),
+}));
 
 function edge(from: [number, number], to: [number, number]): TeleportEdge {
   return { from, to, oneWay: false };
@@ -216,6 +223,106 @@ describe("TeleportConnectorRouter.route", () => {
     // With weighting: v-then-h — avoids cutting through A's endpoint (bend's x stays close to
     // start's x, meaning the v-leg ran first).
     expect(withEndpointStyle[2].points[0]).toBeCloseTo(withEndpointStyle[2].points[2], 0); // bend's x ≈ start's x → v-leg first
+  });
+
+  it("waypoint avoidance (GitHub issue #300) is weighted the same as a connector-endpoint collision, and applies regardless of avoidFieldExit", () => {
+    // A single connector (0,0)->(20,10) has 2 square candidates: h-then-v (bend (20,0)) and
+    // v-then-h (bend (0,10)). With no other connectors both tie at 0 collisions and equal length
+    // (|dx|+|dy|=30 either way), so plain candidate order picks h-then-v (first in axes × axes).
+    // Placing a waypoint marker right on the h-then-v bend flips the choice to v-then-h.
+    const e = edge([0, 0], [20, 10]);
+    const endpointStyle = { markerRadius: 0.2, markerBorderWidth: 0.1, connectorBorderWidth: 0.1, connectorWidth: 0.2 };
+
+    const withoutWaypoint = new TeleportConnectorRouter().route([e], 1, Infinity, undefined, endpointStyle);
+    expect(withoutWaypoint[0].points[2]).toBeCloseTo(20); // h-then-v: bend.x ≈ 20
+    expect(withoutWaypoint[0].points[3]).toBeCloseTo(0); // bend.y ≈ 0
+
+    const withWaypoint = new TeleportConnectorRouter().route([e], 1, Infinity, undefined, endpointStyle, [[20, 0]]);
+    expect(withWaypoint[0].points[2]).toBeCloseTo(0); // v-then-h: bend.x ≈ 0
+    expect(withWaypoint[0].points[3]).toBeCloseTo(10); // bend.y ≈ 10
+  });
+
+  it("avoidFieldExit (GitHub issue #300) outranks every other weight, preferring an in-field candidate over a shorter/collision-free out-of-field one", () => {
+    // L-shaped field of 3 cells (0,0), (1,0), (0,1) — missing only the far corner (1,1). World
+    // boxes (TILE_SIZE=40, identity cartesian per the mock): (0,0): x∈[0,40]/y∈[-40,0]. (1,0):
+    // x∈[40,80]/y∈[-40,0]. (0,1): x∈[0,40]/y∈[-80,-40]. (1,1), never in the field, would be
+    // x∈[40,80]/y∈[-80,-40].
+    // `from`=(60,-20) (cell (1,0)'s own center), `to`=(20,-60) (cell (0,1)'s own center) — a
+    // diagonal across the L's two arms, both endpoints inside the field. h-then-v bend =
+    // (to.x, from.y) = (20,-20) — cell (0,0)'s own center: both legs stay inside the L throughout.
+    // v-then-h bend = (from.x, to.y) = (60,-60) — the field's missing corner (1,1): its own v-leg
+    // (x=60, y:-20->-60) exits the field once y<-40.
+    const cfg: FieldConfig = { type: "square", width: 2, height: 2 };
+    const e = edge([60, -20], [20, -60]);
+    const fieldCells: [number, number][] = [[0, 0], [1, 0], [0, 1]];
+
+    // Premise check: without avoidance, square's default tie-break (h-then-v first, both candidates
+    // otherwise tying on raw collisions and length) already happens to pick the in-field candidate
+    // here, so this only confirms the field-cell sampling itself works before testing the actual
+    // flip below.
+    const withoutAvoidance = new TeleportConnectorRouter().route([e], 1, Infinity, cfg, undefined, [], false, fieldCells);
+    expect(withoutAvoidance[0].points[2]).toBeCloseTo(20);
+    expect(withoutAvoidance[0].points[3]).toBeCloseTo(-20);
+    const withAvoidance = new TeleportConnectorRouter().route([e], 1, Infinity, cfg, undefined, [], true, fieldCells);
+    expect(withAvoidance[0].points[2]).toBeCloseTo(20);
+    expect(withAvoidance[0].points[3]).toBeCloseTo(-20);
+
+    // Swapping `from`/`to` flips which candidate leaves the field, while the tie-break still
+    // reaches for h-then-v first either way: now h-then-v's bend (20,-60) itself sits inside the
+    // field, but its own h-leg (y=-60, x:20->60) immediately exits it (no cell (1,1)), so h-then-v
+    // leaves the field; v-then-h's bend (60,-20) and both its legs stay inside the L. Without
+    // avoidance the tie-break still picks h-then-v (the one that now leaves the field); with
+    // avoidance on, the top-priority penalty must flip the pick to v-then-h.
+    const e2 = edge([20, -60], [60, -20]);
+    const flippedWithoutAvoidance = new TeleportConnectorRouter().route([e2], 1, Infinity, cfg, undefined, [], false, fieldCells);
+    expect(flippedWithoutAvoidance[0].points[2]).toBeCloseTo(60);
+    expect(flippedWithoutAvoidance[0].points[3]).toBeCloseTo(-60);
+
+    const flippedWithAvoidance = new TeleportConnectorRouter().route([e2], 1, Infinity, cfg, undefined, [], true, fieldCells);
+    expect(flippedWithAvoidance[0].points[2]).toBeCloseTo(20);
+    expect(flippedWithAvoidance[0].points[3]).toBeCloseTo(-20);
+  });
+
+  it("avoidFieldExit falls back to an out-of-field candidate when every candidate leaves the field", () => {
+    // No field cells at all — nothing to be "inside", so avoidFieldExit must be a no-op rather than
+    // penalizing every candidate into an arbitrary/degenerate choice.
+    const e = edge([0, 0], [10, 20]);
+    const withoutAvoidance = new TeleportConnectorRouter().route([e], 1);
+    const withAvoidanceNoCells = new TeleportConnectorRouter().route([e], 1, Infinity, undefined, undefined, [], true, []);
+    expect(withAvoidanceNoCells[0].points).toEqual(withoutAvoidance[0].points);
+  });
+
+  it("cache invalidates when waypoints or avoidFieldExit/fieldCells change", () => {
+    const router = new TeleportConnectorRouter();
+    const cfg: FieldConfig = { type: "square", width: 3, height: 1 };
+    const e = edge([0, 0], [2, 1]);
+    const base = router.route([e], 1, Infinity, cfg);
+    const withWaypoints = router.route([e], 1, Infinity, cfg, undefined, [[5, 5]]);
+    expect(withWaypoints).not.toBe(base);
+    const withFieldExit = router.route([e], 1, Infinity, cfg, undefined, [], true, [[0, 0], [1, 0], [2, 0]]);
+    expect(withFieldExit).not.toBe(base);
+  });
+
+  it("avoidFieldExit (GitHub issue #300 follow-up) checks the drawn line's own visual width, not just its centerline", () => {
+    // Field: cells (0,0) and (0,1) — a single column, world box x∈[0,40], y∈[-80,0]. `from`=(20,-20)
+    // (cell (0,0)'s own center), `to`=(40,-60) sits exactly on the field's own right edge (x=40) at
+    // a y inside cell (0,1) — the centerline itself never crosses outside the field (x never exceeds
+    // 40), but a connector drawn with real width bulges `connectorWidth / 2 + connectorBorderWidth`
+    // past its centerline, which here pushes past x=40 and outside the field.
+    const cfg: FieldConfig = { type: "square", width: 1, height: 2 };
+    const e = edge([20, -20], [40, -60]);
+    const fieldCells: [number, number][] = [[0, 0], [0, 1]];
+    // halfWidth = connectorWidth/2 + connectorBorderWidth = 2 + 1 = 3.
+    const endpointStyle = { markerRadius: 0, markerBorderWidth: 0, connectorBorderWidth: 1, connectorWidth: 4 };
+
+    const zeroWidth = new TeleportConnectorRouter().route([e], 1, Infinity, cfg, undefined, [], true, fieldCells);
+    const withWidth = new TeleportConnectorRouter().route([e], 1, Infinity, cfg, endpointStyle, [], true, fieldCells);
+    // Only the width-aware run should catch this candidate leaving the field's own footprint, so
+    // its routing must differ from the centerline-only run despite starting from the exact same
+    // geometry — proof `fieldExitLineHalfWidth` (derived from `endpointStyle`) is actually applied.
+    const bendsDiffer =
+      zeroWidth[0].points[2] !== withWidth[0].points[2] || zeroWidth[0].points[3] !== withWidth[0].points[3];
+    expect(bendsDiffer).toBe(true);
   });
 });
 

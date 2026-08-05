@@ -209,6 +209,7 @@ export function VectorByWallsSettingsPanel() {
   const setTeleportConnectorColor = useMazeStore((s) => s.setVectorByWallsTeleportConnectorColor);
   const setTeleportConnectorWidth = useMazeStore((s) => s.setVectorByWallsTeleportConnectorWidth);
   const setTeleportConnectorStyle = useMazeStore((s) => s.setVectorByWallsTeleportConnectorStyle);
+  const setTeleportAvoidFieldExit = useMazeStore((s) => s.setVectorByWallsTeleportAvoidFieldExit);
   const setTeleportArrowMode = useMazeStore((s) => s.setVectorByWallsTeleportArrowMode);
   const setTeleportArrowPeriod = useMazeStore((s) => s.setVectorByWallsTeleportArrowPeriod);
   const setTeleportArrowSize = useMazeStore((s) => s.setVectorByWallsTeleportArrowSize);
@@ -480,6 +481,13 @@ export function VectorByWallsSettingsPanel() {
               ]}
               onChange={setTeleportConnectorStyle}
             />
+            {settings.teleportConnectorStyle === "orthogonal" && (
+              <ToggleRow
+                label={m["image_export.vector_by_walls.teleport_avoid_field_exit"]()}
+                checked={settings.teleportAvoidFieldExit}
+                onChange={setTeleportAvoidFieldExit}
+              />
+            )}
 
             <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_connector_body"]()}</div>
             <div style={styles.subsectionNested}>

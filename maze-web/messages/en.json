@@ -1170,6 +1170,7 @@
   "image_export.vector_by_walls.teleport_connector_style_none": "None",
   "image_export.vector_by_walls.teleport_connector_style_straight": "Straight",
   "image_export.vector_by_walls.teleport_connector_style_orthogonal": "Orthogonal",
+  "image_export.vector_by_walls.teleport_avoid_field_exit": "Avoid field exit",
   "image_export.vector_by_walls.teleport_arrow_mode": "Mode",
   "image_export.vector_by_walls.teleport_arrow_mode_none": "None",
   "image_export.vector_by_walls.teleport_arrow_mode_center": "Centered",

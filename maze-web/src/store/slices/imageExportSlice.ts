@@ -33,6 +33,7 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     teleportConnectorColor: canvas.teleport.default,
     teleportConnectorWidth: 3,
     teleportConnectorStyle: "orthogonal",
+    teleportAvoidFieldExit: false,
     teleportArrowMode: "periodic",
     teleportArrowPeriod: 5,
     teleportArrowSize: 10,
@@ -108,6 +109,8 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportConnectorWidth: v } })),
   setVectorByWallsTeleportConnectorStyle: (style) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportConnectorStyle: style } })),
+  setVectorByWallsTeleportAvoidFieldExit: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportAvoidFieldExit: v } })),
   setVectorByWallsTeleportArrowMode: (mode) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportArrowMode: mode } })),
   setVectorByWallsTeleportArrowPeriod: (v) =>

@@ -31,6 +31,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportConnectorColor: 0,
     teleportConnectorWidth: 3,
     teleportConnectorStyle: "straight",
+    teleportAvoidFieldExit: false,
     teleportArrowMode: "center",
     teleportArrowPeriod: 5,
     teleportArrowSize: 6,

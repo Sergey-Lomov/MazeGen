@@ -285,6 +285,8 @@ export class VectorByWallsRenderer {
       wallStyle,
       splitStyle,
     );
+    const { startMarker, finishMarker } = state.vectorByWallsSettings;
+    const markerData = buildMazeMarkers(nodeById, start, finish, cfg, startMarker, finishMarker);
     this.teleports.render({
       edges: this.geometryCache.teleportEdges,
       lineStyle: buildTeleportLineStyle(state.vectorByWallsSettings),
@@ -292,10 +294,11 @@ export class VectorByWallsRenderer {
       groupOverrides: state.vectorByWallsSettings.teleportGroupOverrides,
       interactive: state.vectorByWallsSectionsExpanded["teleports"] ?? false,
       cfg,
+      waypoints: markerData.map((m) => m.pos),
+      avoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit,
+      fieldCells: cells,
     });
 
-    const { startMarker, finishMarker } = state.vectorByWallsSettings;
-    const markerData = buildMazeMarkers(nodeById, start, finish, cfg, startMarker, finishMarker);
     this.markers.render({ markers: markerData });
   }
 
