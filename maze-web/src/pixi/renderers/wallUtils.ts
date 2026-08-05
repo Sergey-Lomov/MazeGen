@@ -3,16 +3,18 @@ import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 
 /** Shared style knobs for every one-way indicator pattern (`drawOneWayTriangle`/`Chevron`/`Arrow`)
- *  — GitHub issue #292. `color` defaults to `canvas.edge.oneWay` (the indicator's own fill/stroke
- *  color), `borderColor`/`borderWidth` draw an outline around the indicator (a filled triangle's
- *  own stroke; a second, wider stroke pass underneath a line-based pattern's stroke so the border
- *  reads as an outline around the whole shape) — `borderWidth: 0` (falls back to no border) skips
- *  the second pass entirely. `join`/`cap` are pixi stroke options applied to the pattern's own
- *  strokes (never to a filled triangle's fill, only its border stroke). */
+ *  — GitHub issue #292 (renamed border->gap in #302 follow-up, consistent with the marker/connector
+ *  gap convention: this is a floor-colored separation gap, not a real border). `color` defaults to
+ *  `canvas.edge.oneWay` (the indicator's own fill/stroke color), `gapColor`/`gapWidth` draw a gap
+ *  ring around the indicator (a filled triangle's own stroke; a second, wider stroke pass
+ *  underneath a line-based pattern's stroke so the gap reads as an outline around the whole shape)
+ *  — `gapWidth: 0` (falls back to no gap) skips the second pass entirely. `join`/`cap` are pixi
+ *  stroke options applied to the pattern's own strokes (never to a filled triangle's fill, only its
+ *  gap stroke). */
 export type OneWayDrawStyle = {
   color?: number;
-  borderColor?: number;
-  borderWidth?: number;
+  gapColor?: number;
+  gapWidth?: number;
   size?: number;
   /** Line thickness for chevron/arrow's own stroke — independent of `size` (the indicator's
    *  geometric scale). Has no effect on `drawOneWayTriangle`, a filled shape with no line stroke
@@ -56,7 +58,7 @@ export function drawDirectionArrow(
   g.fill({ color: color ?? canvas.edge.oneWay, alpha });
 }
 
-// Draws a filled equilateral triangle one-way indicator, optionally bordered, centered at
+// Draws a filled equilateral triangle one-way indicator, optionally gapped, centered at
 // (cx, cy), pointing in (dx, dy) direction. Uses `Graphics.roundPoly` (a regular-polygon
 // primitive with a per-corner rounding radius) rather than a hand-built `poly` path, since
 // `join` on an open/closed stroke never rounds a filled shape's own corners — only `roundPoly`'s
@@ -84,12 +86,12 @@ export function drawOneWayTriangle(
 
   const outline = () => g.roundPoly(centroidX, centroidY, radius, 3, corner, rotation);
   outline().fill(style?.color ?? canvas.edge.oneWay);
-  if (style?.borderWidth) {
-    // `alignment: 0` (outside) so the border grows outward only — the triangle's own size never
-    // shrinks as borderWidth increases (GitHub issue #292 follow-up).
+  if (style?.gapWidth) {
+    // `alignment: 0` (outside) so the gap grows outward only — the triangle's own size never
+    // shrinks as gapWidth increases (GitHub issue #292 follow-up).
     outline().stroke({
-      width: style.borderWidth,
-      color: style.borderColor ?? canvas.floor.default,
+      width: style.gapWidth,
+      color: style.gapColor ?? canvas.floor.default,
       join: style.join ?? "round",
       alignment: 0,
     });
@@ -98,8 +100,8 @@ export function drawOneWayTriangle(
 
 // Draws a "chevron" one-way indicator (two open strokes forming a shallow `>` shape) centered at
 // (cx, cy), pointing in (dx, dy) direction — an outline alternative to the filled
-// `drawOneWayTriangle`. A wider bordered pass is drawn first (when borderWidth is set), the main
-// stroke on top, so the border reads as an outline around the whole shape.
+// `drawOneWayTriangle`. A wider gap pass is drawn first (when gapWidth is set), the main
+// stroke on top, so the gap reads as an outline around the whole shape.
 export function drawOneWayChevron(
   g: Graphics,
   cx: number,
@@ -126,16 +128,16 @@ export function drawOneWayChevron(
       .lineTo(tipX, tipY)
       .lineTo(backX - px * width, backY - py * width);
 
-  if (style?.borderWidth) {
-    path(g).stroke({ width: strokeWidth + style.borderWidth * 2, color: style.borderColor ?? canvas.floor.default, cap, join });
+  if (style?.gapWidth) {
+    path(g).stroke({ width: strokeWidth + style.gapWidth * 2, color: style.gapColor ?? canvas.floor.default, cap, join });
   }
   path(g).stroke({ width: strokeWidth, color, cap, join });
 }
 
 // Draws a one-way indicator as a line with a line-only arrowhead (two short strokes, no filled
 // triangle) at its tip, centered at (cx, cy), pointing in (dx, dy) direction — a thin-line
-// alternative to the filled `drawOneWayTriangle`. A wider bordered pass is drawn first (when
-// borderWidth is set), the main stroke on top, so the border reads as an outline around the whole
+// alternative to the filled `drawOneWayTriangle`. A wider gap pass is drawn first (when
+// gapWidth is set), the main stroke on top, so the gap reads as an outline around the whole
 // shape (shaft + arrowhead).
 export function drawOneWayArrow(
   g: Graphics,
@@ -167,8 +169,8 @@ export function drawOneWayArrow(
       .moveTo(headBackX + px * headSize * 0.6, headBackY + py * headSize * 0.6).lineTo(tipX, tipY)
       .lineTo(headBackX - px * headSize * 0.6, headBackY - py * headSize * 0.6);
 
-  if (style?.borderWidth) {
-    path(g).stroke({ width: strokeWidth + style.borderWidth * 2, color: style.borderColor ?? canvas.floor.default, cap, join });
+  if (style?.gapWidth) {
+    path(g).stroke({ width: strokeWidth + style.gapWidth * 2, color: style.gapColor ?? canvas.floor.default, cap, join });
   }
   path(g).stroke({ width: strokeWidth, color, cap, join });
 }

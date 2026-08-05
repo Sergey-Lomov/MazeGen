@@ -1,7 +1,8 @@
 import type { StateCreator } from "zustand";
 import type { MazeStore, ImageExportState, ImageExportActions } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
-import { WALL_THICKNESS } from "../../pixi/renderConstants";
+import { NODE_RADIUS, WALL_THICKNESS } from "../../pixi/renderConstants";
+import { TILE_SIZE } from "../../pixi/constants";
 import { splitSlotColor } from "../../pixi/colorUtils";
 
 export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExportState & ImageExportActions> = (set) => ({
@@ -18,18 +19,19 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     wallThickness: WALL_THICKNESS,
     oneWayPattern: "triangle",
     oneWayColor: 0xffaa00,
-    oneWayBorderWidth: 3,
+    oneWayGapWidth: 3,
     oneWaySize: 0.3,
     oneWayThickness: 4,
     oneWayJoin: "round",
-    startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 },
-    finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 },
+    startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: (NODE_RADIUS * 1.5) / TILE_SIZE },
+    finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: (NODE_RADIUS * 1.5) / TILE_SIZE },
     teleportLineCornerStyle: "round",
     teleportLineShape: "diamond",
     teleportLineSize: 0.16,
     teleportEdgeColor: canvas.teleport.default,
     teleportEdgeBorderColor: canvas.teleport.default,
     teleportEdgeBorderWidth: 3,
+    teleportEdgeGapWidth: 3,
     teleportConnectorColor: canvas.teleport.default,
     teleportConnectorWidth: 3,
     teleportConnectorStyle: "orthogonal",
@@ -37,7 +39,7 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     teleportArrowMode: "periodic",
     teleportArrowPeriod: 5,
     teleportArrowSize: 10,
-    teleportConnectorBorderWidth: 3,
+    teleportConnectorGapWidth: 3,
     teleportGroupCustomization: false,
     teleportGroupOverrides: {},
     splitNodeColors: [],
@@ -67,8 +69,8 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayPattern: pattern } })),
   setVectorByWallsOneWayColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayColor: color } })),
-  setVectorByWallsOneWayBorderWidth: (v) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayBorderWidth: v } })),
+  setVectorByWallsOneWayGapWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayGapWidth: v } })),
   setVectorByWallsOneWaySize: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWaySize: v } })),
   setVectorByWallsOneWayThickness: (v) =>
@@ -77,20 +79,32 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, oneWayJoin: join } })),
   setVectorByWallsStartMarkerShape: (shape) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, shape } } })),
+  setVectorByWallsStartMarkerCornerStyle: (style) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, cornerStyle: style } } })),
   setVectorByWallsStartMarkerFillColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, fillColor: color } } })),
   setVectorByWallsStartMarkerBorderColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, borderColor: color } } })),
   setVectorByWallsStartMarkerBorderWidth: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, borderWidth: v } } })),
+  setVectorByWallsStartMarkerGapWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, gapWidth: v } } })),
+  setVectorByWallsStartMarkerSize: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, startMarker: { ...s.vectorByWallsSettings.startMarker, size: v } } })),
   setVectorByWallsFinishMarkerShape: (shape) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, shape } } })),
+  setVectorByWallsFinishMarkerCornerStyle: (style) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, cornerStyle: style } } })),
   setVectorByWallsFinishMarkerFillColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, fillColor: color } } })),
   setVectorByWallsFinishMarkerBorderColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, borderColor: color } } })),
   setVectorByWallsFinishMarkerBorderWidth: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, borderWidth: v } } })),
+  setVectorByWallsFinishMarkerGapWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, gapWidth: v } } })),
+  setVectorByWallsFinishMarkerSize: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, finishMarker: { ...s.vectorByWallsSettings.finishMarker, size: v } } })),
   setVectorByWallsTeleportLineCornerStyle: (style) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportLineCornerStyle: style } })),
   setVectorByWallsTeleportLineShape: (shape) =>
@@ -103,6 +117,8 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportEdgeBorderColor: color } })),
   setVectorByWallsTeleportEdgeBorderWidth: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportEdgeBorderWidth: v } })),
+  setVectorByWallsTeleportEdgeGapWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportEdgeGapWidth: v } })),
   setVectorByWallsTeleportConnectorColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportConnectorColor: color } })),
   setVectorByWallsTeleportConnectorWidth: (v) =>
@@ -117,8 +133,8 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportArrowPeriod: v } })),
   setVectorByWallsTeleportArrowSize: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportArrowSize: v } })),
-  setVectorByWallsTeleportConnectorBorderWidth: (v) =>
-    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportConnectorBorderWidth: v } })),
+  setVectorByWallsTeleportConnectorGapWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportConnectorGapWidth: v } })),
   setVectorByWallsTeleportGroupCustomization: (v) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, teleportGroupCustomization: v } })),
   setVectorByWallsTeleportGroupOverride: (groupKey, patch) =>

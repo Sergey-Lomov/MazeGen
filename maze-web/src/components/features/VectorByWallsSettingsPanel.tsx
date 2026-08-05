@@ -121,8 +121,10 @@ function TeleportGroupRow({
 
 /** One "Start"/"Finish" sub-group of the markers section — plain-weight label (not a
  *  `SectionHeader`, always visible, no collapse) indented under the section header, per GitHub
- *  issue #296. Shape, fill color, border color and border width; `borderWidth: 0` draws no
- *  border, so there is no separate show-border toggle. */
+ *  issue #296. Shape, corner style, size, fill color, border color, border width and gap width
+ *  (GitHub issue #302 follow-up added corner style/size/gap width, in that row order); `borderWidth:
+ *  0` draws no border and `gapWidth: 0` draws no gap, so there is no separate show-border/show-gap
+ *  toggle for either. */
 function MarkerSettingsGroup({ title, settings, onChange }: {
   title: string;
   settings: MarkerSettings;
@@ -138,12 +140,39 @@ function MarkerSettingsGroup({ title, settings, onChange }: {
           options={MARKER_SHAPE_OPTIONS.map((o) => ({ value: o.value, label: o.label() }))}
           onChange={(shape) => onChange({ shape })}
         />
+        <SelectRow
+          label={m["image_export.vector_by_walls.marker_corner_style"]()}
+          value={settings.cornerStyle}
+          options={[
+            { value: "sharp", label: m["image_export.vector_by_walls.teleport_corner_style_sharp"]() },
+            { value: "round", label: m["image_export.vector_by_walls.teleport_corner_style_round"]() },
+          ]}
+          onChange={(cornerStyle) => onChange({ cornerStyle })}
+        />
+        <SliderRow
+          label={m["image_export.vector_by_walls.marker_size"]()}
+          value={settings.size}
+          onChange={(size) => onChange({ size })}
+          min={0}
+          max={1}
+          step={0.01}
+          format={(v) => v.toFixed(2)}
+        />
         <ColorRow label={m["image_export.vector_by_walls.marker_fill_color"]()} color={settings.fillColor} onChange={(fillColor) => onChange({ fillColor })} />
         <ColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} />
         <SliderRow
           label={m["image_export.vector_by_walls.marker_border_width"]()}
           value={settings.borderWidth}
           onChange={(borderWidth) => onChange({ borderWidth })}
+          min={0}
+          max={10}
+          step={1}
+          format={(v) => String(v)}
+        />
+        <SliderRow
+          label={m["image_export.vector_by_walls.marker_gap_width"]()}
+          value={settings.gapWidth}
+          onChange={(gapWidth) => onChange({ gapWidth })}
           min={0}
           max={10}
           step={1}
@@ -188,24 +217,31 @@ export function VectorByWallsSettingsPanel() {
   const setWallThickness = useMazeStore((s) => s.setVectorByWallsWallThickness);
   const setOneWayPattern = useMazeStore((s) => s.setVectorByWallsOneWayPattern);
   const setOneWayColor = useMazeStore((s) => s.setVectorByWallsOneWayColor);
-  const setOneWayBorderWidth = useMazeStore((s) => s.setVectorByWallsOneWayBorderWidth);
+  const setOneWayGapWidth = useMazeStore((s) => s.setVectorByWallsOneWayGapWidth);
   const setOneWaySize = useMazeStore((s) => s.setVectorByWallsOneWaySize);
   const setOneWayThickness = useMazeStore((s) => s.setVectorByWallsOneWayThickness);
   const setOneWayJoin = useMazeStore((s) => s.setVectorByWallsOneWayJoin);
   const setStartMarkerShape = useMazeStore((s) => s.setVectorByWallsStartMarkerShape);
+  const setStartMarkerCornerStyle = useMazeStore((s) => s.setVectorByWallsStartMarkerCornerStyle);
   const setStartMarkerFillColor = useMazeStore((s) => s.setVectorByWallsStartMarkerFillColor);
   const setStartMarkerBorderColor = useMazeStore((s) => s.setVectorByWallsStartMarkerBorderColor);
   const setStartMarkerBorderWidth = useMazeStore((s) => s.setVectorByWallsStartMarkerBorderWidth);
+  const setStartMarkerGapWidth = useMazeStore((s) => s.setVectorByWallsStartMarkerGapWidth);
+  const setStartMarkerSize = useMazeStore((s) => s.setVectorByWallsStartMarkerSize);
   const setFinishMarkerShape = useMazeStore((s) => s.setVectorByWallsFinishMarkerShape);
+  const setFinishMarkerCornerStyle = useMazeStore((s) => s.setVectorByWallsFinishMarkerCornerStyle);
   const setFinishMarkerFillColor = useMazeStore((s) => s.setVectorByWallsFinishMarkerFillColor);
   const setFinishMarkerBorderColor = useMazeStore((s) => s.setVectorByWallsFinishMarkerBorderColor);
   const setFinishMarkerBorderWidth = useMazeStore((s) => s.setVectorByWallsFinishMarkerBorderWidth);
+  const setFinishMarkerGapWidth = useMazeStore((s) => s.setVectorByWallsFinishMarkerGapWidth);
+  const setFinishMarkerSize = useMazeStore((s) => s.setVectorByWallsFinishMarkerSize);
   const setTeleportLineCornerStyle = useMazeStore((s) => s.setVectorByWallsTeleportLineCornerStyle);
   const setTeleportLineShape = useMazeStore((s) => s.setVectorByWallsTeleportLineShape);
   const setTeleportLineSize = useMazeStore((s) => s.setVectorByWallsTeleportLineSize);
   const setTeleportEdgeColor = useMazeStore((s) => s.setVectorByWallsTeleportEdgeColor);
   const setTeleportEdgeBorderColor = useMazeStore((s) => s.setVectorByWallsTeleportEdgeBorderColor);
   const setTeleportEdgeBorderWidth = useMazeStore((s) => s.setVectorByWallsTeleportEdgeBorderWidth);
+  const setTeleportEdgeGapWidth = useMazeStore((s) => s.setVectorByWallsTeleportEdgeGapWidth);
   const setTeleportConnectorColor = useMazeStore((s) => s.setVectorByWallsTeleportConnectorColor);
   const setTeleportConnectorWidth = useMazeStore((s) => s.setVectorByWallsTeleportConnectorWidth);
   const setTeleportConnectorStyle = useMazeStore((s) => s.setVectorByWallsTeleportConnectorStyle);
@@ -213,7 +249,7 @@ export function VectorByWallsSettingsPanel() {
   const setTeleportArrowMode = useMazeStore((s) => s.setVectorByWallsTeleportArrowMode);
   const setTeleportArrowPeriod = useMazeStore((s) => s.setVectorByWallsTeleportArrowPeriod);
   const setTeleportArrowSize = useMazeStore((s) => s.setVectorByWallsTeleportArrowSize);
-  const setTeleportConnectorBorderWidth = useMazeStore((s) => s.setVectorByWallsTeleportConnectorBorderWidth);
+  const setTeleportConnectorGapWidth = useMazeStore((s) => s.setVectorByWallsTeleportConnectorGapWidth);
   const setTeleportGroupCustomization = useMazeStore((s) => s.setVectorByWallsTeleportGroupCustomization);
   const setTeleportGroupOverride = useMazeStore((s) => s.setVectorByWallsTeleportGroupOverride);
   const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
@@ -344,9 +380,12 @@ export function VectorByWallsSettingsPanel() {
             settings={settings.startMarker}
             onChange={(patch) => {
               if (patch.shape !== undefined) setStartMarkerShape(patch.shape);
+              if (patch.cornerStyle !== undefined) setStartMarkerCornerStyle(patch.cornerStyle);
               if (patch.fillColor !== undefined) setStartMarkerFillColor(patch.fillColor);
               if (patch.borderColor !== undefined) setStartMarkerBorderColor(patch.borderColor);
               if (patch.borderWidth !== undefined) setStartMarkerBorderWidth(patch.borderWidth);
+              if (patch.gapWidth !== undefined) setStartMarkerGapWidth(patch.gapWidth);
+              if (patch.size !== undefined) setStartMarkerSize(patch.size);
             }}
           />
           <MarkerSettingsGroup
@@ -354,9 +393,12 @@ export function VectorByWallsSettingsPanel() {
             settings={settings.finishMarker}
             onChange={(patch) => {
               if (patch.shape !== undefined) setFinishMarkerShape(patch.shape);
+              if (patch.cornerStyle !== undefined) setFinishMarkerCornerStyle(patch.cornerStyle);
               if (patch.fillColor !== undefined) setFinishMarkerFillColor(patch.fillColor);
               if (patch.borderColor !== undefined) setFinishMarkerBorderColor(patch.borderColor);
               if (patch.borderWidth !== undefined) setFinishMarkerBorderWidth(patch.borderWidth);
+              if (patch.gapWidth !== undefined) setFinishMarkerGapWidth(patch.gapWidth);
+              if (patch.size !== undefined) setFinishMarkerSize(patch.size);
             }}
           />
         </div>
@@ -383,9 +425,9 @@ export function VectorByWallsSettingsPanel() {
           />
           <ColorRow label={m["image_export.vector_by_walls.one_way_color"]()} color={settings.oneWayColor} onChange={setOneWayColor} />
           <SliderRow
-            label={m["image_export.vector_by_walls.one_way_border_width"]()}
-            value={settings.oneWayBorderWidth}
-            onChange={setOneWayBorderWidth}
+            label={m["image_export.vector_by_walls.one_way_gap_width"]()}
+            value={settings.oneWayGapWidth}
+            onChange={setOneWayGapWidth}
             min={0}
             max={10}
             step={1}
@@ -467,6 +509,15 @@ export function VectorByWallsSettingsPanel() {
               step={1}
               format={(v) => String(v)}
             />
+            <SliderRow
+              label={m["image_export.vector_by_walls.teleport_edge_gap_width"]()}
+              value={settings.teleportEdgeGapWidth}
+              onChange={setTeleportEdgeGapWidth}
+              min={0}
+              max={10}
+              step={1}
+              format={(v) => String(v)}
+            />
           </div>
 
           <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_connector"]()}</div>
@@ -502,9 +553,9 @@ export function VectorByWallsSettingsPanel() {
                 format={(v) => String(v)}
               />
               <SliderRow
-                label={m["image_export.vector_by_walls.teleport_connector_border_width"]()}
-                value={settings.teleportConnectorBorderWidth}
-                onChange={setTeleportConnectorBorderWidth}
+                label={m["image_export.vector_by_walls.teleport_connector_gap_width"]()}
+                value={settings.teleportConnectorGapWidth}
+                onChange={setTeleportConnectorGapWidth}
                 min={0}
                 max={10}
                 step={1}

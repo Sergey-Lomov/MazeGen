@@ -1,8 +1,73 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { computeMixedCells, clipDistance, resolvePointFillState, planGroupDrawOrder } from "../pixi/renderers/TeleportRenderer";
 import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
-import type { TeleportEdge } from "../pixi/renderers/types";
+import type { TeleportEdge, TeleportLineStyle } from "../pixi/renderers/types";
 import type { RoutedConnector } from "../pixi/renderers/teleportConnectorRouting";
+
+// `getCartesianCoords` (wasm) is never reached by the group-customization-off `render()` path
+// exercised below (no `TeleportConnectorRouter.route` call needed since `connectorStyle: "none"`),
+// but `TeleportRenderer`'s own module graph pulls in `../../store/mazeStore`, which pulls in
+// `../wasm/mazeService` at import time — same rationale as `VectorByWallsSettingsPanel.test.tsx`.
+vi.mock("../wasm/mazeService", () => ({
+  generateMaze: vi.fn(),
+  computeAnalytics: vi.fn(),
+  getAvailableChecks: vi.fn(() => []),
+  getAvailableStrategies: vi.fn(() => []),
+}));
+vi.mock("../wasm/wasmLoader", () => ({
+  initWasm: vi.fn(() => Promise.resolve()),
+}));
+
+// Fake `Graphics`/`Container` (same minimal pattern as `WallRenderer.test.ts`) recording every draw
+// call in order, so the gaps-then-connectors-then-points draw order (GitHub issue #302) is
+// verifiable without a real pixi renderer. `circle` is needed since `drawMarkerShape`'s default
+// `"circle"` shape (this test's own style) calls `g.circle(...)` directly, not `g.poly(...)`.
+vi.mock("pixi.js", () => {
+  class FakeGraphics {
+    calls: { fn: string; args: unknown[] }[] = [];
+    circle(...args: unknown[]) { this.calls.push({ fn: "circle", args }); return this; }
+    poly(...args: unknown[]) { this.calls.push({ fn: "poly", args }); return this; }
+    roundPoly(...args: unknown[]) { this.calls.push({ fn: "roundPoly", args }); return this; }
+    moveTo(...args: unknown[]) { this.calls.push({ fn: "moveTo", args }); return this; }
+    lineTo(...args: unknown[]) { this.calls.push({ fn: "lineTo", args }); return this; }
+    fill(...args: unknown[]) { this.calls.push({ fn: "fill", args }); return this; }
+    stroke(...args: unknown[]) { this.calls.push({ fn: "stroke", args }); return this; }
+    clear() { this.calls = []; return this; }
+    removeChildren() { return []; }
+    addChild() {}
+    destroy() {}
+  }
+  class FakeContainer {
+    addChild() {}
+    destroy() {}
+  }
+  return { Container: FakeContainer, Graphics: FakeGraphics };
+});
+
+const { TeleportRenderer } = await import("../pixi/renderers/TeleportRenderer");
+const { TeleportConnectorRouter } = await import("../pixi/renderers/teleportConnectorRouter");
+const { Container, Graphics } = await import("pixi.js");
+
+function baseLineStyle(overrides: Partial<TeleportLineStyle> = {}): TeleportLineStyle {
+  return {
+    shape: "circle",
+    cornerStyle: "sharp",
+    size: 0.2,
+    edgeColor: 0x111,
+    edgeBorderColor: 0x222,
+    borderWidth: 2,
+    edgeGapWidth: 3,
+    connectorColor: 0x333,
+    connectorWidth: 3,
+    connectorStyle: "none",
+    arrowMode: "none",
+    arrowPeriod: 5,
+    arrowSize: 10,
+    connectorGapWidth: 0,
+    floorColor: 0x444,
+    ...overrides,
+  };
+}
 
 describe("computeMixedCells", () => {
   it("no edges — no mixed cells", () => {
@@ -109,10 +174,10 @@ describe("clipDistance", () => {
   });
 });
 
-// `planGroupDrawOrder` resolves `TeleportRenderer.renderGroups`'s per-group interleave (a group's
-// own connectors drawn immediately before its own points, then the next group — GitHub issue #293
-// follow-up: previously "every connector, then every marker" globally) — pure, so testable without
-// a `Graphics` mock.
+// `planGroupDrawOrder` resolves which groups are visible and buckets each visible group's own
+// connectors — `TeleportRenderer.renderGroups` walks this plan in three flat passes (every group's
+// gaps, then every group's connectors, then every group's points — GitHub issue #302) rather than
+// interleaving per group. Pure, so testable without a `Graphics` mock.
 describe("planGroupDrawOrder", () => {
   const routed = (): RoutedConnector => ({ points: [0, 0, 1, 1] });
 
@@ -172,5 +237,84 @@ describe("planGroupDrawOrder", () => {
 
   it("no groups — empty plan", () => {
     expect(planGroupDrawOrder([], [], null)).toEqual([]);
+  });
+});
+
+// `TeleportRenderer.render` draws each group as its own gaps-then-connectors-then-points block
+// (GitHub issue #302) — verified here against the fake `Graphics`'s recorded call order, since
+// `planGroupDrawOrder` alone (tested above) only proves the *plan* shape, not that `renderGroups`
+// actually walks it in this order.
+describe("TeleportRenderer.render draw order", () => {
+  it("draws a group's gap ring before its own marker fill/border when edgeGapWidth > 0", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: false, fromNode: 1, toNode: 2 }];
+    renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 3 }) });
+    const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).view;
+
+    // `drawGroupGaps` draws both points' gap rings first (its own loop over the whole group), then
+    // `drawGroupPoints` draws both points' fill pass, then both points' border pass: circle(gapA),
+    // circle(gapB), circle(fillA), circle(fillB), circle(borderA), circle(borderB).
+    const circleCalls = g.calls.filter((c) => c.fn === "circle");
+    const fillCalls = g.calls.filter((c) => c.fn === "fill");
+    // 2 gap rings + 2 markers (fill pass) + 2 markers (border pass) = 6 circle() calls total.
+    expect(circleCalls).toHaveLength(6);
+    // The gap ring's own radius (size*TILE_SIZE + borderWidth + edgeGapWidth) must exceed the plain
+    // marker radius (size*TILE_SIZE) — the first two circle calls (the gap rings) must be larger
+    // than the next two (the markers' own fill-pass radius).
+    const [gapRadius] = circleCalls[0].args.slice(2) as [number];
+    const [markerRadius] = circleCalls[2].args.slice(2) as [number];
+    expect(gapRadius).toBeGreaterThan(markerRadius);
+    // First fill call is the gap ring's own floor-colored fill, before any marker fill.
+    expect(fillCalls[0].args[0]).toBe(0x444);
+  });
+
+  it("skips the gap ring entirely when edgeGapWidth is 0 (no-op, not a zero-radius circle)", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: false, fromNode: 1, toNode: 2 }];
+    renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
+    const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).view;
+
+    // Just the 2 points' own marker draws (fill pass + border pass), no gap-ring circles.
+    expect(g.calls.filter((c) => c.fn === "circle")).toHaveLength(4);
+  });
+
+  it("draws two independent groups' whole blocks in group order — group B's gap ring never lands before group A's own marker", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [
+      { from: [0, 0], to: [10, 10], oneWay: false, fromNode: 1, toNode: 2 },
+      { from: [50, 50], to: [60, 60], oneWay: false, fromNode: 3, toNode: 4 },
+    ];
+    renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 3 }) });
+    const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).view;
+
+    // Each group draws gap(x2) + marker(x2 circle calls x2 points) = 6 circle calls; two independent
+    // groups (no shared points) = 12 total, in two contiguous group-sized blocks.
+    const circleCalls = g.calls.filter((c) => c.fn === "circle");
+    expect(circleCalls).toHaveLength(12);
+    const firstGroupXs = circleCalls.slice(0, 6).map((c) => c.args[0]);
+    const secondGroupXs = circleCalls.slice(6, 12).map((c) => c.args[0]);
+    expect(new Set(firstGroupXs)).toEqual(new Set([0, 10]));
+    expect(new Set(secondGroupXs)).toEqual(new Set([50, 60]));
+  });
+});
+
+// `computeConnectors` (the orthogonal-routing path) is only reached when `connectorStyle` isn't
+// `"none"` — none of the draw-order tests above exercise it. This is exactly the code the router
+// collision-radius fix (GitHub issue #302 follow-up: `edgeGapWidth` folded into `markerBorderWidth`)
+// touched, so it needs its own coverage independent of the draw-order assertions.
+describe("TeleportRenderer.render orthogonal connector routing", () => {
+  it("folds edgeGapWidth into the endpointStyle passed to TeleportConnectorRouter.route, so the marker's true visual footprint (fill + border + gap) is what routing avoids cutting through", () => {
+    const routeSpy = vi.spyOn(TeleportConnectorRouter.prototype, "route");
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: false, fromNode: 1, toNode: 2 }];
+    renderer.render({ edges, lineStyle: baseLineStyle({ connectorStyle: "orthogonal", size: 0.2, borderWidth: 2, edgeGapWidth: 5 }) });
+
+    expect(routeSpy).toHaveBeenCalledTimes(1);
+    const [, , maxEndpointOffset, , endpointStyle] = routeSpy.mock.calls[0];
+    // size (0.2 * TILE_SIZE 40 = 8) + borderWidth (2) + edgeGapWidth (5) = 15, for both the
+    // endpoint-collision-radius input and the corridor-offset clamp.
+    expect(endpointStyle).toMatchObject({ markerBorderWidth: 2 + 5 });
+    expect(maxEndpointOffset).toBe(8 + 2 + 5);
+    routeSpy.mockRestore();
   });
 });

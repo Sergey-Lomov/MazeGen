@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, maxSplitNodeCount } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, maxSplitNodeCount, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
@@ -537,6 +537,23 @@ describe("buildMazeMarkers", () => {
   it("null start/finish produce no markers", () => {
     const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)]]);
     expect(buildMazeMarkers(nodeById, null, null, squareCfg)).toEqual([]);
+  });
+
+  it("a custom MarkerStyle's size/cornerStyle/gapWidth/gapColor pass through into MarkerData (GitHub issue #302 follow-up — size drives radius via TILE_SIZE, the rest map straight across)", () => {
+    const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)], [1, n(1, 1, 1)]]);
+    const startStyle: MarkerStyle = {
+      shape: "star", fillColor: 0x111, borderColor: 0x222, borderWidth: 4,
+      size: 0.5, cornerStyle: "round", gapWidth: 3, gapColor: 0x333,
+    };
+    const markers = buildMazeMarkers(nodeById, 0, 1, squareCfg, startStyle);
+    expect(markers[0]).toMatchObject({
+      shape: "star", color: 0x111, borderColor: 0x222, borderWidth: 4,
+      cornerStyle: "round", gapWidth: 3, gapColor: 0x333,
+    });
+    expect(markers[0].radius).toBe(0.5 * 40);
+    // finishStyle omitted — falls back to the default borderless sharp circle, unaffected by
+    // startStyle's own custom fields.
+    expect(markers[1]).toMatchObject({ shape: "circle", cornerStyle: "sharp", gapWidth: 0 });
   });
 });
 

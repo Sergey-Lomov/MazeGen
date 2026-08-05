@@ -31,18 +31,19 @@ beforeEach(() => {
       wallThickness: WALL_THICKNESS,
       oneWayPattern: "triangle",
       oneWayColor: 0xffaa00,
-      oneWayBorderWidth: 3,
+      oneWayGapWidth: 3,
       oneWaySize: 0.3,
       oneWayThickness: 4,
       oneWayJoin: "round",
-      startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 },
-      finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 },
+      startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225 },
+      finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225 },
       teleportLineCornerStyle: "sharp",
       teleportLineShape: "square",
       teleportLineSize: 0.3,
       teleportEdgeColor: canvas.teleport.default,
       teleportEdgeBorderColor: canvas.teleport.default,
       teleportEdgeBorderWidth: 3,
+      teleportEdgeGapWidth: 0,
       teleportConnectorColor: canvas.teleport.default,
       teleportConnectorWidth: 3,
       teleportConnectorStyle: "straight",
@@ -50,7 +51,7 @@ beforeEach(() => {
       teleportArrowMode: "center",
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
-      teleportConnectorBorderWidth: 0,
+      teleportConnectorGapWidth: 0,
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       splitNodeColors: [],
@@ -104,18 +105,19 @@ describe("mazeStore vectorByWallsSettings", () => {
       wallThickness: WALL_THICKNESS,
       oneWayPattern: "triangle",
       oneWayColor: 0xffaa00,
-      oneWayBorderWidth: 3,
+      oneWayGapWidth: 3,
       oneWaySize: 0.3,
       oneWayThickness: 4,
       oneWayJoin: "round",
-      startMarker: { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 },
-      finishMarker: { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 },
+      startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0.225 },
+      finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0.225 },
       teleportLineCornerStyle: "sharp",
       teleportLineShape: "square",
       teleportLineSize: 0.3,
       teleportEdgeColor: canvas.teleport.default,
       teleportEdgeBorderColor: canvas.teleport.default,
       teleportEdgeBorderWidth: 3,
+      teleportEdgeGapWidth: 0,
       teleportConnectorColor: canvas.teleport.default,
       teleportConnectorWidth: 3,
       teleportConnectorStyle: "straight",
@@ -123,7 +125,7 @@ describe("mazeStore vectorByWallsSettings", () => {
       teleportArrowMode: "center",
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
-      teleportConnectorBorderWidth: 0,
+      teleportConnectorGapWidth: 0,
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       splitNodeColors: [],
@@ -188,13 +190,13 @@ describe("mazeStore vectorByWallsSettings", () => {
 
   it("setVectorByWallsOneWayColor/BorderWidth/Size/Thickness/Join update only the one-way fields", () => {
     useMazeStore.getState().setVectorByWallsOneWayColor(0x555555);
-    useMazeStore.getState().setVectorByWallsOneWayBorderWidth(3);
+    useMazeStore.getState().setVectorByWallsOneWayGapWidth(3);
     useMazeStore.getState().setVectorByWallsOneWaySize(0.3);
     useMazeStore.getState().setVectorByWallsOneWayThickness(6);
     useMazeStore.getState().setVectorByWallsOneWayJoin("miter");
     const settings = useMazeStore.getState().vectorByWallsSettings;
     expect(settings.oneWayColor).toBe(0x555555);
-    expect(settings.oneWayBorderWidth).toBe(3);
+    expect(settings.oneWayGapWidth).toBe(3);
     expect(settings.oneWaySize).toBe(0.3);
     expect(settings.oneWayThickness).toBe(6);
     expect(settings.oneWayJoin).toBe("miter");
@@ -208,22 +210,28 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(settings.finishMarker.shape).toBe("circle");
   });
 
-  it("setVectorByWallsStartMarkerFillColor/BorderColor/BorderWidth update only the start marker", () => {
+  it("setVectorByWallsStartMarkerFillColor/BorderColor/BorderWidth/GapWidth/Size/CornerStyle update only the start marker", () => {
     useMazeStore.getState().setVectorByWallsStartMarkerFillColor(0x111111);
     useMazeStore.getState().setVectorByWallsStartMarkerBorderColor(0x222222);
     useMazeStore.getState().setVectorByWallsStartMarkerBorderWidth(3);
+    useMazeStore.getState().setVectorByWallsStartMarkerGapWidth(2);
+    useMazeStore.getState().setVectorByWallsStartMarkerSize(0.5);
+    useMazeStore.getState().setVectorByWallsStartMarkerCornerStyle("round");
     const settings = useMazeStore.getState().vectorByWallsSettings;
-    expect(settings.startMarker).toEqual({ shape: "circle", fillColor: 0x111111, borderColor: 0x222222, borderWidth: 3 });
+    expect(settings.startMarker).toEqual({ shape: "circle", cornerStyle: "round", fillColor: 0x111111, borderColor: 0x222222, borderWidth: 3, gapWidth: 2, size: 0.5 });
     expect(settings.finishMarker.fillColor).toBe(canvas.node.finish);
   });
 
-  it("setVectorByWallsFinishMarkerShape/FillColor/BorderColor/BorderWidth update only the finish marker", () => {
+  it("setVectorByWallsFinishMarkerShape/FillColor/BorderColor/BorderWidth/GapWidth/Size/CornerStyle update only the finish marker", () => {
     useMazeStore.getState().setVectorByWallsFinishMarkerShape("star");
     useMazeStore.getState().setVectorByWallsFinishMarkerFillColor(0x333333);
     useMazeStore.getState().setVectorByWallsFinishMarkerBorderColor(0x444444);
     useMazeStore.getState().setVectorByWallsFinishMarkerBorderWidth(5);
+    useMazeStore.getState().setVectorByWallsFinishMarkerGapWidth(4);
+    useMazeStore.getState().setVectorByWallsFinishMarkerSize(0.6);
+    useMazeStore.getState().setVectorByWallsFinishMarkerCornerStyle("round");
     const settings = useMazeStore.getState().vectorByWallsSettings;
-    expect(settings.finishMarker).toEqual({ shape: "star", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 5 });
+    expect(settings.finishMarker).toEqual({ shape: "star", cornerStyle: "round", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 5, gapWidth: 4, size: 0.6 });
     expect(settings.startMarker.fillColor).toBe(canvas.node.start);
   });
 

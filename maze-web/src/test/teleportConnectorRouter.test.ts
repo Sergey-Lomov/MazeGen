@@ -190,8 +190,8 @@ describe("TeleportConnectorRouter.route", () => {
   it("cache invalidates when endpointStyle changes even if every other argument stays the same", () => {
     const router = new TeleportConnectorRouter();
     const edges = [edge([0, 0], [10, 0]), edge([2, 0], [8, -6])];
-    const base = router.route(edges, 4, Infinity, undefined, { markerRadius: 2, markerBorderWidth: 1, connectorBorderWidth: 1, connectorWidth: 2 });
-    const differentStyle = router.route(edges, 4, Infinity, undefined, { markerRadius: 5, markerBorderWidth: 1, connectorBorderWidth: 1, connectorWidth: 2 });
+    const base = router.route(edges, 4, Infinity, undefined, { markerRadius: 2, markerBorderWidth: 1, connectorGapWidth: 1, connectorWidth: 2 });
+    const differentStyle = router.route(edges, 4, Infinity, undefined, { markerRadius: 5, markerBorderWidth: 1, connectorGapWidth: 1, connectorWidth: 2 });
     expect(differentStyle).not.toBe(base);
   });
 
@@ -212,7 +212,7 @@ describe("TeleportConnectorRouter.route", () => {
     const edgeA = edge([0, 0], [10, 0]);
     const edgeC = edge([9, -30], [9, 30]);
     const edgeB = edge([9, 0], [20, 5]);
-    const endpointStyle = { markerRadius: 0.2, markerBorderWidth: 0.1, connectorBorderWidth: 0.1, connectorWidth: 0.2 };
+    const endpointStyle = { markerRadius: 0.2, markerBorderWidth: 0.1, connectorGapWidth: 0.1, connectorWidth: 0.2 };
 
     const withoutEndpointStyle = new TeleportConnectorRouter().route([edgeA, edgeC, edgeB], 1);
     const withEndpointStyle = new TeleportConnectorRouter().route([edgeA, edgeC, edgeB], 1, Infinity, undefined, endpointStyle);
@@ -231,7 +231,7 @@ describe("TeleportConnectorRouter.route", () => {
     // (|dx|+|dy|=30 either way), so plain candidate order picks h-then-v (first in axes × axes).
     // Placing a waypoint marker right on the h-then-v bend flips the choice to v-then-h.
     const e = edge([0, 0], [20, 10]);
-    const endpointStyle = { markerRadius: 0.2, markerBorderWidth: 0.1, connectorBorderWidth: 0.1, connectorWidth: 0.2 };
+    const endpointStyle = { markerRadius: 0.2, markerBorderWidth: 0.1, connectorGapWidth: 0.1, connectorWidth: 0.2 };
 
     const withoutWaypoint = new TeleportConnectorRouter().route([e], 1, Infinity, undefined, endpointStyle);
     expect(withoutWaypoint[0].points[2]).toBeCloseTo(20); // h-then-v: bend.x ≈ 20
@@ -307,13 +307,13 @@ describe("TeleportConnectorRouter.route", () => {
     // Field: cells (0,0) and (0,1) — a single column, world box x∈[0,40], y∈[-80,0]. `from`=(20,-20)
     // (cell (0,0)'s own center), `to`=(40,-60) sits exactly on the field's own right edge (x=40) at
     // a y inside cell (0,1) — the centerline itself never crosses outside the field (x never exceeds
-    // 40), but a connector drawn with real width bulges `connectorWidth / 2 + connectorBorderWidth`
+    // 40), but a connector drawn with real width bulges `connectorWidth / 2 + connectorGapWidth`
     // past its centerline, which here pushes past x=40 and outside the field.
     const cfg: FieldConfig = { type: "square", width: 1, height: 2 };
     const e = edge([20, -20], [40, -60]);
     const fieldCells: [number, number][] = [[0, 0], [0, 1]];
-    // halfWidth = connectorWidth/2 + connectorBorderWidth = 2 + 1 = 3.
-    const endpointStyle = { markerRadius: 0, markerBorderWidth: 0, connectorBorderWidth: 1, connectorWidth: 4 };
+    // halfWidth = connectorWidth/2 + connectorGapWidth = 2 + 1 = 3.
+    const endpointStyle = { markerRadius: 0, markerBorderWidth: 0, connectorGapWidth: 1, connectorWidth: 4 };
 
     const zeroWidth = new TeleportConnectorRouter().route([e], 1, Infinity, cfg, undefined, [], true, fieldCells);
     const withWidth = new TeleportConnectorRouter().route([e], 1, Infinity, cfg, endpointStyle, [], true, fieldCells);

@@ -150,15 +150,15 @@ export class WallRenderer {
   ): void {
     if (!override) {
       // Default look (GenerationRenderer/PostEditRenderer/PresetConnectionsRenderer/
-      // MazeOverlayRenderer, none of which pass an override): a triangle bordered in the floor
+      // MazeOverlayRenderer, none of which pass an override): a triangle gapped in the floor
       // color — GitHub issue #292 follow-up.
-      drawOneWayTriangle(this.g, cx, cy, dx, dy, { borderColor: canvas.floor.default, borderWidth: 3, size: TILE_SIZE * 0.3 });
+      drawOneWayTriangle(this.g, cx, cy, dx, dy, { gapColor: canvas.floor.default, gapWidth: 3, size: TILE_SIZE * 0.3 });
       return;
     }
     const style = {
       color: override.color,
-      borderColor: override.borderColor,
-      borderWidth: override.borderWidth,
+      gapColor: override.gapColor,
+      gapWidth: override.gapWidth,
       size: override.size,
       thickness: override.thickness,
       join: override.join,

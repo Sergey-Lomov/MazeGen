@@ -108,7 +108,7 @@ describe("WallRenderer.render", () => {
     const renderer = new WallRenderer(new Container());
     const oneWayEdges: WallEdge[] = [{ a: [0, 0], b: [1, 0], kind: "forward", style: "solid", oneWayDir: { dx: 1, dy: 0 } }];
     const chevronStyle: OneWayStyleOverride = {
-      pattern: "chevron", color: 0x1, borderColor: 0x2, borderWidth: 0, size: 10, thickness: 4, join: "round", cap: "round",
+      pattern: "chevron", color: 0x1, gapColor: 0x2, gapWidth: 0, size: 10, thickness: 4, join: "round", cap: "round",
     };
     renderer.render({ edges: oneWayEdges }, squareCfg, undefined, chevronStyle);
     const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
@@ -124,7 +124,7 @@ describe("WallRenderer.render", () => {
     const renderer = new WallRenderer(new Container());
     const oneWayEdges: WallEdge[] = [{ a: [0, 0], b: [1, 0], kind: "forward", style: "solid", oneWayDir: { dx: 1, dy: 0 } }];
     const triangleStyle: OneWayStyleOverride = {
-      pattern: "triangle", color: 0xaaaaaa, borderColor: 0xbbbbbb, borderWidth: 5, size: 30, thickness: 4, join: "miter", cap: "square",
+      pattern: "triangle", color: 0xaaaaaa, gapColor: 0xbbbbbb, gapWidth: 5, size: 30, thickness: 4, join: "miter", cap: "square",
     };
     renderer.render({ edges: oneWayEdges }, squareCfg, undefined, triangleStyle);
     const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;

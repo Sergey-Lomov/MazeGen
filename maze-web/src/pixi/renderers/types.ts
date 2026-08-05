@@ -23,21 +23,23 @@ export type WallStyleOverride = { color?: number; width?: number; join?: "round"
 export type OneWayPattern = "triangle" | "chevron" | "arrow";
 
 /** Optional per-call override for the one-way indicator drawn on a `WallEdge`'s wall segment
- *  midpoint — pattern (shape), color, border (color/width, `borderWidth: 0` draws no border),
- *  size (world-space scale along the pointing direction), thickness (chevron/arrow's own line
- *  width, independent of size) and join/cap (own stroke ends for chevron/arrow, the filled
- *  triangle's border stroke for triangle). Used by `VectorByWallsRenderer` (GitHub issue #292) to
- *  expose the one-way indicator as user settings — never applied to a split passage's own
- *  connector arrow (`SplitJunctionRenderer` keeps drawing that with the node's own identity color
- *  via `drawDirectionArrow`, unaffected by this override). When no override is passed at all (every
- *  feature-renderer besides `VectorByWallsRenderer`), `WallRenderer.drawOneWayIndicator` still
- *  draws a bordered triangle by default (GitHub issue #292 follow-up) — this is a deliberate,
- *  shared visual change to every caller's one-way look, not something this override opts into. */
+ *  midpoint — pattern (shape), color, floor-colored gap (color/width, `gapWidth: 0` draws no gap —
+ *  renamed from border in GitHub issue #302 follow-up, consistent with the marker/connector gap
+ *  convention: this is a separation gap, not a real border), size (world-space scale along the
+ *  pointing direction), thickness (chevron/arrow's own line width, independent of size) and
+ *  join/cap (own stroke ends for chevron/arrow, the filled triangle's gap stroke for triangle).
+ *  Used by `VectorByWallsRenderer` (GitHub issue #292) to expose the one-way indicator as user
+ *  settings — never applied to a split passage's own connector arrow (`SplitJunctionRenderer`
+ *  keeps drawing that with the node's own identity color via `drawDirectionArrow`, unaffected by
+ *  this override). When no override is passed at all (every feature-renderer besides
+ *  `VectorByWallsRenderer`), `WallRenderer.drawOneWayIndicator` still draws a gapped triangle by
+ *  default (GitHub issue #292 follow-up) — this is a deliberate, shared visual change to every
+ *  caller's one-way look, not something this override opts into. */
 export type OneWayStyleOverride = {
   pattern: OneWayPattern;
   color: number;
-  borderColor: number;
-  borderWidth: number;
+  gapColor: number;
+  gapWidth: number;
   size: number;
   /** Chevron/arrow's own line thickness — independent of `size` (geometric scale). Has no effect
    *  on the `triangle` pattern (a filled shape, no line stroke of its own). */
@@ -167,7 +169,10 @@ export type EdgeHL = {
  *  other's for shapes both use. */
 export type MarkerShape = "circle" | "triangle" | "square" | "diamond" | "pentagon" | "star" | "hexagon" | "cross";
 
-/** `borderWidth: 0` (the default) draws no border — see GitHub issue #296. */
+/** `borderWidth: 0` (the default) draws no border — see GitHub issue #296. `cornerStyle` (GitHub
+ *  issue #302 follow-up) rounds the four regular-polygon shapes, same convention as
+ *  `TeleportCornerStyle`. `gapWidth: 0` (the default) draws no floor-colored gap ring around the
+ *  border — see `MarkerStyle`'s own doc comment (`mazeSelectors.ts`). */
 export type MarkerData = {
   pos: [number, number];
   color: number;
@@ -175,6 +180,9 @@ export type MarkerData = {
   shape?: MarkerShape;
   borderColor?: number;
   borderWidth?: number;
+  cornerStyle?: TeleportCornerStyle;
+  gapWidth?: number;
+  gapColor?: number;
 };
 
 /** A cell draws half-filled when the markers landing on it disagree: some edge wants a filled
@@ -227,6 +235,19 @@ export type TeleportLineStyle = {
   /** Independent from `edgeColor` — a marker's border doesn't have to mirror its fill color. */
   edgeBorderColor: number;
   borderWidth: number;
+  /** Floor-colored gap ring drawn around the marker's border (GitHub issue #302 follow-up), same
+   *  convention as the waypoint marker's own `MarkerSettings.gapWidth` — `0` (the default) draws no
+   *  gap. Drawn wider than the marker (`r + borderWidth + edgeGapWidth`) underneath — this marker's
+   *  own border is drawn `alignment: 0` (pixi's outer alignment, grows entirely outward from `r`,
+   *  see `TeleportRenderer.drawMarker` — every border/gap stroke in this codebase uses this
+   *  alignment uniformly), so the marker's true outer edge is `r + borderWidth`, not `r` itself, and
+   *  the gap ring must start there. Deliberately does *not* try to avoid the point's own connector
+   *  via geometry — `TeleportRenderer.renderGroups` draws each group as its own
+   *  gaps-then-connectors-then-points block, so a gap ring only ever needs to stay clear of *that
+   *  same* group's own connector/marker geometry (which it does, being drawn first in the block); a
+   *  later group's own gap can still visually sit under an earlier group's connector/marker, same
+   *  "later group wins" draw order every other group-owned shape already follows. */
+  edgeGapWidth: number;
   connectorColor: number;
   connectorWidth: number;
   connectorStyle: TeleportConnectorStyle;
@@ -236,13 +257,15 @@ export type TeleportLineStyle = {
   /** Arrow size, independent of `connectorWidth` (previously always `connectorWidth * 2`) — passed
    *  straight through to `drawDirectionArrow`'s own `size` param. */
   arrowSize: number;
-  /** Connector border width (GitHub issue #293 follow-up) — `0` (the default) draws no border.
-   *  When positive, the connector (line and every arrow it draws) is drawn twice: once at
-   *  `connectorWidth + 2 * connectorBorderWidth` in `floorColor` (underneath, the `2x` since the
-   *  border wraps both sides of the stroke, same convention as a filled shape's own inward
-   *  border), then again at `connectorWidth` in `connectorColor` on top — reads as a floor-colored
-   *  outline around the whole connector including its arrowheads, not just the line. */
-  connectorBorderWidth: number;
+  /** Floor-colored gap drawn around the whole connector (GitHub issue #293 follow-up, renamed from
+   *  `connectorBorderWidth` in #302 — not a border around the connector's own fill, a visual
+   *  separation gap from anything the connector crosses). `0` (the default) draws no gap. When
+   *  positive, the connector (line and every arrow it draws) is drawn twice: once at
+   *  `connectorWidth + 2 * connectorGapWidth` in `floorColor` (underneath, the `2x` since the gap
+   *  wraps both sides of the stroke, same convention as a filled shape's own inward border), then
+   *  again at `connectorWidth` in `connectorColor` on top — reads as a floor-colored outline around
+   *  the whole connector including its arrowheads, not just the line. */
+  connectorGapWidth: number;
   /** Floor color (GitHub issue #293 follow-up) — the connecting line now runs center-to-center
    *  (not clipped to the marker's border), drawn *underneath* every marker shape, so an outline
    *  (unfilled) marker needs its own floor-colored fill to occlude the line segment passing through

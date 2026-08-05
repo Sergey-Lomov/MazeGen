@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { viewportWorldRect, buildWallStyle, buildOneWayStyle, buildTeleportLineStyle, buildEffectiveSplitNodeColors } from "../pixi/imageExport/VectorByWallsRenderer";
+import { viewportWorldRect, buildWallStyle, buildOneWayStyle, buildTeleportLineStyle, buildEffectiveSplitNodeColors, buildMarkerStyle } from "../pixi/imageExport/VectorByWallsRenderer";
 import { TILE_SIZE } from "../pixi/constants";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
@@ -16,18 +16,19 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     wallThickness: 3,
     oneWayPattern: "triangle",
     oneWayColor: 0x555555,
-    oneWayBorderWidth: 3,
+    oneWayGapWidth: 3,
     oneWaySize: 0.3,
     oneWayThickness: 4,
     oneWayJoin: "round",
-    startMarker: { shape: "circle", fillColor: 0, borderColor: 0, borderWidth: 0 },
-    finishMarker: { shape: "circle", fillColor: 0, borderColor: 0, borderWidth: 0 },
+    startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
+    finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
     teleportLineCornerStyle: "sharp",
     teleportLineShape: "square",
     teleportLineSize: 0.3,
     teleportEdgeColor: 0,
     teleportEdgeBorderColor: 0,
     teleportEdgeBorderWidth: 3,
+    teleportEdgeGapWidth: 0,
     teleportConnectorColor: 0,
     teleportConnectorWidth: 3,
     teleportConnectorStyle: "straight",
@@ -35,7 +36,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportArrowMode: "center",
     teleportArrowPeriod: 5,
     teleportArrowSize: 6,
-    teleportConnectorBorderWidth: 0,
+    teleportConnectorGapWidth: 0,
     teleportGroupCustomization: false,
     teleportGroupOverrides: {},
     splitNodeColors: [],
@@ -62,17 +63,17 @@ describe("buildWallStyle", () => {
 });
 
 describe("buildOneWayStyle", () => {
-  it("maps pattern/color/borderWidth/thickness straight through", () => {
-    const style = buildOneWayStyle(baseSettings({ oneWayPattern: "chevron", oneWayColor: 0xaaa, oneWayBorderWidth: 5, oneWayThickness: 8 }));
+  it("maps pattern/color/gapWidth/thickness straight through", () => {
+    const style = buildOneWayStyle(baseSettings({ oneWayPattern: "chevron", oneWayColor: 0xaaa, oneWayGapWidth: 5, oneWayThickness: 8 }));
     expect(style.pattern).toBe("chevron");
     expect(style.color).toBe(0xaaa);
-    expect(style.borderWidth).toBe(5);
+    expect(style.gapWidth).toBe(5);
     expect(style.thickness).toBe(8);
   });
 
-  it("mirrors floorColor as the border color, independent of oneWayColor", () => {
+  it("mirrors floorColor as the gap color, independent of oneWayColor", () => {
     const style = buildOneWayStyle(baseSettings({ floorColor: 0xdead00, oneWayColor: 0xbeef00 }));
-    expect(style.borderColor).toBe(0xdead00);
+    expect(style.gapColor).toBe(0xdead00);
   });
 
   it("scales oneWaySize (a tile fraction) into world-space via TILE_SIZE", () => {
@@ -95,20 +96,35 @@ describe("buildTeleportLineStyle", () => {
       teleportEdgeColor: 0x111,
       teleportEdgeBorderColor: 0x112,
       teleportEdgeBorderWidth: 5,
+      teleportEdgeGapWidth: 6,
       teleportConnectorColor: 0x222,
       teleportConnectorWidth: 7,
       teleportConnectorStyle: "orthogonal",
       teleportArrowMode: "periodic",
       teleportArrowPeriod: 8,
       teleportArrowSize: 11,
-      teleportConnectorBorderWidth: 9,
+      teleportConnectorGapWidth: 9,
       floorColor: 0x999,
     }));
     expect(style).toEqual({
-      shape: "star", cornerStyle: "round", size: 0.4, edgeColor: 0x111, edgeBorderColor: 0x112, borderWidth: 5,
+      shape: "star", cornerStyle: "round", size: 0.4, edgeColor: 0x111, edgeBorderColor: 0x112, borderWidth: 5, edgeGapWidth: 6,
       connectorColor: 0x222, connectorWidth: 7, connectorStyle: "orthogonal",
-      arrowMode: "periodic", arrowPeriod: 8, arrowSize: 11, connectorBorderWidth: 9, floorColor: 0x999,
+      arrowMode: "periodic", arrowPeriod: 8, arrowSize: 11, connectorGapWidth: 9, floorColor: 0x999,
     });
+  });
+});
+
+describe("buildMarkerStyle", () => {
+  it("spreads MarkerSettings straight through and sets gapColor to the given floorColor", () => {
+    const settings = { shape: "star" as const, cornerStyle: "round" as const, fillColor: 0x111, borderColor: 0x222, borderWidth: 4, gapWidth: 3, size: 0.5 };
+    const style = buildMarkerStyle(settings, 0xdead00);
+    expect(style).toEqual({ ...settings, gapColor: 0xdead00 });
+  });
+
+  it("gapColor tracks floorColor independently of the marker's own fillColor/borderColor", () => {
+    const settings = { shape: "circle" as const, cornerStyle: "sharp" as const, fillColor: 0xaaa, borderColor: 0xbbb, borderWidth: 0, gapWidth: 0, size: 0.225 };
+    expect(buildMarkerStyle(settings, 0x111).gapColor).toBe(0x111);
+    expect(buildMarkerStyle(settings, 0x222).gapColor).toBe(0x222);
   });
 });
 

@@ -24,13 +24,14 @@ const DEFAULT_LINE_STYLE: TeleportLineStyle = {
   edgeColor: canvas.teleport.default,
   edgeBorderColor: canvas.teleport.default,
   borderWidth: SQUARE_STROKE_WIDTH,
+  edgeGapWidth: 3,
   connectorColor: canvas.teleport.default,
   connectorWidth: SQUARE_STROKE_WIDTH,
   connectorStyle: "orthogonal",
   arrowMode: "periodic",
   arrowPeriod: 5,
   arrowSize: 10,
-  connectorBorderWidth: SQUARE_STROKE_WIDTH,
+  connectorGapWidth: SQUARE_STROKE_WIDTH,
   floorColor: canvas.floor.default,
 };
 
@@ -283,18 +284,26 @@ export class TeleportRenderer {
       return groupKey !== undefined ? groupOverrides[groupKey] : undefined;
     };
 
-    // Includes the border once (not doubled) — two adjacent connectors' borders are allowed to
+    // Includes the gap once (not doubled) — two adjacent connectors' gaps are allowed to
     // overlap a bit, only their core lines need to stay visually distinct.
-    const gap = (style.connectorWidth + style.connectorBorderWidth) * 1.5;
+    const gap = (style.connectorWidth + style.connectorGapWidth) * 1.5;
+    // `edgeGapWidth` (GitHub issue #302) folded into `markerBorderWidth` here — the marker's real
+    // visual footprint that `endpointCollisionRadius`/corridor-offset clamping must stay clear of is
+    // `size*TILE_SIZE + borderWidth + edgeGapWidth` (see `drawGroupGaps`'s own `r` formula), not
+    // just `size*TILE_SIZE + borderWidth` — omitting the gap ring here would let another connector's
+    // routed path visually cut through it even though it correctly avoids the marker/border proper.
+    const endpointRadius = style.size * TILE_SIZE;
     const endpointStyle: EndpointMarkerStyle = {
-      markerRadius: style.size * TILE_SIZE,
-      markerBorderWidth: style.borderWidth,
-      connectorBorderWidth: style.connectorBorderWidth,
+      markerRadius: endpointRadius,
+      markerBorderWidth: style.borderWidth + style.edgeGapWidth,
+      connectorGapWidth: style.connectorGapWidth,
       connectorWidth: style.connectorWidth,
     };
     const routed =
       style.connectorStyle === "orthogonal"
-        ? this.connectorRouter.route(edges, gap, style.size * TILE_SIZE, cfg, endpointStyle, waypoints, avoidFieldExit, fieldCells)
+        ? this.connectorRouter.route(
+            edges, gap, endpointRadius + style.borderWidth + style.edgeGapWidth, cfg, endpointStyle, waypoints, avoidFieldExit, fieldCells,
+          )
         : routeStraightConnectors(edges);
 
     const result: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];
@@ -310,6 +319,29 @@ export class TeleportRenderer {
       result.push({ edge: e, routed: routed[i], color: connectorColor });
     });
     return result;
+  }
+
+  /** Draws every point of one group's floor-colored gap ring (`style.edgeGapWidth`, GitHub issue
+   *  #302) into `g` — a separate pass from `drawGroupPoints` itself, called before any connector so
+   *  that every connector (this point's own or another's) draws on top of it (see
+   *  `renderGroups`'s own 3-pass doc comment). No-op when `edgeGapWidth` is `0`. */
+  private drawGroupGaps(
+    g: Graphics,
+    group: TeleportGroup,
+    style: TeleportLineStyle,
+  ): void {
+    if (style.edgeGapWidth <= 0) return;
+    // This marker's own border is drawn `alignment: 0` (pixi's outer alignment — grows entirely
+    // outward from `r`, see `drawMarker`), so the marker's true outer edge is `r + borderWidth`, not
+    // `r` itself — the gap ring must start there, not at `r` (which would let a large enough
+    // `borderWidth` visually swallow the gap) or at `r + borderWidth/2` (the waypoint marker's own
+    // centered-border formula, wrong here since this border isn't centered).
+    const r = style.size * TILE_SIZE + style.borderWidth + style.edgeGapWidth;
+    const rounded = style.cornerStyle === "round";
+    for (const [px, py] of group.points) {
+      drawMarkerShape(g, style.shape, px, py, r, rounded);
+      g.fill(style.floorColor);
+    }
   }
 
   /** Draws every point of one group (its shape/fillColor/borderColor resolved from `override`, or
@@ -335,19 +367,24 @@ export class TeleportRenderer {
     }
   }
 
-  /** Every group's connectors + points (which is every point/connector, once `buildTeleportGroups`
-   *  has run: an edge with usable node ids always lands in some group, even a group of one) are
-   *  (re-)drawn into `view` here, one group at a time — a group's own connectors immediately before
-   *  its own points, then the next group (see this method's own body for why) — drawn (visible) if
-   *  its group is `selectedKey`, or every group when nothing is selected (`selectedKey === null`),
-   *  skipped entirely otherwise. Called once by `renderLine` (full rebuild, which already cleared
-   *  `view` itself) and again by `subscribeSelectionHighlight` on every selection change alone (cheap
-   *  re-run over already-computed groups/routing, no raw-`edges` recomputation) — that second case
-   *  needs its own clear, `renderLine`'s doesn't cover it. `interactive` (captured in
-   *  `selectionInteractive` by `renderLine`) additionally adds an invisible padded hit-circle per
-   *  point — for *every* group, regardless of which one is currently visible, so a hidden group still
-   *  has somewhere to click and re-select it — and wires click-to-select for the canvas->row half of
-   *  the selection sync. */
+  /** Every group's gaps + connectors + points (which is every point/connector, once
+   *  `buildTeleportGroups` has run: an edge with usable node ids always lands in some group, even a
+   *  group of one) are (re-)drawn into `view` here, one group at a time — a group's own gap rings,
+   *  then its own connectors, then its own points, then the next group (GitHub issue #302: within
+   *  one group this guarantees its own connectors/points are never visually cut by its own gap
+   *  rings — a group's gap only ever needs to stay clear of *that same* group's own connector/marker
+   *  geometry, so a 3-sub-pass block per group is enough, no global gap/connector/marker split is
+   *  needed). A whole later group's block (gaps, connectors and points alike) draws on top of a
+   *  whole earlier group's block, same "later group wins" rule the pre-#302 single interleaved pass
+   *  used. Drawn (visible) if its group is `selectedKey`, or every group when nothing is selected
+   *  (`selectedKey === null`), skipped entirely otherwise. Called once by `renderLine` (full rebuild,
+   *  which already cleared `view` itself) and again by `subscribeSelectionHighlight` on every
+   *  selection change alone (cheap re-run over already-computed groups/routing, no raw-`edges`
+   *  recomputation) — that second case needs its own clear, `renderLine`'s doesn't cover it.
+   *  `interactive` (captured in `selectionInteractive` by `renderLine`) additionally adds an
+   *  invisible padded hit-circle per point — for *every* group, regardless of which one is currently
+   *  visible, so a hidden group still has somewhere to click and re-select it — and wires
+   *  click-to-select for the canvas->row half of the selection sync. */
   private renderGroups(selectedKey: string | null): void {
     this.view.clear();
     this.view.removeChildren().forEach((c) => c.destroy());
@@ -356,11 +393,8 @@ export class TeleportRenderer {
 
     const plan = planGroupDrawOrder(this.selectionGroups, this.selectionConnectors, selectedKey);
 
-    // Interleaved per group (not "every connector, then every marker"): a group's own connectors
-    // are drawn immediately before its own points, so a later group's connector can occlude an
-    // earlier group's marker and vice versa, matching each group's place in `selectionGroups`'
-    // order rather than splitting connectors and markers into two globally-ordered passes.
     for (const { group, connectors } of plan) {
+      this.drawGroupGaps(this.view, group, style);
       for (const c of connectors) {
         this.drawRoutedConnector(this.view, c.routed, style, c.color, c.edge.oneWay);
       }
@@ -388,9 +422,9 @@ export class TeleportRenderer {
    *  `lineTo` per point with round joins, since a bend's own two segments may carry different
    *  collision offsets (see `TeleportConnectorRouter.route`) and a rounded join would visually blend
    *  them; `"round"` cap (not join) on each straight sub-path keeps every segment's own ends clean
-   *  without implying the bend itself is smooth. When `connectorBorderWidth > 0`, the whole thing
+   *  without implying the bend itself is smooth. When `connectorGapWidth > 0`, the whole thing
    *  (line + arrows) is drawn twice — once wider in `floorColor` underneath, once at the real width
-   *  on top — so the border wraps the arrowheads too, not just the line. `color` (GitHub issue #293
+   *  on top — so the gap wraps the arrowheads too, not just the line. `color` (GitHub issue #293
    *  follow-up) is passed separately from `style` since a group override can replace it. */
   private drawRoutedConnector(g: Graphics, routed: RoutedConnector, style: TeleportLineStyle, color: number, oneWay: boolean): void {
     const pts = routed.points;
@@ -405,8 +439,8 @@ export class TeleportRenderer {
       }
     };
 
-    if (style.connectorBorderWidth > 0) {
-      draw(style.connectorWidth + style.connectorBorderWidth * 2, style.floorColor, style.arrowSize + style.connectorBorderWidth * 2);
+    if (style.connectorGapWidth > 0) {
+      draw(style.connectorWidth + style.connectorGapWidth * 2, style.floorColor, style.arrowSize + style.connectorGapWidth * 2);
     }
     draw(style.connectorWidth, color, style.arrowSize);
   }
@@ -473,8 +507,9 @@ export class TeleportRenderer {
     // top, regardless of fill state.
     drawMarkerShape(g, shape, cx, cy, r, rounded);
     g.fill(filled ? color : floorColor);
-    // alignment: 0 draws the stroke entirely inward from the shape's border, so an empty marker
-    // never reads as visually larger than a filled one (same outer edge).
+    // `alignment: 0` is pixi's outer alignment — the border grows entirely outward from `r`, so
+    // both an empty and a filled marker share the same `r` fill/inner-border edge; the border
+    // itself extends the marker's true visual footprint to `r + borderWidth` either way.
     drawMarkerShape(g, shape, cx, cy, r, rounded);
     g.stroke({ width: borderWidth, color: borderColor, alignment: 0 });
   }

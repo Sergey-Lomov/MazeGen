@@ -158,7 +158,7 @@ function lineSpanInField(x: number, y: number, axis: Axis, halfWidth: number, ce
 /** Whether any point along `candidate`'s own two segments (`from`->`bend`, `bend`->`to`) — or
  *  either of its own visual edges, offset `halfWidth` perpendicular to that segment's own axis
  *  (GitHub issue #300 follow-up: the connector draws as a real stroked line, `connectorWidth / 2 +
- *  connectorBorderWidth` wide on each side of its centerline, not an infinitely thin one) — falls
+ *  connectorGapWidth` wide on each side of its centerline, not an infinitely thin one) — falls
  *  outside every field cell polygon (see `pointInField`). Sampled at `FIELD_EXIT_SAMPLE_STEP`
  *  intervals plus both segment endpoints, since a purely endpoint-only check would miss a bend that
  *  cuts across a concave notch in the field's own outline. `cellPolygons` empty (no field cells
@@ -369,7 +369,7 @@ function cacheKey(
   const endpointStyleKey =
     endpointStyle === undefined
       ? ""
-      : `${endpointStyle.markerRadius},${endpointStyle.markerBorderWidth},${endpointStyle.connectorBorderWidth},${endpointStyle.connectorWidth}`;
+      : `${endpointStyle.markerRadius},${endpointStyle.markerBorderWidth},${endpointStyle.connectorGapWidth},${endpointStyle.connectorWidth}`;
   let edgesKey = "";
   for (const e of edges) {
     edgesKey += `${e.from[0]},${e.from[1]},${e.to[0]},${e.to[1]},${e.oneWay ? 1 : 0}|`;
@@ -385,12 +385,12 @@ function cacheKey(
 
 /** The style knobs `endpointCollisionRadius` derives its radius from — everything that visually
  *  contributes to a teleport marker's own on-screen footprint (GitHub issue #297 follow-up): the
- *  marker's fill radius, its own border, the connector line's border, and half the connector
+ *  marker's fill radius, its own border, the connector line's gap, and half the connector
  *  line's own width (a stroke extends outward from its centerline by half its width). */
 export type EndpointMarkerStyle = {
   markerRadius: number;
   markerBorderWidth: number;
-  connectorBorderWidth: number;
+  connectorGapWidth: number;
   connectorWidth: number;
 };
 
@@ -400,16 +400,16 @@ export type EndpointMarkerStyle = {
  *  under-reads as "just touching" the marker's own edge, not a visually-clean pass-by; the extra
  *  margin keeps a colliding path from ever looking like it's grazing the marker's exact boundary). */
 function endpointCollisionRadius(style: EndpointMarkerStyle): number {
-  return (style.markerRadius + style.markerBorderWidth + style.connectorBorderWidth + style.connectorWidth / 2) * 1.25;
+  return (style.markerRadius + style.markerBorderWidth + style.connectorGapWidth + style.connectorWidth / 2) * 1.25;
 }
 
 /** Half the connector line's own drawn width (GitHub issue #300 follow-up) — `connectorWidth / 2 +
- *  connectorBorderWidth`, the distance from the centerline out to the visible outer edge of its
- *  border (see `TeleportRenderer`'s own `connectorWidth + connectorBorderWidth * 2` full-width draw
+ *  connectorGapWidth`, the distance from the centerline out to the visible outer edge of its
+ *  gap (see `TeleportRenderer`'s own `connectorWidth + connectorGapWidth * 2` full-width draw
  *  call). Used by `candidateLeavesField` so "leaves the field" means the *drawn* line's own edge
  *  crosses the field boundary, not just its infinitely-thin centerline. */
 function fieldExitLineHalfWidth(style: EndpointMarkerStyle | undefined): number {
-  return style === undefined ? 0 : style.connectorWidth / 2 + style.connectorBorderWidth;
+  return style === undefined ? 0 : style.connectorWidth / 2 + style.connectorGapWidth;
 }
 
 /** Routes teleport connectors that bend along a single perpendicular corner (GitHub issue #293's
@@ -450,7 +450,7 @@ export class TeleportConnectorRouter {
    *  that check is built from; omitted/empty with `avoidFieldExit` on is the same as leaving the
    *  toggle off (nothing to be outside of). The check is against the connector's own *drawn* line
    *  width, not an infinitely-thin centerline (GitHub issue #300 follow-up) — `fieldExitLineHalfWidth`
-   *  derives that half-width (`connectorWidth / 2 + connectorBorderWidth`) from the same
+   *  derives that half-width (`connectorWidth / 2 + connectorGapWidth`) from the same
    *  `endpointStyle` passed in, so a caller that omits `endpointStyle` gets a centerline-only check.
    *
    *  Caches the result against a structural key (`cacheKey`, cheap relative to the routing itself)

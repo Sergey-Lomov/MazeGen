@@ -37,18 +37,19 @@ beforeEach(() => {
       wallThickness: 3,
       oneWayPattern: "triangle",
       oneWayColor: 0xff0000,
-      oneWayBorderWidth: 0,
+      oneWayGapWidth: 0,
       oneWaySize: 0.18,
       oneWayThickness: 4,
       oneWayJoin: "round",
-      startMarker: { shape: "circle", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0 },
-      finishMarker: { shape: "circle", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0 },
+      startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0x00ff00, borderColor: 0x00ff00, borderWidth: 0, gapWidth: 0, size: 0.225 },
+      finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0xff0000, borderColor: 0xff0000, borderWidth: 0, gapWidth: 0, size: 0.225 },
       teleportLineCornerStyle: "sharp",
       teleportLineShape: "square",
       teleportLineSize: 0.3,
       teleportEdgeColor: 0,
       teleportEdgeBorderColor: 0,
       teleportEdgeBorderWidth: 3,
+      teleportEdgeGapWidth: 0,
       teleportConnectorColor: 0,
       teleportConnectorWidth: 3,
       teleportConnectorStyle: "straight",
@@ -56,7 +57,7 @@ beforeEach(() => {
       teleportArrowMode: "center",
       teleportArrowPeriod: 5,
       teleportArrowSize: 6,
-      teleportConnectorBorderWidth: 0,
+      teleportConnectorGapWidth: 0,
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
       splitNodeColors: [],
@@ -100,14 +101,14 @@ describe("VectorByWallsSettingsPanel", () => {
     useMazeStore.setState({
       vectorByWallsSettings: {
         background: 0, showGrid: false, gridColor: 0, floorColor: 0, wallColor: 0, wallJoin: "round", wallThickness: 3,
-        oneWayPattern: "triangle", oneWayColor: 0, oneWayBorderWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
-        startMarker: { shape: "circle", fillColor: 0, borderColor: 0, borderWidth: 0 },
-        finishMarker: { shape: "circle", fillColor: 0, borderColor: 0, borderWidth: 0 },
+        oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
+        startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
+        finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
         teleportLineCornerStyle: "sharp",
         teleportLineShape: "square", teleportLineSize: 0.3,
-        teleportEdgeColor: 0, teleportEdgeBorderColor: 0, teleportEdgeBorderWidth: 3,
+        teleportEdgeColor: 0, teleportEdgeBorderColor: 0, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 0,
         teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "straight", teleportAvoidFieldExit: false,
-        teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6, teleportConnectorBorderWidth: 0,
+        teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6, teleportConnectorGapWidth: 0,
         teleportGroupCustomization: false, teleportGroupOverrides: {},
         splitNodeColors: [], splitSpecialShapes: false,
       },
@@ -177,8 +178,7 @@ describe("VectorByWallsSettingsPanel", () => {
     expect(screen.getAllByText(m["image_export.vector_by_walls.marker_shape"]())).toHaveLength(2);
     expect(screen.getAllByText(m["image_export.vector_by_walls.marker_fill_color"]())).toHaveLength(2);
     expect(screen.getAllByText(m["image_export.vector_by_walls.marker_border_color"]())).toHaveLength(2);
-    // Two marker border-width sliders + one one-way border-width slider share this label text.
-    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_border_width"]())).toHaveLength(3);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_border_width"]())).toHaveLength(2);
   });
 
   it("collapsing the markers section hides its fields", () => {
@@ -239,13 +239,46 @@ describe("VectorByWallsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.borderColor).toBe(0xfedcba);
   });
 
-  it("renders the one-ways section's pattern, color, border width, join, size and thickness fields when expanded", () => {
+  it("changing the start marker corner style updates the store (GitHub issue #302)", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.teleport_corner_style_sharp"]());
+    fireEvent.change(selects[0], { target: { value: "round" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.cornerStyle).toBe("round");
+    expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.cornerStyle).toBe("sharp");
+  });
+
+  it("changing the finish marker corner style updates only the finish marker", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.teleport_corner_style_sharp"]());
+    fireEvent.change(selects[1], { target: { value: "round" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.cornerStyle).toBe("round");
+    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.cornerStyle).toBe("sharp");
+  });
+
+  it("changing the start marker size updates the store", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const slider = screen.getAllByText(m["image_export.vector_by_walls.marker_size"]())[0]
+      .parentElement!.querySelector('input[type="range"]')!;
+    fireEvent.change(slider, { target: { value: "0.5" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.size).toBe(0.5);
+  });
+
+  it("changing the finish marker gap width updates only the finish marker", () => {
+    render(<VectorByWallsSettingsPanel />);
+    const slider = screen.getAllByText(m["image_export.vector_by_walls.marker_gap_width"]())[1]
+      .parentElement!.querySelector('input[type="range"]')!;
+    fireEvent.change(slider, { target: { value: "4" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.gapWidth).toBe(4);
+    expect(useMazeStore.getState().vectorByWallsSettings.startMarker.gapWidth).toBe(0);
+  });
+
+  it("renders the one-ways section's pattern, color, gap width, join, size and thickness fields when expanded", () => {
     render(<VectorByWallsSettingsPanel />);
     expect(screen.getByText(m["image_export.vector_by_walls.one_way_pattern"]())).toBeInTheDocument();
     expect(screen.getByText(m["image_export.vector_by_walls.one_way_color"]())).toBeInTheDocument();
-    expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_border_width"]()).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_gap_width"]()).length).toBeGreaterThan(0);
     expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_join"]()).length).toBeGreaterThan(0);
-    expect(screen.getByText(m["image_export.vector_by_walls.one_way_size"]())).toBeInTheDocument();
+    expect(screen.getAllByText(m["image_export.vector_by_walls.one_way_size"]()).length).toBeGreaterThan(0);
     expect(screen.getByText(m["image_export.vector_by_walls.one_way_thickness"]())).toBeInTheDocument();
   });
 
@@ -271,13 +304,12 @@ describe("VectorByWallsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByWallsSettings.oneWayColor).toBe(0x112233);
   });
 
-  it("changing the one-way border width updates the store", () => {
+  it("changing the one-way gap width updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
-    // Last "Border width" label in DOM order is the one-way section's (after the two marker groups).
-    const labels = screen.getAllByText(m["image_export.vector_by_walls.one_way_border_width"]());
+    const labels = screen.getAllByText(m["image_export.vector_by_walls.one_way_gap_width"]());
     const slider = labels[labels.length - 1].parentElement!.querySelector('input[type="range"]')!;
     fireEvent.change(slider, { target: { value: "4" } });
-    expect(useMazeStore.getState().vectorByWallsSettings.oneWayBorderWidth).toBe(4);
+    expect(useMazeStore.getState().vectorByWallsSettings.oneWayGapWidth).toBe(4);
   });
 
   it("changing the one-way join updates the store", () => {
@@ -289,8 +321,8 @@ describe("VectorByWallsSettingsPanel", () => {
 
   it("changing the one-way size updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
-    const slider = screen.getByText(m["image_export.vector_by_walls.one_way_size"]())
-      .parentElement!.querySelector('input[type="range"]')!;
+    const labels = screen.getAllByText(m["image_export.vector_by_walls.one_way_size"]());
+    const slider = labels[labels.length - 1].parentElement!.querySelector('input[type="range"]')!;
     fireEvent.change(slider, { target: { value: "0.3" } });
     expect(useMazeStore.getState().vectorByWallsSettings.oneWaySize).toBe(0.3);
   });
@@ -331,6 +363,14 @@ describe("VectorByWallsSettingsPanel", () => {
         .parentElement!.querySelector('input[type="range"]')!;
       fireEvent.change(slider, { target: { value: "0.6" } });
       expect(useMazeStore.getState().vectorByWallsSettings.teleportLineSize).toBe(0.6);
+    });
+
+    it("changing the edge gap width updates the store (GitHub issue #302)", () => {
+      render(<VectorByWallsSettingsPanel />);
+      const slider = screen.getAllByText(m["image_export.vector_by_walls.teleport_edge_gap_width"]())[0]
+        .parentElement!.querySelector('input[type="range"]')!;
+      fireEvent.change(slider, { target: { value: "7" } });
+      expect(useMazeStore.getState().vectorByWallsSettings.teleportEdgeGapWidth).toBe(7);
     });
 
     it("toggling group customization on shows the group list once groups exist", () => {

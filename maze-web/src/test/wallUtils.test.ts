@@ -83,16 +83,16 @@ describe("drawOneWayTriangle", () => {
     expect(corner).toBeGreaterThan(0);
   });
 
-  it("fills without a border stroke when borderWidth is unset or zero", () => {
+  it("fills without a gap stroke when gapWidth is unset or zero", () => {
     const g = newG();
     drawOneWayTriangle(g, 0, 0, 1, 0, { size: 20 });
     expect(g.calls.filter((c) => c.fn === "fill")).toHaveLength(1);
     expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(0);
   });
 
-  it("draws a border stroke with outside alignment when borderWidth is set", () => {
+  it("draws a gap stroke with outside alignment when gapWidth is set", () => {
     const g = newG();
-    drawOneWayTriangle(g, 0, 0, 1, 0, { size: 20, borderWidth: 3, borderColor: 0xabcdef });
+    drawOneWayTriangle(g, 0, 0, 1, 0, { size: 20, gapWidth: 3, gapColor: 0xabcdef });
     const [strokeCall] = g.calls.filter((c) => c.fn === "stroke");
     expect(strokeCall.args[0]).toMatchObject({ width: 3, color: 0xabcdef, alignment: 0 });
   });
@@ -106,16 +106,16 @@ describe("drawOneWayChevron", () => {
     expect(strokeCall.args[0]).toMatchObject({ width: 7 });
   });
 
-  it("draws a wider bordered pass before the main stroke when borderWidth is set", () => {
+  it("draws a wider gap pass before the main stroke when gapWidth is set", () => {
     const g = newG();
-    drawOneWayChevron(g, 0, 0, 1, 0, { size: 20, thickness: 4, borderWidth: 2, borderColor: 0x111111 });
+    drawOneWayChevron(g, 0, 0, 1, 0, { size: 20, thickness: 4, gapWidth: 2, gapColor: 0x111111 });
     const strokeCalls = g.calls.filter((c) => c.fn === "stroke");
     expect(strokeCalls).toHaveLength(2);
     expect(strokeCalls[0].args[0]).toMatchObject({ width: 4 + 2 * 2, color: 0x111111 });
     expect(strokeCalls[1].args[0]).toMatchObject({ width: 4 });
   });
 
-  it("draws only the main stroke when borderWidth is unset", () => {
+  it("draws only the main stroke when gapWidth is unset", () => {
     const g = newG();
     drawOneWayChevron(g, 0, 0, 1, 0, { size: 20, thickness: 4 });
     expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(1);
@@ -141,9 +141,9 @@ describe("drawOneWayArrow", () => {
     expect(strokeCall.args[0]).toMatchObject({ width: 9 });
   });
 
-  it("draws a wider bordered pass before the main stroke when borderWidth is set", () => {
+  it("draws a wider gap pass before the main stroke when gapWidth is set", () => {
     const g = newG();
-    drawOneWayArrow(g, 0, 0, 1, 0, { size: 20, thickness: 4, borderWidth: 2, borderColor: 0x111111 });
+    drawOneWayArrow(g, 0, 0, 1, 0, { size: 20, thickness: 4, gapWidth: 2, gapColor: 0x111111 });
     const strokeCalls = g.calls.filter((c) => c.fn === "stroke");
     expect(strokeCalls).toHaveLength(2);
     expect(strokeCalls[0].args[0]).toMatchObject({ width: 4 + 2 * 2, color: 0x111111 });

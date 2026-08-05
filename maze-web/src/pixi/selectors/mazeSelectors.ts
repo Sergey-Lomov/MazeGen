@@ -1,12 +1,13 @@
 ﻿import type { NodeDto, EdgeDto, IssueDto } from "../../wasm/types";
 import type { MazeState, PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import type { WallEdge, MarkerData, MarkerShape, PassageKind, TeleportEdge, SplitPassage, SplitSpecialShape, SplitSpecialShapeKind } from "../renderers/types";
+import type { WallEdge, MarkerData, MarkerShape, PassageKind, TeleportEdge, SplitPassage, SplitSpecialShape, SplitSpecialShapeKind, TeleportCornerStyle } from "../renderers/types";
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
 import { getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment, splitHubPoint, SPLIT_HUB_RADIUS } from "../tessellationGeometry";
 import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../splitFaceLayout";
 import { buildCellSet } from "./sharedSelectors";
 import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
+import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { splitSlotColor } from "../colorUtils";
 import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "../postEditEndpoint";
@@ -657,10 +658,25 @@ export interface MarkerStyle {
   fillColor: number;
   borderColor: number;
   borderWidth: number;
+  /** Marker radius, as a fraction of the tile size (0-1) — same convention as
+   *  `VectorByWallsSettings.teleportLineSize`. */
+  size: number;
+  /** Sharp vs. round corners (GitHub issue #302 follow-up), same convention/rounding as
+   *  `TeleportCornerStyle` — only affects the four regular-polygon `MarkerShape`s. */
+  cornerStyle: TeleportCornerStyle;
+  /** Floor-colored gap drawn around the marker's border (GitHub issue #302 follow-up), same
+   *  convention as `VectorByWallsSettings.teleportConnectorGapWidth` — `0` (the default) draws no
+   *  gap. `gapColor` is meant to always mirror the caller's own floor color; callers outside
+   *  `VectorByWallsRenderer` (which have no floor color of their own to give it) simply leave
+   *  `gapWidth` at `0`, so `gapColor`'s value never actually shows. */
+  gapWidth: number;
+  gapColor: number;
 }
 
-const DEFAULT_START_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0 };
-const DEFAULT_FINISH_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0 };
+const DEFAULT_MARKER_SIZE = (NODE_RADIUS * 1.5) / TILE_SIZE;
+
+const DEFAULT_START_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, size: DEFAULT_MARKER_SIZE, cornerStyle: "sharp", gapWidth: 0, gapColor: 0 };
+const DEFAULT_FINISH_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, size: DEFAULT_MARKER_SIZE, cornerStyle: "sharp", gapWidth: 0, gapColor: 0 };
 
 /** A start/finish marker on a split point (GitHub issue #223) anchors to that node's own hub
  *  point (`getSplitAwareNodePosition`), not the tile's plain center — `nodeById`'s full value set
@@ -682,8 +698,9 @@ export function buildMazeMarkers(
     const c = getSplitAwareNodePosition(allNodes, start, cfg);
     if (c) {
       markers.push({
-        pos: [c.x, c.y], radius: NODE_RADIUS * 1.5,
+        pos: [c.x, c.y], radius: startStyle.size * TILE_SIZE,
         shape: startStyle.shape, color: startStyle.fillColor, borderColor: startStyle.borderColor, borderWidth: startStyle.borderWidth,
+        cornerStyle: startStyle.cornerStyle, gapWidth: startStyle.gapWidth, gapColor: startStyle.gapColor,
       });
     }
   }
@@ -691,8 +708,9 @@ export function buildMazeMarkers(
     const c = getSplitAwareNodePosition(allNodes, finish, cfg);
     if (c) {
       markers.push({
-        pos: [c.x, c.y], radius: NODE_RADIUS * 1.5,
+        pos: [c.x, c.y], radius: finishStyle.size * TILE_SIZE,
         shape: finishStyle.shape, color: finishStyle.fillColor, borderColor: finishStyle.borderColor, borderWidth: finishStyle.borderWidth,
+        cornerStyle: finishStyle.cornerStyle, gapWidth: finishStyle.gapWidth, gapColor: finishStyle.gapColor,
       });
     }
   }

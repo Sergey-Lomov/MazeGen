@@ -9,6 +9,8 @@ import { SplitJunctionRenderer } from "../renderers/SplitJunctionRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, maxSplitNodeCount } from "../selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle } from "../renderers/types";
+import type { MarkerSettings } from "../../store/storeTypes";
+import type { MarkerStyle } from "../selectors/mazeSelectors";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
@@ -53,15 +55,15 @@ export function buildWallStyle(settings: ReturnType<typeof useMazeStore.getState
 }
 
 /** Builds `WallRenderer`'s `OneWayStyleOverride` from `VectorByWallsSettings` — exported as a pure
- *  function for the same testability reason as `buildWallStyle`. The border color always mirrors
+ *  function for the same testability reason as `buildWallStyle`. The gap color always mirrors
  *  `floorColor` (not independently settable — GitHub issue #292) and `size` is scaled from the
  *  settings' tile-fraction into world-space via `TILE_SIZE`. */
 export function buildOneWayStyle(settings: ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]): OneWayStyleOverride {
   return {
     pattern: settings.oneWayPattern,
     color: settings.oneWayColor,
-    borderColor: settings.floorColor,
-    borderWidth: settings.oneWayBorderWidth,
+    gapColor: settings.floorColor,
+    gapWidth: settings.oneWayGapWidth,
     size: TILE_SIZE * settings.oneWaySize,
     thickness: settings.oneWayThickness,
     join: settings.oneWayJoin,
@@ -79,15 +81,23 @@ export function buildTeleportLineStyle(settings: ReturnType<typeof useMazeStore.
     edgeColor: settings.teleportEdgeColor,
     edgeBorderColor: settings.teleportEdgeBorderColor,
     borderWidth: settings.teleportEdgeBorderWidth,
+    edgeGapWidth: settings.teleportEdgeGapWidth,
     connectorColor: settings.teleportConnectorColor,
     connectorWidth: settings.teleportConnectorWidth,
     connectorStyle: settings.teleportConnectorStyle,
     arrowMode: settings.teleportArrowMode,
     arrowPeriod: settings.teleportArrowPeriod,
     arrowSize: settings.teleportArrowSize,
-    connectorBorderWidth: settings.teleportConnectorBorderWidth,
+    connectorGapWidth: settings.teleportConnectorGapWidth,
     floorColor: settings.floorColor,
   };
+}
+
+/** Builds `buildMazeMarkers`'s `MarkerStyle` from a `MarkerSettings` (start or finish) plus the
+ *  panel's own floor color — `gapColor` always mirrors `floorColor` (GitHub issue #302 follow-up,
+ *  not independently settable, same convention as the one-way indicator's own border color). */
+export function buildMarkerStyle(settings: MarkerSettings, floorColor: number): MarkerStyle {
+  return { ...settings, gapColor: floorColor };
 }
 
 /** The "Vector by walls" image-export rendering mode (GitHub issue #287) — renders the maze
@@ -285,8 +295,12 @@ export class VectorByWallsRenderer {
       wallStyle,
       splitStyle,
     );
-    const { startMarker, finishMarker } = state.vectorByWallsSettings;
-    const markerData = buildMazeMarkers(nodeById, start, finish, cfg, startMarker, finishMarker);
+    const { startMarker, finishMarker, floorColor } = state.vectorByWallsSettings;
+    const markerData = buildMazeMarkers(
+      nodeById, start, finish, cfg,
+      buildMarkerStyle(startMarker, floorColor),
+      buildMarkerStyle(finishMarker, floorColor),
+    );
     this.teleports.render({
       edges: this.geometryCache.teleportEdges,
       lineStyle: buildTeleportLineStyle(state.vectorByWallsSettings),

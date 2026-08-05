@@ -830,9 +830,19 @@ export interface PostEditActions {
  *  no border, so there is no separate show-border toggle. */
 export interface MarkerSettings {
   shape: MarkerShape;
+  /** Sharp vs. round corners (GitHub issue #302 follow-up) — only affects the four
+   *  regular-polygon `MarkerShape`s, same convention as `teleportLineCornerStyle`. */
+  cornerStyle: TeleportCornerStyle;
   fillColor: number;
   borderColor: number;
   borderWidth: number;
+  /** Floor-colored gap drawn around the border (GitHub issue #302 follow-up) — `0` (the default)
+   *  draws no gap, same convention as `teleportConnectorGapWidth`. Color always mirrors
+   *  `VectorByWallsSettings.floorColor`, not independently settable. */
+  gapWidth: number;
+  /** Marker radius, as a fraction of the tile size (0-1) — same convention as
+   *  `VectorByWallsSettings.teleportLineSize`. */
+  size: number;
 }
 
 /** "Vector by walls" mode's own settings (GitHub issue #289, floor color added in #290) —
@@ -855,14 +865,16 @@ export interface VectorByWallsSettings {
    *  `miter`->`square` cap) when built into a `WallStyleOverride` in `VectorByWallsRenderer`. */
   wallJoin: "round" | "miter";
   wallThickness: number;
-  /** One-way indicator drawn on a directed passage's wall segment — shape/color/border/size/
+  /** One-way indicator drawn on a directed passage's wall segment — shape/color/gap/size/
    *  join/cap, applied via `OneWayStyleOverride` (`pixi/renderers/types.ts`) to `WallRenderer`'s
    *  plain wall one-ways only, never a split passage's connector arrow. Always has its own color
    *  (no fallback to `wallColor` — GitHub issue #292). */
   oneWayPattern: OneWayPattern;
   oneWayColor: number;
-  /** Border/outline color — always mirrors `floorColor`, not independently settable. */
-  oneWayBorderWidth: number;
+  /** Floor-colored gap around the indicator (GitHub issue #302 follow-up renamed from
+   *  `oneWayBorderWidth` — not a real border, same convention as the marker/connector gap) —
+   *  color always mirrors `floorColor`, not independently settable. */
+  oneWayGapWidth: number;
   oneWaySize: number;
   /** Chevron/arrow's own line thickness — independent of `oneWaySize` (geometric scale). No
    *  effect on the `triangle` pattern. */
@@ -891,6 +903,12 @@ export interface VectorByWallsSettings {
   teleportEdgeColor: number;
   teleportEdgeBorderColor: number;
   teleportEdgeBorderWidth: number;
+  /** Floor-colored gap ring drawn around the edge marker's border (GitHub issue #302), same
+   *  convention as the waypoint marker's own `MarkerSettings.gapWidth` — `0` (the default) draws no
+   *  gap. Color always mirrors `floorColor`, not independently settable. See
+   *  `TeleportLineStyle.edgeGapWidth`'s own doc comment (`pixi/renderers/types.ts`) for the per-group
+   *  draw-order rule this relies on. */
+  teleportEdgeGapWidth: number;
   /** The connector line's own color/width — GitHub issue #293 follow-up renamed from
    *  `teleportConnection*` ("connector" is the settings panel's own term for it). */
   teleportConnectorColor: number;
@@ -909,9 +927,12 @@ export interface VectorByWallsSettings {
    *  panel) otherwise. */
   teleportArrowPeriod: number;
   teleportArrowSize: number;
-  /** Connector border width — `0` (the default) draws no border, replacing a separate on/off
-   *  toggle (GitHub issue #293 follow-up: "if it's not needed, just set it to zero"). */
-  teleportConnectorBorderWidth: number;
+  /** Floor-colored gap drawn around the whole connector line (GitHub issue #302 follow-up rename
+   *  from `teleportConnectorBorderWidth` — not a border around the connector's own fill, it's a
+   *  visual separation gap from anything the connector crosses). `0` (the default) draws no gap,
+   *  replacing a separate on/off toggle (GitHub issue #293 follow-up: "if it's not needed, just set
+   *  it to zero"). */
+  teleportConnectorGapWidth: number;
   /** Off by default — see this interface's own Teleports-section doc comment above. */
   teleportGroupCustomization: boolean;
   teleportGroupOverrides: Record<string, TeleportGroupOverride>;
@@ -967,24 +988,31 @@ export interface ImageExportActions {
   setVectorByWallsWallThickness: (v: number) => void;
   setVectorByWallsOneWayPattern: (pattern: OneWayPattern) => void;
   setVectorByWallsOneWayColor: (color: number) => void;
-  setVectorByWallsOneWayBorderWidth: (v: number) => void;
+  setVectorByWallsOneWayGapWidth: (v: number) => void;
   setVectorByWallsOneWaySize: (v: number) => void;
   setVectorByWallsOneWayThickness: (v: number) => void;
   setVectorByWallsOneWayJoin: (join: "round" | "miter") => void;
   setVectorByWallsStartMarkerShape: (shape: MarkerShape) => void;
+  setVectorByWallsStartMarkerCornerStyle: (style: TeleportCornerStyle) => void;
   setVectorByWallsStartMarkerFillColor: (color: number) => void;
   setVectorByWallsStartMarkerBorderColor: (color: number) => void;
   setVectorByWallsStartMarkerBorderWidth: (v: number) => void;
+  setVectorByWallsStartMarkerGapWidth: (v: number) => void;
+  setVectorByWallsStartMarkerSize: (v: number) => void;
   setVectorByWallsFinishMarkerShape: (shape: MarkerShape) => void;
+  setVectorByWallsFinishMarkerCornerStyle: (style: TeleportCornerStyle) => void;
   setVectorByWallsFinishMarkerFillColor: (color: number) => void;
   setVectorByWallsFinishMarkerBorderColor: (color: number) => void;
   setVectorByWallsFinishMarkerBorderWidth: (v: number) => void;
+  setVectorByWallsFinishMarkerGapWidth: (v: number) => void;
+  setVectorByWallsFinishMarkerSize: (v: number) => void;
   setVectorByWallsTeleportLineCornerStyle: (style: TeleportCornerStyle) => void;
   setVectorByWallsTeleportLineShape: (shape: MarkerShape) => void;
   setVectorByWallsTeleportLineSize: (v: number) => void;
   setVectorByWallsTeleportEdgeColor: (color: number) => void;
   setVectorByWallsTeleportEdgeBorderColor: (color: number) => void;
   setVectorByWallsTeleportEdgeBorderWidth: (v: number) => void;
+  setVectorByWallsTeleportEdgeGapWidth: (v: number) => void;
   setVectorByWallsTeleportConnectorColor: (color: number) => void;
   setVectorByWallsTeleportConnectorWidth: (v: number) => void;
   setVectorByWallsTeleportConnectorStyle: (style: TeleportConnectorStyle) => void;
@@ -992,7 +1020,7 @@ export interface ImageExportActions {
   setVectorByWallsTeleportArrowMode: (mode: TeleportArrowMode) => void;
   setVectorByWallsTeleportArrowPeriod: (v: number) => void;
   setVectorByWallsTeleportArrowSize: (v: number) => void;
-  setVectorByWallsTeleportConnectorBorderWidth: (v: number) => void;
+  setVectorByWallsTeleportConnectorGapWidth: (v: number) => void;
   setVectorByWallsTeleportGroupCustomization: (v: boolean) => void;
   setVectorByWallsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
   setSelectedTeleportGroupKey: (key: string | null) => void;
