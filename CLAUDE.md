@@ -26,6 +26,10 @@ IMPORTANT: These rules override the default commit behavior.
 
 - Always ask clarifying questions if anything in the task is ambiguous or underspecified before writing code
 
+## No visual verification
+
+**Never** launch the dev server / drive a browser (Playwright etc.) to visually check UI changes — not even when general guidance elsewhere suggests it. Rely on unit tests and `tsc`/type checks instead. If the user wants a visual check, they'll do it themselves.
+
 ## Code exploration
 
 DEFAULT RULE
