@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { routeStraightConnectors, routeOrthogonalConnectors, arrowPlacements } from "../pixi/renderers/teleportConnectorRouting";
+import { routeStraightConnectors, arrowPlacements } from "../pixi/renderers/teleportConnectorRouting";
 import type { TeleportEdge } from "../pixi/renderers/types";
 
 function edge(from: [number, number], to: [number, number]): TeleportEdge {
@@ -13,58 +13,6 @@ describe("routeStraightConnectors", () => {
       { points: [0, 0, 10, 10] },
       { points: [5, 5, 1, 9] },
     ]);
-  });
-});
-
-describe("routeOrthogonalConnectors", () => {
-  it("a single connector with no collisions bends on-grid with zero offset", () => {
-    const [routed] = routeOrthogonalConnectors([edge([0, 0], [10, 20])], 4);
-    // Either bend orientation is valid with nothing to collide against — bend is either (10,0) or (0,20).
-    expect(routed.points[0]).toBe(0);
-    expect(routed.points[1]).toBe(0);
-    expect(routed.points[4]).toBe(10);
-    expect(routed.points[5]).toBe(20);
-    const [, , bendX, bendY] = routed.points;
-    expect([bendX, bendY]).toSatisfy(([bx, by]: [number, number]) => (bx === 10 && by === 0) || (bx === 0 && by === 20));
-  });
-
-  it("two connectors sharing an overlapping horizontal corridor get offset apart, symmetric around the original line", () => {
-    // Both from y=0 straight across to y=0 at different x spans that overlap on x — forces a
-    // horizontal segment overlap regardless of bend choice, since both are already flat lines.
-    const edges = [edge([0, 0], [10, 0]), edge([2, 0], [12, 0])];
-    const routed = routeOrthogonalConnectors(edges, 4);
-    // Two connectors in one cluster: offsets are -2 and +2 (gap=4, symmetric around 0).
-    const ys = routed.map((r) => r.points[1]);
-    expect(new Set(ys.map((y) => Math.abs(y)))).toEqual(new Set([2]));
-    expect(ys[0]).not.toBe(ys[1]);
-  });
-
-  it("non-overlapping connectors on the same axis/coordinate but disjoint spans get zero offset each", () => {
-    const edges = [edge([0, 0], [5, 0]), edge([10, 0], [15, 0])];
-    const routed = routeOrthogonalConnectors(edges, 4);
-    expect(routed[0].points[1]).toBe(0);
-    expect(routed[1].points[1]).toBe(0);
-  });
-
-  it("start and end points always land on the original from/to coordinates on the non-offset axis", () => {
-    const edges = [edge([0, 0], [10, 0]), edge([2, 0], [12, 0]), edge([4, 0], [14, 0])];
-    const routed = routeOrthogonalConnectors(edges, 4);
-    routed.forEach((r, i) => {
-      expect(r.points[0]).toBe(edges[i].from[0]);
-      expect(r.points[4]).toBe(edges[i].to[0]);
-    });
-  });
-
-  it("a cluster of 3 overlapping connectors gets 3 distinct symmetric offsets", () => {
-    const edges = [edge([0, 0], [10, 0]), edge([1, 0], [11, 0]), edge([2, 0], [12, 0])];
-    const routed = routeOrthogonalConnectors(edges, 4);
-    const ys = routed.map((r) => r.points[1]).sort((a, b) => a - b);
-    expect(ys).toEqual([-4, 0, 4]);
-  });
-
-  it("orthogonal path always has exactly 3 points (start, bend, end)", () => {
-    const routed = routeOrthogonalConnectors([edge([0, 0], [5, 5])], 4);
-    expect(routed[0].points).toHaveLength(6);
   });
 });
 

@@ -234,7 +234,7 @@ export class GenerationRenderer {
       wallFaces: this.geometryCache.splitWallFaces,
       specialShapes: this.geometryCache.splitSpecialShapes,
     });
-    this.teleports.render({ edges: this.geometryCache.teleportEdges });
+    this.teleports.render({ edges: this.geometryCache.teleportEdges, cfg });
 
     const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg);
     this.markers.render({ markers: markerData });

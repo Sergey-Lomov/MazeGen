@@ -1,10 +1,12 @@
 import { Container, Graphics } from "pixi.js";
 import type { TeleportEdge, TeleportLineStyle, TeleportGroupOverride } from "./types";
+import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { drawMarkerShape, markerBoundingHalfExtent } from "./markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
-import { routeStraightConnectors, routeOrthogonalConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
+import { routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
+import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
 import { useMazeStore } from "../../store/mazeStore";
 
@@ -164,6 +166,10 @@ export class TeleportRenderer {
   private selectionInteractive = false;
   // One entry per drawn connector (edges with non-zero-length span only) — same rationale.
   private selectionConnectors: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];
+  // Owns orthogonal-connector collision routing + its own result cache (GitHub issue #297
+  // follow-up) — one instance per `TeleportRenderer`, so a repeat `render()` call with the same
+  // (by value) edges/style/cfg reuses the previous routing instead of recomputing it.
+  private readonly connectorRouter = new TeleportConnectorRouter();
 
   constructor(container: Container) {
     this.view = new Graphics();
@@ -185,6 +191,10 @@ export class TeleportRenderer {
     groupCustomization?: boolean;
     groupOverrides?: Record<string, TeleportGroupOverride>;
     interactive?: boolean;
+    /** The active tessellation, so `"orthogonal"` connectors bend along that tessellation's own
+     *  face directions (GitHub issue #297) instead of always assuming a square grid. Omitted by
+     *  callers without a config in hand, which falls back to the original square (h/v) behavior. */
+    cfg?: TessellationConfig;
   }): void {
     this.view.clear();
     // `drawMarker`'s mixed-cell split adds throwaway mask/fill children (see its own comment) —
@@ -198,6 +208,7 @@ export class TeleportRenderer {
       data.groupCustomization ?? false,
       data.groupOverrides ?? {},
       data.interactive ?? false,
+      data.cfg,
     );
   }
 
@@ -207,6 +218,7 @@ export class TeleportRenderer {
     groupCustomization: boolean,
     groupOverrides: Record<string, TeleportGroupOverride>,
     interactive: boolean,
+    cfg: TessellationConfig | undefined,
   ): void {
     // Grouping (`buildTeleportGroups`, merging teleport pairs wherever an endpoint coordinate
     // coincides) drives draw order regardless of whether group *customization* (per-group shape/
@@ -220,7 +232,7 @@ export class TeleportRenderer {
     this.selectionGroupOverrides = groupCustomization ? groupOverrides : {};
     this.selectionEdges = edges;
     this.selectionInteractive = groupCustomization && interactive;
-    this.selectionConnectors = style.connectorStyle !== "none" ? this.computeConnectors(edges, style, groupCustomization, groupOverrides) : [];
+    this.selectionConnectors = style.connectorStyle !== "none" ? this.computeConnectors(edges, style, groupCustomization, groupOverrides, cfg) : [];
 
     this.renderGroups(groupCustomization ? useMazeStore.getState().selectedTeleportGroupKey : null);
     if (this.selectionInteractive) this.subscribeSelectionHighlight();
@@ -236,6 +248,7 @@ export class TeleportRenderer {
     style: TeleportLineStyle,
     groupCustomization: boolean,
     groupOverrides: Record<string, TeleportGroupOverride>,
+    cfg: TessellationConfig | undefined,
   ): { edge: TeleportEdge; routed: RoutedConnector; color: number }[] {
     const groups = groupCustomization ? buildTeleportGroups(edges) : [];
     const groupKeyByPoint = new Map<string, string>();
@@ -250,9 +263,15 @@ export class TeleportRenderer {
     // Includes the border once (not doubled) — two adjacent connectors' borders are allowed to
     // overlap a bit, only their core lines need to stay visually distinct.
     const gap = (style.connectorWidth + style.connectorBorderWidth) * 1.5;
+    const endpointStyle: EndpointMarkerStyle = {
+      markerRadius: style.size * TILE_SIZE,
+      markerBorderWidth: style.borderWidth,
+      connectorBorderWidth: style.connectorBorderWidth,
+      connectorWidth: style.connectorWidth,
+    };
     const routed =
       style.connectorStyle === "orthogonal"
-        ? routeOrthogonalConnectors(edges, gap, style.size * TILE_SIZE)
+        ? this.connectorRouter.route(edges, gap, style.size * TILE_SIZE, cfg, endpointStyle)
         : routeStraightConnectors(edges);
 
     const result: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];
@@ -344,7 +363,7 @@ export class TeleportRenderer {
    *  for `"orthogonal"`'s single bend) as a stroked path, plus every direction arrow `oneWay`'s
    *  `arrowMode` calls for (see `arrowPlacements`) — a `"orthogonal"` path can't just be one
    *  `lineTo` per point with round joins, since a bend's own two segments may carry different
-   *  collision offsets (see `routeOrthogonalConnectors`) and a rounded join would visually blend
+   *  collision offsets (see `TeleportConnectorRouter.route`) and a rounded join would visually blend
    *  them; `"round"` cap (not join) on each straight sub-path keeps every segment's own ends clean
    *  without implying the bend itself is smooth. When `connectorBorderWidth > 0`, the whole thing
    *  (line + arrows) is drawn twice — once wider in `floorColor` underneath, once at the real width

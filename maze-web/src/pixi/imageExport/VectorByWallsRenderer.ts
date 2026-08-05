@@ -291,6 +291,7 @@ export class VectorByWallsRenderer {
       groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
       groupOverrides: state.vectorByWallsSettings.teleportGroupOverrides,
       interactive: state.vectorByWallsSectionsExpanded["teleports"] ?? false,
+      cfg,
     });
 
     const { startMarker, finishMarker } = state.vectorByWallsSettings;

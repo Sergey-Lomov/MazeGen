@@ -279,7 +279,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     const nodeById = new Map<number, NodeDto>(nodes.map(n => [n.id, n]));
     const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg);
-    this.teleports.render({ edges: teleportEdges });
+    this.teleports.render({ edges: teleportEdges, cfg });
 
     const markerData = buildMazeMarkers(nodeById, start, finish, cfg);
     this.markers.render({ markers: markerData });
@@ -298,7 +298,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.closedCells.render({ cells: [], color: canvas.wall.default, alpha: 1 }, cfg);
     this.walls.render({ edges: [] }, cfg);
     this.splitJunctions.render({ passages: [], wallFaces: [] });
-    this.teleports.render({ edges: [] });
+    this.teleports.render({ edges: [], cfg });
     this.markers.render({ markers: [] });
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);

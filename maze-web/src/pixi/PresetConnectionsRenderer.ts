@@ -289,7 +289,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const markerData = buildPresetMarkers(state.presetStart?.point ?? null, state.presetFinish?.point ?? null, cfg);
     this.markers.render({ markers: markerData });
 
-    this.teleports.render({ edges: buildPresetTeleportEdges(state.presetTeleports, cfg) });
+    this.teleports.render({ edges: buildPresetTeleportEdges(state.presetTeleports, cfg), cfg });
 
     this.redrawOrigin(state.showPresetOrigin);
     this.redrawGenSource(state.presetGenSource?.point ?? null);
@@ -389,7 +389,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.splitJunctions.render({ passages: [], wallFaces: [] });
     this.locks.render({ locks: [] }, cfg);
     this.markers.render({ markers: [] });
-    this.teleports.render({ edges: [] });
+    this.teleports.render({ edges: [], cfg });
     this.origin.render({ show: false, vpScale: this.viewport.scale }, cfg);
     this.genSource.render({ source: null, vpScale: this.viewport.scale }, cfg);
     this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, cfg);
