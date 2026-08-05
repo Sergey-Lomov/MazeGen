@@ -145,6 +145,76 @@ describe("SplitJunctionRenderer.render special shapes", () => {
     expect(strokeCalls[0].args[0]).toMatchObject({ color: 0xabcdef, width: 5, join: "miter", cap: "butt" });
   });
 
+  it("a caller-supplied wallFaceStyleOverride's width applies to ordinary passages (segment and connector); color stays the node's own and cap is always forced to 'butt'", () => {
+    // GitHub issue #304: width was previously hardcoded to WALL_THICKNESS for ordinary
+    // (non-special) passages, ignoring the caller's wall style entirely. Follow-up: cap must stay
+    // "butt" regardless of the caller's own cap — every segment/connector end here sits on a
+    // shared point (face boundary, tile corner, or hub), same as the special-shape fix, so a
+    // round/square cap protrudes past it.
+    const renderer = new SplitJunctionRenderer(new Container());
+    renderer.render(
+      { passages: [passage("9,9", 0xaaaaaa)], wallFaces: [] },
+      { color: 0xabcdef, width: 7, join: "miter", cap: "square" },
+    );
+    const strokeCalls = graphicsOf(renderer).calls.filter((c) => c.fn === "stroke");
+    expect(strokeCalls).toHaveLength(2);
+    for (const call of strokeCalls) {
+      expect(call.args[0]).toMatchObject({ color: 0xaaaaaa, width: 7, cap: "butt" });
+    }
+  });
+
+  it("a node's own two wallSegments meeting at a shared angled vertex chain into one stroked path with the caller's join, instead of leaving a gap at butt-capped independent strokes", () => {
+    // GitHub issue #304 follow-up: two adjacent faces of the same node (e.g. a hexagon's two
+    // neighboring faces) meet at a tile vertex under an angle, not colinearly. Drawing them as two
+    // independent butt-capped strokes opens a visible gap on the angle's outer side; chaining them
+    // into one path lets the caller's `join` close it, same as `wallFaces` already does.
+    const angledPassage = {
+      color: 0xaaaaaa,
+      pointKey: "3,3",
+      wallSegments: [
+        { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false },
+        { v0: { x: 10, y: 0 }, v1: { x: 15, y: 8 }, center: { x: 12.5, y: 4 }, isUndefined: false },
+      ],
+      connectors: [],
+    };
+    const renderer = new SplitJunctionRenderer(new Container());
+    renderer.render(
+      { passages: [angledPassage], wallFaces: [] },
+      { color: 0xabcdef, width: 6, join: "miter", cap: "square" },
+    );
+    const calls = graphicsOf(renderer).calls;
+    const strokeCalls = calls.filter((c) => c.fn === "stroke");
+    expect(strokeCalls).toHaveLength(1);
+    expect(strokeCalls[0].args[0]).toMatchObject({ color: 0xaaaaaa, width: 6, join: "miter", cap: "butt" });
+    expect(calls.filter((c) => c.fn === "moveTo")).toHaveLength(1);
+    expect(calls.filter((c) => c.fn === "lineTo")).toHaveLength(2);
+  });
+
+  it("undefined wallSegments chain and stroke separately from defined ones, in the disabled color", () => {
+    // The grouped-chaining loop splits a node's wallSegments into a defined group (passage.color)
+    // and an undefined group (disabledColor), chaining each independently — this covers the
+    // undefined branch, only exercised implicitly elsewhere.
+    const mixedPassage = {
+      color: 0xaaaaaa,
+      pointKey: "7,7",
+      wallSegments: [
+        { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false },
+        { v0: { x: 20, y: 0 }, v1: { x: 30, y: 0 }, center: { x: 25, y: 0 }, isUndefined: true },
+        { v0: { x: 30, y: 0 }, v1: { x: 35, y: 8 }, center: { x: 32.5, y: 4 }, isUndefined: true },
+      ],
+      connectors: [],
+    };
+    const renderer = new SplitJunctionRenderer(new Container());
+    renderer.render({ passages: [mixedPassage], wallFaces: [] }, { color: 0xabcdef, width: 6, join: "miter", cap: "square" });
+    const strokeCalls = graphicsOf(renderer).calls.filter((c) => c.fn === "stroke");
+    // 1 defined-group stroke (single segment) + 1 undefined-group stroke (two chained segments).
+    expect(strokeCalls).toHaveLength(2);
+    expect(strokeCalls[0].args[0]).toMatchObject({ color: 0xaaaaaa, width: 6, cap: "butt" });
+    const disabledCall = strokeCalls[1].args[0] as { color: number };
+    expect(disabledCall.color).not.toBe(0xaaaaaa);
+    expect(strokeCalls[1].args[0]).toMatchObject({ width: 6, join: "miter", cap: "butt" });
+  });
+
   it("with specialShapes on, an unrelated point's ordinary passage still draws normally", () => {
     const renderer = new SplitJunctionRenderer(new Container());
     renderer.render(

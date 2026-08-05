@@ -7,6 +7,8 @@ import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { disabledOfNumber } from "../../styles/palette";
 
+const DEFAULT_JOIN = "round" as const;
+
 /** Draws one degree-4 split point recognized as a "bridge" or "diagonal divider" (GitHub issue
  *  #294) instead of the generic per-node segment/connector reading — drawn in the plain wall
  *  style (`strokeOpts`, same one `wallFaces` uses), never a node's own identity color: neither
@@ -84,7 +86,7 @@ export class SplitJunctionRenderer {
         width: wallFaceStyleOverride.width ?? WALL_THICKNESS,
         color: wallFaceStyleOverride.color ?? canvas.wall.default,
         cap: wallFaceStyleOverride.cap ?? "round",
-        join: wallFaceStyleOverride.join ?? "round",
+        join: wallFaceStyleOverride.join ?? DEFAULT_JOIN,
       } as const;
       for (const path of chainSegmentsAtSharedVertices(data.wallFaces)) {
         this.g.moveTo(path[0].x, path[0].y);
@@ -112,9 +114,34 @@ export class SplitJunctionRenderer {
       width: wallFaceStyleOverride?.width ?? WALL_THICKNESS,
       color: wallFaceStyleOverride?.color ?? canvas.wall.default,
       cap: "butt",
-      join: wallFaceStyleOverride?.join ?? "round",
+      join: wallFaceStyleOverride?.join ?? DEFAULT_JOIN,
     } as const;
     for (const shape of specialShapes) drawSplitSpecialShape(this.g, shape, specialShapeStrokeOpts);
+
+    // Width follows `wallFaceStyleOverride` same as `wallFaces`/special shapes — only a passage's
+    // own node-identity *color* stays fixed (GitHub issue #304: width was previously hardcoded to
+    // `WALL_THICKNESS`, ignoring the caller's wall style entirely).
+    //
+    // `cap: "butt"` at a path's own free ends (GitHub issue #304 follow-up), never the caller's
+    // own cap — every wallSegment/connector free end sits exactly on a shared point (a
+    // face-division boundary, a tile corner, or the hub point several other nodes' own connectors
+    // also meet at), same reasoning as the special-shape fix (GitHub issue #294): a round or
+    // square cap would protrude past that shared point into the neighboring segment/wall.
+    const passageStrokeBase = {
+      width: wallFaceStyleOverride?.width ?? WALL_THICKNESS,
+      cap: "butt",
+    } as const;
+    // `join` only follows the caller's own style for wallSegments, and only where it can actually
+    // apply — two of the *same* node's own segments meeting at a shared tile vertex under an angle
+    // (adjacent faces on a hexagon, say) need a real join there, not a `butt` cap, or the outer
+    // side of that angle opens into a visible gap (GitHub issue #304 follow-up). Segments are
+    // chained per node via `chainSegmentsAtSharedVertices` (same helper `wallFaces` uses) so a
+    // `join` renders at that interior vertex; `cap: "butt"` still applies at each chained path's
+    // own two free ends (a boundary shared with another node/wallFace, never colinear with this
+    // node's own next segment). Connectors never chain with anything (fan-out lines meet only at
+    // the hub, radiating at unrelated angles with no shared path to join along) — `cap: "butt"`
+    // only, same as before.
+    const wallSegmentJoin = wallFaceStyleOverride?.join ?? DEFAULT_JOIN;
 
     for (const passage of data.passages) {
       if (specialPointKeys.has(passage.pointKey)) continue;
@@ -129,7 +156,7 @@ export class SplitJunctionRenderer {
         this.g
           .moveTo(connector.from.x, connector.from.y)
           .lineTo(connector.to.x, connector.to.y)
-          .stroke({ width: WALL_THICKNESS, color, cap: "round", join: "round" });
+          .stroke({ ...passageStrokeBase, color });
 
         if (connector.oneWayOut !== undefined) {
           const dx = connector.to.x - connector.from.x, dy = connector.to.y - connector.from.y;
@@ -140,12 +167,17 @@ export class SplitJunctionRenderer {
         }
       }
 
-      for (const seg of passage.wallSegments) {
-        const color = seg.isUndefined ? disabledColor : passage.color;
-        this.g
-          .moveTo(seg.v0.x, seg.v0.y)
-          .lineTo(seg.v1.x, seg.v1.y)
-          .stroke({ width: WALL_THICKNESS, color, cap: "round", join: "round" });
+      const definedSegments = passage.wallSegments.filter((s) => !s.isUndefined);
+      const undefinedSegments = passage.wallSegments.filter((s) => s.isUndefined);
+      for (const [segs, color] of [
+        [definedSegments, passage.color],
+        [undefinedSegments, disabledColor],
+      ] as const) {
+        for (const path of chainSegmentsAtSharedVertices(segs)) {
+          this.g.moveTo(path[0].x, path[0].y);
+          for (let i = 1; i < path.length; i++) this.g.lineTo(path[i].x, path[i].y);
+          this.g.stroke({ ...passageStrokeBase, color, join: wallSegmentJoin });
+        }
       }
     }
   }
