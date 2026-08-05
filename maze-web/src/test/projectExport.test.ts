@@ -3,6 +3,7 @@ import { parseAndValidate, serializeProject } from "../store/projectExport";
 import type { MazeState, PostEditEdge } from "../store/mazeStore";
 import { nodeEndpoint } from "../pixi/postEditEndpoint";
 import { presetEndpoint } from "../pixi/presetEndpoint";
+import { DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportSlice";
 
 function makeState(overrides: Partial<MazeState> = {}): MazeState {
   const base = {
@@ -58,6 +59,10 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     showFieldOrigin: true,
     openCard: "basic_config",
     postEditAutoConfirm: true,
+    activeRenderMode: null,
+    openRenderModeSettings: null,
+    vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+    vectorByWallsSectionsExpanded: {},
   };
   return { ...base, ...overrides } as unknown as MazeState;
 }
@@ -477,6 +482,77 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     delete data.tessellation.savedConfigs;
     return data;
   }
+});
+
+describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
+  it("defaults activeRenderMode/openRenderModeSettings/vectorByWallsSettings/vectorByWallsSectionsExpanded for a project file saved before this section existed", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    delete raw.imageExport;
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.imageExport).toEqual({
+      activeRenderMode: null,
+      openRenderModeSettings: null,
+      vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+      vectorByWallsSectionsExpanded: {},
+    });
+  });
+
+  it("round-trips vectorByWallsSectionsExpanded", () => {
+    const state = makeState({ vectorByWallsSectionsExpanded: { background: true, tiles: false } });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.imageExport.vectorByWallsSectionsExpanded).toEqual({ background: true, tiles: false });
+  });
+
+  it("degrades an unknown/future activeRenderMode and openRenderModeSettings to null instead of throwing", () => {
+    const state = makeState({ activeRenderMode: "vector_by_walls", openRenderModeSettings: "vector_by_walls" });
+    const raw = JSON.parse(JSON.stringify(serializeProject(state)));
+    raw.imageExport.activeRenderMode = "some_future_mode";
+    raw.imageExport.openRenderModeSettings = "some_future_mode";
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.imageExport.activeRenderMode).toBeNull();
+    expect(reparsed.imageExport.openRenderModeSettings).toBeNull();
+  });
+
+  it("round-trips a non-default vectorByWallsSettings", () => {
+    const state = makeState({
+      activeRenderMode: "vector_by_walls",
+      openRenderModeSettings: "vector_by_walls",
+      vectorByWallsSettings: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, floorColor: 0x123456, wallThickness: 7, teleportGroupOverrides: { g1: { fillColor: 0xabcdef, shape: "star" } } },
+    });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.imageExport).toEqual(serialized.imageExport);
+  });
+
+  it("falls back per-field to defaults when vectorByWallsSettings is malformed, without throwing", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    raw.imageExport.vectorByWallsSettings = {
+      floorColor: "not-a-number",
+      wallJoin: "bevel",
+      startMarker: { shape: "not-a-shape" },
+      splitNodeColors: "not-an-array",
+      teleportGroupOverrides: { g1: { shape: "not-a-shape", fillColor: "nope" }, g2: { fillColor: 0x111111 } },
+    };
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.imageExport.vectorByWallsSettings.floorColor).toBe(DEFAULT_VECTOR_BY_WALLS_SETTINGS.floorColor);
+    expect(reparsed.imageExport.vectorByWallsSettings.wallJoin).toBe(DEFAULT_VECTOR_BY_WALLS_SETTINGS.wallJoin);
+    expect(reparsed.imageExport.vectorByWallsSettings.startMarker.shape).toBe(DEFAULT_VECTOR_BY_WALLS_SETTINGS.startMarker.shape);
+    expect(reparsed.imageExport.vectorByWallsSettings.splitNodeColors).toEqual([]);
+    expect(reparsed.imageExport.vectorByWallsSettings.teleportGroupOverrides).toEqual({ g1: {}, g2: { fillColor: 0x111111 } });
+  });
+
+  it("treats a non-object vectorByWallsSettings/imageExport as absent rather than throwing", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    raw.imageExport = "not-an-object";
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.imageExport).toEqual({
+      activeRenderMode: null,
+      openRenderModeSettings: null,
+      vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+      vectorByWallsSectionsExpanded: {},
+    });
+  });
 });
 
 describe("parseAndValidate — migrations", () => {

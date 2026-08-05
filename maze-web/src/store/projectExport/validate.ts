@@ -1,9 +1,11 @@
 import type { NodeLockKind } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
-import type { PostEditEdge, PostEditTeleportEntry, FeatureId } from "../mazeStore";
+import type { PostEditEdge, PostEditTeleportEntry, FeatureId, RenderModeId } from "../mazeStore";
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
-import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
+import { MAX_NESTED_STRATEGY_DEPTH, type MarkerSettings, type VectorByWallsSettings } from "../storeTypes";
+import type { MarkerShape } from "../../pixi/renderers/types";
+import { DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../slices/imageExportSlice";
 import {
   CURRENT_VERSION,
   type ProjectFile,
@@ -15,6 +17,7 @@ import {
   type ProjectFileQcRule,
   type ProjectFileStage,
   type ProjectFileNestedStrategy,
+  type ProjectFileImageExport,
 } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
@@ -469,6 +472,166 @@ function validateNodeLockKind(v: unknown, path: string): NodeLockKind {
   return kind;
 }
 
+// ─── Image Export (GitHub issue #295) ────────────────────────────────────────
+
+const MARKER_SHAPES = ["circle", "triangle", "square", "diamond", "pentagon", "star", "hexagon", "cross"] as const;
+function optMarkerShape(obj: Record<string, unknown> | null, key: string, fallback: MarkerSettings["shape"]): MarkerSettings["shape"] {
+  const v = obj?.[key];
+  return typeof v === "string" && (MARKER_SHAPES as readonly string[]).includes(v) ? (v as MarkerSettings["shape"]) : fallback;
+}
+
+function optTeleportCornerStyle(obj: Record<string, unknown> | null, key: string, fallback: "sharp" | "round"): "sharp" | "round" {
+  const v = obj?.[key];
+  return v === "sharp" || v === "round" ? v : fallback;
+}
+
+function optJoin(obj: Record<string, unknown> | null, key: string, fallback: "round" | "miter"): "round" | "miter" {
+  const v = obj?.[key];
+  return v === "round" || v === "miter" ? v : fallback;
+}
+
+function optOneWayPattern(obj: Record<string, unknown> | null, key: string, fallback: "triangle" | "chevron" | "arrow"): "triangle" | "chevron" | "arrow" {
+  const v = obj?.[key];
+  return v === "triangle" || v === "chevron" || v === "arrow" ? v : fallback;
+}
+
+function optTeleportConnectorStyle(obj: Record<string, unknown> | null, key: string, fallback: "none" | "straight" | "orthogonal"): "none" | "straight" | "orthogonal" {
+  const v = obj?.[key];
+  return v === "none" || v === "straight" || v === "orthogonal" ? v : fallback;
+}
+
+function optTeleportArrowMode(obj: Record<string, unknown> | null, key: string, fallback: "none" | "center" | "double" | "periodic"): "none" | "center" | "double" | "periodic" {
+  const v = obj?.[key];
+  return v === "none" || v === "center" || v === "double" || v === "periodic" ? v : fallback;
+}
+
+function validateMarkerSettings(v: unknown, path: string, fallback: MarkerSettings): MarkerSettings {
+  if (v == null) return fallback;
+  let obj: Record<string, unknown> | null;
+  try {
+    obj = assertObject(v, path);
+  } catch {
+    return fallback;
+  }
+  return {
+    shape: optMarkerShape(obj, "shape", fallback.shape),
+    cornerStyle: optTeleportCornerStyle(obj, "cornerStyle", fallback.cornerStyle),
+    fillColor: optNumber(obj, "fillColor", fallback.fillColor),
+    borderColor: optNumber(obj, "borderColor", fallback.borderColor),
+    borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
+    gapWidth: optNumber(obj, "gapWidth", fallback.gapWidth),
+    size: optNumber(obj, "size", fallback.size),
+  };
+}
+
+/** Format-only validation of one group's override — an unresolvable `shape` just falls back to
+ * the base style at render time (same "never throw" convention as `resolveRenderMode`), so a
+ * malformed entry is dropped rather than failing the whole file. */
+function tryValidateTeleportGroupOverride(v: unknown): { fillColor?: number; borderColor?: number; shape?: MarkerShape } | null {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const obj = v as Record<string, unknown>;
+  const result: { fillColor?: number; borderColor?: number; shape?: MarkerShape } = {};
+  if (typeof obj.fillColor === "number") result.fillColor = obj.fillColor;
+  if (typeof obj.borderColor === "number") result.borderColor = obj.borderColor;
+  if (typeof obj.shape === "string" && (MARKER_SHAPES as readonly string[]).includes(obj.shape)) result.shape = obj.shape as MarkerShape;
+  return result;
+}
+
+function validateTeleportGroupOverrides(v: unknown, path: string): Record<string, { fillColor?: number; borderColor?: number; shape?: MarkerShape }> {
+  if (v == null) return {};
+  let obj: Record<string, unknown>;
+  try {
+    obj = assertObject(v, path);
+  } catch {
+    return {};
+  }
+  const result: Record<string, { fillColor?: number; borderColor?: number; shape?: MarkerShape }> = {};
+  for (const [key, raw] of Object.entries(obj)) {
+    const override = tryValidateTeleportGroupOverride(raw);
+    if (override) result[key] = override;
+  }
+  return result;
+}
+
+/** Lenient — every field falls back to its own default when absent or malformed, same recovery
+ * pattern `validateSplitGeneration` uses, since this whole section is optional (absent entirely
+ * for project files saved before GitHub issue #295). */
+function validateVectorByWallsSettings(v: unknown, path: string): VectorByWallsSettings {
+  const d = DEFAULT_VECTOR_BY_WALLS_SETTINGS;
+  if (v == null) return d;
+  let obj: Record<string, unknown> | null;
+  try {
+    obj = assertObject(v, path);
+  } catch {
+    return d;
+  }
+  return {
+    background: optNumber(obj, "background", d.background),
+    showGrid: optBool(obj, "showGrid", d.showGrid),
+    gridColor: optNumber(obj, "gridColor", d.gridColor),
+    floorColor: optNumber(obj, "floorColor", d.floorColor),
+    wallColor: optNumber(obj, "wallColor", d.wallColor),
+    wallJoin: optJoin(obj, "wallJoin", d.wallJoin),
+    wallThickness: optNumber(obj, "wallThickness", d.wallThickness),
+    oneWayPattern: optOneWayPattern(obj, "oneWayPattern", d.oneWayPattern),
+    oneWayColor: optNumber(obj, "oneWayColor", d.oneWayColor),
+    oneWayGapWidth: optNumber(obj, "oneWayGapWidth", d.oneWayGapWidth),
+    oneWaySize: optNumber(obj, "oneWaySize", d.oneWaySize),
+    oneWayThickness: optNumber(obj, "oneWayThickness", d.oneWayThickness),
+    oneWayJoin: optJoin(obj, "oneWayJoin", d.oneWayJoin),
+    startMarker: validateMarkerSettings(obj.startMarker, `${path}.startMarker`, d.startMarker),
+    finishMarker: validateMarkerSettings(obj.finishMarker, `${path}.finishMarker`, d.finishMarker),
+    teleportLineCornerStyle: optTeleportCornerStyle(obj, "teleportLineCornerStyle", d.teleportLineCornerStyle),
+    teleportLineShape: optMarkerShape(obj, "teleportLineShape", d.teleportLineShape),
+    teleportLineSize: optNumber(obj, "teleportLineSize", d.teleportLineSize),
+    teleportEdgeColor: optNumber(obj, "teleportEdgeColor", d.teleportEdgeColor),
+    teleportEdgeBorderColor: optNumber(obj, "teleportEdgeBorderColor", d.teleportEdgeBorderColor),
+    teleportEdgeBorderWidth: optNumber(obj, "teleportEdgeBorderWidth", d.teleportEdgeBorderWidth),
+    teleportEdgeGapWidth: optNumber(obj, "teleportEdgeGapWidth", d.teleportEdgeGapWidth),
+    teleportConnectorColor: optNumber(obj, "teleportConnectorColor", d.teleportConnectorColor),
+    teleportConnectorWidth: optNumber(obj, "teleportConnectorWidth", d.teleportConnectorWidth),
+    teleportConnectorStyle: optTeleportConnectorStyle(obj, "teleportConnectorStyle", d.teleportConnectorStyle),
+    teleportAvoidFieldExit: optBool(obj, "teleportAvoidFieldExit", d.teleportAvoidFieldExit),
+    teleportArrowMode: optTeleportArrowMode(obj, "teleportArrowMode", d.teleportArrowMode),
+    teleportArrowPeriod: optNumber(obj, "teleportArrowPeriod", d.teleportArrowPeriod),
+    teleportArrowSize: optNumber(obj, "teleportArrowSize", d.teleportArrowSize),
+    teleportConnectorGapWidth: optNumber(obj, "teleportConnectorGapWidth", d.teleportConnectorGapWidth),
+    teleportGroupCustomization: optBool(obj, "teleportGroupCustomization", d.teleportGroupCustomization),
+    teleportGroupOverrides: validateTeleportGroupOverrides(obj.teleportGroupOverrides, `${path}.teleportGroupOverrides`),
+    splitNodeColors: Array.isArray(obj.splitNodeColors) ? obj.splitNodeColors.filter((n): n is number => typeof n === "number") : d.splitNodeColors,
+    splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
+  };
+}
+
+const KNOWN_RENDER_MODE_IDS: RenderModeId[] = ["vector_by_walls"];
+
+/** Degrades to `null` for an unknown/future `RenderModeId` — same "never throw" convention
+ * `resolveRenderMode` itself uses, so a project file naming a since-removed/renamed mode loads
+ * as "no mode selected" rather than failing the whole file. */
+function optRenderModeId(obj: Record<string, unknown> | null, key: string): RenderModeId | null {
+  const v = obj?.[key];
+  return typeof v === "string" && (KNOWN_RENDER_MODE_IDS as readonly string[]).includes(v) ? (v as RenderModeId) : null;
+}
+
+function validateImageExport(v: unknown, path: string): ProjectFileImageExport {
+  let obj: Record<string, unknown> | null = null;
+  if (v != null) {
+    try {
+      obj = assertObject(v, path);
+    } catch {
+      obj = null;
+    }
+  }
+  return {
+    activeRenderMode: optRenderModeId(obj, "activeRenderMode"),
+    openRenderModeSettings: optRenderModeId(obj, "openRenderModeSettings"),
+    vectorByWallsSettings: validateVectorByWallsSettings(obj?.vectorByWallsSettings, `${path}.vectorByWallsSettings`),
+    vectorByWallsSectionsExpanded: obj?.vectorByWallsSectionsExpanded != null
+      ? assertBoolRecord(obj.vectorByWallsSectionsExpanded, `${path}.vectorByWallsSectionsExpanded`)
+      : {},
+  };
+}
+
 // ─── Top-level parse ─────────────────────────────────────────────────────────
 
 export function parseAndValidate(raw: unknown): ProjectFile {
@@ -622,7 +785,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
 
   // ui (optional section — defaults for old files)
   const uiObj = optSection(migrated, "ui", "ui");
-  const validFeatureIds: FeatureId[] = ["basic_config", "field_setup", "preset_connections", "quality", "generation", "post_edit", "analytics"];
+  const validFeatureIds: FeatureId[] = ["basic_config", "field_setup", "preset_connections", "quality", "generation", "post_edit", "analytics", "image_export"];
   const ui: ProjectFileUi = {
     showPresetOrigin: optBool(uiObj, "showPresetOrigin", false),
     showFieldOrigin: optBool(uiObj, "showFieldOrigin", true),
@@ -651,5 +814,6 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     analytics,
     debug,
     ui,
+    imageExport: validateImageExport(migrated.imageExport, "imageExport"),
   };
 }

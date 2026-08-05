@@ -2,7 +2,8 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
-import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, FeatureId } from "../mazeStore";
+import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, FeatureId, RenderModeId } from "../mazeStore";
+import type { VectorByWallsSettings } from "../storeTypes";
 
 export interface ProjectFilePostEdit {
   edges: [string, PostEditEdge][];
@@ -35,6 +36,18 @@ export interface ProjectFileUi {
   showFieldOrigin: boolean;
   openCard: FeatureId;
   postEditAutoConfirm: boolean;
+}
+
+/** Image Export feature's persisted state (GitHub issue #295) — `activeRenderMode`/
+ * `openRenderModeSettings` degrade to `null` on load if they name an unknown/future
+ * `RenderModeId` (same "never throw" convention `resolveRenderMode` itself uses). */
+export interface ProjectFileImageExport {
+  activeRenderMode: RenderModeId | null;
+  openRenderModeSettings: RenderModeId | null;
+  vectorByWallsSettings: VectorByWallsSettings;
+  /** Expanded/collapsed state per "Vector by walls" settings section, keyed by section id —
+   * mirrors `analytics.sectionsExpanded`. */
+  vectorByWallsSectionsExpanded: Record<string, boolean>;
 }
 
 export interface ProjectFileDirtyFlags {
@@ -126,6 +139,7 @@ export interface ProjectFile {
   analytics: ProjectFileAnalytics;
   debug: ProjectFileDebug;
   ui: ProjectFileUi;
+  imageExport: ProjectFileImageExport;
 }
 
 export const CURRENT_VERSION = 2;

@@ -162,6 +162,12 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       highlightInvalidPresets: false,
       highlightIsolatedNodes: false,
       error: null,
+      // image export (GitHub issue #295) — buildResetMazeState() above resets these to their
+      // defaults; restore the saved values on top.
+      activeRenderMode: file.imageExport.activeRenderMode,
+      openRenderModeSettings: file.imageExport.openRenderModeSettings,
+      vectorByWallsSettings: file.imageExport.vectorByWallsSettings,
+      vectorByWallsSectionsExpanded: file.imageExport.vectorByWallsSectionsExpanded,
     });
 
     // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store.

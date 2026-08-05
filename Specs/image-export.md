@@ -36,7 +36,7 @@ interface RenderModeDescriptor {
 
 Adding a new mode: one `RenderModeId` union member, one `RENDER_MODES` entry, one `ImageExportRenderer.createModeRenderer` case, and (if it has settings) one `SettingsPanel` component. No other list to keep in sync.
 
-`resolveRenderMode(id)` looks up a descriptor by id and **returns `null` for an unknown id — it never throws**. This matters once `activeRenderMode` starts getting persisted to project files (planned, alongside per-mode settings, in a future ticket): a project file naming a since-removed/renamed mode must degrade to "no mode selected," not crash the whole `FeaturesPanel`. Every caller (`FeaturesPanel`'s card comment, `ImageExportFeature`'s open-panel lookup) treats a `null` resolution exactly like `activeRenderMode === null`.
+`resolveRenderMode(id)` looks up a descriptor by id and **returns `null` for an unknown id — it never throws**. This matters because `activeRenderMode`/`openRenderModeSettings` are persisted to project files, alongside per-mode settings (`ProjectFileImageExport`, GitHub issue #295): a project file naming a since-removed/renamed mode degrades to "no mode selected" at load time (`validate.ts`'s `optRenderModeId`, checked against a known-ids whitelist), not a crash of the whole `FeaturesPanel`. Every caller (`FeaturesPanel`'s card comment, `ImageExportFeature`'s open-panel lookup) treats a `null` resolution exactly like `activeRenderMode === null`.
 
 ## Rendering modes are one-renderer-per-mode, not one-renderer-per-feature
 

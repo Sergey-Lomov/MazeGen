@@ -81,6 +81,12 @@ export function serializeProject(state: MazeState): ProjectFile {
       openCard: state.openCard,
       postEditAutoConfirm: state.postEditAutoConfirm,
     },
+    imageExport: {
+      activeRenderMode: state.activeRenderMode,
+      openRenderModeSettings: state.openRenderModeSettings,
+      vectorByWallsSettings: state.vectorByWallsSettings,
+      vectorByWallsSectionsExpanded: state.vectorByWallsSectionsExpanded,
+    },
   };
 }
 
