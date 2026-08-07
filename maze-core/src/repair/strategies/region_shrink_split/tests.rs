@@ -5,8 +5,7 @@ use crate::random::MazeRng;
 use crate::graph::{Graph, EdgeKind as EK};
 use crate::IdGenerator;
 use crate::space::{SquareTessellation, square_rect, Field};
-use crate::repair::params::build_params;
-use crate::repair::strategies::test_utils::{apply_and_commit, apply_and_commit_default};
+use crate::repair::strategies::test_utils::apply_and_commit_default;
 
 fn build_field(w: usize, h: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
@@ -36,7 +35,7 @@ fn apply_fixed_immediately_when_invalid_is_empty() {
     let issue = issue_for(vec![]);
     let mut rng = MazeRng::seed_from_u64(1);
     let edges_before = maze.graph.edges().count();
-    let result = apply_and_commit_default(&RegionShrinkSplitStrategy, &issue, &mut maze, &mut rng, &PresetState::empty());
+    let result = apply_and_commit_default(&RegionShrinkSplitStrategy { protect_route: true }, &issue, &mut maze, &mut rng, &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     assert_eq!(maze.graph.edges().count(), edges_before);
 }
@@ -49,7 +48,7 @@ fn apply_splits_chain_region_into_two_sccs() {
 
     let issue = issue_for(vec![region_idx]);
     let mut rng = MazeRng::seed_from_u64(3);
-    let result = apply_and_commit_default(&RegionShrinkSplitStrategy, &issue, &mut maze, &mut rng, &PresetState::empty());
+    let result = apply_and_commit_default(&RegionShrinkSplitStrategy { protect_route: true }, &issue, &mut maze, &mut rng, &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     let scc_after = maze.analysis.scc(&maze.graph);
@@ -68,7 +67,7 @@ fn apply_never_cuts_a_preset_edge() {
     preset_edges.insert((nodes[2], nodes[1]));
     let preset_state = PresetState { preset_edges, ..PresetState::empty() };
 
-    apply_and_commit_default(&RegionShrinkSplitStrategy, &issue, &mut maze, &mut rng, &preset_state);
+    apply_and_commit_default(&RegionShrinkSplitStrategy { protect_route: true }, &issue, &mut maze, &mut rng, &preset_state);
 
     // Whatever happened, the preset passage between nodes[1] and nodes[2] must survive intact.
     assert!(maze.graph.edge_between(nodes[1], nodes[2]).is_some());
@@ -91,7 +90,7 @@ fn apply_failed_when_whole_region_is_one_unremovable_group() {
     let preset_state = PresetState { preset_edges, ..PresetState::empty() };
 
     let edges_before = maze.graph.edges().count();
-    let result = apply_and_commit_default(&RegionShrinkSplitStrategy, &issue, &mut maze, &mut rng, &preset_state);
+    let result = apply_and_commit_default(&RegionShrinkSplitStrategy { protect_route: true }, &issue, &mut maze, &mut rng, &preset_state);
     assert!(matches!(result, RepairResult::Failed));
     assert_eq!(maze.graph.edges().count(), edges_before, "a Failed strategy must not mutate the graph");
 }
@@ -106,7 +105,7 @@ fn apply_failed_when_whole_route_is_protected_and_covers_the_whole_region() {
     let mut rng = MazeRng::seed_from_u64(11);
 
     let edges_before = maze.graph.edges().count();
-    let result = apply_and_commit_default(&RegionShrinkSplitStrategy, &issue, &mut maze, &mut rng, &PresetState::empty());
+    let result = apply_and_commit_default(&RegionShrinkSplitStrategy { protect_route: true }, &issue, &mut maze, &mut rng, &PresetState::empty());
     assert!(matches!(result, RepairResult::Failed), "every edge sits on the only start-finish route -> one unremovable group");
     assert_eq!(maze.graph.edges().count(), edges_before);
 }
@@ -120,14 +119,7 @@ fn apply_splits_route_when_protect_route_is_disabled() {
     let issue = issue_for(vec![region_idx]);
     let mut rng = MazeRng::seed_from_u64(13);
 
-    let mut overrides = StdHashMap::new();
-    overrides.insert(PARAM_PROTECT_ROUTE.to_string(), "false".to_string());
-    let params = build_params(
-        <RegionShrinkSplitStrategy as RepairStrategy<SquareTessellation, RegionNeedsShrinkIssue>>::params(&RegionShrinkSplitStrategy),
-        Some(&overrides),
-    );
-
-    let result = apply_and_commit(&RegionShrinkSplitStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+    let result = apply_and_commit_default(&RegionShrinkSplitStrategy { protect_route: false }, &issue, &mut maze, &mut rng, &PresetState::empty());
     assert!(matches!(result, RepairResult::Fixed { score: None }), "with route protection disabled the chain can still be split");
 
     let scc_after = maze.analysis.scc(&maze.graph);

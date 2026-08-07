@@ -980,11 +980,7 @@ boundary between two grown halves.
 are oversized) is the producing check's result — there is no other channel to learn it, same
 contract as `ExpandRegionPassageStrategy`'s own `invalid`.
 
-**Parameters:**
-
-| id | type | default | description |
-|----|------|---------|-------------|
-| `protect_route` | Bool | `true` | Never cut a connection that lies on the maze's current start-finish route |
+**Parameters:** none of its own — `protect_route` (rule-level since GitHub issue #253, see `quality_control.md`'s "Rule-level parameters") never cuts a connection that lies on the maze's current start-finish route.
 
 **Algorithm**, per flagged region (processed independently — a region already merged away or
 otherwise gone by the time a later one in the same batch is processed isn't possible for a split,
@@ -1121,7 +1117,7 @@ Handles `INVALID_TELEPORT` — see GitHub issue #74. The single, fixed fix strat
 - `issue: &InvalidTeleportIssue` gives `invalid` directly: removes each `EdgeId` in `invalid` via `try_remove_teleport_with_reverse` (`generation::mod`) — looks the edge up by its own id rather than by node pair (necessary because `Graph::edge_between(from, to)` can return an arbitrary edge of any kind between a pair, which would risk removing the wrong one when a `Teleport` and a `Basic` edge coexist in the same direction — the exact scenario `TeleportDuplicatesConnectionCheck` flags), and **also removes the opposite-direction `Teleport` edge, if any** (`Graph::teleport_reverse`), so a two-way teleport is never left silently downgraded to one-way just because a check's edge selector (e.g. an `EntryOnly`-style one) only inspected/flagged one direction. An empty `invalid` is valid — nothing to remove, returns `Fixed` immediately.
 - **Preset protection is `Basic`-only**: `try_remove_edge_by_id` (used internally by `try_remove_teleport_with_reverse` for each direction) checks `preset_state.preset_edges` only when the edge being removed is itself `EdgeKind::Basic`. A `Teleport` edge can never be a preset connection (only Passage/OneWay presets exist, and both always build `EdgeKind::Basic` edges — see `preset_state.rs`/`Specs/post-edit.md`), so a `Teleport` duplicating a preset-protected `Basic` connection is still removable: the protection belongs to the `Basic` edge, not to the `(from, to)` pair as a whole.
 - Returns `Fixed { score: None }` whether or not any edges were actually removed (a preset-protected `Basic` edge is never a candidate here in the first place, since `invalid` only ever contains `Teleport` ids).
-- **Route protection (GitHub issue #78) lives entirely on the producing checks, not here.** Each per-teleport check has its own `protect_route` param (default `true`, see `quality_control.md`) and simply never includes a route-critical teleport in `invalid` to begin with — the incoming `InvalidTeleportIssue` never contains an edge this strategy shouldn't remove, so the strategy itself stays a pure "remove everything flagged" executor with no route-awareness of its own.
+- **Route protection (GitHub issue #78) lives entirely on the producing checks, not here.** Each per-teleport check reads the same rule-level `protect_route` (default `true`, since GitHub issue #253 — see `quality_control.md`'s "Rule-level parameters") and simply never includes a route-critical teleport in `invalid` to begin with — the incoming `InvalidTeleportIssue` never contains an edge this strategy shouldn't remove, so the strategy itself stays a pure "remove everything flagged" executor with no route-awareness of its own.
 
 ### TeleportGroupSelectStrategy
 
@@ -1138,11 +1134,10 @@ One nested slot, `fix_target`, expecting exactly one `INVALID_TELEPORT`-handling
 | id | type | default | options | description |
 |----|------|---------|---------|-------------|
 | `priority` | Enum | `problematic` | `random`, `problematic` | Which teleport of a problematic pair to remove |
-| `protect_route` | Bool | `true` | — | Exclude route-critical teleports from the candidate pool |
 
 `priority` is `group_select`'s own `PARAM_PRIORITY` (see `GroupSelectStrategy / group_select_apply` above) — `random`/`problematic` mean exactly what they do there: `problematic` visits the highest-membership teleport first, globally across every pair, not per-pair.
 
-**`protect_route`** (GitHub issue #78, default `true`): a teleport lying on the maze's current start→finish route (`graph::route_protection::is_teleport_route_protected`) is excluded from the candidate pool entirely, for every pair, before the visiting order is built — passed to `group_select_apply` as its `element_allowed` closure, same mechanism `OneWayGroupSelectStrategy` uses via `is_edge_on_route`. When exactly one side of a pair is route-critical, the other side remains a legitimate candidate and is picked through the normal `priority` pass — no separate per-pair fallback code, since the protected side was simply never offered as a candidate. When *both* sides of a pair are route-critical, the pair has no allowed candidate at all: `group_select_apply` zeroes its budget up front (see "wholly-protected groups" below) instead of ever offering it to the nested strategy.
+`protect_route` is rule-level since GitHub issue #253 (see `quality_control.md`'s "Rule-level parameters"), not a `StrategyParam` of this strategy's own — a teleport lying on the maze's current start→finish route (`graph::route_protection::is_teleport_route_protected`) is excluded from the candidate pool entirely, for every pair, before the visiting order is built — passed to `group_select_apply` as its `element_allowed` closure, same mechanism `OneWayGroupSelectStrategy` uses via `is_edge_on_route`. When exactly one side of a pair is route-critical, the other side remains a legitimate candidate and is picked through the normal `priority` pass — no separate per-pair fallback code, since the protected side was simply never offered as a candidate. When *both* sides of a pair are route-critical, the pair has no allowed candidate at all: `group_select_apply` zeroes its budget up front (see "wholly-protected groups" below) instead of ever offering it to the nested strategy.
 
 **`allow_reverse`** moved onto `RemoveTeleportStrategy`'s own param (GitHub issue #190) — this strategy no longer performs removal itself, so it has no `allow_reverse` of its own; configure it on the nested `fix_target` strategy instead.
 
@@ -1408,7 +1403,8 @@ pub struct AddSplitStrategy {
 | `allow_lose_connections` | Bool | `true` | Whether a candidate may drop an existing connection no sibling's face claims (pattern mode only). |
 | `allow_add_connections` | Bool | `true` | Whether a candidate may add a connection no sibling previously had (pattern mode only). |
 | `max_attempts` | Float | `50` | Failed-attempt budget for the whole `apply()` call (successful attempts don't count). |
-| `protect_route` | Bool | `true` | When enabled, excludes every node on the maze's current start->finish route (`graph::route_protection::is_node_on_route`) from the candidate pool — never places a split on a route-critical point. |
+
+`protect_route` (rule-level since GitHub issue #253, see `quality_control.md`'s "Rule-level parameters" — not a `StrategyParam` of this strategy's own, unlike the table above): when enabled (default), excludes every node on the maze's current start->finish route (`graph::route_protection::is_node_on_route`) from the candidate pool — never places a split on a route-critical point.
 
 **Pattern-mode candidate (`patterns` non-empty)**: a candidate point is picked at random, a pattern is picked honoring `SplitPattern::weight` (`pick_weighted_pattern`, via the shared `math::weighted_index` — falls back to a uniform pick only when every candidate pattern's weight is `<= 0`; GitHub issue #275 fixed this strategy from picking uniformly regardless of weight), and a rotation/mirror is picked at random, then every one of the pattern's `node_count` new nodes — **including node 0**, the new slot-0 — has its own faces resolved against the point's actual neighbors (`try_pattern_adaptation`, independent of generation's own `enumerate_adaptations` — there is no frontier/visited state here, every neighbor already belongs to the built maze). Each of the point's existing connections is matched against whichever new node's face points that direction:
 - A direction with an existing connection but **no** new node claiming it: dropped if `allow_lose_connections`, otherwise the whole candidate fails.

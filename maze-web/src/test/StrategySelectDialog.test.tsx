@@ -12,7 +12,7 @@ const availableStrategies = [
 beforeEach(() => {
   useMazeStore.setState({
     availableStrategies,
-    rules: [{ id: "g1", name: "Rule 1", kind: "missing_endpoints", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "random_endpoints", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+    rules: [{ id: "g1", name: "Rule 1", kind: "missing_endpoints", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "random_endpoints", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [] }],
     strategyParams: {},
   });
 });

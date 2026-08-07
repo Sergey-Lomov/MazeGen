@@ -9,8 +9,12 @@ use crate::repair::strategies::{OneWayToWallStrategy, OneWayToPassageStrategy};
 use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::repair::strategies::group_select::PRIORITY_RANDOM;
 
+fn strategy(protect_route: bool) -> OneWayGroupSelectStrategy {
+    OneWayGroupSelectStrategy { protect_route }
+}
+
 fn no_params() -> StrategyParams {
-    crate::repair::params::build_params(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidOneWayGroupIssue>>::params(&OneWayGroupSelectStrategy), None)
+    crate::repair::params::build_params(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidOneWayGroupIssue>>::params(&strategy(true)), None)
 }
 
 fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
@@ -18,7 +22,7 @@ fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
     for &(k, v) in overrides {
         map.insert(k.to_string(), v.to_string());
     }
-    crate::repair::params::build_params(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidOneWayGroupIssue>>::params(&OneWayGroupSelectStrategy), Some(&map))
+    crate::repair::params::build_params(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidOneWayGroupIssue>>::params(&strategy(true)), Some(&map))
 }
 
 fn fix_target_nested<T: Tessellation>() -> Vec<NestedStrategyConfig<T>> {
@@ -70,7 +74,7 @@ fn apply_succeeds_on_empty_groups() {
     let issue = group_issue(vec![]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 }
 
@@ -79,7 +83,7 @@ fn apply_fails_when_nested_is_empty() {
     let (mut maze, e1, e2) = maze_with_two_one_ways();
     let issue = group_issue(vec![vec![e1, e2]]);
     let mut rng = MazeRng::seed_from_u64(1);
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
 }
 
@@ -89,7 +93,7 @@ fn apply_removes_exactly_one_edge_from_the_pair() {
     let issue = group_issue(vec![vec![e1, e2]]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     let e1_alive = maze.graph.edge(e1).is_some();
@@ -115,7 +119,7 @@ fn apply_fixes_exactly_one_edge_from_a_group_larger_than_two() {
     let issue = group_issue(vec![edges.clone()]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     let removed_count = edges.iter().filter(|&&id| maze.graph.edge(id).is_none()).count();
@@ -140,7 +144,7 @@ fn apply_fixes_to_remove_edges_from_a_single_group_in_one_call() {
     let issue = group_issue_with_counts(vec![(edges.clone(), 3)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     let removed_count = edges.iter().filter(|&&id| maze.graph.edge(id).is_none()).count();
@@ -162,7 +166,7 @@ fn apply_stops_once_to_remove_is_reached_even_with_more_candidates_left() {
     let issue = group_issue_with_counts(vec![(edges.clone(), 2)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     let removed_count = edges.iter().filter(|&&id| maze.graph.edge(id).is_none()).count();
@@ -188,7 +192,7 @@ fn apply_fixes_a_shared_edge_once_but_decrements_to_remove_in_every_group_it_app
     let issue = group_issue_with_counts(vec![(vec![e_shared, e_a], 2), (vec![e_shared, e_b], 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze,
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze,
         &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
@@ -222,7 +226,7 @@ fn problematic_priority_favors_highest_membership_edge_even_when_its_group_is_no
     ]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze,
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze,
         &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
@@ -242,7 +246,7 @@ fn apply_with_passage_nested_converts_target_to_bidirectional_instead_of_removin
     let issue = group_issue(vec![vec![e1, e2]]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested_passage();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(maze.graph.edge(e1).is_some(), "e1 must still exist -- passage strategy converts, never removes");
@@ -273,7 +277,7 @@ fn apply_with_passage_nested_resolves_a_shared_edge_across_two_groups_without_a_
     let issue = group_issue(vec![vec![e_shared, e_a], vec![e_shared, e_b]]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested_passage();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze,
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze,
         &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
@@ -306,7 +310,7 @@ fn problematic_priority_picks_the_edge_in_more_groups() {
     let issue = group_issue(vec![vec![e_shared, e_a], vec![e_shared, e_b]]);
     let nested = fix_target_nested();
     let mut rng = MazeRng::seed_from_u64(1);
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze,
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze,
         &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     assert!(maze.graph.edge(e_shared).is_none(), "e_shared (member of both groups) must always be removed under problematic priority");
@@ -320,7 +324,7 @@ fn random_priority_picks_some_edge_from_the_pair() {
     let issue = group_issue(vec![vec![e1, e2]]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze,
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze,
         &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
@@ -340,8 +344,8 @@ fn protect_route_disabled_allows_a_route_critical_edge_to_be_picked() {
     let issue = group_issue(vec![vec![e1]]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze,
-        &mut rng, &params_with(&[(PARAM_PROTECT_ROUTE, "false")]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(false), &issue, &mut maze,
+        &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(maze.graph.edge(e1).is_none(), "route-critical e1 must be removable when protect_route is disabled");
@@ -362,7 +366,7 @@ fn resolving_shared_edge_drops_the_other_group_without_a_second_fix() {
     let issue = group_issue(vec![vec![e_shared, e_a], vec![e_shared, e_b]]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze,
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze,
         &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
@@ -382,8 +386,8 @@ fn protect_route_falls_back_to_the_other_side_of_the_pair() {
     let issue = group_issue(vec![vec![e1, e2]]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze,
-        &mut rng, &params_with(&[(PARAM_PROTECT_ROUTE, "true")]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze,
+        &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(maze.graph.edge(e1).is_some(), "route-critical e1 must survive when protect_route is enabled");
@@ -407,8 +411,8 @@ fn protect_route_leaves_a_fully_protected_group_untouched() {
     let issue = group_issue(vec![vec![ea, eb]]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze,
-        &mut rng, &params_with(&[(PARAM_PROTECT_ROUTE, "true")]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze,
+        &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Failed), "no edge in the batch could be fixed -- both route-protected, nothing succeeded");
     assert!(maze.graph.edge(ea).is_some());
     assert!(maze.graph.edge(eb).is_some());
@@ -443,7 +447,7 @@ fn apply_fails_when_every_nested_call_genuinely_fails() {
         param_overrides: std::collections::HashMap::new(),
         nested: vec![],
     }];
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Failed), "every nested call failed, so the batch as a whole must be Failed");
     assert!(maze.graph.edge(e1).is_some(), "a genuinely failed nested call must not remove the edge");
     assert!(maze.graph.edge(e2).is_some(), "a genuinely failed nested call must not remove the edge");
@@ -480,7 +484,7 @@ fn apply_tries_the_next_candidate_after_a_genuine_nested_failure() {
         param_overrides: std::collections::HashMap::new(),
         nested: vec![],
     }];
-    let result = apply_and_commit(&OneWayGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }), "e2's group must still succeed despite e1's genuine failure");
     assert!(maze.graph.edge(e1).is_some(), "e1's failed fix must leave it untouched");
     assert!(maze.graph.edge(e2).is_none(), "e2's own group must still be resolved");

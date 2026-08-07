@@ -1,5 +1,5 @@
 import { getWasm } from "./wasmLoader";
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, IssueDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, GenerateConfig, ComputeAnalyticsConfig } from "./types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, IssueDto, MazeSnapshot, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerateConfig, ComputeAnalyticsConfig } from "./types";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
 
 function isNodeDto(v: unknown): v is NodeDto {
@@ -138,6 +138,10 @@ export function getAvailableChecks(): CheckDescriptor[] {
 
 export function getAvailableStrategies(): StrategyDescriptor[] {
   return getWasm().available_strategies() as StrategyDescriptor[];
+}
+
+export function getAvailableRuleParams(): RuleParamDescriptor[] {
+  return getWasm().available_rule_params() as RuleParamDescriptor[];
 }
 
 export function generateMaze(seed: number, config: GenerateConfig): GenerateMazeResult {

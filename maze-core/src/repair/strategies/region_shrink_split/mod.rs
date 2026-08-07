@@ -7,23 +7,13 @@ use crate::quality_control::RegionNeedsShrinkIssue;
 use crate::generation::PresetState;
 use crate::graph::bisect::{group_by_unremovable_edges, farthest_pair_across_groups};
 use crate::graph::route_protection::is_edge_on_route;
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
+use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 
 #[cfg(test)]
 mod tests;
-
-pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
-
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_PROTECT_ROUTE,
-        label: "Protect start-finish route",
-        kind: StrategyParamKind::Bool { default: true },
-    },
-];
 
 /// Handles `REGION_NEEDS_SHRINK` — see GitHub issue #184 (follow-up to issue #181). Splits an
 /// oversized SCC region into two, as close to equal size as possible, by cutting the edges that
@@ -42,13 +32,21 @@ static PARAMS: &[StrategyParam] = &[
 ///    BFS over the region's group-contraction graph.
 /// 5. Cut every edge (either direction) that ends up crossing between the two final sets — safe by
 ///    construction, since a group-crossing edge was never grouped as unremovable.
-pub struct RegionShrinkSplitStrategy;
+///
+/// `protect_route` (GitHub issue #253) is a rule-level parameter, resolved once by the factory
+/// (`maze-runner`'s `build_rule_for!`) from `RuleParams` — not a per-strategy `StrategyParam`
+/// anymore, so it has no local override. Never a nested-strategy target (its own `NestedSlot`
+/// list is empty, and no other strategy's slot ever names `REGION_NEEDS_SHRINK`), so it is only
+/// ever constructed at a rule's top level, where the factory has a `RuleParams` in hand.
+pub struct RegionShrinkSplitStrategy {
+    pub protect_route: bool,
+}
 
 impl<T: Tessellation> RepairStrategy<T, RegionNeedsShrinkIssue> for RegionShrinkSplitStrategy {
     fn strategy_id(&self) -> &'static str { "region_shrink_split" }
 
     fn params(&self) -> &'static [StrategyParam] {
-        PARAMS
+        &[]
     }
 
     fn apply(
@@ -56,7 +54,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsShrinkIssue> for RegionShrink
         issue: &RegionNeedsShrinkIssue,
         maze: &Maze<T>,
         _rng: &mut dyn RngCore,
-        params: &StrategyParams,
+        _params: &StrategyParams,
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
@@ -64,10 +62,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsShrinkIssue> for RegionShrink
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        let protect_route = match params.get(PARAM_PROTECT_ROUTE) {
-            Some(StrategyParamValue::Bool(b)) => *b,
-            _ => true,
-        };
+        let protect_route = self.protect_route;
 
         let scc = maze.analysis.scc(&maze.graph);
         let mut commands = Vec::new();

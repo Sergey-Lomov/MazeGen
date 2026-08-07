@@ -4,25 +4,18 @@ use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::quality_control::{OneWayGroupKind, InvalidOneWayGroupIssue, InvalidOneWayIssue, INVALID_ONE_WAY};
 use crate::generation::PresetState;
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
+use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::MutationCommand;
 use crate::repair::strategies::group_select::{group_select_apply, PARAM_PRIORITY, PRIORITY_PROBLEMATIC, PRIORITY_OPTIONS};
 use crate::graph::route_protection::is_edge_on_route;
 
-pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
-
 static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_PRIORITY,
         label: "Fix priority",
         kind: StrategyParamKind::Enum { options: PRIORITY_OPTIONS, default: PRIORITY_PROBLEMATIC },
-    },
-    StrategyParam {
-        id: PARAM_PROTECT_ROUTE,
-        label: "Protect route one-ways",
-        kind: StrategyParamKind::Bool { default: true },
     },
 ];
 
@@ -47,14 +40,20 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 /// strategy shares — see that function's doc comment for the full walkthrough (membership
 /// priority, single global candidate pass, per-group `to_remove` budget, nested delegation). This
 /// strategy's own remaining responsibility is exactly what's specific to one-ways:
-/// `PARAM_PROTECT_ROUTE` (excluding route-critical edges from the candidate pool, via
+/// `protect_route` (excluding route-critical edges from the candidate pool, via
 /// `is_edge_on_route`), resolving `SLOT_FIX_TARGET`/`INVALID_ONE_WAY` from `nested`, and (GitHub
 /// issue #210) supplying `build_nested_issue`/`element_invalidated`/`order_by_priority(params)` to
 /// `group_select_apply`.
 ///
-/// `PARAM_PROTECT_ROUTE` (default `true`): a candidate lying on the maze's current start->finish
+/// `protect_route` (default `true`): a candidate lying on the maze's current start->finish
 /// route (`is_edge_on_route`) is excluded from the candidate pool up front, for every group.
-pub struct OneWayGroupSelectStrategy;
+///
+/// `protect_route` (GitHub issue #253) is a rule-level parameter, resolved once by the factory
+/// (`maze-runner`'s `build_rule_for!`) from `RuleParams` — not a `StrategyParam` anymore, so it
+/// has no local override.
+pub struct OneWayGroupSelectStrategy {
+    pub protect_route: bool,
+}
 
 impl<T: Tessellation> RepairStrategy<T, InvalidOneWayGroupIssue> for OneWayGroupSelectStrategy {
     fn strategy_id(&self) -> &'static str { "one_way_group_select" }
@@ -87,7 +86,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidOneWayGroupIssue> for OneWayGroup
             return (RepairResult::Failed, vec![]);
         };
 
-        let protect_route = matches!(params.get(PARAM_PROTECT_ROUTE), Some(StrategyParamValue::Bool(true)));
+        let protect_route = self.protect_route;
         let element_allowed = |edge: &EdgeId| !protect_route || !is_edge_on_route(maze, *edge);
         let build_nested_issue = |source_check: &str, target: &EdgeId, _others: &[EdgeId]| -> Box<dyn crate::quality_control::Issue> {
             Box::new(InvalidOneWayIssue::new_from_check(source_check, vec![*target]))

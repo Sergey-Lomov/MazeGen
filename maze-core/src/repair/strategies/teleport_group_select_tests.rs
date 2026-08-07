@@ -9,8 +9,12 @@ use crate::repair::strategies::RemoveTeleportStrategy;
 use crate::repair::strategies::test_utils::apply_and_commit;
 use crate::repair::strategies::group_select::PRIORITY_RANDOM;
 
+fn strategy(protect_route: bool) -> TeleportGroupSelectStrategy {
+    TeleportGroupSelectStrategy { protect_route }
+}
+
 fn no_params() -> StrategyParams {
-    crate::repair::params::build_params(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidTeleportGroupIssue>>::params(&TeleportGroupSelectStrategy), None)
+    crate::repair::params::build_params(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidTeleportGroupIssue>>::params(&strategy(true)), None)
 }
 
 fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
@@ -18,7 +22,7 @@ fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
     for &(k, v) in overrides {
         map.insert(k.to_string(), v.to_string());
     }
-    crate::repair::params::build_params(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidTeleportGroupIssue>>::params(&TeleportGroupSelectStrategy), Some(&map))
+    crate::repair::params::build_params(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidTeleportGroupIssue>>::params(&strategy(true)), Some(&map))
 }
 
 fn fix_target_nested<T: Tessellation>() -> Vec<NestedStrategyConfig<T>> {
@@ -65,7 +69,7 @@ fn apply_succeeds_on_empty_pairs() {
     let issue = pair_issue(vec![]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 }
 
@@ -74,7 +78,7 @@ fn apply_fails_when_nested_is_empty() {
     let (mut maze, id_a, id_b) = maze_with_two_teleports();
     let issue = pair_issue(vec![(id_a, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
 }
 
@@ -85,7 +89,7 @@ fn apply_succeeds_on_empty_pairs_even_with_no_nested_configured() {
     let (mut maze, _, _) = maze_with_two_teleports();
     let issue = pair_issue(vec![]);
     let mut rng = MazeRng::seed_from_u64(1);
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 }
 
@@ -95,7 +99,7 @@ fn random_priority_removes_exactly_one_of_the_pair() {
     let issue = pair_issue(vec![(id_a, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let remaining = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count();
     assert_eq!(remaining, 1, "exactly one teleport of the pair must survive");
@@ -118,7 +122,7 @@ fn problematic_priority_removes_the_teleport_in_more_pairs() {
     let issue = pair_issue(vec![(id_a, id_b), (id_a, id_c)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(maze.graph.edge(id_a).is_none(), "a (member of 2 pairs) must be removed");
@@ -134,7 +138,7 @@ fn problematic_priority_removes_exactly_one_on_a_tie() {
     let issue = pair_issue(vec![(id_a, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
     let remaining = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count();
     assert_eq!(remaining, 1, "a tie must still resolve to removing exactly one of the pair");
@@ -157,7 +161,7 @@ fn missing_priority_override_falls_back_to_problematic_default() {
     let issue = pair_issue(vec![(id_a, id_b), (id_a, id_c)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(maze.graph.edge(id_a).is_none(), "default priority must behave like 'problematic' and remove a (member of 2 pairs)");
@@ -167,7 +171,7 @@ fn missing_priority_override_falls_back_to_problematic_default() {
 
 #[test]
 fn strategy_id_and_handles_match_registration() {
-    assert_eq!(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidTeleportGroupIssue>>::strategy_id(&TeleportGroupSelectStrategy), "teleport_group_select");
+    assert_eq!(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidTeleportGroupIssue>>::strategy_id(&strategy(true)), "teleport_group_select");
     assert_eq!(InvalidTeleportGroupIssue::KIND, crate::quality_control::INVALID_TELEPORT_GROUP);
 }
 
@@ -191,7 +195,7 @@ fn already_resolved_pair_is_skipped() {
     // "problematic" priority deterministically picks `a` (member of both pairs) -- the
     // second pair's evaluation must detect `a` is already gone and skip acting on it again,
     // rather than then removing `c` too.
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     let remaining = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count();
@@ -222,7 +226,7 @@ fn removing_a_teleport_also_resolves_a_pair_referencing_its_reverse_direction() 
     let issue = pair_issue(vec![(a_fwd, id_c), (a_fwd, id_d), (a_bwd, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(maze.graph.edge(a_fwd).is_none(), "a_fwd (member of 2 pairs) must be picked and removed");
@@ -252,7 +256,7 @@ fn protect_route_falls_back_to_the_non_route_side_of_the_pair() {
     let issue = pair_issue(vec![(id_a, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM), (PARAM_PROTECT_ROUTE, "true")]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(maze.graph.edge(id_a).is_some(), "route-critical teleport a must survive");
@@ -282,7 +286,7 @@ fn protect_route_leaves_pair_untouched_and_fails_when_both_sides_are_route_criti
     let issue = pair_issue(vec![(id_a, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM), (PARAM_PROTECT_ROUTE, "true")]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Failed), "no pair in the batch could be fixed -- both route-protected, nothing succeeded");
 
     assert!(maze.graph.edge(id_a).is_some(), "a is route-critical and must survive");
@@ -310,7 +314,7 @@ fn protect_route_untouched_pair_does_not_block_a_different_fixable_pair() {
     let issue = pair_issue(vec![(id_a, id_b), (id_c, id_d)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM), (PARAM_PROTECT_ROUTE, "true")]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }), "the fixable pair's own progress must make the whole call Fixed");
 
     assert!(maze.graph.edge(id_a).is_some(), "a is route-critical and must survive");
@@ -339,7 +343,7 @@ fn protect_route_falls_back_correctly_across_multiple_pairs_sharing_the_protecte
     let issue = pair_issue(vec![(id_a, id_b), (id_a, id_c)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC), (PARAM_PROTECT_ROUTE, "true")]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_PROBLEMATIC)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(maze.graph.edge(id_a).is_some(), "a is route-critical and must survive both pair resolutions");
@@ -367,7 +371,7 @@ fn protect_route_fallback_removal_also_removes_the_fallback_side_reverse() {
     let issue = pair_issue(vec![(id_a, b_fwd)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM), (PARAM_PROTECT_ROUTE, "true")]), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(maze.graph.edge(id_a).is_some(), "route-critical a must survive");
@@ -394,8 +398,8 @@ fn nested_allow_reverse_removes_only_the_flagged_direction_of_a_two_way_teleport
     let issue = pair_issue(vec![(a_fwd, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested_allow_reverse();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng,
-        &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM), (PARAM_PROTECT_ROUTE, "false")]),
+    let result = apply_and_commit(&strategy(false), &issue, &mut maze, &mut rng,
+        &params_with(&[(PARAM_PRIORITY, PRIORITY_RANDOM)]),
         &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
@@ -413,8 +417,8 @@ fn nested_allow_reverse_removes_only_the_flagged_direction_of_a_two_way_teleport
 #[test]
 fn protect_route_default_is_true_when_no_override_is_given() {
     // Mirrors missing_priority_override_falls_back_to_problematic_default, but for
-    // protect_route: build_params with no override must apply the Bool { default: true }
-    // descriptor, so a route-critical teleport survives even without an explicit override.
+    // protect_route: constructing the strategy with protect_route: true (the RuleParams
+    // default) must survive a route-critical teleport even with no priority override.
     let mut ids = IdGenerator::new();
     let field = crate::space::Field::new(square_rect(4, 1), &mut ids).unwrap();
     let mut g = Graph::new();
@@ -429,7 +433,7 @@ fn protect_route_default_is_true_when_no_override_is_given() {
     let issue = pair_issue(vec![(id_a, id_b)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
-    let result = apply_and_commit(&TeleportGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+    let result = apply_and_commit(&strategy(true), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
     assert!(maze.graph.edge(id_a).is_some(), "route-critical a must survive: protect_route defaults to true with no override");

@@ -9,7 +9,7 @@ import { deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
 import { resolverForNodeId } from "../../pixi/postEditEndpoint";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
-import { activeTessellationOf } from "../storeHelpers";
+import { activeTessellationOf, relevantRuleParams } from "../storeHelpers";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
 import { parseTape, topLevelSourceScopes, sourceContentStart } from "../../debug/eventTape";
 import { adapterForKind } from "../../debug/algorithmRegistry";
@@ -78,7 +78,7 @@ function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): St
 
 // Builds one `QcRuleConfig` from a `QcRuleState` — `ruleDisabled` filtering happens in
 // `buildGenerateConfig` before this is called (per-stage, per rule), not here.
-function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: { local_id: string; type_id: string; params: Record<string, string> }[]; strategy: StrategyConfig | null } {
+function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: { local_id: string; type_id: string; params: Record<string, string> }[]; strategy: StrategyConfig | null; params: Record<string, string> } {
   let strategy: StrategyConfig | null = null;
   if (g.strategyId && !g.disabled) {
     const descriptor = state.availableStrategies.find((s) => s.id === g.strategyId);
@@ -96,7 +96,16 @@ function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: {
   // determinism doesn't depend on Map/object iteration order at this layer. A `disabled` check
   // (see `CheckInstance.disabled`'s doc comment) is omitted entirely, as if never selected.
   const checks = g.checks.filter((c) => !c.disabled).map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params }));
-  return { id: g.id, checks, strategy };
+  // Rule-level parameters (e.g. `protect_route`, GitHub issue #253) — only descriptor-known ids
+  // relevant to this rule's own composition are forwarded, same relevance rule `RuleParamsSection`
+  // uses for display (`relevantRuleParams`), same "only descriptor-known ids" spirit
+  // `nestedToConfig`/the strategy branch above use.
+  const activeCheckTypeIds = g.checks.filter((c) => !c.disabled).map((c) => c.typeId);
+  const ruleParams: Record<string, string> = {};
+  for (const p of relevantRuleParams(state.availableRuleParams, activeCheckTypeIds, g.disabled ? null : g.strategyId)) {
+    if (g.params[p.id] !== undefined) ruleParams[p.id] = g.params[p.id];
+  }
+  return { id: g.id, checks, strategy, params: ruleParams };
 }
 
 export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {

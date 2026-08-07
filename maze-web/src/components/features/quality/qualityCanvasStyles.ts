@@ -1,5 +1,5 @@
 import React from "react";
-import { ui, radius, typography, muted, disabled, spacing, inset } from "../../../styles/theme";
+import { ui, radius, typography, muted, disabled, spacing, inset, indent } from "../../../styles/theme";
 import { sharedStyles } from "../../../styles/shared";
 
 export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
@@ -222,6 +222,13 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   ruleCardBody: {
     display: "flex",
     flexDirection: "row",
+  },
+  ruleParamsSection: {
+    display: "flex",
+    flexDirection: "column",
+    padding: `${spacing.itemGap}px ${inset.panelInsetX}px`,
+    paddingLeft: inset.panelInsetX + indent.tree,
+    borderBottom: `1px solid ${ui.border.default}`,
   },
   ruleChecksList: {
     display: "flex",

@@ -53,7 +53,7 @@ pub use region_shrink_split::RegionShrinkSplitStrategy;
 pub use missing_regions::MissingRegionsStrategy;
 pub use reduce_scc_count::ReduceSccCountStrategy;
 pub use remove_teleport::RemoveTeleportStrategy;
-pub use teleport_group_select::{TeleportGroupSelectStrategy, PARAM_PROTECT_ROUTE as TELEPORT_GROUP_SELECT_PARAM_PROTECT_ROUTE, SLOT_FIX_TARGET as TELEPORT_GROUP_SELECT_SLOT_FIX_TARGET};
+pub use teleport_group_select::{TeleportGroupSelectStrategy, SLOT_FIX_TARGET as TELEPORT_GROUP_SELECT_SLOT_FIX_TARGET};
 pub use group_select::{PARAM_PRIORITY, PRIORITY_RANDOM, PRIORITY_PROBLEMATIC};
 pub use weighted_region_merge::{WeightedRegionMergeStrategy, SLOT_MERGE_TARGET as WEIGHTED_REGION_MERGE_SLOT_MERGE_TARGET};
 pub use priority_region_merge::{PriorityRegionMergeStrategy, SLOT_MERGE_TARGET as PRIORITY_REGION_MERGE_SLOT_MERGE_TARGET};
@@ -61,7 +61,7 @@ pub use priority_missing_loops::{PriorityMissingLoopsStrategy, SLOT_LOOP_SEED_TA
 pub use one_way_to_passage::OneWayToPassageStrategy;
 pub use one_way_to_wall::OneWayToWallStrategy;
 pub use group_select::group_select_apply;
-pub use one_way_group_select::{OneWayGroupSelectStrategy, PARAM_PROTECT_ROUTE as ONE_WAY_GROUP_SELECT_PARAM_PROTECT_ROUTE, SLOT_FIX_TARGET as ONE_WAY_GROUP_SELECT_SLOT_FIX_TARGET};
+pub use one_way_group_select::{OneWayGroupSelectStrategy, SLOT_FIX_TARGET as ONE_WAY_GROUP_SELECT_SLOT_FIX_TARGET};
 pub use group_select::{PARAM_PRIORITY as ONE_WAY_GROUP_SELECT_PARAM_PRIORITY, PRIORITY_RANDOM as ONE_WAY_GROUP_SELECT_PRIORITY_RANDOM, PRIORITY_PROBLEMATIC as ONE_WAY_GROUP_SELECT_PRIORITY_PROBLEMATIC};
 pub use missing_one_ways_from_passage::MissingOneWaysFromPassageStrategy;
 pub use missing_one_ways_from_wall::MissingOneWaysFromWallStrategy;

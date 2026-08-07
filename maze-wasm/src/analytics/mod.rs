@@ -58,6 +58,7 @@ fn analytics_only_stages(checks: Vec<generation_config::CheckInstanceConfig>) ->
             id: format!("analytics_only_{i}"),
             checks: vec![instance],
             strategy: None,
+            params: std::collections::HashMap::new(),
         })
         .collect();
     vec![generation_config::StageConfig { id: "analytics_only_stage".to_string(), name: "Analytics".to_string(), rules }]

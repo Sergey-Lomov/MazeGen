@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import { getAvailableChecks, getAvailableStrategies } from "../../wasm/mazeService";
+import { getAvailableChecks, getAvailableStrategies, getAvailableRuleParams } from "../../wasm/mazeService";
 import { initWasm } from "../../wasm/wasmLoader";
 import type { InitialGenerationConfig } from "../../wasm/types";
 import { entriesForSlot } from "../storeTypes";
@@ -33,6 +33,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   registryLoaded: false,
   availableChecks: [],
   availableStrategies: [],
+  availableRuleParams: [],
   rules: [],
   stages: [newStage(0)],
   strategyParams: {},
@@ -71,7 +72,14 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     return initWasm().then(() => {
       const checks = getAvailableChecks();
       const strategies = getAvailableStrategies();
-      const defaultSelectedChecks = checks.filter((c) => c.params.length === 0).map((c) => c.id);
+      const ruleParams = getAvailableRuleParams();
+      // Teleport checks are excluded from the default set even when they have no params
+      // (`teleport_duplicates_connection`) — teleport validation isn't relevant unless the user
+      // actually enables teleports, so it shouldn't show up as a pre-populated rule by default.
+      const TELEPORT_ISSUE_KINDS = new Set(["invalid_teleport", "invalid_teleport_group"]);
+      const defaultSelectedChecks = checks
+        .filter((c) => c.params.length === 0 && !c.issue_kinds.some((k) => TELEPORT_ISSUE_KINDS.has(k)))
+        .map((c) => c.id);
       // Default: one singleton rule per default-selected check, with a default strategy for its
       // kind (if any) — preserves the old "auto-pick a strategy" behavior for checks without
       // params, since there's no UI yet to have configured anything else. `scored_endpoints` is
@@ -93,7 +101,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
           const stages = state.stages.length > 0
             ? [{ ...state.stages[0], ruleIds: defaultRules.map((r) => r.id) }, ...state.stages.slice(1)]
             : [newStage(0, defaultRules.map((r) => r.id))];
-          return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, rules: defaultRules, stages };
+          return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, availableRuleParams: ruleParams, rules: defaultRules, stages };
         }
         // Reload: rules left empty by the registry filter are dropped (see
         // Specs/quality-feature.md's "Default State") — their ids must also be scrubbed from
@@ -104,7 +112,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
           .filter((g) => g.checks.length > 0);
         const survivingIds = new Set(rules.map((r) => r.id));
         const stages = state.stages.map((s) => ({ ...s, ruleIds: s.ruleIds.filter((id) => survivingIds.has(id)) }));
-        return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, rules, stages };
+        return { registryLoaded: true, availableChecks: checks, availableStrategies: strategies, availableRuleParams: ruleParams, rules, stages };
       });
     }).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
@@ -496,6 +504,11 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       ...state.strategyParams,
       [strategyId]: { ...(state.strategyParams[strategyId] ?? {}), [paramId]: value },
     },
+    debugStale: debugStaleOf(state),
+  })),
+
+  setRuleParam: (ruleId, paramId, value) => set((state) => ({
+    rules: state.rules.map((r) => r.id === ruleId ? { ...r, params: { ...r.params, [paramId]: value } } : r),
     debugStale: debugStaleOf(state),
   })),
 

@@ -39,6 +39,12 @@ pub struct QcRuleConfig {
     pub checks: Vec<CheckInstanceConfig>,
     #[serde(default)]
     pub strategy: Option<StrategyConfig>,
+    /// Rule-level parameters (GitHub issue #253) — a value configured once on the rule, shared by
+    /// every check/strategy in it that has been migrated to consume it (e.g. `protect_route`).
+    /// Resolved once via `resolve_rule_params` in `build_rule_for!`. Not a fallback/override
+    /// layer: a migrated parameter has no per-check/per-strategy equivalent anymore.
+    #[serde(default)]
+    pub params: HashMap<String, String>,
 }
 
 /// A named, ordered group of rules — see `Specs/repair.md`'s "Stages" section and issue #65.
@@ -274,6 +280,7 @@ impl Default for GenerateConfig {
                                 slot_id: None,
                                 nested: vec![],
                             }),
+                            params: HashMap::new(),
                         },
                         QcRuleConfig {
                             id: "default_unreachable_finish".to_string(),
@@ -283,6 +290,7 @@ impl Default for GenerateConfig {
                                 params: HashMap::new(),
                             }],
                             strategy: None,
+                            params: HashMap::new(),
                         },
                     ],
                 },

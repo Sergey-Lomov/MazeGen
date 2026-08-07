@@ -1,4 +1,5 @@
 use serde::Serialize;
+use wasm_bindgen::prelude::*;
 use maze_core::quality_control::{Comparison, CycleKind};
 use maze_core::RegionClass;
 
@@ -54,6 +55,46 @@ pub struct CheckDescriptor {
     pub allow_multiple_instances: bool,
 }
 
+/// Rule-level parameter descriptor (GitHub issue #253) — same shape as `ParamDescriptor` plus
+/// `applies_to`, the list of check `type_id`s / strategy `id`s that actually consume this
+/// parameter. A rule only shows this parameter when at least one of its own checks or its
+/// strategy appears in `applies_to` — not every rule shares the same rule-level parameter set
+/// (e.g. `protect_route` is meaningless for a `min_region_count` rule). The web UI filters
+/// `available_rule_params()`'s list against a rule's own composition using this field before
+/// rendering, reusing the existing `ParamFields` component for the values themselves.
+#[derive(Serialize)]
+pub struct RuleParamDescriptorDto {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub kind: ParamKindDto,
+    pub applies_to: &'static [&'static str],
+}
+
+/// Rule-level parameter descriptors (GitHub issue #253) — one entry per
+/// `maze_core::quality_control::RULE_PARAM_DESCRIPTORS` item. `id`/type/default/`applies_to` come
+/// straight from `RULE_PARAM_DESCRIPTORS` — the single source of truth `maze-runner`'s
+/// `resolve_rule_params` also reads — only `label` is decided here (the web side ignores it
+/// anyway, resolving display text from its own i18n keyed by `id`, same as every other
+/// `ParamDescriptor.label` in this module).
+pub fn rule_params_list() -> Vec<RuleParamDescriptorDto> {
+    use maze_core::quality_control::{RULE_PARAM_DESCRIPTORS, RuleParamKind, PARAM_PROTECT_ROUTE};
+    RULE_PARAM_DESCRIPTORS.iter().map(|d| {
+        let kind = match d.kind {
+            RuleParamKind::Bool { default } => ParamKindDto::Bool { default },
+        };
+        let label = match d.id {
+            id if id == PARAM_PROTECT_ROUTE => "Protect start-finish route",
+            other => other,
+        };
+        RuleParamDescriptorDto { id: d.id, label, kind, applies_to: d.applies_to }
+    }).collect()
+}
+
+#[wasm_bindgen]
+pub fn available_rule_params() -> JsValue {
+    serde_wasm_bindgen::to_value(&rule_params_list()).unwrap()
+}
+
 /// Dropdown restricting `min_region_size`/`min_region_ratio` to one `RegionClass`, defaulting to
 /// `"all"` (every class, the checks' pre-#54 behavior) — see GitHub issue #54.
 pub fn region_class_filter_param() -> ParamDescriptor {
@@ -73,15 +114,6 @@ pub fn region_class_filter_param() -> ParamDescriptor {
     }
 }
 
-/// Shared `protect_route` param descriptor (GitHub issue #78) — every per-teleport check gets
-/// this exact id/label/default, so it's declared once instead of repeated per `CheckDescriptor`.
-pub fn protect_route_param() -> ParamDescriptor {
-    ParamDescriptor {
-        id: "protect_route",
-        label: "Protect route teleports",
-        kind: ParamKindDto::Bool { default: true },
-    }
-}
 
 /// Shared `comparison` param descriptor — GitHub issue #177: checks merged around `Comparison`
 /// (min/max validating a single entity, both flagging the same issue kind) expose one `comparison`

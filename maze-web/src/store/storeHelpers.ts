@@ -1,4 +1,4 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, GraphAnalyticsDto, SplitAnalyticsDto, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, IssueDto } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, GraphAnalyticsDto, SplitAnalyticsDto, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, IssueDto, RuleParamDescriptor } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
@@ -250,4 +250,20 @@ export function makeOrientationSetter(axisKind: "hex" | "triangle", field: "hexO
 
 export function mergeOrientation(current: TessellationConfig, orientation: HexOrientation | TriOrientation): TessellationConfig {
   return { ...current, orientation } as TessellationConfig;
+}
+
+/** Rule-level parameters (GitHub issue #253) relevant to a rule's own composition — filters
+ * `availableRuleParams` down to entries whose `applies_to` names at least one of this rule's own
+ * active check `type_id`s or its strategy `id`. Not every rule shares the same rule-level
+ * parameter set (e.g. `protect_route` is meaningless for a `min_region_count` rule). Shared by
+ * `RuleParamsSection` (UI panel) and `generateConfigBuilder`'s `ruleToConfig` (wire config) so
+ * both apply the exact same relevance rule instead of maintaining it independently in two places. */
+export function relevantRuleParams(
+  availableRuleParams: RuleParamDescriptor[],
+  checkTypeIds: string[],
+  strategyId: string | null,
+): RuleParamDescriptor[] {
+  const memberIds = new Set(checkTypeIds);
+  if (strategyId) memberIds.add(strategyId);
+  return availableRuleParams.filter((p) => p.applies_to.some((id) => memberIds.has(id)));
 }

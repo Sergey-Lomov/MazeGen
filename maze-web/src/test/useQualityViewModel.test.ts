@@ -22,7 +22,7 @@ beforeEach(() => {
           { localId: 0, typeId: "c1", params: {}, disabled: false },
           { localId: 1, typeId: "c2", params: {}, disabled: true },
         ],
-        nextLocalCheckId: 2, strategyId: null, disabled: false, ruleDisabled: false, nestedStrategies: [],
+        nextLocalCheckId: 2, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [],
       },
     ],
     stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false }],

@@ -8,6 +8,7 @@ import { StrategySelectDialog } from "../StrategySelectDialog";
 import { AddCheckToRuleDialog } from "../AddCheckToRuleDialog";
 import { RuleStrategyPanel } from "./RuleStrategyPanel";
 import { RuleCheckRow } from "./RuleCheckRow";
+import { RuleParamsSection } from "./RuleParamsSection";
 import { ConfirmModal } from "../../ConfirmModal";
 import { AlertModal } from "../../AlertModal";
 import { Switch } from "../../Switch";
@@ -280,6 +281,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                           </button>
                         </div>
                       </div>
+                      <RuleParamsSection slot={slot} />
                       <div style={styles.ruleCardBody}>
                         <div style={styles.ruleChecksList}>
                           {slot.producedBy.map((check) => {

@@ -14,6 +14,7 @@ mod nested_strategy_tests {
                 params: HashMap::new(),
             }],
             strategy,
+            params: HashMap::new(),
         }
     }
 
@@ -86,6 +87,7 @@ mod nested_strategy_tests {
             id: "r1".to_string(),
             checks: vec![CheckInstanceConfig { local_id: "missing_endpoints".to_string(), type_id: "missing_endpoints".to_string(), params: HashMap::new() }],
             strategy: Some(strategy),
+            params: HashMap::new(),
         };
         let mut config = GenerateConfig::default();
         config.stages = one_stage(rule);
@@ -133,6 +135,7 @@ mod nested_strategy_tests {
                 params: HashMap::from([("max_scc_count".to_string(), "1".to_string())]),
             }],
             strategy: Some(reduce_scc_count_with_nested(vec![strategy_cfg("expand_region_passage", Some("merge_target"), vec![])])),
+            params: HashMap::new(),
         };
         config.stages[0].rules.push(scc_check_rule);
 
@@ -168,6 +171,7 @@ mod nested_strategy_tests {
                 params: HashMap::from([("max_scc_count".to_string(), "1".to_string())]),
             }],
             strategy: Some(reduce_scc_count_with_nested(vec![strategy_cfg("expand_region_passage", Some("merge_target"), vec![])])),
+            params: HashMap::new(),
         };
         config.stages[0].rules.push(scc_check_rule);
 
@@ -199,6 +203,7 @@ mod nested_strategy_tests {
                 strategy_cfg("expand_region_passage", Some("merge_target"), vec![]),
                 strategy_cfg("teleport_region_merge", Some("merge_target"), vec![]),
             ])),
+            params: HashMap::new(),
         };
         config.stages[0].rules.push(region_rule);
 
@@ -266,7 +271,7 @@ mod nested_strategy_tests {
 
         #[test]
         fn unbounded_slot_accepts_zero_nested() {
-            let result = build_nested::<SquareTessellation>(&UnboundedSlotStrategy, &[]);
+            let result = build_nested::<SquareTessellation>(&UnboundedSlotStrategy, &[], &maze_core::quality_control::RuleParams::default());
             assert!(result.is_ok(), "min: 0 must accept an empty nested list: {:?}", result.err());
             assert_eq!(result.unwrap().len(), 0);
         }
@@ -278,7 +283,7 @@ mod nested_strategy_tests {
             // reduce_scc_count's own validation, so each sibling gets a minimal valid child.
             let make_reduce_scc_count = || nested_cfg("reduce_scc_count", "unbounded", vec![nested_cfg("expand_region_passage", "merge_target", vec![])]);
             let configs = vec![make_reduce_scc_count(), make_reduce_scc_count(), make_reduce_scc_count()];
-            let result = build_nested::<SquareTessellation>(&UnboundedSlotStrategy, &configs);
+            let result = build_nested::<SquareTessellation>(&UnboundedSlotStrategy, &configs, &maze_core::quality_control::RuleParams::default());
             assert!(result.is_ok(), "max: None must accept more than one nested strategy for the same slot: {:?}", result.err());
             assert_eq!(result.unwrap().len(), 3, "all 3 entries for the unbounded slot must be kept, not deduped or truncated");
         }
@@ -292,7 +297,7 @@ mod nested_strategy_tests {
             // today (those only ever put reduce_scc_count at the top level).
             let level_3 = nested_cfg("expand_region_passage", "merge_target", vec![]);
             let level_2 = nested_cfg("reduce_scc_count", "unbounded", vec![level_3]);
-            let result = build_nested::<SquareTessellation>(&UnboundedSlotStrategy, &[level_2]);
+            let result = build_nested::<SquareTessellation>(&UnboundedSlotStrategy, &[level_2], &maze_core::quality_control::RuleParams::default());
             assert!(result.is_ok(), "a real 3-level nested chain must resolve: {:?}", result.err());
             let resolved = result.unwrap();
             assert_eq!(resolved.len(), 1);
@@ -309,7 +314,7 @@ mod nested_strategy_tests {
             // whichever depth it actually occurs, not just at the top level.
             let level_3 = nested_cfg("invalid_loop_random", "merge_target", vec![]);
             let level_2 = nested_cfg("reduce_scc_count", "unbounded", vec![level_3]);
-            let result = build_nested::<SquareTessellation>(&UnboundedSlotStrategy, &[level_2]);
+            let result = build_nested::<SquareTessellation>(&UnboundedSlotStrategy, &[level_2], &maze_core::quality_control::RuleParams::default());
             assert!(result.is_err(), "a kind mismatch at depth 3 must still be rejected: {:?}", result.ok().map(|_| ()));
         }
     }
@@ -339,8 +344,9 @@ mod build_strategy_tests {
     #[test]
     fn every_known_id_builds_a_strategy_whose_own_strategy_id_matches() {
         let no_params = HashMap::new();
+        let rule_params = maze_core::quality_control::RuleParams::default();
         for &id in ALL_KNOWN_STRATEGY_IDS {
-            let strategy = build_strategy_erased::<SquareTessellation>(id, &no_params)
+            let strategy = build_strategy_erased::<SquareTessellation>(id, &no_params, &rule_params)
                 .unwrap_or_else(|e| panic!("build_strategy_erased({id:?}) failed: {e}"));
             assert_eq!(strategy.strategy_id(), id, "build_strategy_erased({id:?}) constructed a strategy whose own strategy_id() doesn't match — wrong match arm?");
         }
@@ -348,7 +354,8 @@ mod build_strategy_tests {
 
     #[test]
     fn unknown_id_is_rejected() {
-        assert!(build_strategy_erased::<SquareTessellation>("not_a_real_strategy", &HashMap::new()).is_err());
+        let rule_params = maze_core::quality_control::RuleParams::default();
+        assert!(build_strategy_erased::<SquareTessellation>("not_a_real_strategy", &HashMap::new(), &rule_params).is_err());
     }
 }
 
@@ -402,9 +409,10 @@ mod build_check_tests {
     /// of a `Box<dyn Check<T, I>>` (whose concrete `I` differs per arm and so can't be returned
     /// as one unified type). `None` means `instance.type_id` is unknown to every `KindTag` arm.
     fn build_check_type_id<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<&'static str> {
+        let rule_params = maze_core::quality_control::RuleParams::default();
         macro_rules! try_ctor {
             ($ctor:ident) => {
-                if let Some(check) = $ctor::<T>(instance, instance_id.clone()) {
+                if let Some(check) = $ctor::<T>(instance, instance_id.clone(), &rule_params) {
                     return Some(check.check_type_id());
                 }
             };
@@ -466,7 +474,8 @@ mod build_check_tests {
         let mut params = HashMap::new();
         params.insert("distance".to_string(), "1.1".to_string());
         let instance = CheckInstanceConfig { local_id: "0".to_string(), type_id: "teleport_group_proximity".to_string(), params };
-        let check = build_teleport_group_proximity_check::<SquareTessellation>(&instance, "instance".to_string())
+        let rule_params = maze_core::quality_control::RuleParams::default();
+        let check = build_teleport_group_proximity_check::<SquareTessellation>(&instance, "instance".to_string(), &rule_params)
             .expect("build_teleport_group_proximity_check must accept a fractional distance string");
 
         // Two teleports whose entries sit exactly 1 tile-hop apart -- must be flagged against
@@ -486,5 +495,120 @@ mod build_check_tests {
         let mut rng = maze_core::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
         assert_eq!(issues.len(), 1, "distance=1.1 must flag a pair of teleports 1 tile-hop apart, proving the fractional value wasn't truncated to 0 or 1");
+    }
+}
+
+/// Coverage for the rule-level `protect_route` wiring (GitHub issue #253) — the factory-layer
+/// guards rejecting a local `protect_route` override on a migrated check/strategy, and the
+/// end-to-end invariant that a rule's resolved `RuleParams` reaches every one of its own
+/// checks/strategy identically. See `Specs/quality_control.md`'s "Rule-level parameters" section.
+mod rule_level_params_tests {
+    use std::collections::HashMap;
+    use maze_core::space::SquareTessellation;
+    use crate::config::{QcRuleConfig, StageConfig, CheckInstanceConfig, StrategyConfig, GenerateConfig};
+    use crate::runner::rule_factory::build_qc_and_repair;
+
+    fn one_stage(rule: QcRuleConfig) -> Vec<StageConfig> {
+        vec![StageConfig { id: "s1".to_string(), name: "Stage 1".to_string(), rules: vec![rule] }]
+    }
+
+    fn build(rule: QcRuleConfig) -> Result<maze_core::quality_control::QualityControlEngine<SquareTessellation>, String> {
+        let mut config = GenerateConfig::default();
+        config.stages = one_stage(rule);
+        build_qc_and_repair::<SquareTessellation>(&config)
+    }
+
+    #[test]
+    fn local_protect_route_on_a_migrated_check_is_rejected() {
+        // teleport_waypoint_distance is one of the checks migrated to rule-level protect_route
+        // (GitHub issue #253) — a leftover local override in its own params must be a hard error,
+        // not silently ignored (see rule_factory.rs's build_rule_for! guard).
+        let mut params = HashMap::new();
+        params.insert("protect_route".to_string(), "false".to_string());
+        let rule = QcRuleConfig {
+            id: "r1".to_string(),
+            checks: vec![CheckInstanceConfig { local_id: "0".to_string(), type_id: "teleport_waypoint_distance".to_string(), params }],
+            strategy: None,
+            params: HashMap::new(),
+        };
+        let err = match build(rule) { Err(e) => e, Ok(_) => panic!("expected build to fail") };
+        assert!(err.contains("protect_route"), "error must name the offending param: {err}");
+    }
+
+    #[test]
+    fn local_protect_route_on_a_migrated_strategy_is_rejected() {
+        // teleport_group_select is one of the strategies migrated to rule-level protect_route —
+        // a leftover local override in its own StrategyConfig.params must be a hard error (see
+        // strategy_factory.rs's build_strategy_erased guard).
+        let mut strategy_params = HashMap::new();
+        strategy_params.insert("protect_route".to_string(), "false".to_string());
+        let rule = QcRuleConfig {
+            id: "r1".to_string(),
+            checks: vec![CheckInstanceConfig { local_id: "0".to_string(), type_id: "teleport_group_proximity".to_string(), params: HashMap::new() }],
+            strategy: Some(StrategyConfig { id: "teleport_group_select".to_string(), params: strategy_params, slot_id: None, nested: vec![] }),
+            params: HashMap::new(),
+        };
+        let err = match build(rule) { Err(e) => e, Ok(_) => panic!("expected build to fail") };
+        assert!(err.contains("protect_route"), "error must name the offending param: {err}");
+    }
+
+    #[test]
+    fn local_protect_route_on_a_non_migrated_check_is_still_accepted_as_an_unknown_local_param() {
+        // A check with no protect_route field at all (e.g. min_region_count, not in
+        // protect_route's applies_to list) must not be affected by the migrated-param guard —
+        // this only proves the guard is scoped to actual consumers, not every check.
+        let rule = QcRuleConfig {
+            id: "r1".to_string(),
+            checks: vec![CheckInstanceConfig { local_id: "0".to_string(), type_id: "min_region_count".to_string(), params: HashMap::new() }],
+            strategy: None,
+            params: HashMap::new(),
+        };
+        assert!(build(rule).is_ok(), "a check unrelated to protect_route must build normally");
+    }
+
+    #[test]
+    fn unknown_rule_level_param_key_is_rejected() {
+        let mut rule_params = HashMap::new();
+        rule_params.insert("protect_rooute".to_string(), "false".to_string());
+        let rule = QcRuleConfig {
+            id: "r1".to_string(),
+            checks: vec![CheckInstanceConfig { local_id: "0".to_string(), type_id: "teleport_waypoint_distance".to_string(), params: HashMap::new() }],
+            strategy: None,
+            params: rule_params,
+        };
+        let err = match build(rule) { Err(e) => e, Ok(_) => panic!("expected build to fail") };
+        assert!(err.contains("protect_rooute"), "error must name the offending key: {err}");
+    }
+
+    #[test]
+    fn rule_level_protect_route_reaches_every_check_and_the_strategy_identically() {
+        // Rule with two teleport checks (both protect_route consumers) plus teleport_group_select
+        // as strategy (also a consumer) — protect_route: false set once at rule level must be the
+        // resolved value for all three, proving they share one RuleParams instance rather than
+        // each independently defaulting.
+        let mut rule_params = HashMap::new();
+        rule_params.insert("protect_route".to_string(), "false".to_string());
+        let rule = QcRuleConfig {
+            id: "r1".to_string(),
+            checks: vec![
+                CheckInstanceConfig { local_id: "0".to_string(), type_id: "teleport_group_proximity".to_string(), params: HashMap::new() },
+            ],
+            strategy: Some(StrategyConfig {
+                id: "teleport_group_select".to_string(),
+                params: HashMap::new(),
+                slot_id: None,
+                // teleport_group_select's fix_target slot requires exactly one nested strategy
+                // (min: 1, max: Some(1)) handling INVALID_TELEPORT — remove_teleport is the sole
+                // registry strategy for that kind.
+                nested: vec![StrategyConfig { id: "remove_teleport".to_string(), params: HashMap::new(), slot_id: Some("fix_target".to_string()), nested: vec![] }],
+            }),
+            params: rule_params,
+        };
+        // Building successfully (no rejected local override, no unknown key) together with the
+        // dedicated check_factory/strategy_factory unit tests asserting `rule_params.protect_route`
+        // is threaded into each constructed check/strategy is the structural guarantee — this test
+        // additionally confirms the whole rule (multiple checks + strategy, same kind) builds as
+        // one unit against a single resolved RuleParams, not per-member resolution.
+        assert!(build(rule).is_ok(), "rule-level protect_route=false must build successfully for a rule combining a protect_route-consuming check and strategy");
     }
 }

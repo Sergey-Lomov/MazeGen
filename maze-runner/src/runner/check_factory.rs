@@ -46,7 +46,7 @@ use maze_core::{
         SplitNodeConnectionPerFaceCheck, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT,
         SplitNodeConnectionTraversalDistanceCheck, SPLIT_NODE_CONNECTION_TRAVERSAL_DISTANCE_MIN_DETOUR_DEFAULT,
         MaxSplitTileNodeCountCheck, MAX_SPLIT_TILE_NODE_COUNT_DEFAULT,
-        Comparison, CycleKind,
+        Comparison, CycleKind, RuleParams,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
@@ -227,15 +227,6 @@ fn parse_teleport_proximity_edge(param: Option<&String>) -> TeleportProximityEdg
     }
 }
 
-/// `protect_route` (GitHub issue #78) defaults to `true` on every per-teleport check —
-/// `"false"`/`"0"` opts out, anything else (including missing/unparseable) stays `true`.
-fn parse_protect_route(param: Option<&String>) -> bool {
-    match param.map(String::as_str) {
-        Some("false") | Some("0") => false,
-        _ => true,
-    }
-}
-
 /// GitHub issue #177: `comparison` is shared by every check merged around `Comparison` — missing
 /// or unparseable falls back to `default`, the check's own pre-#177 fixed operator.
 fn parse_comparison(param: Option<&String>, default: Comparison) -> Comparison {
@@ -255,21 +246,21 @@ fn parse_cycle_kind(param: Option<&String>) -> CycleKind {
 /// redistributed by `KindTag` instead of living in one flat match over every `type_id` at once.
 /// `Option`, not `Result` — `None` means "this `type_id` doesn't belong to this `KindTag`", the
 /// per-arm-invalid-value case doesn't exist (every param has a documented fallback default).
-pub(crate) fn build_missing_endpoints_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingEndpointsIssue>>> {
+pub(crate) fn build_missing_endpoints_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingEndpointsIssue>>> {
     match instance.type_id.as_str() {
         "missing_endpoints" => Some(Box::new(MissingEndpointsCheck { instance_id })),
         _ => None,
     }
 }
 
-pub(crate) fn build_unreachable_finish_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, UnreachableFinishIssue>>> {
+pub(crate) fn build_unreachable_finish_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, UnreachableFinishIssue>>> {
     match instance.type_id.as_str() {
         "unreachable_finish" => Some(Box::new(UnreachableFinishCheck { instance_id })),
         _ => None,
     }
 }
 
-pub(crate) fn build_missing_loops_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingLoopsIssue>>> {
+pub(crate) fn build_missing_loops_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingLoopsIssue>>> {
     match instance.type_id.as_str() {
         "min_loops_count" => {
             let min_loops = instance.params.get("min_loops")
@@ -293,7 +284,7 @@ pub(crate) fn build_missing_loops_check<T: Tessellation>(instance: &CheckInstanc
     }
 }
 
-pub(crate) fn build_missing_split_tiles_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingSplitTilesIssue>>> {
+pub(crate) fn build_missing_split_tiles_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingSplitTilesIssue>>> {
     match instance.type_id.as_str() {
         "split_count" => {
             let min_count = instance.params.get("split_count")
@@ -319,7 +310,7 @@ pub(crate) fn build_missing_split_tiles_check<T: Tessellation>(instance: &CheckI
     }
 }
 
-pub(crate) fn build_invalid_loop_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidLoopIssue>>> {
+pub(crate) fn build_invalid_loop_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidLoopIssue>>> {
     match instance.type_id.as_str() {
         "loop_length" => {
             let length = instance.params.get("length")
@@ -358,7 +349,7 @@ pub(crate) fn build_invalid_loop_check<T: Tessellation>(instance: &CheckInstance
     }
 }
 
-pub(crate) fn build_invalid_loop_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidLoopGroupIssue>>> {
+pub(crate) fn build_invalid_loop_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidLoopGroupIssue>>> {
     match instance.type_id.as_str() {
         "max_loop_density" => {
             let max_density = instance.params.get("max_density")
@@ -378,7 +369,7 @@ pub(crate) fn build_invalid_loop_group_check<T: Tessellation>(instance: &CheckIn
     }
 }
 
-pub(crate) fn build_excessive_scc_count_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, ExcessiveSccCountIssue>>> {
+pub(crate) fn build_excessive_scc_count_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, ExcessiveSccCountIssue>>> {
     match instance.type_id.as_str() {
         "scc_count" => {
             let max_scc_count = instance.params.get("max_scc_count")
@@ -391,7 +382,7 @@ pub(crate) fn build_excessive_scc_count_check<T: Tessellation>(instance: &CheckI
     }
 }
 
-pub(crate) fn build_region_needs_expansion_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, RegionNeedsExpansionIssue>>> {
+pub(crate) fn build_region_needs_expansion_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, RegionNeedsExpansionIssue>>> {
     match instance.type_id.as_str() {
         "min_region_size" => {
             let min_region_size = instance.params.get("min_region_size")
@@ -413,7 +404,7 @@ pub(crate) fn build_region_needs_expansion_check<T: Tessellation>(instance: &Che
     }
 }
 
-pub(crate) fn build_region_needs_shrink_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, RegionNeedsShrinkIssue>>> {
+pub(crate) fn build_region_needs_shrink_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, RegionNeedsShrinkIssue>>> {
     match instance.type_id.as_str() {
         "max_region_size" => {
             let max_region_size = instance.params.get("max_region_size")
@@ -435,7 +426,7 @@ pub(crate) fn build_region_needs_shrink_check<T: Tessellation>(instance: &CheckI
     }
 }
 
-pub(crate) fn build_missing_regions_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingRegionsIssue>>> {
+pub(crate) fn build_missing_regions_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingRegionsIssue>>> {
     match instance.type_id.as_str() {
         "min_region_count" => {
             let parse_count = |key: &str| instance.params.get(key)
@@ -454,10 +445,10 @@ pub(crate) fn build_missing_regions_check<T: Tessellation>(instance: &CheckInsta
     }
 }
 
-pub(crate) fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidTeleportIssue>>> {
+pub(crate) fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidTeleportIssue>>> {
+    let protect_route = rule_params.protect_route;
     match instance.type_id.as_str() {
         "teleport_duplicates_connection" => {
-            let protect_route = parse_protect_route(instance.params.get("protect_route"));
             Some(Box::new(TeleportDuplicatesConnectionCheck { instance_id, protect_route }))
         }
         "teleport_waypoint_distance" => {
@@ -468,7 +459,6 @@ pub(crate) fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInst
             let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
             let waypoint = parse_teleport_waypoint(instance.params.get("waypoint"));
             let edge = parse_teleport_edge_selector(instance.params.get("edge"));
-            let protect_route = parse_protect_route(instance.params.get("protect_route"));
             Some(Box::new(TeleportWaypointDistanceCheck { instance_id, distance, comparison, waypoint, edge, protect_route }))
         }
         "teleport_geometric_length" => {
@@ -478,7 +468,6 @@ pub(crate) fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInst
                 .map(|v| v.max(0.0))
                 .unwrap_or(TELEPORT_GEOMETRIC_LENGTH_DEFAULT);
             let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
-            let protect_route = parse_protect_route(instance.params.get("protect_route"));
             Some(Box::new(TeleportGeometricLengthCheck { instance_id, comparison, length, protect_route }))
         }
         "teleport_graph_distance" => {
@@ -487,7 +476,6 @@ pub(crate) fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInst
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(TELEPORT_GRAPH_DISTANCE_DEFAULT);
             let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
-            let protect_route = parse_protect_route(instance.params.get("protect_route"));
             Some(Box::new(TeleportGraphDistanceCheck { instance_id, comparison, distance, protect_route }))
         }
         "teleport_super_hub_avoidance" => {
@@ -496,19 +484,17 @@ pub(crate) fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInst
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT);
             let edge = parse_teleport_hub_edge_selector(instance.params.get("edge_hub"));
-            let protect_route = parse_protect_route(instance.params.get("protect_route"));
             Some(Box::new(TeleportSuperHubAvoidanceCheck { instance_id, max_connections, edge, protect_route }))
         }
         "teleport_split_intersection" => {
             let edge = parse_teleport_split_edge_selector(instance.params.get("edge_split"));
-            let protect_route = parse_protect_route(instance.params.get("protect_route"));
             Some(Box::new(TeleportSplitIntersectionCheck { instance_id, edge, protect_route }))
         }
         _ => None,
     }
 }
 
-pub(crate) fn build_invalid_one_way_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidOneWayIssue>>> {
+pub(crate) fn build_invalid_one_way_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidOneWayIssue>>> {
     match instance.type_id.as_str() {
         "one_way_waypoint_distance" => {
             let distance = instance.params.get("distance")
@@ -517,14 +503,13 @@ pub(crate) fn build_invalid_one_way_check<T: Tessellation>(instance: &CheckInsta
                 .unwrap_or(ONE_WAY_WAYPOINT_DISTANCE_DEFAULT);
             let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
             let waypoint = parse_one_way_waypoint(instance.params.get("waypoint"));
-            let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Some(Box::new(OneWayWaypointDistanceCheck { instance_id, distance, comparison, waypoint, protect_route }))
+            Some(Box::new(OneWayWaypointDistanceCheck { instance_id, distance, comparison, waypoint, protect_route: rule_params.protect_route }))
         }
         _ => None,
     }
 }
 
-pub(crate) fn build_teleport_group_proximity_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidTeleportGroupIssue>>> {
+pub(crate) fn build_teleport_group_proximity_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidTeleportGroupIssue>>> {
     match instance.type_id.as_str() {
         "teleport_group_proximity" => {
             let distance = instance.params.get("distance")
@@ -534,14 +519,13 @@ pub(crate) fn build_teleport_group_proximity_check<T: Tessellation>(instance: &C
                 .unwrap_or(TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT);
             let own_edge = parse_teleport_proximity_edge(instance.params.get("own_edge"));
             let other_edge = parse_teleport_proximity_edge(instance.params.get("other_edge"));
-            let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Some(Box::new(TeleportGroupProximityCheck { instance_id, distance, own_edge, other_edge, protect_route }))
+            Some(Box::new(TeleportGroupProximityCheck { instance_id, distance, own_edge, other_edge, protect_route: rule_params.protect_route }))
         }
         _ => None,
     }
 }
 
-pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidOneWayGroupIssue>>> {
+pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidOneWayGroupIssue>>> {
     match instance.type_id.as_str() {
         "one_way_group_geometric_proximity" => {
             let distance = instance.params.get("distance")
@@ -549,8 +533,7 @@ pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(instance: &Ch
                 .filter(|v| v.is_finite())
                 .map(|v| v.max(0.0))
                 .unwrap_or(ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT);
-            let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Some(Box::new(OneWayGroupGeometricProximityCheck { instance_id, distance, protect_route }))
+            Some(Box::new(OneWayGroupGeometricProximityCheck { instance_id, distance, protect_route: rule_params.protect_route }))
         }
         "one_way_group_graph_proximity" => {
             let distance = instance.params.get("distance")
@@ -558,8 +541,7 @@ pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(instance: &Ch
                 .filter(|v| v.is_finite())
                 .map(|v| v.max(0.0))
                 .unwrap_or(ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT);
-            let protect_route = parse_protect_route(instance.params.get("protect_route"));
-            Some(Box::new(OneWayGroupGraphProximityCheck { instance_id, distance, protect_route }))
+            Some(Box::new(OneWayGroupGraphProximityCheck { instance_id, distance, protect_route: rule_params.protect_route }))
         }
         "one_way_group_super_hub" => {
             let max_connections = instance.params.get("max_connections")
@@ -586,7 +568,7 @@ pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(instance: &Ch
     }
 }
 
-pub(crate) fn build_missing_one_ways_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingOneWaysIssue>>> {
+pub(crate) fn build_missing_one_ways_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingOneWaysIssue>>> {
     match instance.type_id.as_str() {
         "min_one_way_count" => {
             let min_one_ways = instance.params.get("min_one_ways")
@@ -606,7 +588,7 @@ pub(crate) fn build_missing_one_ways_check<T: Tessellation>(instance: &CheckInst
     }
 }
 
-pub(crate) fn build_invalid_split_tile_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitTileIssue>>> {
+pub(crate) fn build_invalid_split_tile_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitTileIssue>>> {
     match instance.type_id.as_str() {
         "split_distance_from_waypoint" => {
             let distance = instance.params.get("distance")
@@ -625,7 +607,7 @@ pub(crate) fn build_invalid_split_tile_check<T: Tessellation>(instance: &CheckIn
     }
 }
 
-pub(crate) fn build_invalid_split_node_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitNodeIssue>>> {
+pub(crate) fn build_invalid_split_node_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitNodeIssue>>> {
     match instance.type_id.as_str() {
         "split_node_connection_count" => {
             let count = instance.params.get("count")
@@ -640,7 +622,7 @@ pub(crate) fn build_invalid_split_node_check<T: Tessellation>(instance: &CheckIn
     }
 }
 
-pub(crate) fn build_split_node_connection_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitNodeConnectionGroupIssue>>> {
+pub(crate) fn build_split_node_connection_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitNodeConnectionGroupIssue>>> {
     match instance.type_id.as_str() {
         "split_node_connection_per_neighbor" => {
             let max = instance.params.get("max")
@@ -660,7 +642,7 @@ pub(crate) fn build_split_node_connection_group_check<T: Tessellation>(instance:
     }
 }
 
-pub(crate) fn build_invalid_split_route_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitRouteIssue>>> {
+pub(crate) fn build_invalid_split_route_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitRouteIssue>>> {
     match instance.type_id.as_str() {
         "split_node_connection_traversal_distance" => {
             let min_detour = instance.params.get("min_detour")
@@ -673,7 +655,7 @@ pub(crate) fn build_invalid_split_route_check<T: Tessellation>(instance: &CheckI
     }
 }
 
-pub(crate) fn build_split_node_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitNodeGroupIssue>>> {
+pub(crate) fn build_split_node_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitNodeGroupIssue>>> {
     match instance.type_id.as_str() {
         "max_split_tile_node_count" => {
             let max = instance.params.get("max")
@@ -686,7 +668,7 @@ pub(crate) fn build_split_node_group_check<T: Tessellation>(instance: &CheckInst
     }
 }
 
-pub(crate) fn build_split_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitTileGroupIssue>>> {
+pub(crate) fn build_split_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidSplitTileGroupIssue>>> {
     match instance.type_id.as_str() {
         "max_split_count" => {
             let max_split_count = instance.params.get("max_split_count")
@@ -722,7 +704,7 @@ pub(crate) fn build_split_group_check<T: Tessellation>(instance: &CheckInstanceC
     }
 }
 
-pub(crate) fn build_missing_teleports_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingTeleportsIssue>>> {
+pub(crate) fn build_missing_teleports_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingTeleportsIssue>>> {
     match instance.type_id.as_str() {
         "min_teleport_count" => {
             let min_teleports = instance.params.get("min_teleports")

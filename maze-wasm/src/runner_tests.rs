@@ -451,6 +451,7 @@ mod build_qc_and_repair_tests {
                 id: "r1".to_string(),
                 checks: vec![],
                 strategy: None,
+                params: std::collections::HashMap::new(),
             }]),
             ..GenerateConfig::default()
         };
@@ -465,6 +466,7 @@ mod build_qc_and_repair_tests {
                 id: "r1".to_string(),
                 checks: vec![check("a", "missing_endpoints"), check("a", "missing_endpoints")],
                 strategy: None,
+                params: std::collections::HashMap::new(),
             }]),
             ..GenerateConfig::default()
         };
@@ -479,6 +481,7 @@ mod build_qc_and_repair_tests {
                 id: "r1".to_string(),
                 checks: vec![check("a", "missing_endpoints"), check("b", "unreachable_finish")],
                 strategy: None,
+                params: std::collections::HashMap::new(),
             }]),
             ..GenerateConfig::default()
         };
@@ -496,6 +499,7 @@ mod build_qc_and_repair_tests {
                 id: "r1".to_string(),
                 checks: vec![check("a", "missing_endpoints")],
                 strategy: Some(StrategyConfig { id: "not_a_real_strategy".to_string(), params: HashMap::new(), slot_id: None, nested: vec![] }),
+                params: HashMap::new(),
             }]),
             ..GenerateConfig::default()
         };
@@ -510,6 +514,7 @@ mod build_qc_and_repair_tests {
                 id: "r1".to_string(),
                 checks: vec![check("a", "missing_endpoints")],
                 strategy: None,
+                params: std::collections::HashMap::new(),
             }]),
             ..GenerateConfig::default()
         };
@@ -527,11 +532,13 @@ mod build_qc_and_repair_tests {
                     id: "r1".to_string(),
                     checks: vec![check("a", "missing_endpoints")],
                     strategy: Some(StrategyConfig { id: "farthest_endpoints".to_string(), params: HashMap::new(), slot_id: None, nested: vec![] }),
+                    params: HashMap::new(),
                 },
                 QcRuleConfig {
                     id: "r2".to_string(),
                     checks: vec![check("b", "unreachable_finish")],
                     strategy: None,
+                    params: HashMap::new(),
                 },
             ]),
             ..GenerateConfig::default()
@@ -552,6 +559,7 @@ mod build_qc_and_repair_tests {
                         params: HashMap::from([("region_class".to_string(), "trap".to_string()), ("count".to_string(), "2".to_string())]),
                     }],
                     strategy: None,
+                    params: HashMap::new(),
                 },
                 QcRuleConfig {
                     id: "r_alt".to_string(),
@@ -561,6 +569,7 @@ mod build_qc_and_repair_tests {
                         params: HashMap::from([("region_class".to_string(), "alternative".to_string()), ("count".to_string(), "2".to_string())]),
                     }],
                     strategy: None,
+                    params: HashMap::new(),
                 },
             ]),
             ..GenerateConfig::default()
@@ -587,6 +596,7 @@ mod build_qc_and_repair_tests {
                     },
                 ],
                 strategy: None,
+                params: HashMap::new(),
             }]),
             ..GenerateConfig::default()
         };
@@ -605,8 +615,8 @@ mod build_qc_and_repair_tests {
     fn duplicate_stage_id_is_rejected() {
         let config = GenerateConfig {
             stages: vec![
-                StageConfig { id: "stage_1".to_string(), name: "Stage 1".to_string(), rules: vec![QcRuleConfig { id: "r1".to_string(), checks: vec![check("a", "missing_endpoints")], strategy: None }] },
-                StageConfig { id: "stage_1".to_string(), name: "Stage 1 (dup)".to_string(), rules: vec![QcRuleConfig { id: "r2".to_string(), checks: vec![check("b", "unreachable_finish")], strategy: None }] },
+                StageConfig { id: "stage_1".to_string(), name: "Stage 1".to_string(), rules: vec![QcRuleConfig { id: "r1".to_string(), checks: vec![check("a", "missing_endpoints")], strategy: None, params: std::collections::HashMap::new() }] },
+                StageConfig { id: "stage_1".to_string(), name: "Stage 1 (dup)".to_string(), rules: vec![QcRuleConfig { id: "r2".to_string(), checks: vec![check("b", "unreachable_finish")], strategy: None, params: std::collections::HashMap::new() }] },
             ],
             ..GenerateConfig::default()
         };
@@ -618,8 +628,8 @@ mod build_qc_and_repair_tests {
     fn duplicate_rule_id_across_stages_is_rejected() {
         let config = GenerateConfig {
             stages: vec![
-                StageConfig { id: "stage_1".to_string(), name: "Stage 1".to_string(), rules: vec![QcRuleConfig { id: "r1".to_string(), checks: vec![check("a", "missing_endpoints")], strategy: None }] },
-                StageConfig { id: "stage_2".to_string(), name: "Stage 2".to_string(), rules: vec![QcRuleConfig { id: "r1".to_string(), checks: vec![check("b", "unreachable_finish")], strategy: None }] },
+                StageConfig { id: "stage_1".to_string(), name: "Stage 1".to_string(), rules: vec![QcRuleConfig { id: "r1".to_string(), checks: vec![check("a", "missing_endpoints")], strategy: None, params: std::collections::HashMap::new() }] },
+                StageConfig { id: "stage_2".to_string(), name: "Stage 2".to_string(), rules: vec![QcRuleConfig { id: "r1".to_string(), checks: vec![check("b", "unreachable_finish")], strategy: None, params: std::collections::HashMap::new() }] },
             ],
             ..GenerateConfig::default()
         };
@@ -640,6 +650,7 @@ mod build_qc_and_repair_tests {
                         id: "r1".to_string(),
                         checks: vec![check("a", "missing_endpoints")],
                         strategy: Some(StrategyConfig { id: "farthest_endpoints".to_string(), params: HashMap::new(), slot_id: None, nested: vec![] }),
+                        params: HashMap::new(),
                     }],
                 },
                 StageConfig {
@@ -648,6 +659,7 @@ mod build_qc_and_repair_tests {
                         id: "r2".to_string(),
                         checks: vec![check("b", "unreachable_finish")],
                         strategy: None,
+                        params: HashMap::new(),
                     }],
                 },
             ],

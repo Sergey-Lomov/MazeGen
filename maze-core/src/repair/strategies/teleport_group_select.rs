@@ -4,25 +4,18 @@ use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::quality_control::{TeleportGroupKind, InvalidTeleportGroupIssue, InvalidTeleportIssue, INVALID_TELEPORT};
 use crate::generation::PresetState;
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
+use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::MutationCommand;
 use crate::repair::strategies::group_select::{group_select_apply, PARAM_PRIORITY, PRIORITY_PROBLEMATIC, PRIORITY_OPTIONS};
 use crate::graph::route_protection::is_teleport_route_protected;
 
-pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
-
 static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_PRIORITY,
         label: "Removal priority",
         kind: StrategyParamKind::Enum { options: PRIORITY_OPTIONS, default: PRIORITY_PROBLEMATIC },
-    },
-    StrategyParam {
-        id: PARAM_PROTECT_ROUTE,
-        label: "Protect route teleports",
-        kind: StrategyParamKind::Bool { default: true },
     },
 ];
 
@@ -51,12 +44,12 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 /// — see that function's doc comment for the full walkthrough (membership priority, single global
 /// candidate pass, per-group `to_remove` budget, nested delegation, wholly-protected-group
 /// auto-resolve). This strategy's own remaining responsibility is exactly what's specific to
-/// teleports: `PARAM_PROTECT_ROUTE` (excluding route-critical teleports from the candidate pool,
+/// teleports: `protect_route` (excluding route-critical teleports from the candidate pool,
 /// via `is_teleport_route_protected`), resolving `SLOT_FIX_TARGET`/`INVALID_TELEPORT`
 /// (`RemoveTeleportStrategy`) from `nested`, and (GitHub issue #210) supplying
 /// `build_nested_issue`/`element_invalidated`/`order_by_priority(params)` to `group_select_apply`.
 ///
-/// `PARAM_PROTECT_ROUTE` (see GitHub issue #78, default `true`): a teleport lying on the maze's
+/// `protect_route` (see GitHub issue #78, default `true`): a teleport lying on the maze's
 /// current start->finish route (`is_teleport_route_protected`) is excluded from the candidate
 /// pool up front, for every pair. When *both* sides of a pair are route-protected, the pair has no
 /// allowed candidate at all — `group_select_apply` zeroes its budget up front so it's never
@@ -75,7 +68,13 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 /// `allow_reverse` — whether removing a chosen teleport also removes its opposite-direction
 /// counterpart — moved onto the nested `RemoveTeleportStrategy`'s own param (GitHub issue #190)
 /// now that removal itself is delegated there, rather than staying a param of this strategy.
-pub struct TeleportGroupSelectStrategy;
+///
+/// `protect_route` (GitHub issue #253) is a rule-level parameter, resolved once by the factory
+/// (`maze-runner`'s `build_rule_for!`) from `RuleParams` — not a `StrategyParam` anymore, so it
+/// has no local override.
+pub struct TeleportGroupSelectStrategy {
+    pub protect_route: bool,
+}
 
 impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportGroupSelectStrategy {
     fn strategy_id(&self) -> &'static str { "teleport_group_select" }
@@ -108,7 +107,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidTeleportGroupIssue> for TeleportG
             return (RepairResult::Failed, vec![]);
         };
 
-        let protect_route = matches!(params.get(PARAM_PROTECT_ROUTE), Some(StrategyParamValue::Bool(true)));
+        let protect_route = self.protect_route;
         let element_allowed = |edge: &EdgeId| !protect_route || !is_teleport_route_protected(maze, *edge);
         let build_nested_issue = |source_check: &str, target: &EdgeId, _others: &[EdgeId]| -> Box<dyn crate::quality_control::Issue> {
             Box::new(InvalidTeleportIssue::new_from_check(source_check, vec![*target]))

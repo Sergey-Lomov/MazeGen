@@ -641,14 +641,14 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       rules: [
-        { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: true, nestedStrategies: [] },
+        { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: true, params: {}, nestedStrategies: [] },
         makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
       ],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false }],
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
-    expect(call[1].stages.flatMap((s) => s.rules)).toEqual([{ id: "g2", checks: [{ local_id: "0", type_id: "check_b", params: {} }], strategy: null }]);
+    expect(call[1].stages.flatMap((s) => s.rules)).toEqual([{ id: "g2", checks: [{ local_id: "0", type_id: "check_b", params: {} }], strategy: null, params: {} }]);
   });
 
   it("excludes a disabled check from its rule's checks, keeping the rule and its other checks", () => {
@@ -661,7 +661,7 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
-    expect(call[1].stages.flatMap((s) => s.rules)).toEqual([{ id: "g1", checks: [{ local_id: "1", type_id: "check_b", params: {} }], strategy: null }]);
+    expect(call[1].stages.flatMap((s) => s.rules)).toEqual([{ id: "g1", checks: [{ local_id: "1", type_id: "check_b", params: {} }], strategy: null, params: {} }]);
   });
 
   it("omits a rule entirely when every one of its checks is disabled (core rejects an empty checks array)", () => {
@@ -675,7 +675,7 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
-    expect(call[1].stages.flatMap((s) => s.rules)).toEqual([{ id: "g2", checks: [{ local_id: "0", type_id: "check_b", params: {} }], strategy: null }]);
+    expect(call[1].stages.flatMap((s) => s.rules)).toEqual([{ id: "g2", checks: [{ local_id: "0", type_id: "check_b", params: {} }], strategy: null, params: {} }]);
   });
 
   it("omits a rule entirely when its checks array is already empty (pre-existing 'no checks' guard)", () => {

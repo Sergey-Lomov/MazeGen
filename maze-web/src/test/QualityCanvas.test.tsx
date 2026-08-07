@@ -24,7 +24,7 @@ beforeEach(() => {
   useMazeStore.setState({
     availableChecks: [checkDescriptor],
     availableStrategies: [],
-    rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+    rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [] }],
     stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false }],
     strategyParams: {},
   } as Partial<ReturnType<typeof useMazeStore.getState>>);

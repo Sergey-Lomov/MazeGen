@@ -176,8 +176,8 @@ pub fn available_strategies() -> JsValue {
         StrategyDescriptor {
             id: "region_shrink_split",
             handles: REGION_NEEDS_SHRINK.as_str(),
-            params: strategy_params_dto(<RegionShrinkSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsShrinkIssue>>::params(&RegionShrinkSplitStrategy)),
-            experimental: <RegionShrinkSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsShrinkIssue>>::is_experimental(&RegionShrinkSplitStrategy),
+            params: strategy_params_dto(<RegionShrinkSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsShrinkIssue>>::params(&RegionShrinkSplitStrategy { protect_route: true })),
+            experimental: <RegionShrinkSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsShrinkIssue>>::is_experimental(&RegionShrinkSplitStrategy { protect_route: true }),
             nested_slots: vec![],
         },
         StrategyDescriptor {
@@ -204,9 +204,9 @@ pub fn available_strategies() -> JsValue {
         StrategyDescriptor {
             id: "teleport_group_select",
             handles: INVALID_TELEPORT_GROUP.as_str(),
-            params: strategy_params_dto(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::params(&TeleportGroupSelectStrategy)),
-            experimental: <TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::is_experimental(&TeleportGroupSelectStrategy),
-            nested_slots: nested_slots_dto(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::expected_nested(&TeleportGroupSelectStrategy)),
+            params: strategy_params_dto(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::params(&TeleportGroupSelectStrategy { protect_route: true })),
+            experimental: <TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::is_experimental(&TeleportGroupSelectStrategy { protect_route: true }),
+            nested_slots: nested_slots_dto(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::expected_nested(&TeleportGroupSelectStrategy { protect_route: true })),
         },
         StrategyDescriptor {
             id: "one_way_to_passage",
@@ -225,9 +225,9 @@ pub fn available_strategies() -> JsValue {
         StrategyDescriptor {
             id: "one_way_group_select",
             handles: INVALID_ONE_WAY_GROUP.as_str(),
-            params: strategy_params_dto(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::params(&OneWayGroupSelectStrategy)),
-            experimental: <OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::is_experimental(&OneWayGroupSelectStrategy),
-            nested_slots: nested_slots_dto(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::expected_nested(&OneWayGroupSelectStrategy)),
+            params: strategy_params_dto(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::params(&OneWayGroupSelectStrategy { protect_route: true })),
+            experimental: <OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::is_experimental(&OneWayGroupSelectStrategy { protect_route: true }),
+            nested_slots: nested_slots_dto(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::expected_nested(&OneWayGroupSelectStrategy { protect_route: true })),
         },
         StrategyDescriptor {
             id: "weighted_region_merge",
@@ -287,7 +287,7 @@ pub fn available_strategies() -> JsValue {
             // isn't a `StrategyParamKind` maze-core can express (no serde there to parse it) — see
             // `maze-runner`'s `build_add_split_strategy`/`parse_split_config_param`.
             params: {
-                let default_strategy = AddSplitStrategy { config: Default::default() };
+                let default_strategy = AddSplitStrategy { config: Default::default(), protect_route: true };
                 let mut params = strategy_params_dto(<AddSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingSplitTilesIssue>>::params(&default_strategy));
                 params.push(ParamDescriptor {
                     id: "split_config",
@@ -296,7 +296,7 @@ pub fn available_strategies() -> JsValue {
                 });
                 params
             },
-            experimental: <AddSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingSplitTilesIssue>>::is_experimental(&AddSplitStrategy { config: Default::default() }),
+            experimental: <AddSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingSplitTilesIssue>>::is_experimental(&AddSplitStrategy { config: Default::default(), protect_route: true }),
             nested_slots: vec![],
         },
         StrategyDescriptor {

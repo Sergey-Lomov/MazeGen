@@ -16,6 +16,7 @@ use tessellation_dispatch::dispatch_generate;
 
 pub use checks_catalog::available_checks;
 pub use strategies_catalog::available_strategies;
+pub use check_descriptor::available_rule_params;
 pub use geometry::cartesian_coords;
 pub use analytics::compute_analytics;
 

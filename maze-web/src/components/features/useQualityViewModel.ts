@@ -72,6 +72,10 @@ export interface StrategySlotVM {
    * slot (matched by `slotId`) — empty when `strategy` has no nested slots or none are
    * configured yet. */
   nestedStrategies: NestedStrategyVM[];
+  /** Rule-level parameter values (e.g. `protect_route`), keyed by `ParamDescriptor.id` — see
+   * GitHub issue #253. Mirrors `QcRuleState.params` unchanged (no per-rule descriptor resolution
+   * needed here, the catalog itself — `availableRuleParams` — is global and shown separately). */
+  params: Record<string, string>;
 }
 
 /** One stage's rule cards, in `RepairStageState.ruleIds` order — see GitHub issue #65. */
@@ -180,6 +184,7 @@ export function useQualityViewModel(): QualityViewModel {
         ruleDisabled: r.ruleDisabled,
         producedBy,
         nestedStrategies: s ? buildNested(r.nestedStrategies) : [],
+        params: r.params,
       };
     }
 

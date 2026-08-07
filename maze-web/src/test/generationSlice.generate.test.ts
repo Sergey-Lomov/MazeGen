@@ -10,6 +10,7 @@ vi.mock("../wasm/mazeService", () => ({
   computeAnalytics: vi.fn(),
   getAvailableChecks: vi.fn(() => []),
   getAvailableStrategies: vi.fn(() => []),
+  getAvailableRuleParams: vi.fn(() => []),
   getCartesianCoords: vi.fn((cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y])),
 }));
 vi.mock("../wasm/wasmLoader", () => ({
@@ -256,6 +257,7 @@ describe("mazeStore.generate", () => {
           id: "g1",
           checks: [{ local_id: "0", type_id: "missing_endpoints", params: {} }],
           strategy: { id: "scored_endpoints", params: { path_weight: "2", junction_weight: "6" } },
+          params: {},
         }],
       }],
       repair_max_iterations: 100,
@@ -299,7 +301,7 @@ describe("mazeStore.generate", () => {
         id: "g1", name: "Rule 1", kind: "region_needs_expansion",
         checks: [{ localId: 0, typeId: "min_region_size", params: {}, disabled: false }], nextLocalCheckId: 1,
         strategyId: "weighted_region_merge", disabled: false, ruleDisabled: false,
-        nestedStrategies: [
+        params: {}, nestedStrategies: [
           { slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest", weight: "3.0" }, nested: [] },
           { slotId: "merge_target", strategyId: "teleport_region_merge", params: { weight: "1.0" }, nested: [] },
         ],
@@ -343,15 +345,15 @@ describe("mazeStore.generate", () => {
     useMazeStore.setState({
       rules: [
         makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
-        { id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "some_strategy", disabled: true, ruleDisabled: false, nestedStrategies: [] },
+        { id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "some_strategy", disabled: true, ruleDisabled: false, params: {}, nestedStrategies: [] },
       ],
       stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false }],
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
     expect(call[1].stages.flatMap((s) => s.rules)).toEqual([
-      { id: "g1", checks: [{ local_id: "0", type_id: "check_a", params: {} }], strategy: null },
-      { id: "g2", checks: [{ local_id: "0", type_id: "check_b", params: {} }], strategy: null },
+      { id: "g1", checks: [{ local_id: "0", type_id: "check_a", params: {} }], strategy: null, params: {} },
+      { id: "g2", checks: [{ local_id: "0", type_id: "check_b", params: {} }], strategy: null, params: {} },
     ]);
   });
 });
@@ -547,6 +549,22 @@ describe("mazeStore.loadRegistry", () => {
     await useMazeStore.getState().loadRegistry();
     const selectedChecks = useMazeStore.getState().rules.flatMap((r) => r.checks.map((c) => c.typeId));
     expect(selectedChecks).toEqual(["check_no_params"]);
+  });
+
+  it("excludes teleport checks from the default set even when they have no params", async () => {
+    // teleport_duplicates_connection has params: [] just like any other auto-selected check, but
+    // must not be pre-populated: teleport validation isn't relevant until the user actually
+    // enables teleports.
+    const checks = [
+      { id: "check_a", label: "Check A", description: "", issue_kinds: ["kind_a"], params: [], allow_multiple_instances: false },
+      { id: "teleport_duplicates_connection", label: "Teleport dup", description: "", issue_kinds: ["invalid_teleport"], params: [], allow_multiple_instances: false },
+      { id: "some_group_check", label: "Group check", description: "", issue_kinds: ["invalid_teleport_group"], params: [], allow_multiple_instances: false },
+    ];
+    vi.mocked(getAvailableChecks).mockReturnValue(checks);
+    vi.mocked(getAvailableStrategies).mockReturnValue([]);
+    await useMazeStore.getState().loadRegistry();
+    const selectedChecks = useMazeStore.getState().rules.flatMap((r) => r.checks.map((c) => c.typeId));
+    expect(selectedChecks).toEqual(["check_a"]);
   });
 
   it("preserves rules on repeated call", async () => {

@@ -14,7 +14,6 @@ use super::split_core::{pick_weighted_pattern, plan_unconstrained_split as core_
 pub const PARAM_ALLOW_LOSE_CONNECTIONS: &str = "allow_lose_connections";
 pub const PARAM_ALLOW_ADD_CONNECTIONS: &str = "allow_add_connections";
 pub const PARAM_MAX_ATTEMPTS: &str = "max_attempts";
-pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
 pub const MAX_ATTEMPTS_DEFAULT: u32 = 50;
 
 static PARAMS: &[StrategyParam] = &[
@@ -32,11 +31,6 @@ static PARAMS: &[StrategyParam] = &[
         id: PARAM_MAX_ATTEMPTS,
         label: "Max failed attempts",
         kind: StrategyParamKind::Float { default: MAX_ATTEMPTS_DEFAULT as f64, min: 1.0, max: 10_000.0 },
-    },
-    StrategyParam {
-        id: PARAM_PROTECT_ROUTE,
-        label: "Protect route",
-        kind: StrategyParamKind::Bool { default: true },
     },
 ];
 
@@ -82,8 +76,13 @@ static PARAMS: &[StrategyParam] = &[
 /// slot-0, on equal footing with every other index) — `allow_lose_connections`/
 /// `allow_add_connections` don't apply here (no connection is ever lost or invented, only
 /// reassigned).
+///
+/// `protect_route` (GitHub issue #253) is a rule-level parameter, resolved once by the factory
+/// (`maze-runner`'s `build_rule_for!`) from `RuleParams` — not a `StrategyParam` anymore, so it
+/// has no local override.
 pub struct AddSplitStrategy {
     pub config: SplitGenerationConfig,
+    pub protect_route: bool,
 }
 
 impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStrategy {
@@ -112,10 +111,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
         let max_attempts = params.get(PARAM_MAX_ATTEMPTS).and_then(|v| v.as_float())
             .map(|v| v.max(1.0) as u32)
             .unwrap_or(MAX_ATTEMPTS_DEFAULT);
-        let protect_route = match params.get(PARAM_PROTECT_ROUTE) {
-            Some(StrategyParamValue::Bool(v)) => *v,
-            _ => true,
-        };
+        let protect_route = self.protect_route;
 
         let candidates: Vec<NodeId> = maze.field.all_node_ids()
             .filter(|&node| crate::generation::split_is_eligible(&maze.field, preset_state, node))
@@ -184,7 +180,7 @@ mod tests {
     use crate::repair::strategies::split_core;
 
     fn no_params() -> StrategyParams {
-        build_params(<AddSplitStrategy as RepairStrategy<SquareTessellation, MissingSplitTilesIssue>>::params(&AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] } }), None)
+        build_params(<AddSplitStrategy as RepairStrategy<SquareTessellation, MissingSplitTilesIssue>>::params(&strategy_unconstrained()), None)
     }
 
     fn maze_line(len: usize) -> Maze<SquareTessellation> {
@@ -208,7 +204,7 @@ mod tests {
     }
 
     fn strategy_unconstrained() -> AddSplitStrategy {
-        AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] } }
+        AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] }, protect_route: true }
     }
 
     #[test]
@@ -238,7 +234,7 @@ mod tests {
         let mut maze = maze_line(3);
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(3);
-        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: false, max_split_nodes: 4, patterns: vec![] } };
+        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: false, max_split_nodes: 4, patterns: vec![] }, protect_route: true };
         let nodes_before = maze.field.node_count();
         let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -307,11 +303,9 @@ mod tests {
         let mut maze = maze_line_with_route(3);
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let mut overrides = std::collections::HashMap::new();
-        overrides.insert(PARAM_PROTECT_ROUTE.to_string(), "false".to_string());
-        let params = build_params(<AddSplitStrategy as RepairStrategy<SquareTessellation, MissingSplitTilesIssue>>::params(&strategy_unconstrained()), Some(&overrides));
+        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] }, protect_route: false };
         let nodes_before = maze.field.node_count();
-        let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.field.node_count(), nodes_before + 1);
     }
@@ -371,7 +365,7 @@ mod tests {
         // the claiming node's own face adds the new connection.
         let mut maze = maze_grid(3, 3);
 
-        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![two_node_passage_pattern()] } };
+        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![two_node_passage_pattern()] }, protect_route: true };
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(5);
         let nodes_before = maze.field.node_count();
@@ -412,7 +406,7 @@ mod tests {
         // East passage without adding a new connection — with allow_add forbidden, every rotation
         // fails.
         let mut maze = maze_line(3);
-        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![two_node_passage_pattern()] } };
+        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![two_node_passage_pattern()] }, protect_route: true };
         let mut overrides = std::collections::HashMap::new();
         overrides.insert(PARAM_ALLOW_ADD_CONNECTIONS.to_string(), "false".to_string());
         let params = build_params(<AddSplitStrategy as RepairStrategy<SquareTessellation, MissingSplitTilesIssue>>::params(&strategy), Some(&overrides));
@@ -432,7 +426,7 @@ mod tests {
         // required connection (the original bug: a pattern applied where it can't fit, producing
         // a truncated tile that doesn't match the pattern at all).
         let mut maze = maze_line(1);
-        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![two_node_passage_pattern()] } };
+        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![two_node_passage_pattern()] }, protect_route: true };
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
@@ -456,7 +450,7 @@ mod tests {
         maze.graph.add_bidirectional_edge(row[0], row[1], EdgeKind::Basic);
         maze.graph.add_bidirectional_edge(row[1], row[2], EdgeKind::Basic);
 
-        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![two_node_passage_pattern()] } };
+        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![two_node_passage_pattern()] }, protect_route: true };
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(5);
         let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
@@ -481,7 +475,7 @@ mod tests {
         maze.graph.add_bidirectional_edge(row[1], row[2], EdgeKind::Basic);
         let all_nodes_before: Vec<NodeId> = maze.field.all_node_ids().collect();
 
-        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![two_node_passage_pattern()] } };
+        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![two_node_passage_pattern()] }, protect_route: true };
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(5);
         apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);

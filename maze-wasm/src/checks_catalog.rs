@@ -2,7 +2,7 @@ use wasm_bindgen::prelude::*;
 use maze_core::{
     quality_control::{IssueKind, Comparison, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, INVALID_LOOP_GROUP, LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_LOOPS_COUNT_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, MAX_REGION_SIZE_DEFAULT, MAX_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, INVALID_TELEPORT_GROUP, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT, INVALID_ONE_WAY, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT, INVALID_ONE_WAY_GROUP, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, MISSING_ONE_WAYS, MIN_ONE_WAY_COUNT_DEFAULT, MIN_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_COUNT_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT, MISSING_TELEPORTS, MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT, INVALID_SPLIT_TILE, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, INVALID_SPLIT_TILE_GROUP, MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, MISSING_SPLIT_TILES, SPLIT_COUNT_DEFAULT, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT, INVALID_SPLIT_NODE, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, INVALID_SPLIT_NODE_CONNECTION_GROUP, SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT, SPLIT_NODE_CONNECTION_TRAVERSAL_DISTANCE_MIN_DETOUR_DEFAULT, INVALID_SPLIT_NODE_GROUP, MAX_SPLIT_TILE_NODE_COUNT_DEFAULT, INVALID_SPLIT_ROUTE},
 };
-use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, protect_route_param, comparison_param, cycle_kind_param, split_patterns_filter_param};
+use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, split_patterns_filter_param};
 
 // Helper to turn IssueKind into a &'static str for JSON serialization.
 fn kind_str(k: IssueKind) -> &'static str {
@@ -37,7 +37,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             label: "Teleport duplicates connection",
             description: "Fires if a teleport edge duplicates a regular connection already present between the same pair in the same direction.",
             issue_kinds: vec![kind_str(INVALID_TELEPORT)],
-            params: vec![protect_route_param()],
+            params: vec![],
             allow_multiple_instances: false,
         },
         CheckDescriptor {
@@ -62,7 +62,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Edge",
                     kind: ParamKindDto::Enum { options: vec!["entry_only", "entry_or_exit"], default: "entry_or_exit" },
                 },
-                protect_route_param(),
             ],
             // Multiple instances with different waypoint/edge/distance combinations are a
             // legitimate common configuration (e.g. "entry far from start" AND separately "exit
@@ -81,7 +80,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     kind: ParamKindDto::Float { default: TELEPORT_GEOMETRIC_LENGTH_DEFAULT, min: 0.0, max: 1_000_000.0 },
                 },
                 comparison_param(Comparison::Lt),
-                protect_route_param(),
             ],
             allow_multiple_instances: false,
         },
@@ -97,7 +95,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     kind: ParamKindDto::Integer { default: TELEPORT_GRAPH_DISTANCE_DEFAULT as i64, min: 0, max: 100_000 },
                 },
                 comparison_param(Comparison::Lt),
-                protect_route_param(),
             ],
             allow_multiple_instances: false,
         },
@@ -117,7 +114,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Edge",
                     kind: ParamKindDto::Enum { options: vec!["entry", "exit", "entry_or_exit"], default: "entry_or_exit" },
                 },
-                protect_route_param(),
             ],
             allow_multiple_instances: false,
         },
@@ -132,7 +128,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Edge",
                     kind: ParamKindDto::Enum { options: vec!["entry", "exit", "entry_or_exit"], default: "entry_or_exit" },
                 },
-                protect_route_param(),
             ],
             allow_multiple_instances: false,
         },
@@ -157,7 +152,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Other teleport's end",
                     kind: ParamKindDto::Enum { options: vec!["entry", "exit", "entry_or_exit"], default: "entry_or_exit" },
                 },
-                protect_route_param(),
             ],
             // Multiple instances with different own_edge/other_edge/distance combinations are a
             // legitimate simultaneous configuration (e.g. "entries close to each other" AND
@@ -238,7 +232,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Waypoint",
                     kind: ParamKindDto::Enum { options: vec!["start", "finish", "any"], default: "any" },
                 },
-                protect_route_param(),
             ],
             // Multiple instances with different waypoint/distance combinations are a legitimate
             // simultaneous configuration -- same rationale as teleport_waypoint_distance's
@@ -256,7 +249,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Distance threshold",
                     kind: ParamKindDto::Float { default: ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
                 },
-                protect_route_param(),
             ],
             // Multiple instances with different distance thresholds are a legitimate simultaneous
             // configuration -- same rationale as teleport_group_proximity's allow_multiple_instances.
@@ -273,7 +265,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Distance threshold",
                     kind: ParamKindDto::Float { default: ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
                 },
-                protect_route_param(),
             ],
             allow_multiple_instances: true,
         },

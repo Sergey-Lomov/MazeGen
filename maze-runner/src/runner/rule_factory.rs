@@ -25,6 +25,7 @@ use super::check_factory::{
     build_split_node_group_check, build_invalid_split_route_check,
 };
 use super::strategy_factory::{build_strategy_erased, downcast_strategy, build_nested};
+use super::rule_params::resolve_rule_params;
 
 /// Generates the common body for one `KindTag` arm of `build_rule::<T>`: collects `rule_cfg`'s
 /// checks via `$check_ctor` (erroring if any `type_id` doesn't belong to this arm's `I`, i.e.
@@ -39,14 +40,22 @@ use super::strategy_factory::{build_strategy_erased, downcast_strategy, build_ne
 macro_rules! build_rule_for {
     ($IssueTy:ty, $check_ctor:ident, $rule_cfg:expr) => {{
         let rule_cfg = $rule_cfg;
+        let rule_params = resolve_rule_params(&rule_cfg.params)
+            .map_err(|e| format!("rule {}: {e}", rule_cfg.id))?;
         let mut checks: Vec<(String, Box<dyn maze_core::quality_control::Check<T, $IssueTy>>)> = Vec::with_capacity(rule_cfg.checks.len());
         let mut seen_local_ids: HashSet<&str> = HashSet::new();
         for instance in &rule_cfg.checks {
             if !seen_local_ids.insert(instance.local_id.as_str()) {
                 return Err(format!("rule {} has duplicate local_id: {}", rule_cfg.id, instance.local_id));
             }
+            if let Some(param_id) = instance.params.keys().find(|k| maze_core::quality_control::rule_param_applies_to(k, &instance.type_id)) {
+                return Err(format!(
+                    "check {} ({}) in rule {} has a local \"{param_id}\" param — {param_id} is a rule-level parameter (GitHub issue #253), configure it on the rule instead",
+                    instance.local_id, instance.type_id, rule_cfg.id,
+                ));
+            }
             let instance_id = composite_check_id(&rule_cfg.id, &instance.local_id);
-            let check = $check_ctor::<T>(instance, instance_id)
+            let check = $check_ctor::<T>(instance, instance_id, &rule_params)
                 .ok_or_else(|| format!("checks in rule {} produce different issue kinds", rule_cfg.id))?;
             checks.push((instance.local_id.clone(), check));
         }
@@ -56,8 +65,8 @@ macro_rules! build_rule_for {
                 if strategy_cfg.slot_id.is_some() {
                     return Err(format!("rule {}'s top-level strategy must not declare slot_id", rule_cfg.id));
                 }
-                let erased = build_strategy_erased::<T>(&strategy_cfg.id, &strategy_cfg.params)?;
-                let nested = build_nested::<T>(erased.as_ref(), &strategy_cfg.nested)?;
+                let erased = build_strategy_erased::<T>(&strategy_cfg.id, &strategy_cfg.params, &rule_params)?;
+                let nested = build_nested::<T>(erased.as_ref(), &strategy_cfg.nested, &rule_params)?;
                 let typed = downcast_strategy::<T, $IssueTy>(erased)?;
                 (Some(typed), strategy_cfg.params.clone(), nested)
             }

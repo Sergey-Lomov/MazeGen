@@ -96,6 +96,7 @@ export function newRule(kind: string, checks: CheckInstance[], strategyId: strin
     disabled,
     ruleDisabled: false,
     nestedStrategies: strategyId ? buildDefaultNestedStrategies(strategyId, availableStrategies) : [],
+    params: {},
   };
 }
 

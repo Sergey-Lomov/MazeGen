@@ -446,7 +446,10 @@ function validateQcRule(v: unknown, path: string, index: number): ProjectFileQcR
   const nestedStrategies = obj.nestedStrategies != null
     ? assertArray(obj.nestedStrategies, `${path}.nestedStrategies`).map((n, i) => validateNestedStrategy(n, `${path}.nestedStrategies[${i}]`))
     : [];
-  return { id, name, kind, checks, strategyId, disabled, ruleDisabled, nestedStrategies };
+  // Absent entirely for project files saved before rule-level params existed (GitHub issue
+  // #253) — same recovery pattern `nestedStrategies` above uses.
+  const params = assertStringRecord(obj.params ?? {}, `${path}.params`);
+  return { id, name, kind, checks, strategyId, disabled, ruleDisabled, nestedStrategies, params };
 }
 
 // See GitHub issue #65. Shape-only validation here — cross-stage integrity (duplicate rule id

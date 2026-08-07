@@ -85,6 +85,8 @@ export interface ProjectFileQcRule {
   disabled: boolean;
   ruleDisabled: boolean;
   nestedStrategies: ProjectFileNestedStrategy[];
+  /** Mirrors `QcRuleState.params` — rule-level parameters (GitHub issue #253). */
+  params: Record<string, string>;
 }
 
 /** A named, ordered group of rule ids — see GitHub issue #65 and `RepairStageState`'s doc

@@ -6,6 +6,7 @@ pub mod check;
 pub mod comparison;
 pub mod cycle_kind;
 pub mod rule;
+pub mod rule_params;
 pub mod stage;
 pub mod engine;
 pub mod checks;
@@ -34,6 +35,7 @@ pub use check::Check;
 pub use comparison::Comparison;
 pub use cycle_kind::CycleKind;
 pub use rule::{Rule, RuleTrait, ApplyOutcome, RuleIterationOutcome};
+pub use rule_params::{RuleParams, RuleParamDescriptor, RuleParamKind, RULE_PARAM_DESCRIPTORS, PARAM_PROTECT_ROUTE, rule_param_applies_to};
 pub use stage::Stage;
 pub use engine::QualityControlEngine;
 pub use checks::{

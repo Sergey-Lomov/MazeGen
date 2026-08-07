@@ -265,6 +265,17 @@ export interface ParamDescriptor {
   kind: ParamKind;
 }
 
+/** A rule-level parameter descriptor (GitHub issue #253) — same shape as `ParamDescriptor` plus
+ * `applies_to`, the check `type_id`s / strategy `id`s that actually consume it. A rule only shows
+ * this parameter when at least one of its own checks or its strategy appears in `applies_to` —
+ * see `RuleParamsSection`. */
+export interface RuleParamDescriptor {
+  id: string;
+  label: string;
+  kind: ParamKind;
+  applies_to: string[];
+}
+
 /** Mirrors core's `NestedSlot` — one nested-strategy slot a strategy accepts. `slot_id` is a
  * stable, opaque identifier (part of the strategy's public config API — see
  * `Specs/repair.md`'s nested-strategy pattern), not meant for display. */
@@ -316,6 +327,9 @@ export interface QcRuleConfig {
   id: string;
   checks: CheckInstanceConfig[];
   strategy: StrategyConfig | null;
+  /** Rule-level parameters (e.g. `protect_route`) — shared by every check/strategy in this rule
+   * that has been migrated to consume it, see GitHub issue #253. */
+  params: Record<string, string>;
 }
 
 /** A named, ordered group of rules — see `Specs/repair.md`'s "Stages" section and GitHub issue

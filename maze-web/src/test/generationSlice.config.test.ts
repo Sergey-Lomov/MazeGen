@@ -143,7 +143,7 @@ describe("mazeStore generation misc actions", () => {
     return {
       id: "g1", name: "Rule 1", kind: "excessive_scc_count",
       checks: [{ localId: 0, typeId: "scc_count", params: {}, disabled: false }], nextLocalCheckId: 1,
-      strategyId: "reduce_scc_count", disabled: false, ruleDisabled: false,
+      strategyId: "reduce_scc_count", disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [{ slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest" }, nested: [] }],
     };
   }
@@ -191,7 +191,7 @@ describe("mazeStore generation misc actions", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "excessive_scc_count",
       checks: [{ localId: 0, typeId: "scc_count", params: {}, disabled: false }], nextLocalCheckId: 1,
-      strategyId: "reduce_scc_count", disabled: false, ruleDisabled: false,
+      strategyId: "reduce_scc_count", disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [{
         slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest" },
         nested: [{ slotId: "inner_slot", strategyId: "other_expand_strategy", params: { foo: "bar" }, nested: [] }],
@@ -235,7 +235,7 @@ describe("mazeStore generation misc actions", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "excessive_scc_count",
       checks: [{ localId: 0, typeId: "scc_count", params: {}, disabled: false }], nextLocalCheckId: 1,
-      strategyId: "reduce_scc_count", disabled: false, ruleDisabled: false,
+      strategyId: "reduce_scc_count", disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [
         { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
         { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
@@ -260,7 +260,7 @@ describe("mazeStore generation misc actions", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "region_needs_expansion",
       checks: [], nextLocalCheckId: 0,
-      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false,
+      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [
         { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
         { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
@@ -279,7 +279,7 @@ describe("mazeStore generation misc actions", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "region_needs_expansion",
       checks: [], nextLocalCheckId: 0,
-      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false,
+      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [
         { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
         { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
@@ -298,7 +298,7 @@ describe("mazeStore generation misc actions", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "region_needs_expansion",
       checks: [], nextLocalCheckId: 0,
-      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false,
+      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [
         { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
         { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
@@ -321,7 +321,7 @@ describe("mazeStore generation misc actions", () => {
     const rule = {
       id: "g1", name: "Rule 1", kind: "region_needs_expansion",
       checks: [], nextLocalCheckId: 0,
-      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false,
+      strategyId: "priority_region_merge", disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [
         {
           slotId: "merge_target", strategyId: "expand_region_passage", params: {},

@@ -39,7 +39,7 @@ describe("AddCheckToRuleDialog", () => {
 
   it("activates the selected check directly into the target rule on Add", () => {
     useMazeStore.setState({
-      rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "existing", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "existing", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [] }],
       availableChecks: [
         { id: "existing", label: "Existing", description: "", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false },
         { id: "c2", label: "Check Two", description: "Second check.", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false },
@@ -58,7 +58,7 @@ describe("AddCheckToRuleDialog", () => {
 
   it("Cancel closes without modifying the store", () => {
     useMazeStore.setState({
-      rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "existing", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, nestedStrategies: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "existing", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [] }],
     });
     const onClose = vi.fn();
     render(<AddCheckToRuleDialog ruleId="g1" kind="invalid_loop" candidates={candidates} onClose={onClose} />);

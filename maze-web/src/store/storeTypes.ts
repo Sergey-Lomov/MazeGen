@@ -1,4 +1,4 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, SplitAnalyticsDto, NodeLockKind, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, SplitAnalyticsDto, NodeLockKind, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
 import type { ParsedTape, Snapshot, DebugValueDescriptor } from "../debug/eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -231,6 +231,10 @@ export interface QcRuleState {
   /** Nested strategy assignments for `strategyId`'s nested slots, keyed by slot — empty for
    * strategies without nested slots (the overwhelming majority). */
   nestedStrategies: NestedStrategyState[];
+  /** Rule-level parameters (e.g. `protect_route`) — shared by every check/strategy in this rule
+   * that has been migrated to consume it instead of its own per-instance override (GitHub issue
+   * #253). Keyed by `ParamDescriptor.id`, same shape as `CheckInstance.params`. */
+  params: Record<string, string>;
 }
 
 /** A named, ordered group of rule ids — see `Specs/repair.md`'s "Stages" section and GitHub
@@ -527,6 +531,11 @@ export interface GenerationState {
   registryLoaded: boolean;
   availableChecks: CheckDescriptor[];
   availableStrategies: StrategyDescriptor[];
+  /** Rule-level parameter catalog (e.g. `protect_route`) — see GitHub issue #253. Unlike
+   * `availableChecks`/`availableStrategies`, not indexed by an owning check/strategy id: these
+   * params live directly on `QcRuleState.params`, one value per rule. Each entry's `applies_to`
+   * restricts which rules show it — see `RuleParamsSection`. */
+  availableRuleParams: RuleParamDescriptor[];
   /** One entry per rule (a group of active checks). Replaces the old per-kind
    * `selectedStrategies`/`disabledStrategies` — a kind can now have several independent rules
    * (e.g. min/max loop length each with their own strategy) instead of being forced to share one.
@@ -739,6 +748,10 @@ export interface GenerationActions {
   /** Flips the stage's `disabled` — see `RepairStageState`'s doc comment. */
   toggleStageDisabled: (stageId: string) => void;
   setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
+  /** Sets one rule-level parameter (e.g. `protect_route`) on `ruleId`'s own `params` — see
+   * GitHub issue #253. Unlike `setStrategyParam`, scoped to a single rule, not shared globally
+   * by strategy id. */
+  setRuleParam: (ruleId: string, paramId: string, value: string) => void;
   setGenerationParam: (key: keyof GenerationParams, value: number) => void;
   setEdgeBasedParam: (key: keyof EdgeBasedParams, value: number) => void;
   setGenerationMethod: (method: string) => void;
