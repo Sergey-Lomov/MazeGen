@@ -16,6 +16,7 @@ export default defineConfig({
     paraglideVitePlugin({
       project: "./project.inlang",
       outdir: "./generated/paraglide",
+      outputStructure: "locale-modules",
     }),
   ],
   resolve: {
