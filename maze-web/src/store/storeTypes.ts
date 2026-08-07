@@ -68,6 +68,67 @@ export type FeatureId = "basic_config" | "field_setup" | "preset_connections" | 
  * `imageExportRegistry.ts`) — one entry per switcher item in the Image Export feature card. */
 export type RenderModeId = "vector_by_walls";
 
+/** Registry id of a maze image-export output format (see `exportFormatRegistry.ts`) — one entry
+ * per row in the Image Export feature card's format list, below the render-mode switcher. */
+export type ExportFormatId = "png";
+
+export type PngExportOutputMode = "digital" | "print";
+export type PngCanvasMode = "edge_to_edge" | "margin_px" | "margin_cells" | "fixed_size";
+export type PrintDensity = "screen_96" | "draft_150" | "print_300" | "high_600";
+export type PaperSize = "a4" | "a3" | "a5" | "a2" | "a1" | "a0" | "letter" | "legal" | "tabloid" | "custom";
+export type PaperOrientation = "portrait" | "landscape";
+export type PrintAnchor = "top_left" | "top_center" | "top_right"
+  | "center_left" | "center" | "center_right"
+  | "bottom_left" | "bottom_center" | "bottom_right"
+  | "custom";
+
+export interface DigitalExportSettings {
+  /** Multiplier of `TILE_SIZE` — same world-space unit as `PrintExportSettings.scale`. Kept as a
+   * separate field (not shared) because the two output modes' scale are independent: switching
+   * modes must not silently carry one over into the other. */
+  scale: number;
+  canvasMode: PngCanvasMode;
+  /** Px (canvasMode=margin_px) or cells (canvasMode=margin_cells) — same field reused for both,
+   * since only one of the two modes is ever active at a time. */
+  marginValue: number;
+  fixedWidth: number;
+  fixedHeight: number;
+}
+
+export interface PrintExportSettings {
+  density: PrintDensity;
+  paperSize: PaperSize;
+  /** Used only when paperSize === "custom" — otherwise the standard size overrides it. */
+  customWidthMm: number;
+  customHeightMm: number;
+  orientation: PaperOrientation;
+  marginHMm: number;
+  marginVMm: number;
+  /** Same world-space unit as `DigitalExportSettings.scale` — see its doc-comment. Ignored (kept
+   * up to date but not user-editable) while `scaleAutoFit` is on. */
+  scale: number;
+  /** While on, `scale` is recomputed automatically (`computeAutoFitPrintScale`) on every change
+   * that could affect the fit — sheet size/orientation/DPI, margins, or the maze itself — instead
+   * of the user setting it by hand. The scale input is disabled in this state. */
+  scaleAutoFit: boolean;
+  anchor: PrintAnchor;
+  /** Content offset in mm from the margin-inset area's top-left corner — only meaningful (and only
+   * ever written) when `anchor === "custom"`, set automatically when the user pans/zooms the maze
+   * under the on-canvas print frame (see `ExportFrameOverlay`) instead of picking one of the 9
+   * fixed anchor positions. Ignored by `computePrintExportFit` for every other anchor value. */
+  offsetXMm: number;
+  offsetYMm: number;
+}
+
+/** PNG export settings — two independent output-mode branches (`digital`/`print`), only one
+ * active at a time per `outputMode`, but both persisted so switching modes doesn't lose the
+ * other's configuration. */
+export interface PngExportSettings {
+  outputMode: PngExportOutputMode;
+  digital: DigitalExportSettings;
+  print: PrintExportSettings;
+}
+
 /** One active check, declared inline inside the `QcRuleState` it belongs to — see GitHub issue
  * #60. A check only ever exists inside exactly one rule's `checks`; there is no separate flat
  * "active checks" list. `localId` is unique only within its owning rule (not globally) — minted
@@ -980,11 +1041,36 @@ export interface ImageExportState {
    *  edges/nodes directly, since the highlighted geometry is recomputed from
    *  `computeVectorByWallsWarnings`'s own result rather than duplicated into the store. */
   hoveredExportWarningKey: string | null;
+  /** Which export format's settings panel is open as a `SidePanel`, or `null` if none — mirrors
+   * `openRenderModeSettings`'s role for the render-mode switcher, but for the format list below
+   * it. Independent state: opening one closes the other, since both share the same `SidePanel`
+   * portal slot (`ImageExportFeature.tsx`). */
+  openExportFormatSettings: ExportFormatId | null;
+  pngExportSettings: PngExportSettings;
 }
 
 export interface ImageExportActions {
   setActiveRenderMode: (mode: RenderModeId) => void;
   setOpenRenderModeSettings: (mode: RenderModeId | null) => void;
+  setOpenExportFormatSettings: (format: ExportFormatId | null) => void;
+  setPngOutputMode: (mode: PngExportOutputMode) => void;
+  setDigitalScale: (scale: number) => void;
+  setDigitalCanvasMode: (mode: PngCanvasMode) => void;
+  setDigitalMarginValue: (v: number) => void;
+  setDigitalFixedSize: (width: number, height: number) => void;
+  setPrintDensity: (density: PrintDensity) => void;
+  setPrintPaperSize: (size: PaperSize) => void;
+  setPrintCustomSize: (widthMm: number, heightMm: number) => void;
+  setPrintOrientation: (orientation: PaperOrientation) => void;
+  setPrintMargins: (marginHMm: number, marginVMm: number) => void;
+  setPrintScale: (scale: number) => void;
+  setPrintScaleAutoFit: (autoFit: boolean) => void;
+  setPrintAnchor: (anchor: PrintAnchor) => void;
+  /** Sets scale + offset together and switches `anchor` to `"custom"` in one update — used when
+   * the user pans/zooms the maze under the on-canvas print frame (`ExportFrameOverlay`), where all
+   * three values change together on every viewport move and must land in a single render, not
+   * three separate ones. */
+  setPrintCustomPlacement: (scale: number, offsetXMm: number, offsetYMm: number) => void;
   setVectorByWallsSectionExpanded: (id: string, expanded: boolean) => void;
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;

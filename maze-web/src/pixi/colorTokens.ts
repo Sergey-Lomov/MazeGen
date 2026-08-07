@@ -1,5 +1,21 @@
 import { base, hexToNumber } from "../styles/palette";
 
+const CONTRAST_DARK = hexToNumber("#2a2a2a");
+const CONTRAST_LIGHT = hexToNumber("#e0e0e0");
+
+/** Picks a dark- or light-gray color that reads clearly against `backgroundColor` (0xRRGGBB) —
+ * relative luminance (ITU-R BT.601 weights, same coefficients used for perceived-brightness
+ * grayscale conversion), light background gets the dark gray and vice versa. Used for UI drawn
+ * directly on the Pixi canvas whose backing color isn't fixed (e.g. `ExportFrameOverlay`'s print
+ * frame, which must stay visible against any user-configured mode background). */
+export function contrastGray(backgroundColor: number): number {
+  const r = (backgroundColor >> 16) & 0xff;
+  const g = (backgroundColor >> 8) & 0xff;
+  const b = backgroundColor & 0xff;
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? CONTRAST_DARK : CONTRAST_LIGHT;
+}
+
 // Canvas color tokens, namespaced by render entity (mirrors `ui.*` on the DOM side).
 export const canvas = {
   node: {

@@ -5,7 +5,7 @@ import type { ExportWarningId } from "../../pixi/selectors/exportWarnings";
  *  `exportWarnings.ts` since that selector must stay renderer/i18n-agnostic (a future feature-card
  *  consumer may want the raw warning list without paraglide's message strings). Mirrors
  *  `qualityI18n.ts`'s label/description resolver shape. */
-const WARNING_MESSAGES: Record<ExportWarningId, () => string> = {
+const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   teleport_marker_invisible: m["image_export.vector_by_walls.warning_teleport_marker_invisible"],
   teleport_group_ambiguous: m["image_export.vector_by_walls.warning_teleport_group_ambiguous"],
   teleport_waypoint_overlap: m["image_export.vector_by_walls.warning_teleport_waypoint_overlap"],
@@ -13,7 +13,7 @@ const WARNING_MESSAGES: Record<ExportWarningId, () => string> = {
   teleport_on_special_split: m["image_export.vector_by_walls.warning_teleport_on_special_split"],
 };
 
-const WARNING_DESCRIPTIONS: Record<ExportWarningId, () => string> = {
+const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   teleport_marker_invisible: m["image_export.vector_by_walls.warning_teleport_marker_invisible_description"],
   teleport_group_ambiguous: m["image_export.vector_by_walls.warning_teleport_group_ambiguous_description"],
   teleport_waypoint_overlap: m["image_export.vector_by_walls.warning_teleport_waypoint_overlap_description"],
@@ -22,11 +22,48 @@ const WARNING_DESCRIPTIONS: Record<ExportWarningId, () => string> = {
 };
 
 export function resolveExportWarningMessage(id: ExportWarningId): string {
-  return WARNING_MESSAGES[id]();
+  return WARNING_MESSAGES[id]?.() ?? "";
 }
 
 export function resolveExportWarningDescription(id: ExportWarningId): string {
-  return WARNING_DESCRIPTIONS[id]();
+  return WARNING_DESCRIPTIONS[id]?.() ?? "";
+}
+
+/** PNG canvas-fit warnings — resolved separately, by the specific `png_*` id, for
+ *  `PngOverflowWarningBubble`/`PngFitWarningBubble` (`PngExportSettingsPanel.tsx`), which build
+ *  their `ExportWarning` on the fly rather than going through `computeVectorByWallsWarnings`.
+ *  `png_content_overflows_canvas` (digital mode) carries a fill-percentage parameter; the print
+ *  mode ids (`png_content_clips_sheet`/`png_content_in_margin_zone`) are plain yes/no facts about
+ *  the current placement and carry no parameter. */
+export type PngOverflowWarningId = "png_content_overflows_canvas";
+export type PngFitWarningId = "png_content_clips_sheet" | "png_content_in_margin_zone";
+
+export function resolvePngExportWarningMessage(id: PngOverflowWarningId, percent: number): string {
+  const p = { percent: String(Math.round(percent)) };
+  switch (id) {
+    case "png_content_overflows_canvas": return m["image_export.format.png.warning_overflows_canvas"](p);
+  }
+}
+
+export function resolvePngExportWarningDescription(id: PngOverflowWarningId, percent: number): string {
+  const p = { percent: String(Math.round(percent)) };
+  switch (id) {
+    case "png_content_overflows_canvas": return m["image_export.format.png.warning_overflows_canvas_description"](p);
+  }
+}
+
+export function resolvePngFitWarningMessage(id: PngFitWarningId): string {
+  switch (id) {
+    case "png_content_clips_sheet": return m["image_export.format.png.warning_clips_sheet"]();
+    case "png_content_in_margin_zone": return m["image_export.format.png.warning_in_margin_zone"]();
+  }
+}
+
+export function resolvePngFitWarningDescription(id: PngFitWarningId): string {
+  switch (id) {
+    case "png_content_clips_sheet": return m["image_export.format.png.warning_clips_sheet_description"]();
+    case "png_content_in_margin_zone": return m["image_export.format.png.warning_in_margin_zone_description"]();
+  }
 }
 
 export function resolveExportWarningsSectionTitle(count: number): string {

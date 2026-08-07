@@ -18,6 +18,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { splitSlotColor } from "../colorUtils";
+import { computeVectorByWallsExportMargin, computeVectorByWallsWallMargin, resolveBackgroundColor, type ExportMargin } from "./exportMargins";
 
 /** Cell-fill highlight color for a hovered export warning (GitHub issue #298 follow-up) — same
  *  yellow as `styles/palette.ts`'s `warning` token, duplicated here since the pixi render layer
@@ -297,6 +298,18 @@ export class VectorByWallsRenderer {
         this.grid.render({ viewport: this.viewport, color: state.vectorByWallsSettings.gridColor }, state.activeTessellationConfig);
       }
     }
+  }
+
+  getRequiredExportMargin(): ExportMargin {
+    return computeVectorByWallsExportMargin(useMazeStore.getState().vectorByWallsSettings);
+  }
+
+  getRequiredWallExportMargin(): ExportMargin {
+    return computeVectorByWallsWallMargin(useMazeStore.getState().vectorByWallsSettings);
+  }
+
+  getBackgroundColor(): number {
+    return resolveBackgroundColor("vector_by_walls", { vectorByWallsSettings: useMazeStore.getState().vectorByWallsSettings });
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {

@@ -14,7 +14,9 @@ export type {
   PostEditEdgeKind, PostEditTool, PostEditEdge, PostEditMeta, PostEditAnalytics,
   PostEditTeleportDirection, PostEditTeleportEntry, PostEditTeleportEndpointHit,
   TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation,
-  FieldPrimitive, FeatureId, RenderModeId, MazeState,
+  FieldPrimitive, FeatureId, RenderModeId, ExportFormatId, MazeState,
+  PngExportOutputMode, PngCanvasMode, PrintDensity, PaperSize, PaperOrientation, PrintAnchor,
+  DigitalExportSettings, PrintExportSettings, PngExportSettings,
 } from "./storeTypes";
 
 export { decodePoint };
@@ -168,6 +170,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       openRenderModeSettings: file.imageExport.openRenderModeSettings,
       vectorByWallsSettings: file.imageExport.vectorByWallsSettings,
       vectorByWallsSectionsExpanded: file.imageExport.vectorByWallsSectionsExpanded,
+      pngExportSettings: file.imageExport.pngExportSettings,
     });
 
     // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store.

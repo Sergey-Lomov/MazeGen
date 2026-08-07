@@ -16,7 +16,7 @@ import { ImageExportFeature } from "./features/ImageExportFeature";
 import { resolveRenderMode } from "./features/imageExportRegistry";
 import { resolveIssue } from "./issueRegistry";
 import { useMazeStore } from "../store/mazeStore";
-import type { TessellationKind, FeatureId } from "../store/mazeStore";
+import type { TessellationKind, FeatureId, PngExportSettings } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers } from "../pixi/fieldEditUtils";
@@ -126,7 +126,10 @@ export function computeImageExportCard(hasNodes: boolean, resolvedRenderMode: { 
   return { status: "set", comment: m["status.render_mode_active"]({ mode: resolvedRenderMode.label() }) };
 }
 
-export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
+export function FeaturesPanel({ onRefit, onExportPng }: {
+  onRefit: () => void;
+  onExportPng: (settings: PngExportSettings) => Promise<Blob | null>;
+}) {
   const openCard = useMazeStore((s) => s.openCard);
   const setOpenCard = useMazeStore((s) => s.setOpenCard);
 
@@ -372,7 +375,7 @@ export function FeaturesPanel({ onRefit }: { onRefit: () => void }) {
         expanded={openCard === "image_export"}
         onOpen={() => handleToggle("image_export")}
       >
-        <ImageExportFeature />
+        <ImageExportFeature onExportPng={onExportPng} />
       </FeatureCard>
       </div>
       <div style={styles.footer}>
@@ -421,6 +424,7 @@ const styles: Record<string, React.CSSProperties> = {
   footerRight: {
     display: "flex",
     gap: spacing.itemGap,
-    alignItems: "center",
+    alignItems: "stretch",
+    alignSelf: "stretch",
   },
 };

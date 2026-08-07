@@ -18,7 +18,19 @@ export type ExportWarningId =
   | "teleport_group_ambiguous"
   | "teleport_waypoint_overlap"
   | "waypoint_on_split"
-  | "teleport_on_special_split";
+  | "teleport_on_special_split"
+  /** PNG export canvas-fit warnings (not maze-content geometry) — built locally by
+   *  `PngExportSettingsPanel` from `computeDigitalExportFit`/`computePrintExportFit`'s own result,
+   *  not through `computeVectorByWallsWarnings`. Carry no `nodes`/`edges` (canvas-level, not
+   *  per-cell). */
+  | "png_content_overflows_canvas"
+  /** Print mode: content's placed rect extends past the sheet's own edges — part of the maze is
+   *  actually clipped/lost on export, not just sitting close to an edge. */
+  | "png_content_clips_sheet"
+  /** Print mode: content's placed rect extends past the margin-inset rect (still within the
+   *  sheet, so nothing is lost) — informational, the user asked for a margin and part of the
+   *  content sits inside it. */
+  | "png_content_in_margin_zone";
 
 export type ExportWarning = {
   id: ExportWarningId;

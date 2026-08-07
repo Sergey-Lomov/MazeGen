@@ -1,15 +1,19 @@
 import React from "react";
-import { ui, typography } from "../styles/theme";
+import { ui, typography, controlRowHeight } from "../styles/theme";
 
-export function HoverIconButton({ onClick, title, children }: {
+export function HoverIconButton({ onClick, title, children, fixedHeight }: {
   onClick: () => void;
   title: string;
   children: React.ReactNode;
+  /** Use a fixed `controlRowHeight` instead of stretching to match the tallest sibling in the row
+   *  — for standalone rows (e.g. the panel footer's Save/Load/Fit buttons) where no sibling sets a
+   *  taller natural height to stretch to, so the button would otherwise collapse to its icon size. */
+  fixedHeight?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      style={styles.button}
+      style={{ ...styles.button, ...(fixedHeight ? { height: controlRowHeight, alignSelf: undefined } : {}) }}
       title={title}
       onMouseEnter={e => (e.currentTarget.style.background = ui.border.strong)}
       onMouseLeave={e => (e.currentTarget.style.background = ui.bg.input)}
@@ -27,7 +31,9 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 3,
     color: ui.text.secondary,
     cursor: "default",
-    padding: "4px 6px",
+    alignSelf: "stretch",
+    boxSizing: "border-box",
+    padding: "0 6px",
     lineHeight: "normal",
     display: "flex",
     alignItems: "center",

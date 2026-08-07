@@ -121,6 +121,26 @@ export function getCellVertices(x: number, y: number, cfg: TessellationConfig): 
   }
 }
 
+/** Exact bounding box of every node's own cell polygon (via `getCellVertices`) — unlike
+ * `hexGeometry.ts`'s `mazeBounds`, which pads each center by a single `halfTileSize` uniformly on
+ * all 4 sides (correct only for squares), this reflects each tessellation's real per-axis extent
+ * (e.g. a flat-top hex's vertical half-extent is `TILE_SIZE * sin(60°)`, not `TILE_SIZE`) — needed
+ * wherever a tight, gap-free fit around the maze matters (PNG export's "edge to edge" canvas). */
+export function exactCellBounds(nodes: { x: number; y: number; id: number }[], cfg: TessellationConfig): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    const vertices = getCellVertices(n.x, n.y, cfg);
+    if (!vertices) continue;
+    for (const v of vertices) {
+      if (v.x < minX) minX = v.x;
+      if (v.y < minY) minY = v.y;
+      if (v.x > maxX) maxX = v.x;
+      if (v.y > maxY) maxY = v.y;
+    }
+  }
+  return { minX, minY, maxX, maxY };
+}
+
 export function getCellCenter(x: number, y: number, cfg: TessellationConfig): Pos {
   switch (cfg.type) {
     case "square":

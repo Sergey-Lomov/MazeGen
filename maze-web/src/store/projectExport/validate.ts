@@ -3,9 +3,13 @@ import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fiel
 import type { PostEditEdge, PostEditTeleportEntry, FeatureId, RenderModeId } from "../mazeStore";
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
-import { MAX_NESTED_STRATEGY_DEPTH, type MarkerSettings, type VectorByWallsSettings } from "../storeTypes";
+import {
+  MAX_NESTED_STRATEGY_DEPTH, type MarkerSettings, type VectorByWallsSettings, type PngExportSettings,
+  type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
+  type DigitalExportSettings, type PrintExportSettings,
+} from "../storeTypes";
 import type { MarkerShape } from "../../pixi/renderers/types";
-import { DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../slices/imageExportSlice";
+import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
 import {
   CURRENT_VERSION,
   type ProjectFile,
@@ -112,6 +116,11 @@ function optBool(obj: Record<string, unknown> | null, key: string, fallback: boo
 
 function optNumber(obj: Record<string, unknown> | null, key: string, fallback: number): number {
   return obj != null && typeof obj[key] === "number" ? (obj[key] as number) : fallback;
+}
+
+function optEnum<T extends string>(obj: Record<string, unknown> | null, key: string, allowed: readonly T[], fallback: T): T {
+  const v = obj?.[key];
+  return typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
 }
 
 function optSection(parent: Record<string, unknown>, key: string, path: string): Record<string, unknown> | null {
@@ -613,6 +622,79 @@ function optRenderModeId(obj: Record<string, unknown> | null, key: string): Rend
   return typeof v === "string" && (KNOWN_RENDER_MODE_IDS as readonly string[]).includes(v) ? (v as RenderModeId) : null;
 }
 
+const KNOWN_OUTPUT_MODES: PngExportOutputMode[] = ["digital", "print"];
+const KNOWN_CANVAS_MODES: PngCanvasMode[] = ["edge_to_edge", "margin_px", "margin_cells", "fixed_size"];
+const KNOWN_PRINT_DENSITIES: PrintDensity[] = ["screen_96", "draft_150", "print_300", "high_600"];
+const KNOWN_PAPER_SIZES: PaperSize[] = ["a4", "a3", "a5", "a2", "a1", "a0", "letter", "legal", "tabloid", "custom"];
+const KNOWN_ORIENTATIONS: PaperOrientation[] = ["portrait", "landscape"];
+const KNOWN_ANCHORS: PrintAnchor[] = [
+  "top_left", "top_center", "top_right",
+  "center_left", "center", "center_right",
+  "bottom_left", "bottom_center", "bottom_right",
+  "custom",
+];
+
+function validateDigitalExportSettings(v: unknown, path: string): DigitalExportSettings {
+  const d = DEFAULT_PNG_EXPORT_SETTINGS.digital;
+  let obj: Record<string, unknown> | null = null;
+  if (v != null) {
+    try {
+      obj = assertObject(v, path);
+    } catch {
+      obj = null;
+    }
+  }
+  return {
+    scale: optNumber(obj, "scale", d.scale),
+    canvasMode: optEnum(obj, "canvasMode", KNOWN_CANVAS_MODES, d.canvasMode),
+    marginValue: optNumber(obj, "marginValue", d.marginValue),
+    fixedWidth: optNumber(obj, "fixedWidth", d.fixedWidth),
+    fixedHeight: optNumber(obj, "fixedHeight", d.fixedHeight),
+  };
+}
+
+function validatePrintExportSettings(v: unknown, path: string): PrintExportSettings {
+  const d = DEFAULT_PNG_EXPORT_SETTINGS.print;
+  let obj: Record<string, unknown> | null = null;
+  if (v != null) {
+    try {
+      obj = assertObject(v, path);
+    } catch {
+      obj = null;
+    }
+  }
+  return {
+    density: optEnum(obj, "density", KNOWN_PRINT_DENSITIES, d.density),
+    paperSize: optEnum(obj, "paperSize", KNOWN_PAPER_SIZES, d.paperSize),
+    customWidthMm: optNumber(obj, "customWidthMm", d.customWidthMm),
+    customHeightMm: optNumber(obj, "customHeightMm", d.customHeightMm),
+    orientation: optEnum(obj, "orientation", KNOWN_ORIENTATIONS, d.orientation),
+    marginHMm: optNumber(obj, "marginHMm", d.marginHMm),
+    marginVMm: optNumber(obj, "marginVMm", d.marginVMm),
+    scale: optNumber(obj, "scale", d.scale),
+    scaleAutoFit: optBool(obj, "scaleAutoFit", d.scaleAutoFit),
+    anchor: optEnum(obj, "anchor", KNOWN_ANCHORS, d.anchor),
+    offsetXMm: optNumber(obj, "offsetXMm", d.offsetXMm),
+    offsetYMm: optNumber(obj, "offsetYMm", d.offsetYMm),
+  };
+}
+
+function validatePngExportSettings(v: unknown, path: string): PngExportSettings {
+  let obj: Record<string, unknown> | null = null;
+  if (v != null) {
+    try {
+      obj = assertObject(v, path);
+    } catch {
+      obj = null;
+    }
+  }
+  return {
+    outputMode: optEnum(obj, "outputMode", KNOWN_OUTPUT_MODES, DEFAULT_PNG_EXPORT_SETTINGS.outputMode),
+    digital: validateDigitalExportSettings(obj?.digital, `${path}.digital`),
+    print: validatePrintExportSettings(obj?.print, `${path}.print`),
+  };
+}
+
 function validateImageExport(v: unknown, path: string): ProjectFileImageExport {
   let obj: Record<string, unknown> | null = null;
   if (v != null) {
@@ -629,6 +711,7 @@ function validateImageExport(v: unknown, path: string): ProjectFileImageExport {
     vectorByWallsSectionsExpanded: obj?.vectorByWallsSectionsExpanded != null
       ? assertBoolRecord(obj.vectorByWallsSectionsExpanded, `${path}.vectorByWallsSectionsExpanded`)
       : {},
+    pngExportSettings: validatePngExportSettings(obj?.pngExportSettings, `${path}.pngExportSettings`),
   };
 }
 

@@ -10,6 +10,8 @@ import { PresetConnectionsController } from "./PresetConnectionsController";
 import { PostEditRenderer } from "./PostEditRenderer";
 import { PostEditController } from "./PostEditController";
 import { ImageExportRenderer } from "./imageExport/ImageExportRenderer";
+import { ExportFrameOverlay } from "./imageExport/ExportFrameOverlay";
+import { PngExporter } from "./imageExport/PngExporter";
 import { fitFieldViewport } from "./FieldEditorOverlay";
 import { fitMazeViewport } from "./viewportFit";
 import { makeProjection } from "./tessellationProjection";
@@ -19,7 +21,7 @@ import type { ViewportListener, PointerHandler } from "./sceneTypes";
 import { SceneInteraction } from "./SceneInteraction";
 import type { HoverInfo, HoverProvider } from "./hoverTypes";
 import { DefaultHoverProvider } from "./hoverProviders";
-import type { FeatureId } from "../store/storeTypes";
+import type { FeatureId, PngExportSettings } from "../store/storeTypes";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 type ConfigResolver = (st: ReturnType<typeof useMazeStore.getState>) => TessellationConfig;
@@ -56,9 +58,13 @@ export class MazeScene {
   private analyticsContainer: Container;
   private imageExportRenderer: ImageExportRenderer;
   private imageExportContainer: Container;
+  private imageExportFrameContainer: Container;
+  private exportFrameOverlay: ExportFrameOverlay;
+  private pngExporter: PngExporter;
   private interaction: SceneInteraction;
   private hoverProvider: DefaultHoverProvider;
   private hoverCallback: ((info: HoverInfo | null) => void) | null = null;
+  private viewportScaleCallback: ((scale: number) => void) | null = null;
   private cachedProjection: { cfg: TessellationConfig; projection: TessellationProjection } | null = null;
 
   // All containers that must stay in sync with viewport position/scale.
@@ -84,6 +90,11 @@ export class MazeScene {
     this.tessellationContainer = new Container();
     this.analyticsContainer = new Container();
     this.imageExportContainer = new Container();
+    // Deliberately NOT in syncedLayers — hosts ExportFrameOverlay, which draws in screen space.
+    // Print mode's frame is a fixed rect (the sheet stays put while the maze content underneath
+    // keeps panning/zooming with the normal viewport); digital mode's frame instead recomputes its
+    // screen rect from the live viewport transform on every change. See ExportFrameOverlay.
+    this.imageExportFrameContainer = new Container();
 
     this.syncedLayers = [
       this.fieldEditorOverlayContainer,
@@ -97,6 +108,7 @@ export class MazeScene {
 
     this.app.stage.addChild(this.viewport);
     for (const layer of this.syncedLayers) this.app.stage.addChild(layer);
+    this.app.stage.addChild(this.imageExportFrameContainer);
 
     const cx = app.screen.width / 2;
     const cy = app.screen.height / 2;
@@ -108,6 +120,12 @@ export class MazeScene {
     this.tessellationRenderer = new TessellationRenderer(this.tessellationContainer);
     this.analyticsRenderer = new AnalyticsRenderer(this.analyticsContainer);
     this.imageExportRenderer = new ImageExportRenderer(this.imageExportContainer);
+    this.exportFrameOverlay = new ExportFrameOverlay(
+      this.imageExportFrameContainer,
+      (x, y, scale) => this.setViewportTransform(x, y, scale),
+      () => ({ width: this.app.screen.width, height: this.app.screen.height }),
+    );
+    this.pngExporter = new PngExporter(this.app);
 
     this.fieldEditorOverlay = new FieldEditorOverlay(this.fieldEditorOverlayContainer);
     this.primitivePreviewOverlay = new PrimitivePreviewOverlay(this.primitivePreviewContainer);
@@ -123,6 +141,7 @@ export class MazeScene {
       this.tessellationRenderer,
       this.analyticsRenderer,
       this.imageExportRenderer,
+      this.exportFrameOverlay,
     ];
 
     this.presetConnectionsController = new PresetConnectionsController(
@@ -225,6 +244,15 @@ export class MazeScene {
     if (cb === this.hoverCallback) return;
     this.hoverCallback?.(null);
     this.hoverCallback = cb;
+  }
+
+  /** Same one-listener contract as `setHoverListener` — HoverInfoPanel's viewport-scale readout,
+   * fired from `syncLayersToViewport()` on every pan/zoom (not just hover-triggered pointer
+   * moves), since a wheel-zoom without pointer movement wouldn't otherwise notify it. */
+  setViewportScaleListener(cb: ((scale: number) => void) | null): void {
+    if (cb === this.viewportScaleCallback) return;
+    this.viewportScaleCallback = cb;
+    this.viewportScaleCallback?.(this.viewport.scale.x);
   }
 
   private subscribeToPreview(): void {
@@ -330,6 +358,40 @@ export class MazeScene {
         this.viewport.scale.x,
       );
     }
+    this.viewportScaleCallback?.(this.viewport.scale.x);
+  }
+
+  exportPng(settings: PngExportSettings): Promise<Blob | null> {
+    return this.pngExporter.export(settings);
+  }
+
+  getViewportScale(): number {
+    return this.viewport.scale.x;
+  }
+
+  /** Re-notifies every `viewportListeners` entry (and `ExportFrameOverlay`'s screen-space frame,
+   * via `syncLayersToViewport`'s fresh `app.screen.width/height` read) with the current viewport
+   * transform, without changing it — for a real canvas-size change (the DOM element itself
+   * resized, e.g. a side panel opening/closing, DevTools toggling) that isn't already followed by
+   * a pan/zoom/refit. Pixi's own `resizeTo` updates `app.screen` on such a resize, but it's driven
+   * by its own internal `ResizeObserver` on the same element — independent of, and not ordered
+   * relative to, the caller's own observer that triggers this method, so `app.screen` can still be
+   * one tick stale here. `app.resize()` forces Pixi to resync `app.screen` to the canvas element's
+   * actual current size synchronously before anything reads it. */
+  notifyScreenResized(): void {
+    this.app.resize();
+    this.syncLayersToViewport();
+    this.exportFrameOverlay.notifyExternalResize();
+  }
+
+  /** Directly sets the editor viewport's transform (used by `ExportFrameOverlay` to push
+   * print-settings-panel edits — scale/offset/anchor — back onto the canvas, the inverse
+   * direction of its own pan/zoom-to-settings sync). */
+  setViewportTransform(x: number, y: number, scale: number): void {
+    this.viewport.x = x;
+    this.viewport.y = y;
+    this.viewport.scale.set(scale);
+    this.syncLayersToViewport();
   }
 
   refit(): void {
@@ -357,6 +419,7 @@ export class MazeScene {
     this.tessellationRenderer.destroy();
     this.analyticsRenderer.destroy();
     this.imageExportRenderer.destroy();
+    this.exportFrameOverlay.destroy();
     this.fieldEditorOverlay.destroy();
     this.primitivePreviewOverlay.destroy();
     this.presetConnectionsRenderer.destroy();

@@ -10,6 +10,7 @@ import { useMazeStore } from "./store/mazeStore";
 import { ui, typography, disabled, inset } from "./styles/theme";
 import { canvas } from "./pixi/colorTokens";
 import { useLocale } from "./i18n/useLocale";
+import { setViewportScaleGetter } from "./pixi/viewportScaleBridge";
 import * as m from "~/paraglide/messages";
 
 const PANEL_WIDTH = 260;
@@ -30,6 +31,21 @@ export function App() {
     loadRegistry();
   }, [loadRegistry]);
 
+  // Pixi's own `resizeTo` keeps `app.screen` in sync with the canvas div's real size, but nothing
+  // re-notifies screen-space overlays (ExportFrameOverlay's print/digital export frame) when that
+  // happens without an accompanying pan/zoom/store change — e.g. a side panel opening/closing or
+  // DevTools toggling shrinks the canvas div, and the frame keeps drawing against the stale size
+  // until some unrelated store update happens to trigger a redraw. This observer catches every
+  // real size change directly and pushes it through immediately.
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const observer = new ResizeObserver(() => {
+      sceneRef.current?.notifyScreenResized();
+    });
+    observer.observe(canvasRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     if (!canvasRef.current || sceneRef.current) return;
 
@@ -42,11 +58,13 @@ export function App() {
         if (cancelled) { app.destroy(); return; }
         canvasRef.current!.appendChild(app.canvas);
         sceneRef.current = new MazeScene(app);
+        setViewportScaleGetter(() => sceneRef.current?.getViewportScale() ?? 1);
         setReady(true);
       });
 
     return () => {
       cancelled = true;
+      setViewportScaleGetter(null);
       sceneRef.current?.destroy();
       sceneRef.current = null;
     };
@@ -55,7 +73,10 @@ export function App() {
   return (
     <div style={styles.root}>
       <div style={styles.panel}>
-        <FeaturesPanel onRefit={() => sceneRef.current?.refit()} />
+        <FeaturesPanel
+          onRefit={() => sceneRef.current?.refit()}
+          onExportPng={(settings) => sceneRef.current?.exportPng(settings) ?? Promise.resolve(null)}
+        />
       </div>
       <div style={styles.canvasColumn}>
         <div ref={canvasRef} style={{ ...styles.canvas, display: qualityOpen ? "none" : undefined }} />

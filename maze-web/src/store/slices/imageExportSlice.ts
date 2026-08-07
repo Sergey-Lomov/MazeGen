@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { MazeStore, ImageExportState, ImageExportActions, VectorByWallsSettings } from "../storeTypes";
+import type { MazeStore, ImageExportState, ImageExportActions, VectorByWallsSettings, PngExportSettings } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
 import { NODE_RADIUS, WALL_THICKNESS } from "../../pixi/renderConstants";
 import { TILE_SIZE } from "../../pixi/constants";
@@ -44,6 +44,14 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = {
   splitSpecialShapes: true,
 };
 
+/** Shared with `projectExport/validate.ts`'s recovery defaults, same convention as
+ * `DEFAULT_VECTOR_BY_WALLS_SETTINGS`. */
+export const DEFAULT_PNG_EXPORT_SETTINGS: PngExportSettings = {
+  outputMode: "digital",
+  digital: { scale: 1, canvasMode: "edge_to_edge", marginValue: 20, fixedWidth: 1920, fixedHeight: 1080 },
+  print: { density: "print_300", paperSize: "a4", customWidthMm: 210, customHeightMm: 297, orientation: "landscape", marginHMm: 5, marginVMm: 5, scale: 1, scaleAutoFit: true, anchor: "center", offsetXMm: 0, offsetYMm: 0 },
+};
+
 export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExportState & ImageExportActions> = (set) => ({
   activeRenderMode: null,
   openRenderModeSettings: null,
@@ -51,9 +59,39 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
   vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   selectedTeleportGroupKey: null,
   hoveredExportWarningKey: null,
+  openExportFormatSettings: null,
+  pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
 
   setActiveRenderMode: (mode) => set({ activeRenderMode: mode }),
   setOpenRenderModeSettings: (mode) => set({ openRenderModeSettings: mode }),
+  setOpenExportFormatSettings: (format) => set({ openExportFormatSettings: format }),
+  setPngOutputMode: (mode) => set((s) => ({ pngExportSettings: { ...s.pngExportSettings, outputMode: mode } })),
+  setDigitalScale: (scale) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, digital: { ...s.pngExportSettings.digital, scale } } })),
+  setDigitalCanvasMode: (mode) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, digital: { ...s.pngExportSettings.digital, canvasMode: mode } } })),
+  setDigitalMarginValue: (v) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, digital: { ...s.pngExportSettings.digital, marginValue: v } } })),
+  setDigitalFixedSize: (width, height) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, digital: { ...s.pngExportSettings.digital, fixedWidth: width, fixedHeight: height } } })),
+  setPrintDensity: (density) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, density } } })),
+  setPrintPaperSize: (size) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, paperSize: size } } })),
+  setPrintCustomSize: (widthMm, heightMm) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, customWidthMm: widthMm, customHeightMm: heightMm } } })),
+  setPrintOrientation: (orientation) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, orientation } } })),
+  setPrintMargins: (marginHMm, marginVMm) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, marginHMm, marginVMm } } })),
+  setPrintScale: (scale) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scale } } })),
+  setPrintScaleAutoFit: (autoFit) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scaleAutoFit: autoFit } } })),
+  setPrintAnchor: (anchor) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, anchor } } })),
+  setPrintCustomPlacement: (scale, offsetXMm, offsetYMm) =>
+    set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scale, offsetXMm, offsetYMm, anchor: "custom" } } })),
   setVectorByWallsSectionExpanded: (id, expanded) =>
     set((s) => ({ vectorByWallsSectionsExpanded: { ...s.vectorByWallsSectionsExpanded, [id]: expanded } })),
   setVectorByWallsBackground: (color) =>

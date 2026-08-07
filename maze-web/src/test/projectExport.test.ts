@@ -3,7 +3,7 @@ import { parseAndValidate, serializeProject } from "../store/projectExport";
 import type { MazeState, PostEditEdge } from "../store/mazeStore";
 import { nodeEndpoint } from "../pixi/postEditEndpoint";
 import { presetEndpoint } from "../pixi/presetEndpoint";
-import { DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 
 function makeState(overrides: Partial<MazeState> = {}): MazeState {
   const base = {
@@ -63,6 +63,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     openRenderModeSettings: null,
     vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
     vectorByWallsSectionsExpanded: {},
+    pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
   };
   return { ...base, ...overrides } as unknown as MazeState;
 }
@@ -494,7 +495,38 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
       openRenderModeSettings: null,
       vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
       vectorByWallsSectionsExpanded: {},
+      pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
     });
+  });
+
+  it("round-trips pngExportSettings", () => {
+    const settings = {
+      outputMode: "print" as const,
+      digital: { ...DEFAULT_PNG_EXPORT_SETTINGS.digital, scale: 4, canvasMode: "fixed_size" as const, fixedWidth: 800, fixedHeight: 600 },
+      print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, paperSize: "a3" as const, orientation: "landscape" as const, anchor: "top_left" as const },
+    };
+    const state = makeState({ pngExportSettings: settings });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.imageExport.pngExportSettings).toEqual(settings);
+  });
+
+  it("defaults pngExportSettings fields to their own defaults when malformed, without throwing", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    raw.imageExport.pngExportSettings = {
+      outputMode: "not-a-mode",
+      digital: { scale: "not-a-number", canvasMode: "not-a-mode" },
+      print: { density: "not-a-density", paperSize: "not-a-size" },
+    };
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.imageExport.pngExportSettings).toEqual(DEFAULT_PNG_EXPORT_SETTINGS);
+  });
+
+  it("degrades a completely missing pngExportSettings to defaults", () => {
+    const raw = JSON.parse(JSON.stringify(serializeProject(makeState())));
+    delete raw.imageExport.pngExportSettings;
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.imageExport.pngExportSettings).toEqual(DEFAULT_PNG_EXPORT_SETTINGS);
   });
 
   it("round-trips vectorByWallsSectionsExpanded", () => {
@@ -551,6 +583,7 @@ describe("parseAndValidate — imageExport (GitHub issue #295)", () => {
       openRenderModeSettings: null,
       vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
       vectorByWallsSectionsExpanded: {},
+      pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
     });
   });
 });

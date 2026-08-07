@@ -1,12 +1,8 @@
 import { Container } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
-import { VectorByWallsRenderer } from "./VectorByWallsRenderer";
+import { createModeRenderer, type ModeRenderer } from "./modeRendererFactory";
 import type { RenderModeId } from "../../store/storeTypes";
 import type { ViewportListener } from "../sceneTypes";
-
-interface ModeRenderer extends ViewportListener {
-  destroy(): void;
-}
 
 /** Owns the Image Export feature's rendering modes (GitHub issue #287). Exactly one mode
  * renderer is active at a time, matching `activeRenderMode` — each mode gets its own container
@@ -29,19 +25,12 @@ export class ImageExportRenderer implements ViewportListener {
     this.subscribe();
   }
 
-  private createModeRenderer(mode: RenderModeId, container: Container): ModeRenderer {
-    switch (mode) {
-      case "vector_by_walls":
-        return new VectorByWallsRenderer(container);
-    }
-  }
-
   private ensureMode(mode: RenderModeId): void {
     if (this.modeRenderers.has(mode)) return;
     const modeContainer = new Container();
     this.container.addChild(modeContainer);
     this.modeContainers.set(mode, modeContainer);
-    this.modeRenderers.set(mode, this.createModeRenderer(mode, modeContainer));
+    this.modeRenderers.set(mode, createModeRenderer(mode, modeContainer));
   }
 
   private syncVisibility(activeMode: RenderModeId | null): void {
