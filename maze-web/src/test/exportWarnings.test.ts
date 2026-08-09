@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { computeVectorByWallsWarnings, computeVectorByCorridorsWarnings } from "../pixi/selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import type { VectorByWallsSettings, MarkerSettings } from "../store/storeTypes";
+import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
 import { canvas } from "../pixi/colorTokens";
 
 vi.mock("../wasm/mazeService", () => ({
@@ -43,6 +43,20 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
     teleportConnectorGapWidth: 3, teleportGroupCustomization: false, teleportGroupOverrides: {},
     splitNodeColors: [], splitSpecialShapes: true,
+    ...overrides,
+  };
+}
+
+function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {}): VectorByCorridorsSettings {
+  return {
+    color: 0, thickness: 4, join: "round",
+    startMarker: defaultMarker, finishMarker: defaultMarker,
+    markerWidenPadding: 0, markerWidenShape: "match_marker",
+    teleportLineCornerStyle: "round", teleportLineShape: "diamond", teleportLineSize: 0.16,
+    teleportEdgeColor: 0xff0000, teleportEdgeBorderColor: 0xff0000, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 3,
+    teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
+    teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
+    teleportConnectorGapWidth: 3, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...overrides,
   };
 }
@@ -229,33 +243,61 @@ describe("computeVectorByWallsWarnings", () => {
 describe("computeVectorByCorridorsWarnings", () => {
   describe("waypoint_on_split_corridor", () => {
     it("flags start when it sits on any split point, even a plain (non-special) one", () => {
-      const warnings = computeVectorByCorridorsWarnings(plainSplitNodes, 0, null);
+      const warnings = computeVectorByCorridorsWarnings(plainSplitNodes, [], squareCfg, baseCorridorsSettings(), 0, null);
       const matches = warnings.filter((w) => w.id === "waypoint_on_split_corridor");
       expect(matches).toHaveLength(1);
       expect(matches[0].nodes).toEqual([0]);
     });
 
     it("collapses start+finish both on split points into one warning", () => {
-      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, 0, 4);
+      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, [], squareCfg, baseCorridorsSettings(), 0, 4);
       const matches = warnings.filter((w) => w.id === "waypoint_on_split_corridor");
       expect(matches).toHaveLength(1);
       expect(matches[0].nodes.sort()).toEqual([0, 4]);
     });
 
     it("does not flag a waypoint on an unsplit node", () => {
-      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, 6, null);
+      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, [], squareCfg, baseCorridorsSettings(), 6, null);
       expect(warnings.filter((w) => w.id === "waypoint_on_split_corridor")).toHaveLength(0);
     });
 
     it("no split points in the maze at all -> no warning", () => {
       const nodes = [n(0, 0, 0), n(1, 5, 5)];
-      const warnings = computeVectorByCorridorsWarnings(nodes, 0, null);
+      const warnings = computeVectorByCorridorsWarnings(nodes, [], squareCfg, baseCorridorsSettings(), 0, null);
       expect(warnings.filter((w) => w.id === "waypoint_on_split_corridor")).toHaveLength(0);
     });
 
     it("no start/finish set -> no warning", () => {
-      const warnings = computeVectorByCorridorsWarnings(plainSplitNodes, null, null);
+      const warnings = computeVectorByCorridorsWarnings(plainSplitNodes, [], squareCfg, baseCorridorsSettings(), null, null);
       expect(warnings).toHaveLength(0);
+    });
+  });
+
+  // GitHub issue #313 follow-up bugfix: this mode reuses `TeleportRenderer` as-is, so it can hit
+  // the same teleport caveats "Vector by walls" already flags — previously not detected at all.
+  describe("teleport warnings (shared with computeVectorByWallsWarnings)", () => {
+    it("flags ambiguous teleport groups when there is no connector to tell them apart", () => {
+      const nodes = [n(0, 0, 0), n(1, 1, 1), n(2, 3, 3), n(3, 4, 4)];
+      const edges = [teleport(0, 1), teleport(2, 3)];
+      const settings = baseCorridorsSettings({ teleportConnectorStyle: "none" });
+      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "teleport_group_ambiguous")).toHaveLength(1);
+    });
+
+    it("flags an invisible one-way teleport exit marker when border width is 0", () => {
+      const nodes = [n(0, 0, 0), n(1, 3, 3)];
+      const edges = [teleport(0, 1)];
+      const settings = baseCorridorsSettings({ teleportEdgeBorderWidth: 0 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "teleport_marker_invisible")).toHaveLength(1);
+    });
+
+    it("flags a teleport marker overlapping the start marker's footprint", () => {
+      const nodes = [n(0, 0, 0), n(1, 0, 0), n(2, 3, 3)];
+      const edges = [teleport(1, 2)];
+      const settings = baseCorridorsSettings({ teleportLineSize: 0.4 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, 0, null);
+      expect(warnings.filter((w) => w.id === "teleport_waypoint_overlap")).toHaveLength(1);
     });
   });
 });

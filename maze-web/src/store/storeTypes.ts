@@ -907,75 +907,19 @@ export interface PostEditActions {
   applySplitBlueprint: (point: [number, number], blueprint: SplitNodeBlueprint) => void;
 }
 
-/** One start/finish marker's appearance (GitHub issue #296) — `borderWidth: 0` (the default) draws
- *  no border, so there is no separate show-border toggle. */
-export interface MarkerSettings {
-  shape: MarkerShape;
-  /** Sharp vs. round corners (GitHub issue #302 follow-up) — only affects the four
-   *  regular-polygon `MarkerShape`s, same convention as `teleportLineCornerStyle`. */
-  cornerStyle: TeleportCornerStyle;
-  fillColor: number;
-  borderColor: number;
-  borderWidth: number;
-  /** Floor-colored gap drawn around the border (GitHub issue #302 follow-up) — `0` (the default)
-   *  draws no gap, same convention as `teleportConnectorGapWidth`. Color always mirrors
-   *  `VectorByWallsSettings.floorColor`, not independently settable. */
-  gapWidth: number;
-  /** Marker radius, as a fraction of the tile size (0-1) — same convention as
-   *  `VectorByWallsSettings.teleportLineSize`. */
-  size: number;
-}
-
-/** "Vector by walls" mode's own settings (GitHub issue #289, floor color added in #290) —
- * background appearance and floor appearance ("general settings" and "floor" sections of #288's
- * panel). Defaults match the editor's normal grid/floor appearance (`canvas.stage.background`,
- * `canvas.grid.line`, `canvas.floor.default`) so the exported image looks identical to the editor
- * view until the user changes something. Kept as its own type (not folded into a shared per-mode
- * settings shape) since each render mode's settings are expected to differ entirely — a future
- * mode adds its own sibling `xxxSettings` field, not a new case of this type. */
-export interface VectorByWallsSettings {
-  background: number;
-  showGrid: boolean;
-  gridColor: number;
-  floorColor: number;
-  /** Applied to every "wall"-colored stroke (solid walls, split-junction wall faces, closed-cells
-   *  fill) via `WallStyleOverride` — never the `faint`/`background` `WallStyle` variants or a split
-   *  passage's own node-identity color. See GitHub issue #291. */
-  wallColor: number;
-  /** Drives both the pixi stroke `join` and the derived `cap` together (`round`->`round` cap,
-   *  `miter`->`square` cap) when built into a `WallStyleOverride` in `VectorByWallsRenderer`. */
-  wallJoin: "round" | "miter";
-  wallThickness: number;
-  /** One-way indicator drawn on a directed passage's wall segment — shape/color/gap/size/
-   *  join/cap, applied via `OneWayStyleOverride` (`pixi/renderers/types.ts`) to `WallRenderer`'s
-   *  plain wall one-ways only, never a split passage's connector arrow. Always has its own color
-   *  (no fallback to `wallColor` — GitHub issue #292). */
-  oneWayPattern: OneWayPattern;
-  oneWayColor: number;
-  /** Floor-colored gap around the indicator (GitHub issue #302 follow-up renamed from
-   *  `oneWayBorderWidth` — not a real border, same convention as the marker/connector gap) —
-   *  color always mirrors `floorColor`, not independently settable. */
-  oneWayGapWidth: number;
-  oneWaySize: number;
-  /** Chevron/arrow's own line thickness — independent of `oneWaySize` (geometric scale). No
-   *  effect on the `triangle` pattern. */
-  oneWayThickness: number;
-  /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
-   *  `wallJoin`/`wallCap` — applied to the indicator's own strokes (chevron/arrow lines, or a
-   *  filled triangle's border stroke), independent of the Tiles section's wall join/cap. */
-  oneWayJoin: "round" | "miter";
-  startMarker: MarkerSettings;
-  finishMarker: MarkerSettings;
-  /** Teleports section (GitHub issue #293, restructured in a follow-up that removed the standalone
-   *  `"line"`/`"grouped"` pattern switch) — `teleportLine*`/`teleportConnector*`/`teleportEdge*`
-   *  ("Edges"/"Connector" subsections) are always the base look; `teleportConnectorStyle: "none"`
-   *  draws no connector line at all. `teleportGroupCustomization` (its own subsection, off by
-   *  default) layers a per-group shape/fill-color/border-color override on top wherever an endpoint
-   *  coordinate coincides (see `buildTeleportGroups`) — combined with `connectorStyle: "none"` this
-   *  reproduces the old standalone `"grouped"` pattern's look. `teleportGroupOverrides` holds those
-   *  overrides, keyed by `TeleportGroup.key` (stable across renders, not across a maze
-   *  regenerate/reload — entries for groups no longer present are simply never looked up again, not
-   *  pruned). */
+/** Teleports section settings (GitHub issue #293, restructured in a follow-up that removed the
+ *  standalone `"line"`/`"grouped"` pattern switch; GitHub issue #313 extracted this interface out
+ *  of `VectorByWallsSettings` so `VectorByCorridorsSettings` can `extends` the exact same field set
+ *  instead of duplicating it — teleports aren't tied to the corridor-vs-wall visual model, so the
+ *  settings transfer as-is). `teleportLine*`/`teleportConnector*`/`teleportEdge*` ("Edges"/
+ *  "Connector" subsections) are always the base look; `teleportConnectorStyle: "none"` draws no
+ *  connector line at all. `teleportGroupCustomization` (its own subsection, off by default) layers
+ *  a per-group shape/fill-color/border-color override on top wherever an endpoint coordinate
+ *  coincides (see `buildTeleportGroups`) — combined with `connectorStyle: "none"` this reproduces
+ *  the old standalone `"grouped"` pattern's look. `teleportGroupOverrides` holds those overrides,
+ *  keyed by `TeleportGroup.key` (stable across renders, not across a maze regenerate/reload —
+ *  entries for groups no longer present are simply never looked up again, not pruned). */
+export interface TeleportSettingsFields {
   teleportLineCornerStyle: TeleportCornerStyle;
   teleportLineShape: MarkerShape;
   /** Marker radius, as a fraction of the tile size (0-1, GitHub issue #293 follow-up — matches
@@ -1014,9 +958,70 @@ export interface VectorByWallsSettings {
    *  replacing a separate on/off toggle (GitHub issue #293 follow-up: "if it's not needed, just set
    *  it to zero"). */
   teleportConnectorGapWidth: number;
-  /** Off by default — see this interface's own Teleports-section doc comment above. */
+  /** Off by default — see this interface's own doc comment above. */
   teleportGroupCustomization: boolean;
   teleportGroupOverrides: Record<string, TeleportGroupOverride>;
+}
+
+/** One start/finish marker's appearance (GitHub issue #296) — `borderWidth: 0` (the default) draws
+ *  no border, so there is no separate show-border toggle. */
+export interface MarkerSettings {
+  shape: MarkerShape;
+  /** Sharp vs. round corners (GitHub issue #302 follow-up) — only affects the four
+   *  regular-polygon `MarkerShape`s, same convention as `teleportLineCornerStyle`. */
+  cornerStyle: TeleportCornerStyle;
+  fillColor: number;
+  borderColor: number;
+  borderWidth: number;
+  /** Floor-colored gap drawn around the border (GitHub issue #302 follow-up) — `0` (the default)
+   *  draws no gap, same convention as `teleportConnectorGapWidth`. Color always mirrors
+   *  `VectorByWallsSettings.floorColor`, not independently settable. */
+  gapWidth: number;
+  /** Marker radius, as a fraction of the tile size (0-1) — same convention as
+   *  `VectorByWallsSettings.teleportLineSize`. */
+  size: number;
+}
+
+/** "Vector by walls" mode's own settings (GitHub issue #289, floor color added in #290) —
+ * background appearance and floor appearance ("general settings" and "floor" sections of #288's
+ * panel). Defaults match the editor's normal grid/floor appearance (`canvas.stage.background`,
+ * `canvas.grid.line`, `canvas.floor.default`) so the exported image looks identical to the editor
+ * view until the user changes something. Kept as its own type (not folded into a shared per-mode
+ * settings shape) since each render mode's settings are expected to differ entirely — a future
+ * mode adds its own sibling `xxxSettings` field, not a new case of this type. */
+export interface VectorByWallsSettings extends TeleportSettingsFields {
+  background: number;
+  showGrid: boolean;
+  gridColor: number;
+  floorColor: number;
+  /** Applied to every "wall"-colored stroke (solid walls, split-junction wall faces, closed-cells
+   *  fill) via `WallStyleOverride` — never the `faint`/`background` `WallStyle` variants or a split
+   *  passage's own node-identity color. See GitHub issue #291. */
+  wallColor: number;
+  /** Drives both the pixi stroke `join` and the derived `cap` together (`round`->`round` cap,
+   *  `miter`->`square` cap) when built into a `WallStyleOverride` in `VectorByWallsRenderer`. */
+  wallJoin: "round" | "miter";
+  wallThickness: number;
+  /** One-way indicator drawn on a directed passage's wall segment — shape/color/gap/size/
+   *  join/cap, applied via `OneWayStyleOverride` (`pixi/renderers/types.ts`) to `WallRenderer`'s
+   *  plain wall one-ways only, never a split passage's connector arrow. Always has its own color
+   *  (no fallback to `wallColor` — GitHub issue #292). */
+  oneWayPattern: OneWayPattern;
+  oneWayColor: number;
+  /** Floor-colored gap around the indicator (GitHub issue #302 follow-up renamed from
+   *  `oneWayBorderWidth` — not a real border, same convention as the marker/connector gap) —
+   *  color always mirrors `floorColor`, not independently settable. */
+  oneWayGapWidth: number;
+  oneWaySize: number;
+  /** Chevron/arrow's own line thickness — independent of `oneWaySize` (geometric scale). No
+   *  effect on the `triangle` pattern. */
+  oneWayThickness: number;
+  /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
+   *  `wallJoin`/`wallCap` — applied to the indicator's own strokes (chevron/arrow lines, or a
+   *  filled triangle's border stroke), independent of the Tiles section's wall join/cap. */
+  oneWayJoin: "round" | "miter";
+  startMarker: MarkerSettings;
+  finishMarker: MarkerSettings;
   /** Splits section (GitHub issue #294) — per-split-node-slot identity colors, indexed by slot
    *  (0 = original node, 1 = first extra node, ...), overriding `splitSlotColor`'s default palette
    *  one-to-one; a point with more nodes than this array's length falls back to the default
@@ -1037,10 +1042,13 @@ export interface VectorByWallsSettings {
  * width and corner/end style. Kept as its own type (not folded into `VectorByWallsSettings`), same
  * per-mode-settings convention as every other `RenderModeId`. Every basic passage (both
  * bidirectional and one-way alike — direction isn't distinguished yet, a follow-up sub-issue's
- * concern) draws as a stroked line between the two cells' centers; split points and teleport edges
- * are skipped entirely for now (their own follow-up sub-issues), same "empty until its own
- * sub-issue" convention `splitSpecialShapes` etc. followed in `VectorByWallsSettings`. */
-export interface VectorByCorridorsSettings {
+ * concern) draws as a stroked line between the two cells' centers; split points are skipped
+ * entirely for now (their own follow-up sub-issue), same "empty until its own sub-issue" convention
+ * `splitSpecialShapes` etc. followed in `VectorByWallsSettings`. Teleport edges (GitHub issue #313)
+ * `extends TeleportSettingsFields` — teleports aren't tied to the corridor-vs-wall visual model, so
+ * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
+ * `finishMarker` (GitHub issue #311). */
+export interface VectorByCorridorsSettings extends TeleportSettingsFields {
   color: number;
   thickness: number;
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
@@ -1055,9 +1063,24 @@ export interface VectorByCorridorsSettings {
    *  the corridor stroke under it (GitHub issue #311's `drawMarkerWidenPatches`) — without this, a
    *  marker with no border/gap has a widen patch exactly the same radius as its own fill, so the
    *  marker completely covers the patch and no widened corridor is visible around it. `0` draws no
-   *  extra padding (patch radius = footprint exactly, marker still fully covers it). */
+   *  extra padding (patch radius = footprint exactly, marker still fully covers it). Lives in the
+   *  "Cells" section, not "Waypoints" (GitHub issue #313 follow-up) — it also widens the corridor
+   *  under teleport markers (see `buildTeleportWidenMarkers`), so it's a corridor-line concern, not
+   *  a waypoint-only one. One shared setting for every marker kind on this canvas. */
   markerWidenPadding: number;
+  /** Widen patch's own drawn shape (GitHub issue #313 follow-up), independent of `markerWidenPadding`
+   *  — `"match_marker"` (the default, and the only behavior before this setting existed) draws each
+   *  patch in that marker's own shape (`MarkerSettings.shape`/`MarkerShape`, per group override for a
+   *  teleport point — see `buildTeleportWidenMarkers`). `"circle"`/`"square"` instead draw every
+   *  patch (waypoint and teleport alike) in that one fixed shape regardless of the marker's own —
+   *  `"square"`'s corners follow `join` (`round"`->rounded, `"miter"`->sharp), the same corner
+   *  convention the corridor stroke's own join/cap already uses, rather than a separate corner-style
+   *  setting just for this. */
+  markerWidenShape: MarkerWidenShape;
 }
+
+/** See `VectorByCorridorsSettings.markerWidenShape`'s own doc comment. */
+export type MarkerWidenShape = "circle" | "square" | "match_marker";
 
 export interface ImageExportState {
   /** Currently active rendering mode in the Image Export feature card's switcher, or `null` if
@@ -1141,6 +1164,9 @@ export interface ImageExportActions {
   setVectorByCorridorsFinishMarkerGapWidth: (v: number) => void;
   setVectorByCorridorsFinishMarkerSize: (v: number) => void;
   setVectorByCorridorsMarkerWidenPadding: (v: number) => void;
+  setVectorByCorridorsMarkerWidenShape: (shape: MarkerWidenShape) => void;
+  patchVectorByCorridorsTeleportSettings: (patch: Partial<TeleportSettingsFields>) => void;
+  setVectorByCorridorsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;
@@ -1168,22 +1194,7 @@ export interface ImageExportActions {
   setVectorByWallsFinishMarkerBorderWidth: (v: number) => void;
   setVectorByWallsFinishMarkerGapWidth: (v: number) => void;
   setVectorByWallsFinishMarkerSize: (v: number) => void;
-  setVectorByWallsTeleportLineCornerStyle: (style: TeleportCornerStyle) => void;
-  setVectorByWallsTeleportLineShape: (shape: MarkerShape) => void;
-  setVectorByWallsTeleportLineSize: (v: number) => void;
-  setVectorByWallsTeleportEdgeColor: (color: number) => void;
-  setVectorByWallsTeleportEdgeBorderColor: (color: number) => void;
-  setVectorByWallsTeleportEdgeBorderWidth: (v: number) => void;
-  setVectorByWallsTeleportEdgeGapWidth: (v: number) => void;
-  setVectorByWallsTeleportConnectorColor: (color: number) => void;
-  setVectorByWallsTeleportConnectorWidth: (v: number) => void;
-  setVectorByWallsTeleportConnectorStyle: (style: TeleportConnectorStyle) => void;
-  setVectorByWallsTeleportAvoidFieldExit: (v: boolean) => void;
-  setVectorByWallsTeleportArrowMode: (mode: TeleportArrowMode) => void;
-  setVectorByWallsTeleportArrowPeriod: (v: number) => void;
-  setVectorByWallsTeleportArrowSize: (v: number) => void;
-  setVectorByWallsTeleportConnectorGapWidth: (v: number) => void;
-  setVectorByWallsTeleportGroupCustomization: (v: boolean) => void;
+  patchVectorByWallsTeleportSettings: (patch: Partial<TeleportSettingsFields>) => void;
   setVectorByWallsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
   setSelectedTeleportGroupKey: (key: string | null) => void;
   /** Sets slot `index`'s color, growing `splitNodeColors` (filling any new intermediate slots with

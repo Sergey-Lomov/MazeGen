@@ -1,5 +1,5 @@
 import type React from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { inset, spacing, ui } from "../../styles/theme";
 import { ColorRow } from "../ColorRow";
@@ -7,10 +7,10 @@ import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
 import { SectionHeader } from "../SectionHeader";
 import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
+import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { computeVectorByCorridorsWarnings } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
-import { resolveExportWarningsSectionTitle } from "./exportWarningsI18n";
-import { ExportWarningBubble } from "./ExportWarningBubble";
+import { ExportWarningsSection } from "./ExportWarningsSection";
 import { TILE_SIZE } from "../../pixi/constants";
 import * as m from "~/paraglide/messages";
 
@@ -18,13 +18,17 @@ import * as m from "~/paraglide/messages";
  * section (mirrors `VectorByWallsSettingsPanel`'s own "Tiles" section naming/collapse convention,
  * `vectorByCorridorsSectionsExpanded` keyed the same way) covering the corridor stroke's color,
  * corners & ends (round/miter join, paired with a round/square cap, same convention as
- * `VectorByWallsSettingsPanel`'s wall join setting) and thickness (1 to `TILE_SIZE` — a corridor
+ * `VectorByWallsSettingsPanel`'s wall join setting), thickness (1 to `TILE_SIZE` — a corridor
  * wider than a whole cell has no meaningful upper bound of its own, so the cap tracks the cell size
  * rather than a fixed pixel constant, unlike `VectorByWallsSettings.wallThickness`'s fixed 1-20
- * range). Bottom warnings section mirrors `VectorByWallsSettingsPanel`'s own layout so both panels
- * stay visually consistent; wired to an empty list here since this mode has no export-warning
- * checks yet — stays hidden until a follow-up sub-issue adds a real `compute*Warnings` function for
- * this mode. */
+ * range) and the widen-patch padding/shape (`markerWidenPadding`/`markerWidenShape`, GitHub issue
+ * #313 follow-up moved these here from the Waypoints section — they widen the corridor under every
+ * marker kind on this canvas, waypoint and teleport alike, so they're a corridor-line concern, not
+ * a waypoint-only one; one shared pair of settings, not a separate one per marker kind). Teleports
+ * section (GitHub issue #313) mirrors `VectorByWallsSettingsPanel`'s own section — same
+ * `TeleportSettingsSection`, only the underlying store setters differ (`patch*`), same reuse
+ * convention as the Waypoints section's `MarkerSettingsGroup`. Bottom warnings section mirrors
+ * `VectorByWallsSettingsPanel`'s own layout so both panels stay visually consistent. */
 export function VectorByCorridorsSettingsPanel() {
   const settings = useMazeStore((s) => s.vectorByCorridorsSettings);
   const setColor = useMazeStore((s) => s.setVectorByCorridorsColor);
@@ -46,17 +50,38 @@ export function VectorByCorridorsSettingsPanel() {
   const setFinishMarkerGapWidth = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerGapWidth);
   const setFinishMarkerSize = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerSize);
   const setMarkerWidenPadding = useMazeStore((s) => s.setVectorByCorridorsMarkerWidenPadding);
+  const setMarkerWidenShape = useMazeStore((s) => s.setVectorByCorridorsMarkerWidenShape);
+  const patchTeleportSettings = useMazeStore((s) => s.patchVectorByCorridorsTeleportSettings);
+  const setTeleportGroupOverride = useMazeStore((s) => s.setVectorByCorridorsTeleportGroupOverride);
+  const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByCorridorsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByCorridorsSectionExpanded);
   const isExpanded = (id: string) => sectionsExpanded[id] ?? false;
-  const toggleSection = (id: string) => setSectionExpanded(id, !isExpanded(id));
+  // Collapsing the Teleports section dangles a click-selection the same way
+  // `VectorByWallsSettingsPanel` guards against — see that component's own doc comment on this.
+  const toggleSection = (id: string) => {
+    if (id === "teleports" && isExpanded(id)) setSelectedTeleportGroupKey(null);
+    setSectionExpanded(id, !isExpanded(id));
+  };
+
+  // `Escape` clears a click-selected teleport group — same global convention
+  // `VectorByWallsSettingsPanel` uses (see its own doc comment on this).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelectedTeleportGroupKey(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [setSelectedTeleportGroupKey]);
 
   const nodes = useMazeStore((s) => s.nodes);
+  const edges = useMazeStore((s) => s.edges);
   const rawStart = useMazeStore((s) => s.start);
   const rawFinish = useMazeStore((s) => s.finish);
   const postEditMeta = useMazeStore((s) => s.postEditMeta);
   const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
+  const cfg = useMazeStore((s) => s.activeTessellationConfig);
 
   const { start, finish } = useMemo(
     () => resolveEffectiveEndpoints({ nodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
@@ -64,9 +89,13 @@ export function VectorByCorridorsSettingsPanel() {
   );
 
   const exportWarnings = useMemo(
-    () => computeVectorByCorridorsWarnings(nodes, start, finish),
-    [nodes, start, finish],
+    () => computeVectorByCorridorsWarnings(nodes, edges, cfg, settings, start, finish),
+    [nodes, edges, cfg, settings, start, finish],
   );
+
+  const hasTeleports = useMemo(() => edges.some((e) => e.kind === "teleport"), [edges]);
+
+  const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(nodes, edges, cfg, settings);
 
   return (
     <div style={styles.root}>
@@ -96,6 +125,25 @@ export function VectorByCorridorsSettingsPanel() {
             step={1}
             format={(v) => String(v)}
           />
+          <SliderRow
+            label={m["image_export.vector_by_corridors.marker_widen_padding"]()}
+            value={settings.markerWidenPadding}
+            onChange={setMarkerWidenPadding}
+            min={0}
+            max={20}
+            step={1}
+            format={(v) => String(v)}
+          />
+          <SelectRow
+            label={m["image_export.vector_by_corridors.marker_widen_shape"]()}
+            value={settings.markerWidenShape}
+            options={[
+              { value: "match_marker", label: m["image_export.vector_by_corridors.marker_widen_shape_match_marker"]() },
+              { value: "circle", label: m["image_export.vector_by_corridors.marker_widen_shape_circle"]() },
+              { value: "square", label: m["image_export.vector_by_corridors.marker_widen_shape_square"]() },
+            ]}
+            onChange={setMarkerWidenShape}
+          />
         </div>
       )}
 
@@ -108,15 +156,6 @@ export function VectorByCorridorsSettingsPanel() {
       />
       {isExpanded("waypoints") && (
         <div style={styles.block}>
-          <SliderRow
-            label={m["image_export.vector_by_corridors.marker_widen_padding"]()}
-            value={settings.markerWidenPadding}
-            onChange={setMarkerWidenPadding}
-            min={0}
-            max={20}
-            step={1}
-            format={(v) => String(v)}
-          />
           <MarkerSettingsGroup
             title={m["image_export.vector_by_walls.markers_start"]()}
             settings={settings.startMarker}
@@ -146,24 +185,33 @@ export function VectorByCorridorsSettingsPanel() {
         </div>
       )}
 
-      {exportWarnings.length > 0 && (
+      {hasTeleports && (
         <>
           <div style={styles.divider} />
 
           <SectionHeader
-            label={resolveExportWarningsSectionTitle(exportWarnings.length)}
-            expanded={isExpanded("warnings")}
-            onToggle={() => toggleSection("warnings")}
+            label={m["image_export.vector_by_walls.section_teleports"]()}
+            expanded={isExpanded("teleports")}
+            onToggle={() => toggleSection("teleports")}
           />
-          {isExpanded("warnings") && (
-            <div style={styles.warningsBlock}>
-              {exportWarnings.map((w) => (
-                <ExportWarningBubble key={w.key} warning={w} />
-              ))}
-            </div>
+          {isExpanded("teleports") && (
+            <TeleportSettingsSection
+              settings={settings}
+              onChange={patchTeleportSettings}
+              groupOverrides={settings.teleportGroupOverrides}
+              onGroupOverrideChange={setTeleportGroupOverride}
+              teleportGroups={teleportGroups}
+              teleportCollisionKeys={teleportCollisionKeys}
+            />
           )}
         </>
       )}
+
+      <ExportWarningsSection
+        warnings={exportWarnings}
+        expanded={isExpanded("warnings")}
+        onToggle={() => toggleSection("warnings")}
+      />
     </div>
   );
 }
@@ -172,5 +220,4 @@ const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: spacing.itemGap, padding: `${inset.panelInsetY}px ${inset.panelInsetX}px` },
   block: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
-  warningsBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap },
 };

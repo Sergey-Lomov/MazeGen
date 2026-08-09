@@ -76,16 +76,26 @@ passage between two geometrically adjacent cells draws as a stroked line between
 (`buildCorridorSegments`, `pixi/selectors/mazeSelectors.ts`) — the passage itself is the visible
 line, not the wall around it. GitHub issue #310 (scaffolded in #315).
 
-Its settings panel (`VectorByCorridorsSettingsPanel.tsx`) has two collapsible sections
-(`vectorByCorridorsSectionsExpanded`, same collapse convention as `VectorByWallsSettingsPanel`'s own
-sections — collapsed by default), plus a warnings section, backed by `VectorByCorridorsSettings`
-(`imageExportSlice.ts`):
+Its settings panel (`VectorByCorridorsSettingsPanel.tsx`) has a collapsible "Cells" section, a
+collapsible "Waypoints" section, a "Teleports" section (hidden entirely when the maze has no
+teleport edge), and a warnings section (`vectorByCorridorsSectionsExpanded`, same collapse
+convention as `VectorByWallsSettingsPanel`'s own sections — collapsed by default), backed by
+`VectorByCorridorsSettings` (`imageExportSlice.ts`):
 
 - **"Cells"** — corridor color, corners & ends (round/miter join, paired with a round/square cap —
   same convention as `VectorByWallsSettings.wallJoin`/`wallCap`) and thickness (1 to `TILE_SIZE` — a
   corridor's meaningful range scales with the cell size, unlike "Vector by walls"' fixed 1-20px
   wall-thickness range). Defaults: `canvas.wall.default` color, round join, thickness `TILE_SIZE / 2`
   (half the slider's own max, rather than `VectorByWallsSettings.wallThickness`'s fixed default).
+  Also hosts the marker widen-patch settings (GitHub issue #313 follow-up — moved here from
+  "Waypoints" since the patch also widens the corridor under teleport markers, not just
+  start/finish, so it's a corridor-line concern rather than a waypoint-only one): a "Marker widen
+  padding" slider (0-20px, default 4) sets `markerWidenPadding`, fed into `drawMarkerWidenPatches`'
+  `padding` param and into `computeVectorByCorridorsExportMargin`'s own marker-footprint terms; a
+  "Marker widen shape" select sets `markerWidenShape` (`"match_marker"` default — each patch draws
+  in that marker's own shape, `"circle"`/`"square"` — every patch draws in that one fixed shape
+  regardless of the marker's own, `"square"`'s corners following the Cells section's own `join`
+  rather than a separate corner-style setting).
 - **"Waypoints"** (GitHub issue #311) — start/finish marker appearance, `startMarker`/`finishMarker:
   MarkerSettings` fields on `VectorByCorridorsSettings`, identical shape and defaults to
   `VectorByWallsSettings`' own waypoint fields. The panel reuses `VectorByWallsSettingsPanel`'s
@@ -102,20 +112,37 @@ sections — collapsed by default), plus a warnings section, backed by `VectorBy
   `VectorByWallsRenderer`'s marker gap mirrors its own floor color) rather than a user-set floor
   color, since this mode has none. Start/finish marker footprint is folded into
   `computeVectorByCorridorsExportMargin` the same way `computeVectorByWallsExportMargin` folds in
-  its own waypoint margins. A "Marker widen padding" slider (0-20px, default 4, top of the section
-  above the Start/Finish sub-groups since it's shared by both markers rather than per-marker) sets
-  `VectorByCorridorsSettings.markerWidenPadding`, fed straight into `drawMarkerWidenPatches`'
-  `padding` param below and into `computeVectorByCorridorsExportMargin`'s own marker-footprint terms
-  (so the export canvas always reserves enough room for the widened patch, not just the marker's own
-  drawn footprint).
+  its own waypoint margins.
+- **"Teleports"** (GitHub issue #313 follow-up) — teleports aren't tied to the corridor-vs-wall
+  visual model, so `VectorByCorridorsSettings extends TeleportSettingsFields` (`storeTypes.ts`) and
+  the whole set of teleport fields/rendering transfers from "Vector by walls" as-is: same
+  `TeleportSettingsSection` component (`components/features/TeleportSettingsSection.tsx`, extracted
+  out of `VectorByWallsSettingsPanel` so both panels render the identical fields/groups UI, only the
+  underlying store setters differ — `patchVectorByCorridorsTeleportSettings` vs.
+  `patchVectorByWallsTeleportSettings`, both generic `Partial<TeleportSettingsFields>` patch actions
+  replacing dozens of one-field-each setters), same `TeleportRenderer` instance drawn via its own
+  `Container` (per the feature-renderer ownership rule — never `VectorByWallsRenderer`'s own
+  instance), same group-customization/selection/click-to-select behavior described under "Vector by
+  walls"' own Teleports section above. Two differences: `floorColor` passed to
+  `buildTeleportLineStyle` is this mode's own `settings.color` (the corridor's own stroke color, not
+  a canvas background) — a teleport point sits directly on the passage line here, not on an empty
+  floor tile, so an outline point's fill and gap rings must occlude the line the same way an entry
+  point's real fill does; and every teleport marker also gets its own widen patch under the corridor
+  stroke (`buildTeleportWidenMarkers`, `VectorByCorridorsRenderer.ts` — exported, unit-tested
+  directly), reusing the Cells section's `markerWidenPadding`/`markerWidenShape` rather than a
+  separate teleport-only setting, with each point's own shape/corner-style resolved from its
+  group's `TeleportGroupOverride` when one applies (so the widen patch never mismatches what
+  `TeleportRenderer` actually draws there). `buildTeleportWidenMarkers`'s own `groups` param is
+  computed once per `renderAll` and handed in, rather than the function recomputing
+  `buildTeleportGroups` itself — `TeleportRenderer.render` already computes the same grouping
+  internally for the same edges, so a second independent call would repeat that work for nothing.
 
 Both bidirectional and one-way passages draw the identical segment today — direction isn't
 distinguished yet, left for a follow-up sub-issue's own indicator setting. Split points (a cell with
-more than one `NodeDto`) and teleport edges are skipped entirely — their passages draw nothing in
-this mode, same "own dedicated sub-issue" convention `VectorByWallsRenderer`'s split/teleport
-sections followed before their own issues landed. `buildCorridorSegments` excludes them the same
-way `buildMazeWalls` excludes split points from its own wall reading (`splitPointKeys`), and
-excludes `kind: "teleport"` edges the same way `buildMazeWalls` does.
+more than one `NodeDto`) are skipped entirely — their passages draw nothing in this mode, same "own
+dedicated sub-issue" convention `VectorByWallsRenderer`'s split section followed before its own
+issue landed. `buildCorridorSegments` excludes them the same way `buildMazeWalls` excludes split
+points from its own wall reading (`splitPointKeys`).
 
 Corner/end joins are applied by chaining corridor segments into polylines wherever exactly two
 segments meet at a shared vertex (`chainSegmentsAtSharedVertices`, `WallRenderer.ts` — reused as-is,
@@ -145,18 +172,32 @@ drawing the patches into its own `corridors` `Graphics` after the stroke and bef
 `WaypointsRenderer.render` draws the markers themselves, but any future marker type sharing this
 canvas (or a different renderer altogether) can call it the same way.
 
-### Corridors-specific export warning (`computeVectorByCorridorsWarnings`, `exportWarnings.ts`)
+### Corridors-specific export warnings (`computeVectorByCorridorsWarnings`, `exportWarnings.ts`)
 
-GitHub issue #311 — `waypoint_on_split_corridor`: a start/finish marker sits on *any* split point
-(`buildSplitPointKeys`, not just a "special shape" one). Unlike `VectorByWallsRenderer`, this mode
-draws no split-point geometry at all — `buildCorridorSegments` skips every split point
-unconditionally — so a waypoint marker there has no corridor line under it whatsoever, worth
-flagging regardless of whether the point would've been a recognized special shape under "Vector by
-walls"' own reading. Kept as its own function (not folded into `computeVectorByWallsWarnings`) since
-the two modes' warning sets differ — this mode has no teleport/special-split-shape rendering of its
-own to check against. Wired into the settings panel the same "Warnings" section convention
+GitHub issue #311's own check, plus the three teleport checks added as a #313 follow-up bugfix:
+
+- **`waypoint_on_split_corridor`** — a start/finish marker sits on *any* split point
+  (`buildSplitPointKeys`, not just a "special shape" one). Unlike `VectorByWallsRenderer`, this mode
+  draws no split-point geometry at all — `buildCorridorSegments` skips every split point
+  unconditionally — so a waypoint marker there has no corridor line under it whatsoever, worth
+  flagging regardless of whether the point would've been a recognized special shape under "Vector by
+  walls"' own reading.
+- **`teleport_marker_invisible`**, **`teleport_group_ambiguous`**, **`teleport_waypoint_overlap`** —
+  identical checks to "Vector by walls"' own (see "Export warnings" below), since this mode reuses
+  `TeleportRenderer` as-is and can hit the exact same caveats. Factored into a shared
+  `computeTeleportWarnings` helper (`exportWarnings.ts`) taking `TeleportSettingsFields` plus a
+  start/finish marker style, called by both `computeVectorByWallsWarnings` and
+  `computeVectorByCorridorsWarnings`, so the two modes' warning sets can't silently drift apart on
+  the fields they actually share.
+
+This mode has no special-split-shape rendering of its own to check against
+(`waypoint_on_split`/`teleport_on_special_split` stay "Vector by walls"-only), which is why
+`computeVectorByCorridorsWarnings` is still its own function rather than folded entirely into
+`computeVectorByWallsWarnings`. Wired into the settings panel the same "Warnings" section convention
 `VectorByWallsSettingsPanel` uses (`resolveExportWarningsSectionTitle`, `ExportWarningBubble`,
-hover-highlight via `hoveredExportWarningKey`).
+hover-highlight via `hoveredExportWarningKey`) — including its own `RegionHighlightRenderer`
+instance (`VectorByCorridorsRenderer`'s own, per the feature-renderer ownership rule, mirroring
+`VectorByWallsRenderer`'s own highlight overlay described below).
 
 ### Shared marker shape set (`MarkerShape`, `pixi/renderers/markerShapes.ts`)
 
@@ -170,7 +211,7 @@ GitHub issue #293 follow-up unified what used to be two separate shape enums/dra
 
 ## Export warnings (GitHub issue #298)
 
-A maze can be perfectly valid QC-wise (`Specs/quality_control.md`) but a specific render mode still can't depict some case correctly — e.g. a teleport whose exit marker draws with zero visual footprint under the current style settings. These are export-method-specific presentation caveats, distinct from `IssueDto` (generic maze validity): computed by `computeVectorByWallsWarnings` (`maze-web/src/pixi/selectors/exportWarnings.ts`), a pure, renderer-agnostic function (no Pixi/store dependency) returning `ExportWarning[]` — `{ id: ExportWarningId, key: string, nodes: number[], edges: [number, number][] }`. Kept renderer-agnostic so a future consumer (e.g. a feature-card status summary showing per-render-mode warning counts) can call the same function without depending on `VectorByWallsSettingsPanel` or `VectorByWallsRenderer`.
+A maze can be perfectly valid QC-wise (`Specs/quality_control.md`) but a specific render mode still can't depict some case correctly — e.g. a teleport whose exit marker draws with zero visual footprint under the current style settings. These are export-method-specific presentation caveats, distinct from `IssueDto` (generic maze validity): computed by `computeVectorByWallsWarnings`/`computeVectorByCorridorsWarnings` (`maze-web/src/pixi/selectors/exportWarnings.ts`), pure, renderer-agnostic functions (no Pixi/store dependency) returning `ExportWarning[]` — `{ id: ExportWarningId, key: string, nodes: number[], edges: [number, number][] }`. The three teleport-only checks are shared between both modes via `computeTeleportWarnings` (see "Vector by corridors"' own warnings section above for what stays mode-specific). Kept renderer-agnostic so a future consumer (e.g. a feature-card status summary showing per-render-mode warning counts) can call the same functions without depending on either settings panel or renderer.
 
 **One warning entry per `ExportWarningId`, always** — every occurrence of the same kind of caveat collapses into a single entry (e.g. every colliding teleport group, every overlapping waypoint) rather than one entry per affected entity, so the panel shows one bubble per warning *type*. `nodes`/`edges` still span every entity the warning covers, so hovering the one bubble highlights all of them at once.
 
@@ -186,7 +227,7 @@ Both split-point checks share one `specialSplitPointKeys` set (built once via `b
 
 **Panel UI** (`VectorByWallsSettingsPanel.tsx`): a collapsible "Warnings" section at the bottom of the panel (title shows the count, e.g. "Warnings (2)"), hidden entirely when there are no warnings. Each warning renders as an `ExportWarningBubble` — same look/interaction as `IssuesBlock`'s `IssueBubble` (Analytics feature): an info icon opens a `Modal` with the warning's description (`resolveExportWarningDescription`, `exportWarningsI18n.ts` — descriptions state the problem only, no fix suggestions), hovering the bubble sets `hoveredExportWarningKey` in the store.
 
-**Highlight overlay**: `VectorByWallsRenderer` owns its own `RegionHighlightRenderer` instance (per `maze-web/CLAUDE.md`'s feature-renderer ownership rule — not shared with `AnalyticsRenderer`'s issue-highlight overlay), rendering a yellow cell-fill highlight (`0xffaa44`, no perimeter — `skipPerimeter: true`) for the hovered warning's `nodes`, each as its own singleton region group so unrelated cells never get a perimeter drawn between them. `computeVectorByWallsWarnings`'s result is memoized in the renderer by reference-equality of its inputs (`nodes`/`edges`/`cfg`/`vectorByWallsSettings`/`start`/`finish`), so hovering a warning (which changes only `hoveredExportWarningKey`) doesn't recompute the whole warning list.
+**Highlight overlay**: `VectorByWallsRenderer` and `VectorByCorridorsRenderer` each own their own `RegionHighlightRenderer` instance (per `maze-web/CLAUDE.md`'s feature-renderer ownership rule — never shared between the two mode renderers or with `AnalyticsRenderer`'s issue-highlight overlay), rendering a yellow cell-fill highlight (`WARNING_HIGHLIGHT_COLOR`, `0xffaa44`, exported from `VectorByWallsRenderer.ts` for reuse — no perimeter, `skipPerimeter: true`) for the hovered warning's `nodes`, each as its own singleton region group so unrelated cells never get a perimeter drawn between them. Each renderer memoizes its own `compute*Warnings` result by reference-equality of its inputs (`nodes`/`edges`/`cfg`/its own mode settings/`start`/`finish`), so hovering a warning (which changes only `hoveredExportWarningKey`) doesn't recompute the whole warning list.
 
 ## PNG export
 

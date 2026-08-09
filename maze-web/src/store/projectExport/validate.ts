@@ -4,7 +4,7 @@ import type { PostEditEdge, PostEditTeleportEntry, FeatureId, RenderModeId } fro
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import {
-  MAX_NESTED_STRATEGY_DEPTH, type MarkerSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type PngExportSettings,
+  MAX_NESTED_STRATEGY_DEPTH, type MarkerSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
@@ -497,6 +497,11 @@ function optTeleportCornerStyle(obj: Record<string, unknown> | null, key: string
   return v === "sharp" || v === "round" ? v : fallback;
 }
 
+function optMarkerWidenShape(obj: Record<string, unknown> | null, key: string, fallback: MarkerWidenShape): MarkerWidenShape {
+  const v = obj?.[key];
+  return v === "circle" || v === "square" || v === "match_marker" ? v : fallback;
+}
+
 function optJoin(obj: Record<string, unknown> | null, key: string, fallback: "round" | "miter"): "round" | "miter" {
   const v = obj?.[key];
   return v === "round" || v === "miter" ? v : fallback;
@@ -549,6 +554,31 @@ function tryValidateTeleportGroupOverride(v: unknown): { fillColor?: number; bor
   return result;
 }
 
+/** Shared by `validateVectorByWallsSettings`/`validateVectorByCorridorsSettings` (GitHub issue
+ * #313) — `TeleportSettingsFields` is `extends`-ed identically by both settings interfaces, so the
+ * two never need their own separate recovery logic for it. */
+function validateTeleportSettingsFields(obj: Record<string, unknown> | null, path: string, d: TeleportSettingsFields): TeleportSettingsFields {
+  return {
+    teleportLineCornerStyle: optTeleportCornerStyle(obj, "teleportLineCornerStyle", d.teleportLineCornerStyle),
+    teleportLineShape: optMarkerShape(obj, "teleportLineShape", d.teleportLineShape),
+    teleportLineSize: optNumber(obj, "teleportLineSize", d.teleportLineSize),
+    teleportEdgeColor: optNumber(obj, "teleportEdgeColor", d.teleportEdgeColor),
+    teleportEdgeBorderColor: optNumber(obj, "teleportEdgeBorderColor", d.teleportEdgeBorderColor),
+    teleportEdgeBorderWidth: optNumber(obj, "teleportEdgeBorderWidth", d.teleportEdgeBorderWidth),
+    teleportEdgeGapWidth: optNumber(obj, "teleportEdgeGapWidth", d.teleportEdgeGapWidth),
+    teleportConnectorColor: optNumber(obj, "teleportConnectorColor", d.teleportConnectorColor),
+    teleportConnectorWidth: optNumber(obj, "teleportConnectorWidth", d.teleportConnectorWidth),
+    teleportConnectorStyle: optTeleportConnectorStyle(obj, "teleportConnectorStyle", d.teleportConnectorStyle),
+    teleportAvoidFieldExit: optBool(obj, "teleportAvoidFieldExit", d.teleportAvoidFieldExit),
+    teleportArrowMode: optTeleportArrowMode(obj, "teleportArrowMode", d.teleportArrowMode),
+    teleportArrowPeriod: optNumber(obj, "teleportArrowPeriod", d.teleportArrowPeriod),
+    teleportArrowSize: optNumber(obj, "teleportArrowSize", d.teleportArrowSize),
+    teleportConnectorGapWidth: optNumber(obj, "teleportConnectorGapWidth", d.teleportConnectorGapWidth),
+    teleportGroupCustomization: optBool(obj, "teleportGroupCustomization", d.teleportGroupCustomization),
+    teleportGroupOverrides: validateTeleportGroupOverrides(obj?.teleportGroupOverrides, `${path}.teleportGroupOverrides`),
+  };
+}
+
 function validateTeleportGroupOverrides(v: unknown, path: string): Record<string, { fillColor?: number; borderColor?: number; shape?: MarkerShape }> {
   if (v == null) return {};
   let obj: Record<string, unknown>;
@@ -593,23 +623,7 @@ function validateVectorByWallsSettings(v: unknown, path: string): VectorByWallsS
     oneWayJoin: optJoin(obj, "oneWayJoin", d.oneWayJoin),
     startMarker: validateMarkerSettings(obj.startMarker, `${path}.startMarker`, d.startMarker),
     finishMarker: validateMarkerSettings(obj.finishMarker, `${path}.finishMarker`, d.finishMarker),
-    teleportLineCornerStyle: optTeleportCornerStyle(obj, "teleportLineCornerStyle", d.teleportLineCornerStyle),
-    teleportLineShape: optMarkerShape(obj, "teleportLineShape", d.teleportLineShape),
-    teleportLineSize: optNumber(obj, "teleportLineSize", d.teleportLineSize),
-    teleportEdgeColor: optNumber(obj, "teleportEdgeColor", d.teleportEdgeColor),
-    teleportEdgeBorderColor: optNumber(obj, "teleportEdgeBorderColor", d.teleportEdgeBorderColor),
-    teleportEdgeBorderWidth: optNumber(obj, "teleportEdgeBorderWidth", d.teleportEdgeBorderWidth),
-    teleportEdgeGapWidth: optNumber(obj, "teleportEdgeGapWidth", d.teleportEdgeGapWidth),
-    teleportConnectorColor: optNumber(obj, "teleportConnectorColor", d.teleportConnectorColor),
-    teleportConnectorWidth: optNumber(obj, "teleportConnectorWidth", d.teleportConnectorWidth),
-    teleportConnectorStyle: optTeleportConnectorStyle(obj, "teleportConnectorStyle", d.teleportConnectorStyle),
-    teleportAvoidFieldExit: optBool(obj, "teleportAvoidFieldExit", d.teleportAvoidFieldExit),
-    teleportArrowMode: optTeleportArrowMode(obj, "teleportArrowMode", d.teleportArrowMode),
-    teleportArrowPeriod: optNumber(obj, "teleportArrowPeriod", d.teleportArrowPeriod),
-    teleportArrowSize: optNumber(obj, "teleportArrowSize", d.teleportArrowSize),
-    teleportConnectorGapWidth: optNumber(obj, "teleportConnectorGapWidth", d.teleportConnectorGapWidth),
-    teleportGroupCustomization: optBool(obj, "teleportGroupCustomization", d.teleportGroupCustomization),
-    teleportGroupOverrides: validateTeleportGroupOverrides(obj.teleportGroupOverrides, `${path}.teleportGroupOverrides`),
+    ...validateTeleportSettingsFields(obj, path, d),
     splitNodeColors: Array.isArray(obj.splitNodeColors) ? obj.splitNodeColors.filter((n): n is number => typeof n === "number") : d.splitNodeColors,
     splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
   };
@@ -716,6 +730,8 @@ function validateVectorByCorridorsSettings(v: unknown, path: string): VectorByCo
     startMarker: validateMarkerSettings(obj?.startMarker, `${path}.startMarker`, d.startMarker),
     finishMarker: validateMarkerSettings(obj?.finishMarker, `${path}.finishMarker`, d.finishMarker),
     markerWidenPadding: optNumber(obj, "markerWidenPadding", d.markerWidenPadding),
+    markerWidenShape: optMarkerWidenShape(obj, "markerWidenShape", d.markerWidenShape),
+    ...validateTeleportSettingsFields(obj, path, d),
   };
 }
 

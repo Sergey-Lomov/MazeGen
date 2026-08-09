@@ -1,5 +1,5 @@
 import { useMazeStore } from "../../store/mazeStore";
-import type { VectorByWallsSettings, VectorByCorridorsSettings, RenderModeId, MarkerSettings } from "../../store/storeTypes";
+import type { VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields, RenderModeId, MarkerSettings } from "../../store/storeTypes";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 
@@ -28,6 +28,16 @@ function markerFootprintHalf(marker: MarkerSettings, extraPadding = 0): number {
   return (marker.size * TILE_SIZE) / 2 + marker.borderWidth + marker.gapWidth + extraPadding;
 }
 
+/** A teleport marker/connector's own widest visible half-extent past its center, from a
+ * `TeleportSettingsFields` slice — shared by both modes' export-margin calculations (GitHub issue
+ * #313) since `VectorByWallsSettings` and `VectorByCorridorsSettings` both `extends` the same
+ * teleport field set and now both actually draw teleports via `TeleportRenderer`. */
+function teleportFootprintHalf(settings: TeleportSettingsFields): number {
+  const markerHalf = (settings.teleportLineSize * TILE_SIZE) / 2 + settings.teleportEdgeBorderWidth + settings.teleportEdgeGapWidth;
+  const connectorHalf = settings.teleportConnectorWidth / 2 + settings.teleportConnectorGapWidth;
+  return Math.max(markerHalf, connectorHalf);
+}
+
 /** Required export margin for the "Vector by walls" render mode — the widest visible stroke/
  * marker half-extent past a cell's raw boundary, across every `VectorByWallsSettings` field that
  * draws in world coordinates. Symmetric on every side for this mode today. Exported as a pure
@@ -40,10 +50,8 @@ export function computeVectorByWallsExportMargin(settings: VectorByWallsSettings
   const oneWayHalf = settings.oneWayGapWidth + settings.oneWaySize * TILE_SIZE + settings.oneWayThickness / 2;
   const startMarkerHalf = markerFootprintHalf(settings.startMarker);
   const finishMarkerHalf = markerFootprintHalf(settings.finishMarker);
-  const teleportHalf = (settings.teleportLineSize * TILE_SIZE) / 2 + settings.teleportEdgeBorderWidth + settings.teleportEdgeGapWidth;
-  const connectorHalf = settings.teleportConnectorWidth / 2 + settings.teleportConnectorGapWidth;
 
-  return uniform(Math.max(wallHalf, oneWayHalf, startMarkerHalf, finishMarkerHalf, teleportHalf, connectorHalf));
+  return uniform(Math.max(wallHalf, oneWayHalf, startMarkerHalf, finishMarkerHalf, teleportFootprintHalf(settings)));
 }
 
 /** Wall-only margin — how far a cell's own wall stroke extends past its raw boundary. Used by the
@@ -54,15 +62,16 @@ export function computeVectorByWallsWallMargin(settings: VectorByWallsSettings):
   return uniform(settings.wallThickness / 2);
 }
 
-/** Required export margin for "Vector by corridors" — the wider of half the corridor stroke's own
- * width and a start/finish marker's own widen-patch footprint (`markerWidenPadding` included, since
+/** Required export margin for "Vector by corridors" — the widest of half the corridor stroke's own
+ * width, a start/finish marker's own widen-patch footprint (`markerWidenPadding` included, since
  * that's the actual geometry drawn — see `drawMarkerWidenPatches`) (GitHub issue #310, markers
- * added in #311). Same "always pure function" rationale as `computeVectorByWallsExportMargin`. */
+ * added in #311) and a teleport marker/connector's own footprint (GitHub issue #313). Same
+ * "always pure function" rationale as `computeVectorByWallsExportMargin`. */
 export function computeVectorByCorridorsExportMargin(settings: VectorByCorridorsSettings): ExportMargin {
   const corridorHalf = settings.thickness / 2;
   const startMarkerHalf = markerFootprintHalf(settings.startMarker, settings.markerWidenPadding);
   const finishMarkerHalf = markerFootprintHalf(settings.finishMarker, settings.markerWidenPadding);
-  return uniform(Math.max(corridorHalf, startMarkerHalf, finishMarkerHalf));
+  return uniform(Math.max(corridorHalf, startMarkerHalf, finishMarkerHalf, teleportFootprintHalf(settings)));
 }
 
 /** Resolves the export margin for a given render mode directly from store state — the

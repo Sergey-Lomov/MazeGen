@@ -1,0 +1,346 @@
+import React, { useEffect, useMemo, useRef } from "react";
+import { AlertTriangle, RotateCcw } from "lucide-react";
+import { useMazeStore } from "../../store/mazeStore";
+import type { MarkerShape, TeleportGroupOverride, TeleportConnectorStyle, TeleportArrowMode } from "../../pixi/renderers/types";
+import type { TeleportSettingsFields } from "../../store/storeTypes";
+import { spacing, ui, typography } from "../../styles/theme";
+import { sharedStyles } from "../../styles/shared";
+import { ToggleRow } from "../ToggleRow";
+import { ColorRow } from "../ColorRow";
+import { ColorSwatch } from "../ColorSwatch";
+import { SelectRow } from "../SelectRow";
+import { SliderRow } from "../SliderRow";
+import { buildTeleportEdges } from "../../pixi/selectors/mazeSelectors";
+import { buildTeleportGroups, type TeleportGroup } from "../../pixi/selectors/teleportGroups";
+import type { NodeDto, EdgeDto } from "../../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import { MARKER_SHAPE_OPTIONS } from "./MarkerSettingsGroup";
+import * as m from "~/paraglide/messages";
+
+/** Both render modes' Teleports sections need the same `TeleportGroup[]` (only when
+ *  `teleportGroupCustomization` is on) and the same "which groups are visually indistinguishable"
+ *  check (only when there's no connector line to tell them apart — with one drawn, two groups
+ *  sharing a color/shape are still distinguishable by which links connect to what) — factored out
+ *  (GitHub issue #313 follow-up) after `VectorByCorridorsSettingsPanel` copy-pasted
+ *  `VectorByWallsSettingsPanel`'s own version of this verbatim. Takes only the `TeleportSettingsFields`
+ *  slice it actually reads, so either mode's full settings object satisfies it. */
+export function useTeleportGroupsAndCollisions(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  cfg: TessellationConfig,
+  settings: TeleportSettingsFields,
+): { teleportGroups: TeleportGroup[]; teleportCollisionKeys: Set<string> } {
+  const teleportGroups = useMemo(() => {
+    if (!settings.teleportGroupCustomization) return [];
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+    const teleportEdges = buildTeleportEdges(nodeById, edges, cfg);
+    return buildTeleportGroups(teleportEdges);
+  }, [settings.teleportGroupCustomization, nodes, edges, cfg]);
+
+  const teleportCollisionKeys = useMemo(() => {
+    if (settings.teleportConnectorStyle !== "none") return new Set<string>();
+    const resolved = teleportGroups.map((g) => {
+      const o = settings.teleportGroupOverrides[g.key];
+      return `${o?.fillColor ?? settings.teleportEdgeColor}:${o?.borderColor ?? settings.teleportEdgeBorderColor}:${o?.shape ?? settings.teleportLineShape}`;
+    });
+    const counts = new Map<string, number>();
+    for (const r of resolved) counts.set(r, (counts.get(r) ?? 0) + 1);
+    const collisions = new Set<string>();
+    teleportGroups.forEach((g, i) => {
+      if ((counts.get(resolved[i]) ?? 0) > 1) collisions.add(g.key);
+    });
+    return collisions;
+  }, [teleportGroups, settings.teleportConnectorStyle, settings.teleportGroupOverrides, settings.teleportEdgeColor, settings.teleportEdgeBorderColor, settings.teleportLineShape]);
+
+  return { teleportGroups, teleportCollisionKeys };
+}
+
+/** One row of the group customization list — clicking it selects the matching group (highlighting
+ *  it, hiding every other group) on the canvas and vice versa (GitHub issue #293 follow-up:
+ *  click-to-select, not hover — hover-driven selection flickered whenever the pointer crossed a gap
+ *  between two groups' canvas hit areas). Clicking an already-selected row (or its matching canvas
+ *  marker again, or `Escape`) clears the selection. Compact, unlabeled single-line layout (per the
+ *  issue's own spec: index + warning slot on the left, shape dropdown + fill-color swatch +
+ *  border-color swatch + reset icon flush right) — every control's meaning is a `title` tooltip
+ *  instead of a visible label, since the row has no room for both. Shared by both render modes'
+ *  Teleports sections (GitHub issue #313) — `selectedTeleportGroupKey` is a single, mode-agnostic
+ *  store field since only one mode's renderer/panel is ever live at a time
+ *  (`createModeRenderer`). */
+function TeleportGroupRow({
+  group,
+  index,
+  override,
+  defaultFillColor,
+  defaultBorderColor,
+  hasCollision,
+  onChange,
+}: {
+  group: TeleportGroup;
+  index: number;
+  override: TeleportGroupOverride | undefined;
+  defaultFillColor: number;
+  defaultBorderColor: number;
+  hasCollision: boolean;
+  onChange: (patch: TeleportGroupOverride | null) => void;
+}) {
+  const selectedKey = useMazeStore((s) => s.selectedTeleportGroupKey);
+  const setSelected = useMazeStore((s) => s.setSelectedTeleportGroupKey);
+  const isSelected = selectedKey === group.key;
+  const hasOverride = override !== undefined && Object.keys(override).length > 0;
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  // Canvas -> row selection sync (selecting the group's marker on the canvas scrolls to and
+  // highlights its row): a `data-selected` attribute + CSS selector, mirroring the hover-era
+  // decoupling of the row's own visual state from the interaction that triggered it — keeps this
+  // component correct regardless of which side (row click or canvas click) drove the change.
+  const wasSelected = useRef(false);
+  useEffect(() => {
+    if (isSelected && !wasSelected.current) {
+      rowRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    }
+    wasSelected.current = isSelected;
+  }, [isSelected]);
+
+  return (
+    <div
+      ref={rowRef}
+      className="teleport-group-row"
+      data-selected={isSelected ? "true" : undefined}
+      style={styles.groupRow}
+      onClick={() => setSelected(isSelected ? null : group.key)}
+    >
+      <span style={typography.body}>{index + 1}</span>
+      <span style={styles.warningIcon} title={hasCollision ? m["image_export.vector_by_walls.teleport_group_collision"]() : undefined}>
+        {hasCollision && <AlertTriangle size={13} color={ui.text.warning} />}
+      </span>
+      <span style={styles.groupRowSpacer} />
+      <select
+        title={m["image_export.vector_by_walls.teleport_group_override_shape"]()}
+        style={sharedStyles.selectSm}
+        value={override?.shape ?? "__default__"}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => onChange({ ...override, shape: e.target.value === "__default__" ? undefined : (e.target.value as MarkerShape) })}
+      >
+        <option value="__default__">{m["image_export.vector_by_walls.teleport_group_override_shape_default"]()}</option>
+        {MARKER_SHAPE_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>{o.label()}</option>
+        ))}
+      </select>
+      <span title={m["image_export.vector_by_walls.teleport_group_override_color"]()} onClick={(e) => e.stopPropagation()}>
+        <ColorSwatch color={override?.fillColor ?? defaultFillColor} onChange={(fillColor) => onChange({ ...override, fillColor })} />
+      </span>
+      <span title={m["image_export.vector_by_walls.teleport_group_override_border_color"]()} onClick={(e) => e.stopPropagation()}>
+        <ColorSwatch color={override?.borderColor ?? defaultBorderColor} onChange={(borderColor) => onChange({ ...override, borderColor })} />
+      </span>
+      <button
+        type="button"
+        className="hoverable"
+        title={m["image_export.vector_by_walls.teleport_group_reset"]()}
+        style={styles.resetButton}
+        disabled={!hasOverride}
+        onClick={(e) => { e.stopPropagation(); onChange(null); e.currentTarget.blur(); }}
+      >
+        <RotateCcw size={14} color={ui.text.tertiary} opacity={hasOverride ? 1 : 0.4} />
+      </button>
+    </div>
+  );
+}
+
+/** "Edges"/"Connector"/"Arrow" subsections + group customization list of a render mode's Teleports
+ *  section (GitHub issue #293) — extracted out of `VectorByWallsSettingsPanel` (GitHub issue #313)
+ *  so `VectorByCorridorsSettingsPanel` can mount the exact same UI against its own
+ *  `TeleportSettingsFields`-shaped settings slice, mirroring `MarkerSettingsGroup`'s own
+ *  per-mode-setters-only-differ reuse convention. The caller owns the `SectionHeader`/expand-collapse
+ *  chrome and the "only show when the maze actually has teleports" gating — this component always
+ *  renders its full body once mounted. */
+export function TeleportSettingsSection({
+  settings,
+  onChange,
+  groupOverrides,
+  onGroupOverrideChange,
+  teleportGroups,
+  teleportCollisionKeys,
+}: {
+  settings: TeleportSettingsFields;
+  onChange: (patch: Partial<TeleportSettingsFields>) => void;
+  groupOverrides: Record<string, TeleportGroupOverride>;
+  onGroupOverrideChange: (groupKey: string, patch: TeleportGroupOverride | null) => void;
+  teleportGroups: TeleportGroup[];
+  teleportCollisionKeys: Set<string>;
+}) {
+  const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
+
+  return (
+    <div style={styles.block}>
+      <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_edges"]()}</div>
+      <div style={styles.subsection}>
+        <SelectRow
+          label={m["image_export.vector_by_walls.teleport_corner_style"]()}
+          value={settings.teleportLineCornerStyle}
+          options={[
+            { value: "sharp", label: m["image_export.vector_by_walls.teleport_corner_style_sharp"]() },
+            { value: "round", label: m["image_export.vector_by_walls.teleport_corner_style_round"]() },
+          ]}
+          onChange={(v) => onChange({ teleportLineCornerStyle: v })}
+        />
+        <SelectRow
+          label={m["image_export.vector_by_walls.teleport_shape"]()}
+          value={settings.teleportLineShape}
+          options={MARKER_SHAPE_OPTIONS.map((o) => ({ value: o.value, label: o.label() }))}
+          onChange={(v) => onChange({ teleportLineShape: v })}
+        />
+        <SliderRow
+          label={m["image_export.vector_by_walls.teleport_size"]()}
+          value={settings.teleportLineSize}
+          onChange={(v) => onChange({ teleportLineSize: v })}
+          min={0}
+          max={1}
+          step={0.01}
+          format={(v) => v.toFixed(2)}
+        />
+        <ColorRow label={m["image_export.vector_by_walls.teleport_edge_color"]()} color={settings.teleportEdgeColor} onChange={(v) => onChange({ teleportEdgeColor: v })} />
+        <ColorRow label={m["image_export.vector_by_walls.teleport_edge_border_color"]()} color={settings.teleportEdgeBorderColor} onChange={(v) => onChange({ teleportEdgeBorderColor: v })} />
+        <SliderRow
+          label={m["image_export.vector_by_walls.teleport_border_width"]()}
+          value={settings.teleportEdgeBorderWidth}
+          onChange={(v) => onChange({ teleportEdgeBorderWidth: v })}
+          min={0}
+          max={10}
+          step={1}
+          format={(v) => String(v)}
+        />
+        <SliderRow
+          label={m["image_export.vector_by_walls.teleport_edge_gap_width"]()}
+          value={settings.teleportEdgeGapWidth}
+          onChange={(v) => onChange({ teleportEdgeGapWidth: v })}
+          min={0}
+          max={10}
+          step={1}
+          format={(v) => String(v)}
+        />
+      </div>
+
+      <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_connector"]()}</div>
+      <div style={styles.subsection}>
+        <SelectRow
+          label={m["image_export.vector_by_walls.teleport_connector_style"]()}
+          value={settings.teleportConnectorStyle}
+          options={[
+            { value: "none" as TeleportConnectorStyle, label: m["image_export.vector_by_walls.teleport_connector_style_none"]() },
+            { value: "straight" as TeleportConnectorStyle, label: m["image_export.vector_by_walls.teleport_connector_style_straight"]() },
+            { value: "orthogonal" as TeleportConnectorStyle, label: m["image_export.vector_by_walls.teleport_connector_style_orthogonal"]() },
+          ]}
+          onChange={(v) => onChange({ teleportConnectorStyle: v })}
+        />
+        {settings.teleportConnectorStyle === "orthogonal" && (
+          <ToggleRow
+            label={m["image_export.vector_by_walls.teleport_avoid_field_exit"]()}
+            checked={settings.teleportAvoidFieldExit}
+            onChange={(v) => onChange({ teleportAvoidFieldExit: v })}
+          />
+        )}
+
+        <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_connector_body"]()}</div>
+        <div style={styles.subsectionNested}>
+          <ColorRow label={m["image_export.vector_by_walls.teleport_connector_color"]()} color={settings.teleportConnectorColor} onChange={(v) => onChange({ teleportConnectorColor: v })} />
+          <SliderRow
+            label={m["image_export.vector_by_walls.teleport_connector_width"]()}
+            value={settings.teleportConnectorWidth}
+            onChange={(v) => onChange({ teleportConnectorWidth: v })}
+            min={1}
+            max={10}
+            step={1}
+            format={(v) => String(v)}
+          />
+          <SliderRow
+            label={m["image_export.vector_by_walls.teleport_connector_gap_width"]()}
+            value={settings.teleportConnectorGapWidth}
+            onChange={(v) => onChange({ teleportConnectorGapWidth: v })}
+            min={0}
+            max={10}
+            step={1}
+            format={(v) => String(v)}
+          />
+        </div>
+
+        <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_connector_arrow"]()}</div>
+        <div style={styles.subsectionNested}>
+          <SelectRow
+            label={m["image_export.vector_by_walls.teleport_arrow_mode"]()}
+            value={settings.teleportArrowMode}
+            options={[
+              { value: "none" as TeleportArrowMode, label: m["image_export.vector_by_walls.teleport_arrow_mode_none"]() },
+              { value: "center" as TeleportArrowMode, label: m["image_export.vector_by_walls.teleport_arrow_mode_center"]() },
+              { value: "double" as TeleportArrowMode, label: m["image_export.vector_by_walls.teleport_arrow_mode_double"]() },
+              { value: "periodic" as TeleportArrowMode, label: m["image_export.vector_by_walls.teleport_arrow_mode_periodic"]() },
+            ]}
+            onChange={(v) => onChange({ teleportArrowMode: v })}
+          />
+          <SliderRow
+            label={m["image_export.vector_by_walls.teleport_arrow_period"]()}
+            value={settings.teleportArrowPeriod}
+            onChange={(v) => onChange({ teleportArrowPeriod: v })}
+            min={1}
+            max={20}
+            step={1}
+            format={(v) => String(v)}
+            disabled={settings.teleportArrowMode !== "periodic"}
+          />
+          <SliderRow
+            label={m["image_export.vector_by_walls.teleport_arrow_size"]()}
+            value={settings.teleportArrowSize}
+            onChange={(v) => onChange({ teleportArrowSize: v })}
+            min={1}
+            max={20}
+            step={1}
+            format={(v) => String(v)}
+            disabled={settings.teleportArrowMode === "none"}
+          />
+        </div>
+      </div>
+
+      <ToggleRow
+        label={m["image_export.vector_by_walls.teleport_group_customization"]()}
+        checked={settings.teleportGroupCustomization}
+        onChange={(checked) => {
+          setSelectedTeleportGroupKey(null);
+          onChange({ teleportGroupCustomization: checked });
+        }}
+      />
+      {settings.teleportGroupCustomization && teleportGroups.length > 0 && (
+        <div style={styles.groupList}>
+          {teleportGroups.map((group, i) => (
+            <TeleportGroupRow
+              key={group.key}
+              group={group}
+              index={i}
+              override={groupOverrides[group.key]}
+              defaultFillColor={settings.teleportEdgeColor}
+              defaultBorderColor={settings.teleportEdgeBorderColor}
+              hasCollision={teleportCollisionKeys.has(group.key)}
+              onChange={(patch) => onGroupOverrideChange(group.key, patch)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  block: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  subsectionLabel: { ...typography.body },
+  subsection: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
+  subsectionNested: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
+  groupList: { display: "flex", flexDirection: "column", gap: spacing.itemGap, marginTop: spacing.itemGap, paddingLeft: spacing.sectionGap },
+  groupRow: {
+    display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.itemGap, outline: "none",
+    padding: spacing.itemGap, borderRadius: 3, border: `1px solid ${ui.border.default}`,
+  },
+  groupRowSpacer: { flex: 1 },
+  warningIcon: { display: "inline-flex", alignItems: "center", cursor: "default", width: 13 },
+  resetButton: {
+    ...typography.caption, color: ui.text.tertiary, display: "inline-flex", alignItems: "center",
+    background: "none", border: "none", outline: "none", cursor: "default", padding: 0,
+  },
+};

@@ -13,20 +13,30 @@ import { drawMarkerShape } from "./markerShapes";
  *  border/gap has a footprint exactly equal to its own fill radius, so the marker completely covers
  *  the patch and no widened line is visible around it at all. The result is floored at the line's
  *  own half-width so a small marker (plus padding) never narrows the line under it. Must be drawn
- *  after the line's own stroke and before the markers themselves. */
+ *  after the line's own stroke and before the markers themselves.
+ *
+ *  `shapeOverride` (GitHub issue #313 follow-up, `VectorByCorridorsSettings.markerWidenShape`) fixes
+ *  every patch to one shape (`"circle"`/`"square"`) regardless of that particular marker's own —
+ *  omitted (or `"match_marker"`) keeps the original per-marker `marker.shape ?? "circle"` behavior.
+ *  `squareCornerStyle` only matters when `shapeOverride` is `"square"` — the corridor's own `join`
+ *  drives it (`"round"`->rounded corners, `"miter"`->sharp), not a fixed value, so a square patch
+ *  reads consistently with the corridor stroke's own corners. */
 export function drawMarkerWidenPatches(
   g: Graphics,
   markers: MarkerData[],
   lineColor: number,
   lineWidth: number,
   padding: number,
+  shapeOverride?: "circle" | "square" | "match_marker",
+  squareCornerStyle?: "sharp" | "round",
 ): void {
   const halfWidth = lineWidth / 2;
   for (const marker of markers) {
     const footprint = marker.radius + (marker.borderWidth ?? 0) + (marker.gapWidth ?? 0) + padding;
     const patchRadius = Math.max(footprint, halfWidth);
-    const shape = marker.shape ?? "circle";
-    const rounded = marker.cornerStyle === "round";
+    const useOverride = shapeOverride !== undefined && shapeOverride !== "match_marker";
+    const shape = useOverride ? shapeOverride : (marker.shape ?? "circle");
+    const rounded = useOverride ? squareCornerStyle === "round" : marker.cornerStyle === "round";
     drawMarkerShape(g, shape, marker.pos[0], marker.pos[1], patchRadius, rounded);
     g.fill(lineColor);
   }

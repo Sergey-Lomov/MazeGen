@@ -55,6 +55,24 @@ describe("VectorByCorridorsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByCorridorsSettings.thickness).toBe(10);
   });
 
+  it("the marker widen padding/shape controls live in the 'Cells' section, not Waypoints (GitHub issue #313 follow-up)", () => {
+    render(<VectorByCorridorsSettingsPanel />);
+    expect(screen.getByText(m["image_export.vector_by_corridors.marker_widen_padding"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_corridors.marker_widen_shape"]())).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(m["image_export.vector_by_corridors.section_cells"]()));
+    expect(screen.queryByText(m["image_export.vector_by_corridors.marker_widen_padding"]())).not.toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.markers_start"]())).toBeInTheDocument();
+  });
+
+  it("changing the widen patch shape select updates the store, defaulting to 'match_marker'", () => {
+    render(<VectorByCorridorsSettingsPanel />);
+    expect(useMazeStore.getState().vectorByCorridorsSettings.markerWidenShape).toBe("match_marker");
+    const select = screen.getByDisplayValue(m["image_export.vector_by_corridors.marker_widen_shape_match_marker"]());
+    fireEvent.change(select, { target: { value: "square" } });
+    expect(useMazeStore.getState().vectorByCorridorsSettings.markerWidenShape).toBe("square");
+  });
+
   it("clicking the section header toggles expand/collapse", () => {
     useMazeStore.setState({ vectorByCorridorsSectionsExpanded: {} });
     render(<VectorByCorridorsSettingsPanel />);
@@ -92,5 +110,36 @@ describe("VectorByCorridorsSettingsPanel", () => {
     });
     render(<VectorByCorridorsSettingsPanel />);
     expect(screen.getByText(m["image_export.vector_by_corridors.warning_waypoint_on_split"]())).toBeInTheDocument();
+  });
+
+  describe("Teleports section (GitHub issue #313)", () => {
+    beforeEach(() => {
+      useMazeStore.setState({
+        nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 3, y: 3, i: 0 }],
+        edges: [{ from: 0, to: 1, kind: "teleport" }],
+      });
+    });
+
+    it("is hidden when the maze has no teleport edges", () => {
+      useMazeStore.setState({ edges: [] });
+      render(<VectorByCorridorsSettingsPanel />);
+      expect(screen.queryByText(m["image_export.vector_by_walls.section_teleports"]())).not.toBeInTheDocument();
+    });
+
+    it("appears once the maze has a teleport edge, and renders its fields once expanded", () => {
+      useMazeStore.setState({ vectorByCorridorsSectionsExpanded: { cells: true, waypoints: true, teleports: true } });
+      render(<VectorByCorridorsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.section_teleports"]())).toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.teleport_subsection_edges"]())).toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.teleport_subsection_connector"]())).toBeInTheDocument();
+    });
+
+    it("changing the teleport size slider patches vectorByCorridorsSettings, same reuse convention as MarkerSettingsGroup", () => {
+      useMazeStore.setState({ vectorByCorridorsSectionsExpanded: { cells: true, waypoints: true, teleports: true } });
+      render(<VectorByCorridorsSettingsPanel />);
+      const slider = screen.getByDisplayValue(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.teleportLineSize.toFixed(2));
+      fireEvent.change(slider, { target: { value: "0.5" } });
+      expect(useMazeStore.getState().vectorByCorridorsSettings.teleportLineSize).toBe(0.5);
+    });
   });
 });

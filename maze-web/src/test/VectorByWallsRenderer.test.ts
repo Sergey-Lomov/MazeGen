@@ -106,8 +106,7 @@ describe("buildTeleportLineStyle", () => {
       teleportArrowPeriod: 8,
       teleportArrowSize: 11,
       teleportConnectorGapWidth: 9,
-      floorColor: 0x999,
-    }));
+    }), 0x999);
     expect(style).toEqual({
       shape: "star", cornerStyle: "round", size: 0.4, edgeColor: 0x111, edgeBorderColor: 0x112, borderWidth: 5, edgeGapWidth: 6,
       connectorColor: 0x222, connectorWidth: 7, connectorStyle: "orthogonal",

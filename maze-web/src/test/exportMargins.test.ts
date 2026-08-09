@@ -32,7 +32,7 @@ describe("computeVectorByWallsExportMargin", () => {
 });
 
 describe("computeVectorByCorridorsExportMargin", () => {
-  it("equals half the corridor thickness on every side", () => {
+  it("equals half the corridor thickness on every side, by default", () => {
     const margin = computeVectorByCorridorsExportMargin(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS);
     expect(margin).toEqual({
       left: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.thickness / 2,
@@ -40,6 +40,15 @@ describe("computeVectorByCorridorsExportMargin", () => {
       top: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.thickness / 2,
       bottom: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.thickness / 2,
     });
+  });
+
+  it("grows to fit a teleport marker/connector footprint that exceeds the corridor's own half-width (GitHub issue #313)", () => {
+    const base = computeVectorByCorridorsExportMargin(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS);
+    const biggerTeleport = computeVectorByCorridorsExportMargin({
+      ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
+      teleportEdgeBorderWidth: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.teleportEdgeBorderWidth + 100,
+    });
+    expect(biggerTeleport.left).toBeGreaterThan(base.left);
   });
 });
 

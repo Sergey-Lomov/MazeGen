@@ -9,10 +9,11 @@ import { SplitJunctionRenderer } from "../renderers/SplitJunctionRenderer";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, maxSplitNodeCount } from "../selectors/mazeSelectors";
 import { computeVectorByWallsWarnings } from "../selectors/exportWarnings";
+import type { ExportWarning } from "../selectors/exportWarnings";
 import { resolveEndpoint, buildSplitNodeResolver } from "../postEditEndpoint";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle } from "../renderers/types";
-import type { MarkerSettings } from "../../store/storeTypes";
+import type { MarkerSettings, TeleportSettingsFields } from "../../store/storeTypes";
 import type { MarkerStyle } from "../selectors/mazeSelectors";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
@@ -23,7 +24,102 @@ import { computeVectorByWallsExportMargin, computeVectorByWallsWallMargin, resol
 /** Cell-fill highlight color for a hovered export warning (GitHub issue #298 follow-up) — same
  *  yellow as `styles/palette.ts`'s `warning` token, duplicated here since the pixi render layer
  *  must not import the web-styling layer. */
-const WARNING_HIGHLIGHT_COLOR = 0xffaa44;
+export const WARNING_HIGHLIGHT_COLOR = 0xffaa44;
+
+/** Owns the hover-highlight overlay for one mode renderer's export warnings — factored out (GitHub
+ *  issue #313 follow-up) after `VectorByCorridorsRenderer` needed the exact same
+ *  memoize-by-reference-equality-then-draw-a-cell-fill logic `VectorByWallsRenderer` already had,
+ *  down to the cache shape and the `RegionHighlightRenderer.render` call. Generic over `TSettings`
+ *  and the compute function so each mode still calls its own `compute*Warnings` with its own
+ *  settings shape — the two modes' warning sets differ (see `exportWarnings.ts`), only the
+ *  memoize+highlight *mechanics* are shared. Still one instance per mode renderer, each owning its
+ *  own `RegionHighlightRenderer`/`Container` — per `maze-web/CLAUDE.md`'s feature-renderer
+ *  ownership rule, never a shared instance between the two mode renderers. */
+export class ExportWarningHighlight<TSettings> {
+  private readonly highlight: RegionHighlightRenderer;
+  private readonly computeWarnings: (
+    nodes: NodeDto[],
+    edges: EdgeDto[],
+    cfg: TessellationConfig,
+    settings: TSettings,
+    start: number | null,
+    finish: number | null,
+  ) => ExportWarning[];
+
+  private cache: {
+    nodes: NodeDto[];
+    edges: EdgeDto[];
+    cfg: TessellationConfig;
+    settings: TSettings;
+    start: number | null;
+    finish: number | null;
+    warnings: ExportWarning[];
+  } | null = null;
+
+  constructor(
+    container: Container,
+    computeWarnings: (
+      nodes: NodeDto[],
+      edges: EdgeDto[],
+      cfg: TessellationConfig,
+      settings: TSettings,
+      start: number | null,
+      finish: number | null,
+    ) => ExportWarning[],
+  ) {
+    this.highlight = new RegionHighlightRenderer(container);
+    this.computeWarnings = computeWarnings;
+  }
+
+  render(
+    hoveredKey: string | null,
+    nodes: NodeDto[],
+    edges: EdgeDto[],
+    cfg: TessellationConfig,
+    settings: TSettings,
+    start: number | null,
+    finish: number | null,
+  ): void {
+    if (!hoveredKey) {
+      this.highlight.clear();
+      return;
+    }
+    let warnings: ExportWarning[];
+    if (
+      this.cache &&
+      this.cache.nodes === nodes &&
+      this.cache.edges === edges &&
+      this.cache.cfg === cfg &&
+      this.cache.settings === settings &&
+      this.cache.start === start &&
+      this.cache.finish === finish
+    ) {
+      warnings = this.cache.warnings;
+    } else {
+      warnings = this.computeWarnings(nodes, edges, cfg, settings, start, finish);
+      this.cache = { nodes, edges, cfg, settings, start, finish, warnings };
+    }
+    const warning = warnings.find((w) => w.key === hoveredKey);
+    if (!warning || warning.nodes.length === 0) {
+      this.highlight.clear();
+      return;
+    }
+
+    this.highlight.render({
+      nodes,
+      regionGroups: warning.nodes.map((id) => [id]),
+      color: WARNING_HIGHLIGHT_COLOR,
+      width: 0,
+      alpha: 0,
+      cfg,
+      skipPerimeter: true,
+    });
+  }
+
+  destroy(): void {
+    this.highlight.destroy();
+  }
+}
 
 /** Fills in `splitNodeColors`' missing slots with `splitSlotColor`'s own default palette (GitHub
  *  issue #294 follow-up) — `splitNodeColors` only holds entries for slots the user has actually
@@ -80,9 +176,13 @@ export function buildOneWayStyle(settings: ReturnType<typeof useMazeStore.getSta
   };
 }
 
-/** Builds `TeleportRenderer`'s style from `VectorByWallsSettings` — exported for the same
- *  testability reason as `buildWallStyle`/`buildOneWayStyle` (GitHub issue #293). */
-export function buildTeleportLineStyle(settings: ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]): TeleportLineStyle {
+/** Builds `TeleportRenderer`'s style from a `TeleportSettingsFields` slice — exported for the same
+ *  testability reason as `buildWallStyle`/`buildOneWayStyle` (GitHub issue #293). Takes `floorColor`
+ *  as its own param (GitHub issue #313) rather than reading it off `settings` — `VectorByWallsSettings`
+ *  has its own `floorColor` field but `VectorByCorridorsSettings` (which also `extends
+ *  TeleportSettingsFields`, see storeTypes.ts) has no notion of a "floor" of its own, so the caller
+ *  supplies whatever background color its own mode occludes the connector line with. */
+export function buildTeleportLineStyle(settings: TeleportSettingsFields, floorColor: number): TeleportLineStyle {
   return {
     shape: settings.teleportLineShape,
     cornerStyle: settings.teleportLineCornerStyle,
@@ -98,7 +198,7 @@ export function buildTeleportLineStyle(settings: ReturnType<typeof useMazeStore.
     arrowPeriod: settings.teleportArrowPeriod,
     arrowSize: settings.teleportArrowSize,
     connectorGapWidth: settings.teleportConnectorGapWidth,
-    floorColor: settings.floorColor,
+    floorColor,
   };
 }
 
@@ -160,29 +260,15 @@ export class VectorByWallsRenderer {
   private readonly splitJunctions: SplitJunctionRenderer;
   private readonly teleports: TeleportRenderer;
   private readonly markers: WaypointsRenderer;
-  /** Own instance, not shared with `AnalyticsRenderer`'s issue-highlight overlay — per
-   *  `maze-web/CLAUDE.md`'s feature-renderer ownership rule. Highlights the currently hovered
-   *  export warning's cells (GitHub issue #298 follow-up — cell fill reads much more clearly than
-   *  a small marker circle), see `computeVectorByWallsWarnings`. */
-  private readonly warningHighlight: RegionHighlightRenderer;
+  /** Own instance, not shared with `AnalyticsRenderer`'s issue-highlight overlay or
+   *  `VectorByCorridorsRenderer`'s own — per `maze-web/CLAUDE.md`'s feature-renderer ownership
+   *  rule. Highlights the currently hovered export warning's cells (GitHub issue #298 follow-up —
+   *  cell fill reads much more clearly than a small marker circle), see
+   *  `computeVectorByWallsWarnings`. */
+  private readonly warningHighlight: ExportWarningHighlight<ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]>;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
-
-  /** Memoizes `computeVectorByWallsWarnings` by reference-equality of its inputs — hover/unhover
-   *  (`hoveredExportWarningKey` changes) re-enters `renderWarningHighlight` without any of `nodes`/
-   *  `edges`/`cfg`/`vectorByWallsSettings`/`start`/`finish` having changed, so recomputing the full
-   *  warning list on every hover would repeat real work for no reason (GitHub issue #298
-   *  follow-up). */
-  private warningsCache: {
-    nodes: NodeDto[];
-    edges: EdgeDto[];
-    cfg: TessellationConfig;
-    settings: ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"];
-    start: number | null;
-    finish: number | null;
-    warnings: ReturnType<typeof computeVectorByWallsWarnings>;
-  } | null = null;
 
   private geometryCache: {
     nodes: NodeDto[];
@@ -230,7 +316,7 @@ export class VectorByWallsRenderer {
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);
     this.markers = new WaypointsRenderer(this.markersContainer);
-    this.warningHighlight = new RegionHighlightRenderer(this.warningHighlightContainer);
+    this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer, computeVectorByWallsWarnings);
 
     this.syncVisibility(useMazeStore.getState());
     this.subscribe();
@@ -381,7 +467,7 @@ export class VectorByWallsRenderer {
     );
     this.teleports.render({
       edges: this.geometryCache.teleportEdges,
-      lineStyle: buildTeleportLineStyle(state.vectorByWallsSettings),
+      lineStyle: buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor),
       groupCustomization: state.vectorByWallsSettings.teleportGroupCustomization,
       groupOverrides: state.vectorByWallsSettings.teleportGroupOverrides,
       interactive: state.vectorByWallsSectionsExpanded["teleports"] ?? false,
@@ -397,50 +483,13 @@ export class VectorByWallsRenderer {
   }
 
   /** Highlights the currently hovered export warning's flagged cell(s) (GitHub issue #298
-   *  follow-up — a small marker-circle highlight read too weakly, cell fill is much clearer) —
-   *  recomputes the warning list rather than reading cached geometry off the store, since a
-   *  warning's `nodes` are cheap to derive and this only runs on hover/settings changes, not every
-   *  frame. Each flagged node is its own singleton region group (not one shared group) so
-   *  `RegionHighlightRenderer` never draws a perimeter connecting two unrelated cells. */
+   *  follow-up — a small marker-circle highlight read too weakly, cell fill is much clearer) — see
+   *  `ExportWarningHighlight`'s own doc comment for the memoize-then-draw mechanics, shared with
+   *  `VectorByCorridorsRenderer`'s own copy of this method. */
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
     const { hoveredExportWarningKey, nodes, edges } = state;
     const { start, finish } = resolveEffectiveEndpoints(state);
-    if (!hoveredExportWarningKey) {
-      this.warningHighlight.clear();
-      return;
-    }
-    const cfg = state.activeTessellationConfig;
-    const settings = state.vectorByWallsSettings;
-    let warnings: ReturnType<typeof computeVectorByWallsWarnings>;
-    if (
-      this.warningsCache &&
-      this.warningsCache.nodes === nodes &&
-      this.warningsCache.edges === edges &&
-      this.warningsCache.cfg === cfg &&
-      this.warningsCache.settings === settings &&
-      this.warningsCache.start === start &&
-      this.warningsCache.finish === finish
-    ) {
-      warnings = this.warningsCache.warnings;
-    } else {
-      warnings = computeVectorByWallsWarnings(nodes, edges, cfg, settings, start, finish);
-      this.warningsCache = { nodes, edges, cfg, settings, start, finish, warnings };
-    }
-    const warning = warnings.find((w) => w.key === hoveredExportWarningKey);
-    if (!warning || warning.nodes.length === 0) {
-      this.warningHighlight.clear();
-      return;
-    }
-
-    this.warningHighlight.render({
-      nodes,
-      regionGroups: warning.nodes.map((id) => [id]),
-      color: WARNING_HIGHLIGHT_COLOR,
-      width: 0,
-      alpha: 0,
-      cfg,
-      skipPerimeter: true,
-    });
+    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByWallsSettings, start, finish);
   }
 
   destroy(): void {

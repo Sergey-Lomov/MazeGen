@@ -1,6 +1,6 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import type { VectorByWallsSettings } from "../../store/storeTypes";
+import type { VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields } from "../../store/storeTypes";
 import { buildTeleportEdges, buildSplitPassages, buildSplitPointKeys, getSplitAwareNodePosition, maxSplitNodeCount } from "./mazeSelectors";
 import { buildTeleportGroups, teleportEdgeKey, coordKey } from "./teleportGroups";
 import type { TeleportEdge } from "../renderers/types";
@@ -104,20 +104,23 @@ function filterNodesOnSpecialSplit(
   return result;
 }
 
-/** Every export-specific warning "Vector by walls" currently knows how to detect (GitHub issue
- *  #298). Each warning's `nodes`/`edges` back the hover-highlight the settings panel wires up —
- *  see `VectorByWallsSettingsPanel`'s warning list and `VectorByWallsRenderer`'s highlight overlay. */
-export function computeVectorByWallsWarnings(
-  nodes: NodeDto[],
-  edges: EdgeDto[],
+/** The three teleport-only checks (`teleport_marker_invisible`, `teleport_group_ambiguous`,
+ *  `teleport_waypoint_overlap`) both "Vector by walls" and "Vector by corridors" share — every
+ *  field they read (`teleportEdgeBorderWidth`, `teleportConnectorStyle`, `teleportGroupOverrides`,
+ *  etc.) lives on the common `TeleportSettingsFields` (GitHub issue #313 follow-up: teleport
+ *  rendering transfers as-is between the two modes, so its warnings should too — previously
+ *  `computeVectorByCorridorsWarnings` detected none of these, silently missing e.g. ambiguous
+ *  teleport groups with no connector to tell them apart). Takes `start`/`finish` marker style
+ *  directly (not a whole mode-specific settings object) so it stays mode-agnostic. */
+function computeTeleportWarnings(
+  teleportEdges: TeleportEdge[],
+  settings: TeleportSettingsFields,
+  startMarker: { id: number | null; size: number; borderWidth: number },
+  finishMarker: { id: number | null; size: number; borderWidth: number },
+  allNodes: NodeDto[],
   cfg: TessellationConfig,
-  settings: VectorByWallsSettings,
-  start: number | null,
-  finish: number | null,
 ): ExportWarning[] {
   const warnings: ExportWarning[] = [];
-  const nodeById = new Map(nodes.map((n) => [n.id, n]));
-  const teleportEdges = buildTeleportEdges(nodeById, edges, cfg);
 
   // --- teleport_marker_invisible: a one-way teleport's exit-only endpoint draws "outline" —
   // floor-colored fill, not `edgeColor` — so with no border it has nothing to draw at all. Only
@@ -184,16 +187,12 @@ export function computeVectorByWallsWarnings(
   // --- teleport_waypoint_overlap: a teleport marker's visual footprint overlaps a start/finish
   // marker's footprint. One warning total, covering every overlapping pair. ---
   const teleportRadius = markerWorldRadius(settings.teleportLineSize, settings.teleportEdgeBorderWidth);
-  const allNodes = Array.from(nodeById.values());
   const overlappingNodeIds = new Set<number>();
-  for (const waypoint of [
-    { id: start, style: settings.startMarker },
-    { id: finish, style: settings.finishMarker },
-  ]) {
+  for (const waypoint of [startMarker, finishMarker]) {
     if (waypoint.id === null) continue;
     const waypointPos = getSplitAwareNodePosition(allNodes, waypoint.id, cfg);
     if (!waypointPos) continue;
-    const waypointRadius = markerWorldRadius(waypoint.style.size, waypoint.style.borderWidth);
+    const waypointRadius = markerWorldRadius(waypoint.size, waypoint.borderWidth);
     for (const e of teleportEdges) {
       for (const [pos, nodeId] of [[e.from, e.fromNode], [e.to, e.toNode]] as const) {
         if (nodeId === undefined) continue;
@@ -213,6 +212,33 @@ export function computeVectorByWallsWarnings(
       edges: [],
     });
   }
+
+  return warnings;
+}
+
+/** Every export-specific warning "Vector by walls" currently knows how to detect (GitHub issue
+ *  #298). Each warning's `nodes`/`edges` back the hover-highlight the settings panel wires up —
+ *  see `VectorByWallsSettingsPanel`'s warning list and `VectorByWallsRenderer`'s highlight overlay. */
+export function computeVectorByWallsWarnings(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  cfg: TessellationConfig,
+  settings: VectorByWallsSettings,
+  start: number | null,
+  finish: number | null,
+): ExportWarning[] {
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const teleportEdges = buildTeleportEdges(nodeById, edges, cfg);
+  const allNodes = Array.from(nodeById.values());
+
+  const warnings: ExportWarning[] = computeTeleportWarnings(
+    teleportEdges,
+    settings,
+    { id: start, size: settings.startMarker.size, borderWidth: settings.startMarker.borderWidth },
+    { id: finish, size: settings.finishMarker.size, borderWidth: settings.finishMarker.borderWidth },
+    allNodes,
+    cfg,
+  );
 
   // Split points recognized as a dedicated "special shape" (bridge/diagonal, `SplitSpecialShapeKind`)
   // — only these draw noticeably different geometry from a generic split point, and only when
@@ -268,16 +294,33 @@ export function computeVectorByWallsWarnings(
 }
 
 /** Every export-specific warning "Vector by corridors" currently knows how to detect (GitHub issue
- *  #311) — today just `waypoint_on_split_corridor`. Kept as its own function (not folded into
- *  `computeVectorByWallsWarnings`) since the two modes' warning sets differ: this mode has no
- *  teleport/special-split-shape rendering of its own to check against. */
+ *  #311, teleport checks added as a #313 follow-up bugfix — this mode reuses `TeleportRenderer`
+ *  as-is, so it can hit the exact same "ambiguous group"/"invisible marker"/"waypoint overlap"
+ *  caveats "Vector by walls" already flags, and previously silently didn't). Kept as its own
+ *  function (not folded into `computeVectorByWallsWarnings`) since the two modes' warning sets
+ *  still differ: this mode has no special-split-shape rendering of its own (`waypoint_on_split`/
+ *  `teleport_on_special_split` stay Walls-only), using `waypoint_on_split_corridor` instead. */
 export function computeVectorByCorridorsWarnings(
   nodes: NodeDto[],
+  edges: EdgeDto[],
+  cfg: TessellationConfig,
+  settings: VectorByCorridorsSettings,
   start: number | null,
   finish: number | null,
 ): ExportWarning[] {
-  const warnings: ExportWarning[] = [];
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const teleportEdges = buildTeleportEdges(nodeById, edges, cfg);
+  const allNodes = Array.from(nodeById.values());
+
+  const warnings: ExportWarning[] = computeTeleportWarnings(
+    teleportEdges,
+    settings,
+    { id: start, size: settings.startMarker.size, borderWidth: settings.startMarker.borderWidth },
+    { id: finish, size: settings.finishMarker.size, borderWidth: settings.finishMarker.borderWidth },
+    allNodes,
+    cfg,
+  );
+
   const splitPointKeys = buildSplitPointKeys(nodes);
 
   if (splitPointKeys.size > 0) {
