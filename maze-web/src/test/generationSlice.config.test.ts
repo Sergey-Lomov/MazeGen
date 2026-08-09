@@ -3,6 +3,7 @@ import { useMazeStore } from "../store/mazeStore";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { serializeProject } from "../store/projectExport";
+import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 import { baseStoreState, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, encodeEdgeAddedTape, makeRule } from "./storeTestHelpers";
 import { parseTape } from "../debug/eventTape";
 import type { DebugArenaHandle } from "../store/storeTypes";
@@ -477,11 +478,16 @@ describe("mazeStore generation misc actions", () => {
     const file = serializeProject(useMazeStore.getState());
     file.imageExport = {
       ...file.imageExport,
-      vectorByCorridorsSettings: { color: 0x123456, thickness: 12, join: "miter" },
+      vectorByCorridorsSettings: { ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, color: 0x123456, thickness: 12, join: "miter" },
       vectorByCorridorsSectionsExpanded: { cells: true },
     };
     useMazeStore.getState().loadProject(file);
-    expect(useMazeStore.getState().vectorByCorridorsSettings).toEqual({ color: 0x123456, thickness: 12, join: "miter" });
+    expect(useMazeStore.getState().vectorByCorridorsSettings).toEqual({
+      ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
+      color: 0x123456,
+      thickness: 12,
+      join: "miter",
+    });
     expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded).toEqual({ cells: true });
   });
 

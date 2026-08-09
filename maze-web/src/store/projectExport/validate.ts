@@ -713,6 +713,9 @@ function validateVectorByCorridorsSettings(v: unknown, path: string): VectorByCo
     color: optNumber(obj, "color", d.color),
     thickness: optNumber(obj, "thickness", d.thickness),
     join: optJoin(obj, "join", d.join),
+    startMarker: validateMarkerSettings(obj?.startMarker, `${path}.startMarker`, d.startMarker),
+    finishMarker: validateMarkerSettings(obj?.finishMarker, `${path}.finishMarker`, d.finishMarker),
+    markerWidenPadding: optNumber(obj, "markerWidenPadding", d.markerWidenPadding),
   };
 }
 

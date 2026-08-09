@@ -1,11 +1,16 @@
 import type React from "react";
+import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { inset, spacing, ui } from "../../styles/theme";
 import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
 import { SectionHeader } from "../SectionHeader";
-import type { ExportWarning } from "../../pixi/selectors/exportWarnings";
+import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
+import { computeVectorByCorridorsWarnings } from "../../pixi/selectors/exportWarnings";
+import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
+import { resolveExportWarningsSectionTitle } from "./exportWarningsI18n";
+import { ExportWarningBubble } from "./ExportWarningBubble";
 import { TILE_SIZE } from "../../pixi/constants";
 import * as m from "~/paraglide/messages";
 
@@ -26,12 +31,42 @@ export function VectorByCorridorsSettingsPanel() {
   const setJoin = useMazeStore((s) => s.setVectorByCorridorsJoin);
   const setThickness = useMazeStore((s) => s.setVectorByCorridorsThickness);
 
+  const setStartMarkerShape = useMazeStore((s) => s.setVectorByCorridorsStartMarkerShape);
+  const setStartMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsStartMarkerCornerStyle);
+  const setStartMarkerFillColor = useMazeStore((s) => s.setVectorByCorridorsStartMarkerFillColor);
+  const setStartMarkerBorderColor = useMazeStore((s) => s.setVectorByCorridorsStartMarkerBorderColor);
+  const setStartMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsStartMarkerBorderWidth);
+  const setStartMarkerGapWidth = useMazeStore((s) => s.setVectorByCorridorsStartMarkerGapWidth);
+  const setStartMarkerSize = useMazeStore((s) => s.setVectorByCorridorsStartMarkerSize);
+  const setFinishMarkerShape = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerShape);
+  const setFinishMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerCornerStyle);
+  const setFinishMarkerFillColor = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerFillColor);
+  const setFinishMarkerBorderColor = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerBorderColor);
+  const setFinishMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerBorderWidth);
+  const setFinishMarkerGapWidth = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerGapWidth);
+  const setFinishMarkerSize = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerSize);
+  const setMarkerWidenPadding = useMazeStore((s) => s.setVectorByCorridorsMarkerWidenPadding);
+
   const sectionsExpanded = useMazeStore((s) => s.vectorByCorridorsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByCorridorsSectionExpanded);
   const isExpanded = (id: string) => sectionsExpanded[id] ?? false;
   const toggleSection = (id: string) => setSectionExpanded(id, !isExpanded(id));
 
-  const exportWarnings: ExportWarning[] = [];
+  const nodes = useMazeStore((s) => s.nodes);
+  const rawStart = useMazeStore((s) => s.start);
+  const rawFinish = useMazeStore((s) => s.finish);
+  const postEditMeta = useMazeStore((s) => s.postEditMeta);
+  const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
+
+  const { start, finish } = useMemo(
+    () => resolveEffectiveEndpoints({ nodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
+    [nodes, rawStart, rawFinish, postEditMeta, postEditDraftSplitPoints],
+  );
+
+  const exportWarnings = useMemo(
+    () => computeVectorByCorridorsWarnings(nodes, start, finish),
+    [nodes, start, finish],
+  );
 
   return (
     <div style={styles.root}>
@@ -64,10 +99,69 @@ export function VectorByCorridorsSettingsPanel() {
         </div>
       )}
 
+      <div style={styles.divider} />
+
+      <SectionHeader
+        label={m["image_export.vector_by_walls.section_markers"]()}
+        expanded={isExpanded("waypoints")}
+        onToggle={() => toggleSection("waypoints")}
+      />
+      {isExpanded("waypoints") && (
+        <div style={styles.block}>
+          <SliderRow
+            label={m["image_export.vector_by_corridors.marker_widen_padding"]()}
+            value={settings.markerWidenPadding}
+            onChange={setMarkerWidenPadding}
+            min={0}
+            max={20}
+            step={1}
+            format={(v) => String(v)}
+          />
+          <MarkerSettingsGroup
+            title={m["image_export.vector_by_walls.markers_start"]()}
+            settings={settings.startMarker}
+            onChange={(patch) => {
+              if (patch.shape !== undefined) setStartMarkerShape(patch.shape);
+              if (patch.cornerStyle !== undefined) setStartMarkerCornerStyle(patch.cornerStyle);
+              if (patch.fillColor !== undefined) setStartMarkerFillColor(patch.fillColor);
+              if (patch.borderColor !== undefined) setStartMarkerBorderColor(patch.borderColor);
+              if (patch.borderWidth !== undefined) setStartMarkerBorderWidth(patch.borderWidth);
+              if (patch.gapWidth !== undefined) setStartMarkerGapWidth(patch.gapWidth);
+              if (patch.size !== undefined) setStartMarkerSize(patch.size);
+            }}
+          />
+          <MarkerSettingsGroup
+            title={m["image_export.vector_by_walls.markers_finish"]()}
+            settings={settings.finishMarker}
+            onChange={(patch) => {
+              if (patch.shape !== undefined) setFinishMarkerShape(patch.shape);
+              if (patch.cornerStyle !== undefined) setFinishMarkerCornerStyle(patch.cornerStyle);
+              if (patch.fillColor !== undefined) setFinishMarkerFillColor(patch.fillColor);
+              if (patch.borderColor !== undefined) setFinishMarkerBorderColor(patch.borderColor);
+              if (patch.borderWidth !== undefined) setFinishMarkerBorderWidth(patch.borderWidth);
+              if (patch.gapWidth !== undefined) setFinishMarkerGapWidth(patch.gapWidth);
+              if (patch.size !== undefined) setFinishMarkerSize(patch.size);
+            }}
+          />
+        </div>
+      )}
+
       {exportWarnings.length > 0 && (
         <>
           <div style={styles.divider} />
-          <div style={styles.warningsBlock} />
+
+          <SectionHeader
+            label={resolveExportWarningsSectionTitle(exportWarnings.length)}
+            expanded={isExpanded("warnings")}
+            onToggle={() => toggleSection("warnings")}
+          />
+          {isExpanded("warnings") && (
+            <div style={styles.warningsBlock}>
+              {exportWarnings.map((w) => (
+                <ExportWarningBubble key={w.key} warning={w} />
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>

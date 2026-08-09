@@ -11,6 +11,7 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   teleport_waypoint_overlap: m["image_export.vector_by_walls.warning_teleport_waypoint_overlap"],
   waypoint_on_split: m["image_export.vector_by_walls.warning_waypoint_on_split"],
   teleport_on_special_split: m["image_export.vector_by_walls.warning_teleport_on_special_split"],
+  waypoint_on_split_corridor: m["image_export.vector_by_corridors.warning_waypoint_on_split"],
 };
 
 const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
@@ -19,6 +20,7 @@ const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   teleport_waypoint_overlap: m["image_export.vector_by_walls.warning_teleport_waypoint_overlap_description"],
   waypoint_on_split: m["image_export.vector_by_walls.warning_waypoint_on_split_description"],
   teleport_on_special_split: m["image_export.vector_by_walls.warning_teleport_on_special_split_description"],
+  waypoint_on_split_corridor: m["image_export.vector_by_corridors.warning_waypoint_on_split_description"],
 };
 
 export function resolveExportWarningMessage(id: ExportWarningId): string {

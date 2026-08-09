@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { VectorByWallsSettings } from "../../store/storeTypes";
-import { buildTeleportEdges, buildSplitPassages, getSplitAwareNodePosition, maxSplitNodeCount } from "./mazeSelectors";
+import { buildTeleportEdges, buildSplitPassages, buildSplitPointKeys, getSplitAwareNodePosition, maxSplitNodeCount } from "./mazeSelectors";
 import { buildTeleportGroups, teleportEdgeKey, coordKey } from "./teleportGroups";
 import type { TeleportEdge } from "../renderers/types";
 import { TILE_SIZE } from "../constants";
@@ -19,6 +19,12 @@ export type ExportWarningId =
   | "teleport_waypoint_overlap"
   | "waypoint_on_split"
   | "teleport_on_special_split"
+  /** "Vector by corridors" only (GitHub issue #311) — start/finish sits on *any* split point, not
+   *  just a "special shape" one. Unlike `VectorByWallsRenderer`, this mode draws no split-point
+   *  geometry at all (`buildCorridorSegments` skips every split point unconditionally), so a
+   *  waypoint marker there sits with no corridor line drawn under it whatsoever — worth flagging
+   *  regardless of whether the point would've been a recognized special shape. */
+  | "waypoint_on_split_corridor"
   /** PNG export canvas-fit warnings (not maze-content geometry) — built locally by
    *  `PngExportSettingsPanel` from `computeDigitalExportFit`/`computePrintExportFit`'s own result,
    *  not through `computeVectorByWallsWarnings`. Carry no `nodes`/`edges` (canvas-level, not
@@ -252,6 +258,38 @@ export function computeVectorByWallsWarnings(
       warnings.push({
         id: "teleport_on_special_split",
         key: "teleport_on_special_split",
+        nodes: flaggedIds,
+        edges: [],
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/** Every export-specific warning "Vector by corridors" currently knows how to detect (GitHub issue
+ *  #311) — today just `waypoint_on_split_corridor`. Kept as its own function (not folded into
+ *  `computeVectorByWallsWarnings`) since the two modes' warning sets differ: this mode has no
+ *  teleport/special-split-shape rendering of its own to check against. */
+export function computeVectorByCorridorsWarnings(
+  nodes: NodeDto[],
+  start: number | null,
+  finish: number | null,
+): ExportWarning[] {
+  const warnings: ExportWarning[] = [];
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const splitPointKeys = buildSplitPointKeys(nodes);
+
+  if (splitPointKeys.size > 0) {
+    const flaggedIds = filterNodesOnSpecialSplit(
+      [start, finish].filter((id): id is number => id !== null),
+      nodeById,
+      splitPointKeys,
+    );
+    if (flaggedIds.length > 0) {
+      warnings.push({
+        id: "waypoint_on_split_corridor",
+        key: "waypoint_on_split_corridor",
         nodes: flaggedIds,
         edges: [],
       });

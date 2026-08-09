@@ -52,6 +52,9 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = {
   color: canvas.wall.default,
   thickness: TILE_SIZE / 2,
   join: "round",
+  startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: (NODE_RADIUS * 1.5) / TILE_SIZE },
+  finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: (NODE_RADIUS * 1.5) / TILE_SIZE },
+  markerWidenPadding: 4,
 };
 
 /** Shared with `projectExport/validate.ts`'s recovery defaults, same convention as
@@ -114,6 +117,36 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, thickness: v } })),
   setVectorByCorridorsJoin: (join) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, join } })),
+  setVectorByCorridorsStartMarkerShape: (shape) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, shape } } })),
+  setVectorByCorridorsStartMarkerCornerStyle: (style) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, cornerStyle: style } } })),
+  setVectorByCorridorsStartMarkerFillColor: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, fillColor: color } } })),
+  setVectorByCorridorsStartMarkerBorderColor: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, borderColor: color } } })),
+  setVectorByCorridorsStartMarkerBorderWidth: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, borderWidth: v } } })),
+  setVectorByCorridorsStartMarkerGapWidth: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, gapWidth: v } } })),
+  setVectorByCorridorsStartMarkerSize: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, size: v } } })),
+  setVectorByCorridorsFinishMarkerShape: (shape) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, shape } } })),
+  setVectorByCorridorsFinishMarkerCornerStyle: (style) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, cornerStyle: style } } })),
+  setVectorByCorridorsFinishMarkerFillColor: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, fillColor: color } } })),
+  setVectorByCorridorsFinishMarkerBorderColor: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, borderColor: color } } })),
+  setVectorByCorridorsFinishMarkerBorderWidth: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, borderWidth: v } } })),
+  setVectorByCorridorsFinishMarkerGapWidth: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, gapWidth: v } } })),
+  setVectorByCorridorsFinishMarkerSize: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, finishMarker: { ...s.vectorByCorridorsSettings.finishMarker, size: v } } })),
+  setVectorByCorridorsMarkerWidenPadding: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, markerWidenPadding: v } })),
   setVectorByWallsBackground: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, background: color } })),
   setVectorByWallsShowGrid: (v) =>

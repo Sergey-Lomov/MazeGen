@@ -1,5 +1,5 @@
 import { useMazeStore } from "../../store/mazeStore";
-import type { VectorByWallsSettings, VectorByCorridorsSettings, RenderModeId } from "../../store/storeTypes";
+import type { VectorByWallsSettings, VectorByCorridorsSettings, RenderModeId, MarkerSettings } from "../../store/storeTypes";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 
@@ -19,6 +19,15 @@ export function uniform(v: number): ExportMargin {
   return { left: v, right: v, top: v, bottom: v };
 }
 
+/** A marker's own visible half-extent past its center — `size` (fraction of `TILE_SIZE`) plus
+ * border/gap width, optionally with extra padding on top (e.g. `VectorByCorridorsSettings`'
+ * `markerWidenPadding`, whose widen-patch geometry extends past the marker's own footprint).
+ * Shared by both modes' export-margin calculations so the footprint formula can't drift between
+ * them. */
+function markerFootprintHalf(marker: MarkerSettings, extraPadding = 0): number {
+  return (marker.size * TILE_SIZE) / 2 + marker.borderWidth + marker.gapWidth + extraPadding;
+}
+
 /** Required export margin for the "Vector by walls" render mode — the widest visible stroke/
  * marker half-extent past a cell's raw boundary, across every `VectorByWallsSettings` field that
  * draws in world coordinates. Symmetric on every side for this mode today. Exported as a pure
@@ -29,8 +38,8 @@ export function uniform(v: number): ExportMargin {
 export function computeVectorByWallsExportMargin(settings: VectorByWallsSettings): ExportMargin {
   const wallHalf = settings.wallThickness / 2;
   const oneWayHalf = settings.oneWayGapWidth + settings.oneWaySize * TILE_SIZE + settings.oneWayThickness / 2;
-  const startMarkerHalf = (settings.startMarker.size * TILE_SIZE) / 2 + settings.startMarker.borderWidth + settings.startMarker.gapWidth;
-  const finishMarkerHalf = (settings.finishMarker.size * TILE_SIZE) / 2 + settings.finishMarker.borderWidth + settings.finishMarker.gapWidth;
+  const startMarkerHalf = markerFootprintHalf(settings.startMarker);
+  const finishMarkerHalf = markerFootprintHalf(settings.finishMarker);
   const teleportHalf = (settings.teleportLineSize * TILE_SIZE) / 2 + settings.teleportEdgeBorderWidth + settings.teleportEdgeGapWidth;
   const connectorHalf = settings.teleportConnectorWidth / 2 + settings.teleportConnectorGapWidth;
 
@@ -45,11 +54,15 @@ export function computeVectorByWallsWallMargin(settings: VectorByWallsSettings):
   return uniform(settings.wallThickness / 2);
 }
 
-/** Required export margin for "Vector by corridors" — half the corridor stroke's own width, the
- * only geometry this mode draws past a cell's raw center point (GitHub issue #310). Same "always
- * pure function" rationale as `computeVectorByWallsExportMargin`. */
+/** Required export margin for "Vector by corridors" — the wider of half the corridor stroke's own
+ * width and a start/finish marker's own widen-patch footprint (`markerWidenPadding` included, since
+ * that's the actual geometry drawn — see `drawMarkerWidenPatches`) (GitHub issue #310, markers
+ * added in #311). Same "always pure function" rationale as `computeVectorByWallsExportMargin`. */
 export function computeVectorByCorridorsExportMargin(settings: VectorByCorridorsSettings): ExportMargin {
-  return uniform(settings.thickness / 2);
+  const corridorHalf = settings.thickness / 2;
+  const startMarkerHalf = markerFootprintHalf(settings.startMarker, settings.markerWidenPadding);
+  const finishMarkerHalf = markerFootprintHalf(settings.finishMarker, settings.markerWidenPadding);
+  return uniform(Math.max(corridorHalf, startMarkerHalf, finishMarkerHalf));
 }
 
 /** Resolves the export margin for a given render mode directly from store state — the

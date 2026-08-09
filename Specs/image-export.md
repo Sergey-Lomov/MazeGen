@@ -76,14 +76,38 @@ passage between two geometrically adjacent cells draws as a stroked line between
 (`buildCorridorSegments`, `pixi/selectors/mazeSelectors.ts`) — the passage itself is the visible
 line, not the wall around it. GitHub issue #310 (scaffolded in #315).
 
-Its settings panel (`VectorByCorridorsSettingsPanel.tsx`) has a single collapsible "Cells" section
+Its settings panel (`VectorByCorridorsSettingsPanel.tsx`) has two collapsible sections
 (`vectorByCorridorsSectionsExpanded`, same collapse convention as `VectorByWallsSettingsPanel`'s own
-sections — collapsed by default) backed by `VectorByCorridorsSettings` (`imageExportSlice.ts`):
-corridor color, corners & ends (round/miter join, paired with a round/square cap — same convention
-as `VectorByWallsSettings.wallJoin`/`wallCap`) and thickness (1 to `TILE_SIZE` — a corridor's
-meaningful range scales with the cell size, unlike "Vector by walls"' fixed 1-20px wall-thickness
-range). Defaults: `canvas.wall.default` color, round join, thickness `TILE_SIZE / 2` (half the
-slider's own max, rather than `VectorByWallsSettings.wallThickness`'s fixed default).
+sections — collapsed by default), plus a warnings section, backed by `VectorByCorridorsSettings`
+(`imageExportSlice.ts`):
+
+- **"Cells"** — corridor color, corners & ends (round/miter join, paired with a round/square cap —
+  same convention as `VectorByWallsSettings.wallJoin`/`wallCap`) and thickness (1 to `TILE_SIZE` — a
+  corridor's meaningful range scales with the cell size, unlike "Vector by walls"' fixed 1-20px
+  wall-thickness range). Defaults: `canvas.wall.default` color, round join, thickness `TILE_SIZE / 2`
+  (half the slider's own max, rather than `VectorByWallsSettings.wallThickness`'s fixed default).
+- **"Waypoints"** (GitHub issue #311) — start/finish marker appearance, `startMarker`/`finishMarker:
+  MarkerSettings` fields on `VectorByCorridorsSettings`, identical shape and defaults to
+  `VectorByWallsSettings`' own waypoint fields. The panel reuses `VectorByWallsSettingsPanel`'s
+  `MarkerSettingsGroup` sub-component directly (extracted into its own file,
+  `components/features/MarkerSettingsGroup.tsx`, alongside the shared `MARKER_SHAPE_OPTIONS` list) —
+  same "Start"/"Finish" sub-group layout, same i18n message keys (`image_export.vector_by_walls.
+  marker_*`, reused verbatim rather than duplicated under a `vector_by_corridors` prefix, since the
+  labels are shape-agnostic). `VectorByCorridorsRenderer` draws the markers via its own
+  `WaypointsRenderer` instance (own `Container`, per `maze-web/CLAUDE.md`'s feature-renderer
+  ownership rule — never the walls renderer's instance), built the same way
+  `VectorByWallsRenderer` builds its own (`buildMazeMarkers`, node positions from
+  `resolveEffectiveEndpoints` so a post-edit start/finish move is picked up); gap color always
+  mirrors `canvas.stage.background` (this mode's own fixed background, mirroring how
+  `VectorByWallsRenderer`'s marker gap mirrors its own floor color) rather than a user-set floor
+  color, since this mode has none. Start/finish marker footprint is folded into
+  `computeVectorByCorridorsExportMargin` the same way `computeVectorByWallsExportMargin` folds in
+  its own waypoint margins. A "Marker widen padding" slider (0-20px, default 4, top of the section
+  above the Start/Finish sub-groups since it's shared by both markers rather than per-marker) sets
+  `VectorByCorridorsSettings.markerWidenPadding`, fed straight into `drawMarkerWidenPatches`'
+  `padding` param below and into `computeVectorByCorridorsExportMargin`'s own marker-footprint terms
+  (so the export canvas always reserves enough room for the widened patch, not just the marker's own
+  drawn footprint).
 
 Both bidirectional and one-way passages draw the identical segment today — direction isn't
 distinguished yet, left for a follow-up sub-issue's own indicator setting. Split points (a cell with
@@ -97,11 +121,42 @@ Corner/end joins are applied by chaining corridor segments into polylines wherev
 segments meet at a shared vertex (`chainSegmentsAtSharedVertices`, `WallRenderer.ts` — reused as-is,
 not duplicated, since the join-only-renders-within-one-stroked-path constraint is identical to
 `VectorByWallsRenderer`'s own wall join). `getRequiredExportMargin`/`getRequiredWallExportMargin`
-both resolve to `computeVectorByCorridorsExportMargin` (`exportMargins.ts`) — half the corridor
-stroke's own width, the only geometry this mode draws past a cell's raw center point; unlike "Vector
-by walls" there's no separate wall-only margin to distinguish, so both getters return the same
-value. Background color is not yet user-configurable — always `canvas.stage.background`
-(`resolveBackgroundColor`'s `"vector_by_corridors"` case), a follow-up sub-issue's concern.
+both resolve to `computeVectorByCorridorsExportMargin` (`exportMargins.ts`) — the wider of half the
+corridor stroke's own width and a start/finish marker's own footprint, the only geometry this mode
+draws past a cell's raw center point; unlike "Vector by walls" there's no separate wall-only margin
+to distinguish, so both getters return the same value. Background color is not yet user-configurable
+— always `canvas.stage.background` (`resolveBackgroundColor`'s `"vector_by_corridors"` case), a
+follow-up sub-issue's concern.
+
+### Widening a corridor under a marker (`drawMarkerWidenPatches`, `pixi/renderers/markerWidenPatches.ts`)
+
+GitHub issue #311 — a start/finish marker sitting directly on a corridor's centerline would
+otherwise get visually swallowed by (or collide with) the thin corridor stroke passing under it.
+`drawMarkerWidenPatches(g, markers, lineColor, lineWidth)` draws one filled patch per marker into
+the caller's own `Graphics`, in the line's own color, matching the marker's own shape (not always a
+disc — `drawMarkerShape` with the marker's own `shape`/`cornerStyle`) at a radius of
+`max(marker's own visible footprint, lineWidth / 2)`. A marker's visible footprint is
+`radius + (borderWidth ?? 0) + (gapWidth ?? 0)` — the same formula `exportWarnings.ts`'s
+`markerWorldRadius` uses for its own overlap checks — so the patch always fully covers what the
+marker will draw on top of it; the `lineWidth / 2` floor means a marker smaller than the stroke
+never narrows the line under it. Deliberately generic (`MarkerData[]`, not a waypoint-specific
+type) and not tied to any one renderer — `VectorByCorridorsRenderer` calls it once per `renderAll`,
+drawing the patches into its own `corridors` `Graphics` after the stroke and before
+`WaypointsRenderer.render` draws the markers themselves, but any future marker type sharing this
+canvas (or a different renderer altogether) can call it the same way.
+
+### Corridors-specific export warning (`computeVectorByCorridorsWarnings`, `exportWarnings.ts`)
+
+GitHub issue #311 — `waypoint_on_split_corridor`: a start/finish marker sits on *any* split point
+(`buildSplitPointKeys`, not just a "special shape" one). Unlike `VectorByWallsRenderer`, this mode
+draws no split-point geometry at all — `buildCorridorSegments` skips every split point
+unconditionally — so a waypoint marker there has no corridor line under it whatsoever, worth
+flagging regardless of whether the point would've been a recognized special shape under "Vector by
+walls"' own reading. Kept as its own function (not folded into `computeVectorByWallsWarnings`) since
+the two modes' warning sets differ — this mode has no teleport/special-split-shape rendering of its
+own to check against. Wired into the settings panel the same "Warnings" section convention
+`VectorByWallsSettingsPanel` uses (`resolveExportWarningsSectionTitle`, `ExportWarningBubble`,
+hover-highlight via `hoveredExportWarningKey`).
 
 ### Shared marker shape set (`MarkerShape`, `pixi/renderers/markerShapes.ts`)
 

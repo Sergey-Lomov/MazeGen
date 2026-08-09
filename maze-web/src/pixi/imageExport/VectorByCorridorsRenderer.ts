@@ -1,7 +1,10 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
-import { buildCorridorSegments } from "../selectors/mazeSelectors";
+import { buildCorridorSegments, buildMazeMarkers } from "../selectors/mazeSelectors";
 import { chainSegmentsAtSharedVertices } from "../renderers/WallRenderer";
+import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
+import { drawMarkerWidenPatches } from "../renderers/markerWidenPatches";
+import { resolveEffectiveEndpoints, buildMarkerStyle } from "./VectorByWallsRenderer";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { canvas } from "../colorTokens";
@@ -18,6 +21,8 @@ import { computeVectorByCorridorsExportMargin, type ExportMargin } from "./expor
 export class VectorByCorridorsRenderer implements ModeRenderer {
   private readonly corridorsContainer: Container;
   private readonly corridors: Graphics;
+  private readonly markersContainer: Container;
+  private readonly markers: WaypointsRenderer;
 
   private unsubscribe: (() => void) | null = null;
 
@@ -35,6 +40,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.corridors = new Graphics();
     this.corridorsContainer.addChild(this.corridors);
 
+    this.markersContainer = new Container();
+    container.addChild(this.markersContainer);
+    this.markers = new WaypointsRenderer(this.markersContainer);
+
     this.syncVisibility(useMazeStore.getState());
     this.subscribe();
   }
@@ -48,6 +57,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       const dataChanged =
         state.nodes !== prev.nodes ||
         state.edges !== prev.edges ||
+        state.start !== prev.start ||
+        state.finish !== prev.finish ||
+        state.postEditMeta !== prev.postEditMeta ||
+        state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
         state.activeTessellationConfig !== prev.activeTessellationConfig;
       const settingsChanged = state.vectorByCorridorsSettings !== prev.vectorByCorridorsSettings;
 
@@ -60,8 +73,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   }
 
   private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): void {
-    this.corridorsContainer.visible = state.openCard === "image_export";
-    if (this.corridorsContainer.visible) this.renderAll(state);
+    const visible = state.openCard === "image_export";
+    this.corridorsContainer.visible = visible;
+    this.markersContainer.visible = visible;
+    if (visible) this.renderAll(state);
   }
 
   onViewportChanged(_x: number, _y: number, _w: number, _h: number, _scale: number): void {}
@@ -105,11 +120,30 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       for (let i = 1; i < path.length; i++) this.corridors.lineTo(path[i].x, path[i].y);
       this.corridors.stroke(strokeOpts);
     }
+
+    const { start, finish } = resolveEffectiveEndpoints(state);
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+    const markerData = buildMazeMarkers(
+      nodeById, start, finish, cfg,
+      buildMarkerStyle(settings.startMarker, canvas.stage.background),
+      buildMarkerStyle(settings.finishMarker, canvas.stage.background),
+    );
+
+    // Widen the corridor stroke under each marker so it doesn't get visually swallowed by/collide
+    // with the passage line (GitHub issue #311) — a filled patch matching the marker's own shape,
+    // drawn in the corridor's own color, into the same `Graphics` as the stroke and before the
+    // markers themselves. Reusable groundwork (`drawMarkerWidenPatches`, not waypoint-specific) so
+    // a future marker type on this canvas can call it the same way.
+    drawMarkerWidenPatches(this.corridors, markerData, settings.color, settings.thickness, settings.markerWidenPadding);
+
+    this.markers.render({ markers: markerData });
   }
 
   destroy(): void {
     this.unsubscribe?.();
     this.corridors.destroy();
     this.corridorsContainer.destroy();
+    this.markers.destroy();
+    this.markersContainer.destroy();
   }
 }

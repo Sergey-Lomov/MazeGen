@@ -1046,6 +1046,17 @@ export interface VectorByCorridorsSettings {
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
    *  `VectorByWallsSettings.wallJoin`/`wallCap`. */
   join: "round" | "miter";
+  /** Start/finish marker appearance (GitHub issue #311) — same `MarkerSettings` shape and
+   *  "Waypoints" section convention `VectorByWallsSettings` uses, reusing its settings-panel
+   *  sub-component rather than duplicating it. */
+  startMarker: MarkerSettings;
+  finishMarker: MarkerSettings;
+  /** Extra radius (px, world-space) added on top of a marker's own visible footprint when widening
+   *  the corridor stroke under it (GitHub issue #311's `drawMarkerWidenPatches`) — without this, a
+   *  marker with no border/gap has a widen patch exactly the same radius as its own fill, so the
+   *  marker completely covers the patch and no widened corridor is visible around it. `0` draws no
+   *  extra padding (patch radius = footprint exactly, marker still fully covers it). */
+  markerWidenPadding: number;
 }
 
 export interface ImageExportState {
@@ -1115,6 +1126,21 @@ export interface ImageExportActions {
   setVectorByCorridorsColor: (color: number) => void;
   setVectorByCorridorsThickness: (v: number) => void;
   setVectorByCorridorsJoin: (join: "round" | "miter") => void;
+  setVectorByCorridorsStartMarkerShape: (shape: MarkerShape) => void;
+  setVectorByCorridorsStartMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsStartMarkerFillColor: (color: number) => void;
+  setVectorByCorridorsStartMarkerBorderColor: (color: number) => void;
+  setVectorByCorridorsStartMarkerBorderWidth: (v: number) => void;
+  setVectorByCorridorsStartMarkerGapWidth: (v: number) => void;
+  setVectorByCorridorsStartMarkerSize: (v: number) => void;
+  setVectorByCorridorsFinishMarkerShape: (shape: MarkerShape) => void;
+  setVectorByCorridorsFinishMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsFinishMarkerFillColor: (color: number) => void;
+  setVectorByCorridorsFinishMarkerBorderColor: (color: number) => void;
+  setVectorByCorridorsFinishMarkerBorderWidth: (v: number) => void;
+  setVectorByCorridorsFinishMarkerGapWidth: (v: number) => void;
+  setVectorByCorridorsFinishMarkerSize: (v: number) => void;
+  setVectorByCorridorsMarkerWidenPadding: (v: number) => void;
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;

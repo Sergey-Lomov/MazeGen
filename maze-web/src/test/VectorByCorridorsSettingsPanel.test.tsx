@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { VectorByCorridorsSettingsPanel } from "../components/features/VectorByCorridorsSettingsPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
+import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 import * as m from "~/paraglide/messages";
 
 vi.mock("../wasm/mazeService", () => ({
@@ -19,10 +20,10 @@ vi.mock("../wasm/wasmLoader", () => ({
 beforeEach(() => {
   useMazeStore.setState({
     ...baseStoreState(),
-    vectorByCorridorsSettings: { color: 0x0a0a0a, thickness: 6, join: "round" },
+    vectorByCorridorsSettings: { ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, color: 0x0a0a0a, thickness: 6, join: "round" },
     // "Cells" starts collapsed by default (mirrors VectorByWallsSettingsPanel's sections) —
     // expanded here so the field-interaction tests below don't each need their own expand step.
-    vectorByCorridorsSectionsExpanded: { cells: true },
+    vectorByCorridorsSectionsExpanded: { cells: true, waypoints: true },
   });
 });
 
@@ -59,5 +60,37 @@ describe("VectorByCorridorsSettingsPanel", () => {
     render(<VectorByCorridorsSettingsPanel />);
     fireEvent.click(screen.getByText(m["image_export.vector_by_corridors.section_cells"]()));
     expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.cells).toBe(true);
+  });
+
+  it("renders the waypoints section's Start and Finish sub-groups when expanded", () => {
+    render(<VectorByCorridorsSettingsPanel />);
+    expect(screen.getByText(m["image_export.vector_by_walls.markers_start"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.markers_finish"]())).toBeInTheDocument();
+    expect(screen.getAllByText(m["image_export.vector_by_walls.marker_shape"]())).toHaveLength(2);
+  });
+
+  it("collapsing the waypoints section hides its fields", () => {
+    render(<VectorByCorridorsSettingsPanel />);
+    fireEvent.click(screen.getByText(m["image_export.vector_by_walls.section_markers"]()));
+    expect(screen.queryByText(m["image_export.vector_by_walls.markers_start"]())).not.toBeInTheDocument();
+    expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.waypoints).toBe(false);
+  });
+
+  it("changing the start marker fill color updates the store", () => {
+    render(<VectorByCorridorsSettingsPanel />);
+    expect(useMazeStore.getState().vectorByCorridorsSettings.startMarker.fillColor).not.toBe(0x654321);
+    useMazeStore.getState().setVectorByCorridorsStartMarkerFillColor(0x654321);
+    expect(useMazeStore.getState().vectorByCorridorsSettings.startMarker.fillColor).toBe(0x654321);
+  });
+
+  it("shows a warning bubble when a waypoint sits on a split point", () => {
+    useMazeStore.setState({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 0, y: 0, i: 0 }],
+      start: 0,
+      finish: null,
+      vectorByCorridorsSectionsExpanded: { cells: true, waypoints: true, warnings: true },
+    });
+    render(<VectorByCorridorsSettingsPanel />);
+    expect(screen.getByText(m["image_export.vector_by_corridors.warning_waypoint_on_split"]())).toBeInTheDocument();
   });
 });

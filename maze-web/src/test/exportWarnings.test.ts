@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { computeVectorByWallsWarnings } from "../pixi/selectors/exportWarnings";
+import { computeVectorByWallsWarnings, computeVectorByCorridorsWarnings } from "../pixi/selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, MarkerSettings } from "../store/storeTypes";
@@ -222,6 +222,40 @@ describe("computeVectorByWallsWarnings", () => {
       const settings = baseSettings({ splitSpecialShapes: true });
       const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null);
       expect(warnings.filter((w) => w.id === "teleport_on_special_split")).toHaveLength(0);
+    });
+  });
+});
+
+describe("computeVectorByCorridorsWarnings", () => {
+  describe("waypoint_on_split_corridor", () => {
+    it("flags start when it sits on any split point, even a plain (non-special) one", () => {
+      const warnings = computeVectorByCorridorsWarnings(plainSplitNodes, 0, null);
+      const matches = warnings.filter((w) => w.id === "waypoint_on_split_corridor");
+      expect(matches).toHaveLength(1);
+      expect(matches[0].nodes).toEqual([0]);
+    });
+
+    it("collapses start+finish both on split points into one warning", () => {
+      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, 0, 4);
+      const matches = warnings.filter((w) => w.id === "waypoint_on_split_corridor");
+      expect(matches).toHaveLength(1);
+      expect(matches[0].nodes.sort()).toEqual([0, 4]);
+    });
+
+    it("does not flag a waypoint on an unsplit node", () => {
+      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, 6, null);
+      expect(warnings.filter((w) => w.id === "waypoint_on_split_corridor")).toHaveLength(0);
+    });
+
+    it("no split points in the maze at all -> no warning", () => {
+      const nodes = [n(0, 0, 0), n(1, 5, 5)];
+      const warnings = computeVectorByCorridorsWarnings(nodes, 0, null);
+      expect(warnings.filter((w) => w.id === "waypoint_on_split_corridor")).toHaveLength(0);
+    });
+
+    it("no start/finish set -> no warning", () => {
+      const warnings = computeVectorByCorridorsWarnings(plainSplitNodes, null, null);
+      expect(warnings).toHaveLength(0);
     });
   });
 });

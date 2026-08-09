@@ -75,7 +75,7 @@ export function buildClosedCells(nodes: NodeDto[], edges: EdgeDto[]): [number, n
 /** Points with more than one `NodeDto` (split points, GitHub issue #221/#223) — geometric edges
  *  touching one of these are excluded from `buildMazeWalls`'s ordinary reading entirely; they
  *  render exclusively via `buildSplitPassages`'s colored per-node lines instead. */
-function buildSplitPointKeys(nodes: NodeDto[]): Set<string> {
+export function buildSplitPointKeys(nodes: NodeDto[]): Set<string> {
   const counts = new Map<string, number>();
   for (const n of nodes) {
     const key = `${n.x},${n.y}`;

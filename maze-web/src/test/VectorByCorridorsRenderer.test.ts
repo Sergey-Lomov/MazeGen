@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { VectorByCorridorsRenderer } from "../pixi/imageExport/VectorByCorridorsRenderer";
-import { buildCorridorSegments } from "../pixi/selectors/mazeSelectors";
+import { buildCorridorSegments, buildMazeMarkers } from "../pixi/selectors/mazeSelectors";
 import { canvas } from "../pixi/colorTokens";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -8,6 +8,7 @@ import type { VectorByCorridorsSettings } from "../store/storeTypes";
 
 vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildCorridorSegments: vi.fn(() => []),
+  buildMazeMarkers: vi.fn(() => []),
 }));
 
 vi.mock("../pixi/renderers/WallRenderer", () => ({
@@ -33,17 +34,22 @@ vi.mock("pixi.js", () => ({
     this.destroy = vi.fn();
     this.visible = false;
   }),
-  Graphics: vi.fn().mockImplementation(function (this: { clear: () => void; moveTo: () => unknown; lineTo: () => unknown; stroke: () => unknown; destroy: () => void }) {
+  Graphics: vi.fn().mockImplementation(function (this: { clear: () => void; moveTo: () => unknown; lineTo: () => unknown; stroke: () => unknown; circle: () => unknown; poly: () => unknown; fill: () => unknown; destroy: () => void }) {
     this.clear = vi.fn();
     this.moveTo = vi.fn(() => this);
     this.lineTo = vi.fn(() => this);
     this.stroke = vi.fn(() => this);
+    this.circle = vi.fn(() => this);
+    this.poly = vi.fn(() => this);
+    this.fill = vi.fn(() => this);
     this.destroy = vi.fn();
   }),
 }));
 
-const settingsA: VectorByCorridorsSettings = { color: 0x111111, thickness: 10, join: "round" };
-const settingsB: VectorByCorridorsSettings = { color: 0x222222, thickness: 20, join: "miter" };
+const startMarker: VectorByCorridorsSettings["startMarker"] = { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.1 };
+const finishMarker: VectorByCorridorsSettings["finishMarker"] = { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.1 };
+const settingsA: VectorByCorridorsSettings = { color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4 };
+const settingsB: VectorByCorridorsSettings = { color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4 };
 
 // Stable references reused across `baseState()` calls — the renderer's own geometry cache keys off
 // reference-equality of `nodes`/`edges`/`activeTessellationConfig` (same convention as
@@ -60,6 +66,10 @@ function baseState(overrides: Record<string, unknown> = {}) {
     edges: stableEdges,
     activeTessellationConfig: stableCfg,
     vectorByCorridorsSettings: settingsA,
+    start: null,
+    finish: null,
+    postEditMeta: null,
+    postEditDraftSplitPoints: {},
     ...overrides,
   };
 }
@@ -135,5 +145,36 @@ describe("VectorByCorridorsRenderer", () => {
     expect(subscribeCallback).not.toBeNull();
     renderer.destroy();
     expect(subscribeCallback).toBeNull();
+  });
+
+  it("resolves start/finish through resolveEffectiveEndpoints and passes them to buildMazeMarkers", () => {
+    currentState = baseState({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
+      start: 0,
+      finish: 1,
+    });
+    new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    expect(buildMazeMarkers).toHaveBeenCalledWith(
+      expect.any(Map), 0, 1, stableCfg,
+      expect.objectContaining(startMarker),
+      expect.objectContaining(finishMarker),
+    );
+  });
+
+  it("a start/finish change alone (no node/edge change) triggers a re-render", () => {
+    new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    vi.mocked(buildMazeMarkers).mockClear();
+
+    const nextState = baseState({ start: 5 });
+    subscribeCallback?.(nextState);
+
+    expect(buildMazeMarkers).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws a widen patch (fill in the corridor's own color) under each marker before drawing the markers", () => {
+    vi.mocked(buildMazeMarkers).mockReturnValueOnce([{ pos: [5, 5], color: 0x999, radius: 4 }]);
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    const corridorsGraphics = (renderer as unknown as { corridors: { fill: ReturnType<typeof vi.fn> } }).corridors;
+    expect(corridorsGraphics.fill).toHaveBeenCalledWith(settingsA.color);
   });
 });
