@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, maxSplitNodeCount, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, maxSplitNodeCount, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
+import { getCellCenter } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
 import type { NodeDto, EdgeDto } from "../wasm/types";
@@ -183,6 +184,62 @@ describe("buildMazeWalls", () => {
     const walls = buildMazeWalls(nodes, [], squareCfg);
     // Node 1 at (1,0) has a boundary wall to (2,0) (not in the field) — unaffected by (0,0) being split.
     expect(walls.some(w => w.a[0] === 1 && w.a[1] === 0 && w.b[0] === 2 && w.b[1] === 0)).toBe(true);
+  });
+});
+
+// --- buildCorridorSegments ---
+
+describe("buildCorridorSegments", () => {
+  it("no edges — no segments", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    expect(buildCorridorSegments(nodes, [], squareCfg)).toEqual([]);
+  });
+
+  it("a connected pair draws a center-to-center segment", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const segments = buildCorridorSegments(nodes, [e(0, 1), e(1, 0)], squareCfg);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].v0).toEqual(getCellCenter(0, 0, squareCfg));
+    expect(segments[0].v1).toEqual(getCellCenter(1, 0, squareCfg));
+  });
+
+  it("a one-way passage draws the same segment as a bidirectional one", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const oneWay = buildCorridorSegments(nodes, [e(0, 1)], squareCfg);
+    const both = buildCorridorSegments(nodes, [e(0, 1), e(1, 0)], squareCfg);
+    expect(oneWay).toEqual(both);
+  });
+
+  it("does not draw a segment for an unconnected neighbor pair", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    expect(buildCorridorSegments(nodes, [], squareCfg)).toEqual([]);
+  });
+
+  it("does not draw a segment for a teleport-only edge", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const teleportEdge: EdgeDto = { from: 0, to: 1, kind: "teleport" };
+    expect(buildCorridorSegments(nodes, [teleportEdge], squareCfg)).toEqual([]);
+  });
+
+  it("skips a split point's edges entirely", () => {
+    // Point (0,0) split into node 0 (original) and node 2 (extra split node, wired to node 1).
+    const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0)];
+    const edges: EdgeDto[] = [e(2, 1), e(1, 2)];
+    expect(buildCorridorSegments(nodes, edges, squareCfg)).toEqual([]);
+  });
+
+  it("a split point's unrelated neighbor still draws its own ordinary corridor segments", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0), n(3, 2, 0)];
+    const edges: EdgeDto[] = [e(1, 3), e(3, 1)];
+    const segments = buildCorridorSegments(nodes, edges, squareCfg);
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toEqual({ v0: getCellCenter(1, 0, squareCfg), v1: getCellCenter(2, 0, squareCfg) });
+  });
+
+  it("emits each connected pair's segment only once, not once per direction", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const segments = buildCorridorSegments(nodes, [e(0, 1), e(1, 0)], squareCfg);
+    expect(segments).toHaveLength(1);
   });
 });
 

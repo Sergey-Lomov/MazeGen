@@ -99,7 +99,7 @@ export class ExportFrameOverlay implements ViewportListener {
 
   private currentPrintFrameLayout(state: ReturnType<typeof useMazeStore.getState>): PrintFrameLayout | null {
     if (!this.isExportPanelOpen(state) || state.pngExportSettings.outputMode !== "print" || state.activeRenderMode === null) return null;
-    const wallMargin = resolveWallExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings });
+    const wallMargin = resolveWallExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
     const printFit = computePrintExportFit(state.activeTessellationConfig, state.nodes, wallMargin, state.pngExportSettings.print);
     if (printFit.sheetWidthPx <= 0 || printFit.sheetHeightPx <= 0) return null;
     const screenSize = this.getScreenSize();
@@ -113,8 +113,8 @@ export class ExportFrameOverlay implements ViewportListener {
    * derived from the current maze bbox + settings, nothing to keep in sync). */
   private currentDigitalFrameLayout(state: ReturnType<typeof useMazeStore.getState>): ScreenRect | null {
     if (!this.isExportPanelOpen(state) || state.pngExportSettings.outputMode !== "digital" || state.activeRenderMode === null) return null;
-    const margin = resolveExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings });
-    const wallMargin = resolveWallExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings });
+    const margin = resolveExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
+    const wallMargin = resolveWallExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
     const fit = computeDigitalExportFit(state.activeTessellationConfig, state.nodes, margin, state.pngExportSettings.digital, wallMargin);
     if (fit.width <= 0 || fit.height <= 0) return null;
     const { scale } = this.lastViewport;
@@ -136,7 +136,7 @@ export class ExportFrameOverlay implements ViewportListener {
    * overwrite the scale this call is about to set, back to the auto-fit value, every render). */
   private syncPlacementToViewport(state: ReturnType<typeof useMazeStore.getState>, frameLayout: ScreenRect): void {
     if (state.activeRenderMode === null) return;
-    const wallMargin = resolveWallExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings });
+    const wallMargin = resolveWallExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
     const { scale, offsetXMm, offsetYMm } = computePrintPlacementFromViewport(
       state.activeTessellationConfig, state.nodes, wallMargin, state.pngExportSettings.print, this.lastViewport, frameLayout,
     );
@@ -156,7 +156,7 @@ export class ExportFrameOverlay implements ViewportListener {
    * the viewport back into itself. */
   private syncViewportToPlacement(state: ReturnType<typeof useMazeStore.getState>, frameLayout: ScreenRect): void {
     if (state.activeRenderMode === null) return;
-    const wallMargin = resolveWallExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings });
+    const wallMargin = resolveWallExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
     const { x, y, scale } = computeViewportFromPrintPlacement(
       state.activeTessellationConfig, state.nodes, wallMargin, state.pngExportSettings.print, frameLayout,
     );
@@ -195,7 +195,7 @@ export class ExportFrameOverlay implements ViewportListener {
     const layout = printLayout ?? this.currentDigitalFrameLayout(state);
     if (!layout) return;
 
-    const backgroundColor = state.activeRenderMode ? resolveBackgroundColor(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings }) : 0;
+    const backgroundColor = state.activeRenderMode ? resolveBackgroundColor(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings }) : 0;
     const frameColor = contrastGray(backgroundColor);
 
     this.drawDimOverlay(layout);

@@ -309,7 +309,8 @@ export class VectorByWallsRenderer {
   }
 
   getBackgroundColor(): number {
-    return resolveBackgroundColor("vector_by_walls", { vectorByWallsSettings: useMazeStore.getState().vectorByWallsSettings });
+    const state = useMazeStore.getState();
+    return resolveBackgroundColor("vector_by_walls", { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {

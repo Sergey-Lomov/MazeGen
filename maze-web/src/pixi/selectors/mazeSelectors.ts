@@ -100,6 +100,59 @@ export function maxSplitNodeCount(nodes: NodeDto[]): number {
   return max;
 }
 
+/** Center-to-center line segments for every basic passage between geometrically adjacent cells —
+ *  the "Vector by corridors" render mode's own maze reading (GitHub issue #310), the inverse of
+ *  `buildMazeWalls`' "gap in the wall" reading. Both bidirectional and one-way passages draw the
+ *  same segment (direction isn't distinguished yet — a follow-up sub-issue's concern). Split points
+ *  are skipped entirely, same as `buildMazeWalls`' own `splitPointKeys` exclusion — a follow-up
+ *  sub-issue adds their own dedicated corridor reading, same "own sub-issue" convention
+ *  `buildSplitPassages` follows for `VectorByWallsRenderer`. Teleport edges are never geometric
+ *  neighbors of each other in `getNeighborData`'s sense, so they're naturally excluded without any
+ *  extra `kind` check. */
+export function buildCorridorSegments(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  cfg: TessellationConfig,
+): { v0: { x: number; y: number }; v1: { x: number; y: number } }[] {
+  const nodeById = new Map<number, NodeDto>();
+  for (const n of nodes) nodeById.set(n.id, n);
+
+  const connected = new Set<string>();
+  for (const e of edges) {
+    if (e.kind === "teleport") continue;
+    const from = nodeById.get(e.from);
+    const to = nodeById.get(e.to);
+    if (!from || !to) continue;
+    const a = from.x < to.x || (from.x === to.x && from.y < to.y) ? from : to;
+    const b = a === from ? to : from;
+    connected.add(`${a.x},${a.y}->${b.x},${b.y}`);
+  }
+
+  const cells: [number, number][] = nodes.map((n) => [n.x, n.y]);
+  const cellSet = buildCellSet(cells);
+  const splitPointKeys = buildSplitPointKeys(nodes);
+  const result: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] = [];
+
+  for (const n of nodes) {
+    const selfKey = `${n.x},${n.y}`;
+    if (splitPointKeys.has(selfKey)) continue;
+    const { offsets } = getNeighborData(cfg, n.x, n.y);
+    for (const [dx, dy] of offsets) {
+      const nx = n.x + dx;
+      const ny = n.y + dy;
+      if (!cellSet.has(`${nx},${ny}`)) continue;
+      if (splitPointKeys.has(`${nx},${ny}`)) continue;
+      const ownsEdge = n.x < nx || (n.x === nx && n.y < ny);
+      if (!ownsEdge) continue;
+      if (!connected.has(`${n.x},${n.y}->${nx},${ny}`)) continue;
+
+      result.push({ v0: getCellCenter(n.x, n.y, cfg), v1: getCellCenter(nx, ny, cfg) });
+    }
+  }
+
+  return result;
+}
+
 export function buildMazeWalls(
   nodes: NodeDto[],
   edges: EdgeDto[],

@@ -471,6 +471,20 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState().debugStep).toBe(1);
   });
 
+  it("loadProject restores vectorByCorridorsSettings/vectorByCorridorsSectionsExpanded from the saved file", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
+    const file = serializeProject(useMazeStore.getState());
+    file.imageExport = {
+      ...file.imageExport,
+      vectorByCorridorsSettings: { color: 0x123456, thickness: 12, join: "miter" },
+      vectorByCorridorsSectionsExpanded: { cells: true },
+    };
+    useMazeStore.getState().loadProject(file);
+    expect(useMazeStore.getState().vectorByCorridorsSettings).toEqual({ color: 0x123456, thickness: 12, join: "miter" });
+    expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded).toEqual({ cells: true });
+  });
+
   it("setError sets and clears the error message", () => {
     useMazeStore.getState().setError("boom");
     expect(useMazeStore.getState().error).toBe("boom");

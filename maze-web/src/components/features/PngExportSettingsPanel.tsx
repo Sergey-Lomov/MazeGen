@@ -13,6 +13,7 @@ import { computeDigitalExportFit } from "../../pixi/imageExport/exportFit";
 import { computePrintExportFit, computeAutoFitPrintScale, resolveSheetSizeMm, DPI_BY_DENSITY, pxToMm } from "../../pixi/imageExport/printFit";
 import { resolveExportMargin, resolveWallExportMargin } from "../../pixi/imageExport/exportMargins";
 import { getCurrentViewportScale } from "../../pixi/viewportScaleBridge";
+import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../../store/slices/imageExportSlice";
 import { TILE_SIZE } from "../../pixi/constants";
 import type { PngCanvasMode, PrintDensity, PaperSize, PrintAnchor } from "../../store/storeTypes";
 import * as m from "~/paraglide/messages";
@@ -98,16 +99,26 @@ export function PngExportSettingsPanel() {
   const activeRenderMode = useMazeStore((s) => s.activeRenderMode);
   const nodes = useMazeStore((s) => s.nodes);
   const cfg = useMazeStore((s) => s.activeTessellationConfig);
-  const vectorByWallsSettings = useMazeStore((s) => s.vectorByWallsSettings);
+  // Only subscribed to the currently active mode's own settings — the inactive mode's settings
+  // can't affect this panel's margin/fit computation below, so subscribing to both unconditionally
+  // would re-render this panel on every edit to a render mode's settings the user isn't even
+  // exporting with right now.
+  const vectorByWallsSettings = useMazeStore((s) => (activeRenderMode === "vector_by_walls" ? s.vectorByWallsSettings : null));
+  const vectorByCorridorsSettings = useMazeStore((s) => (activeRenderMode === "vector_by_corridors" ? s.vectorByCorridorsSettings : null));
+
+  const marginState = {
+    vectorByWallsSettings: vectorByWallsSettings ?? DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+    vectorByCorridorsSettings: vectorByCorridorsSettings ?? DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
+  };
 
   const margin = useMemo(
-    () => (activeRenderMode ? resolveExportMargin(activeRenderMode, { vectorByWallsSettings }) : { left: 0, right: 0, top: 0, bottom: 0 }),
-    [activeRenderMode, vectorByWallsSettings],
+    () => (activeRenderMode ? resolveExportMargin(activeRenderMode, marginState) : { left: 0, right: 0, top: 0, bottom: 0 }),
+    [activeRenderMode, vectorByWallsSettings, vectorByCorridorsSettings],
   );
 
   const wallMargin = useMemo(
-    () => (activeRenderMode ? resolveWallExportMargin(activeRenderMode, { vectorByWallsSettings }) : { left: 0, right: 0, top: 0, bottom: 0 }),
-    [activeRenderMode, vectorByWallsSettings],
+    () => (activeRenderMode ? resolveWallExportMargin(activeRenderMode, marginState) : { left: 0, right: 0, top: 0, bottom: 0 }),
+    [activeRenderMode, vectorByWallsSettings, vectorByCorridorsSettings],
   );
 
   const digitalFit = useMemo(

@@ -698,11 +698,22 @@ function validatePngExportSettings(v: unknown, path: string): PngExportSettings 
   };
 }
 
-/** Empty scaffolding (GitHub issue #315) — always returns the (empty) default, same
- * shared-with-`imageExportSlice.ts` convention as `validateVectorByWallsSettings`. Follow-up
- * sub-issues fill in real fields as `VectorByCorridorsSettings` grows. */
-function validateVectorByCorridorsSettings(_v: unknown, _path: string): VectorByCorridorsSettings {
-  return DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS;
+/** Same recovery-default convention as `validateVectorByWallsSettings` (GitHub issue #310). */
+function validateVectorByCorridorsSettings(v: unknown, path: string): VectorByCorridorsSettings {
+  let obj: Record<string, unknown> | null = null;
+  if (v != null) {
+    try {
+      obj = assertObject(v, path);
+    } catch {
+      obj = null;
+    }
+  }
+  const d = DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS;
+  return {
+    color: optNumber(obj, "color", d.color),
+    thickness: optNumber(obj, "thickness", d.thickness),
+    join: optJoin(obj, "join", d.join),
+  };
 }
 
 function validateImageExport(v: unknown, path: string): ProjectFileImageExport {

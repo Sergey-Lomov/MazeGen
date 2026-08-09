@@ -1,5 +1,5 @@
 import { useMazeStore } from "../../store/mazeStore";
-import type { VectorByWallsSettings, RenderModeId } from "../../store/storeTypes";
+import type { VectorByWallsSettings, VectorByCorridorsSettings, RenderModeId } from "../../store/storeTypes";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 
@@ -14,7 +14,7 @@ export interface ExportMargin {
 }
 
 /** Exported so mode renderers with a trivially uniform margin (e.g. `VectorByCorridorsRenderer`'s
- * scaffolding zero) don't need to hand-build the `ExportMargin` shape themselves. */
+ * corridor-stroke-half-width margin) don't need to hand-build the `ExportMargin` shape themselves. */
 export function uniform(v: number): ExportMargin {
   return { left: v, right: v, top: v, bottom: v };
 }
@@ -45,29 +45,38 @@ export function computeVectorByWallsWallMargin(settings: VectorByWallsSettings):
   return uniform(settings.wallThickness / 2);
 }
 
+/** Required export margin for "Vector by corridors" — half the corridor stroke's own width, the
+ * only geometry this mode draws past a cell's raw center point (GitHub issue #310). Same "always
+ * pure function" rationale as `computeVectorByWallsExportMargin`. */
+export function computeVectorByCorridorsExportMargin(settings: VectorByCorridorsSettings): ExportMargin {
+  return uniform(settings.thickness / 2);
+}
+
 /** Resolves the export margin for a given render mode directly from store state — the
  * chiefly-functional counterpart to `modeRendererFactory.ts`'s `createModeRenderer`, minus any
  * Pixi/`Container` dependency. Callers needing a live preview (the export settings panel's
  * `useMemo`, re-evaluated on every settings change) use this instead of spinning up a temporary
  * renderer instance. `PngExporter` may use either this or the equivalent instance method — both
  * delegate to the same per-mode pure function, so they can never disagree. */
-export function resolveExportMargin(mode: RenderModeId, state: Pick<ReturnType<typeof useMazeStore.getState>, "vectorByWallsSettings">): ExportMargin {
+export function resolveExportMargin(mode: RenderModeId, state: Pick<ReturnType<typeof useMazeStore.getState>, "vectorByWallsSettings" | "vectorByCorridorsSettings">): ExportMargin {
   switch (mode) {
     case "vector_by_walls":
       return computeVectorByWallsExportMargin(state.vectorByWallsSettings);
     case "vector_by_corridors":
-      return uniform(0);
+      return computeVectorByCorridorsExportMargin(state.vectorByCorridorsSettings);
   }
 }
 
 /** Wall-only counterpart of `resolveExportMargin`, for the digital export's "edge to edge" canvas
- * mode — see `computeVectorByWallsWallMargin`. */
-export function resolveWallExportMargin(mode: RenderModeId, state: Pick<ReturnType<typeof useMazeStore.getState>, "vectorByWallsSettings">): ExportMargin {
+ * mode — see `computeVectorByWallsWallMargin`. "Vector by corridors" has no separate wall stroke
+ * (the corridor stroke itself is the only line-work), so its wall-only margin is the same as its
+ * full margin. */
+export function resolveWallExportMargin(mode: RenderModeId, state: Pick<ReturnType<typeof useMazeStore.getState>, "vectorByWallsSettings" | "vectorByCorridorsSettings">): ExportMargin {
   switch (mode) {
     case "vector_by_walls":
       return computeVectorByWallsWallMargin(state.vectorByWallsSettings);
     case "vector_by_corridors":
-      return uniform(0);
+      return computeVectorByCorridorsExportMargin(state.vectorByCorridorsSettings);
   }
 }
 
@@ -75,8 +84,10 @@ export function resolveWallExportMargin(mode: RenderModeId, state: Pick<ReturnTy
  * chiefly-functional counterpart-to-`createModeRenderer` pattern as `resolveExportMargin`, used by
  * `ExportFrameOverlay` to pick a frame color that stays visible against whatever's actually drawn
  * behind it (which may differ from the app's own dark canvas background — a mode's background is
- * user-editable, e.g. "Vector by walls"' white/light default for print). */
-export function resolveBackgroundColor(mode: RenderModeId, state: Pick<ReturnType<typeof useMazeStore.getState>, "vectorByWallsSettings">): number {
+ * user-editable, e.g. "Vector by walls"' white/light default for print). "Vector by corridors" has
+ * no user-configurable background yet (a follow-up sub-issue's concern), so it always resolves to
+ * the fixed editor canvas background. */
+export function resolveBackgroundColor(mode: RenderModeId, state: Pick<ReturnType<typeof useMazeStore.getState>, "vectorByWallsSettings" | "vectorByCorridorsSettings">): number {
   switch (mode) {
     case "vector_by_walls":
       return state.vectorByWallsSettings.background;

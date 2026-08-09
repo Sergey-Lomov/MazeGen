@@ -1033,11 +1033,20 @@ export interface VectorByWallsSettings {
   splitSpecialShapes: boolean;
 }
 
-/** "Vector by corridors" mode's own settings (GitHub issue #315) — empty scaffolding today, filled
- * in by follow-up sub-issues. Kept as its own type (not folded into `VectorByWallsSettings`), same
- * per-mode-settings convention as every other `RenderModeId`. */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface VectorByCorridorsSettings {}
+/** "Vector by corridors" mode's own settings (GitHub issue #310) — the corridor stroke's color,
+ * width and corner/end style. Kept as its own type (not folded into `VectorByWallsSettings`), same
+ * per-mode-settings convention as every other `RenderModeId`. Every basic passage (both
+ * bidirectional and one-way alike — direction isn't distinguished yet, a follow-up sub-issue's
+ * concern) draws as a stroked line between the two cells' centers; split points and teleport edges
+ * are skipped entirely for now (their own follow-up sub-issues), same "empty until its own
+ * sub-issue" convention `splitSpecialShapes` etc. followed in `VectorByWallsSettings`. */
+export interface VectorByCorridorsSettings {
+  color: number;
+  thickness: number;
+  /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
+   *  `VectorByWallsSettings.wallJoin`/`wallCap`. */
+  join: "round" | "miter";
+}
 
 export interface ImageExportState {
   /** Currently active rendering mode in the Image Export feature card's switcher, or `null` if
@@ -1103,6 +1112,9 @@ export interface ImageExportActions {
   setPrintCustomPlacement: (scale: number, offsetXMm: number, offsetYMm: number) => void;
   setVectorByWallsSectionExpanded: (id: string, expanded: boolean) => void;
   setVectorByCorridorsSectionExpanded: (id: string, expanded: boolean) => void;
+  setVectorByCorridorsColor: (color: number) => void;
+  setVectorByCorridorsThickness: (v: number) => void;
+  setVectorByCorridorsJoin: (join: "round" | "miter") => void;
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;

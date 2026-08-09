@@ -69,6 +69,40 @@ Its settings panel (`VectorByWallsSettingsPanel.tsx`) has six collapsible sectio
 
   **Selection is click-driven, not hover-driven** (`selectedTeleportGroupKey` in the store, `setSelectedTeleportGroupKey`) — clicking a group's marker on the canvas, or its row in the settings list, selects it; clicking the already-selected group/row again, or pressing `Escape`, clears the selection. Selecting a group hides every other group entirely (`renderGroups` skips the draw call for a non-visible group's connectors/points — cheaper than the alpha-based dimming an earlier version used, since `Container.alpha` composited overlapping translucent shapes independently and showed them through each other at the seam; a hidden group's points still get an invisible hit-circle so it stays clickable to re-select). Collapsing the Teleports section, or turning group customization off, synchronously clears `selectedTeleportGroupKey` (in the same click handler that triggers the collapse/toggle, not a `useEffect` reacting to it afterward) so a stale selection can't dangle invisibly and reappear already-selected next time the section reopens or customization is turned back on. The row's own mouse-over highlight is native CSS `:hover` (`.teleport-group-row` in `global.css`), a separate concern from the `data-selected` attribute driving the actual selection look (both can be true independently without one overriding the other's specificity).
 
+### "Vector by corridors" (`VectorByCorridorsRenderer`)
+
+Renders the maze the inverse way "Vector by walls" does: instead of walls-as-gaps, every basic
+passage between two geometrically adjacent cells draws as a stroked line between their centers
+(`buildCorridorSegments`, `pixi/selectors/mazeSelectors.ts`) — the passage itself is the visible
+line, not the wall around it. GitHub issue #310 (scaffolded in #315).
+
+Its settings panel (`VectorByCorridorsSettingsPanel.tsx`) has a single collapsible "Cells" section
+(`vectorByCorridorsSectionsExpanded`, same collapse convention as `VectorByWallsSettingsPanel`'s own
+sections — collapsed by default) backed by `VectorByCorridorsSettings` (`imageExportSlice.ts`):
+corridor color, corners & ends (round/miter join, paired with a round/square cap — same convention
+as `VectorByWallsSettings.wallJoin`/`wallCap`) and thickness (1 to `TILE_SIZE` — a corridor's
+meaningful range scales with the cell size, unlike "Vector by walls"' fixed 1-20px wall-thickness
+range). Defaults: `canvas.wall.default` color, round join, thickness `TILE_SIZE / 2` (half the
+slider's own max, rather than `VectorByWallsSettings.wallThickness`'s fixed default).
+
+Both bidirectional and one-way passages draw the identical segment today — direction isn't
+distinguished yet, left for a follow-up sub-issue's own indicator setting. Split points (a cell with
+more than one `NodeDto`) and teleport edges are skipped entirely — their passages draw nothing in
+this mode, same "own dedicated sub-issue" convention `VectorByWallsRenderer`'s split/teleport
+sections followed before their own issues landed. `buildCorridorSegments` excludes them the same
+way `buildMazeWalls` excludes split points from its own wall reading (`splitPointKeys`), and
+excludes `kind: "teleport"` edges the same way `buildMazeWalls` does.
+
+Corner/end joins are applied by chaining corridor segments into polylines wherever exactly two
+segments meet at a shared vertex (`chainSegmentsAtSharedVertices`, `WallRenderer.ts` — reused as-is,
+not duplicated, since the join-only-renders-within-one-stroked-path constraint is identical to
+`VectorByWallsRenderer`'s own wall join). `getRequiredExportMargin`/`getRequiredWallExportMargin`
+both resolve to `computeVectorByCorridorsExportMargin` (`exportMargins.ts`) — half the corridor
+stroke's own width, the only geometry this mode draws past a cell's raw center point; unlike "Vector
+by walls" there's no separate wall-only margin to distinguish, so both getters return the same
+value. Background color is not yet user-configurable — always `canvas.stage.background`
+(`resolveBackgroundColor`'s `"vector_by_corridors"` case), a follow-up sub-issue's concern.
+
 ### Shared marker shape set (`MarkerShape`, `pixi/renderers/markerShapes.ts`)
 
 GitHub issue #293 follow-up unified what used to be two separate shape enums/draw functions — a 5-value `MarkerShape` for start/finish waypoints and a 9-value `TeleportShape` for teleports (including `crescent`, a moon shape that read poorly at marker scale and had a geometry defect — see below) — into one 8-value `MarkerShape`: `circle`/`triangle`/`square`/`diamond`/`pentagon`/`star`/`hexagon`/`cross`. Both `WaypointsRenderer` and `TeleportRenderer` draw through the same `drawMarkerShape(g, shape, cx, cy, r, rounded?)`, so waypoints and teleports never diverge in how a given shape looks; `markerPolygonPoints` (regular-polygon corner points, `star` alternating outer/inner radius, `cross` its own fixed 12-vertex layout) backs both the sharp path (`g.poly`) and the rounded path, via `markerShapes.ts`'s own `drawRoundedPolygon` (a general canvas-style per-corner `arcTo` rounder, not `Graphics.roundPoly` — needed since `star`/`cross` have no regular-polygon equivalent `roundPoly` could round). Each corner's radius is capped to half its shorter adjacent edge, and `star`'s reflex (inward-pointing) corners are gated out of rounding entirely (a rounded arc there reads as a spike at typical marker sizes, no radius clamp fixes it). The closed path's `moveTo` start is placed at corner 0's own tangent-out point (`cornerTangentPoint`, `radius / tan(halfAngle)` from the vertex along the edge — not a naive edge-midpoint, which only happens to be correct when both corners sharing that edge round equally) so the path's start exactly matches where the loop's final `arcTo` call closes back to — a mismatch there left a stray straight overshoot at the seam, visible on `star` specifically since its corners alternate rounded/sharp. `polygonCornerRadius`/`cornerTangentPoint` are exported pure functions, unit-tested independently of `Graphics`. `WaypointsRenderer` always draws sharp (`rounded` defaults to `false`, and nothing ever passes it `true`) — corner-style is a teleport-only setting (`teleportCornerStyle`, see above).

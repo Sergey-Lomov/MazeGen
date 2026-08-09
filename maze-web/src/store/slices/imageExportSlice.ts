@@ -44,9 +44,15 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = {
   splitSpecialShapes: true,
 };
 
-/** Empty scaffolding (GitHub issue #315) — filled in by follow-up sub-issues, same
- * shared-with-`validate.ts` convention as `DEFAULT_VECTOR_BY_WALLS_SETTINGS`. */
-export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = {};
+/** Shared with `projectExport/validate.ts`'s recovery defaults, same convention as
+ * `DEFAULT_VECTOR_BY_WALLS_SETTINGS`. `thickness` defaults to half of the settings panel's own max
+ * (`TILE_SIZE`, GitHub issue #310's follow-up) rather than the fixed `WALL_THICKNESS` "Vector by
+ * walls" uses — a corridor's meaningful range scales with the cell size, so its default should too. */
+export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = {
+  color: canvas.wall.default,
+  thickness: TILE_SIZE / 2,
+  join: "round",
+};
 
 /** Shared with `projectExport/validate.ts`'s recovery defaults, same convention as
  * `DEFAULT_VECTOR_BY_WALLS_SETTINGS`. */
@@ -102,6 +108,12 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSectionsExpanded: { ...s.vectorByWallsSectionsExpanded, [id]: expanded } })),
   setVectorByCorridorsSectionExpanded: (id, expanded) =>
     set((s) => ({ vectorByCorridorsSectionsExpanded: { ...s.vectorByCorridorsSectionsExpanded, [id]: expanded } })),
+  setVectorByCorridorsColor: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, color } })),
+  setVectorByCorridorsThickness: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, thickness: v } })),
+  setVectorByCorridorsJoin: (join) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, join } })),
   setVectorByWallsBackground: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, background: color } })),
   setVectorByWallsShowGrid: (v) =>

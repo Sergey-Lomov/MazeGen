@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { computeVectorByWallsExportMargin, computeVectorByWallsWallMargin, resolveExportMargin, resolveWallExportMargin } from "../pixi/imageExport/exportMargins";
-import { DEFAULT_VECTOR_BY_WALLS_SETTINGS } from "../store/slices/imageExportSlice";
+import { computeVectorByWallsExportMargin, computeVectorByWallsWallMargin, computeVectorByCorridorsExportMargin, resolveExportMargin, resolveWallExportMargin } from "../pixi/imageExport/exportMargins";
+import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 
 describe("computeVectorByWallsExportMargin", () => {
   it("returns a uniform margin on all four sides", () => {
@@ -31,10 +31,29 @@ describe("computeVectorByWallsExportMargin", () => {
   });
 });
 
+describe("computeVectorByCorridorsExportMargin", () => {
+  it("equals half the corridor thickness on every side", () => {
+    const margin = computeVectorByCorridorsExportMargin(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS);
+    expect(margin).toEqual({
+      left: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.thickness / 2,
+      right: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.thickness / 2,
+      top: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.thickness / 2,
+      bottom: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.thickness / 2,
+    });
+  });
+});
+
 describe("resolveExportMargin", () => {
+  const state = { vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS, vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS };
+
   it("resolves 'vector_by_walls' without constructing a Pixi renderer", () => {
-    const margin = resolveExportMargin("vector_by_walls", { vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS });
+    const margin = resolveExportMargin("vector_by_walls", state);
     expect(margin).toEqual(computeVectorByWallsExportMargin(DEFAULT_VECTOR_BY_WALLS_SETTINGS));
+  });
+
+  it("resolves 'vector_by_corridors' without constructing a Pixi renderer", () => {
+    const margin = resolveExportMargin("vector_by_corridors", state);
+    expect(margin).toEqual(computeVectorByCorridorsExportMargin(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS));
   });
 });
 
@@ -62,8 +81,10 @@ describe("computeVectorByWallsWallMargin", () => {
 });
 
 describe("resolveWallExportMargin", () => {
+  const state = { vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS, vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS };
+
   it("resolves 'vector_by_walls' to the wall-only margin, not the full one", () => {
-    const margin = resolveWallExportMargin("vector_by_walls", { vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS });
+    const margin = resolveWallExportMargin("vector_by_walls", state);
     expect(margin).toEqual(computeVectorByWallsWallMargin(DEFAULT_VECTOR_BY_WALLS_SETTINGS));
   });
 });
