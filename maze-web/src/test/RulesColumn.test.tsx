@@ -54,14 +54,15 @@ const strategyWithParams: StrategyVM = {
   experimental: false,
   nestedSlots: [],
 };
-const checkA: CheckVM = { id: "g1:0", ruleId: "g1", localId: 0, typeId: "c1", label: "Check One", description: "", params: [], disabled: false };
-const checkB: CheckVM = { id: "g1:1", ruleId: "g1", localId: 1, typeId: "c2", label: "Check Two", description: "", params: [], disabled: false };
+const checkA: CheckVM = { id: "g1:0", ruleId: "g1", localId: 0, typeId: "c1", label: "Check One", cardLabel: "Check One", description: "", params: [], disabled: false };
+const checkB: CheckVM = { id: "g1:1", ruleId: "g1", localId: 1, typeId: "c2", label: "Check Two", cardLabel: "Check Two", description: "", params: [], disabled: false };
 const checkWithParams: CheckVM = {
   id: "g1:0",
   ruleId: "g1",
   localId: 0,
   typeId: "c1",
   label: "Check One",
+  cardLabel: "Check One",
   description: "",
   params: [{ id: "threshold", label: "Threshold", kind: { type: "float", default: 1, min: 0, max: 10 } }],
   disabled: false,

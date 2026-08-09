@@ -518,3 +518,65 @@ fn resolve_endpoint_distinguishes_between_two_declared_slots_at_the_same_point()
     assert_eq!(resolved1, Some(slot1_id));
     assert_ne!(resolved0, resolved1);
 }
+
+// --- PresetState::is_preset_locked_node (split node preset-locked support) ---
+
+/// A node minted by `split_points` whose incident edges (a mix of Basic and Teleport — no
+/// `EdgeKind` filtering) are all preset-protected is locked.
+#[test]
+fn is_preset_locked_node_true_when_declared_and_all_incident_edges_are_preset() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let split_points = vec![((0, 0), 0)];
+    let presets = vec![
+        PresetConnection { from: split(0, 0, 0), to: original(1, 0), state: PresetConnectionState::Passage },
+        PresetConnection { from: split(0, 0, 0), to: original(2, 2), state: PresetConnectionState::Teleport(TeleportDirection::Forward) },
+    ];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
+    let point = SquarePoint { x: 0, y: 0 };
+    let added_id = field.nodes_at(point)[1];
+    assert!(state.is_preset_locked_node(added_id, &graph));
+}
+
+/// A node that already existed at the point (not minted by `split_points`) is never locked, even
+/// if all its edges happen to be preset-protected.
+#[test]
+fn is_preset_locked_node_false_when_node_not_declared_by_preset() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let presets = vec![PresetConnection {
+        from: original(0, 0), to: original(1, 0), state: PresetConnectionState::Passage,
+    }];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
+    let a = node_at(&field, 0, 0);
+    assert!(!state.is_preset_locked_node(a, &graph));
+}
+
+/// A declared node with at least one non-preset incident edge is not locked.
+#[test]
+fn is_preset_locked_node_false_when_not_all_incident_edges_are_preset() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let split_points = vec![((0, 0), 0)];
+    let presets = vec![PresetConnection {
+        from: split(0, 0, 0), to: original(1, 0), state: PresetConnectionState::Passage,
+    }];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
+    let point = SquarePoint { x: 0, y: 0 };
+    let added_id = field.nodes_at(point)[1];
+    let other = node_at(&field, 2, 2);
+    graph.build_initial_edge(added_id, other, EdgeKind::Basic);
+    assert!(!state.is_preset_locked_node(added_id, &graph));
+}
+
+/// A declared node with no incident edges is not locked (vacuous-truth guard).
+#[test]
+fn is_preset_locked_node_false_when_declared_node_has_no_edges() {
+    let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let mut ids = IdGenerator::resume_after(&field);
+    let split_points = vec![((0, 0), 0)];
+    let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
+    let point = SquarePoint { x: 0, y: 0 };
+    let added_id = field.nodes_at(point)[1];
+    assert!(!state.is_preset_locked_node(added_id, &graph));
+}

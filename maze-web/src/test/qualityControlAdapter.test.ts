@@ -97,7 +97,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
   it("CheckRan with an InvalidLoop payload carries a cycle highlight target, flattened across every contributing check", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
-      issue: { issueKind: "invalid_loop", payload: { kind: "InvalidLoop", edges: new Map([["check1", [[[1n, 2n]]]]]) }, details: new Map() },
+      issue: { issueKind: "invalid_loop", payload: { kind: "InvalidLoop", edges: new Map([["check1", [{ edges: [[1n, 2n]], presetLocked: false }]]]) }, details: new Map() },
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
@@ -108,7 +108,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
   it("CheckRan with a RegionNeedsExpansion payload carries a region highlight target, flattened across every contributing check", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
-      issue: { issueKind: "region_needs_expansion", payload: { kind: "RegionNeedsExpansion", nodes: new Map([["check1", [[5n, 6n]]]]) }, details: new Map() },
+      issue: { issueKind: "region_needs_expansion", payload: { kind: "RegionNeedsExpansion", nodes: new Map([["check1", [{ region: [5n, 6n], presetLocked: false }]]]) }, details: new Map() },
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
@@ -119,7 +119,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
   it("CheckRan with a RegionNeedsShrink payload carries a region highlight target, flattened across every contributing check", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
-      issue: { issueKind: "region_needs_shrink", payload: { kind: "RegionNeedsShrink", nodes: new Map([["check1", [[5n, 6n]]]]) }, details: new Map() },
+      issue: { issueKind: "region_needs_shrink", payload: { kind: "RegionNeedsShrink", nodes: new Map([["check1", [{ region: [5n, 6n], presetLocked: false }]]]) }, details: new Map() },
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
@@ -132,7 +132,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     // rendering path as a real cycle, see `issueHighlightTarget`'s doc comment.
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
-      issue: { issueKind: "invalid_teleport", payload: { kind: "InvalidTeleport", groups: new Map([["check1", [[[1n, 2n]]]]]) }, details: new Map() },
+      issue: { issueKind: "invalid_teleport", payload: { kind: "InvalidTeleport", groups: new Map([["check1", [{ edges: [[1n, 2n]], presetLocked: false }]]]) }, details: new Map() },
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
@@ -156,7 +156,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     // rendering path as a real cycle, see `issueHighlightTarget`'s doc comment.
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
-      issue: { issueKind: "invalid_one_way", payload: { kind: "InvalidOneWay", groups: new Map([["check1", [[[1n, 2n]]]]]) }, details: new Map() },
+      issue: { issueKind: "invalid_one_way", payload: { kind: "InvalidOneWay", groups: new Map([["check1", [{ edges: [[1n, 2n]], presetLocked: false }]]]) }, details: new Map() },
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
@@ -178,10 +178,10 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
   it("CheckRan with an InvalidSplitTile payload carries a region-shaped highlight target, one singleton-cell group per flagged node, flattened across every contributing check", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
-      issue: { issueKind: "invalid_split_tile", payload: { kind: "InvalidSplitTile", nodes: new Map([["check1", [5n, 6n]]]) }, details: new Map([["distance", "3"]]) },
+      issue: { issueKind: "invalid_split_tile", payload: { kind: "InvalidSplitTile", groups: new Map([["check1", [{ tiles: [{ nodes: [5n, 6n], presetLocked: false }], presetLocked: false }]]]) }, details: new Map([["distance", "3"]]) },
     }, { stageTitle: () => undefined, ruleTitle: () => undefined, checkTypeId: () => "split_distance_from_waypoint" });
     expect(tokens).toEqual([
-      { kind: "text", text: 'Check "Split distance from waypoint": issue found ' },
+      { kind: "text", text: 'Check "Distance from waypoint": issue found ' },
       { kind: "issue", issueKind: "invalid_split_tile", target: { kind: "region", nodes: [5n, 6n] }, reasons: ["Split node closer than 3 tiles to a waypoint"] },
     ]);
   });
@@ -189,7 +189,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
   it("an InvalidSplitTile payload with no actual nodes (empty map) resolves to a null highlight target, not an empty-array target", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({
       kind: "CheckRan", checkId: "check1",
-      issue: { issueKind: "invalid_split_tile", payload: { kind: "InvalidSplitTile", nodes: new Map() }, details: new Map() },
+      issue: { issueKind: "invalid_split_tile", payload: { kind: "InvalidSplitTile", groups: new Map() }, details: new Map() },
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },

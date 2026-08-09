@@ -1,8 +1,66 @@
 import * as m from "~/paraglide/messages";
-import { resolveParamOptionLabel } from "./features/qualityI18n";
+import { resolveParamOptionLabel, resolveCheckDescription } from "./features/qualityI18n";
+import type { IssueDto } from "../wasm/types";
 
 export type IssueSeverity = "warning" | "critical";
 export type IssueInfo = { label: string; description: string; severity: IssueSeverity };
+
+/// Check types whose flagged "instance" is really an individual split *tile*, not the whole
+/// group its check reports (GitHub issue #245's review fix, item 2/3): `max_split_count`/
+/// `max_split_density` bundle every split tile on the field into one `InvalidSplitTileGroupIssue`
+/// group, but repair fixes them by removing specific tiles, one at a time -- so "how many preset
+/// instances" must count tiles, not that one field-wide group. Every other split-tile-group check
+/// (proximity pairs, `max_split_tile_node_count`) genuinely wants one instance per group -- see
+/// `IssueSplitGroupPayload`'s doc comment on the Rust side.
+export const TILE_GRANULARITY_CHECKS = new Set(["max_split_count", "max_split_density"]);
+
+/// This `sourceCheck`'s own slice of `issue`'s payload, reduced to just the `preset_locked` flag
+/// per element -- the single place in the whole project that switches on `payload.kind` to extract
+/// preset-lock data. Covers every payload kind that carries `preset_locked` (loop/teleport/
+/// one-way edge groups, split-tile/split-node group lists, split-route routes, region-needs-
+/// expansion/shrink regions); `null` for a kind with no such data (no source check). Pure
+/// extraction only -- no visibility/toggle semantics live here, see
+/// `isFullyPresetLocked`/`isIssueEntirelyHidden` below and `IssuesBlock.tsx`'s `visibleGroup`
+/// filter for those.
+export function presetLockElementsFor(issue: IssueDto, sourceCheck: string): { preset_locked: boolean }[] | null {
+  const payload = issue.payload;
+  if (payload.kind === "invalid_loop") return payload.edges[sourceCheck] ?? null;
+  if (payload.kind === "invalid_teleport") return payload.groups[sourceCheck] ?? null;
+  if (payload.kind === "invalid_one_way") return payload.groups[sourceCheck] ?? null;
+  if (payload.kind === "invalid_split_tile") {
+    const groups = payload.groups[sourceCheck] ?? null;
+    if (groups == null) return null;
+    const typeId = issue.source_check_types[sourceCheck] ?? sourceCheck;
+    return TILE_GRANULARITY_CHECKS.has(typeId) ? groups.flatMap((g) => g.tiles) : groups;
+  }
+  if (payload.kind === "invalid_split_route") return payload.routes[sourceCheck] ?? null;
+  if (payload.kind === "region_needs_expansion") return payload.nodes[sourceCheck] ?? null;
+  if (payload.kind === "region_needs_shrink") return payload.nodes[sourceCheck] ?? null;
+  if (payload.kind === "excessive_scc_count") {
+    const locked = payload.preset_locked[sourceCheck];
+    return locked === undefined ? null : [{ preset_locked: locked }];
+  }
+  return null;
+}
+
+/// Whether every element in `elements` is `preset_locked` (GitHub issue #245). `null`/empty
+/// resolves `false`: a bubble with no preset-lock data at all is never "fully preset-locked" by
+/// this check, it just doesn't participate in the toggle.
+function isFullyPresetLocked(elements: { preset_locked: boolean }[] | null): boolean {
+  return elements != null && elements.length > 0 && elements.every((e) => e.preset_locked);
+}
+
+/// Whether `showFullyPresetLockedIssues: false` would hide every one of `issue`'s bubbles (GitHub
+/// issue #245's toggle) -- shared by `IssuesBlock` (bubble-level hiding) and `FeaturesPanel` (the
+/// Analytics card's status/subtitle and issue count must agree with what's actually shown: an
+/// issue whose every bubble is hidden must not count toward "N issues" either). An issue with no
+/// `source_checks` at all (e.g. `cycle_analysis_overflowed`) never participates in the toggle, so
+/// it's never hidden this way.
+export function isIssueEntirelyHidden(issue: IssueDto, showFullyPresetLockedIssues: boolean): boolean {
+  if (showFullyPresetLockedIssues) return false;
+  if (issue.source_checks.length === 0) return false;
+  return issue.source_checks.every((sourceCheck) => isFullyPresetLocked(presetLockElementsFor(issue, sourceCheck)));
+}
 
 /// Single source of truth for issue kind -> {label, description, severity}. Shared by
 /// IssuesBlock (renders the bubble) and FeaturesPanel (derives the Analytics card status/
@@ -114,6 +172,9 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   teleport_geometric_length: (d) => d.length !== undefined ? m["issue.invalid_teleport.teleport_geometric_length_label"]({ length: d.length }) : undefined,
   teleport_graph_distance: (d) => d.distance !== undefined ? m["issue.invalid_teleport.teleport_graph_distance_label"]({ distance: d.distance }) : undefined,
   teleport_super_hub_avoidance: (d) => d.max_connections !== undefined ? m["issue.invalid_teleport.teleport_super_hub_avoidance_label"]({ max_connections: d.max_connections }) : undefined,
+  // No detail values at all (a pure structural entry/exit-in-split-cell test, GitHub issue #257)
+  // -- always returns the same static label regardless of `d`, unlike every other entry here.
+  teleport_split_intersection: () => m["issue.invalid_teleport.teleport_split_intersection_label"](),
   teleport_group_proximity: (d) => d.distance !== undefined ? m["issue.invalid_teleport_group.teleport_group_proximity_label"]({ distance: d.distance }) : undefined,
   one_way_waypoint_distance: (d) => d.distance !== undefined ? m["issue.invalid_one_way.one_way_waypoint_distance_label"]({ distance: d.distance }) : undefined,
   one_way_group_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_one_way_group.one_way_group_geometric_proximity_label"]({ distance: d.distance }) : undefined,
@@ -126,6 +187,9 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   min_teleport_count: (d) => d.missing !== undefined ? m["issue.missing_teleports.min_teleport_count_label"]({ missing: d.missing }) : undefined,
   min_teleport_ratio: (d) => d.missing !== undefined ? m["issue.missing_teleports.min_teleport_ratio_label"]({ missing: d.missing }) : undefined,
   split_distance_from_waypoint: (d) => d.distance !== undefined ? m["issue.invalid_split_tile.split_distance_from_waypoint_label"]({ distance: d.distance }) : undefined,
+  // No detail values at all (a pure structural teleport-shape test, mirrors
+  // `teleport_split_intersection` above) -- always returns the same static label regardless of `d`.
+  split_teleport_intersection: () => m["issue.invalid_split_tile.split_teleport_intersection_label"](),
   max_split_count: (d) => d.max_split_count !== undefined ? m["issue.invalid_split_tile_group.max_split_count_label"]({ max_split_count: d.max_split_count }) : undefined,
   max_split_density: (d) => d.max_density !== undefined ? m["issue.invalid_split_tile_group.max_split_density_label"]({ max_density: d.max_density }) : undefined,
   split_group_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_split_tile_group.split_group_geometric_proximity_label"]({ distance: d.distance }) : undefined,
@@ -155,4 +219,27 @@ export function resolveIssueSourceLabel(kind: string, typeId: string, details: R
   }
   const override = formatter?.(details ?? {});
   return override ?? resolveIssue(kind).label;
+}
+
+/// Per-source-check description override — same rationale as `DETAIL_LABELS`, for the longer
+/// explanatory text shown in the bubble's modal. Most checks are fine sharing their kind's generic
+/// description (`resolveIssue(kind).description`); only a check whose behavior meaningfully
+/// diverges from its kind's generic wording needs an entry here. `resolveCheckDescription` reuses
+/// the same `check.<id>.description` text the rule-card's own check picker already shows (already
+/// phrased as "what the check does", no "why" — exactly what an issue-modal description needs, no
+/// separate copy to keep in sync) — `teleport_split_intersection` uses its own dedicated
+/// `issue.*` text instead, worded for the issue-modal context specifically.
+const DETAIL_DESCRIPTIONS: Record<string, () => string> = {
+  teleport_split_intersection: () => m["issue.invalid_teleport.teleport_split_intersection_description"](),
+  teleport_waypoint_distance: () => resolveCheckDescription("teleport_waypoint_distance", ""),
+  teleport_super_hub_avoidance: () => resolveCheckDescription("teleport_super_hub_avoidance", ""),
+  split_distance_from_waypoint: () => resolveCheckDescription("split_distance_from_waypoint", ""),
+  split_teleport_intersection: () => resolveCheckDescription("split_teleport_intersection", ""),
+};
+
+/// Resolves the description for one source check within an issue — mirrors
+/// `resolveIssueSourceLabel`, falling back to the issue kind's generic description when the check
+/// has no override in `DETAIL_DESCRIPTIONS`.
+export function resolveIssueSourceDescription(kind: string, typeId: string): string {
+  return DETAIL_DESCRIPTIONS[typeId]?.() ?? resolveIssue(kind).description;
 }

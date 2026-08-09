@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { ParamDescriptor, StrategyDescriptor, NestedDispatchKind } from "../../wasm/types";
 import { MAX_NESTED_STRATEGY_DEPTH, type NestedStrategyState } from "../../store/storeTypes";
-import { resolveCheckLabel, resolveCheckDescription, resolveIssueLabel, resolveStrategyLabel, resolveParamLabel } from "./qualityI18n";
+import { resolveCheckLabel, resolveCheckCardLabel, resolveCheckDescription, resolveIssueLabel, resolveStrategyLabel, resolveParamLabel } from "./qualityI18n";
 
 /** Mirrors `NestedSlotDescriptor` with a camelCase field, consistent with every other VM type
  * in this module (the raw wasm DTO shape is snake_case; VM types are not). */
@@ -44,6 +44,9 @@ export interface CheckVM {
   localId: number;
   typeId: string;
   label: string;
+  /// Full/unambiguous label for the card view (`RuleCheckRow`) — see `resolveCheckCardLabel`'s doc
+  /// comment. Same as `label` for the majority of checks with no override.
+  cardLabel: string;
   description: string;
   params: ParamDescriptor[];
   /** Per-check toggle — see `CheckInstance.disabled`'s doc comment in storeTypes.ts. */
@@ -168,6 +171,7 @@ export function useQualityViewModel(): QualityViewModel {
             localId: check.localId,
             typeId: check.typeId,
             label: resolveCheckLabel(descriptor.id, descriptor.label),
+            cardLabel: resolveCheckCardLabel(descriptor.id, descriptor.label),
             description: resolveCheckDescription(descriptor.id, descriptor.description),
             params: localizeParams(descriptor.params),
             disabled: check.disabled,

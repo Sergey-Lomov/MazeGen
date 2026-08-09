@@ -25,18 +25,51 @@ export interface SplitNodeEdge {
  *  `Issue` kinds with no structural edge/node payload (see that type's doc comment). */
 export type IssuePayload =
   | { kind: "None" }
-  | { kind: "InvalidLoop"; edges: Map<string, [bigint, bigint][][]> }
-  | { kind: "RegionNeedsExpansion"; nodes: Map<string, bigint[][]> }
-  | { kind: "RegionNeedsShrink"; nodes: Map<string, bigint[][]> }
-  | { kind: "InvalidTeleport"; groups: Map<string, [bigint, bigint][][]> }
-  | { kind: "InvalidOneWay"; groups: Map<string, [bigint, bigint][][]> }
-  | { kind: "InvalidSplitTile"; nodes: Map<string, bigint[]> }
-  | { kind: "InvalidSplitRoute"; routes: Map<string, [bigint, bigint, boolean][][]> };
+  | { kind: "InvalidLoop"; edges: Map<string, EdgeGroup[]> }
+  | { kind: "RegionNeedsExpansion"; nodes: Map<string, RegionGroup[]> }
+  | { kind: "RegionNeedsShrink"; nodes: Map<string, RegionGroup[]> }
+  | { kind: "InvalidTeleport"; groups: Map<string, EdgeGroup[]> }
+  | { kind: "InvalidOneWay"; groups: Map<string, EdgeGroup[]> }
+  | { kind: "InvalidSplitTile"; groups: Map<string, SplitGroup[]> }
+  | { kind: "InvalidSplitRoute"; routes: Map<string, [bigint, bigint, boolean][][]> }
+  | { kind: "ExcessiveSccCount"; presetLocked: Map<string, boolean> };
 
-/** Reads the `HashMap<String, Vec<Vec<[u32; 2]>>>` wire shape `write_str_keyed_edge_pairs`
- *  produces (`IssuePayload::InvalidLoop`'s `edges`). */
-function readStrKeyedEdgePairs(bytes: Uint8Array, offset: number): { value: Map<string, [bigint, bigint][][]>; next: number } {
-  const value = new Map<string, [bigint, bigint][][]>();
+/** Mirrors `IssueEdgeGroupPayload` in `maze-core/src/quality_control/issue_payload.rs` — one
+ *  flagged cycle/group's base-graph edges paired with whether every one of them is
+ *  preset-protected (GitHub issue #245): repair can never fix a `presetLocked: true` element. */
+export interface EdgeGroup {
+  edges: [bigint, bigint][];
+  presetLocked: boolean;
+}
+
+/** Mirrors `IssueRegionPayload` in `maze-core/src/quality_control/issue_payload.rs` — one flagged
+ *  region's member node ids paired with whether it's preset-locked (GitHub issue #245's region
+ *  extension). */
+export interface RegionGroup {
+  region: bigint[];
+  presetLocked: boolean;
+}
+
+/** Mirrors `IssueSplitTilePayload` in `maze-core/src/quality_control/issue_payload.rs` — one
+ *  tile's own node list paired with whether the whole tile is preset-locked. */
+export interface SplitTile {
+  nodes: bigint[];
+  presetLocked: boolean;
+}
+
+/** Mirrors `IssueSplitGroupPayload` in `maze-core/src/quality_control/issue_payload.rs` — one
+ *  flagged split-tile "instance" (a single tile or a genuine multi-tile group), paired with
+ *  whether every tile in it is preset-locked (GitHub issue #245's split extension). */
+export interface SplitGroup {
+  tiles: SplitTile[];
+  presetLocked: boolean;
+}
+
+/** Reads the `HashMap<String, Vec<IssueEdgeGroupPayload>>` wire shape `write_str_keyed_edge_pairs`
+ *  produces (`IssuePayload::InvalidLoop`'s `edges`) — each group is its edge-pair list followed by
+ *  one trailing `preset_locked` byte (`write_edge_group_payload`). */
+function readStrKeyedEdgePairs(bytes: Uint8Array, offset: number): { value: Map<string, EdgeGroup[]>; next: number } {
+  const value = new Map<string, EdgeGroup[]>();
   const entryCount = readU32(bytes, offset);
   let pos = offset + 4;
   for (let i = 0; i < entryCount; i++) {
@@ -44,7 +77,7 @@ function readStrKeyedEdgePairs(bytes: Uint8Array, offset: number): { value: Map<
     pos = afterKey;
     const cycleCount = readU32(bytes, pos);
     pos += 4;
-    const cycles: [bigint, bigint][][] = [];
+    const cycles: EdgeGroup[] = [];
     for (let c = 0; c < cycleCount; c++) {
       const pairCount = readU32(bytes, pos);
       pos += 4;
@@ -55,17 +88,21 @@ function readStrKeyedEdgePairs(bytes: Uint8Array, offset: number): { value: Map<
         pairs.push([from, to]);
         pos += 8;
       }
-      cycles.push(pairs);
+      const presetLocked = bytes[pos] !== 0;
+      pos += 1;
+      cycles.push({ edges: pairs, presetLocked });
     }
     value.set(key, cycles);
   }
   return { value, next: pos };
 }
 
-/** Reads the `HashMap<String, Vec<Vec<u32>>>` wire shape `write_str_keyed_node_lists` produces
- *  (`IssuePayload::RegionNeedsExpansion`'s `nodes`). */
-function readStrKeyedNodeLists(bytes: Uint8Array, offset: number): { value: Map<string, bigint[][]>; next: number } {
-  const value = new Map<string, bigint[][]>();
+/** Reads the `HashMap<String, Vec<IssueRegionPayload>>` wire shape `write_str_keyed_node_lists`
+ *  produces (`IssuePayload::RegionNeedsExpansion`/`RegionNeedsShrink`'s `nodes`) — each region is
+ *  its node id list followed by one trailing `preset_locked` byte (GitHub issue #245's region
+ *  extension), mirroring `readStrKeyedEdgePairs`'s own trailing flag. */
+function readStrKeyedNodeLists(bytes: Uint8Array, offset: number): { value: Map<string, RegionGroup[]>; next: number } {
+  const value = new Map<string, RegionGroup[]>();
   const entryCount = readU32(bytes, offset);
   let pos = offset + 4;
   for (let i = 0; i < entryCount; i++) {
@@ -73,7 +110,7 @@ function readStrKeyedNodeLists(bytes: Uint8Array, offset: number): { value: Map<
     pos = afterKey;
     const regionCount = readU32(bytes, pos);
     pos += 4;
-    const regions: bigint[][] = [];
+    const regions: RegionGroup[] = [];
     for (let r = 0; r < regionCount; r++) {
       const nodeCount = readU32(bytes, pos);
       pos += 4;
@@ -82,31 +119,74 @@ function readStrKeyedNodeLists(bytes: Uint8Array, offset: number): { value: Map<
         nodes.push(BigInt(readU32(bytes, pos)));
         pos += 4;
       }
-      regions.push(nodes);
+      const presetLocked = bytes[pos] !== 0;
+      pos += 1;
+      regions.push({ region: nodes, presetLocked });
     }
     value.set(key, regions);
   }
   return { value, next: pos };
 }
 
-/** Reads the `HashMap<String, Vec<u32>>` wire shape `write_str_keyed_flat_node_lists` produces
- *  (`IssuePayload::InvalidSplitTile`'s `nodes` — flat, no region-grouping level unlike
- *  `RegionNeedsExpansion`). */
-function readStrKeyedFlatNodeLists(bytes: Uint8Array, offset: number): { value: Map<string, bigint[]>; next: number } {
-  const value = new Map<string, bigint[]>();
+/** Reads one `IssueSplitTilePayload` — a node-id list (length-prefixed `u32`s) followed by a
+ *  trailing 1-byte `preset_locked` flag, mirroring `write_split_tile_payload`. */
+function readSplitTile(bytes: Uint8Array, offset: number): { value: SplitTile; next: number } {
+  const nodeCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  const nodes: bigint[] = [];
+  for (let n = 0; n < nodeCount; n++) {
+    nodes.push(BigInt(readU32(bytes, pos)));
+    pos += 4;
+  }
+  const presetLocked = bytes[pos] !== 0;
+  pos += 1;
+  return { value: { nodes, presetLocked }, next: pos };
+}
+
+/** Reads the `HashMap<String, Vec<IssueSplitGroupPayload>>` wire shape
+ *  `write_str_keyed_split_groups` produces (`IssuePayload::InvalidSplitTile`'s `groups`) — each
+ *  entry is a length-prefixed list of tiles (`readSplitTile`'s shape) followed by a trailing
+ *  1-byte group-level `preset_locked` flag. */
+function readStrKeyedSplitGroups(bytes: Uint8Array, offset: number): { value: Map<string, SplitGroup[]>; next: number } {
+  const value = new Map<string, SplitGroup[]>();
   const entryCount = readU32(bytes, offset);
   let pos = offset + 4;
   for (let i = 0; i < entryCount; i++) {
     const { value: key, next: afterKey } = readStr(bytes, pos);
     pos = afterKey;
-    const nodeCount = readU32(bytes, pos);
+    const groupCount = readU32(bytes, pos);
     pos += 4;
-    const nodes: bigint[] = [];
-    for (let n = 0; n < nodeCount; n++) {
-      nodes.push(BigInt(readU32(bytes, pos)));
+    const groups: SplitGroup[] = [];
+    for (let g = 0; g < groupCount; g++) {
+      const tileCount = readU32(bytes, pos);
       pos += 4;
+      const tiles: SplitTile[] = [];
+      for (let t = 0; t < tileCount; t++) {
+        const { value: tile, next } = readSplitTile(bytes, pos);
+        tiles.push(tile);
+        pos = next;
+      }
+      const presetLocked = bytes[pos] !== 0;
+      pos += 1;
+      groups.push({ tiles, presetLocked });
     }
-    value.set(key, nodes);
+    value.set(key, groups);
+  }
+  return { value, next: pos };
+}
+
+/** Reads the `HashMap<String, bool>` wire shape `write_str_keyed_bools` produces
+ *  (`IssuePayload::ExcessiveSccCount`'s `preset_locked`) — one 1-byte flag per key, no nested
+ *  lists (this issue carries no per-region highlight data of its own). */
+function readStrKeyedBools(bytes: Uint8Array, offset: number): { value: Map<string, boolean>; next: number } {
+  const value = new Map<string, boolean>();
+  const entryCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  for (let i = 0; i < entryCount; i++) {
+    const { value: key, next: afterKey } = readStr(bytes, pos);
+    pos = afterKey;
+    value.set(key, bytes[pos] !== 0);
+    pos += 1;
   }
   return { value, next: pos };
 }
@@ -224,12 +304,16 @@ export function readIssuePayload(bytes: Uint8Array, offset: number): { value: Is
     return { value: { kind: "InvalidOneWay", groups }, next };
   }
   if (tag === 6) {
-    const { value: nodes, next } = readStrKeyedFlatNodeLists(bytes, offset + 1);
-    return { value: { kind: "InvalidSplitTile", nodes }, next };
+    const { value: groups, next } = readStrKeyedSplitGroups(bytes, offset + 1);
+    return { value: { kind: "InvalidSplitTile", groups }, next };
   }
   if (tag === 7) {
     const { value: routes, next } = readStrKeyedRoutes(bytes, offset + 1);
     return { value: { kind: "InvalidSplitRoute", routes }, next };
+  }
+  if (tag === 8) {
+    const { value: presetLocked, next } = readStrKeyedBools(bytes, offset + 1);
+    return { value: { kind: "ExcessiveSccCount", presetLocked }, next };
   }
   throw new Error(`IssuePayload: unknown tag ${tag}`);
 }

@@ -93,7 +93,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysF
                     // Skip the pair entirely if the one direction allowed to be removed is
                     // preset-protected — never leaves it half-mutated, and never falls back to
                     // removing the route's own direction instead.
-                    if preset_state.preset_edges.contains(&(from, to)) {
+                    if preset_state.is_preset_edge(from, to) {
                         return false;
                     }
                     commands.push(MutationCommand::RemoveEdgeBetween { from, to });
@@ -102,8 +102,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysF
 
                 // Not route-forced: keep whichever direction preset state allows removing; skip
                 // the pair entirely if both directions are preset-protected.
-                let remove_fwd = !preset_state.preset_edges.contains(&(src, dst));
-                let remove_bwd = !preset_state.preset_edges.contains(&(dst, src));
+                let remove_fwd = !preset_state.is_preset_edge(src, dst);
+                let remove_bwd = !preset_state.is_preset_edge(dst, src);
                 if remove_fwd && remove_bwd {
                     let (from, to) = if rng.random::<bool>() { (src, dst) } else { (dst, src) };
                     commands.push(MutationCommand::RemoveEdgeBetween { from, to });

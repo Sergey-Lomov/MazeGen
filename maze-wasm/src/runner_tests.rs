@@ -724,3 +724,158 @@ mod timing_dto_tests {
         assert!(dto.qc.is_empty());
     }
 }
+
+/// GitHub issue #245: end-to-end check that `run_generate`'s real `repair_preset_state` actually
+/// reaches `build_analytics_snapshot`'s `resolve_issue_payload` call, not just that the resolver
+/// itself is correct in isolation (covered by `maze-core`'s own `issue_payload.rs` unit tests).
+/// Fixture mirrors issue #230's own regression test (`maze-core/src/repair/strategies/
+/// invalid_loop_random.rs`'s `apply_reports_failed_when_the_whole_cycle_is_preset_protected`): a
+/// 3-node triangle whose every edge is a preset connection — genuinely unfixable by repair.
+mod preset_locked_end_to_end_tests {
+    use std::collections::HashMap;
+    use maze_core::{Graph, IdGenerator, Maze};
+    use maze_core::space::{Field, SquareTessellation, square_rect};
+    use maze_core::graph::EdgeKind;
+    use maze_core::generation::{PresetState, pipeline::{build_maze, RepairLimits}};
+    use maze_core::quality_control::{
+        QualityControlEngine, Rule, RuleTrait, Stage,
+        LoopLengthCheck, Comparison, CycleKind, InvalidLoopIssue,
+    };
+    use maze_core::repair::InvalidLoopRandomStrategy;
+    use crate::analytics::build_analytics_snapshot;
+
+    /// Same 3-node triangle as `invalid_loop_random.rs`'s `maze_with_triangle` — every edge below
+    /// the check's `length: 10` threshold, so `LoopLengthCheck` always flags it.
+    fn maze_with_triangle() -> (Maze<SquareTessellation>, Vec<maze_core::ids::EdgeId>) {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut g = Graph::new();
+        field.build_nodes(&mut g);
+        let nodes: Vec<_> = field.all_points().map(|p| field.nodes_at(p)[0]).collect();
+        let e0 = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let e1 = g.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
+        let e2 = g.build_initial_edge(nodes[2], nodes[0], EdgeKind::Basic);
+        (Maze::new(field, g), vec![e0, e1, e2])
+    }
+
+    fn engine_with_loop_length_rule() -> QualityControlEngine<SquareTessellation> {
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let rule: Rule<SquareTessellation, InvalidLoopIssue> = Rule::new(
+            "r".to_string(),
+            vec![("min_loop_length".to_string(), Box::new(check) as Box<dyn maze_core::quality_control::Check<SquareTessellation, InvalidLoopIssue>>)],
+            Some(Box::new(InvalidLoopRandomStrategy)),
+            HashMap::new(),
+            vec![],
+        );
+        QualityControlEngine::new(vec![Stage::new("stage_1".to_string(), "Stage 1".to_string(), vec![Box::new(rule) as Box<dyn RuleTrait<SquareTessellation>>])])
+    }
+
+    #[test]
+    fn fully_preset_protected_cycle_reaches_the_snapshot_marked_preset_locked() {
+        let (field_maze, cycle_edges) = maze_with_triangle();
+        let Maze { field, graph, .. } = field_maze;
+
+        let mut preset_state = PresetState::empty();
+        for &edge_id in &cycle_edges {
+            let edge = graph.edge(edge_id).unwrap();
+            preset_state.preset_edges.insert((edge.from, edge.to));
+        }
+
+        let qc = engine_with_loop_length_rule();
+        let (mut maze, issues, _timing) = build_maze(field, graph, 7, qc, &preset_state, RepairLimits::default(), None, None, None, None);
+
+        // Sanity: the issue really did survive repair unresolved (same conclusion #230's own test
+        // draws) -- otherwise this test would trivially pass with no InvalidLoop issue at all.
+        assert!(issues.iter().any(|i| i.kind() == maze_core::quality_control::INVALID_LOOP), "the fully preset-protected cycle must remain in remaining_issues -- repair can't fix it");
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &HashMap::new(), &preset_state, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+
+        let invalid_loop_issue = snapshot.issues.iter().find(|i| i.kind == "invalid_loop").expect("snapshot must carry the invalid_loop issue");
+        let crate::dto::IssuePayloadDto::InvalidLoop { edges } = &invalid_loop_issue.payload else {
+            panic!("expected InvalidLoop payload, got {:?}", invalid_loop_issue.payload)
+        };
+        let all_elements: Vec<_> = edges.values().flatten().collect();
+        assert!(!all_elements.is_empty(), "payload must carry at least one flagged cycle element");
+        assert!(all_elements.iter().all(|e| e.preset_locked), "every edge of the flagged cycle is preset-protected -- the resolved element must be preset_locked");
+    }
+
+    // GitHub issue #245 follow-up: user report that preset_locked "doesn't work for splits" --
+    // this drives the exact real config path (`build_preset_state`, not a hand-built PresetState)
+    // for `split_node_connection_per_neighbor`, whose flagged edges originate at a split node --
+    // confirms the split-slot preset endpoint actually resolves end-to-end, not just in the
+    // resolver-level unit test (`issue_payload.rs`'s
+    // `invalid_split_node_connection_group_issue_carries_preset_locked_through_the_invalid_one_way_reuse`,
+    // which hand-builds `PresetState` and never exercises `build_preset_state`'s own split-point/
+    // endpoint resolution).
+    #[test]
+    fn split_node_connection_preset_locked_via_real_preset_connection_reaches_the_snapshot() {
+        use maze_core::generation::{build_preset_state, PresetConnection, PresetConnectionState, PresetEndpoint};
+        use maze_core::quality_control::{SplitNodeConnectionPerNeighborCheck, InvalidSplitNodeConnectionGroupIssue};
+        use maze_core::repair::{SplitNodeConnectionGroupSelectStrategy, RemoveSplitNodeConnectionStrategy};
+        use maze_core::repair::strategy::{NestedStrategyConfig, RepairStrategy};
+        use maze_core::space::SquarePoint;
+
+        // 3x1 field: split point at (1,0) (slot0 + one extra slot), both wired to the neighbor at
+        // (0,0) -- same converging-on-one-neighbor shape as maze_with_triangle's sibling fixture
+        // in split_node_connection_group_select_tests.rs, but built via the real config path.
+        let mut ids = IdGenerator::new();
+        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut graph = Graph::new();
+        field.build_nodes(&mut graph);
+
+        let xy_to_point = |x: i32, y: i32| SquarePoint { x, y };
+        let split_points = vec![((1, 0), 0u32)];
+        // Both slot0's and the extra slot's connections to the neighbor are preset Passages --
+        // the whole group must resolve preset_locked: true (all_preset_locked requires *every*
+        // edge in the group to be protected, not just one).
+        let preset_connections = vec![
+            PresetConnection {
+                from: PresetEndpoint::original((1, 0)),
+                to: PresetEndpoint::original((0, 0)),
+                state: PresetConnectionState::Passage,
+            },
+            PresetConnection {
+                from: PresetEndpoint { point: (1, 0), slot: Some(0) },
+                to: PresetEndpoint::original((0, 0)),
+                state: PresetConnectionState::Passage,
+            },
+        ];
+        let preset_state = build_preset_state(
+            &mut graph, &mut field, &mut ids, &preset_connections, &[], &split_points, xy_to_point, None, None,
+        ).unwrap();
+
+        let check = SplitNodeConnectionPerNeighborCheck { instance_id: "split_node_connection_per_neighbor".to_string(), max: 1 };
+        let nested: Vec<NestedStrategyConfig<SquareTessellation>> = vec![NestedStrategyConfig {
+            slot: &<SplitNodeConnectionGroupSelectStrategy as RepairStrategy<SquareTessellation, InvalidSplitNodeConnectionGroupIssue>>::expected_nested(&SplitNodeConnectionGroupSelectStrategy)[0],
+            strategy: Box::new(RemoveSplitNodeConnectionStrategy),
+            param_overrides: HashMap::new(),
+            nested: vec![],
+        }];
+        let rule: Rule<SquareTessellation, InvalidSplitNodeConnectionGroupIssue> = Rule::new(
+            "r".to_string(),
+            vec![("split_node_connection_per_neighbor".to_string(), Box::new(check) as Box<dyn maze_core::quality_control::Check<SquareTessellation, InvalidSplitNodeConnectionGroupIssue>>)],
+            Some(Box::new(SplitNodeConnectionGroupSelectStrategy)),
+            HashMap::new(),
+            nested,
+        );
+        let qc = QualityControlEngine::new(vec![Stage::new("stage_1".to_string(), "Stage 1".to_string(), vec![Box::new(rule) as Box<dyn RuleTrait<SquareTessellation>>])]);
+
+        let (mut maze, issues, _timing) = build_maze(field, graph, 7, qc, &preset_state, RepairLimits::default(), None, None, None, None);
+
+        assert!(issues.iter().any(|i| i.kind() == maze_core::quality_control::INVALID_SPLIT_NODE_CONNECTION_GROUP),
+            "the fully preset-protected group must remain in remaining_issues -- repair can't fix it");
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &HashMap::new(), &preset_state, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+
+        let issue_dto = snapshot.issues.iter().find(|i| i.kind == "invalid_split_node_connection_group")
+            .expect("snapshot must carry the invalid_split_node_connection_group issue");
+        // Reused wire shape (GitHub issue #245's doc comment on resolve_issue_payload) -- payload.kind
+        // stays "invalid_one_way", not "invalid_split_node_connection_group".
+        let crate::dto::IssuePayloadDto::InvalidOneWay { groups } = &issue_dto.payload else {
+            panic!("expected InvalidOneWay (reused wire shape), got {:?}", issue_dto.payload)
+        };
+        let all_elements: Vec<_> = groups.values().flatten().collect();
+        assert!(!all_elements.is_empty(), "payload must carry at least one flagged group element");
+        assert!(all_elements.iter().all(|e| e.preset_locked), "every edge of the flagged group is preset-protected -- the resolved element must be preset_locked");
+    }
+}

@@ -8,7 +8,7 @@ use crate::quality_control::comparison::Comparison;
 use crate::quality_control::InvalidSplitNodeIssue;
 
 pub const SPLIT_NODE_CONNECTION_COUNT_DEFAULT: u32 = 2;
-pub const SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
+pub const SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON: Comparison = Comparison::Gt;
 
 /// Which connections count toward a `SplitNodeConnectionCountCheck` instance's threshold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

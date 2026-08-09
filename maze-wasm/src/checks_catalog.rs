@@ -674,7 +674,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Connection count threshold",
                     kind: ParamKindDto::Integer { default: SPLIT_NODE_CONNECTION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
                 },
-                comparison_param(Comparison::Lt),
+                comparison_param(Comparison::Gt),
                 ParamDescriptor {
                     id: "direction",
                     label: "Connection direction",

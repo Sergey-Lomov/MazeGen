@@ -46,7 +46,7 @@ pub(super) fn candidate_edges<T: Tessellation>(
         .filter(|id| !already_cut.contains(id))
         .filter(|&id| {
             let edge = maze.graph.edge(id).expect("checked above");
-            !preset_state.preset_edges.contains(&(edge.from, edge.to))
+            !preset_state.is_preset_edge(edge.from, edge.to)
         })
         .collect()
 }

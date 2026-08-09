@@ -793,6 +793,12 @@ export interface AnalyticsOverlayState {
   hoveredIssueRegionGroups: number[][] | null;
   /** Expanded/collapsed state per AnalyticsFeature section, keyed by AnalyticsSectionId. */
   analyticsSectionsExpanded: Record<string, boolean>;
+  /** Whether to show issue bubbles whose every flagged element is preset-locked (GitHub issue
+   *  #245) — an issue that's technically correct but entirely unfixable by repair because every
+   *  contributing edge is a user-placed preset connection. Default `true` (show) — nothing hides
+   *  without an explicit toggle. A bubble with at least one non-locked element is unaffected by
+   *  this flag regardless of its value (see `IssueBubble` in `IssuesBlock.tsx`). */
+  showFullyPresetLockedIssues: boolean;
 }
 
 export interface AnalyticsOverlayActions {
@@ -807,6 +813,7 @@ export interface AnalyticsOverlayActions {
   setHoveredIssueLoopEdges: (edges: [number, number][] | null) => void;
   setHoveredIssueRegionGroups: (groups: number[][] | null) => void;
   setAnalyticsSectionExpanded: (id: string, expanded: boolean) => void;
+  setShowFullyPresetLockedIssues: (v: boolean) => void;
 }
 
 export interface PostEditState {

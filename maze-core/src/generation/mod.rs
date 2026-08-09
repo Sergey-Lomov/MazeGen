@@ -8,7 +8,7 @@ pub(crate) mod edge_based;
 mod preset_state;
 mod preset_setup_event;
 mod types;
-mod edge_ops;
+pub(crate) mod edge_ops;
 mod node_ops;
 mod mutation_commands;
 mod split_pattern;

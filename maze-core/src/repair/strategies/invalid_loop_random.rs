@@ -77,7 +77,7 @@ fn apply_cuts<T: Tessellation>(
                 let edge = maze.graph.edge(cut).expect("checked above");
                 (edge.from, edge.to)
             };
-            if !preset_state.preset_edges.contains(&(from, to)) {
+            if !preset_state.is_preset_edge(from, to) {
                 let reverse_id = maze.graph.edge_between(to, from);
                 match reverse_id {
                     Some(reverse_id) if !already_cut.contains(&reverse_id) => {

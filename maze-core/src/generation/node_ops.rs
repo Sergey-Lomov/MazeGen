@@ -21,13 +21,7 @@ fn node_removal_allowed<T: Tessellation>(field: &Field<T>, preset_state: &Preset
     if !allow_last_node && field.nodes_at(point).len() == 1 {
         return false; // node is this point's only remaining node — never removable by this path
     }
-    if preset_state.locked_out.contains(&node) || preset_state.locked_in.contains(&node) {
-        return false;
-    }
-    if preset_state.preset_edges.iter().any(|&(from, to)| from == node || to == node) {
-        return false;
-    }
-    true
+    !preset_state.is_node_locked_for_removal(node)
 }
 
 /// Feasibility shared by `try_remove_node`/`cmd_remove_node`: a node is only ever removable if

@@ -14,7 +14,7 @@ import { PostEditFeature } from "./features/PostEditFeature";
 import { AnalyticsFeature } from "./features/AnalyticsFeature";
 import { ImageExportFeature } from "./features/ImageExportFeature";
 import { resolveRenderMode } from "./features/imageExportRegistry";
-import { resolveIssue } from "./issueRegistry";
+import { resolveIssue, isIssueEntirelyHidden } from "./issueRegistry";
 import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId, PngExportSettings } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
@@ -160,6 +160,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   const nodes = useMazeStore((s) => s.nodes);
   const activeRenderMode = useMazeStore((s) => s.activeRenderMode);
   const analyticsIssues = useMazeStore(useShallow(selectAnalyticsIssues));
+  const showFullyPresetLockedIssues = useMazeStore((s) => s.showFullyPresetLockedIssues);
   const loadProject = useMazeStore((s) => s.loadProject);
   const setError = useMazeStore((s) => s.setError);
 
@@ -271,7 +272,9 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
 
   const analyticsCard = computeAnalyticsCard(
     nodes.length > 0,
-    analyticsIssues.map((issue) => issue.kind),
+    analyticsIssues
+      .filter((issue) => !isIssueEntirelyHidden(issue, showFullyPresetLockedIssues))
+      .map((issue) => issue.kind),
   );
 
   const resolvedRenderMode = activeRenderMode !== null ? resolveRenderMode(activeRenderMode) : null;

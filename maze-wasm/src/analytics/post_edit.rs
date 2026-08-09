@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use maze_core::{
     space::Tessellation,
     graph::{Graph, EdgeKind},
@@ -6,6 +6,7 @@ use maze_core::{
     Maze,
 };
 use crate::dto::{PostEditEdgeDto, PostEditEndpointDto};
+use crate::generation_config::PresetConnectionDto;
 
 /// Resolves one `PostEditEndpointDto` to a real `NodeId` (as `u64`). `Node` passes through as-is;
 /// `Split` looks up `(point, slot_id)` in `split_map` (built by `apply_split_points`) — `Err` if
@@ -103,6 +104,88 @@ pub(crate) fn apply_split_points<T: Tessellation>(
     Ok(map)
 }
 
+/// Resolves one `PresetEndpointDto` to a real `NodeId` against post-edit's own already-resolved
+/// maps — `existing_by_index` (`(point, i)`, `i = 0` is the point's original node) and `split_map`
+/// (`(point, slot_id)`, built by `apply_split_points` above). Returns `None` for an unresolvable
+/// endpoint (unknown point, or a slot not present in either map), same "silently unresolved"
+/// contract `maze_core::generation::resolve_preset_endpoint` uses for the generation path.
+fn resolve_preset_endpoint_for_post_edit(
+    ep: &maze_runner::config::PresetEndpointDto,
+    existing_by_index: &HashMap<([i32; 2], u32), u64>,
+    split_map: &HashMap<([i32; 2], u32), u64>,
+) -> Option<u64> {
+    match ep.slot {
+        None => existing_by_index.get(&(ep.point, 0)).copied(),
+        Some(slot_id) => split_map.get(&(ep.point, slot_id)).copied(),
+    }
+}
+
+/// Computes just the `preset_edges` a full `maze_core::generation::PresetState` would carry
+/// (GitHub issue #245) — post-edit's `Field`/`Graph` are already fully rebuilt from the client's
+/// own node/edge list (see `run_compute_analytics`), so unlike `build_preset_state` this never
+/// mutates anything: every preset connection is resolved against the maps `run_compute_analytics`
+/// already built, and only `Passage`/`OneWayForward`/`OneWayBackward`/`Teleport` endpoints
+/// contribute an entry (mirrors `build_preset_state`'s own directed-pair semantics exactly —
+/// `Wall` never establishes an edge, a one-way's blocked reverse direction is never inserted).
+/// A preset whose endpoint doesn't resolve (stale/removed point or slot) is silently skipped, same
+/// as `build_preset_state`.
+pub(crate) fn preset_edges_for_post_edit(
+    preset_connections: &[PresetConnectionDto],
+    existing_by_index: &HashMap<([i32; 2], u32), u64>,
+    split_map: &HashMap<([i32; 2], u32), u64>,
+) -> HashSet<(u64, u64)> {
+    let mut preset_edges = HashSet::new();
+    for preset in preset_connections {
+        let (Some(from_id), Some(to_id)) = (
+            resolve_preset_endpoint_for_post_edit(&preset.from, existing_by_index, split_map),
+            resolve_preset_endpoint_for_post_edit(&preset.to, existing_by_index, split_map),
+        ) else { continue };
+        match &preset.state {
+            maze_runner::config::PresetConnectionStateDto::Wall => {}
+            maze_runner::config::PresetConnectionStateDto::Passage => {
+                preset_edges.insert((from_id, to_id));
+                preset_edges.insert((to_id, from_id));
+            }
+            maze_runner::config::PresetConnectionStateDto::OneWayForward => {
+                preset_edges.insert((from_id, to_id));
+            }
+            maze_runner::config::PresetConnectionStateDto::OneWayBackward => {
+                preset_edges.insert((to_id, from_id));
+            }
+            maze_runner::config::PresetConnectionStateDto::TeleportForward => {
+                preset_edges.insert((from_id, to_id));
+            }
+            maze_runner::config::PresetConnectionStateDto::TeleportBackward => {
+                preset_edges.insert((to_id, from_id));
+            }
+            maze_runner::config::PresetConnectionStateDto::TeleportTwoWay => {
+                preset_edges.insert((from_id, to_id));
+                preset_edges.insert((to_id, from_id));
+            }
+        }
+    }
+    preset_edges
+}
+
+/// Computes the set of `NodeId`s the preset snapshot currently declares as split nodes (GitHub
+/// issue #245's split-node/route extension) — resolves each `(point, slot)` entry through the
+/// same `existing_by_index`/`split_map` maps `preset_edges_for_post_edit` already builds. Feeds
+/// `PresetState.preset_declared_nodes` on the post-edit path: unlike the generate path (where that
+/// field means "actually minted in this call"), here it means "the preset snapshot currently
+/// declares this node" — `PresetState::is_preset_locked_node` is reused unchanged on both paths,
+/// only how this set is populated differs. An entry whose `(point, slot)` doesn't resolve (stale
+/// point, or a slot never confirmed into `split_map`) is silently skipped, same contract as
+/// `preset_edges_for_post_edit`.
+pub(crate) fn resolve_preset_nodes_for_post_edit(
+    preset_split_points: &[([i32; 2], u32)],
+    existing_by_index: &HashMap<([i32; 2], u32), u64>,
+    split_map: &HashMap<([i32; 2], u32), u64>,
+) -> HashSet<u64> {
+    preset_split_points.iter()
+        .filter_map(|&(point, slot)| split_map.get(&(point, slot)).or_else(|| existing_by_index.get(&(point, slot + 1))).copied())
+        .collect()
+}
+
 /// Builds the three artifacts `run_compute_analytics` needs from `cfg.nodes` (GitHub issue #236)
 /// — split out so this pure `NodeDto[]` → `(Field, index maps)` transformation can be unit-tested
 /// without a `JsValue`/wasm context, unlike `run_compute_analytics` itself (ends in
@@ -176,6 +259,18 @@ mod tests {
 
     fn no_splits() -> HashMap<([i32; 2], u32), u64> {
         HashMap::new()
+    }
+
+    fn preset_endpoint(x: i32, y: i32) -> maze_runner::config::PresetEndpointDto {
+        maze_runner::config::PresetEndpointDto { point: [x, y], slot: None }
+    }
+
+    fn preset(from: (i32, i32), to: (i32, i32), state: maze_runner::config::PresetConnectionStateDto) -> PresetConnectionDto {
+        PresetConnectionDto {
+            from: preset_endpoint(from.0, from.1),
+            to: preset_endpoint(to.0, to.1),
+            state,
+        }
     }
 
     #[test]
@@ -498,5 +593,101 @@ mod tests {
 
         let route = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta);
         assert!(route.is_some(), "expected a route from a to b via the split node {split_node}, got None");
+    }
+
+    // GitHub issue #245 regression: post-edit's rebuild must still resolve preset connection
+    // edges by real NodeId, not lose them, so a cycle entirely composed of pre-existing preset
+    // edges stays `preset_locked` even after the user adds an unrelated post-edit edge.
+    mod preset_edges_for_post_edit_tests {
+        use super::*;
+        use maze_runner::config::PresetConnectionStateDto;
+
+        fn existing(entries: &[(([i32; 2], u32), u64)]) -> HashMap<([i32; 2], u32), u64> {
+            entries.iter().copied().collect()
+        }
+
+        #[test]
+        fn passage_resolves_to_both_directions() {
+            let existing_by_index = existing(&[(([0, 0], 0), 1), (([1, 0], 0), 2)]);
+            let presets = vec![preset((0, 0), (1, 0), PresetConnectionStateDto::Passage)];
+
+            let edges = preset_edges_for_post_edit(&presets, &existing_by_index, &no_splits());
+
+            assert!(edges.contains(&(1, 2)));
+            assert!(edges.contains(&(2, 1)));
+            assert_eq!(edges.len(), 2);
+        }
+
+        #[test]
+        fn one_way_forward_resolves_to_only_the_forward_direction() {
+            let existing_by_index = existing(&[(([0, 0], 0), 1), (([1, 0], 0), 2)]);
+            let presets = vec![preset((0, 0), (1, 0), PresetConnectionStateDto::OneWayForward)];
+
+            let edges = preset_edges_for_post_edit(&presets, &existing_by_index, &no_splits());
+
+            assert!(edges.contains(&(1, 2)));
+            assert!(!edges.contains(&(2, 1)), "the blocked reverse direction must never resolve as a preset edge");
+            assert_eq!(edges.len(), 1);
+        }
+
+        #[test]
+        fn wall_never_establishes_a_preset_edge() {
+            let existing_by_index = existing(&[(([0, 0], 0), 1), (([1, 0], 0), 2)]);
+            let presets = vec![preset((0, 0), (1, 0), PresetConnectionStateDto::Wall)];
+
+            let edges = preset_edges_for_post_edit(&presets, &existing_by_index, &no_splits());
+
+            assert!(edges.is_empty());
+        }
+
+        #[test]
+        fn unresolvable_endpoint_is_silently_skipped() {
+            // Point [9, 9] never appears in existing_by_index -- simulates a preset referencing a
+            // point removed from the tessellation since the preset was placed.
+            let existing_by_index = existing(&[(([0, 0], 0), 1)]);
+            let presets = vec![preset((0, 0), (9, 9), PresetConnectionStateDto::Passage)];
+
+            let edges = preset_edges_for_post_edit(&presets, &existing_by_index, &no_splits());
+
+            assert!(edges.is_empty());
+        }
+
+        #[test]
+        fn split_slot_endpoint_resolves_via_split_map_not_existing_by_index() {
+            let existing_by_index = existing(&[(([0, 0], 0), 1)]);
+            let split_map = existing(&[(([1, 0], 0), 42)]);
+            let presets = vec![PresetConnectionDto {
+                from: preset_endpoint(0, 0),
+                to: maze_runner::config::PresetEndpointDto { point: [1, 0], slot: Some(0) },
+                state: PresetConnectionStateDto::Passage,
+            }];
+
+            let edges = preset_edges_for_post_edit(&presets, &existing_by_index, &split_map);
+
+            assert!(edges.contains(&(1, 42)));
+            assert!(edges.contains(&(42, 1)));
+        }
+    }
+
+    mod resolve_preset_nodes_for_post_edit_tests {
+        use super::*;
+
+        fn existing(entries: &[(([i32; 2], u32), u64)]) -> HashMap<([i32; 2], u32), u64> {
+            entries.iter().copied().collect()
+        }
+
+        #[test]
+        fn resolves_a_confirmed_split_node_via_split_map() {
+            let split_map = existing(&[(([0, 0], 0), 42)]);
+            let nodes = resolve_preset_nodes_for_post_edit(&[([0, 0], 0)], &no_splits(), &split_map);
+            assert!(nodes.contains(&42));
+            assert_eq!(nodes.len(), 1);
+        }
+
+        #[test]
+        fn unresolvable_point_is_silently_skipped() {
+            let nodes = resolve_preset_nodes_for_post_edit(&[([9, 9], 0)], &no_splits(), &no_splits());
+            assert!(nodes.is_empty());
+        }
     }
 }

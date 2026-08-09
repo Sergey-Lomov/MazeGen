@@ -143,7 +143,7 @@ describe("mazeStore post-edit actions", () => {
     await useMazeStore.getState().confirmPostEdit();
     const calls = vi.mocked(computeAnalytics).mock.calls;
     const call = calls[calls.length - 1]?.[0];
-    expect(call?.checks).toEqual([{ local_id: "0", type_id: "missing_endpoints", params: {} }]);
+    expect(call?.rule_groups).toEqual([{ checks: [{ local_id: "0", type_id: "missing_endpoints", params: {} }], params: {} }]);
   });
 
   it("confirmPostEdit sends teleport edges to computeAnalytics with kind \"teleport\", separate from postEditDraftEdges", async () => {
@@ -232,7 +232,33 @@ describe("mazeStore post-edit actions", () => {
     await useMazeStore.getState().confirmPostEdit();
     const calls = vi.mocked(computeAnalytics).mock.calls;
     const call = calls[calls.length - 1]?.[0];
-    expect(call?.checks).toEqual([{ local_id: "0", type_id: "check_a", params: {} }]);
+    expect(call?.rule_groups).toEqual([{ checks: [{ local_id: "0", type_id: "check_a", params: {} }], params: {} }]);
+  });
+
+  it("confirmPostEdit forwards a rule's protect_route param onto its rule_groups entry (GitHub issue #245)", async () => {
+    useMazeStore.setState({
+      availableRuleParams: [{ id: "protect_route", label: "Protect route", kind: { type: "bool", default: true }, applies_to: ["teleport_duplicates_connection"] }],
+      rules: [{
+        id: "r1",
+        name: "Rule 1",
+        kind: "teleport",
+        checks: [{ localId: 0, typeId: "teleport_duplicates_connection", params: {}, disabled: false }],
+        nextLocalCheckId: 1,
+        strategyId: null,
+        disabled: false,
+        ruleDisabled: false,
+        params: { protect_route: "false" },
+        nestedStrategies: [],
+      }],
+      stages: [{ id: "s1", name: "Stage 1", ruleIds: ["r1"], disabled: false }],
+    });
+    await useMazeStore.getState().confirmPostEdit();
+    const calls = vi.mocked(computeAnalytics).mock.calls;
+    const call = calls[calls.length - 1]?.[0];
+    expect(call?.rule_groups).toEqual([{
+      checks: [{ local_id: "0", type_id: "teleport_duplicates_connection", params: {} }],
+      params: { protect_route: "false" },
+    }]);
   });
 
   it("confirmPostEdit is no-op when there is no draft", async () => {

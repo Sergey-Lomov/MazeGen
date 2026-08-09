@@ -13,7 +13,7 @@ const protectRouteParam: RuleParamDescriptor = {
 };
 
 function makeCheck(typeId: string): CheckVM {
-  return { id: `g1:${typeId}`, ruleId: "g1", localId: 0, typeId, label: typeId, description: "", params: [], disabled: false };
+  return { id: `g1:${typeId}`, ruleId: "g1", localId: 0, typeId, label: typeId, cardLabel: typeId, description: "", params: [], disabled: false };
 }
 
 function makeStrategy(id: string): StrategyVM {

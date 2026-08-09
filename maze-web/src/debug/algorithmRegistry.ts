@@ -58,23 +58,23 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
     case "None":
       return null;
     case "InvalidLoop": {
-      const edges = [...payload.edges.values()].flat(2);
+      const edges = [...payload.edges.values()].flat().flatMap((group) => group.edges);
       return edges.length > 0 ? { kind: "cycle", edges } : null;
     }
     case "RegionNeedsExpansion":
     case "RegionNeedsShrink": {
-      const nodes = [...payload.nodes.values()].flat(2);
+      const nodes = [...payload.nodes.values()].flat().flatMap((group) => group.region);
       return nodes.length > 0 ? { kind: "region", nodes } : null;
     }
     case "InvalidTeleport": {
       // Reuses the "cycle" shape — a teleport group's edges are highlighted exactly like a
       // cycle's edges (see `IssueHighlightTarget`'s doc comment).
-      const edges = [...payload.groups.values()].flat(2);
+      const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
       return edges.length > 0 ? { kind: "cycle", edges } : null;
     }
     case "InvalidOneWay": {
       // Reuses the "cycle" shape, same rationale as InvalidTeleport above.
-      const edges = [...payload.groups.values()].flat(2);
+      const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
       return edges.length > 0 ? { kind: "cycle", edges } : null;
     }
     case "InvalidSplitTile": {
@@ -82,7 +82,7 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       // border around each individual flagged cell regardless of whether the group's cells are
       // actually connected, so a flat split-tile node list draws correctly here even though it
       // has no region structure of its own (unlike RegionNeedsExpansion's real SCC regions).
-      const nodes = [...payload.nodes.values()].flat();
+      const nodes = [...payload.groups.values()].flat().flatMap((group) => group.tiles).flatMap((tile) => tile.nodes);
       return nodes.length > 0 ? { kind: "region", nodes } : null;
     }
     case "InvalidSplitRoute": {
@@ -92,6 +92,9 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       const edges = [...payload.routes.values()].flat(2).map(([from, to]) => [from, to] as [bigint, bigint]);
       return edges.length > 0 ? { kind: "cycle", edges } : null;
     }
+    case "ExcessiveSccCount":
+      // No structural highlight data — this issue never points at specific regions on the canvas.
+      return null;
   }
 }
 

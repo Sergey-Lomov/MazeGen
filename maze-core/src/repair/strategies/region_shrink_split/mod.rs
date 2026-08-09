@@ -92,7 +92,7 @@ crate::impl_erased_repair_strategy!(RegionShrinkSplitStrategy, RegionNeedsShrink
 /// Whether `from -> to` must never be cut: always true for a preset (Basic) connection; true for a
 /// hop on the maze's current start->finish route only when `protect_route` is enabled.
 fn is_unremovable<T: Tessellation>(maze: &Maze<T>, preset_state: &PresetState, protect_route: bool, from: NodeId, to: NodeId) -> bool {
-    if preset_state.preset_edges.contains(&(from, to)) {
+    if preset_state.is_preset_edge(from, to) {
         return true;
     }
     if !protect_route {
@@ -106,7 +106,7 @@ fn is_unremovable<T: Tessellation>(maze: &Maze<T>, preset_state: &PresetState, p
 /// directions of a crossing passage included so the caller can resolve each to a real `EdgeId` at
 /// commit time) to cut so the region falls into two roughly-balanced parts. `None` if the region
 /// is a single unremovable-edges group (cannot be split at all).
-fn split_region<T: Tessellation>(
+pub(crate) fn split_region<T: Tessellation>(
     maze: &Maze<T>,
     region: &[NodeId],
     preset_state: &PresetState,

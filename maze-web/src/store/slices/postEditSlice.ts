@@ -15,7 +15,8 @@ import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry } from "../storeTypes";
-import { fieldConfigToWasm } from "./generationSlice";
+import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
+import { relevantRuleParams } from "../storeHelpers";
 
 /** `PostEditEndpoint` → the WASM edge/teleport DTO's endpoint shape. Not a passthrough: the split
  * variant's field is `slotId` on the TS-side `PostEditEndpoint` but `slot_id` on the wire
@@ -139,9 +140,28 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const enabledStageRuleIds = new Set(
       stages.filter((s) => !s.disabled).flatMap((s) => s.ruleIds),
     );
-    const checks = state.rules
+    // Grouped by rule (not flattened), one group per still-active `QcRuleState`, each carrying its
+    // own rule-level params (e.g. `protect_route`, GitHub issue #253) alongside its checks — the
+    // wasm side wraps each group in its own synthetic rule (`analytics_only_stages`) so a
+    // rule-level param actually reaches `resolve_rule_params` on this path too. Before this fix,
+    // no rule-level param was forwarded at all here, so e.g. disabling "protect start/finish" had
+    // no effect on post-edit's `teleport_duplicates_connection` check — it silently kept resolving
+    // to its default (`true`) every time.
+    const ruleGroups = state.rules
       .filter((g) => !g.ruleDisabled && enabledStageRuleIds.has(g.id))
-      .flatMap((g) => g.checks.filter((c) => !c.disabled).map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params })));
+      .map((g) => {
+        const activeChecks = g.checks.filter((c) => !c.disabled);
+        const activeCheckTypeIds = activeChecks.map((c) => c.typeId);
+        const params: Record<string, string> = {};
+        for (const p of relevantRuleParams(state.availableRuleParams, activeCheckTypeIds, null)) {
+          if (g.params[p.id] !== undefined) params[p.id] = g.params[p.id];
+        }
+        return {
+          checks: activeChecks.map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params })),
+          params,
+        };
+      })
+      .filter((g) => g.checks.length > 0);
 
     const config = {
       tessellation: fieldConfigToWasm(activeTessellationConfig),
@@ -150,7 +170,20 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       split_points: splitPointsPayload,
       start: resolvedStart ?? null,
       finish: resolvedFinish ?? null,
-      checks,
+      rule_groups: ruleGroups,
+      // GitHub issue #245: lets the Rust side flag cycle/group issue elements composed entirely
+      // of preset Passage/OneWay edges as `preset_locked`, even on this post-edit rebuild path.
+      preset_connections: buildValidPresetConnections(state),
+      // GitHub issue #245's split-node/route extension: same idea as `preset_connections`, but for
+      // which split nodes the preset snapshot declares — lets the Rust side flag node/route-based
+      // split issue elements as `preset_locked` too. No invalid-key filtering here (unlike
+      // `generateConfigBuilder.ts`'s `split_points`) — the Rust side already silently skips a
+      // point/slot it can't resolve, same contract as `preset_connections`.
+      preset_split_points: Object.entries(state.presetSplitPoints)
+        .flatMap(([key, slots]) => {
+          const [x, y] = key.split(",").map(Number) as [number, number];
+          return slots.map((slotId): [[number, number], number] => [[x, y], slotId]);
+        }),
     };
     try {
       const snapshot = computeAnalytics(config);

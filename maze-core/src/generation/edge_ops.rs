@@ -237,7 +237,7 @@ pub(crate) fn try_add_bidirectional_teleport(
 /// node pair must not be a preset (Basic) connection. See `bidirectional_edge_feasible`'s own
 /// doc comment for why this is factored out (and `pub(crate)`) rather than re-derived on each side.
 pub(crate) fn remove_edge_between_feasible(preset_state: &PresetState, from: NodeId, to: NodeId) -> bool {
-    !preset_state.preset_edges.contains(&(from, to))
+    !preset_state.is_preset_edge(from, to)
 }
 
 /// try_remove_edge: respects PresetState before removing a directed edge.

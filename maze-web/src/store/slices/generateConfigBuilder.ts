@@ -108,6 +108,28 @@ function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: {
   return { id: g.id, checks, strategy, params: ruleParams };
 }
 
+/** The project's currently-valid preset connections (regular + teleport), converted to wire DTOs
+ *  — shared by `buildGenerateConfig` (generation) and `confirmPostEdit` (GitHub issue #245's
+ *  `ComputeAnalyticsConfig.preset_connections`) so both send the exact same filtered set. An
+ *  "undefined"-state or geometrically-invalid entry (removed cell, shrunk tessellation) is
+ *  excluded, same as `buildGenerateConfig` already excluded them before this was extracted. */
+export function buildValidPresetConnections(state: MazeStore): import("../../wasm/types").PresetConnection[] {
+  const activeTessellation = activeTessellationOf(state);
+  const customPts = state.isEditingField ? state.fieldPoints : undefined;
+  const invalidKeys = computeInvalidKeys(state.presetConnections, activeTessellation, customPts);
+  const validPresets = Array.from(state.presetConnections.entries())
+    .filter(([key, e]) => e.state !== "undefined" && !invalidKeys.has(key))
+    .map(([, e]) => ({
+      from: presetEndpointToDto(e.from), to: presetEndpointToDto(e.to),
+      state: e.state as import("../../wasm/types").PresetConnectionState,
+    }));
+  const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, activeTessellation, customPts);
+  const validTeleportPresets = state.presetTeleports
+    .filter(t => !invalidTeleportIds.has(t.id))
+    .map(t => ({ from: presetEndpointToDto(t.from), to: presetEndpointToDto(t.to), state: presetTeleportEntryToState(t.direction) }));
+  return [...validPresets, ...validTeleportPresets];
+}
+
 export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   if (state.isEditingField && state.fieldPoints.size < 2) return null;
   const ruleById = new Map(state.rules.map((g) => [g.id, g]));
@@ -139,17 +161,6 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     }));
   const activeTessellation = activeTessellationOf(state);
   const customPts = state.isEditingField ? state.fieldPoints : undefined;
-  const invalidKeys = computeInvalidKeys(state.presetConnections, activeTessellation, customPts);
-  const validPresets = Array.from(state.presetConnections.entries())
-    .filter(([key, e]) => e.state !== "undefined" && !invalidKeys.has(key))
-    .map(([, e]) => ({
-      from: presetEndpointToDto(e.from), to: presetEndpointToDto(e.to),
-      state: e.state as import("../../wasm/types").PresetConnectionState,
-    }));
-  const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, activeTessellation, customPts);
-  const validTeleportPresets = state.presetTeleports
-    .filter(t => !invalidTeleportIds.has(t.id))
-    .map(t => ({ from: presetEndpointToDto(t.from), to: presetEndpointToDto(t.to), state: presetTeleportEntryToState(t.direction) }));
   const lockedEntries = new Map(state.lockedNodes);
   for (const key of state.autoLockedNodes) {
     if (!lockedEntries.has(key)) lockedEntries.set(key, "both");
@@ -173,7 +184,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     ...(state.repairTimeBudgetSecs != null ? { repair_time_budget_secs: state.repairTimeBudgetSecs } : {}),
     initial: state.initialConfig,
     elements: state.elementsConfig,
-    preset_connections: [...validPresets, ...validTeleportPresets],
+    preset_connections: buildValidPresetConnections(state),
     locked_nodes,
     split_points,
     split_generation: {

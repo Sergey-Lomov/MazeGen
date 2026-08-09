@@ -2,7 +2,7 @@ import * as m from "~/paraglide/messages";
 
 type MessageFn = () => string;
 
-export const checkI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
+export const checkI18n: Record<string, { label: MessageFn; description: MessageFn; cardLabel?: MessageFn }> = {
   missing_endpoints: {
     label: m["check.missing_endpoints.label"] as MessageFn,
     description: m["check.missing_endpoints.description"] as MessageFn,
@@ -138,6 +138,7 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
   split_distance_from_waypoint: {
     label: m["check.split_distance_from_waypoint.label"] as MessageFn,
     description: m["check.split_distance_from_waypoint.description"] as MessageFn,
+    cardLabel: m["check.split_distance_from_waypoint.card_label"] as MessageFn,
   },
   split_teleport_intersection: {
     label: m["check.split_teleport_intersection.label"] as MessageFn,
@@ -974,6 +975,15 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
 
 export function resolveCheckLabel(id: string, fallback: string): string {
   return checkI18n[id]?.label() ?? fallback;
+}
+
+/// Full/unambiguous label for a check already added to a rule (`RuleCheckRow`'s card) — falls
+/// back to the short `resolveCheckLabel` for the (majority) of checks whose short label is already
+/// unambiguous on its own; only a check whose short label reads oddly out of its list context
+/// (e.g. `split_distance_from_waypoint`'s "Distance from waypoint", missing the "split-tile" it's
+/// about) needs a `cardLabel` override here.
+export function resolveCheckCardLabel(id: string, fallback: string): string {
+  return checkI18n[id]?.cardLabel?.() ?? resolveCheckLabel(id, fallback);
 }
 
 export function resolveCheckDescription(id: string, fallback: string): string {

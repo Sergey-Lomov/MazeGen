@@ -13,6 +13,7 @@ const check: CheckVM = {
   localId: 0,
   typeId: "c1",
   label: "Check One",
+  cardLabel: "Check One",
   description: "Check One description",
   params: [],
   disabled: false,

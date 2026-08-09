@@ -52,7 +52,7 @@ export function RuleCheckRow({ check, selected, hovered, onSelect, onRemove, onH
         onMouseEnter={() => onHoverChange(true)}
         onMouseLeave={() => onHoverChange(false)}
       >
-        <span style={styles.cardLabel}>{check.label}</span>
+        <span style={styles.cardLabel}>{check.cardLabel}</span>
         <div
           style={styles.toggleWrap}
           title={check.disabled ? m["quality.enable_check"]() : m["quality.disable_check"]()}

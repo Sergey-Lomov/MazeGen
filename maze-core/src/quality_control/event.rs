@@ -493,7 +493,7 @@ mod tests {
     #[test]
     fn check_ran_with_invalid_loop_payload_encodes_the_full_str_keyed_edge_pairs_map() {
         let mut edges = std::collections::HashMap::new();
-        edges.insert("check1".to_string(), vec![vec![[1u32, 2u32]]]);
+        edges.insert("check1".to_string(), vec![super::super::issue_payload::IssueEdgeGroupPayload { edges: vec![[1u32, 2u32]], preset_locked: false }]);
         let event = QcEvent::CheckRan {
             check_id: "c1".to_string(),
             issue: Some((IssueKind::from_str("invalid_loop").unwrap(), IssuePayload::InvalidLoop { edges }, HashMap::new())),
@@ -514,14 +514,17 @@ mod tests {
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // cycle has 1 edge pair
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // from
         assert_eq!(read_u32le(&bytes, &mut offset), 2); // to
+        assert_eq!(bytes[offset], 0); // preset_locked = false
+        offset += 1;
         assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
         assert_eq!(bytes.len(), offset);
     }
 
     #[test]
     fn check_ran_with_region_needs_expansion_payload_encodes_the_full_str_keyed_node_lists_map() {
+        use crate::quality_control::issue_payload::IssueRegionPayload;
         let mut nodes = std::collections::HashMap::new();
-        nodes.insert("check1".to_string(), vec![vec![5u32]]);
+        nodes.insert("check1".to_string(), vec![IssueRegionPayload { region: vec![5u32], preset_locked: true }]);
         let event = QcEvent::CheckRan {
             check_id: "c1".to_string(),
             issue: Some((IssueKind::from_str("region_needs_expansion").unwrap(), IssuePayload::RegionNeedsExpansion { nodes }, HashMap::new())),
@@ -541,6 +544,8 @@ mod tests {
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // 1 region
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // region has 1 node
         assert_eq!(read_u32le(&bytes, &mut offset), 5); // node id
+        assert_eq!(bytes[offset], 1); // region preset_locked
+        offset += 1;
         assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
         assert_eq!(bytes.len(), offset);
     }
@@ -548,7 +553,7 @@ mod tests {
     #[test]
     fn check_ran_with_invalid_teleport_payload_encodes_the_full_str_keyed_edge_pairs_map() {
         let mut groups = std::collections::HashMap::new();
-        groups.insert("check1".to_string(), vec![vec![[1u32, 2u32]]]);
+        groups.insert("check1".to_string(), vec![super::super::issue_payload::IssueEdgeGroupPayload { edges: vec![[1u32, 2u32]], preset_locked: false }]);
         let event = QcEvent::CheckRan {
             check_id: "c1".to_string(),
             issue: Some((IssueKind::from_str("invalid_teleport").unwrap(), IssuePayload::InvalidTeleport { groups }, HashMap::new())),
@@ -569,14 +574,23 @@ mod tests {
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // group has 1 edge pair
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // from
         assert_eq!(read_u32le(&bytes, &mut offset), 2); // to
+        assert_eq!(bytes[offset], 0); // preset_locked = false
+        offset += 1;
         assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
         assert_eq!(bytes.len(), offset);
     }
 
     #[test]
     fn check_ran_with_invalid_split_route_payload_encodes_the_full_str_keyed_routes_map() {
+        use crate::quality_control::issue_payload::{IssueRoutePayload, IssueRouteEdge};
         let mut routes = std::collections::HashMap::new();
-        routes.insert("check1".to_string(), vec![vec![(1u32, 2u32, true), (2u32, 3u32, false)]]);
+        routes.insert("check1".to_string(), vec![IssueRoutePayload {
+            edges: vec![
+                IssueRouteEdge { from: 1, to: 2, is_split_edge: true },
+                IssueRouteEdge { from: 2, to: 3, is_split_edge: false },
+            ],
+            preset_locked: false,
+        }]);
         let event = QcEvent::CheckRan {
             check_id: "c1".to_string(),
             issue: Some((IssueKind::from_str("invalid_split_route").unwrap(), IssuePayload::InvalidSplitRoute { routes }, HashMap::new())),
@@ -603,6 +617,34 @@ mod tests {
         assert_eq!(read_u32le(&bytes, &mut offset), 3); // edge1 to
         assert_eq!(bytes[offset], 0); // edge1 is_split_edge
         offset += 1;
+        assert_eq!(bytes[offset], 0); // route preset_locked
+        offset += 1;
+        assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
+        assert_eq!(bytes.len(), offset);
+    }
+
+    #[test]
+    fn check_ran_with_excessive_scc_count_payload_encodes_the_full_str_keyed_bools_map() {
+        let mut preset_locked = std::collections::HashMap::new();
+        preset_locked.insert("check1".to_string(), true);
+        let event = QcEvent::CheckRan {
+            check_id: "c1".to_string(),
+            issue: Some((IssueKind::from_str("excessive_scc_count").unwrap(), IssuePayload::ExcessiveSccCount { preset_locked }, HashMap::new())),
+        };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+
+        let mut offset = 0;
+        assert_eq!(read_str(&bytes, &mut offset), "c1");
+        assert_eq!(bytes[offset], 1); // issue present
+        offset += 1;
+        assert_eq!(read_str(&bytes, &mut offset), "excessive_scc_count");
+        assert_eq!(bytes[offset], 8); // IssuePayload::ExcessiveSccCount variant tag
+        offset += 1;
+        assert_eq!(read_u32le(&bytes, &mut offset), 1); // map: 1 entry
+        assert_eq!(read_str(&bytes, &mut offset), "check1");
+        assert_eq!(bytes[offset], 1); // preset_locked = true, no nested lists
+        offset += 1;
         assert_eq!(read_u32le(&bytes, &mut offset), 0); // empty details map
         assert_eq!(bytes.len(), offset);
     }
@@ -626,7 +668,7 @@ mod tests {
     #[test]
     fn issues_merged_encodes_the_merged_invalid_loop_payload_and_details() {
         let mut edges = std::collections::HashMap::new();
-        edges.insert("check1".to_string(), vec![vec![[1u32, 2u32]]]);
+        edges.insert("check1".to_string(), vec![super::super::issue_payload::IssueEdgeGroupPayload { edges: vec![[1u32, 2u32]], preset_locked: false }]);
         let mut check1_details = HashMap::new();
         check1_details.insert("threshold", "10".to_string());
         let mut details = HashMap::new();
@@ -649,6 +691,8 @@ mod tests {
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // cycle has 1 edge pair
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // from
         assert_eq!(read_u32le(&bytes, &mut offset), 2); // to
+        assert_eq!(bytes[offset], 0); // preset_locked = false
+        offset += 1;
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // details map: 1 contributing check
         assert_eq!(read_str(&bytes, &mut offset), "r1:check1");
         assert_eq!(read_u32le(&bytes, &mut offset), 1); // 1 detail entry

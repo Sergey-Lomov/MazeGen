@@ -314,6 +314,7 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         &self,
         maze: &Maze<T>,
         rng: &mut dyn RngCore,
+        preset_state: &PresetState,
         timing: &mut HashMap<&'static str, (f64, u32)>,
         now_ms: &dyn Fn() -> f64,
         mut event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
@@ -347,7 +348,7 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
             let check_issue = issues.into_iter().reduce(|mut acc, issue| { acc.merge(issue); acc });
             if let Some(log) = event_log.as_mut() {
                 let payload = check_issue.as_ref().map(|issue| {
-                    let payload = super::issue_payload::resolve_issue_payload(issue, &maze.graph, scc.as_ref().unwrap());
+                    let payload = super::issue_payload::resolve_issue_payload(issue, &maze.graph, &maze.field, scc.as_ref().unwrap(), preset_state);
                     let details = issue.details().get(instance_id.as_str()).cloned().unwrap_or_default();
                     (I::KIND, payload, details)
                 });
@@ -364,7 +365,7 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         if contributing_checks > 1 {
             if let Some(log) = event_log.as_mut() {
                 let payload = merged.as_ref()
-                    .map(|issue| super::issue_payload::resolve_issue_payload(issue, &maze.graph, scc.as_ref().unwrap()))
+                    .map(|issue| super::issue_payload::resolve_issue_payload(issue, &maze.graph, &maze.field, scc.as_ref().unwrap(), preset_state))
                     .unwrap_or_default();
                 let details = merged.as_ref().map(|issue| issue.details().clone()).unwrap_or_default();
                 log.emit(QcEvent::IssuesMerged { issue_kind: I::KIND, payload, details });
@@ -413,7 +414,7 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         mut event_log: Option<&mut ScopeGuard<'_, QcEvent>>,
         mut debug_state: Option<&mut crate::generation::DebugGenerationState<T>>,
     ) -> RuleIterationOutcome {
-        let issue = self.run_checks_typed(maze, rng, per_check, now_ms, event_log.as_deref_mut());
+        let issue = self.run_checks_typed(maze, rng, preset_state, per_check, now_ms, event_log.as_deref_mut());
         let Some(issue) = issue else { return RuleIterationOutcome::NoIssue };
         let Some(rule_strategy) = self.strategy.as_ref() else { return RuleIterationOutcome::NoStrategy };
 

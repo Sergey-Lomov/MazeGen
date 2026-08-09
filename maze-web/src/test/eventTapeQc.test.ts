@@ -33,9 +33,9 @@ describe("decodeQcEvent", () => {
   });
 
   it("decodes CheckRan with IssuePayload::InvalidLoop and this check's own details", () => {
-    // one entry: key "check1" -> one cycle -> one edge pair (1,2)
+    // one entry: key "check1" -> one cycle -> one edge pair (1,2), then preset_locked=0
     const edgesMap = concatBytes([
-      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2),
+      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2), new Uint8Array([0]),
     ]);
     // details: 1 entry -> "threshold" = "10"
     const detailsMap = concatBytes([u32le(1), strPayload("threshold"), strPayload("10")]);
@@ -43,67 +43,80 @@ describe("decodeQcEvent", () => {
     expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",
       issue: {
-        issueKind: "invalid_loop", payload: { kind: "InvalidLoop", edges: new Map([["check1", [[[1n, 2n]]]]]) },
+        issueKind: "invalid_loop", payload: { kind: "InvalidLoop", edges: new Map([["check1", [{ edges: [[1n, 2n]], presetLocked: false }]]]) },
         details: new Map([["threshold", "10"]]),
       },
     });
   });
 
   it("decodes CheckRan with IssuePayload::RegionNeedsExpansion and an empty details map", () => {
-    // one entry: key "check1" -> one region -> one node (5)
+    // one entry: key "check1" -> one region -> one node (5), then preset_locked=1
     const nodesMap = concatBytes([
-      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(5),
+      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(5), new Uint8Array([1]),
     ]);
     const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("region_needs_expansion"), new Uint8Array([2]), nodesMap, u32le(0)]);
     expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",
       issue: {
-        issueKind: "region_needs_expansion", payload: { kind: "RegionNeedsExpansion", nodes: new Map([["check1", [[5n]]]]) },
+        issueKind: "region_needs_expansion", payload: { kind: "RegionNeedsExpansion", nodes: new Map([["check1", [{ region: [5n], presetLocked: true }]]]) },
         details: new Map(),
       },
     });
   });
 
   it("decodes CheckRan with IssuePayload::RegionNeedsShrink and an empty details map", () => {
-    // one entry: key "check1" -> one region -> one node (5)
+    // one entry: key "check1" -> one region -> one node (5), then preset_locked=0
     const nodesMap = concatBytes([
-      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(5),
+      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(5), new Uint8Array([0]),
     ]);
     const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("region_needs_shrink"), new Uint8Array([3]), nodesMap, u32le(0)]);
     expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",
       issue: {
-        issueKind: "region_needs_shrink", payload: { kind: "RegionNeedsShrink", nodes: new Map([["check1", [[5n]]]]) },
+        issueKind: "region_needs_shrink", payload: { kind: "RegionNeedsShrink", nodes: new Map([["check1", [{ region: [5n], presetLocked: false }]]]) },
         details: new Map(),
       },
     });
   });
 
   it("decodes CheckRan with IssuePayload::InvalidTeleport and an empty details map", () => {
-    // one entry: key "check1" -> one group -> one edge pair (1,2)
+    // one entry: key "check1" -> one group -> one edge pair (1,2), then preset_locked=0
     const groupsMap = concatBytes([
-      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2),
+      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2), new Uint8Array([0]),
     ]);
     const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("invalid_teleport"), new Uint8Array([4]), groupsMap, u32le(0)]);
     expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",
       issue: {
-        issueKind: "invalid_teleport", payload: { kind: "InvalidTeleport", groups: new Map([["check1", [[[1n, 2n]]]]]) },
+        issueKind: "invalid_teleport", payload: { kind: "InvalidTeleport", groups: new Map([["check1", [{ edges: [[1n, 2n]], presetLocked: false }]]]) },
         details: new Map(),
       },
     });
   });
 
   it("decodes CheckRan with IssuePayload::InvalidOneWay and an empty details map", () => {
-    // one entry: key "check1" -> one group -> one edge pair (1,2)
+    // one entry: key "check1" -> one group -> one edge pair (1,2), then preset_locked=0
     const groupsMap = concatBytes([
-      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2),
+      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2), new Uint8Array([0]),
     ]);
     const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("invalid_one_way"), new Uint8Array([5]), groupsMap, u32le(0)]);
     expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
       kind: "CheckRan", checkId: "c1",
       issue: {
-        issueKind: "invalid_one_way", payload: { kind: "InvalidOneWay", groups: new Map([["check1", [[[1n, 2n]]]]]) },
+        issueKind: "invalid_one_way", payload: { kind: "InvalidOneWay", groups: new Map([["check1", [{ edges: [[1n, 2n]], presetLocked: false }]]]) },
+        details: new Map(),
+      },
+    });
+  });
+
+  it("decodes CheckRan with IssuePayload::ExcessiveSccCount and an empty details map", () => {
+    // one entry: key "check1" -> preset_locked=1, no nested lists (tag 8)
+    const boolsMap = concatBytes([u32le(1), strPayload("check1"), new Uint8Array([1])]);
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("excessive_scc_count"), new Uint8Array([8]), boolsMap, u32le(0)]);
+    expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
+      kind: "CheckRan", checkId: "c1",
+      issue: {
+        issueKind: "excessive_scc_count", payload: { kind: "ExcessiveSccCount", presetLocked: new Map([["check1", true]]) },
         details: new Map(),
       },
     });
@@ -117,16 +130,16 @@ describe("decodeQcEvent", () => {
   });
 
   it("decodes IssuesMerged with IssuePayload::InvalidLoop and a details map keyed by contributing check instance id", () => {
-    // one entry: key "check1" -> one cycle -> one edge pair (1,2)
+    // one entry: key "check1" -> one cycle -> one edge pair (1,2), then preset_locked=0
     const edgesMap = concatBytes([
-      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2),
+      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2), new Uint8Array([0]),
     ]);
     // details: 1 contributing check ("check1") -> {"threshold": "10"}
     const detailsMap = concatBytes([u32le(1), strPayload("check1"), u32le(1), strPayload("threshold"), strPayload("10")]);
     const payload = concatBytes([strPayload("invalid_loop"), new Uint8Array([1]), edgesMap, detailsMap]);
     expect(decodeQcEvent(QC_EVENT_TAG.ISSUES_MERGED, payload)).toEqual({
       kind: "IssuesMerged", issueKind: "invalid_loop",
-      payload: { kind: "InvalidLoop", edges: new Map([["check1", [[[1n, 2n]]]]]) },
+      payload: { kind: "InvalidLoop", edges: new Map([["check1", [{ edges: [[1n, 2n]], presetLocked: false }]]]) },
       details: new Map([["check1", new Map([["threshold", "10"]])]]),
     });
   });

@@ -32,9 +32,54 @@ pub struct PresetState {
     /// against the exact same already-applied split nodes, without re-deriving the resolution
     /// logic. Empty when `for_repair`'s `qc_experiment` branch clears everything else too.
     pub(crate) slots_by_point: HashMap<(i32, i32), Vec<u32>>,
+    /// Nodes the preset snapshot currently declares as split nodes. On the generate path this is
+    /// exactly the set `apply_split_points` minted in this call. On the post-edit path it's
+    /// resolved fresh from the client's preset-split-points snapshot against the rebuilt field —
+    /// "declared", not "minted here" — so this field must not be read as structural provenance,
+    /// only as membership. Feeds `is_preset_locked_node`.
+    pub preset_declared_nodes: HashSet<NodeId>,
 }
 
 impl PresetState {
+    /// Whether the directed edge `from -> to` is a preset Passage/OneWay connection — the exact
+    /// predicate `preset_edges` is keyed by, no sorting/canonicalization: a one-way preset only
+    /// ever occupies one direction, and its reverse direction (`blocked`, not `preset_edges`) must
+    /// never test positive here.
+    pub fn is_preset_edge(&self, from: NodeId, to: NodeId) -> bool {
+        self.preset_edges.contains(&(from, to))
+    }
+
+    /// Whether `node` is preset-locked for repair purposes: declared by the preset snapshot
+    /// (`preset_declared_nodes`) and every incident directed edge (in either direction, any
+    /// `EdgeKind` — Basic and Teleport both count uniformly, matching `is_preset_edge`'s own
+    /// contract elsewhere) is preset-protected. A declared node with no incident edges is not
+    /// locked (vacuous-truth guard, same pattern as `all_preset_locked`).
+    ///
+    /// Distinct from `is_node_locked_for_removal`: this predicate is about a node's own connection
+    /// set (used by `InvalidSplitNodeIssue`-style per-node checks like
+    /// `split_node_connection_count`, which flag a node for *its own* edges); the other is about
+    /// whether repair's `RemoveNode`/`ReplacePointNodes` machinery can touch the node at all.
+    pub fn is_preset_locked_node(&self, node: NodeId, graph: &Graph) -> bool {
+        if !self.preset_declared_nodes.contains(&node) {
+            return false;
+        }
+        let incident: Vec<_> = graph.edges().filter(|e| e.from == node || e.to == node).collect();
+        !incident.is_empty() && incident.iter().all(|e| self.is_preset_edge(e.from, e.to))
+    }
+
+    /// Whether `node` is preset-protected against removal — the pure-preset slice of
+    /// `generation::node_ops::node_removal_allowed` (its `locked_out`/`locked_in`/`preset_edges`
+    /// checks only, not the structural "last node at its point" check, which isn't a preset fact).
+    /// This is the actual criterion `remove_node_feasible`/`replace_point_nodes_feasible` use to
+    /// decline a repair command — the correct "can repair ever touch this node" predicate for
+    /// split-tile/split-node issue payloads' `preset_locked` flag (GitHub issue #245), unlike
+    /// `is_preset_locked_node` above, which only applies to preset-*declared* (minted) nodes and
+    /// says nothing about a pre-existing tile node whose own preset edge still blocks its removal.
+    pub fn is_node_locked_for_removal(&self, node: NodeId) -> bool {
+        self.locked_out.contains(&node) || self.locked_in.contains(&node)
+            || self.preset_edges.iter().any(|&(from, to)| from == node || to == node)
+    }
+
     pub fn empty() -> Self {
         Self {
             blocked:         HashSet::new(),
@@ -44,6 +89,7 @@ impl PresetState {
             preset_edges:    HashSet::new(),
             preset_teleports: HashMap::new(),
             slots_by_point:  HashMap::new(),
+            preset_declared_nodes: HashSet::new(),
         }
     }
 
@@ -76,7 +122,9 @@ impl PresetState {
 /// order). Returns a resolver mapping `PresetEndpoint` to a real `NodeId`: `slot: None` resolves
 /// to the point's original node (`nodes_at(point)[0]`); `slot: Some(s)` resolves to whichever node
 /// `add_node_at` created for `s` (`nodes_at(point)[1 + index]`, where `index` is `s`'s position in
-/// the sorted slot list for that point — see `Field::nodes_at`'s creation-order contract).
+/// the sorted slot list for that point — see `Field::nodes_at`'s creation-order contract). Also
+/// returns the set of `NodeId`s actually minted by `add_node_at` in this call — feeds
+/// `PresetState.preset_declared_nodes`.
 ///
 /// Returns `Err` (never panics) if `split_points` references a point outside `field` — the caller
 /// is expected to have already filtered these client-side (see `Specs/preset-connections.md`'s
@@ -89,11 +137,12 @@ fn apply_split_points<T: Tessellation>(
     split_points: &[((i32, i32), u32)],
     xy_to_point: &impl Fn(i32, i32) -> T::Point,
     mut debug_state: Option<&mut super::DebugGenerationState<T>>,
-) -> Result<HashMap<(i32, i32), Vec<u32>>, String> {
+) -> Result<(HashMap<(i32, i32), Vec<u32>>, HashSet<NodeId>), String> {
     let mut sorted: Vec<((i32, i32), u32)> = split_points.to_vec();
     sorted.sort_unstable();
 
     let mut slots_by_point: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+    let mut minted_nodes: HashSet<NodeId> = HashSet::new();
     for (xy, slot_id) in sorted {
         let point = xy_to_point(xy.0, xy.1);
         if !field.contains(point) {
@@ -101,12 +150,13 @@ fn apply_split_points<T: Tessellation>(
         }
         let node = field.add_node_at(point, ids);
         graph.add_node(node);
+        minted_nodes.insert(node);
         if let Some(state) = debug_state.as_deref_mut() {
             state.note(node, point);
         }
         slots_by_point.entry(xy).or_default().push(slot_id);
     }
-    Ok(slots_by_point)
+    Ok((slots_by_point, minted_nodes))
 }
 
 /// Resolves one `PresetEndpoint` to a real `NodeId`. `slots_by_point` is the per-point sorted
@@ -165,7 +215,7 @@ pub fn build_preset_state<T: Tessellation>(
     let mut preset_edges: HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut preset_teleports: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 
-    let slots_by_point = apply_split_points(field, graph, ids, split_points, &xy_to_point, debug_state)?;
+    let (slots_by_point, preset_declared_nodes) = apply_split_points(field, graph, ids, split_points, &xy_to_point, debug_state)?;
     let resolve = |ep: PresetEndpoint| resolve_preset_endpoint(field, &slots_by_point, &xy_to_point, ep);
 
     for preset in preset_connections {
@@ -254,7 +304,7 @@ pub fn build_preset_state<T: Tessellation>(
         }
     }
 
-    Ok(PresetState { blocked, locked_out, locked_in, preset_connected, preset_edges, preset_teleports, slots_by_point })
+    Ok(PresetState { blocked, locked_out, locked_in, preset_connected, preset_edges, preset_teleports, slots_by_point, preset_declared_nodes })
 }
 
 #[cfg(test)]

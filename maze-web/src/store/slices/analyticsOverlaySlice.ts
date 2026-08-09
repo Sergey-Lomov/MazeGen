@@ -12,7 +12,8 @@ export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], Analyt
   regionClassLegendOpen: false,
   hoveredIssueLoopEdges: null,
   hoveredIssueRegionGroups: null,
-  analyticsSectionsExpanded: { layers: true },
+  analyticsSectionsExpanded: { layers: true, issues: true },
+  showFullyPresetLockedIssues: true,
 
   setShowMazeOverlay: (v) => set({ showMazeOverlay: v }),
   setShowComponentsOverlay: (v) => set({ showComponentsOverlay: v }),
@@ -26,4 +27,5 @@ export const createAnalyticsOverlaySlice: StateCreator<MazeStore, [], [], Analyt
   setHoveredIssueRegionGroups: (groups) => set({ hoveredIssueRegionGroups: groups }),
   setAnalyticsSectionExpanded: (id, expanded) =>
     set((s) => ({ analyticsSectionsExpanded: { ...s.analyticsSectionsExpanded, [id]: expanded } })),
+  setShowFullyPresetLockedIssues: (v) => set({ showFullyPresetLockedIssues: v }),
 });

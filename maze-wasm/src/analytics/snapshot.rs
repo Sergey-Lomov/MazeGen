@@ -5,18 +5,53 @@ use maze_core::{
     space::Tessellation,
     quality_control::{
         QualityControlEngine, Issue, CycleAnalysisOverflowedIssue,
-        RepairLimitReachedIssue, IssuePayload, resolve_issue_payload,
+        RepairLimitReachedIssue, IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload, resolve_issue_payload,
     },
     compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
-    generation::{SplitFaceRequirement, OneWayDirection},
+    generation::{SplitFaceRequirement, OneWayDirection, PresetState},
     split_totals,
     Maze,
 };
 use crate::dto::{
-    EdgeDto, EdgeKindDto, IssueDto, IssuePayloadDto, MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
+    EdgeDto, EdgeKindDto, IssueDto, IssuePayloadDto, IssueEdgeGroupPayloadDto, IssueSplitTilePayloadDto, IssueSplitGroupPayloadDto, IssueRouteEdgeDto, IssueRoutePayloadDto, IssueRegionPayloadDto,
+    MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
     NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, JunctionBucket, GraphAnalyticsDto,
     SplitFaceRequirementDto, OneWayDirectionDto, SplitGroupDto, SplitAnalyticsDto,
 };
+
+fn edge_group_map_dto(map: HashMap<String, Vec<IssueEdgeGroupPayload>>) -> HashMap<String, Vec<IssueEdgeGroupPayloadDto>> {
+    map.into_iter()
+        .map(|(k, v)| (k, v.into_iter().map(|g| IssueEdgeGroupPayloadDto { edges: g.edges, preset_locked: g.preset_locked }).collect()))
+        .collect()
+}
+
+fn split_tile_dto(tile: IssueSplitTilePayload) -> IssueSplitTilePayloadDto {
+    IssueSplitTilePayloadDto { nodes: tile.nodes, preset_locked: tile.preset_locked }
+}
+
+fn split_group_map_dto(map: HashMap<String, Vec<IssueSplitGroupPayload>>) -> HashMap<String, Vec<IssueSplitGroupPayloadDto>> {
+    map.into_iter()
+        .map(|(k, v)| (k, v.into_iter().map(|g| IssueSplitGroupPayloadDto {
+            tiles: g.tiles.into_iter().map(split_tile_dto).collect(),
+            preset_locked: g.preset_locked,
+        }).collect()))
+        .collect()
+}
+
+fn route_payload_map_dto(map: HashMap<String, Vec<IssueRoutePayload>>) -> HashMap<String, Vec<IssueRoutePayloadDto>> {
+    map.into_iter()
+        .map(|(k, v)| (k, v.into_iter().map(|r| IssueRoutePayloadDto {
+            edges: r.edges.into_iter().map(|e| IssueRouteEdgeDto { from: e.from, to: e.to, is_split_edge: e.is_split_edge }).collect(),
+            preset_locked: r.preset_locked,
+        }).collect()))
+        .collect()
+}
+
+fn region_payload_map_dto(map: HashMap<String, Vec<IssueRegionPayload>>) -> HashMap<String, Vec<IssueRegionPayloadDto>> {
+    map.into_iter()
+        .map(|(k, v)| (k, v.into_iter().map(|r| IssueRegionPayloadDto { region: r.region, preset_locked: r.preset_locked }).collect()))
+        .collect()
+}
 
 /// Compute analytics snapshot from a fully-built maze (GraphInput).
 /// Independent of the generation pipeline — accepts any Maze<T> with a populated graph.
@@ -27,6 +62,13 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     qc_engine: Option<&QualityControlEngine<T>>,
     issues_override: Option<Vec<Box<dyn Issue>>>,
     check_types: &HashMap<String, String>,
+    // Whether each flagged cycle/group/node/route is preset-protected (GitHub issue #245) is
+    // resolved against this — `runner.rs`'s generation/repair path passes the real
+    // `repair_preset_state`; `compute_analytics`'s post-edit path reconstructs an equivalent
+    // `PresetState` independently (its graph is rebuilt straight from the client's post-edit
+    // node/edge list, never from `PresetConnection`s) via `preset_edges_for_post_edit`/
+    // `resolve_preset_nodes_for_post_edit`, resolved fresh against the rebuilt field each call.
+    preset_state: &PresetState,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
     // Node's stable per-point index (GitHub issue #236, `NodeDto.i` doc comment) — `0` is always
     // the point's original node. A fresh maze (generation) has no removal history yet, so a node's
@@ -65,18 +107,19 @@ pub fn build_analytics_snapshot<T: Tessellation>(
 
     let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
         let issue = issue.as_ref();
-        let payload = match resolve_issue_payload(issue, &maze.graph, &scc) {
+        let payload = match resolve_issue_payload(issue, &maze.graph, &maze.field, &scc, preset_state) {
             IssuePayload::None => IssuePayloadDto::None,
             // Grouped by source check id (not one flat list) so a merged issue rendered as
             // several bubbles (one per `source_checks` entry) highlights only the cycles *that
             // check* flagged on hover — see `IssuePayloadDto::InvalidLoop`'s doc comment.
-            IssuePayload::InvalidLoop { edges } => IssuePayloadDto::InvalidLoop { edges },
-            IssuePayload::RegionNeedsExpansion { nodes } => IssuePayloadDto::RegionNeedsExpansion { nodes },
-            IssuePayload::RegionNeedsShrink { nodes } => IssuePayloadDto::RegionNeedsShrink { nodes },
-            IssuePayload::InvalidTeleport { groups } => IssuePayloadDto::InvalidTeleport { groups },
-            IssuePayload::InvalidOneWay { groups } => IssuePayloadDto::InvalidOneWay { groups },
-            IssuePayload::InvalidSplitTile { nodes } => IssuePayloadDto::InvalidSplitTile { nodes },
-            IssuePayload::InvalidSplitRoute { routes } => IssuePayloadDto::InvalidSplitRoute { routes },
+            IssuePayload::InvalidLoop { edges } => IssuePayloadDto::InvalidLoop { edges: edge_group_map_dto(edges) },
+            IssuePayload::RegionNeedsExpansion { nodes } => IssuePayloadDto::RegionNeedsExpansion { nodes: region_payload_map_dto(nodes) },
+            IssuePayload::RegionNeedsShrink { nodes } => IssuePayloadDto::RegionNeedsShrink { nodes: region_payload_map_dto(nodes) },
+            IssuePayload::InvalidTeleport { groups } => IssuePayloadDto::InvalidTeleport { groups: edge_group_map_dto(groups) },
+            IssuePayload::InvalidOneWay { groups } => IssuePayloadDto::InvalidOneWay { groups: edge_group_map_dto(groups) },
+            IssuePayload::InvalidSplitTile { groups } => IssuePayloadDto::InvalidSplitTile { groups: split_group_map_dto(groups) },
+            IssuePayload::InvalidSplitRoute { routes } => IssuePayloadDto::InvalidSplitRoute { routes: route_payload_map_dto(routes) },
+            IssuePayload::ExcessiveSccCount { preset_locked } => IssuePayloadDto::ExcessiveSccCount { preset_locked },
         };
         let source_checks = issue.source_checks().iter().map(|s| s.to_string()).collect();
         let mut details: HashMap<String, HashMap<String, String>> = issue.details().iter()
@@ -309,7 +352,7 @@ mod tests {
         }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         assert!(snapshot.graph_analytics.cycle_analysis_overflowed);
         assert!(snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
@@ -326,7 +369,7 @@ mod tests {
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         assert!(!snapshot.graph_analytics.cycle_analysis_overflowed);
         assert!(!snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
@@ -347,7 +390,7 @@ mod tests {
         g.add_node(extra);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         let at_split_point: Vec<_> = snapshot.nodes.iter().filter(|n| n.x == 1 && n.y == 0).collect();
         assert_eq!(at_split_point.len(), 2, "split point's node list must appear exactly once, not once per its own node count");
@@ -369,7 +412,7 @@ mod tests {
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         // Neither start nor finish set.
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         assert!(snapshot.graph_analytics.region_classes.is_empty());
     }
@@ -389,7 +432,7 @@ mod tests {
         maze.meta.start = Some(a);
         maze.meta.finish = Some(c);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         // Fully bidirectional 3-node line collapses into a single SCC — start and finish share
         // a region, which is always "path" by definition.

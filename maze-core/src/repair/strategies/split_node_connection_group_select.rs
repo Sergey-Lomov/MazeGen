@@ -129,9 +129,9 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue> fo
         // keeps the group `Failed` instead of falsely `Fixed`.
         let removal_feasible = |edge: &EdgeId| -> bool {
             let Some(e) = maze.graph.edge(*edge) else { return false };
-            let forward_ok = !preset_state.preset_edges.contains(&(e.from, e.to));
+            let forward_ok = !preset_state.is_preset_edge(e.from, e.to);
             let reverse_exists = maze.graph.edge_between(e.to, e.from).is_some();
-            let reverse_ok = reverse_exists && !preset_state.preset_edges.contains(&(e.to, e.from));
+            let reverse_ok = reverse_exists && !preset_state.is_preset_edge(e.to, e.from);
             forward_ok || reverse_ok
         };
         let element_allowed = |edge: &EdgeId| {

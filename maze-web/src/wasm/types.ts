@@ -112,6 +112,49 @@ export interface SplitAnalyticsDto {
   groups: SplitGroupDto[];
 }
 
+/** One flagged cycle/group's base-graph edges paired with whether every one of them is
+ * preset-protected (GitHub issue #245) — mirrors Rust's `IssueEdgeGroupPayloadDto`.
+ * `preset_locked: true` means repair can never fix this specific element (every edge in it is a
+ * user-placed Passage/OneWay preset connection); `false` means it's at least partly unprotected
+ * and repair could in principle fix it. */
+export interface IssueEdgeGroupPayload {
+  edges: [number, number][];
+  preset_locked: boolean;
+}
+
+/** One tile's own node list inside a flagged split-tile/split-node-group element — mirrors Rust's
+ * `IssueSplitTilePayloadDto`. */
+export interface IssueSplitTilePayload {
+  nodes: number[];
+  preset_locked: boolean;
+}
+
+/** One flagged split-tile "instance" — a single tile or a genuine multi-tile group (proximity
+ * pairs / max-count-or-density bundles) — mirrors Rust's `IssueSplitGroupPayloadDto`. */
+export interface IssueSplitGroupPayload {
+  tiles: IssueSplitTilePayload[];
+  preset_locked: boolean;
+}
+
+/** One edge of a flagged split route, in traversal order — mirrors Rust's `IssueRouteEdgeDto`. */
+export interface IssueRouteEdge {
+  from: number;
+  to: number;
+  is_split_edge: boolean;
+}
+
+/** One flagged split route paired with whether every edge on it is preset-locked — mirrors
+ * Rust's `IssueRoutePayloadDto`. */
+export interface IssueRoutePayload {
+  edges: IssueRouteEdge[];
+  preset_locked: boolean;
+}
+
+export interface IssueRegionPayload {
+  region: number[];
+  preset_locked: boolean;
+}
+
 /** Tagged payload for `IssueDto` — a real discriminated union (narrow on `kind`) mirroring
  * Rust's `IssuePayloadDto`. `IssueDto.kind` remains the source of truth for UI filtering/labels;
  * `payload.kind` is only a narrowing discriminant for which payload fields are present. */
@@ -119,59 +162,76 @@ export type IssuePayloadDto =
   | { kind: "none" }
   | {
       kind: "invalid_loop";
-      /** Keyed by source check id — each entry is one invalid cycle's base-graph edges as
-       * [from, to] maze node-id pairs, for highlight rendering. Keyed per check (not one flat
-       * list) so hovering one check's bubble highlights only the cycles that check flagged, not
-       * every contributing check's cycles combined. */
-      edges: Record<string, [number, number][][]>;
+      /** Keyed by source check id — each entry is one invalid cycle, its base-graph edges as
+       * [from, to] maze node-id pairs plus its `preset_locked` status. Keyed per check (not one
+       * flat list) so hovering one check's bubble highlights only the cycles that check flagged,
+       * not every contributing check's cycles combined. */
+      edges: Record<string, IssueEdgeGroupPayload[]>;
     }
   | {
       kind: "region_needs_expansion";
-      /** Keyed by source check id — each entry is one flagged SCC region's member maze node ids
+      /** Keyed by source check id — each entry is one flagged SCC region, its member maze node
+       * ids paired with its own `preset_locked` status (GitHub issue #245's region extension)
        * (not edges — the UI derives the region's perimeter client-side from this node set, the
        * same way preset boundary walls are derived from a cell set). Keyed per check for the same
        * reason as the `invalid_loop` variant's `edges`. */
-      nodes: Record<string, number[][]>;
+      nodes: Record<string, IssueRegionPayload[]>;
     }
   | {
       kind: "region_needs_shrink";
       /** Mirrors `region_needs_expansion`'s `nodes` shape, for an oversized region flagged for
        * shrinking instead (`max_region_size`/`max_region_ratio`). */
-      nodes: Record<string, number[][]>;
+      nodes: Record<string, IssueRegionPayload[]>;
     }
   | {
       kind: "invalid_teleport";
-      /** Keyed by source check id — each entry is one flagged teleport "group", expressed as
-       * [from, to] maze node-id pairs, one pair per teleport edge in the group. A single invalid
-       * teleport (`invalid_teleport`) is a group of size one; a proximity pair
-       * (`invalid_teleport_group`) is a group of size two — both share this payload shape. Keyed
-       * per check for the same reason as the `invalid_loop` variant's `edges`. */
-      groups: Record<string, [number, number][][]>;
+      /** Keyed by source check id — each entry is one flagged teleport "group", its base-graph
+       * edges as [from, to] maze node-id pairs (one pair per teleport edge in the group) plus its
+       * `preset_locked` status. A single invalid teleport (`invalid_teleport`) is a group of size
+       * one; a proximity pair (`invalid_teleport_group`) is a group of size two — both share this
+       * payload shape. Keyed per check for the same reason as the `invalid_loop` variant's
+       * `edges`. */
+      groups: Record<string, IssueEdgeGroupPayload[]>;
     }
   | {
       kind: "invalid_one_way";
-      /** Keyed by source check id — each entry is one flagged one-way "group", expressed as
-       * [from, to] maze node-id pairs, one pair per one-way edge in the group. A single invalid
-       * one-way (`invalid_one_way`) is a group of size one; a proximity/super-hub/count-excess
-       * group (`invalid_one_way_group`) can be any size — both share this payload shape. Keyed
-       * per check for the same reason as the `invalid_loop` variant's `edges`. */
-      groups: Record<string, [number, number][][]>;
+      /** Keyed by source check id — each entry is one flagged one-way "group", its base-graph
+       * edges as [from, to] maze node-id pairs (one pair per one-way edge in the group) plus its
+       * `preset_locked` status. A single invalid one-way (`invalid_one_way`) is a group of size
+       * one; a proximity/super-hub/count-excess group (`invalid_one_way_group`) can be any size —
+       * both share this payload shape. Also carries `invalid_split_node_connection_group`'s
+       * elements (a pre-existing wire reuse — narrow on `payload.kind`, not `IssueDto.kind`, to
+       * find them). Keyed per check for the same reason as the `invalid_loop` variant's `edges`. */
+      groups: Record<string, IssueEdgeGroupPayload[]>;
     }
   | {
       kind: "invalid_split_tile";
-      /** Keyed by source check id — each entry is the flat list of flagged extra split-node maze
-       * ids (never a point's slot-0 node). Flat rather than list-of-lists (unlike
-       * `region_needs_expansion`'s `nodes`) since a split-tile flag has no group structure — every
-       * flagged node highlights independently. */
-      nodes: Record<string, number[]>;
+      /** Keyed by source check id — each entry is one flagged "instance" (a single tile, or a
+       * genuine multi-tile group for proximity/count/density checks), each paired with its own
+       * `preset_locked` status (GitHub issue #245's split extension). Shared wire variant for
+       * `invalid_split_tile`/`invalid_split_tile_group`/`invalid_split_node`/
+       * `invalid_split_node_group` — narrow on `payload.kind` plus the check's own type id
+       * (`source_check_types`) to tell which check produced a given element, and to pick the
+       * right "how many instances" counting granularity (see `issueRegistry.ts`'s
+       * `presetLockElementsFor`: most checks count `groups.length`, `max_split_count`/
+       * `max_split_density` count individual tiles across all groups instead, since those two
+       * checks fix by removing specific tiles, not whole groups). */
+      groups: Record<string, IssueSplitGroupPayload[]>;
     }
   | {
       kind: "invalid_split_route";
-      /** Keyed by source check id — each entry is one flagged route: an ordered sequence of
-       * [from, to, is_split_edge] triples, one per edge on the path, in traversal order (a route
-       * is a path, not a set — order carries meaning, unlike every other variant above).
-       * `is_split_edge` marks an edge incident to the split tile the route was found for. */
-      routes: Record<string, [number, number, boolean][][]>;
+      /** Keyed by source check id — each entry is one flagged route, paired with its own
+       * `preset_locked` status — order carries meaning (a route is a path, not a set), unlike
+       * every other variant above. */
+      routes: Record<string, IssueRoutePayload[]>;
+    }
+  | {
+      kind: "excessive_scc_count";
+      /** Keyed by source check id — whether repair can never reduce the SCC count at all because
+       * every region on the field is preset-locked against expansion. No per-element highlight
+       * data (unlike every variant above): this issue never highlights specific regions on the
+       * canvas. */
+      preset_locked: Record<string, boolean>;
     };
 
 export interface IssueDto {
@@ -475,6 +535,14 @@ export interface PostEditEdgeWasmDto {
   kind: PostEditEdgeKind;
 }
 
+/** One `QcRuleState`'s worth of active checks plus that rule's rule-level params (GitHub issue
+ * #245) — mirrors Rust's `AnalyticsRuleGroupConfig`. No `id`/`strategy` (unlike `QcRuleConfig`):
+ * `compute_analytics`'s analytics-only path has no strategy and never dispatches repair. */
+export interface AnalyticsRuleGroupConfig {
+  checks: CheckInstanceConfig[];
+  params?: Record<string, string>;
+}
+
 export interface ComputeAnalyticsConfig {
   tessellation: WasmTessellationConfig;
   /** The client's authoritative node list (real ids from the previous generation/confirm) —
@@ -499,5 +567,22 @@ export interface ComputeAnalyticsConfig {
    * `confirmPostEdit` in `postEditSlice.ts`. */
   start: number | null;
   finish: number | null;
-  checks: CheckInstanceConfig[];
+  /** Active checks grouped by their originating rule, each group carrying that rule's own
+   * rule-level params (e.g. `protect_route`, GitHub issue #253/#245) — grouped (not a flat check
+   * list) so a rule-level param actually reaches the Rust side's `resolve_rule_params` on this
+   * analytics-only path too, instead of always resolving to its default regardless of what the
+   * user configured. */
+  rule_groups: AnalyticsRuleGroupConfig[];
+  /** The project's current preset connections (GitHub issue #245) — post-edit rebuilds its graph
+   * from `nodes`/`edges` alone, but that rebuild loses which edges are user-placed preset
+   * Passage/OneWay connections vs. post-edit additions. Sent alongside so the Rust side can
+   * resolve each preset's endpoints fresh against the rebuilt field and mark cycle/group issue
+   * elements `preset_locked` accordingly. */
+  preset_connections?: PresetConnection[];
+  /** The project's current preset-declared split points (GitHub issue #245's split-node/route
+   * extension) — same `(point, slotId)` shape as `split_points`, but sourced from the preset
+   * snapshot (`state.presetSplitPoints`) rather than every current split point. Sent alongside so
+   * the Rust side can resolve each into a `NodeId` fresh against the rebuilt field and mark
+   * node/route-based split issue elements `preset_locked` accordingly. */
+  preset_split_points?: [[number, number], number][];
 }

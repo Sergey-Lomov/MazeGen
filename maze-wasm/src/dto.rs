@@ -57,19 +57,71 @@ pub struct NavEdgeDto {
 /// see `build_analytics_snapshot`'s `debug_assert!`s for the runtime check that they stay in
 /// sync. `IssueDto.kind` remains the source of truth for UI filtering/labels; `payload.kind` is
 /// only a TS-narrowing discriminant for which payload fields are present.
+/// One flagged cycle/group's base-graph edges paired with whether every one of them is
+/// preset-protected (GitHub issue #245) — mirrors `maze_core`'s `IssueEdgeGroupPayload`.
+/// `preset_locked: true` means repair can never fix this specific element (a user placed
+/// Passage/OneWay connection on every edge in it); `false` means it's either partly or wholly
+/// unprotected and repair could in principle fix it. Named struct (not a positional tuple) so the
+/// wire shape carries field names through to TS.
+#[derive(Debug, Serialize)]
+pub struct IssueEdgeGroupPayloadDto {
+    pub edges: Vec<[u32; 2]>,
+    pub preset_locked: bool,
+}
+
+/// One tile's own node list inside a flagged split-tile/split-node-group element — mirrors
+/// `maze_core`'s `IssueSplitTilePayload` (GitHub issue #245's split extension).
+#[derive(Debug, Serialize)]
+pub struct IssueSplitTilePayloadDto {
+    pub nodes: Vec<u32>,
+    pub preset_locked: bool,
+}
+
+/// One flagged split-tile "instance" (a single tile or a genuine multi-tile group) — mirrors
+/// `maze_core`'s `IssueSplitGroupPayload`.
+#[derive(Debug, Serialize)]
+pub struct IssueSplitGroupPayloadDto {
+    pub tiles: Vec<IssueSplitTilePayloadDto>,
+    pub preset_locked: bool,
+}
+
+/// One flagged region paired with whether it's preset-locked — mirrors `maze_core`'s
+/// `IssueRegionPayload` (GitHub issue #245's region extension).
+#[derive(Debug, Serialize)]
+pub struct IssueRegionPayloadDto {
+    pub region: Vec<u32>,
+    pub preset_locked: bool,
+}
+
+/// One edge of a flagged split route, in traversal order — mirrors `maze_core`'s `IssueRouteEdge`.
+#[derive(Debug, Serialize)]
+pub struct IssueRouteEdgeDto {
+    pub from: u32,
+    pub to: u32,
+    pub is_split_edge: bool,
+}
+
+/// One flagged split route paired with whether every edge on it is preset-locked — mirrors
+/// `maze_core`'s `IssueRoutePayload`.
+#[derive(Debug, Serialize)]
+pub struct IssueRoutePayloadDto {
+    pub edges: Vec<IssueRouteEdgeDto>,
+    pub preset_locked: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum IssuePayloadDto {
     None,
-    /// Keyed by source check id — each inner Vec is one invalid cycle flagged by that check,
-    /// expressed as base-graph [from, to] maze node-id pairs for highlight rendering. Keyed per
-    /// check (not one flat list) so that when one merged issue renders as several bubbles (one
-    /// per `source_checks` entry — see `quality_control.md`'s "Dedup interaction"), hovering a
-    /// bubble highlights only the cycles *that check* flagged, not every contributing check's
-    /// cycles combined (e.g. `min_loop_length`'s short loops must not highlight when hovering the
-    /// `max_loop_length` bubble).
+    /// Keyed by source check id — each entry is one invalid cycle flagged by that check, paired
+    /// with its `preset_locked` status. Keyed per check (not one flat list) so that when one
+    /// merged issue renders as several bubbles (one per `source_checks` entry — see
+    /// `quality_control.md`'s "Dedup interaction"), hovering a bubble highlights only the cycles
+    /// *that check* flagged, not every contributing check's cycles combined (e.g.
+    /// `min_loop_length`'s short loops must not highlight when hovering the `max_loop_length`
+    /// bubble).
     InvalidLoop {
-        edges: HashMap<String, Vec<Vec<[u32; 2]>>>,
+        edges: HashMap<String, Vec<IssueEdgeGroupPayloadDto>>,
     },
     /// Keyed by source check id — each inner Vec is one flagged SCC region's member maze node ids
     /// (not edges — the web side derives the region's perimeter client-side from this node set,
@@ -78,12 +130,12 @@ pub enum IssuePayloadDto {
     /// flag regions and merge into one issue, but hovering one bubble must highlight only that
     /// check's regions.
     RegionNeedsExpansion {
-        nodes: HashMap<String, Vec<Vec<u32>>>,
+        nodes: HashMap<String, Vec<IssueRegionPayloadDto>>,
     },
     /// Mirrors `RegionNeedsExpansion`'s shape, for an oversized region flagged for shrinking
     /// instead (`max_region_size`/`max_region_ratio` — see GitHub issue #177).
     RegionNeedsShrink {
-        nodes: HashMap<String, Vec<Vec<u32>>>,
+        nodes: HashMap<String, Vec<IssueRegionPayloadDto>>,
     },
     /// Keyed by source check id — each inner Vec is one flagged teleport "group", expressed as
     /// base-graph [from, to] maze node-id pairs, one pair per teleport edge in the group. A
@@ -92,7 +144,7 @@ pub enum IssuePayloadDto {
     /// both kinds rather than getting its own variant each, mirroring `InvalidLoop`'s reuse
     /// across `invalid_loop`/`invalid_loop_group`.
     InvalidTeleport {
-        groups: HashMap<String, Vec<Vec<[u32; 2]>>>,
+        groups: HashMap<String, Vec<IssueEdgeGroupPayloadDto>>,
     },
     /// Keyed by source check id — each inner Vec is one flagged one-way "group", expressed as
     /// base-graph [from, to] maze node-id pairs, one pair per one-way edge in the group. A
@@ -101,22 +153,28 @@ pub enum IssuePayloadDto {
     /// Reused across both kinds, mirroring `InvalidTeleport`'s reuse across
     /// `invalid_teleport`/`invalid_teleport_group`.
     InvalidOneWay {
-        groups: HashMap<String, Vec<Vec<[u32; 2]>>>,
+        groups: HashMap<String, Vec<IssueEdgeGroupPayloadDto>>,
     },
-    /// Keyed by source check id — each entry is the flat list of flagged split-tile maze node
-    /// ids (every node of each flagged tile, slot-0 included — see
-    /// `maze_core::InvalidSplitTileIssue`'s doc comment). Flat rather than list-of-lists (unlike
-    /// `RegionNeedsExpansion`) since the payload has no group/tile structure — every flagged node
-    /// highlights independently. See GitHub issues #248, #260.
+    /// Keyed by source check id — each entry is one flagged "instance" (a single tile, or a
+    /// genuine multi-tile group for proximity/count/density checks), each paired with its own
+    /// `preset_locked` status (GitHub issue #245's split extension). Shared wire variant for
+    /// `invalid_split_tile`/`invalid_split_tile_group`/`invalid_split_node`/`invalid_split_node_group`
+    /// — see GitHub issues #248, #260.
     InvalidSplitTile {
-        nodes: HashMap<String, Vec<u32>>,
+        groups: HashMap<String, Vec<IssueSplitGroupPayloadDto>>,
     },
-    /// Keyed by source check id — each inner Vec is one flagged route: an ordered sequence of
-    /// (from, to, is_split_edge) triples, one per edge on the path, in traversal order (a route
-    /// is a path, not a set — order carries meaning, unlike every other variant above). See
-    /// GitHub issue #277.
+    /// Keyed by source check id — each inner Vec is one flagged route, paired with its own
+    /// `preset_locked` status — order carries meaning (a route is a path, not a set), unlike every
+    /// other variant above. See GitHub issue #277, #245.
     InvalidSplitRoute {
-        routes: HashMap<String, Vec<Vec<(u32, u32, bool)>>>,
+        routes: HashMap<String, Vec<IssueRoutePayloadDto>>,
+    },
+    /// Keyed by source check id — whether repair can never reduce the SCC count at all because
+    /// every region on the field is preset-locked against expansion. No per-element highlight data
+    /// (unlike every variant above): this issue never highlights specific regions on the canvas.
+    /// See GitHub issue #245.
+    ExcessiveSccCount {
+        preset_locked: HashMap<String, bool>,
     },
 }
 
@@ -300,6 +358,17 @@ pub struct PostEditEdgeDto {
     pub kind: String,
 }
 
+/// One `QcRuleState`'s worth of active checks plus that rule's rule-level params (GitHub issue
+/// #245) — `compute_analytics`'s analytics-only path has no strategy and never dispatches repair,
+/// so this carries only what `resolve_rule_params`/the checks themselves actually consume, unlike
+/// the real `QcRuleConfig` (no `id`/`strategy` field).
+#[derive(Deserialize)]
+pub struct AnalyticsRuleGroupConfig {
+    pub checks: Vec<crate::generation_config::CheckInstanceConfig>,
+    #[serde(default)]
+    pub params: HashMap<String, String>,
+}
+
 #[derive(Deserialize)]
 pub struct ComputeAnalyticsConfig {
     pub tessellation: TessellationConfig,
@@ -323,14 +392,37 @@ pub struct ComputeAnalyticsConfig {
     pub split_points: Vec<([i32; 2], u32)>,
     pub start: Option<u32>,
     pub finish: Option<u32>,
-    /// Active checks for this analytics-only pass (no repair, no rules) — each becomes its own
-    /// synthetic singleton rule when building the `QualityControlEngine` (see
-    /// `dispatch_compute_analytics` in `lib.rs`), purely so `build_qc_and_repair`'s rule-driven
-    /// shape (GitHub issue #60) has something to iterate; the rule ids/kinds built from these are
-    /// discarded immediately since this path never dispatches repair (`run_check_only`, GitHub
-    /// issue #106).
+    /// Active checks for this analytics-only pass (no repair, no strategies), grouped by their
+    /// originating rule — each group becomes its own synthetic singleton-checks rule when building
+    /// the `QualityControlEngine` (see `analytics_only_stages` in `analytics/mod.rs`), purely so
+    /// `build_qc_and_repair`'s rule-driven shape (GitHub issue #60) has something to iterate; the
+    /// synthetic rule ids built from these are discarded immediately since this path never
+    /// dispatches repair (`run_check_only`, GitHub issue #106). Grouped (not a flat check list, as
+    /// before GitHub issue #245's teleport-route-protection bugfix) so each real rule's rule-level
+    /// params (e.g. `protect_route`) survive onto its synthetic rule instead of silently resolving
+    /// to their default every time on this path.
     #[serde(default)]
-    pub checks: Vec<crate::generation_config::CheckInstanceConfig>,
+    pub rule_groups: Vec<AnalyticsRuleGroupConfig>,
+    /// The project's current preset connections (GitHub issue #245) — post-edit rebuilds
+    /// `Field`/`Graph` from `nodes`/`edges` alone, but a preset connection's *provenance* (that a
+    /// given edge is a user-placed Passage/OneWay, not a repair/post-edit addition) isn't
+    /// recoverable from the rebuilt graph itself. Sent alongside so `run_compute_analytics` can
+    /// resolve each preset's endpoints against the rebuilt field and mark cycle/group elements
+    /// `preset_locked` accordingly — same edges the generation path already protects, just
+    /// resolved fresh here since post-edit's `Field`/ids don't share generation's `PresetState`.
+    /// `#[serde(default)]` so calls/fixtures predating this field still deserialize.
+    #[serde(default)]
+    pub preset_connections: Vec<crate::generation_config::PresetConnectionDto>,
+    /// The project's current preset-declared split points (GitHub issue #245's split-node/route
+    /// extension) — same shape as `split_points`, but sourced from the preset snapshot
+    /// (`state.presetSplitPoints`) rather than every current split point (`split_points`/`nodes`
+    /// carry all of them, preset-declared or not). Resolved fresh against the rebuilt field via
+    /// `resolve_preset_nodes_for_post_edit` into `PresetState.preset_declared_nodes`, mirroring how
+    /// `preset_connections` feeds `preset_edges`. An entry referencing a point/slot the rebuilt
+    /// field/split map doesn't resolve is silently skipped, same contract as `preset_connections`.
+    /// `#[serde(default)]` so calls/fixtures predating this field still deserialize.
+    #[serde(default)]
+    pub preset_split_points: Vec<([i32; 2], u32)>,
 }
 
 #[derive(Serialize)]
