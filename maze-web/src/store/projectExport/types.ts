@@ -3,7 +3,7 @@ import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPatter
 import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, FeatureId, RenderModeId } from "../mazeStore";
-import type { VectorByWallsSettings, PngExportSettings } from "../storeTypes";
+import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings } from "../storeTypes";
 
 export interface ProjectFilePostEdit {
   edges: [string, PostEditEdge][];
@@ -48,6 +48,10 @@ export interface ProjectFileImageExport {
   /** Expanded/collapsed state per "Vector by walls" settings section, keyed by section id —
    * mirrors `analytics.sectionsExpanded`. */
   vectorByWallsSectionsExpanded: Record<string, boolean>;
+  vectorByCorridorsSettings: VectorByCorridorsSettings;
+  /** Expanded/collapsed state per "Vector by corridors" settings section, keyed by section id —
+   * mirrors `vectorByWallsSectionsExpanded`. */
+  vectorByCorridorsSectionsExpanded: Record<string, boolean>;
   pngExportSettings: PngExportSettings;
 }
 

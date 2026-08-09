@@ -4,12 +4,12 @@ import type { PostEditEdge, PostEditTeleportEntry, FeatureId, RenderModeId } fro
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import {
-  MAX_NESTED_STRATEGY_DEPTH, type MarkerSettings, type VectorByWallsSettings, type PngExportSettings,
+  MAX_NESTED_STRATEGY_DEPTH, type MarkerSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
 import type { MarkerShape } from "../../pixi/renderers/types";
-import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
+import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
 import {
   CURRENT_VERSION,
   type ProjectFile,
@@ -615,7 +615,7 @@ function validateVectorByWallsSettings(v: unknown, path: string): VectorByWallsS
   };
 }
 
-const KNOWN_RENDER_MODE_IDS: RenderModeId[] = ["vector_by_walls"];
+const KNOWN_RENDER_MODE_IDS: RenderModeId[] = ["vector_by_walls", "vector_by_corridors"];
 
 /** Degrades to `null` for an unknown/future `RenderModeId` — same "never throw" convention
  * `resolveRenderMode` itself uses, so a project file naming a since-removed/renamed mode loads
@@ -698,6 +698,13 @@ function validatePngExportSettings(v: unknown, path: string): PngExportSettings 
   };
 }
 
+/** Empty scaffolding (GitHub issue #315) — always returns the (empty) default, same
+ * shared-with-`imageExportSlice.ts` convention as `validateVectorByWallsSettings`. Follow-up
+ * sub-issues fill in real fields as `VectorByCorridorsSettings` grows. */
+function validateVectorByCorridorsSettings(_v: unknown, _path: string): VectorByCorridorsSettings {
+  return DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS;
+}
+
 function validateImageExport(v: unknown, path: string): ProjectFileImageExport {
   let obj: Record<string, unknown> | null = null;
   if (v != null) {
@@ -713,6 +720,10 @@ function validateImageExport(v: unknown, path: string): ProjectFileImageExport {
     vectorByWallsSettings: validateVectorByWallsSettings(obj?.vectorByWallsSettings, `${path}.vectorByWallsSettings`),
     vectorByWallsSectionsExpanded: obj?.vectorByWallsSectionsExpanded != null
       ? assertBoolRecord(obj.vectorByWallsSectionsExpanded, `${path}.vectorByWallsSectionsExpanded`)
+      : {},
+    vectorByCorridorsSettings: validateVectorByCorridorsSettings(obj?.vectorByCorridorsSettings, `${path}.vectorByCorridorsSettings`),
+    vectorByCorridorsSectionsExpanded: obj?.vectorByCorridorsSectionsExpanded != null
+      ? assertBoolRecord(obj.vectorByCorridorsSectionsExpanded, `${path}.vectorByCorridorsSectionsExpanded`)
       : {},
     pngExportSettings: validatePngExportSettings(obj?.pngExportSettings, `${path}.pngExportSettings`),
   };

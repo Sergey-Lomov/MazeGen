@@ -1,6 +1,7 @@
 import { useMazeStore } from "../../store/mazeStore";
 import type { VectorByWallsSettings, RenderModeId } from "../../store/storeTypes";
 import { TILE_SIZE } from "../constants";
+import { canvas } from "../colorTokens";
 
 /** World-space required margin around a maze's raw cell-boundary bounding box, per side — how far
  * a mode's own drawn geometry (walls, markers, indicators...) can visually extend past it. Not
@@ -12,7 +13,9 @@ export interface ExportMargin {
   bottom: number;
 }
 
-function uniform(v: number): ExportMargin {
+/** Exported so mode renderers with a trivially uniform margin (e.g. `VectorByCorridorsRenderer`'s
+ * scaffolding zero) don't need to hand-build the `ExportMargin` shape themselves. */
+export function uniform(v: number): ExportMargin {
   return { left: v, right: v, top: v, bottom: v };
 }
 
@@ -52,6 +55,8 @@ export function resolveExportMargin(mode: RenderModeId, state: Pick<ReturnType<t
   switch (mode) {
     case "vector_by_walls":
       return computeVectorByWallsExportMargin(state.vectorByWallsSettings);
+    case "vector_by_corridors":
+      return uniform(0);
   }
 }
 
@@ -61,6 +66,8 @@ export function resolveWallExportMargin(mode: RenderModeId, state: Pick<ReturnTy
   switch (mode) {
     case "vector_by_walls":
       return computeVectorByWallsWallMargin(state.vectorByWallsSettings);
+    case "vector_by_corridors":
+      return uniform(0);
   }
 }
 
@@ -73,5 +80,7 @@ export function resolveBackgroundColor(mode: RenderModeId, state: Pick<ReturnTyp
   switch (mode) {
     case "vector_by_walls":
       return state.vectorByWallsSettings.background;
+    case "vector_by_corridors":
+      return canvas.stage.background;
   }
 }

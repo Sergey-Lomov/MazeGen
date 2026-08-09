@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { MazeStore, ImageExportState, ImageExportActions, VectorByWallsSettings, PngExportSettings } from "../storeTypes";
+import type { MazeStore, ImageExportState, ImageExportActions, VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
 import { NODE_RADIUS, WALL_THICKNESS } from "../../pixi/renderConstants";
 import { TILE_SIZE } from "../../pixi/constants";
@@ -44,6 +44,10 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = {
   splitSpecialShapes: true,
 };
 
+/** Empty scaffolding (GitHub issue #315) — filled in by follow-up sub-issues, same
+ * shared-with-`validate.ts` convention as `DEFAULT_VECTOR_BY_WALLS_SETTINGS`. */
+export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = {};
+
 /** Shared with `projectExport/validate.ts`'s recovery defaults, same convention as
  * `DEFAULT_VECTOR_BY_WALLS_SETTINGS`. */
 export const DEFAULT_PNG_EXPORT_SETTINGS: PngExportSettings = {
@@ -57,6 +61,8 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
   openRenderModeSettings: null,
   vectorByWallsSectionsExpanded: {},
   vectorByWallsSettings: DEFAULT_VECTOR_BY_WALLS_SETTINGS,
+  vectorByCorridorsSectionsExpanded: {},
+  vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
   selectedTeleportGroupKey: null,
   hoveredExportWarningKey: null,
   openExportFormatSettings: null,
@@ -94,6 +100,8 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ pngExportSettings: { ...s.pngExportSettings, print: { ...s.pngExportSettings.print, scale, offsetXMm, offsetYMm, anchor: "custom" } } })),
   setVectorByWallsSectionExpanded: (id, expanded) =>
     set((s) => ({ vectorByWallsSectionsExpanded: { ...s.vectorByWallsSectionsExpanded, [id]: expanded } })),
+  setVectorByCorridorsSectionExpanded: (id, expanded) =>
+    set((s) => ({ vectorByCorridorsSectionsExpanded: { ...s.vectorByCorridorsSectionsExpanded, [id]: expanded } })),
   setVectorByWallsBackground: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, background: color } })),
   setVectorByWallsShowGrid: (v) =>

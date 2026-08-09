@@ -1,5 +1,6 @@
 import { Container } from "pixi.js";
 import { VectorByWallsRenderer } from "./VectorByWallsRenderer";
+import { VectorByCorridorsRenderer } from "./VectorByCorridorsRenderer";
 import type { RenderModeId } from "../../store/storeTypes";
 import type { ViewportListener } from "../sceneTypes";
 import type { ExportMargin } from "./exportMargins";
@@ -29,5 +30,7 @@ export function createModeRenderer(mode: RenderModeId, container: Container): Mo
   switch (mode) {
     case "vector_by_walls":
       return new VectorByWallsRenderer(container);
+    case "vector_by_corridors":
+      return new VectorByCorridorsRenderer(container);
   }
 }

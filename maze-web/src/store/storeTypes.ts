@@ -66,7 +66,7 @@ export type FeatureId = "basic_config" | "field_setup" | "preset_connections" | 
 
 /** Registry id of a maze image-export rendering mode (see `Specs/image-export.md` and
  * `imageExportRegistry.ts`) — one entry per switcher item in the Image Export feature card. */
-export type RenderModeId = "vector_by_walls";
+export type RenderModeId = "vector_by_walls" | "vector_by_corridors";
 
 /** Registry id of a maze image-export output format (see `exportFormatRegistry.ts`) — one entry
  * per row in the Image Export feature card's format list, below the render-mode switcher. */
@@ -1033,6 +1033,12 @@ export interface VectorByWallsSettings {
   splitSpecialShapes: boolean;
 }
 
+/** "Vector by corridors" mode's own settings (GitHub issue #315) — empty scaffolding today, filled
+ * in by follow-up sub-issues. Kept as its own type (not folded into `VectorByWallsSettings`), same
+ * per-mode-settings convention as every other `RenderModeId`. */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface VectorByCorridorsSettings {}
+
 export interface ImageExportState {
   /** Currently active rendering mode in the Image Export feature card's switcher, or `null` if
    * the user hasn't picked one yet — a radio group with no default selection, not independent
@@ -1048,6 +1054,10 @@ export interface ImageExportState {
    * mirrors `AnalyticsOverlayState.analyticsSectionsExpanded`. */
   vectorByWallsSectionsExpanded: Record<string, boolean>;
   vectorByWallsSettings: VectorByWallsSettings;
+  /** Expanded/collapsed state per "Vector by corridors" settings section, keyed by section id —
+   * mirrors `vectorByWallsSectionsExpanded`. */
+  vectorByCorridorsSectionsExpanded: Record<string, boolean>;
+  vectorByCorridorsSettings: VectorByCorridorsSettings;
   /** Currently *selected* (clicked, not hovered — GitHub issue #293 follow-up) teleport connection
    *  group, by `TeleportGroup.key` — set either by clicking a row in the Teleports section's group
    *  list or by clicking that group's own marker(s) on the canvas (two-way selection sync). `Escape`
@@ -1092,6 +1102,7 @@ export interface ImageExportActions {
    * three separate ones. */
   setPrintCustomPlacement: (scale: number, offsetXMm: number, offsetYMm: number) => void;
   setVectorByWallsSectionExpanded: (id: string, expanded: boolean) => void;
+  setVectorByCorridorsSectionExpanded: (id: string, expanded: boolean) => void;
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;

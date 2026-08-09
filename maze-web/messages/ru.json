@@ -1132,6 +1132,7 @@
   "project.load_error_json": "Неверный формат файла (не валидный JSON)",
   "image_export.title": "Экспорт изображения",
   "image_export.mode.vector_by_walls.label": "Вектор по стенам",
+  "image_export.mode.vector_by_corridors.label": "Вектор по коридорам",
   "image_export.settings_empty": "У этого режима рендера пока нет настроек",
   "image_export.format.png.label": "PNG",
   "image_export.format.settings_tooltip": "Настройки экспорта в {format}",

@@ -1,6 +1,7 @@
 import type React from "react";
 import type { RenderModeId } from "../../store/mazeStore";
 import { VectorByWallsSettingsPanel } from "./VectorByWallsSettingsPanel";
+import { VectorByCorridorsSettingsPanel } from "./VectorByCorridorsSettingsPanel";
 import * as m from "~/paraglide/messages";
 
 export interface RenderModeDescriptor {
@@ -16,6 +17,7 @@ export interface RenderModeDescriptor {
 /// `ImageExportRenderer.createModeRenderer`) — no other list to keep in sync.
 export const RENDER_MODES: RenderModeDescriptor[] = [
   { id: "vector_by_walls", label: () => m["image_export.mode.vector_by_walls.label"](), SettingsPanel: VectorByWallsSettingsPanel },
+  { id: "vector_by_corridors", label: () => m["image_export.mode.vector_by_corridors.label"](), SettingsPanel: VectorByCorridorsSettingsPanel },
 ];
 
 /** Looks up a mode's descriptor, or `null` if `id` isn't registered — e.g. a project file saved
