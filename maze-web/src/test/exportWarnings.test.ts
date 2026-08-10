@@ -52,6 +52,7 @@ function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {
     color: 0, thickness: 4, join: "round",
     startMarker: defaultMarker, finishMarker: defaultMarker,
     markerWidenPadding: 0, markerWidenShape: "match_marker",
+    oneWayColor: 0, oneWayCount: 1, oneWayThickness: 4, oneWayGap: 4, oneWayWidth: 1, oneWayLength: 1, oneWayJoin: "round",
     teleportLineCornerStyle: "round", teleportLineShape: "diamond", teleportLineSize: 0.16,
     teleportEdgeColor: 0xff0000, teleportEdgeBorderColor: 0xff0000, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 3,
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
@@ -270,6 +271,46 @@ describe("computeVectorByCorridorsWarnings", () => {
     it("no start/finish set -> no warning", () => {
       const warnings = computeVectorByCorridorsWarnings(plainSplitNodes, [], squareCfg, baseCorridorsSettings(), null, null);
       expect(warnings).toHaveLength(0);
+    });
+  });
+
+  describe("one_way_arrows_overflow_corridor", () => {
+    it("flags a one-way passage when the chevron row's length exceeds TILE_SIZE", () => {
+      const nodes = [n(0, 0, 0), n(1, 1, 0)];
+      const edges = [e(0, 1)]; // one-way: no reverse edge
+      // fullWidth = 1*10 = 10, lengthPx = 5*10 = 50; rowStep = 50+5+10 = 65;
+      // rowLength = 9*65 + 50+10 = 645 > TILE_SIZE
+      const settings = baseCorridorsSettings({ oneWayCount: 10, oneWayLength: 5, oneWayGap: 5, oneWayThickness: 10, oneWayWidth: 1 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
+      const matches = warnings.filter((w) => w.id === "one_way_arrows_overflow_corridor");
+      expect(matches).toHaveLength(1);
+      expect(matches[0].nodes.sort()).toEqual([0, 1]);
+      expect(matches[0].edges).toEqual([[0, 1]]);
+    });
+
+    it("flags a one-way passage when oneWayWidth exceeds 1", () => {
+      const nodes = [n(0, 0, 0), n(1, 1, 0)];
+      const edges = [e(0, 1)];
+      const settings = baseCorridorsSettings({ oneWayWidth: 1.5 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "one_way_arrows_overflow_corridor")).toHaveLength(1);
+    });
+
+    it("does not flag when the row fits within a cell", () => {
+      const nodes = [n(0, 0, 0), n(1, 1, 0)];
+      const edges = [e(0, 1)];
+      // fullWidth = 1*4 = 4, lengthPx = 1*4 = 4; rowLength (count=1) = 4+4 = 8 < TILE_SIZE
+      const settings = baseCorridorsSettings({ oneWayCount: 1, oneWayLength: 1, oneWayGap: 4, oneWayWidth: 1 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "one_way_arrows_overflow_corridor")).toHaveLength(0);
+    });
+
+    it("does not flag a bidirectional passage even with overflowing settings", () => {
+      const nodes = [n(0, 0, 0), n(1, 1, 0)];
+      const edges = [e(0, 1), e(1, 0)];
+      const settings = baseCorridorsSettings({ oneWayCount: 10, oneWayLength: 20, oneWayGap: 5 });
+      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "one_way_arrows_overflow_corridor")).toHaveLength(0);
     });
   });
 

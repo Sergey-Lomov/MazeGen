@@ -731,6 +731,13 @@ function validateVectorByCorridorsSettings(v: unknown, path: string): VectorByCo
     finishMarker: validateMarkerSettings(obj?.finishMarker, `${path}.finishMarker`, d.finishMarker),
     markerWidenPadding: optNumber(obj, "markerWidenPadding", d.markerWidenPadding),
     markerWidenShape: optMarkerWidenShape(obj, "markerWidenShape", d.markerWidenShape),
+    oneWayColor: optNumber(obj, "oneWayColor", d.oneWayColor),
+    oneWayCount: optNumber(obj, "oneWayCount", d.oneWayCount),
+    oneWayThickness: optNumber(obj, "oneWayThickness", d.oneWayThickness),
+    oneWayGap: optNumber(obj, "oneWayGap", d.oneWayGap),
+    oneWayWidth: optNumber(obj, "oneWayWidth", d.oneWayWidth),
+    oneWayLength: optNumber(obj, "oneWayLength", d.oneWayLength),
+    oneWayJoin: optJoin(obj, "oneWayJoin", d.oneWayJoin),
     ...validateTeleportSettingsFields(obj, path, d),
   };
 }

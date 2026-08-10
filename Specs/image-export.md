@@ -77,9 +77,11 @@ passage between two geometrically adjacent cells draws as a stroked line between
 line, not the wall around it. GitHub issue #310 (scaffolded in #315).
 
 Its settings panel (`VectorByCorridorsSettingsPanel.tsx`) has a collapsible "Cells" section, a
-collapsible "Waypoints" section, a "Teleports" section (hidden entirely when the maze has no
-teleport edge), and a warnings section (`vectorByCorridorsSectionsExpanded`, same collapse
-convention as `VectorByWallsSettingsPanel`'s own sections — collapsed by default), backed by
+collapsible "Waypoints" section, a "One-ways" section (GitHub issue #312, hidden entirely when the
+maze has no one-way basic edge — same `hasOneWays` check `VectorByWallsSettingsPanel` uses, placed
+before "Teleports" per that panel's own section order), a "Teleports" section (hidden entirely when
+the maze has no teleport edge), and a warnings section (`vectorByCorridorsSectionsExpanded`, same
+collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed by default), backed by
 `VectorByCorridorsSettings` (`imageExportSlice.ts`):
 
 - **"Cells"** — corridor color, corners & ends (round/miter join, paired with a round/square cap —
@@ -113,6 +115,35 @@ convention as `VectorByWallsSettingsPanel`'s own sections — collapsed by defau
   color, since this mode has none. Start/finish marker footprint is folded into
   `computeVectorByCorridorsExportMargin` the same way `computeVectorByWallsExportMargin` folds in
   its own waypoint margins.
+- **"One-ways"** (GitHub issue #312) — a one-way basic passage's own indicator: a row of chevrons
+  ("`>`" shapes with no base) drawn at the segment's midpoint, on top of the plain stroke, breaking
+  the corridor line instead of a `VectorByWallsSettings.oneWayPattern`-style indicator sitting on a
+  wall segment (this mode has no wall segment to draw on). Backed by `OneWaySettingsFields`
+  (`storeTypes.ts`, `VectorByCorridorsSettings extends` it alongside `TeleportSettingsFields`):
+  `oneWayColor` (default `canvas.stage.background` — reads as a gap cut into the corridor stroke,
+  not an indicator drawn on top of it, unlike `VectorByWallsSettings.oneWayColor`'s always-own-color
+  convention), `oneWayCount` (1-10, default 2), `oneWayThickness` (chevron stroke width, 1 to
+  `TILE_SIZE / 4`, default half that max), `oneWayGap` (visible pixel gap between two adjacent
+  chevrons' own stroked edges, 0 to `TILE_SIZE / 4`, default half that max — `0` means adjacent
+  chevrons touch), `oneWayWidth` (0.01-1, fraction of the corridor's own `thickness` across the
+  corridor, default 0.5), `oneWayLength` (0.1-1, a *multiplier* of the chevron's own full opening
+  width `oneWayWidth * thickness` rather than an absolute pixel size — so the chevron's opening angle
+  stays constant as `oneWayWidth`/`thickness` change instead of visibly flattening/sharpening on its
+  own, default 0.3) and `oneWayJoin` (round/miter, independent of the Cells section's own `join`).
+  Drawn via `drawOneWayChevronRow` (`pixi/renderers/wallUtils.ts`) — reuses `drawOneWayChevron` per
+  chevron rather than a hand-rolled multi-chevron path, spacing adjacent chevrons by
+  `chevronRowStep = length + gap + thickness` (both `VectorByCorridorsRenderer` and
+  `computeVectorByCorridorsWarnings`' overflow check call this same function, so they can't drift
+  apart). `VectorByCorridorsRenderer` resolves `oneWayLengthPx = oneWayLength * oneWayWidth *
+  thickness` and passes it as `drawOneWayChevronRow`'s `length` argument, and `oneWayWidth * thickness
+  / 2` as the chevron's own half-opening (`drawOneWayChevron`'s `width` — a half-opening, so the
+  desired full opening is halved). Direction comes from `buildCorridorSegments`' own `oneWayDir`
+  (`pixi/selectors/mazeSelectors.ts` — a unit vector along the segment, unset for a bidirectional
+  passage, computed the same directed-set way `buildMazeWalls` computes its own `oneWayDir`); each
+  segment also carries its own `fromNode`/`toNode` so downstream consumers (the overflow warning
+  below) can flag the exact edge a segment was drawn for without re-deriving geometric-neighbor
+  adjacency themselves. Folded into `computeVectorByCorridorsExportMargin` as
+  `Math.max(corridorHalf, oneWayWidth * thickness / 2)`.
 - **"Teleports"** (GitHub issue #313 follow-up) — teleports aren't tied to the corridor-vs-wall
   visual model, so `VectorByCorridorsSettings extends TeleportSettingsFields` (`storeTypes.ts`) and
   the whole set of teleport fields/rendering transfers from "Vector by walls" as-is: same
@@ -137,21 +168,23 @@ convention as `VectorByWallsSettingsPanel`'s own sections — collapsed by defau
   `buildTeleportGroups` itself — `TeleportRenderer.render` already computes the same grouping
   internally for the same edges, so a second independent call would repeat that work for nothing.
 
-Both bidirectional and one-way passages draw the identical segment today — direction isn't
-distinguished yet, left for a follow-up sub-issue's own indicator setting. Split points (a cell with
-more than one `NodeDto`) are skipped entirely — their passages draw nothing in this mode, same "own
-dedicated sub-issue" convention `VectorByWallsRenderer`'s split section followed before its own
-issue landed. `buildCorridorSegments` excludes them the same way `buildMazeWalls` excludes split
-points from its own wall reading (`splitPointKeys`).
+A one-way passage draws its chevron-row indicator (see the "One-ways" section above) on top of the
+same plain stroke a bidirectional passage draws — `buildCorridorSegments`' own `oneWayDir` is what
+distinguishes the two. Split points (a cell with more than one `NodeDto`) are skipped entirely —
+their passages draw nothing in this mode, same "own dedicated sub-issue" convention
+`VectorByWallsRenderer`'s split section followed before its own issue landed. `buildCorridorSegments`
+excludes them the same way `buildMazeWalls` excludes split points from its own wall reading
+(`splitPointKeys`).
 
 Corner/end joins are applied by chaining corridor segments into polylines wherever exactly two
 segments meet at a shared vertex (`chainSegmentsAtSharedVertices`, `WallRenderer.ts` — reused as-is,
 not duplicated, since the join-only-renders-within-one-stroked-path constraint is identical to
 `VectorByWallsRenderer`'s own wall join). `getRequiredExportMargin`/`getRequiredWallExportMargin`
-both resolve to `computeVectorByCorridorsExportMargin` (`exportMargins.ts`) — the wider of half the
-corridor stroke's own width and a start/finish marker's own footprint, the only geometry this mode
-draws past a cell's raw center point; unlike "Vector by walls" there's no separate wall-only margin
-to distinguish, so both getters return the same value. Background color is not yet user-configurable
+both resolve to `computeVectorByCorridorsExportMargin` (`exportMargins.ts`) — the widest of half the
+corridor stroke's own width, a start/finish marker's own footprint, the one-way chevron row's own
+width and a teleport marker/connector's own footprint, i.e. every geometry this mode draws past a
+cell's raw center point; unlike "Vector by walls" there's no separate wall-only margin to
+distinguish, so both getters return the same value. Background color is not yet user-configurable
 — always `canvas.stage.background` (`resolveBackgroundColor`'s `"vector_by_corridors"` case), a
 follow-up sub-issue's concern.
 
@@ -189,6 +222,16 @@ GitHub issue #311's own check, plus the three teleport checks added as a #313 fo
   start/finish marker style, called by both `computeVectorByWallsWarnings` and
   `computeVectorByCorridorsWarnings`, so the two modes' warning sets can't silently drift apart on
   the fields they actually share.
+- **`one_way_arrows_overflow_corridor`** (GitHub issue #312) — the "One-ways" section's own settings
+  would draw a chevron row overflowing a single cell's bounds: either the row's full visible extent
+  along the corridor (`(count-1) * chevronRowStep(lengthPx, gap, thickness) + lengthPx + thickness`,
+  mirroring `drawOneWayChevronRow`'s own spacing exactly) exceeds `TILE_SIZE`, or `oneWayWidth`
+  exceeds `1` (wider than the corridor stroke itself — reachable only via a malformed/hand-edited
+  project file, since the settings panel's own slider caps at `1`). One warning total, covering every
+  one-way passage at once. Flagged edges/nodes come from `buildCorridorSegments`' own `oneWayDir`
+  segments (via their `fromNode`/`toNode`) — the exact set of passages this mode actually draws a
+  chevron row for, not a looser re-derivation from the raw edge list that could flag an edge with no
+  drawn corridor segment at all (a split-point edge, or a non-geometric-neighbor pair).
 
 This mode has no special-split-shape rendering of its own to check against
 (`waypoint_on_split`/`teleport_on_special_split` stay "Vector by walls"-only), which is why

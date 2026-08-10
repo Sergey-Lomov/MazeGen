@@ -100,38 +100,56 @@ export function maxSplitNodeCount(nodes: NodeDto[]): number {
   return max;
 }
 
+/** One `buildCorridorSegments` result entry — `oneWayDir` mirrors `WallEdge.oneWayDir`'s own
+ *  convention (GitHub issue #312): unset for a bidirectional passage, else a unit vector along the
+ *  segment pointing in the passage's actual allowed direction (from `v0`'s cell to `v1`'s, or the
+ *  reverse), for `VectorByCorridorsRenderer`'s one-way chevron-row indicator. `fromNode`/`toNode`
+ *  (GitHub issue #312 follow-up) are the two cells' own node ids, matching `v0`/`v1` respectively —
+ *  lets `computeVectorByCorridorsWarnings`' overflow check flag exactly the edges this function
+ *  actually draws a segment for (geometric neighbors, not split points, per this function's own
+ *  exclusions) instead of re-deriving a looser approximation from the raw edge list. */
+export type CorridorSegment = {
+  v0: { x: number; y: number };
+  v1: { x: number; y: number };
+  oneWayDir?: { dx: number; dy: number };
+  fromNode: number;
+  toNode: number;
+};
+
 /** Center-to-center line segments for every basic passage between geometrically adjacent cells —
  *  the "Vector by corridors" render mode's own maze reading (GitHub issue #310), the inverse of
- *  `buildMazeWalls`' "gap in the wall" reading. Both bidirectional and one-way passages draw the
- *  same segment (direction isn't distinguished yet — a follow-up sub-issue's concern). Split points
- *  are skipped entirely, same as `buildMazeWalls`' own `splitPointKeys` exclusion — a follow-up
- *  sub-issue adds their own dedicated corridor reading, same "own sub-issue" convention
- *  `buildSplitPassages` follows for `VectorByWallsRenderer`. Teleport edges are never geometric
- *  neighbors of each other in `getNeighborData`'s sense, so they're naturally excluded without any
- *  extra `kind` check. */
+ *  `buildMazeWalls`' "gap in the wall" reading. `oneWayDir` (GitHub issue #312) distinguishes a
+ *  one-way passage from a bidirectional one, same directed-set approach `buildMazeWalls` uses for
+ *  its own `oneWayDir`. Split points are skipped entirely, same as `buildMazeWalls`' own
+ *  `splitPointKeys` exclusion — a follow-up sub-issue adds their own dedicated corridor reading,
+ *  same "own sub-issue" convention `buildSplitPassages` follows for `VectorByWallsRenderer`.
+ *  Teleport edges are never geometric neighbors of each other in `getNeighborData`'s sense, so
+ *  they're naturally excluded without any extra `kind` check. */
 export function buildCorridorSegments(
   nodes: NodeDto[],
   edges: EdgeDto[],
   cfg: TessellationConfig,
-): { v0: { x: number; y: number }; v1: { x: number; y: number } }[] {
+): CorridorSegment[] {
   const nodeById = new Map<number, NodeDto>();
-  for (const n of nodes) nodeById.set(n.id, n);
+  const nodeByCoord = new Map<string, NodeDto>();
+  for (const n of nodes) {
+    nodeById.set(n.id, n);
+    nodeByCoord.set(`${n.x},${n.y}`, n);
+  }
 
-  const connected = new Set<string>();
+  const directed = new Set<string>();
   for (const e of edges) {
     if (e.kind === "teleport") continue;
     const from = nodeById.get(e.from);
     const to = nodeById.get(e.to);
     if (!from || !to) continue;
-    const a = from.x < to.x || (from.x === to.x && from.y < to.y) ? from : to;
-    const b = a === from ? to : from;
-    connected.add(`${a.x},${a.y}->${b.x},${b.y}`);
+    directed.add(`${from.x},${from.y}->${to.x},${to.y}`);
   }
 
   const cells: [number, number][] = nodes.map((n) => [n.x, n.y]);
   const cellSet = buildCellSet(cells);
   const splitPointKeys = buildSplitPointKeys(nodes);
-  const result: { v0: { x: number; y: number }; v1: { x: number; y: number } }[] = [];
+  const result: CorridorSegment[] = [];
 
   for (const n of nodes) {
     const selfKey = `${n.x},${n.y}`;
@@ -140,13 +158,31 @@ export function buildCorridorSegments(
     for (const [dx, dy] of offsets) {
       const nx = n.x + dx;
       const ny = n.y + dy;
-      if (!cellSet.has(`${nx},${ny}`)) continue;
-      if (splitPointKeys.has(`${nx},${ny}`)) continue;
+      const neighborKey = `${nx},${ny}`;
+      if (!cellSet.has(neighborKey)) continue;
+      if (splitPointKeys.has(neighborKey)) continue;
       const ownsEdge = n.x < nx || (n.x === nx && n.y < ny);
       if (!ownsEdge) continue;
-      if (!connected.has(`${n.x},${n.y}->${nx},${ny}`)) continue;
 
-      result.push({ v0: getCellCenter(n.x, n.y, cfg), v1: getCellCenter(nx, ny, cfg) });
+      const fwd = directed.has(`${n.x},${n.y}->${nx},${ny}`);
+      const bwd = directed.has(`${nx},${ny}->${n.x},${n.y}`);
+      if (!fwd && !bwd) continue;
+
+      const neighborNode = nodeByCoord.get(neighborKey);
+      if (!neighborNode) continue;
+
+      const v0 = getCellCenter(n.x, n.y, cfg);
+      const v1 = getCellCenter(nx, ny, cfg);
+
+      let oneWayDir: { dx: number; dy: number } | undefined;
+      if (fwd !== bwd) {
+        const tdx = fwd ? v1.x - v0.x : v0.x - v1.x;
+        const tdy = fwd ? v1.y - v0.y : v0.y - v1.y;
+        const len = Math.sqrt(tdx * tdx + tdy * tdy);
+        if (len > 0) oneWayDir = { dx: tdx / len, dy: tdy / len };
+      }
+
+      result.push({ v0, v1, oneWayDir, fromNode: n.id, toNode: neighborNode.id });
     }
   }
 

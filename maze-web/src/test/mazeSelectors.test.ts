@@ -203,11 +203,22 @@ describe("buildCorridorSegments", () => {
     expect(segments[0].v1).toEqual(getCellCenter(1, 0, squareCfg));
   });
 
-  it("a one-way passage draws the same segment as a bidirectional one", () => {
+  it("a one-way passage draws the same v0/v1 as a bidirectional one, but carries its own oneWayDir (GitHub issue #312)", () => {
     const nodes = [n(0, 0, 0), n(1, 1, 0)];
     const oneWay = buildCorridorSegments(nodes, [e(0, 1)], squareCfg);
     const both = buildCorridorSegments(nodes, [e(0, 1), e(1, 0)], squareCfg);
-    expect(oneWay).toEqual(both);
+    expect(oneWay).toHaveLength(1);
+    expect(oneWay[0].v0).toEqual(both[0].v0);
+    expect(oneWay[0].v1).toEqual(both[0].v1);
+    expect(oneWay[0].oneWayDir).toEqual({ dx: 1, dy: 0 });
+    expect(both[0].oneWayDir).toBeUndefined();
+  });
+
+  it("a backward-only one-way passage's oneWayDir points from v1 toward v0", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const backward = buildCorridorSegments(nodes, [e(1, 0)], squareCfg);
+    expect(backward).toHaveLength(1);
+    expect(backward[0].oneWayDir).toEqual({ dx: -1, dy: 0 });
   });
 
   it("does not draw a segment for an unconnected neighbor pair", () => {
@@ -233,7 +244,10 @@ describe("buildCorridorSegments", () => {
     const edges: EdgeDto[] = [e(1, 3), e(3, 1)];
     const segments = buildCorridorSegments(nodes, edges, squareCfg);
     expect(segments).toHaveLength(1);
-    expect(segments[0]).toEqual({ v0: getCellCenter(1, 0, squareCfg), v1: getCellCenter(2, 0, squareCfg) });
+    expect(segments[0]).toEqual({
+      v0: getCellCenter(1, 0, squareCfg), v1: getCellCenter(2, 0, squareCfg),
+      oneWayDir: undefined, fromNode: 1, toNode: 3,
+    });
   });
 
   it("emits each connected pair's segment only once, not once per direction", () => {

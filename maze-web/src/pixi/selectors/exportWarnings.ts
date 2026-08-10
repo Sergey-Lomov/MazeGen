@@ -1,9 +1,10 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields } from "../../store/storeTypes";
-import { buildTeleportEdges, buildSplitPassages, buildSplitPointKeys, getSplitAwareNodePosition, maxSplitNodeCount } from "./mazeSelectors";
+import { buildTeleportEdges, buildSplitPassages, buildSplitPointKeys, buildCorridorSegments, getSplitAwareNodePosition, maxSplitNodeCount } from "./mazeSelectors";
 import { buildTeleportGroups, teleportEdgeKey, coordKey } from "./teleportGroups";
 import type { TeleportEdge } from "../renderers/types";
+import { chevronRowStep } from "../renderers/wallUtils";
 import { TILE_SIZE } from "../constants";
 
 /** One export-method-specific warning — a maze can be perfectly valid QC-wise but a particular
@@ -25,6 +26,11 @@ export type ExportWarningId =
    *  waypoint marker there sits with no corridor line drawn under it whatsoever — worth flagging
    *  regardless of whether the point would've been a recognized special shape. */
   | "waypoint_on_split_corridor"
+  /** "Vector by corridors" only (GitHub issue #312) — the one-way chevron row's own settings
+   *  (count/length/gap/width) would overflow past a single cell's bounds along the corridor
+   *  (`TILE_SIZE`) or across it (the corridor's own `thickness`). One warning total, covering every
+   *  overflowing one-way passage. */
+  | "one_way_arrows_overflow_corridor"
   /** PNG export canvas-fit warnings (not maze-content geometry) — built locally by
    *  `PngExportSettingsPanel` from `computeDigitalExportFit`/`computePrintExportFit`'s own result,
    *  not through `computeVectorByWallsWarnings`. Carry no `nodes`/`edges` (canvas-level, not
@@ -335,6 +341,42 @@ export function computeVectorByCorridorsWarnings(
         key: "waypoint_on_split_corridor",
         nodes: flaggedIds,
         edges: [],
+      });
+    }
+  }
+
+  // --- one_way_arrows_overflow_corridor: the chevron row's own full visible extent exceeds a
+  // cell's own size along the corridor, or its width (oneWayWidth * thickness) exceeds the
+  // corridor's own thickness — GitHub issue #312, gap-accounts-for-thickness follow-up. Mirrors
+  // `VectorByCorridorsRenderer`'s own `oneWayLengthPx` (`oneWayLength` is a multiplier of the
+  // chevron's own full opening width, not an absolute pixel size — GitHub issue #312 follow-up) and
+  // `drawOneWayChevronRow`'s own `chevronRowStep` spacing exactly: `(count-1)` steps between
+  // chevron centers, plus the trailing chevron's own `length + thickness` overhang past its
+  // center. Checked once against the settings (every one-way passage draws the exact same row
+  // geometry), then applied via `buildCorridorSegments`' own `oneWayDir` — the same segments this
+  // mode's renderer actually draws a chevron row for (geometric neighbors, split points already
+  // excluded), not a looser re-derivation from the raw edge list that could flag an edge with no
+  // drawn corridor segment at all. ---
+  const oneWayFullWidth = settings.oneWayWidth * settings.thickness;
+  const oneWayLengthPx = settings.oneWayLength * oneWayFullWidth;
+  const rowStep = chevronRowStep(oneWayLengthPx, settings.oneWayGap, settings.oneWayThickness);
+  const rowLength = (settings.oneWayCount - 1) * rowStep + oneWayLengthPx + settings.oneWayThickness;
+  const rowOverflows = rowLength > TILE_SIZE || settings.oneWayWidth > 1;
+  if (rowOverflows) {
+    const oneWaySegments = buildCorridorSegments(nodes, edges, cfg).filter((seg) => seg.oneWayDir);
+    if (oneWaySegments.length > 0) {
+      const flaggedNodeIds = new Set<number>();
+      const flaggedEdgePairs: [number, number][] = [];
+      for (const seg of oneWaySegments) {
+        flaggedNodeIds.add(seg.fromNode);
+        flaggedNodeIds.add(seg.toNode);
+        flaggedEdgePairs.push([seg.fromNode, seg.toNode]);
+      }
+      warnings.push({
+        id: "one_way_arrows_overflow_corridor",
+        key: "one_way_arrows_overflow_corridor",
+        nodes: Array.from(flaggedNodeIds),
+        edges: flaggedEdgePairs,
       });
     }
   }

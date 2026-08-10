@@ -1,5 +1,5 @@
 import type { StateCreator } from "zustand";
-import type { MazeStore, ImageExportState, ImageExportActions, VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields, PngExportSettings } from "../storeTypes";
+import type { MazeStore, ImageExportState, ImageExportActions, VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields, OneWaySettingsFields, PngExportSettings } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
 import { NODE_RADIUS, WALL_THICKNESS } from "../../pixi/renderConstants";
 import { TILE_SIZE } from "../../pixi/constants";
@@ -51,6 +51,22 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = {
   splitSpecialShapes: true,
 };
 
+/** Shared by `VectorByCorridorsSettings` and `projectExport/validate.ts`'s recovery defaults, same
+ * extraction rationale as `DEFAULT_TELEPORT_SETTINGS` (GitHub issue #312). `oneWayColor` defaults
+ * to the canvas background per the issue's own spec (a break in the corridor stroke, not an
+ * indicator drawn on top of it). `oneWayThickness` defaults to half of the settings panel's own
+ * max (`TILE_SIZE / 4`), same "half of the panel's own cap" convention
+ * `DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.thickness` uses for the corridor stroke itself. */
+export const DEFAULT_ONE_WAY_SETTINGS: OneWaySettingsFields = {
+  oneWayColor: canvas.stage.background,
+  oneWayCount: 2,
+  oneWayThickness: TILE_SIZE / 8,
+  oneWayGap: 2,
+  oneWayWidth: 0.5,
+  oneWayLength: 0.3,
+  oneWayJoin: "round",
+};
+
 /** Shared with `projectExport/validate.ts`'s recovery defaults, same convention as
  * `DEFAULT_VECTOR_BY_WALLS_SETTINGS`. `thickness` defaults to half of the settings panel's own max
  * (`TILE_SIZE`, GitHub issue #310's follow-up) rather than the fixed `WALL_THICKNESS` "Vector by
@@ -63,6 +79,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = {
   finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: (NODE_RADIUS * 1.5) / TILE_SIZE },
   markerWidenPadding: 4,
   markerWidenShape: "match_marker",
+  ...DEFAULT_ONE_WAY_SETTINGS,
   ...DEFAULT_TELEPORT_SETTINGS,
 };
 
@@ -158,6 +175,8 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, markerWidenPadding: v } })),
   setVectorByCorridorsMarkerWidenShape: (shape) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, markerWidenShape: shape } })),
+  patchVectorByCorridorsOneWaySettings: (patch) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, ...patch } })),
   patchVectorByCorridorsTeleportSettings: (patch) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, ...patch } })),
   setVectorByCorridorsTeleportGroupOverride: (groupKey, patch) =>

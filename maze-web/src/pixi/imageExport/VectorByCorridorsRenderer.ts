@@ -1,10 +1,11 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
-import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges } from "../selectors/mazeSelectors";
+import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, type CorridorSegment } from "../selectors/mazeSelectors";
 import { chainSegmentsAtSharedVertices } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { drawMarkerWidenPatches } from "../renderers/markerWidenPatches";
+import { drawOneWayChevronRow } from "../renderers/wallUtils";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
 import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, ExportWarningHighlight } from "./VectorByWallsRenderer";
 import { computeVectorByCorridorsWarnings } from "../selectors/exportWarnings";
@@ -95,7 +96,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     nodes: NodeDto[];
     edges: EdgeDto[];
     cfg: TessellationConfig;
-    segments: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
+    segments: CorridorSegment[];
     teleportEdges: TeleportEdge[];
   } | null = null;
 
@@ -207,6 +208,34 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       this.corridors.moveTo(path[0].x, path[0].y);
       for (let i = 1; i < path.length; i++) this.corridors.lineTo(path[i].x, path[i].y);
       this.corridors.stroke(strokeOpts);
+    }
+
+    // One-way passage indicator (GitHub issue #312) — a row of chevrons drawn at each one-way
+    // segment's midpoint, on top of the plain stroke just drawn above. `oneWayColor` defaults to
+    // the canvas background, so the row reads as a break cut into the corridor line rather than an
+    // indicator sitting on top of it, without needing to actually clip the stroked path itself.
+    // `oneWayLength` is a multiplier of the chevron's own full opening width (GitHub issue #312
+    // follow-up), not an absolute pixel size — so the chevron's opening angle stays constant as
+    // `oneWayWidth`/`thickness` change, instead of visibly flattening/sharpening on its own.
+    const oneWayFullWidth = settings.oneWayWidth * settings.thickness;
+    const oneWayLengthPx = settings.oneWayLength * oneWayFullWidth;
+    for (const seg of this.geometryCache.segments) {
+      if (!seg.oneWayDir) continue;
+      const cx = (seg.v0.x + seg.v1.x) / 2;
+      const cy = (seg.v0.y + seg.v1.y) / 2;
+      drawOneWayChevronRow(
+        this.corridors, cx, cy, seg.oneWayDir.dx, seg.oneWayDir.dy,
+        settings.oneWayCount, oneWayLengthPx, settings.oneWayGap,
+        {
+          color: settings.oneWayColor,
+          thickness: settings.oneWayThickness,
+          // `drawOneWayChevron`'s own `width` is a half-opening (opening spans `2 * width`), so
+          // halve the desired full opening (`oneWayFullWidth`) here.
+          width: oneWayFullWidth / 2,
+          join: settings.oneWayJoin,
+          cap: settings.oneWayJoin === "miter" ? "square" : "round",
+        },
+      );
     }
 
     const { start, finish } = resolveEffectiveEndpoints(state);

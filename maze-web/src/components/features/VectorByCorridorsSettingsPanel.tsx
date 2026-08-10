@@ -24,8 +24,12 @@ import * as m from "~/paraglide/messages";
  * range) and the widen-patch padding/shape (`markerWidenPadding`/`markerWidenShape`, GitHub issue
  * #313 follow-up moved these here from the Waypoints section — they widen the corridor under every
  * marker kind on this canvas, waypoint and teleport alike, so they're a corridor-line concern, not
- * a waypoint-only one; one shared pair of settings, not a separate one per marker kind). Teleports
- * section (GitHub issue #313) mirrors `VectorByWallsSettingsPanel`'s own section — same
+ * a waypoint-only one; one shared pair of settings, not a separate one per marker kind). One-ways
+ * section (GitHub issue #312) reuses `VectorByWallsSettingsPanel`'s own section title/placement
+ * (before Teleports, hidden unless `hasOneWays`), but its own field set — the corridor reading has
+ * no wall segment to draw an indicator on, so it's a chevron row breaking the corridor line
+ * (`drawOneWayChevronRow`) rather than `VectorByWallsSettings.oneWayPattern`'s single indicator.
+ * Teleports section (GitHub issue #313) mirrors `VectorByWallsSettingsPanel`'s own section — same
  * `TeleportSettingsSection`, only the underlying store setters differ (`patch*`), same reuse
  * convention as the Waypoints section's `MarkerSettingsGroup`. Bottom warnings section mirrors
  * `VectorByWallsSettingsPanel`'s own layout so both panels stay visually consistent. */
@@ -51,6 +55,7 @@ export function VectorByCorridorsSettingsPanel() {
   const setFinishMarkerSize = useMazeStore((s) => s.setVectorByCorridorsFinishMarkerSize);
   const setMarkerWidenPadding = useMazeStore((s) => s.setVectorByCorridorsMarkerWidenPadding);
   const setMarkerWidenShape = useMazeStore((s) => s.setVectorByCorridorsMarkerWidenShape);
+  const patchOneWaySettings = useMazeStore((s) => s.patchVectorByCorridorsOneWaySettings);
   const patchTeleportSettings = useMazeStore((s) => s.patchVectorByCorridorsTeleportSettings);
   const setTeleportGroupOverride = useMazeStore((s) => s.setVectorByCorridorsTeleportGroupOverride);
   const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
@@ -93,6 +98,14 @@ export function VectorByCorridorsSettingsPanel() {
     [nodes, edges, cfg, settings, start, finish],
   );
 
+  // One-ways/Teleports sections only make sense when the maze actually has that kind of edge —
+  // mirrors `VectorByWallsSettingsPanel`'s own `hasOneWays`/`hasTeleports` "hide when there's
+  // nothing to configure" rule (GitHub issue #312).
+  const hasOneWays = useMemo(() => {
+    const basicEdges = edges.filter((e) => e.kind === "basic");
+    const forward = new Set(basicEdges.map((e) => `${e.from}->${e.to}`));
+    return basicEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
+  }, [edges]);
   const hasTeleports = useMemo(() => edges.some((e) => e.kind === "teleport"), [edges]);
 
   const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(nodes, edges, cfg, settings);
@@ -183,6 +196,81 @@ export function VectorByCorridorsSettingsPanel() {
             }}
           />
         </div>
+      )}
+
+      {hasOneWays && (
+        <>
+          <div style={styles.divider} />
+
+          <SectionHeader
+            label={m["image_export.vector_by_walls.section_one_ways"]()}
+            expanded={isExpanded("one_ways")}
+            onToggle={() => toggleSection("one_ways")}
+          />
+          {isExpanded("one_ways") && (
+            <div style={styles.block}>
+              <ColorRow
+                label={m["image_export.vector_by_corridors.one_way_color"]()}
+                color={settings.oneWayColor}
+                onChange={(color) => patchOneWaySettings({ oneWayColor: color })}
+              />
+              <SliderRow
+                label={m["image_export.vector_by_corridors.one_way_count"]()}
+                value={settings.oneWayCount}
+                onChange={(v) => patchOneWaySettings({ oneWayCount: v })}
+                min={1}
+                max={10}
+                step={1}
+                format={(v) => String(v)}
+              />
+              <SliderRow
+                label={m["image_export.vector_by_corridors.one_way_thickness"]()}
+                value={settings.oneWayThickness}
+                onChange={(v) => patchOneWaySettings({ oneWayThickness: v })}
+                min={1}
+                max={TILE_SIZE / 4}
+                step={1}
+                format={(v) => String(v)}
+              />
+              <SliderRow
+                label={m["image_export.vector_by_corridors.one_way_gap"]()}
+                value={settings.oneWayGap}
+                onChange={(v) => patchOneWaySettings({ oneWayGap: v })}
+                min={0}
+                max={TILE_SIZE / 4}
+                step={1}
+                format={(v) => String(v)}
+              />
+              <SliderRow
+                label={m["image_export.vector_by_corridors.one_way_width"]()}
+                value={settings.oneWayWidth}
+                onChange={(v) => patchOneWaySettings({ oneWayWidth: v })}
+                min={0.01}
+                max={1}
+                step={0.01}
+                format={(v) => v.toFixed(2)}
+              />
+              <SliderRow
+                label={m["image_export.vector_by_corridors.one_way_length"]()}
+                value={settings.oneWayLength}
+                onChange={(v) => patchOneWaySettings({ oneWayLength: v })}
+                min={0.1}
+                max={1}
+                step={0.1}
+                format={(v) => v.toFixed(1)}
+              />
+              <SelectRow
+                label={m["image_export.vector_by_corridors.one_way_join"]()}
+                value={settings.oneWayJoin}
+                options={[
+                  { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
+                  { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
+                ]}
+                onChange={(join) => patchOneWaySettings({ oneWayJoin: join })}
+              />
+            </div>
+          )}
+        </>
       )}
 
       {hasTeleports && (

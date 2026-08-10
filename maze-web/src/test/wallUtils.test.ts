@@ -13,7 +13,7 @@ vi.mock("pixi.js", () => {
   return { Graphics: FakeGraphics };
 });
 
-const { drawDirectionArrow, drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow } = await import("../pixi/renderers/wallUtils");
+const { drawDirectionArrow, drawOneWayTriangle, drawOneWayChevron, drawOneWayChevronRow, chevronRowStep, drawOneWayArrow } = await import("../pixi/renderers/wallUtils");
 const { Graphics } = await import("pixi.js");
 
 type FakeG = InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] };
@@ -119,6 +119,67 @@ describe("drawOneWayChevron", () => {
     const g = newG();
     drawOneWayChevron(g, 0, 0, 1, 0, { size: 20, thickness: 4 });
     expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(1);
+  });
+
+  it("uses the width style knob for its opening, independent of size", () => {
+    const g1 = newG();
+    drawOneWayChevron(g1, 0, 0, 1, 0, { size: 20 });
+    const [moveTo1] = g1.calls.filter((c) => c.fn === "moveTo");
+    const [, y1] = moveTo1.args as [number, number];
+
+    const g2 = newG();
+    drawOneWayChevron(g2, 0, 0, 1, 0, { size: 20, width: 100 });
+    const [moveTo2] = g2.calls.filter((c) => c.fn === "moveTo");
+    const [, y2] = moveTo2.args as [number, number];
+
+    expect(y2).not.toBeCloseTo(y1, 5);
+    expect(Math.abs(y2)).toBeCloseTo(100, 5);
+  });
+});
+
+describe("drawOneWayChevronRow", () => {
+  it("draws `count` chevrons (one stroke pass each, no gap)", () => {
+    const g = newG();
+    drawOneWayChevronRow(g, 0, 0, 1, 0, 3, 10, 5, { thickness: 4 });
+    expect(g.calls.filter((c) => c.fn === "moveTo")).toHaveLength(3);
+    expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(3);
+  });
+
+  it("centers the row on (cx, cy) — the two chevrons' own centers are equidistant from it", () => {
+    const g = newG();
+    drawOneWayChevronRow(g, 0, 0, 1, 0, 2, 10, 6, { thickness: 4 });
+    const lineTos = g.calls.filter((c) => c.fn === "lineTo");
+    // Each chevron's tip sits at its own center + size (drawOneWayChevron's own convention) — so
+    // each chevron's own center = tipX - length (length = 10 here).
+    const firstCenterX = (lineTos[0].args as [number, number])[0] - 10;
+    const secondCenterX = (lineTos[2].args as [number, number])[0] - 10;
+    expect(firstCenterX + secondCenterX).toBeCloseTo(0, 5);
+  });
+
+  it("draws a single chevron centered on (cx, cy) when count is 1", () => {
+    const g = newG();
+    drawOneWayChevronRow(g, 5, 7, 0, 1, 1, 20, 5, { thickness: 4 });
+    const single = newG();
+    drawOneWayChevron(single, 5, 7, 0, 1, { thickness: 4, size: 20 });
+    expect(g.calls).toEqual(single.calls);
+  });
+
+  it("spaces adjacent chevrons by length + gap + thickness (GitHub issue #312 follow-up)", () => {
+    const length = 10;
+    const gap = 1;
+    const thickness = 10; // a thick stroke must not eat into a small gap
+    const g = newG();
+    drawOneWayChevronRow(g, 0, 0, 1, 0, 2, length, gap, { thickness });
+    const lineTos = g.calls.filter((c) => c.fn === "lineTo");
+    const firstTipX = (lineTos[0].args as [number, number])[0]; // first chevron's own tip
+    const secondTipX = (lineTos[2].args as [number, number])[0]; // second chevron's own tip
+    expect(secondTipX - firstTipX).toBeCloseTo(length + gap + thickness, 5);
+  });
+});
+
+describe("chevronRowStep", () => {
+  it("computes length + gap + thickness", () => {
+    expect(chevronRowStep(10, 1, 10)).toBeCloseTo(10 + 1 + 10, 5);
   });
 });
 

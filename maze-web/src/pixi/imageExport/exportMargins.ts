@@ -71,7 +71,12 @@ export function computeVectorByCorridorsExportMargin(settings: VectorByCorridors
   const corridorHalf = settings.thickness / 2;
   const startMarkerHalf = markerFootprintHalf(settings.startMarker, settings.markerWidenPadding);
   const finishMarkerHalf = markerFootprintHalf(settings.finishMarker, settings.markerWidenPadding);
-  return uniform(Math.max(corridorHalf, startMarkerHalf, finishMarkerHalf, teleportFootprintHalf(settings)));
+  // One-way chevron row's own half-extent across the corridor (GitHub issue #312) — matches
+  // `drawOneWayChevronRow`'s own `width` argument in `VectorByCorridorsRenderer`, the wider of its
+  // own width and the corridor stroke it sits on, same "widest of everything drawn" rationale as
+  // every other term here.
+  const oneWayHalf = Math.max(corridorHalf, (settings.oneWayWidth * settings.thickness) / 2);
+  return uniform(Math.max(corridorHalf, startMarkerHalf, finishMarkerHalf, oneWayHalf, teleportFootprintHalf(settings)));
 }
 
 /** Resolves the export margin for a given render mode directly from store state — the

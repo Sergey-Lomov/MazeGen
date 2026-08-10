@@ -50,6 +50,17 @@ describe("computeVectorByCorridorsExportMargin", () => {
     });
     expect(biggerTeleport.left).toBeGreaterThan(base.left);
   });
+
+  it("grows to fit a one-way chevron row wider than the corridor stroke itself (GitHub issue #312)", () => {
+    const base = computeVectorByCorridorsExportMargin(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS);
+    const widerOneWay = computeVectorByCorridorsExportMargin({
+      ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
+      oneWayWidth: 1,
+      thickness: 100, // isolates the oneWayWidth*thickness term from the corridorHalf term
+    });
+    expect(widerOneWay.left).toBeGreaterThan(base.left);
+    expect(widerOneWay.left).toBe(50); // oneWayWidth(1) * thickness(100) / 2
+  });
 });
 
 describe("resolveExportMargin", () => {

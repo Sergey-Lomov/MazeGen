@@ -72,8 +72,11 @@ const teleportDefaults: Pick<VectorByCorridorsSettings,
   teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10, teleportConnectorGapWidth: 3,
   teleportGroupCustomization: false, teleportGroupOverrides: {},
 };
-const settingsA: VectorByCorridorsSettings = { color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...teleportDefaults };
-const settingsB: VectorByCorridorsSettings = { color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...teleportDefaults };
+const oneWayDefaults: Pick<VectorByCorridorsSettings, "oneWayColor" | "oneWayCount" | "oneWayThickness" | "oneWayGap" | "oneWayWidth" | "oneWayLength" | "oneWayJoin"> = {
+  oneWayColor: 0, oneWayCount: 1, oneWayThickness: 4, oneWayGap: 4, oneWayWidth: 1, oneWayLength: 10, oneWayJoin: "round",
+};
+const settingsA: VectorByCorridorsSettings = { color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults };
+const settingsB: VectorByCorridorsSettings = { color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults };
 
 // Stable references reused across `baseState()` calls — the renderer's own geometry cache keys off
 // reference-equality of `nodes`/`edges`/`activeTessellationConfig` (same convention as
@@ -313,5 +316,46 @@ describe("VectorByCorridorsRenderer", () => {
     renderer.destroy();
     expect(teleports.destroy).toHaveBeenCalled();
     expect(teleportContainer.destroy).toHaveBeenCalled();
+  });
+
+  describe("one-way chevron row (GitHub issue #312)", () => {
+    it("draws oneWayCount chevrons (one moveTo/lineTo/lineTo/stroke each) for a one-way segment, none for a plain one", () => {
+      vi.mocked(buildCorridorSegments).mockReturnValueOnce([
+        { v0: { x: 0, y: 0 }, v1: { x: 100, y: 0 }, oneWayDir: { dx: 1, dy: 0 }, fromNode: 0, toNode: 1 },
+        { v0: { x: 200, y: 0 }, v1: { x: 300, y: 0 }, fromNode: 2, toNode: 3 }, // plain, no oneWayDir
+      ]);
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, oneWayCount: 3 } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn> } }).corridors;
+
+      // Each chevron issues exactly one moveTo (drawOneWayChevron's own `path`) — 3 for the one-way
+      // segment's row, 0 for the plain segment (chainSegmentsAtSharedVertices is mocked to `[]`, so
+      // the corridor stroke itself issues none here — every moveTo call is a chevron's).
+      expect(corridorsGraphics.moveTo).toHaveBeenCalledTimes(3);
+    });
+
+    it("centers the chevron row on the one-way segment's own midpoint, along its oneWayDir", () => {
+      vi.mocked(buildCorridorSegments).mockReturnValueOnce([
+        { v0: { x: 0, y: 0 }, v1: { x: 100, y: 0 }, oneWayDir: { dx: 1, dy: 0 }, fromNode: 0, toNode: 1 },
+      ]);
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, oneWayCount: 1 } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { lineTo: ReturnType<typeof vi.fn> } }).corridors;
+
+      // A single centered chevron's tip sits at midpoint (50,0) + oneWayLengthPx along (1,0).
+      const fullWidth = settingsA.oneWayWidth * settingsA.thickness;
+      const lengthPx = settingsA.oneWayLength * fullWidth;
+      const tipCall = corridorsGraphics.lineTo.mock.calls.find(([x, y]) => y === 0 && Math.abs(x - (50 + lengthPx)) < 1e-6);
+      expect(tipCall).toBeDefined();
+    });
+
+    it("draws no chevrons when no segment is one-way", () => {
+      vi.mocked(buildCorridorSegments).mockReturnValueOnce([
+        { v0: { x: 0, y: 0 }, v1: { x: 100, y: 0 }, fromNode: 0, toNode: 1 },
+      ]);
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn> } }).corridors;
+      expect(corridorsGraphics.moveTo).not.toHaveBeenCalled();
+    });
   });
 });

@@ -1038,17 +1038,46 @@ export interface VectorByWallsSettings extends TeleportSettingsFields {
   splitSpecialShapes: boolean;
 }
 
+/** One-way passage indicator settings (GitHub issue #312) — a row of chevrons ("`>`" shapes with
+ *  no base) drawn as a break in the corridor curve, replacing the plain stroke there. `count`
+ *  chevrons in a row, each `thickness` (stroke width) and `width` (extent across the corridor, as
+ *  a fraction of `VectorByCorridorsSettings.thickness` — `1` spans the full corridor width, same
+ *  0-1-fraction-of-a-size convention `MarkerSettings.size`/`TeleportSettingsFields.teleportLineSize`
+ *  use), separated by `gap` (visible pixel gap between two adjacent chevrons' own stroked edges,
+ *  along the corridor). `color` defaults to the canvas background (GitHub issue #312's own spec —
+ *  reads as a gap cut into the corridor stroke, not an indicator drawn on top of it, unlike
+ *  `VectorByWallsSettings.oneWayColor`'s always-own-color convention). */
+export interface OneWaySettingsFields {
+  oneWayColor: number;
+  oneWayCount: number;
+  oneWayThickness: number;
+  oneWayGap: number;
+  /** Fraction of the corridor's own `thickness` (0.01-1) — `1` (the default) spans the full
+   *  corridor width. */
+  oneWayWidth: number;
+  /** Extent along the corridor's own direction, as a multiplier of the chevron's own full opening
+   *  width (`oneWayWidth * VectorByCorridorsSettings.thickness`, GitHub issue #312 follow-up) —
+   *  not an absolute pixel size, so the chevron's opening angle stays constant as `oneWayWidth`/
+   *  `thickness` change instead of visibly flattening/sharpening on its own. `1` makes the chevron's
+   *  length along the corridor equal to its own full opening width. */
+  oneWayLength: number;
+  /** Chevron corner/end style — round vs. sharp (miter) tip and ends, same convention as
+   *  `VectorByWallsSettings.oneWayJoin`, independent of `VectorByCorridorsSettings.join` (the
+   *  corridor stroke's own corner style). */
+  oneWayJoin: "round" | "miter";
+}
+
 /** "Vector by corridors" mode's own settings (GitHub issue #310) — the corridor stroke's color,
  * width and corner/end style. Kept as its own type (not folded into `VectorByWallsSettings`), same
- * per-mode-settings convention as every other `RenderModeId`. Every basic passage (both
- * bidirectional and one-way alike — direction isn't distinguished yet, a follow-up sub-issue's
- * concern) draws as a stroked line between the two cells' centers; split points are skipped
- * entirely for now (their own follow-up sub-issue), same "empty until its own sub-issue" convention
+ * per-mode-settings convention as every other `RenderModeId`. Every basic passage draws as a
+ * stroked line between the two cells' centers, with a one-way passage's own chevron-row indicator
+ * (`OneWaySettingsFields`, GitHub issue #312) breaking that line; split points are skipped entirely
+ * for now (their own follow-up sub-issue), same "empty until its own sub-issue" convention
  * `splitSpecialShapes` etc. followed in `VectorByWallsSettings`. Teleport edges (GitHub issue #313)
  * `extends TeleportSettingsFields` — teleports aren't tied to the corridor-vs-wall visual model, so
  * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
  * `finishMarker` (GitHub issue #311). */
-export interface VectorByCorridorsSettings extends TeleportSettingsFields {
+export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWaySettingsFields {
   color: number;
   thickness: number;
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
@@ -1165,6 +1194,7 @@ export interface ImageExportActions {
   setVectorByCorridorsFinishMarkerSize: (v: number) => void;
   setVectorByCorridorsMarkerWidenPadding: (v: number) => void;
   setVectorByCorridorsMarkerWidenShape: (shape: MarkerWidenShape) => void;
+  patchVectorByCorridorsOneWaySettings: (patch: Partial<OneWaySettingsFields>) => void;
   patchVectorByCorridorsTeleportSettings: (patch: Partial<TeleportSettingsFields>) => void;
   setVectorByCorridorsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
   setVectorByWallsBackground: (color: number) => void;

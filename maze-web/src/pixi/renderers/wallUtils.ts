@@ -22,6 +22,12 @@ export type OneWayDrawStyle = {
   thickness?: number;
   join?: "round" | "miter";
   cap?: "round" | "square";
+  /** Chevron opening half-width, world units — independent of `size` (GitHub issue #312, "Vector
+   *  by corridors" one-way settings need length and width as separate knobs, unlike this pattern's
+   *  original single-`size`-drives-both convention). Defaults to `size * 1.4` (the pre-#312
+   *  opening), so every existing caller (`VectorByWallsRenderer`'s plain single chevron) is
+   *  unaffected. Only read by `drawOneWayChevron`. */
+  width?: number;
 };
 
 function resolvedSize(style?: OneWayDrawStyle): number {
@@ -117,7 +123,7 @@ export function drawOneWayChevron(
   const tipY = cy + dy * size;
   const backX = cx - dx * size * 0.6;
   const backY = cy - dy * size * 0.6;
-  const width = size * 1.4; // shallow: twice the original opening angle
+  const width = style?.width ?? size * 1.4; // shallow: twice the original opening angle
   const color = style?.color ?? canvas.edge.oneWay;
   const strokeWidth = resolvedThickness(style);
   const join = style?.join ?? "round";
@@ -132,6 +138,43 @@ export function drawOneWayChevron(
     path(g).stroke({ width: strokeWidth + style.gapWidth * 2, color: style.gapColor ?? canvas.floor.default, cap, join });
   }
   path(g).stroke({ width: strokeWidth, color, cap, join });
+}
+
+/** Center-to-center distance between two adjacent chevrons in a row — `length + gap + strokeWidth`,
+ *  the stroke's own `strokeWidth` folded into the spacing so a thick stroke doesn't visibly eat
+ *  into a small `gap` (GitHub issue #312 follow-up). Shared by `drawOneWayChevronRow`'s row-spacing
+ *  math and `computeVectorByCorridorsWarnings`' overflow check so neither can drift from what
+ *  actually gets drawn. */
+export function chevronRowStep(length: number, gap: number, strokeWidth: number): number {
+  return length + gap + strokeWidth;
+}
+
+/** Draws `count` chevrons in a row along the `(dx, dy)` direction, evenly spaced around
+ *  `(cx, cy)` — the "Vector by corridors" one-way indicator (GitHub issue #312), a break in the
+ *  corridor line rendered as a series of chevrons instead of `WallRenderer`'s single indicator.
+ *  Reuses `drawOneWayChevron` per chevron rather than a hand-rolled multi-chevron path, so both
+ *  callers draw the exact same chevron shape/gap handling. `length` is passed straight through as
+ *  `drawOneWayChevron`'s own `size`. `gap` is the actual visible gap in pixels between two adjacent
+ *  chevrons' own stroked edges — see `chevronRowStep`. The whole row is centered on `(cx, cy)`,
+ *  mirroring `drawOneWayChevron`'s own single-indicator centering. */
+export function drawOneWayChevronRow(
+  g: Graphics,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number,
+  count: number,
+  length: number,
+  gap: number,
+  style?: OneWayDrawStyle,
+): void {
+  const step = chevronRowStep(length, gap, resolvedThickness(style));
+  const rowLength = (count - 1) * step;
+  const startOffset = -rowLength / 2;
+  for (let i = 0; i < count; i++) {
+    const offset = startOffset + i * step;
+    drawOneWayChevron(g, cx + dx * offset, cy + dy * offset, dx, dy, { ...style, size: length });
+  }
 }
 
 // Draws a one-way indicator as a line with a line-only arrowhead (two short strokes, no filled

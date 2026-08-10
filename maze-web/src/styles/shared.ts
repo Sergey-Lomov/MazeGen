@@ -127,15 +127,19 @@ export const sharedStyles = {
     display: "flex",
     alignItems: "center",
     gap: spacing.rowGap,
-    height: controlRowHeight,
+    minHeight: controlRowHeight,
     boxSizing: "border-box",
   } satisfies React.CSSProperties,
 
+  // `width` (not `flexBasis`/`minWidth`) so a long label wraps within that width instead of
+  // growing the row — `flexShrink: 0` keeps that width from being squeezed by the slider/value
+  // still claiming their own space (`flex: 1` on the range input, fixed width on the value).
   sliderRowLabel: {
     fontSize: font.lg,
     color: ui.text.primary,
     width: 110,
     flexShrink: 0,
+    lineHeight: 1.3,
   } satisfies React.CSSProperties,
 
   sliderRowValue: {
