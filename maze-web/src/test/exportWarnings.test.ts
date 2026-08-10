@@ -59,6 +59,7 @@ function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
     teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
     teleportConnectorGapWidth: 3, teleportGroupCustomization: false, teleportGroupOverrides: {},
+    splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
     ...overrides,
   };
 }
@@ -243,35 +244,77 @@ describe("computeVectorByWallsWarnings", () => {
 });
 
 describe("computeVectorByCorridorsWarnings", () => {
-  describe("waypoint_on_split_corridor", () => {
-    it("flags start when it sits on any split point, even a plain (non-special) one", () => {
-      const warnings = computeVectorByCorridorsWarnings(plainSplitNodes, [], squareCfg, baseCorridorsSettings(), 0, null);
-      const matches = warnings.filter((w) => w.id === "waypoint_on_split_corridor");
+  describe("waypoint_on_split", () => {
+    it("flags start when it sits on a specially-rendered (bridge) split point", () => {
+      const settings = baseCorridorsSettings({ splitSpecialShapes: true });
+      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, 0, null);
+      const matches = warnings.filter((w) => w.id === "waypoint_on_split");
       expect(matches).toHaveLength(1);
       expect(matches[0].nodes).toEqual([0]);
     });
 
-    it("collapses start+finish both on split points into one warning", () => {
-      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, [], squareCfg, baseCorridorsSettings(), 0, 4);
-      const matches = warnings.filter((w) => w.id === "waypoint_on_split_corridor");
+    it("collapses start+finish both on special split points into one warning", () => {
+      const settings = baseCorridorsSettings({ splitSpecialShapes: true });
+      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, 0, 4);
+      const matches = warnings.filter((w) => w.id === "waypoint_on_split");
       expect(matches).toHaveLength(1);
       expect(matches[0].nodes.sort()).toEqual([0, 4]);
     });
 
+    it("does not flag a plain (non-special) split point", () => {
+      const warnings = computeVectorByCorridorsWarnings(plainSplitNodes, [], squareCfg, baseCorridorsSettings(), 0, null);
+      expect(warnings.filter((w) => w.id === "waypoint_on_split")).toHaveLength(0);
+    });
+
+    it("does not flag when splitSpecialShapes is off (special shape not actually drawn)", () => {
+      const settings = baseCorridorsSettings({ splitSpecialShapes: false });
+      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, 0, null);
+      expect(warnings.filter((w) => w.id === "waypoint_on_split")).toHaveLength(0);
+    });
+
     it("does not flag a waypoint on an unsplit node", () => {
-      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, [], squareCfg, baseCorridorsSettings(), 6, null);
-      expect(warnings.filter((w) => w.id === "waypoint_on_split_corridor")).toHaveLength(0);
+      const settings = baseCorridorsSettings({ splitSpecialShapes: true });
+      const warnings = computeVectorByCorridorsWarnings(bridgeSplitNodes, bridgeSplitEdges, squareCfg, settings, 6, null);
+      expect(warnings.filter((w) => w.id === "waypoint_on_split")).toHaveLength(0);
     });
 
     it("no split points in the maze at all -> no warning", () => {
       const nodes = [n(0, 0, 0), n(1, 5, 5)];
       const warnings = computeVectorByCorridorsWarnings(nodes, [], squareCfg, baseCorridorsSettings(), 0, null);
-      expect(warnings.filter((w) => w.id === "waypoint_on_split_corridor")).toHaveLength(0);
+      expect(warnings.filter((w) => w.id === "waypoint_on_split")).toHaveLength(0);
     });
 
     it("no start/finish set -> no warning", () => {
       const warnings = computeVectorByCorridorsWarnings(plainSplitNodes, [], squareCfg, baseCorridorsSettings(), null, null);
       expect(warnings).toHaveLength(0);
+    });
+  });
+
+  describe("teleport_on_special_split", () => {
+    it("flags a teleport endpoint sitting on a specially-rendered split point", () => {
+      const nodes = [...bridgeSplitNodes, n(7, 8, 8)];
+      const edges = [...bridgeSplitEdges, teleport(0, 7)];
+      const settings = baseCorridorsSettings({ splitSpecialShapes: true });
+      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
+      const matches = warnings.filter((w) => w.id === "teleport_on_special_split");
+      expect(matches).toHaveLength(1);
+      expect(matches[0].nodes).toContain(0);
+    });
+
+    it("does not flag when splitSpecialShapes is off", () => {
+      const nodes = [...bridgeSplitNodes, n(7, 8, 8)];
+      const edges = [...bridgeSplitEdges, teleport(0, 7)];
+      const settings = baseCorridorsSettings({ splitSpecialShapes: false });
+      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "teleport_on_special_split")).toHaveLength(0);
+    });
+
+    it("does not flag a teleport endpoint on a plain, non-special cell", () => {
+      const nodes = [...bridgeSplitNodes, n(7, 8, 8)];
+      const edges = [...bridgeSplitEdges, teleport(6, 7)];
+      const settings = baseCorridorsSettings({ splitSpecialShapes: true });
+      const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "teleport_on_special_split")).toHaveLength(0);
     });
   });
 

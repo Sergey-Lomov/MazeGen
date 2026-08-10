@@ -114,17 +114,27 @@ export type CorridorSegment = {
   oneWayDir?: { dx: number; dy: number };
   fromNode: number;
   toNode: number;
+  /** `v1` lands on a shared face's own midpoint instead of the neighbor cell's center, because that
+   *  neighbor is a split point (GitHub issue #314 follow-up) — the renderer needs this to cap that
+   *  end `butt` instead of its usual round/square cap, since the diagonal/bridge shape drawn there
+   *  by `buildSplitPassages` can bow or narrow away from this segment's own straight axis, uncovering
+   *  a round/square cap's extra reach past the tile boundary. */
+  v1TouchesSplit?: boolean;
 };
 
 /** Center-to-center line segments for every basic passage between geometrically adjacent cells —
  *  the "Vector by corridors" render mode's own maze reading (GitHub issue #310), the inverse of
  *  `buildMazeWalls`' "gap in the wall" reading. `oneWayDir` (GitHub issue #312) distinguishes a
  *  one-way passage from a bidirectional one, same directed-set approach `buildMazeWalls` uses for
- *  its own `oneWayDir`. Split points are skipped entirely, same as `buildMazeWalls`' own
- *  `splitPointKeys` exclusion — a follow-up sub-issue adds their own dedicated corridor reading,
- *  same "own sub-issue" convention `buildSplitPassages` follows for `VectorByWallsRenderer`.
- *  Teleport edges are never geometric neighbors of each other in `getNeighborData`'s sense, so
- *  they're naturally excluded without any extra `kind` check. */
+ *  its own `oneWayDir`. A split-to-split passage is skipped entirely — drawn instead by
+ *  `buildSplitPassages`' own connector geometry (GitHub issue #314). A plain-to-split passage still
+ *  draws its plain side's own segment, but shortened from the plain cell's center to the shared
+ *  face's own midpoint (`getSharedEdgeSegment`) instead of running all the way to the split cell's
+ *  center — that midpoint is exactly where `buildSplitPassages`' own per-node face share is
+ *  centered (`SplitPassage.wallSegments[*].center`), so the two renderer's own line stubs meet
+ *  edge-to-edge with no gap and no overlap. Teleport edges are never geometric neighbors of each
+ *  other in `getNeighborData`'s sense, so they're naturally excluded without any extra `kind`
+ *  check. */
 export function buildCorridorSegments(
   nodes: NodeDto[],
   edges: EdgeDto[],
@@ -153,15 +163,23 @@ export function buildCorridorSegments(
 
   for (const n of nodes) {
     const selfKey = `${n.x},${n.y}`;
-    if (splitPointKeys.has(selfKey)) continue;
+    const selfSplit = splitPointKeys.has(selfKey);
     const { offsets } = getNeighborData(cfg, n.x, n.y);
     for (const [dx, dy] of offsets) {
       const nx = n.x + dx;
       const ny = n.y + dy;
       const neighborKey = `${nx},${ny}`;
       if (!cellSet.has(neighborKey)) continue;
-      if (splitPointKeys.has(neighborKey)) continue;
-      const ownsEdge = n.x < nx || (n.x === nx && n.y < ny);
+      const neighborSplit = splitPointKeys.has(neighborKey);
+      if (selfSplit && neighborSplit) continue; // split-to-split — drawn by buildSplitPassages instead
+      if (selfSplit) continue; // the plain neighbor's own pass below draws this face instead
+
+      // A face with a split cell on either side is always drawn from the plain cell's own pass,
+      // regardless of `x`/`y` ordering — the split side never contributes a "half" of its own
+      // (its whole face-to-center span belongs to `buildSplitPassages`' per-node share instead), so
+      // the usual `ownsEdge` dedup (which assumes both sides draw identical geometry and only one
+      // should) doesn't apply here.
+      const ownsEdge = neighborSplit || n.x < nx || (n.x === nx && n.y < ny);
       if (!ownsEdge) continue;
 
       const fwd = directed.has(`${n.x},${n.y}->${nx},${ny}`);
@@ -172,7 +190,14 @@ export function buildCorridorSegments(
       if (!neighborNode) continue;
 
       const v0 = getCellCenter(n.x, n.y, cfg);
-      const v1 = getCellCenter(nx, ny, cfg);
+      // A plain cell neighboring a split point stops at the shared face's own midpoint instead of
+      // reaching all the way to the split cell's center — `buildSplitPassages`' own per-node share
+      // (`SplitPassage.wallSegments[*].center`) picks up from there.
+      let v1 = getCellCenter(nx, ny, cfg);
+      if (neighborSplit) {
+        const seg = getSharedEdgeSegment([n.x, n.y], [nx, ny], cfg);
+        if (seg) v1 = { x: (seg.v0.x + seg.v1.x) / 2, y: (seg.v0.y + seg.v1.y) / 2 };
+      }
 
       let oneWayDir: { dx: number; dy: number } | undefined;
       if (fwd !== bwd) {
@@ -182,7 +207,7 @@ export function buildCorridorSegments(
         if (len > 0) oneWayDir = { dx: tdx / len, dy: tdy / len };
       }
 
-      result.push({ v0, v1, oneWayDir, fromNode: n.id, toNode: neighborNode.id });
+      result.push({ v0, v1, oneWayDir, fromNode: n.id, toNode: neighborNode.id, v1TouchesSplit: neighborSplit });
     }
   }
 
@@ -414,6 +439,15 @@ export function buildSplitPassagesCore<Id>(
   defaultKind: SplitFaceKind = "wall",
   wallPairs: ReadonlySet<string> = new Set(),
   nodeColors: readonly number[] = canvas.node.splitSlots,
+  /** When set (GitHub issue #314 follow-up, "Vector by corridors" only), each `wallSegments[i]`'s
+   *  own `center` is repositioned to divide this width — the ordinary corridor's own `thickness`,
+   *  not the whole shared face — evenly among every node sharing that face, centered on the face's
+   *  own midpoint. Corridor mode has no wall geometry to visually divide a face into per-node
+   *  shares in the first place, so several connections leaving the same face should read as sitting
+   *  side by side within the corridor that actually runs through it, not spread across the face's
+   *  full (often much wider) span. `undefined` (every other caller) keeps the original
+   *  divide-the-whole-face behavior `computeSplitFaceLayouts` already computes. */
+  corridorConnectorWidth?: number,
 ): SplitPassagesResult {
   const nodeById = new Map<Id, SplitPassageNode<Id>>();
   for (const n of nodes) nodeById.set(n.id, n);
@@ -529,6 +563,13 @@ export function buildSplitPassagesCore<Id>(
       const crossIdx = faceKindsByNode[1].reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []);
       const crossFaces: [{ v0: { x: number; y: number }; v1: { x: number; y: number } }, { v0: { x: number; y: number }; v1: { x: number; y: number } }] =
         [faceInputs[crossIdx[0]], faceInputs[crossIdx[1]]];
+      // Node 0's own opposite-face pair — the through corridor's real axis (GitHub issue #314),
+      // distinct from `crossFaces` (node 1's own pair) computed above.
+      const throughIdx = faceKindsByNode[0].reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []);
+      const throughFace0 = faceInputs[throughIdx[0]];
+      const throughFace1 = faceInputs[throughIdx[1]];
+      const throughMid0 = { x: (throughFace0.v0.x + throughFace0.v1.x) / 2, y: (throughFace0.v0.y + throughFace0.v1.y) / 2 };
+      const throughMid1 = { x: (throughFace1.v0.x + throughFace1.v1.x) / 2, y: (throughFace1.v0.y + throughFace1.v1.y) / 2 };
       const [pairB0, pairB1] = nearestEndpointPairing(crossFaces[0], crossFaces[1]);
       const endsAt = (face: typeof crossFaces[0], slot: 0 | 1) => (slot === 0 ? face.v0 : face.v1);
       const end0 = { v0: endsAt(crossFaces[0], 0), v1: endsAt(crossFaces[0], 1) };
@@ -560,6 +601,7 @@ export function buildSplitPassagesCore<Id>(
         crossFaces: [end0, end1],
         edge0: buildEdge(end0.v0, end1.v0),
         edge1: buildEdge(end0.v1, end1.v1),
+        throughLine: [throughMid0, throughMid1],
       });
     }
 
@@ -580,15 +622,33 @@ export function buildSplitPassagesCore<Id>(
 
       const color = splitSlotColor(nodeIndex, nodeColors);
       const wallSegments = faceLayouts
-        .flatMap((layout) => layout.segments.filter((s) => s.nodeIndex === nodeIndex))
-        .map((s) => ({
-          v0: s.v0, v1: s.v1,
-          center: { x: (s.v0.x + s.v1.x) / 2, y: (s.v0.y + s.v1.y) / 2 },
-          isUndefined: s.kind === "undefined",
-        }));
+        .flatMap((layout, faceIndex) => layout.segments
+          .map((s, indexInFace) => ({ s, faceIndex, indexInFace, faceCount: layout.segments.length }))
+          .filter((entry) => entry.s.nodeIndex === nodeIndex))
+        .map(({ s, faceIndex, indexInFace, faceCount }) => {
+          let center = { x: (s.v0.x + s.v1.x) / 2, y: (s.v0.y + s.v1.y) / 2 };
+          if (corridorConnectorWidth !== undefined) {
+            // Divide the ordinary corridor's own width (not the whole face) evenly among every
+            // node sharing this face, centered on the face's own midpoint — see this function's
+            // own `corridorConnectorWidth` doc comment.
+            const face = faceInputs[faceIndex];
+            const faceMid = { x: (face.v0.x + face.v1.x) / 2, y: (face.v0.y + face.v1.y) / 2 };
+            const fdx = face.v1.x - face.v0.x, fdy = face.v1.y - face.v0.y;
+            const flen = Math.hypot(fdx, fdy) || 1;
+            const ux = fdx / flen, uy = fdy / flen;
+            const t = (indexInFace + 0.5) / faceCount - 0.5; // -0.5..0.5, centered
+            const offset = t * corridorConnectorWidth;
+            center = { x: faceMid.x + ux * offset, y: faceMid.y + uy * offset };
+          }
+          return {
+            v0: s.v0, v1: s.v1, center,
+            isUndefined: s.kind === "undefined",
+            oneWayOut: s.kind === "one_way_out" ? true : s.kind === "one_way_in" ? false : undefined,
+          };
+        });
       const connectors = lines.map((line) => ({ from: line.from, to: line.to, oneWayOut: line.oneWayOut, isUndefined: line.isUndefined }));
 
-      result.push({ color, pointKey, wallSegments, connectors });
+      result.push({ color, pointKey, center, wallSegments, connectors });
     }
   }
 
@@ -613,6 +673,8 @@ export function buildSplitPassages(
   activeSplitNode: Record<string, PostEditEndpoint> = {},
   postEditDraftSplitPoints: Record<string, number[]> = {},
   nodeColors: readonly number[] = canvas.node.splitSlots,
+  /** See `buildSplitPassagesCore`'s own doc comment — "Vector by corridors" only. */
+  corridorConnectorWidth?: number,
 ): SplitPassagesResult {
   const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
 
@@ -629,7 +691,7 @@ export function buildSplitPassages(
     return resolveEndpoint(active, resolveSplit);
   };
 
-  return buildSplitPassagesCore(nodes, directedPairs, cfg, specialNodeIds, activeId, "wall", new Set(), nodeColors);
+  return buildSplitPassagesCore(nodes, directedPairs, cfg, specialNodeIds, activeId, "wall", new Set(), nodeColors, corridorConnectorWidth);
 }
 
 // --- Loss-detection predicates ---

@@ -138,15 +138,27 @@ describe("VectorByCorridorsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByCorridorsSettings.startMarker.fillColor).toBe(0x654321);
   });
 
-  it("shows a warning bubble when a waypoint sits on a split point", () => {
+  it("shows a warning bubble when a waypoint sits on a specially-rendered (bridge) split point", () => {
+    // Point (0,0) split into node 0 (east+west) and node 4 (north+south) — a recognized "bridge"
+    // topology, same fixture shape as `exportWarnings.test.ts`'s own `bridgeSplitNodes`.
     useMazeStore.setState({
-      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 0, y: 0, i: 0 }],
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 2, x: -1, y: 0, i: 0 },
+        { id: 3, x: 0, y: 1, i: 0 }, { id: 4, x: 0, y: 0, i: 0 }, { id: 5, x: 0, y: -1, i: 0 },
+      ],
+      edges: [
+        { from: 0, to: 1, kind: "basic" }, { from: 1, to: 0, kind: "basic" },
+        { from: 0, to: 2, kind: "basic" }, { from: 2, to: 0, kind: "basic" },
+        { from: 4, to: 3, kind: "basic" }, { from: 3, to: 4, kind: "basic" },
+        { from: 4, to: 5, kind: "basic" }, { from: 5, to: 4, kind: "basic" },
+      ],
       start: 0,
       finish: null,
+      vectorByCorridorsSettings: { ...useMazeStore.getState().vectorByCorridorsSettings, splitSpecialShapes: true },
       vectorByCorridorsSectionsExpanded: { cells: true, waypoints: true, warnings: true },
     });
     render(<VectorByCorridorsSettingsPanel />);
-    expect(screen.getByText(m["image_export.vector_by_corridors.warning_waypoint_on_split"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.warning_waypoint_on_split"]())).toBeInTheDocument();
   });
 
   describe("Teleports section (GitHub issue #313)", () => {

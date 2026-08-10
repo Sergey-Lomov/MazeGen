@@ -742,6 +742,10 @@ function validateVectorByCorridorsSettings(v: unknown, path: string): VectorByCo
     oneWayLength: optNumber(obj, "oneWayLength", d.oneWayLength),
     oneWayJoin: optJoin(obj, "oneWayJoin", d.oneWayJoin),
     ...validateTeleportSettingsFields(obj, path, d),
+    splitNodeColors: Array.isArray(obj?.splitNodeColors) ? obj.splitNodeColors.filter((n): n is number => typeof n === "number") : d.splitNodeColors,
+    splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
+    splitGapWidth: optNumber(obj, "splitGapWidth", d.splitGapWidth),
+    splitDiagonalBowAmount: optNumber(obj, "splitDiagonalBowAmount", d.splitDiagonalBowAmount),
   };
 }
 

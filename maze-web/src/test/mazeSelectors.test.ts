@@ -232,11 +232,26 @@ describe("buildCorridorSegments", () => {
     expect(buildCorridorSegments(nodes, [teleportEdge], squareCfg)).toEqual([]);
   });
 
-  it("skips a split point's edges entirely", () => {
+  it("skips a split-to-split edge entirely (drawn by buildSplitPassages instead)", () => {
+    // Point (0,0) split into node 0 (original) and node 2 (extra split node); node 0 <-> node 2
+    // is an inter-split edge at the same point, drawn by buildSplitPassages, never a corridor
+    // segment.
+    const nodes = [n(0, 0, 0), n(2, 0, 0)];
+    const edges: EdgeDto[] = [e(0, 2), e(2, 0)];
+    expect(buildCorridorSegments(nodes, edges, squareCfg)).toEqual([]);
+  });
+
+  it("a plain cell neighboring a split point still draws its own stub, shortened to the shared face's own midpoint (GitHub issue #314)", () => {
     // Point (0,0) split into node 0 (original) and node 2 (extra split node, wired to node 1).
     const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0)];
     const edges: EdgeDto[] = [e(2, 1), e(1, 2)];
-    expect(buildCorridorSegments(nodes, edges, squareCfg)).toEqual([]);
+    const segments = buildCorridorSegments(nodes, edges, squareCfg);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].fromNode).toBe(1);
+    expect(segments[0].toNode).toBe(2);
+    expect(segments[0].v0).toEqual(getCellCenter(1, 0, squareCfg));
+    // Shortened to the face midpoint between (1,0) and (0,0), not all the way to (0,0)'s own center.
+    expect(segments[0].v1).not.toEqual(getCellCenter(0, 0, squareCfg));
   });
 
   it("a split point's unrelated neighbor still draws its own ordinary corridor segments", () => {
@@ -246,7 +261,7 @@ describe("buildCorridorSegments", () => {
     expect(segments).toHaveLength(1);
     expect(segments[0]).toEqual({
       v0: getCellCenter(1, 0, squareCfg), v1: getCellCenter(2, 0, squareCfg),
-      oneWayDir: undefined, fromNode: 1, toNode: 3,
+      oneWayDir: undefined, fromNode: 1, toNode: 3, v1TouchesSplit: false,
     });
   });
 
@@ -312,6 +327,33 @@ describe("buildSplitPassages", () => {
     // Node 5 -> west face (1 entry, its own edge back to node 0). Nodes 2/4 have no edges -> 0 entries.
     expect(passages).toHaveLength(3);
     for (const p of passages) expect(p.wallSegments).toHaveLength(1);
+  });
+
+  it("corridorConnectorWidth (GitHub issue #314 follow-up): several nodes sharing a face divide the ordinary corridor's own width, centered on the face's own midpoint, not the whole face", () => {
+    // (0,0) split into node 1/node 5, both facing east toward (1,0)'s node 0 -- same fixture shape
+    // as the "collapse to one wall segment per face" test above, mirrored so the *receiving* point
+    // (0,0) is the one with 2 nodes sharing a face. The shared face runs from (40,-40) to (40,0) in
+    // this test's cartesian mock (see `squareCfg`'s own convention elsewhere in this file); its own
+    // midpoint is (40,-20).
+    const nodes = [n(0, 1, 0), n(1, 0, 0), n(2, 0, 1), n(3, 1, 0), n(4, -1, 0), n(5, 0, 0)];
+    const edges: EdgeDto[] = [e(0, 1), e(1, 0), e(0, 5), e(5, 0)];
+    const withoutWidth = buildSplitPassages(nodes, edges, squareCfg).passages.filter((p) => p.pointKey === "0,0");
+    expect(withoutWidth).toHaveLength(2);
+    const [a, b] = withoutWidth;
+    // Default (no corridorConnectorWidth): the shared face's own full 40-length span is divided in
+    // half — each share's own center sits 20 away from the face's own (40,-20) midpoint.
+    expect(Math.abs(a.wallSegments[0].center.y - -20)).toBeCloseTo(10, 5);
+    expect(Math.abs(b.wallSegments[0].center.y - -20)).toBeCloseTo(10, 5);
+
+    // With corridorConnectorWidth (the ordinary corridor's own thickness): each share's own center
+    // sits `width / 4` away from the face's own midpoint (half of `width / 2`), regardless of the
+    // face's own (much larger) 40-length span.
+    const width = 10;
+    const withWidth = buildSplitPassages(nodes, edges, squareCfg, new Set(), {}, {}, undefined, width).passages.filter((p) => p.pointKey === "0,0");
+    const [wa, wb] = withWidth;
+    expect(Math.abs(wa.wallSegments[0].center.y - -20)).toBeCloseTo(width / 4, 5);
+    expect(Math.abs(wb.wallSegments[0].center.y - -20)).toBeCloseTo(width / 4, 5);
+    expect(wa.wallSegments[0].center.x).toBeCloseTo(40, 5);
   });
 
   it("one-way passage's connector gets a direction marker, bidirectional does not", () => {

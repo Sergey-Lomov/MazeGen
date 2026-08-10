@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { VectorByCorridorsRenderer, buildTeleportWidenMarkers } from "../pixi/imageExport/VectorByCorridorsRenderer";
-import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges } from "../pixi/selectors/mazeSelectors";
+import { Graphics } from "pixi.js";
+import { VectorByCorridorsRenderer, buildTeleportWidenMarkers, computeSquareCapPatch, computeDiagonalGapPatchGeometry } from "../pixi/imageExport/VectorByCorridorsRenderer";
+import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildSplitPassages } from "../pixi/selectors/mazeSelectors";
 import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
 import { TILE_SIZE } from "../pixi/constants";
 import type { NodeDto, EdgeDto } from "../wasm/types";
@@ -11,6 +12,8 @@ vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildCorridorSegments: vi.fn(() => []),
   buildMazeMarkers: vi.fn(() => []),
   buildTeleportEdges: vi.fn(() => []),
+  buildSplitPassages: vi.fn(() => ({ passages: [], wallFaces: [], specialShapes: [] })),
+  maxSplitNodeCount: vi.fn(() => 0),
 }));
 
 vi.mock("../pixi/renderers/WallRenderer", () => ({
@@ -45,16 +48,19 @@ vi.mock("../store/mazeStore", () => ({
 }));
 
 vi.mock("pixi.js", () => ({
-  Container: vi.fn().mockImplementation(function (this: { addChild: () => void; destroy: () => void; visible: boolean }) {
+  Container: vi.fn().mockImplementation(function (this: { addChild: () => void; addChildAt: () => void; destroy: () => void; visible: boolean }) {
     this.addChild = vi.fn();
+    this.addChildAt = vi.fn();
     this.destroy = vi.fn();
     this.visible = false;
   }),
-  Graphics: vi.fn().mockImplementation(function (this: { clear: () => void; moveTo: () => unknown; lineTo: () => unknown; arcTo: () => unknown; closePath: () => unknown; stroke: () => unknown; circle: () => unknown; poly: () => unknown; rect: () => unknown; fill: () => unknown; setStrokeStyle: () => unknown; destroy: () => void }) {
+  Graphics: vi.fn().mockImplementation(function (this: { clear: () => void; moveTo: () => unknown; lineTo: () => unknown; arcTo: () => unknown; quadraticCurveTo: () => unknown; bezierCurveTo: () => unknown; closePath: () => unknown; stroke: () => unknown; circle: () => unknown; poly: () => unknown; rect: () => unknown; fill: () => unknown; setStrokeStyle: () => unknown; destroy: () => void }) {
     this.clear = vi.fn();
     this.moveTo = vi.fn(() => this);
     this.lineTo = vi.fn(() => this);
     this.arcTo = vi.fn(() => this);
+    this.quadraticCurveTo = vi.fn(() => this);
+    this.bezierCurveTo = vi.fn(() => this);
     this.closePath = vi.fn(() => this);
     this.stroke = vi.fn(() => this);
     this.circle = vi.fn(() => this);
@@ -83,8 +89,11 @@ const teleportDefaults: Pick<VectorByCorridorsSettings,
 const oneWayDefaults: Pick<VectorByCorridorsSettings, "oneWayColor" | "oneWayCount" | "oneWayThickness" | "oneWayGap" | "oneWayWidth" | "oneWayLength" | "oneWayJoin"> = {
   oneWayColor: 0, oneWayCount: 1, oneWayThickness: 4, oneWayGap: 4, oneWayWidth: 1, oneWayLength: 10, oneWayJoin: "round",
 };
-const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults };
-const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults };
+const splitDefaults: Pick<VectorByCorridorsSettings, "splitNodeColors" | "splitSpecialShapes" | "splitGapWidth" | "splitDiagonalBowAmount"> = {
+  splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
+};
+const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...splitDefaults };
+const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...splitDefaults };
 
 // Stable references reused across `baseState()` calls — the renderer's own geometry cache keys off
 // reference-equality of `nodes`/`edges`/`activeTessellationConfig` (same convention as
@@ -171,6 +180,65 @@ describe("buildTeleportWidenMarkers", () => {
   });
 });
 
+describe("computeSquareCapPatch", () => {
+  it("extends width/2 past freeEnd along the path's own direction, centered on the perpendicular", () => {
+    const freeEnd = { x: 10, y: 0 };
+    const neighbor = { x: 0, y: 0 }; // path runs along +x, so freeEnd's own direction is +x
+    const [p0, p1, p2, p3] = computeSquareCapPatch(freeEnd, neighbor, 4);
+    // half = 2: two corners at freeEnd +/- perpendicular, two at the tip (freeEnd + 2 along +x) +/- perpendicular.
+    expect(p0).toEqual({ x: 10, y: 2 });
+    expect(p1).toEqual({ x: 12, y: 2 });
+    expect(p2).toEqual({ x: 12, y: -2 });
+    expect(p3).toEqual({ x: 10, y: -2 });
+  });
+
+  it("falls back to a unit direction when freeEnd and neighbor coincide, instead of producing NaN", () => {
+    const p = { x: 5, y: 5 };
+    const [p0, p1, p2, p3] = computeSquareCapPatch(p, p, 2);
+    for (const corner of [p0, p1, p2, p3]) {
+      expect(Number.isFinite(corner.x)).toBe(true);
+      expect(Number.isFinite(corner.y)).toBe(true);
+    }
+  });
+});
+
+describe("computeDiagonalGapPatchGeometry", () => {
+  it("pulls gapFrom/gapTo inward from from/to by gridInset, along each face's own perpendicular", () => {
+    // Two faces both running along +x (a straight-through connector, parallel faces) — the inward
+    // direction is then perpendicular to +x, i.e. along +/-y.
+    const from = { x: 0, y: 0 };
+    const to = { x: 20, y: 0 };
+    const fromFaceDir = { x: 1, y: 0 };
+    const toFaceDir = { x: 1, y: 0 };
+    const { gapFrom, gapTo } = computeDiagonalGapPatchGeometry(from, to, fromFaceDir, toFaceDir, 3, 10);
+    expect(gapFrom.x).toBeCloseTo(0, 5);
+    expect(Math.abs(gapFrom.y)).toBeCloseTo(3, 5);
+    expect(gapTo.x).toBeCloseTo(20, 5);
+    expect(Math.abs(gapTo.y)).toBeCloseTo(3, 5);
+  });
+
+  it("does not clamp gapWidth for parallel faces (never intersect, so the ray-intersection cap is a no-op)", () => {
+    const from = { x: 0, y: 0 };
+    const to = { x: 20, y: 0 };
+    const fromFaceDir = { x: 1, y: 0 };
+    const toFaceDir = { x: 1, y: 0 };
+    const { clampedGapWidth } = computeDiagonalGapPatchGeometry(from, to, fromFaceDir, toFaceDir, 0, 10);
+    expect(clampedGapWidth).toBe(10);
+  });
+
+  it("clamps gapWidth so the patch's own short ends never cross their own lines' intersection point", () => {
+    // Two faces at a right angle, meeting close to from/to (a sharp corner) — the intersection of
+    // the two short-end lines is nearby, so a large requested gapWidth must be clamped down.
+    const from = { x: 0, y: 0 };
+    const to = { x: 1, y: 0 };
+    const fromFaceDir = { x: 0, y: 1 };
+    const toFaceDir = { x: 1, y: 0 };
+    const { clampedGapWidth } = computeDiagonalGapPatchGeometry(from, to, fromFaceDir, toFaceDir, 0, 1000);
+    expect(clampedGapWidth).toBeLessThan(1000);
+    expect(clampedGapWidth).toBeGreaterThanOrEqual(0);
+  });
+});
+
 describe("VectorByCorridorsRenderer", () => {
   it("getRequiredExportMargin/getRequiredWallExportMargin both return half the current thickness", () => {
     currentState = baseState({ vectorByCorridorsSettings: settingsB });
@@ -247,10 +315,23 @@ describe("VectorByCorridorsRenderer", () => {
     new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
     vi.mocked(buildCorridorSegments).mockClear();
 
-    const nextState = baseState({ vectorByCorridorsSettings: settingsB });
+    // `color`-only change — `thickness` stays the same as `settingsA`'s own (unlike `settingsB`,
+    // which also changes `thickness`, itself now a geometry-cache key since GitHub issue #314's
+    // split-connector corridor-width division depends on it).
+    const nextState = baseState({ vectorByCorridorsSettings: { ...settingsA, color: 0x999999 } });
     subscribeCallback?.(nextState);
 
     expect(buildCorridorSegments).not.toHaveBeenCalled();
+  });
+
+  it("a thickness-only change rebuilds geometry (split-connector corridor-width division depends on it, GitHub issue #314)", () => {
+    new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    vi.mocked(buildCorridorSegments).mockClear();
+
+    const nextState = baseState({ vectorByCorridorsSettings: settingsB });
+    subscribeCallback?.(nextState);
+
+    expect(buildCorridorSegments).toHaveBeenCalledTimes(1);
   });
 
   it("a data change while the image-export card is closed does not re-render", () => {
@@ -407,6 +488,218 @@ describe("VectorByCorridorsRenderer", () => {
       const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
       const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn> } }).corridors;
       expect(corridorsGraphics.moveTo).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("split points (GitHub issue #314)", () => {
+    it("draws each node's own face share as a straight line from the point's own center, one stroke per share", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [
+          {
+            color: 0xaaaaaa, pointKey: "0,0", center: { x: 5, y: 5 },
+            wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 0, y: 10 }, center: { x: 10, y: 5 }, isUndefined: false }],
+            connectors: [],
+          },
+          {
+            color: 0xbbbbbb, pointKey: "0,0", center: { x: 5, y: 5 },
+            wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 10 }, isUndefined: false }],
+            connectors: [],
+          },
+        ],
+        wallFaces: [],
+        specialShapes: [],
+      });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn>; moveTo: ReturnType<typeof vi.fn> } }).corridors;
+      const colors = corridorsGraphics.stroke.mock.calls.map((call: unknown[]) => (call[0] as { color: number }).color);
+      expect(colors).toContain(0xaaaaaa);
+      expect(colors).toContain(0xbbbbbb);
+      // Every line starts at the point's own center (5,5), never a hub offset.
+      expect(corridorsGraphics.moveTo).toHaveBeenCalledWith(5, 5);
+    });
+
+    it("a node with 3+ face shares draws one straight line per share, all from the same center — no hub fan-out", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [{
+          color: 0xaaaaaa, pointKey: "0,0", center: { x: 5, y: 5 },
+          wallSegments: [
+            { v0: { x: 0, y: 0 }, v1: { x: 0, y: 0 }, center: { x: 10, y: 5 }, isUndefined: false },
+            { v0: { x: 0, y: 0 }, v1: { x: 0, y: 0 }, center: { x: 0, y: 5 }, isUndefined: false },
+            { v0: { x: 0, y: 0 }, v1: { x: 0, y: 0 }, center: { x: 5, y: 10 }, isUndefined: false },
+          ],
+          connectors: [],
+        }],
+        wallFaces: [],
+        specialShapes: [],
+      });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn>; moveTo: ReturnType<typeof vi.fn> } }).corridors;
+      expect(corridorsGraphics.stroke).toHaveBeenCalledTimes(3);
+      expect(corridorsGraphics.moveTo.mock.calls.every((call: unknown[]) => call[0] === 5 && call[1] === 5)).toBe(true);
+    });
+
+    it("draws an undefined (tentative) share in a desaturated version of the node's color, not the plain color", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [{
+          color: 0xff0000, pointKey: "0,0", center: { x: 5, y: 5 },
+          wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: true }],
+          connectors: [],
+        }],
+        wallFaces: [],
+        specialShapes: [],
+      });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const colors = corridorsGraphics.stroke.mock.calls.map((call: unknown[]) => (call[0] as { color: number }).color);
+      expect(colors).not.toContain(0xff0000);
+    });
+
+    it("plain (non-special) shares draw at half the corridor's own thickness", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [{
+          color: 0xaaaaaa, pointKey: "0,0", center: { x: 5, y: 5 },
+          wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false }],
+          connectors: [],
+        }],
+        wallFaces: [],
+        specialShapes: [],
+      });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const widths = corridorsGraphics.stroke.mock.calls.map((call: unknown[]) => (call[0] as { width: number }).width);
+      expect(widths).toContain(settingsA.thickness / 2);
+    });
+
+    it("bridge special shape: draws the through line, the cross line, and a background-colored gap stroke at their intersection when splitGapWidth > 0, both in the plain corridor color", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [{
+          color: 0xaaaaaa, pointKey: "0,0", center: { x: 20, y: 20 },
+          wallSegments: [{ v0: { x: 0, y: 20 }, v1: { x: 0, y: 20 }, center: { x: 0, y: 20 }, isUndefined: false }],
+          connectors: [],
+        }],
+        wallFaces: [],
+        specialShapes: [{
+          kind: "bridge", pointKey: "0,0",
+          crossFaces: [{ v0: { x: 20, y: 0 }, v1: { x: 20, y: 0 } }, { v0: { x: 20, y: 40 }, v1: { x: 20, y: 40 } }],
+          edge0: [{ x: 10, y: 0 }, { x: 14, y: 8 }, { x: 14, y: 32 }, { x: 10, y: 40 }],
+          edge1: [{ x: 30, y: 0 }, { x: 26, y: 8 }, { x: 26, y: 32 }, { x: 30, y: 40 }],
+          throughLine: [{ x: 0, y: 20 }, { x: 40, y: 20 }],
+        }],
+      });
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 3 } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      // The through/cross lines and the background gap patch all draw on their own throwaway
+      // tile-masked `clipView` (GitHub issue #314 follow-up), never on the shared `corridors`
+      // graphics — so the point's own ordinary passage share must not appear there either, and
+      // neither must the special shape's own lines.
+      const corridorsStrokeCalls = corridorsGraphics.stroke.mock.calls.map((call: unknown[]) => call[0] as { color: number; width: number });
+      expect(corridorsStrokeCalls.some((s) => s.color === 0xaaaaaa)).toBe(false);
+      expect(corridorsStrokeCalls.length).toBe(0);
+
+      const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { stroke: ReturnType<typeof vi.fn> });
+      const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
+      const allStrokeCalls = groupGraphics.flatMap((g) => g.stroke.mock.calls.map((call: unknown[]) => call[0] as { color: number; width: number }));
+      // Through line and cross line both draw in the plain corridor color, at full thickness — 2
+      // separate stroke calls at that color (through, then cross, on top); the gap patch is a
+      // separate stroke in `settings.background`, all on the same `clipView`.
+      const fullColorCalls = allStrokeCalls.filter((s) => s.color === settingsA.color && s.width === settingsA.thickness);
+      expect(fullColorCalls.length).toBe(2);
+      expect(allStrokeCalls.some((s) => s.color === settingsA.background)).toBe(true);
+    });
+
+    it("bridge special shape: draws no background gap stroke when splitGapWidth is 0", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [{ color: 0xaaaaaa, pointKey: "0,0", center: { x: 20, y: 20 }, wallSegments: [], connectors: [] }],
+        wallFaces: [],
+        specialShapes: [{
+          kind: "bridge", pointKey: "0,0",
+          crossFaces: [{ v0: { x: 20, y: 0 }, v1: { x: 20, y: 0 } }, { v0: { x: 20, y: 40 }, v1: { x: 20, y: 40 } }],
+          edge0: [{ x: 10, y: 0 }, { x: 14, y: 8 }, { x: 14, y: 32 }, { x: 10, y: 40 }],
+          edge1: [{ x: 30, y: 0 }, { x: 26, y: 8 }, { x: 26, y: 32 }, { x: 30, y: 40 }],
+          throughLine: [{ x: 0, y: 20 }, { x: 40, y: 20 }],
+        }],
+      });
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitGapWidth: 0 } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { stroke: ReturnType<typeof vi.fn> });
+      const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
+      const allStrokeCalls = groupGraphics.flatMap((g) => g.stroke.mock.calls.map((call: unknown[]) => call[0] as { color: number }));
+      expect(allStrokeCalls.some((s) => s.color === settingsA.background)).toBe(false);
+    });
+
+    it("diagonal special shape: draws each node's connector as a bowed ribbon (bezierCurveTo), not a straight line, when splitDiagonalBowAmount > 0, in the plain corridor color", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [
+          { color: 0xaaaaaa, pointKey: "1,1", center: { x: 20, y: 20 }, wallSegments: [], connectors: [{ from: { x: 0, y: 20 }, to: { x: 20, y: 0 }, isUndefined: false }] },
+          { color: 0xbbbbbb, pointKey: "1,1", center: { x: 20, y: 20 }, wallSegments: [], connectors: [{ from: { x: 20, y: 40 }, to: { x: 40, y: 20 }, isUndefined: false }] },
+        ],
+        wallFaces: [],
+        specialShapes: [{ kind: "diagonal", pointKey: "1,1", corner0: { x: 0, y: 0 }, corner1: { x: 40, y: 40 } }],
+      });
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitDiagonalBowAmount: 0.15, splitGapWidth: 0 } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { bezierCurveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
+      // Each ribbon draws on its own throwaway tile-masked `clipView` (GitHub issue #314
+      // follow-up), never on the shared `corridors` graphics.
+      expect(corridorsGraphics.bezierCurveTo).not.toHaveBeenCalled();
+      const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { bezierCurveTo: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> });
+      const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
+      // splitGapWidth: 0 -> no gap-patch pass, 2 bezierCurveTo calls per ribbon (one per long
+      // edge), 2 connectors total -> 4.
+      const totalBezier = groupGraphics.reduce((sum, g) => sum + g.bezierCurveTo.mock.calls.length, 0);
+      expect(totalBezier).toBe(4);
+      const allFillCalls = groupGraphics.flatMap((g) => g.fill.mock.calls.map((call: unknown[]) => call[0] as number));
+      expect(allFillCalls.some((c) => c === settingsA.color)).toBe(true);
+      expect(allFillCalls.some((c) => c === settingsA.background)).toBe(false);
+    });
+
+    it("diagonal special shape: draws a background-colored gap frame around each arc when splitGapWidth > 0", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [
+          { color: 0xaaaaaa, pointKey: "1,1", center: { x: 20, y: 20 }, wallSegments: [], connectors: [{ from: { x: 0, y: 20 }, to: { x: 20, y: 0 }, isUndefined: false }] },
+        ],
+        wallFaces: [],
+        specialShapes: [{ kind: "diagonal", pointKey: "1,1", corner0: { x: 0, y: 0 }, corner1: { x: 40, y: 40 } }],
+      });
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitDiagonalBowAmount: 0.15, splitGapWidth: 3 } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { bezierCurveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
+      // The ribbon's own line and its background gap frame draw on two separate `Graphics`
+      // (`clipView`/`gapView`, GitHub issue #314 follow-up) — never on the shared `corridors`
+      // graphics. Each is its own filled ribbon (2 bezierCurveTo calls, one per long edge).
+      const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { bezierCurveTo: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> });
+      const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
+      const totalBezier = groupGraphics.reduce((sum, g) => sum + g.bezierCurveTo.mock.calls.length, 0);
+      expect(totalBezier).toBe(4);
+      const allFillCalls = groupGraphics.flatMap((g) => g.fill.mock.calls.map((call: unknown[]) => call[0] as number));
+      expect(allFillCalls.some((c) => c === settingsA.background)).toBe(true);
+      expect(allFillCalls.some((c) => c === settingsA.color)).toBe(true);
+      expect(corridorsGraphics.bezierCurveTo).not.toHaveBeenCalled();
+    });
+
+    it("splitSpecialShapes off: special-shape points fall back to the ordinary per-node face-share reading", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [{
+          color: 0xaaaaaa, pointKey: "0,0", center: { x: 20, y: 20 },
+          wallSegments: [{ v0: { x: 0, y: 20 }, v1: { x: 0, y: 20 }, center: { x: 0, y: 20 }, isUndefined: false }],
+          connectors: [],
+        }],
+        wallFaces: [],
+        specialShapes: [{
+          kind: "bridge", pointKey: "0,0",
+          crossFaces: [{ v0: { x: 20, y: 0 }, v1: { x: 20, y: 0 } }, { v0: { x: 20, y: 40 }, v1: { x: 20, y: 40 } }],
+          edge0: [{ x: 10, y: 0 }, { x: 14, y: 8 }, { x: 14, y: 32 }, { x: 10, y: 40 }],
+          edge1: [{ x: 30, y: 0 }, { x: 26, y: 8 }, { x: 26, y: 32 }, { x: 30, y: 40 }],
+          throughLine: [{ x: 0, y: 20 }, { x: 40, y: 20 }],
+        }],
+      });
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: false } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn> } }).corridors;
+      const strokeArgs = corridorsGraphics.stroke.mock.calls.map((call: unknown[]) => (call[0] as { color: number }).color);
+      expect(strokeArgs).toContain(0xaaaaaa);
     });
   });
 });

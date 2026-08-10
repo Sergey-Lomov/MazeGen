@@ -1112,6 +1112,31 @@ export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWa
    *  convention the corridor stroke's own join/cap already uses, rather than a separate corner-style
    *  setting just for this. */
   markerWidenShape: MarkerWidenShape;
+  /** Splits section (GitHub issue #314) — per-split-node-slot identity colors, same convention as
+   *  `VectorByWallsSettings.splitNodeColors` (indexed by slot, overriding `splitSlotColor`'s
+   *  default palette one-to-one; a point with more nodes than this array's length falls back to the
+   *  default palette for the overflow slots). Drawn as connector lines only (this mode has no wall
+   *  segments to divide a face into shares) — see `VectorByCorridorsRenderer.drawSplitPassages`. */
+  splitNodeColors: number[];
+  /** On by default, same convention as `VectorByWallsSettings.splitSpecialShapes`. When on, a
+   *  recognized degree-4 "bridge" split point draws its through corridor with a background-colored
+   *  gap where the cross corridor passes over it (`splitGapWidth`), and a "diagonal" split
+   *  point draws each node's connector as an outward-bowed arc (`splitDiagonalBowAmount`) instead
+   *  of a straight line, so the two nodes' lines don't visually cross at the tile center. Off draws
+   *  every split point via the generic per-node connector reading, same as any other split point. */
+  splitSpecialShapes: boolean;
+  /** Background-colored gap width (px) cut into a bridge point's through corridor where the cross
+   *  corridor passes over it — only meaningful (and only shown in the settings panel) while
+   *  `splitSpecialShapes` is on. `0` draws no gap (the two lines simply overlap with no visual
+   *  break). Shared name/convention for any future split-drawing gap this render mode needs, not
+   *  specific to the bridge shape by name. */
+  splitGapWidth: number;
+  /** How far a diagonal split point's two connector arcs bow away from the straight line between
+   *  their own two shares, as a fraction of the tile size (0-1, same 0-1-fraction convention
+   *  `MarkerSettings.size`/`teleportLineSize` use) — only meaningful while `splitSpecialShapes` is
+   *  on. `0` draws a plain straight connector (the two nodes' lines would coincide at the tile
+   *  center, same as the generic non-special reading). */
+  splitDiagonalBowAmount: number;
 }
 
 /** See `VectorByCorridorsSettings.markerWidenShape`'s own doc comment. */
@@ -1206,6 +1231,10 @@ export interface ImageExportActions {
   patchVectorByCorridorsOneWaySettings: (patch: Partial<OneWaySettingsFields>) => void;
   patchVectorByCorridorsTeleportSettings: (patch: Partial<TeleportSettingsFields>) => void;
   setVectorByCorridorsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
+  setVectorByCorridorsSplitNodeColor: (index: number, color: number) => void;
+  setVectorByCorridorsSplitSpecialShapes: (v: boolean) => void;
+  setVectorByCorridorsSplitGapWidth: (v: number) => void;
+  setVectorByCorridorsSplitDiagonalBowAmount: (v: number) => void;
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;

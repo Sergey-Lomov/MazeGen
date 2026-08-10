@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields } from "../../store/storeTypes";
-import { buildTeleportEdges, buildSplitPassages, buildSplitPointKeys, buildCorridorSegments, getSplitAwareNodePosition, maxSplitNodeCount } from "./mazeSelectors";
+import { buildTeleportEdges, buildSplitPassages, buildCorridorSegments, getSplitAwareNodePosition, maxSplitNodeCount } from "./mazeSelectors";
 import { buildTeleportGroups, teleportEdgeKey, coordKey } from "./teleportGroups";
 import type { TeleportEdge } from "../renderers/types";
 import { chevronRowStep } from "../renderers/wallUtils";
@@ -20,12 +20,6 @@ export type ExportWarningId =
   | "teleport_waypoint_overlap"
   | "waypoint_on_split"
   | "teleport_on_special_split"
-  /** "Vector by corridors" only (GitHub issue #311) — start/finish sits on *any* split point, not
-   *  just a "special shape" one. Unlike `VectorByWallsRenderer`, this mode draws no split-point
-   *  geometry at all (`buildCorridorSegments` skips every split point unconditionally), so a
-   *  waypoint marker there sits with no corridor line drawn under it whatsoever — worth flagging
-   *  regardless of whether the point would've been a recognized special shape. */
-  | "waypoint_on_split_corridor"
   /** "Vector by corridors" only (GitHub issue #312) — the one-way chevron row's own settings
    *  (count/length/gap/width) would overflow past a single cell's bounds along the corridor
    *  (`TILE_SIZE`) or across it (the corridor's own `thickness`). One warning total, covering every
@@ -304,8 +298,11 @@ export function computeVectorByWallsWarnings(
  *  as-is, so it can hit the exact same "ambiguous group"/"invisible marker"/"waypoint overlap"
  *  caveats "Vector by walls" already flags, and previously silently didn't). Kept as its own
  *  function (not folded into `computeVectorByWallsWarnings`) since the two modes' warning sets
- *  still differ: this mode has no special-split-shape rendering of its own (`waypoint_on_split`/
- *  `teleport_on_special_split` stay Walls-only), using `waypoint_on_split_corridor` instead. */
+ *  still differ in their one-way overflow check. `waypoint_on_split`/`teleport_on_special_split`
+ *  (GitHub issue #314) are now shared with "Vector by walls" — this mode draws the exact same
+ *  bridge/diagonal special-shape geometry, gated on the same `splitSpecialShapes` setting, so the
+ *  same caveat applies: a marker/teleport endpoint landing on a recognized special-shape point can
+ *  visually collide with that shape's own geometry. */
 export function computeVectorByCorridorsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],
@@ -327,19 +324,38 @@ export function computeVectorByCorridorsWarnings(
     cfg,
   );
 
-  const splitPointKeys = buildSplitPointKeys(nodes);
+  const specialSplitPointKeys = new Set<string>();
+  if (settings.splitSpecialShapes && maxSplitNodeCount(nodes) > 0) {
+    const { specialShapes } = buildSplitPassages(nodes, edges, cfg);
+    for (const shape of specialShapes) specialSplitPointKeys.add(shape.pointKey);
+  }
 
-  if (splitPointKeys.size > 0) {
+  if (specialSplitPointKeys.size > 0) {
     const flaggedIds = filterNodesOnSpecialSplit(
       [start, finish].filter((id): id is number => id !== null),
       nodeById,
-      splitPointKeys,
+      specialSplitPointKeys,
     );
     if (flaggedIds.length > 0) {
       warnings.push({
-        id: "waypoint_on_split_corridor",
-        key: "waypoint_on_split_corridor",
+        id: "waypoint_on_split",
+        key: "waypoint_on_split",
         nodes: flaggedIds,
+        edges: [],
+      });
+    }
+
+    const teleportNodeIds = new Set<number>();
+    for (const e of teleportEdges) {
+      if (e.fromNode !== undefined) teleportNodeIds.add(e.fromNode);
+      if (e.toNode !== undefined) teleportNodeIds.add(e.toNode);
+    }
+    const flaggedTeleportIds = filterNodesOnSpecialSplit(teleportNodeIds, nodeById, specialSplitPointKeys);
+    if (flaggedTeleportIds.length > 0) {
+      warnings.push({
+        id: "teleport_on_special_split",
+        key: "teleport_on_special_split",
+        nodes: flaggedTeleportIds,
         edges: [],
       });
     }

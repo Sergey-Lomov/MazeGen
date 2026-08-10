@@ -11,7 +11,6 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   teleport_waypoint_overlap: m["image_export.vector_by_walls.warning_teleport_waypoint_overlap"],
   waypoint_on_split: m["image_export.vector_by_walls.warning_waypoint_on_split"],
   teleport_on_special_split: m["image_export.vector_by_walls.warning_teleport_on_special_split"],
-  waypoint_on_split_corridor: m["image_export.vector_by_corridors.warning_waypoint_on_split"],
   one_way_arrows_overflow_corridor: m["image_export.vector_by_corridors.warning_one_way_arrows_overflow"],
 };
 
@@ -21,7 +20,6 @@ const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   teleport_waypoint_overlap: m["image_export.vector_by_walls.warning_teleport_waypoint_overlap_description"],
   waypoint_on_split: m["image_export.vector_by_walls.warning_waypoint_on_split_description"],
   teleport_on_special_split: m["image_export.vector_by_walls.warning_teleport_on_special_split_description"],
-  waypoint_on_split_corridor: m["image_export.vector_by_corridors.warning_waypoint_on_split_description"],
   one_way_arrows_overflow_corridor: m["image_export.vector_by_corridors.warning_one_way_arrows_overflow_description"],
 };
 

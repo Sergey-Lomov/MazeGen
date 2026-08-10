@@ -12,6 +12,9 @@ import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./Telep
 import { computeVectorByCorridorsWarnings } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
+import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
+import { splitSlotColor } from "../../pixi/colorUtils";
+import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
 import * as m from "~/paraglide/messages";
 
@@ -67,6 +70,10 @@ export function VectorByCorridorsSettingsPanel() {
   const patchTeleportSettings = useMazeStore((s) => s.patchVectorByCorridorsTeleportSettings);
   const setTeleportGroupOverride = useMazeStore((s) => s.setVectorByCorridorsTeleportGroupOverride);
   const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
+  const setSplitNodeColor = useMazeStore((s) => s.setVectorByCorridorsSplitNodeColor);
+  const setSplitSpecialShapes = useMazeStore((s) => s.setVectorByCorridorsSplitSpecialShapes);
+  const setSplitGapWidth = useMazeStore((s) => s.setVectorByCorridorsSplitGapWidth);
+  const setSplitDiagonalBowAmount = useMazeStore((s) => s.setVectorByCorridorsSplitDiagonalBowAmount);
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByCorridorsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByCorridorsSectionExpanded);
@@ -117,6 +124,10 @@ export function VectorByCorridorsSettingsPanel() {
   const hasTeleports = useMemo(() => edges.some((e) => e.kind === "teleport"), [edges]);
 
   const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(nodes, edges, cfg, settings);
+
+  // Splits section (GitHub issue #314) — same "hide when there's nothing to configure" rule as
+  // `VectorByWallsSettingsPanel`'s own Splits section.
+  const maxSplit = useMemo(() => maxSplitNodeCount(nodes), [nodes]);
 
   return (
     <div style={styles.root}>
@@ -319,6 +330,55 @@ export function VectorByCorridorsSettingsPanel() {
               teleportGroups={teleportGroups}
               teleportCollisionKeys={teleportCollisionKeys}
             />
+          )}
+        </>
+      )}
+
+      {maxSplit > 0 && (
+        <>
+          <div style={styles.divider} />
+
+          <SectionHeader
+            label={m["image_export.vector_by_walls.section_splits"]()}
+            expanded={isExpanded("splits")}
+            onToggle={() => toggleSection("splits")}
+          />
+          {isExpanded("splits") && (
+            <div style={styles.block}>
+              {Array.from({ length: maxSplit }, (_, i) => (
+                <ColorRow
+                  key={i}
+                  label={m["image_export.vector_by_walls.split_node_color"]({ index: String(i + 1) })}
+                  color={settings.splitNodeColors[i] ?? splitSlotColor(i, canvas.node.splitSlots)}
+                  onChange={(color) => setSplitNodeColor(i, color)}
+                />
+              ))}
+              <ToggleRow
+                label={m["image_export.vector_by_walls.split_special_shapes"]()}
+                checked={settings.splitSpecialShapes}
+                onChange={setSplitSpecialShapes}
+              />
+              <SliderRow
+                label={m["image_export.vector_by_corridors.split_gap_width"]()}
+                value={settings.splitGapWidth}
+                onChange={setSplitGapWidth}
+                min={0}
+                max={TILE_SIZE / 2}
+                step={1}
+                format={(v) => String(v)}
+                disabled={!settings.splitSpecialShapes}
+              />
+              <SliderRow
+                label={m["image_export.vector_by_corridors.split_diagonal_bow_amount"]()}
+                value={settings.splitDiagonalBowAmount}
+                onChange={setSplitDiagonalBowAmount}
+                min={0}
+                max={1}
+                step={0.01}
+                format={(v) => v.toFixed(2)}
+                disabled={!settings.splitSpecialShapes}
+              />
+            </div>
           )}
         </>
       )}

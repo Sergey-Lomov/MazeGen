@@ -49,6 +49,7 @@ describe("SplitJunctionRenderer.render wallFaces", () => {
 const passage = (pointKey: string, color: number) => ({
   color,
   pointKey,
+  center: { x: 5, y: 5 },
   wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false }],
   connectors: [{ from: { x: 5, y: 0 }, to: { x: 5, y: 5 }, isUndefined: false }],
 });
@@ -66,6 +67,9 @@ const bridgeShape = {
   edge1: [{ x: 30, y: 0 }, { x: 26, y: 8 }, { x: 26, y: 32 }, { x: 30, y: 40 }] as [
     { x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number },
   ],
+  throughLine: [{ x: 0, y: 20 }, { x: 40, y: 20 }] as [{ x: number; y: number }, { x: number; y: number }],
+  throughColor: 0xaaaaaa,
+  crossColor: 0xbbbbbb,
 };
 
 const diagonalShape = {
@@ -171,6 +175,7 @@ describe("SplitJunctionRenderer.render special shapes", () => {
     const angledPassage = {
       color: 0xaaaaaa,
       pointKey: "3,3",
+      center: { x: 5, y: 5 },
       wallSegments: [
         { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false },
         { v0: { x: 10, y: 0 }, v1: { x: 15, y: 8 }, center: { x: 12.5, y: 4 }, isUndefined: false },
@@ -197,6 +202,7 @@ describe("SplitJunctionRenderer.render special shapes", () => {
     const mixedPassage = {
       color: 0xaaaaaa,
       pointKey: "7,7",
+      center: { x: 5, y: 5 },
       wallSegments: [
         { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false },
         { v0: { x: 20, y: 0 }, v1: { x: 30, y: 0 }, center: { x: 25, y: 0 }, isUndefined: true },

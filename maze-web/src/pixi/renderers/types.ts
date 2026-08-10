@@ -70,6 +70,12 @@ export type SplitPassage = {
   /** The split point's own `"${x},${y}"` key (GitHub issue #294) — lets `SplitJunctionRenderer`
    *  skip a point's ordinary passages when it's drawn via `SplitSpecialShape` instead. */
   pointKey: string;
+  /** The split point's own tile center (GitHub issue #314 follow-up) — `VectorByCorridorsRenderer`
+   *  draws each of this node's face shares as a straight line from here (never `connectors`' hub
+   *  fan-out/2-share-straightening — every share always runs to the point's own center, since a
+   *  corridor line has no wall geometry to divide a face into a "share" for in the first place, so
+   *  there's nothing for the hub circle to visually separate). */
+  center: { x: number; y: number };
   /** This node's own share of each geometric edge it connects across, as a sub-segment of the
    *  full shared edge — when several nodes of the same split point cross the same face, the
    *  face's own span is divided evenly among them in slot order, each getting one contiguous
@@ -83,6 +89,10 @@ export type SplitPassage = {
      *  instead of `color`, same tentative-color rule as `TileFaceEditor`'s `disabledOf`. Named
      *  `isUndefined` (not `undefined`) to avoid shadowing the JS keyword at every call site. */
     isUndefined: boolean;
+    /** Set only for a one-way face (GitHub issue #314 follow-up, mirrors `connectors`' own
+     *  `oneWayOut`): `true` if this node's passage runs outward (away from the point's own center,
+     *  toward the face), `false` if inward. `undefined` for a two-way passage. */
+    oneWayOut?: boolean;
   }[];
   /** Lines connecting the node's `wallSegments` together. Exactly one straight line between the
    *  two share centers when `wallSegments.length === 2` and both are plain two-way passages;
@@ -138,6 +148,13 @@ export type SplitSpecialShape =
       edge0: [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
       /** Same shape as `edge0`, the corridor's other edge. */
       edge1: [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
+      /** The through corridor's own two endpoints (face-midpoint to face-midpoint, GitHub issue
+       *  #314) — `VectorByCorridorsRenderer` draws this as a plain straight corridor line
+       *  underneath the cross corridor's own line (`edge0`/`edge1`'s shared axis). Both draw in the
+       *  render mode's own plain corridor color (`VectorByCorridorsSettings.color`), never a node's
+       *  own identity color — neither line reads as "belonging" to one node over the other, same
+       *  convention `SplitJunctionRenderer`'s wall-mode special shapes already use. */
+      throughLine: [{ x: number; y: number }, { x: number; y: number }];
     };
 
 /** Optional per-call override for `SplitJunctionRenderer` (GitHub issue #294) — `nodeColors`

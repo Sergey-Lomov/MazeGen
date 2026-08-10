@@ -84,6 +84,10 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = {
   markerWidenShape: "match_marker",
   ...DEFAULT_ONE_WAY_SETTINGS,
   ...DEFAULT_TELEPORT_SETTINGS,
+  splitNodeColors: [],
+  splitSpecialShapes: true,
+  splitGapWidth: 3,
+  splitDiagonalBowAmount: 0.15,
 };
 
 /** Shared with `projectExport/validate.ts`'s recovery defaults, same convention as
@@ -195,6 +199,19 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       else overrides[groupKey] = { ...overrides[groupKey], ...patch };
       return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, teleportGroupOverrides: overrides } };
     }),
+  setVectorByCorridorsSplitNodeColor: (index, color) =>
+    set((s) => {
+      const colors = [...s.vectorByCorridorsSettings.splitNodeColors];
+      while (colors.length <= index) colors.push(splitSlotColor(colors.length, canvas.node.splitSlots));
+      colors[index] = color;
+      return { vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, splitNodeColors: colors } };
+    }),
+  setVectorByCorridorsSplitSpecialShapes: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, splitSpecialShapes: v } })),
+  setVectorByCorridorsSplitGapWidth: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, splitGapWidth: v } })),
+  setVectorByCorridorsSplitDiagonalBowAmount: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, splitDiagonalBowAmount: v } })),
   setVectorByWallsBackground: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, background: color } })),
   setVectorByWallsShowGrid: (v) =>
