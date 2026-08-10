@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { buildPostEditDraftEdgesFromGenerated, applyPostEditEdgeTool, extractPostEditTeleports, postEditTeleportsToDto, rotatePostEditSplitPoint } from "../pixi/postEditUtils";
+import { buildPostEditDraftEdgesFromGenerated, applyPostEditEdgeTool, extractPostEditTeleports, postEditTeleportsToDto, rotatePostEditSplitPoint, resetPostEditPoint } from "../pixi/postEditUtils";
 import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { EdgeDto, NodeDto } from "../wasm/types";
-import type { PostEditEdge } from "../store/mazeStore";
+import type { PostEditEdge, PostEditMeta } from "../store/mazeStore";
 
 const noSplits = () => undefined;
 
@@ -327,5 +327,128 @@ describe("rotatePostEditSplitPoint", () => {
 
     const result = rotatePostEditSplitPoint(edges, [0, 0], [], 1, squareCfg, centerCellSet, gridNodes, activeSplitNode);
     expect(result[edgeKey(center, northSlot)]).toEqual({ from: center, to: northSlot, kind: "one_way_forward" });
+  });
+});
+
+// --- resetPostEditPoint ---
+
+describe("resetPostEditPoint", () => {
+  const emptyMeta: PostEditMeta = { start: null, finish: null };
+  const center = nodeEndpoint(idOf(0, 0));
+  const east = nodeEndpoint(idOf(1, 0));
+  const north = nodeEndpoint(idOf(0, 1));
+
+  it("restores a manually walled-off generated edge", () => {
+    // Generation had a passage center<->east; the draft has since walled it off (no entries).
+    const generatedEdges: EdgeDto[] = [
+      { from: idOf(0, 0), to: idOf(1, 0), kind: "basic" },
+      { from: idOf(1, 0), to: idOf(0, 0), kind: "basic" },
+    ];
+    const result = resetPostEditPoint(
+      [0, 0], {}, [], {}, {}, emptyMeta, gridNodes, generatedEdges, null, null,
+    );
+    expect(result.draftEdges[edgeKey(center, east)]).toEqual({ from: center, to: east, kind: "basic" });
+    expect(result.draftEdges[edgeKey(east, center)]).toEqual({ from: east, to: center, kind: "basic" });
+  });
+
+  it("removes a manually added edge that generation never had", () => {
+    const draftEdges: Record<string, PostEditEdge> = {
+      [edgeKey(center, north)]: { from: center, to: north, kind: "basic" },
+      [edgeKey(north, center)]: { from: north, to: center, kind: "basic" },
+    };
+    const result = resetPostEditPoint(
+      [0, 0], draftEdges, [], {}, {}, emptyMeta, gridNodes, [], null, null,
+    );
+    expect(result.draftEdges[edgeKey(center, north)]).toBeUndefined();
+    expect(result.draftEdges[edgeKey(north, center)]).toBeUndefined();
+  });
+
+  it("removes a manually addSplitNode-added slot never present at generation", () => {
+    const draftSplitPoints = { "0,0": [0] };
+    const slot = splitEndpoint([0, 0], 0);
+    const draftEdges: Record<string, PostEditEdge> = {
+      [edgeKey(slot, east)]: { from: slot, to: east, kind: "basic" },
+    };
+    const result = resetPostEditPoint(
+      [0, 0], draftEdges, [], draftSplitPoints, { "0,0": slot }, emptyMeta, gridNodes, [], null, null,
+    );
+    expect(result.splitPoints["0,0"]).toBeUndefined();
+    expect(result.activeSplitNode["0,0"]).toBeUndefined();
+    expect(result.draftEdges[edgeKey(slot, east)]).toBeUndefined();
+  });
+
+  it("restores a generation-time split point (auto-split), rebuilding each slot's own edges", () => {
+    // (0,0) was auto-split at generation into original (i=0) + one extra node (i=1).
+    const splitGeneratedNodes: NodeDto[] = [
+      ...gridNodes.filter((n) => !(n.x === 0 && n.y === 0)),
+      { id: 500, x: 0, y: 0, i: 0 },
+      { id: 501, x: 0, y: 0, i: 1 },
+    ];
+    const generatedEdges: EdgeDto[] = [
+      { from: 500, to: idOf(1, 0), kind: "basic" }, { from: idOf(1, 0), to: 500, kind: "basic" },
+      { from: 501, to: idOf(0, 1), kind: "basic" }, { from: idOf(0, 1), to: 501, kind: "basic" },
+    ];
+    const result = resetPostEditPoint(
+      [0, 0], {}, [], {}, {}, emptyMeta, splitGeneratedNodes, generatedEdges, null, null,
+    );
+    expect(result.splitPoints["0,0"]).toEqual([0]);
+    const originalEp = nodeEndpoint(500);
+    const slotEp = splitEndpoint([0, 0], 0);
+    expect(result.draftEdges[edgeKey(originalEp, east)]).toEqual({ from: originalEp, to: east, kind: "basic" });
+    expect(result.draftEdges[edgeKey(slotEp, north)]).toEqual({ from: slotEp, to: north, kind: "basic" });
+  });
+
+  it("restores start to this point when generation had it here, overriding wherever it was manually moved to", () => {
+    const meta: PostEditMeta = { start: north, finish: null };
+    const result = resetPostEditPoint(
+      [0, 0], {}, [], {}, {}, meta, gridNodes, [], idOf(0, 0), null,
+    );
+    expect(result.draftMeta.start).toEqual(center);
+    expect(result.draftMeta.finish).toBeNull();
+  });
+
+  it("leaves start untouched when generation's start was on a different point entirely", () => {
+    const meta: PostEditMeta = { start: north, finish: null };
+    const result = resetPostEditPoint(
+      [0, 0], {}, [], {}, {}, meta, gridNodes, [], idOf(0, 1), null,
+    );
+    expect(result.draftMeta.start).toEqual(north);
+  });
+
+  it("clears start/finish if it addressed one of this point's nodes and generation had none there", () => {
+    const meta: PostEditMeta = { start: center, finish: null };
+    const result = resetPostEditPoint(
+      [0, 0], {}, [], {}, {}, meta, gridNodes, [], null, null,
+    );
+    expect(result.draftMeta.start).toBeNull();
+  });
+
+  it("restores a generation-time teleport touching the point", () => {
+    const generatedEdges: EdgeDto[] = [{ from: idOf(0, 0), to: idOf(1, 1), kind: "teleport" }];
+    const teleportNodes: NodeDto[] = [...gridNodes, { id: 999, x: 5, y: 5, i: 0 }];
+    const result = resetPostEditPoint(
+      [0, 0], {}, [], {}, {}, emptyMeta, teleportNodes, generatedEdges, null, null,
+    );
+    expect(result.draftTeleports).toHaveLength(1);
+    expect(result.draftTeleports[0]).toMatchObject({ from: center, to: nodeEndpoint(idOf(1, 1)), direction: "forward" });
+  });
+
+  it("removes a manually added teleport from this point that generation never had", () => {
+    const draftTeleports = [{ id: 1, from: center, to: east, direction: "forward" as const }];
+    const result = resetPostEditPoint(
+      [0, 0], {}, draftTeleports, {}, {}, emptyMeta, gridNodes, [], null, null,
+    );
+    expect(result.draftTeleports).toHaveLength(0);
+  });
+
+  it("does not touch edges/teleports/split points of a different point", () => {
+    const other = nodeEndpoint(idOf(-1, -1));
+    const draftEdges: Record<string, PostEditEdge> = {
+      [edgeKey(other, nodeEndpoint(idOf(-1, 0)))]: { from: other, to: nodeEndpoint(idOf(-1, 0)), kind: "basic" },
+    };
+    const result = resetPostEditPoint(
+      [0, 0], draftEdges, [], {}, {}, emptyMeta, gridNodes, [], null, null,
+    );
+    expect(result.draftEdges[edgeKey(other, nodeEndpoint(idOf(-1, 0)))]).toEqual(draftEdges[edgeKey(other, nodeEndpoint(idOf(-1, 0)))]);
   });
 });

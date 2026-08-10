@@ -11,9 +11,17 @@ import {
   type PostEditEndpoint, nodeEndpoint, edgeKey, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
 } from "./postEditEndpoint";
 
-const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
+const DRAG_EDGE_TOOLS = new Set(["wall", "passage"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
 const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "teleport_two_way"]);
+
+/** Whether a point currently has more than one node (a split point) — used by the unified Reset
+ * tool (GitHub issue #327) to refuse resetting a split connection via the edge branch; such an
+ * edge can only be reset via the cell branch instead (whole-point reset). */
+function isSplitCell(point: [number, number], nodeMap: Map<string, number[]>): boolean {
+  const ids = nodeMap.get(`${point[0]},${point[1]}`);
+  return ids !== undefined && ids.length > 1;
+}
 
 export class PostEditController extends BaseController {
   private renderer: PostEditRenderer;
@@ -145,12 +153,35 @@ export class PostEditController extends BaseController {
       this.renderer.updateHover(null);
       return;
     }
+    const nodeMap = this.getNodeMap(state.nodes);
+
+    if (state.postEditTool === "reset") {
+      const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+      // Split connections can't be reset via the edge branch (GitHub issue #327) — outside the
+      // near-edge zone, or when the near-edge hit touches a split point, fall back to cell hover.
+      if (edge && !isSplitCell(edge.from, nodeMap) && !isSplitCell(edge.to, nodeMap)) {
+        this.renderer.updateCellHover(null);
+        this.renderer.updateHover(edge, true);
+        this.continueEdgeDrag(edge, (e) => {
+          const nodeKey = this.cellEdgeToNodeKey(e.from, e.to, nodeMap, state.postEditActiveSplitNode);
+          if (nodeKey) {
+            useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
+            this.dragDidApply = true;
+          }
+        });
+        return;
+      }
+      const proj = makeProjection(state.activeTessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      this.renderer.updateHover(null);
+      this.renderer.updateCellHover(nodeMap.has(`${cell.x},${cell.y}`) ? [cell.x, cell.y] : null, true);
+      return;
+    }
     this.renderer.updateCellHover(null);
 
     const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
     this.renderer.updateHover(edge);
 
-    const nodeMap = this.getNodeMap(state.nodes);
     this.continueEdgeDrag(edge, (e) => {
       const nodeKey = this.cellEdgeToNodeKey(e.from, e.to, nodeMap, state.postEditActiveSplitNode);
       if (nodeKey) {
@@ -229,6 +260,28 @@ export class PostEditController extends BaseController {
       else this.tryTeleportClick(nodeId, tool);
       return;
     }
+
+    if (tool === "reset" && button === 0) {
+      const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+      if (edge && !isSplitCell(edge.from, nodeMap) && !isSplitCell(edge.to, nodeMap)) {
+        const nodeKey = this.cellEdgeToNodeKey(edge.from, edge.to, nodeMap, state.postEditActiveSplitNode);
+        if (nodeKey) {
+          useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
+          this.beginEdgeDrag(edge.key);
+          this.dragDidApply = true;
+        }
+        this.renderer.updateHover(edge, true);
+        return;
+      }
+      const proj = makeProjection(state.activeTessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      const key = `${cell.x},${cell.y}`;
+      if (nodeMap.has(key)) {
+        useMazeStore.getState().resetPostEditPoint([cell.x, cell.y]);
+      }
+      return;
+    }
+    if (tool === "reset") return; // right/middle click has no reset-tool meaning outside pan
 
     const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
     if (!edge) return;

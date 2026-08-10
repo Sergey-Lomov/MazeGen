@@ -4,7 +4,7 @@ import type { PostEditEdgeWasmDto, PostEditEndpointWasmDto } from "../../wasm/ty
 import {
   applyPostEditEdgeTool, buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports,
   postEditTeleportsToDto, cyclePostEditTeleportDirection, removePostEditTeleport, movePostEditTeleportEndpoint,
-  rotatePostEditSplitPoint,
+  rotatePostEditSplitPoint, resetPostEditPoint as resetPostEditPointCore,
 } from "../../pixi/postEditUtils";
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
@@ -113,7 +113,22 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // doc comment), and for start/finish below. WASM resolves `split` endpoints in edges/teleports
     // itself (via `split_points` sent in the same call) — this resolver is only used here for
     // start/finish, which stay a plain `Option<u32>` on the wire.
-    const pointNodeMap = buildPointNodeMap(nodes);
+    // A node whose split slot has been removed client-side (`removeSplitNode`/`resetPostEditPoint`)
+    // must not be resent — `apply_split_points` (maze-wasm/src/analytics/post_edit.rs) never prunes
+    // a node on its own; every entry in `cfg.nodes` is rebuilt into the graph unconditionally, by
+    // design (see that module's own test docs: "the client's state.nodes/i no longer carries it...
+    // exactly as removeSplitNode leaves state.nodes before the next confirm resends a pruned
+    // cfg.nodes"). Without this filter a removed split node stays in the graph (and in the point's
+    // node count) forever — the point keeps rendering as split even after its last extra slot is
+    // gone. Kept node: the point's original (`i === 0`), or an extra node whose slotId (`i - 1`)
+    // is still declared in `postEditDraftSplitPoints`.
+    const prunedNodes = nodes.filter((n) => {
+      if (n.i === 0) return true;
+      const slots = postEditDraftSplitPoints[`${n.x},${n.y}`];
+      return slots !== undefined && slots.includes(n.i - 1);
+    });
+
+    const pointNodeMap = buildPointNodeMap(prunedNodes);
     const resolveSplit = buildSplitNodeResolver(pointNodeMap, postEditDraftSplitPoints);
 
     const teleportEdgesSnapshot = postEditTeleportsToDto(postEditDraftTeleports, resolveSplit);
@@ -171,7 +186,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
     const config = {
       tessellation: fieldConfigToWasm(activeTessellationConfig),
-      nodes,
+      nodes: prunedNodes,
       edges: wasmEdges,
       split_points: splitPointsPayload,
       start: resolvedStart ?? null,
@@ -275,6 +290,45 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       };
     });
     void get().confirmPostEdit();
+  },
+
+  resetPostEditPoint: (point) => {
+    set((state) => {
+      if (state.postEditDraftEdges === null) return {};
+      const meta = state.postEditDraftMeta ?? {
+        start: state.start !== null ? nodeEndpoint(state.start) : null,
+        finish: state.finish !== null ? nodeEndpoint(state.finish) : null,
+      };
+      const result = resetPostEditPointCore(
+        point,
+        state.postEditDraftEdges,
+        state.postEditDraftTeleports,
+        state.postEditDraftSplitPoints,
+        state.postEditActiveSplitNode,
+        meta,
+        state._generatedNodes,
+        state._generatedEdges,
+        state._generatedStart,
+        state._generatedFinish,
+      );
+      // Restored teleports (from generation) get fresh ids minted locally by
+      // `resetPostEditPointCore` (it has no access to the store's own counter) — bump
+      // `_nextPostEditTeleportId` past whatever it just used, or a later `addPostEditTeleport`
+      // could mint a colliding id.
+      const maxTeleportId = result.draftTeleports.reduce((max, t) => Math.max(max, t.id), 0);
+      return {
+        postEditDraftEdges: result.draftEdges,
+        postEditDraftTeleports: result.draftTeleports,
+        postEditDraftSplitPoints: result.splitPoints,
+        postEditActiveSplitNode: result.activeSplitNode,
+        postEditDraftMeta: result.draftMeta,
+        _nextPostEditTeleportId: Math.max(state._nextPostEditTeleportId, maxTeleportId + 1),
+        postEditDirty: true,
+      };
+    });
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
   },
 
   setPostEditEndpoint: (kind, endpoint) => {

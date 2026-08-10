@@ -1,10 +1,11 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { PostEditEdge, PostEditTool, PostEditTeleportEntry, PostEditTeleportEndpointHit } from "../store/mazeStore";
+import type { PostEditEdge, PostEditTool, PostEditTeleportEntry, PostEditTeleportEndpointHit, PostEditMeta } from "../store/mazeStore";
 import { TILE_SIZE } from "./constants";
 import { makeProjection } from "./tessellationProjection";
 import { getNeighborData } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, endpointsEqual, resolveEndpoint } from "./postEditEndpoint";
+import { deriveSplitPointsFromNodes } from "./splitPointsCore";
 
 /** Built from a freshly confirmed WASM snapshot. `endpointFor` (see `resolverForNodeId`) resolves
  * each raw id to a `split` endpoint when it's one of a point's automatically-split extra nodes
@@ -294,4 +295,128 @@ export function rotatePostEditSplitPoint(
     next[edgeKey(from, to)] = { from, to, kind };
   }
   return next;
+}
+
+/** Result of `resetPostEditPoint` — a full replacement for every one of `postEditDraftEdges`/
+ * `postEditDraftTeleports`/`postEditDraftSplitPoints`/`postEditDraftMeta` field touching `point`,
+ * restored to generation-time state (GitHub issue #327's unified cell reset). */
+export interface PostEditPointReset {
+  draftEdges: Record<string, PostEditEdge>;
+  draftTeleports: PostEditTeleportEntry[];
+  splitPoints: Record<string, number[]>;
+  activeSplitNode: Record<string, PostEditEndpoint>;
+  draftMeta: PostEditMeta;
+}
+
+/** Resets a single point's manual edits back to what generation produced there — the cell branch
+ * of the unified Reset tool (GitHub issue #327), as opposed to the edge branch (still
+ * `applyPostEditEdgeTool`'s "reset", one face pair at a time). Unlike the edge branch, a split
+ * connection *can* be reset this way — the whole point, including every one of its nodes'
+ * edges/teleports/split-slot list/start-finish assignment, is dropped and rebuilt from
+ * `_generatedNodes`/`_generatedEdges`, mirroring what `resetPostEdit` does for the entire graph.
+ *
+ * A manually `addSplitNode`-added slot that was never part of generation does not survive — same
+ * "strict superset of the old clear behavior" reasoning `resetPostEdit`'s own doc comment gives.
+ *
+ * `generatedNodes`/`generatedEdges` are `_generatedNodes`/`_generatedEdges` (not `state.nodes`/
+ * `state.edges`, which `confirmPostEdit` overwrites — see `applyPostEditToolAt`'s same guard).
+ * `generatedStart`/`generatedFinish` are `_generatedStart`/`_generatedFinish`. */
+export function resetPostEditPoint(
+  point: [number, number],
+  draftEdges: Record<string, PostEditEdge>,
+  draftTeleports: PostEditTeleportEntry[],
+  draftSplitPoints: Record<string, number[]>,
+  draftActiveSplitNode: Record<string, PostEditEndpoint>,
+  draftMeta: PostEditMeta,
+  generatedNodes: NodeDto[],
+  generatedEdges: EdgeDto[],
+  generatedStart: number | null,
+  generatedFinish: number | null,
+): PostEditPointReset {
+  const key = `${point[0]},${point[1]}`;
+
+  // Every endpoint currently addressing this point in the draft — original node (if it still
+  // exists, e.g. hasn't been removed) plus every declared draft slot — is a removal target, even
+  // one added manually after generation and never confirmed.
+  const currentIds = new Set<number>();
+  for (const n of generatedNodes) if (n.x === point[0] && n.y === point[1]) currentIds.add(n.id);
+  // A node id from generatedNodes is stable across confirms (see PostEditEndpoint's doc comment),
+  // so it's safe to use directly as a removal target here even for one already dropped from the
+  // draft by an earlier removeSplitNode — it simply won't match anything in refsTarget below, same
+  // as any other id with no live reference. No separate "current nodes" snapshot is needed.
+  const draftTargets: PostEditEndpoint[] = [
+    ...[...currentIds].map((id) => nodeEndpoint(id)),
+    ...(draftSplitPoints[key] ?? []).map((slotId) => splitEndpoint(point, slotId)),
+  ];
+  const refsTarget = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
+    draftTargets.some((t) => endpointsEqual(e.from, t) || endpointsEqual(e.to, t));
+
+  const nextDraftEdges = Object.fromEntries(
+    Object.entries(draftEdges).filter(([, e]) => !refsTarget(e)),
+  );
+  const nextDraftTeleports = draftTeleports.filter((t) => !refsTarget(t));
+
+  const nextSplitPoints = { ...draftSplitPoints };
+  delete nextSplitPoints[key];
+  const nextActiveSplitNode = { ...draftActiveSplitNode };
+  delete nextActiveSplitNode[key];
+
+  const nextMeta: PostEditMeta = { ...draftMeta };
+  if (draftMeta.start !== null && draftTargets.some((t) => endpointsEqual(t, draftMeta.start!))) nextMeta.start = null;
+  if (draftMeta.finish !== null && draftTargets.some((t) => endpointsEqual(t, draftMeta.finish!))) nextMeta.finish = null;
+
+  // Rebuild this point's generation-time state from the frozen snapshot — original node keeps its
+  // (stable) id, generation-time extra nodes become fresh `split` endpoints via the same slotId
+  // derivation `resetPostEdit` uses for the whole graph (GitHub issue #222's auto-split contract).
+  const generatedSplitPoints = deriveSplitPointsFromNodes(generatedNodes);
+  const pointSlots = generatedSplitPoints[key] ?? [];
+  if (pointSlots.length > 0) nextSplitPoints[key] = pointSlots;
+
+  const endpointForGeneratedId = (id: number): PostEditEndpoint => {
+    const node = generatedNodes.find((n) => n.id === id);
+    if (!node || node.i === 0) return nodeEndpoint(id);
+    const sortedSlots = [...pointSlots].sort((a, b) => a - b);
+    const slotId = sortedSlots[node.i - 1];
+    return slotId !== undefined ? splitEndpoint([node.x, node.y], slotId) : nodeEndpoint(id);
+  };
+
+  const pointGeneratedIds = new Set([...currentIds]);
+  const touchesPoint = (id: number) => pointGeneratedIds.has(id);
+
+  const basicEdges = generatedEdges.filter((e) => e.kind !== "teleport" && (touchesPoint(e.from) || touchesPoint(e.to)));
+  const basicEdgeSet = new Set(generatedEdges.filter((e) => e.kind !== "teleport").map((e) => `${e.from}-${e.to}`));
+  for (const e of basicEdges) {
+    const hasReverse = basicEdgeSet.has(`${e.to}-${e.from}`);
+    const from = endpointForGeneratedId(e.from);
+    const to = endpointForGeneratedId(e.to);
+    nextDraftEdges[edgeKey(from, to)] = { from, to, kind: hasReverse ? "basic" : "one_way_forward" };
+  }
+
+  const teleportEdges = generatedEdges.filter((e) => e.kind === "teleport" && (touchesPoint(e.from) || touchesPoint(e.to)));
+  const teleportByPair = new Set(generatedEdges.filter((e) => e.kind === "teleport").map((e) => `${e.from}->${e.to}`));
+  const seenTeleportPair = new Set<string>();
+  let nextTeleportId = Math.max(0, ...nextDraftTeleports.map((t) => t.id)) + 1;
+  for (const e of teleportEdges) {
+    const pairKey = e.from < e.to ? `${e.from},${e.to}` : `${e.to},${e.from}`;
+    if (seenTeleportPair.has(pairKey)) continue;
+    seenTeleportPair.add(pairKey);
+    const reverseExists = teleportByPair.has(`${e.to}->${e.from}`);
+    nextDraftTeleports.push({
+      id: nextTeleportId++,
+      from: endpointForGeneratedId(e.from),
+      to: endpointForGeneratedId(e.to),
+      direction: reverseExists ? "two_way" : "forward",
+    });
+  }
+
+  if (generatedStart !== null && touchesPoint(generatedStart)) nextMeta.start = endpointForGeneratedId(generatedStart);
+  if (generatedFinish !== null && touchesPoint(generatedFinish)) nextMeta.finish = endpointForGeneratedId(generatedFinish);
+
+  return {
+    draftEdges: nextDraftEdges,
+    draftTeleports: nextDraftTeleports,
+    splitPoints: nextSplitPoints,
+    activeSplitNode: nextActiveSplitNode,
+    draftMeta: nextMeta,
+  };
 }

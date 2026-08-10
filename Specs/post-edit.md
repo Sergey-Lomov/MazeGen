@@ -114,6 +114,8 @@ The slot-list bookkeeping below (minting/removing/cycling/setting the active slo
 
 **Why not position-based matching:** an earlier version of this fix matched `split_points` entries to `nodes`' per-point extra-node list by array position (`slot_id + 1`'s position among survivors). This breaks the moment a *non-last* split node is removed: `state.nodes` after a confirm following `removeSplitNode` no longer contains the removed node at all, so the *remaining* slots' positions compact down — a surviving later slot silently resolves to a different (or the wrong) node instead of its own. Matching by the real `i` instead of position is immune to this, since `i` never shifts regardless of what else was removed.
 
+**`ComputeAnalyticsConfig.nodes` must be pruned client-side before it's sent** — `apply_split_points`/`run_compute_analytics` never remove a node on their own; every entry in `cfg.nodes` is rebuilt into the graph unconditionally by design (this is exactly what makes a node's `NodeId` stable — see above). When a split slot is removed (`removeSplitNode`, or the cell branch of the unified Reset tool — GitHub issue #327) without also dropping its `NodeDto` from what's sent as `cfg.nodes`, the node stays in the graph and in the point's node count forever — walled off (no edges reference it) but still enough to make `SplitJunctionRenderer` keep treating the point as split even after its last extra slot is gone. `confirmPostEdit` builds a `prunedNodes` list before anything else: a node survives if it's the point's original (`i === 0`) or its slotId (`i - 1`) is still present in `postEditDraftSplitPoints` for that point; `prunedNodes` (not `state.nodes`) is what's sent as `cfg.nodes` and what `pointNodeMap`/`resolveSplit` are built from.
+
 `nodes: Vec<NodeDto>` in the outgoing snapshot is built from `Field::all_points()`/`nodes_at()` (deterministic: a point's original node first, then each extra node in creation order), not `Graph::nodes()`'s insertion order — this makes "which node of a split point is the original one" a real, documented contract, not an incidental observation of `Graph`'s internals. Each node's `i` in the snapshot is looked up from the *previous* call's own `cfg.nodes` where the node already existed there, or is a fresh position-based index for a node this exact call just minted (safe only because a newly minted node can't yet have a hole before it). The web-side node map (grouped by point) relies on this order too. `pixi/splitPointsCore.ts`'s `deriveSplitPointsFromNodes` mirrors the same rule client-side: it reads each node's `i` directly (`slotId = n.i - 1` for `i > 0`) rather than counting/positional derivation, for the same removal-hole reason.
 
 ### Controller/UI
@@ -195,7 +197,7 @@ Teleport-editing actions (`addPostEditTeleport`, `cyclePostEditTeleportDirection
 | `wall` | Removes both directions of edge pair from `postEditDraftEdges`. |
 | `passage` | Ensures both directions exist as `"basic"` in `postEditDraftEdges`. |
 | `one_way` | Toggles direction: if `fwd` exists → replace with `bwd`; otherwise → replace with `fwd`. Wall/passage not affected. |
-| `reset` | Restores edge pair to original generated state (basic or one_way_forward). |
+| `reset` | Unified Management-section tool (GitHub issue #327), hover-sensitive to both edges and cells — see "Reset Tool Detail" below. |
 | `set_start` | Click on empty node — sets `postEditDraftMeta.start`, calls `confirmPostEdit` if `autoConfirm`. |
 | `set_finish` | Click on empty node — sets `postEditDraftMeta.finish`, calls `confirmPostEdit` if `autoConfirm`. |
 | `teleport_one_way` | Two-click placement of a one-way (`"forward"`) teleport link. |
@@ -226,14 +228,36 @@ Operates on an edge pair `(from_, to_)`:
 
 Result: pure direction toggle. Conversion to/from wall and passage requires `wall` and `passage` tools.
 
-### `reset` Tool Detail
+### `reset` Tool Detail (GitHub issue #327)
 
-Looks up `(from_, to_)` pair in original `state.edges`:
+The unified Reset tool lives in the Management section (not the edge tools group) and is
+hover-sensitive to both edges and cells, dispatched in `PostEditController` by
+`pickEdgeAtPosition(..., true)` (the same near-edge dead-zone threshold `wall`/`passage`/`one_way`
+hover uses):
 
-- Both directions exist → restores both as `"basic"`.
-- Only `from_→to_` exists → restores as `"one_way_forward"`, removes `bwd`.
-- Only `to_→from_` exists → restores as `"one_way_forward"` (on the `to_→from_` record), removes `fwd`.
-- Neither exists → removes both.
+- **Near-edge zone, and neither endpoint's point is currently split** — edge branch, identical to
+  the pre-#327 `reset` tool: looks up `(from_, to_)` pair in `_generatedEdges` (not `state.edges` —
+  see `applyPostEditToolAt`'s guard) via `applyPostEditEdgeTool`:
+  - Both directions exist → restores both as `"basic"`.
+  - Only `from_→to_` exists → restores as `"one_way_forward"`, removes `bwd`.
+  - Only `to_→from_` exists → restores as `"one_way_forward"` (on the `to_→from_` record), removes `fwd`.
+  - Neither exists → removes both.
+  Drag-capable, same as `wall`/`passage`.
+- **Outside the near-edge zone, or the near-edge hit touches a split point (either endpoint's
+  point currently has more than one node)** — cell branch: `resetPostEditPoint(point)` resets the
+  whole point back to generation-time state — every edge/teleport referencing any of the point's
+  current nodes (original plus every draft split slot, including one added via `addSplitNode` and
+  never confirmed) is dropped and rebuilt from `_generatedNodes`/`_generatedEdges`, the point's
+  split-slot list is re-derived from `_generatedNodes` (a manually added slot that was never part
+  of generation does not survive — same "strict superset of clear" reasoning `resetPostEdit`'s own
+  doc comment gives for the whole-graph reset), and `postEditDraftMeta.start`/`.finish` is cleared
+  if it addressed one of the point's old nodes, then reassigned if the point held
+  `_generatedStart`/`_generatedFinish`. This is the only way to reset a split connection — the edge
+  branch refuses it. See `resetPostEditPoint` (postEditUtils.ts) and its `PostEditPointReset`
+  result type.
+- Right/middle click has no reset-tool meaning beyond the shared middle-click pan.
+
+**Danger styling:** the Reset button uses the `toggle-danger`/`toggle-danger-active` `buttonStyle` variants (red border/text, red fill when selected — `ui.text.error`) instead of the ordinary `toggle`/`toggle-active` accent styling, and its canvas hover highlight (edge or cell) renders in `canvas.fieldEditor.danger` (red) instead of `canvas.fieldEditor.hover` — `PostEditRenderer.updateHover`/`.updateCellHover` take an optional `danger` flag for this, set whenever `postEditTool === "reset"`. Both cues exist so a destructive tool reads as destructive before the user commits to a click.
 
 ## Auto-Confirm
 

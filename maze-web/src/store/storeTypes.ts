@@ -899,6 +899,10 @@ export interface PostEditActions {
   movePostEditTeleportEndpoint: (id: number, end: "from" | "to", endpoint: PostEditEndpoint) => void;
   confirmPostEdit: () => Promise<void>;
   resetPostEdit: () => void;
+  /** Cell branch of the unified Reset tool (GitHub issue #327) — resets one point's
+   * edges/teleports/split-slots/start-finish back to generation-time state. See
+   * `resetPostEditPoint` (postEditUtils.ts). */
+  resetPostEditPoint: (point: [number, number]) => void;
   addSplitNode: (point: [number, number]) => void;
   removeSplitNode: (point: [number, number], slotId: number) => void;
   cycleActiveSplitNode: (point: [number, number]) => void;

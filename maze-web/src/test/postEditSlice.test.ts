@@ -345,6 +345,68 @@ describe("mazeStore post-edit actions", () => {
     expect(s.postEditDraftMeta?.finish).toBeNull();
     expect(s.postEditDirty).toBe(true);
   });
+
+  it("confirmPostEdit prunes a node whose split slot was removed client-side, so it's not resent to WASM (GitHub issue #327)", async () => {
+    // (0,0) was auto-split at generation into original (i=0, id 0) + one extra node (i=1, id 2) —
+    // removeSplitNode already dropped slot 0 from postEditDraftSplitPoints, but state.nodes still
+    // carries the removed node's NodeDto (see confirmPostEdit's own pruning comment).
+    useMazeStore.setState({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 2, x: 0, y: 0, i: 1 }, { id: 1, x: 1, y: 0, i: 0 }],
+      postEditDraftSplitPoints: {},
+    });
+    await useMazeStore.getState().confirmPostEdit();
+    const calls = vi.mocked(computeAnalytics).mock.calls;
+    const call = calls[calls.length - 1]?.[0];
+    expect(call?.nodes).toEqual([{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }]);
+  });
+
+  it("confirmPostEdit keeps a node whose split slot is still declared", async () => {
+    useMazeStore.setState({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 2, x: 0, y: 0, i: 1 }, { id: 1, x: 1, y: 0, i: 0 }],
+      postEditDraftSplitPoints: { "0,0": [0] },
+    });
+    await useMazeStore.getState().confirmPostEdit();
+    const calls = vi.mocked(computeAnalytics).mock.calls;
+    const call = calls[calls.length - 1]?.[0];
+    expect(call?.nodes).toEqual(expect.arrayContaining([{ id: 2, x: 0, y: 0, i: 1 }]));
+  });
+
+  it("resetPostEditPoint resets one point's draft edges to generation-time state and marks dirty", () => {
+    useMazeStore.setState({
+      postEditDraftEdges: {},
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().resetPostEditPoint([0, 0]);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftEdges?.[key01]).toEqual({ from: n(0), to: n(1), kind: "one_way_forward" });
+    expect(s.postEditDirty).toBe(true);
+  });
+
+  it("resetPostEditPoint bumps _nextPostEditTeleportId past a restored teleport's freshly minted id, so a later addPostEditTeleport can't collide (GitHub issue #327)", () => {
+    useMazeStore.setState({
+      _generatedEdges: [{ from: 0, to: 1, kind: "basic" }, { from: 0, to: 5, kind: "teleport" }],
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 5, x: 5, y: 5, i: 0 }],
+      _generatedNodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 5, x: 5, y: 5, i: 0 }],
+      postEditDraftTeleports: [],
+      _nextPostEditTeleportId: 1,
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().resetPostEditPoint([0, 0]);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftTeleports).toHaveLength(1);
+    const restoredId = s.postEditDraftTeleports[0].id;
+    expect(s._nextPostEditTeleportId).toBeGreaterThan(restoredId);
+
+    useMazeStore.getState().addPostEditTeleport(n(1), n(5), "forward");
+    const ids = useMazeStore.getState().postEditDraftTeleports.map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length); // no id collision
+  });
+
+  it("resetPostEditPoint calls confirmPostEdit when postEditAutoConfirm is true", () => {
+    useMazeStore.setState({ postEditAutoConfirm: true });
+    useMazeStore.getState().resetPostEditPoint([0, 0]);
+    expect(computeAnalytics).toHaveBeenCalled();
+  });
 });
 
 describe("mazeStore split-node actions", () => {

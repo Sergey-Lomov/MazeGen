@@ -284,6 +284,7 @@ export function buildInvalidEdgeHighlights(
 export function buildHoverEdgeHighlight(
   edge: FieldEdge | null,
   cfg: TessellationConfig,
+  color: number = canvas.fieldEditor.hover,
 ): EdgeHL[] {
   if (!edge) return [];
   const seg = getSharedEdgeSegment(edge.from, edge.to, cfg);
@@ -291,7 +292,7 @@ export function buildHoverEdgeHighlight(
   return [{
     from: [seg.v0.x, seg.v0.y],
     to: [seg.v1.x, seg.v1.y],
-    color: canvas.fieldEditor.hover,
+    color,
     alpha: 1.0,
     width: WALL_THICKNESS * 2,
   }];

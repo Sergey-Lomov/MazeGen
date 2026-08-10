@@ -130,18 +130,22 @@ export class PostEditRenderer extends BaseFieldRenderer {
     }
   }
 
-  updateHover(edge: FieldEdge | null): void {
+  /** `danger` (GitHub issue #327's unified Reset tool) swaps the highlight to
+   * `canvas.fieldEditor.danger` (red) instead of the ordinary hover color — signals a destructive
+   * tool the same way the Management section's red Reset button does. */
+  updateHover(edge: FieldEdge | null, danger = false): void {
     if (!this.cfg) return;
-    const highlights = buildHoverEdgeHighlight(edge, this.cfg);
+    const highlights = buildHoverEdgeHighlight(edge, this.cfg, danger ? canvas.fieldEditor.danger : undefined);
     this.hover.render({ highlights });
   }
 
   /** Highlights a single cell (not a wall/edge) — used while the `manage_split_nodes` tool is
    * active, since that tool targets a whole point rather than one of its faces (GitHub issue
-   * #221's follow-up: highlighting a wall there was misleading about what a click would do). */
-  updateCellHover(cell: [number, number] | null): void {
+   * #221's follow-up: highlighting a wall there was misleading about what a click would do).
+   * `danger` — see `updateHover`'s doc comment. */
+  updateCellHover(cell: [number, number] | null, danger = false): void {
     if (!this.cfg) return;
-    this.cellHover.render({ cells: cell ? [cell] : [], color: canvas.fieldEditor.hover, alpha: 0.35 }, this.cfg);
+    this.cellHover.render({ cells: cell ? [cell] : [], color: danger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover, alpha: 0.35 }, this.cfg);
   }
 
   /** Renders the pending teleport's origin (semi-transparent marker) and a line stretching to the

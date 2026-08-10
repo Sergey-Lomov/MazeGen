@@ -178,7 +178,7 @@ export const sharedStyles = {
   } satisfies React.CSSProperties,
 } as const;
 
-type ButtonVariant = "primary" | "toggle" | "toggle-active" | "destructive";
+type ButtonVariant = "primary" | "toggle" | "toggle-active" | "destructive" | "toggle-danger" | "toggle-danger-active";
 
 export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
   switch (variant) {
@@ -221,6 +221,30 @@ export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
         border: `1px solid ${ui.text.error}`,
         background: ui.bg.input,
         color: ui.text.error,
+        borderRadius: radius.sm,
+        cursor: "default",
+      };
+    // A toggle tool whose selected state should read as dangerous (GitHub issue #327's unified
+    // Reset tool) — same shape as `toggle`/`toggle-active`, red instead of accent.
+    case "toggle-danger":
+      return {
+        ...typography.control,
+        flex: 1,
+        padding: inset.toolButtonInset,
+        border: `1px solid ${ui.text.error}`,
+        background: ui.bg.input,
+        color: ui.text.error,
+        borderRadius: radius.sm,
+        cursor: "default",
+      };
+    case "toggle-danger-active":
+      return {
+        ...typography.control,
+        flex: 1,
+        padding: inset.toolButtonInset,
+        border: `1px solid ${ui.text.error}`,
+        background: ui.text.error,
+        color: ui.text.inverse,
         borderRadius: radius.sm,
         cursor: "default",
       };

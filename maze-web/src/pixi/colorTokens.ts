@@ -57,6 +57,10 @@ export const canvas = {
   fieldEditor: {
     hover: hexToNumber(base.canvasHover),
     activeCell: hexToNumber(base.textDisabled),
+    // Reset tool's hover highlight (GitHub issue #327) — red instead of the ordinary hover color,
+    // matching `ui.text.error`/the DOM-side "toggle-danger" button variant, so a destructive tool
+    // reads as destructive on the canvas too.
+    danger: hexToNumber(base.error),
   },
 
   grid: {
