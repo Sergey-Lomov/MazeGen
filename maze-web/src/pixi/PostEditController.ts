@@ -129,14 +129,15 @@ export class PostEditController extends BaseController {
       } else {
         this.renderer.updateTeleportPreview(null, 0, 0);
       }
-      return;
+    } else {
+      this.renderer.updateTeleportPreview(null, 0, 0);
     }
-    this.renderer.updateTeleportPreview(null, 0, 0);
 
-    if (state.postEditTool === "manage_split_nodes") {
-      // This tool targets a whole point (opens the split-node dialog on click), not one of its
-      // faces — highlight the cell under the cursor, not a wall/edge (see GitHub issue #221's
-      // follow-up: a wall highlight there was misleading about what a click would do).
+    if (state.postEditTool === "manage_split_nodes" || VERTEX_TOOLS.has(state.postEditTool)) {
+      // Vertex tools (set start/finish, teleports) and manage_split_nodes all target a whole
+      // point, not one of its faces — highlight the cell under the cursor, not a wall/edge (see
+      // GitHub issue #221's follow-up for manage_split_nodes; issue #326 extends this to every
+      // vertex tool, replacing the wall-highlight reuse / missing highlight they had before).
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeMap = this.getNodeMap(state.nodes);

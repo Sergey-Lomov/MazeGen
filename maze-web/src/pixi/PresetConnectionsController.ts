@@ -75,14 +75,15 @@ export class PresetConnectionsController extends BaseController {
       } else {
         this.renderer.updateTeleportPreview(null, 0, 0);
       }
-      return;
+    } else {
+      this.renderer.updateTeleportPreview(null, 0, 0);
     }
-    this.renderer.updateTeleportPreview(null, 0, 0);
 
-    if (state.presetConnectionsTool === "manage_split_nodes") {
-      // This tool targets a whole point (opens the split-node dialog on click), not one of its
-      // faces — highlight the cell under the cursor, not an edge (mirrors PostEditController's
-      // manage_split_nodes branch — GitHub issue #231).
+    if (state.presetConnectionsTool === "manage_split_nodes" || VERTEX_TOOLS.has(state.presetConnectionsTool)) {
+      // Vertex tools (set start/finish, teleports) and manage_split_nodes all target a whole
+      // point, not one of its faces — highlight the cell under the cursor, not an edge (mirrors
+      // manage_split_nodes's original fix, GitHub issue #231; issue #326 extends this to every
+      // vertex tool, replacing the wall-highlight reuse / missing highlight they had before).
       const proj = makeProjection(state.tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
