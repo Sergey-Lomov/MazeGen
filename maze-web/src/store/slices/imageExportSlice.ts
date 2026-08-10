@@ -72,6 +72,9 @@ export const DEFAULT_ONE_WAY_SETTINGS: OneWaySettingsFields = {
  * (`TILE_SIZE`, GitHub issue #310's follow-up) rather than the fixed `WALL_THICKNESS` "Vector by
  * walls" uses — a corridor's meaningful range scales with the cell size, so its default should too. */
 export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = {
+  background: canvas.stage.background,
+  showGrid: true,
+  gridColor: canvas.grid.line,
   color: canvas.wall.default,
   thickness: TILE_SIZE / 2,
   join: "round",
@@ -137,6 +140,12 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSectionsExpanded: { ...s.vectorByWallsSectionsExpanded, [id]: expanded } })),
   setVectorByCorridorsSectionExpanded: (id, expanded) =>
     set((s) => ({ vectorByCorridorsSectionsExpanded: { ...s.vectorByCorridorsSectionsExpanded, [id]: expanded } })),
+  setVectorByCorridorsBackground: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, background: color } })),
+  setVectorByCorridorsShowGrid: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, showGrid: v } })),
+  setVectorByCorridorsGridColor: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, gridColor: color } })),
   setVectorByCorridorsColor: (color) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, color } })),
   setVectorByCorridorsThickness: (v) =>

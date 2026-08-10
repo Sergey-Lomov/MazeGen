@@ -1078,6 +1078,12 @@ export interface OneWaySettingsFields {
  * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
  * `finishMarker` (GitHub issue #311). */
 export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWaySettingsFields {
+  /** Background/grid section (GitHub issue #309) — same fields/defaults/behavior as
+   *  `VectorByWallsSettings.background`/`showGrid`/`gridColor`, kept as its own copy rather than a
+   *  shared sub-type since `VectorByWallsSettings` itself isn't factored that way either. */
+  background: number;
+  showGrid: boolean;
+  gridColor: number;
   color: number;
   thickness: number;
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
@@ -1175,6 +1181,9 @@ export interface ImageExportActions {
   setPrintCustomPlacement: (scale: number, offsetXMm: number, offsetYMm: number) => void;
   setVectorByWallsSectionExpanded: (id: string, expanded: boolean) => void;
   setVectorByCorridorsSectionExpanded: (id: string, expanded: boolean) => void;
+  setVectorByCorridorsBackground: (color: number) => void;
+  setVectorByCorridorsShowGrid: (v: boolean) => void;
+  setVectorByCorridorsGridColor: (color: number) => void;
   setVectorByCorridorsColor: (color: number) => void;
   setVectorByCorridorsThickness: (v: number) => void;
   setVectorByCorridorsJoin: (join: "round" | "miter") => void;

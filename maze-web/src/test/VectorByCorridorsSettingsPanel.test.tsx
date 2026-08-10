@@ -20,10 +20,19 @@ vi.mock("../wasm/wasmLoader", () => ({
 beforeEach(() => {
   useMazeStore.setState({
     ...baseStoreState(),
-    vectorByCorridorsSettings: { ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, color: 0x0a0a0a, thickness: 6, join: "round" },
-    // "Cells" starts collapsed by default (mirrors VectorByWallsSettingsPanel's sections) —
-    // expanded here so the field-interaction tests below don't each need their own expand step.
-    vectorByCorridorsSectionsExpanded: { cells: true, waypoints: true },
+    vectorByCorridorsSettings: {
+      ...DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
+      background: 0x1a1a1a,
+      showGrid: true,
+      gridColor: 0x333333,
+      color: 0x0a0a0a,
+      thickness: 6,
+      join: "round",
+    },
+    // "Cells"/"Background" start collapsed by default (mirrors VectorByWallsSettingsPanel's
+    // sections) — expanded here so the field-interaction tests below don't each need their own
+    // expand step.
+    vectorByCorridorsSectionsExpanded: { background: true, cells: true, waypoints: true },
   });
 });
 
@@ -32,6 +41,34 @@ describe("VectorByCorridorsSettingsPanel", () => {
     useMazeStore.setState({ vectorByCorridorsSectionsExpanded: {} });
     render(<VectorByCorridorsSettingsPanel />);
     expect(screen.queryByText(m["image_export.vector_by_corridors.color"]())).not.toBeInTheDocument();
+  });
+
+  it("the 'Background' section starts collapsed by default", () => {
+    useMazeStore.setState({ vectorByCorridorsSectionsExpanded: {} });
+    render(<VectorByCorridorsSettingsPanel />);
+    expect(screen.queryByText(m["image_export.vector_by_walls.background_color"]())).not.toBeInTheDocument();
+  });
+
+  it("renders the background section's fields when expanded (GitHub issue #309)", () => {
+    render(<VectorByCorridorsSettingsPanel />);
+    expect(screen.getByText(m["image_export.vector_by_walls.background_color"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.show_grid"]())).toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.grid_color"]())).toBeInTheDocument();
+  });
+
+  it("toggling 'show grid' off updates the store", () => {
+    render(<VectorByCorridorsSettingsPanel />);
+    const checkbox = screen.getAllByRole("checkbox")[0];
+    fireEvent.click(checkbox);
+    expect(useMazeStore.getState().vectorByCorridorsSettings.showGrid).toBe(false);
+  });
+
+  it("changing the background color updates the store", () => {
+    render(<VectorByCorridorsSettingsPanel />);
+    const inputs = document.querySelectorAll('input[type="color"]');
+    // Swatch order: background, grid, corridor color.
+    fireEvent.change(inputs[0], { target: { value: "#ff00aa" } });
+    expect(useMazeStore.getState().vectorByCorridorsSettings.background).toBe(0xff00aa);
   });
 
   it("renders the corridor color/join/thickness controls once expanded", () => {

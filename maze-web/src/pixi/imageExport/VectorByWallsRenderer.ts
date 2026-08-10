@@ -121,6 +121,62 @@ export class ExportWarningHighlight<TSettings> {
   }
 }
 
+/** Owns one mode's background-fill + grid overlay pair (GitHub issue #309 follow-up) — factored
+ *  out after `VectorByCorridorsRenderer` needed the exact same background-rect-fill/grid-toggle
+ *  logic `VectorByWallsRenderer` already had, same "generic over `TSettings`, still one instance
+ *  per mode renderer" extraction rationale as `ExportWarningHighlight` above. Requires `TSettings`
+ *  to carry `background`/`showGrid`/`gridColor` — every render mode with this section uses that
+ *  exact field-name convention (`VectorByWallsSettings`, `VectorByCorridorsSettings`). Per
+ *  `maze-web/CLAUDE.md`'s feature-renderer ownership rule: its own `Container`s/`Graphics`/
+ *  `GridRenderer`, never shared between mode renderers. */
+export class BackgroundGridLayer<TSettings extends { background: number; showGrid: boolean; gridColor: number }> {
+  private readonly backgroundContainer: Container;
+  private readonly background: Graphics;
+  private readonly gridContainer: Container;
+  private readonly grid: GridRenderer;
+
+  private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
+
+  constructor(container: Container) {
+    this.backgroundContainer = new Container();
+    container.addChild(this.backgroundContainer);
+    this.background = new Graphics();
+    this.backgroundContainer.addChild(this.background);
+
+    this.gridContainer = new Container();
+    container.addChild(this.gridContainer);
+    this.grid = new GridRenderer(this.gridContainer);
+  }
+
+  setVisible(visible: boolean): void {
+    this.backgroundContainer.visible = visible;
+    this.gridContainer.visible = visible;
+  }
+
+  /** Redraws the background rect + (if `showGrid`) the grid against the current viewport — call on
+   *  both a settings/data change (`renderAll`) and a pan/zoom-only change (`onViewportChanged`),
+   *  same dual-trigger convention `VectorByWallsRenderer` originally had inlined. */
+  render(settings: TSettings, cfg: TessellationConfig): void {
+    const { x, y, w, h } = viewportWorldRect(this.viewport);
+    this.background.clear();
+    this.background.rect(x, y, w, h).fill({ color: settings.background });
+
+    this.gridContainer.visible = settings.showGrid;
+    if (settings.showGrid) this.grid.render({ viewport: this.viewport, color: settings.gridColor }, cfg);
+  }
+
+  onViewportChanged(viewport: Viewport): void {
+    this.viewport = viewport;
+  }
+
+  destroy(): void {
+    this.background.destroy();
+    this.backgroundContainer.destroy();
+    this.grid.destroy();
+    this.gridContainer.destroy();
+  }
+}
+
 /** Fills in `splitNodeColors`' missing slots with `splitSlotColor`'s own default palette (GitHub
  *  issue #294 follow-up) — `splitNodeColors` only holds entries for slots the user has actually
  *  edited (starts `[]`), so passing it straight through to `buildSplitPassages` would make
@@ -242,8 +298,6 @@ export function resolveEffectiveEndpoints(
  * own renderer with its own primitive instances — it must not share instances with
  * `GenerationRenderer` or any other feature-renderer, even though the visual output matches. */
 export class VectorByWallsRenderer {
-  private readonly backgroundContainer: Container;
-  private readonly gridContainer: Container;
   private readonly floorContainer: Container;
   private readonly closedCellsContainer: Container;
   private readonly wallsContainer: Container;
@@ -252,8 +306,7 @@ export class VectorByWallsRenderer {
   private readonly markersContainer: Container;
   private readonly warningHighlightContainer: Container;
 
-  private readonly background: Graphics;
-  private readonly grid: GridRenderer;
+  private readonly backgroundGrid: BackgroundGridLayer<ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]>;
   private readonly floor: CellFillRenderer;
   private readonly closedCells: CellFillRenderer;
   private readonly walls: WallRenderer;
@@ -286,8 +339,8 @@ export class VectorByWallsRenderer {
   } | null = null;
 
   constructor(container: Container) {
-    this.backgroundContainer = new Container();
-    this.gridContainer = new Container();
+    this.backgroundGrid = new BackgroundGridLayer(container);
+
     this.floorContainer = new Container();
     this.closedCellsContainer = new Container();
     this.wallsContainer = new Container();
@@ -295,8 +348,6 @@ export class VectorByWallsRenderer {
     this.teleportContainer = new Container();
     this.markersContainer = new Container();
 
-    container.addChild(this.backgroundContainer);
-    container.addChild(this.gridContainer);
     container.addChild(this.floorContainer);
     container.addChild(this.closedCellsContainer);
     container.addChild(this.wallsContainer);
@@ -306,10 +357,6 @@ export class VectorByWallsRenderer {
     this.warningHighlightContainer = new Container();
     container.addChild(this.warningHighlightContainer);
 
-    this.background = new Graphics();
-    this.backgroundContainer.addChild(this.background);
-
-    this.grid = new GridRenderer(this.gridContainer);
     this.floor = new CellFillRenderer(this.floorContainer);
     this.closedCells = new CellFillRenderer(this.closedCellsContainer);
     this.walls = new WallRenderer(this.wallsContainer);
@@ -356,8 +403,7 @@ export class VectorByWallsRenderer {
 
   private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): void {
     const visible = state.openCard === "image_export";
-    this.backgroundContainer.visible = visible;
-    this.gridContainer.visible = visible;
+    this.backgroundGrid.setVisible(visible);
     this.floorContainer.visible = visible;
     this.closedCellsContainer.visible = visible;
     this.wallsContainer.visible = visible;
@@ -368,21 +414,12 @@ export class VectorByWallsRenderer {
     if (visible) this.renderAll(state);
   }
 
-  private renderBackground(settings: ReturnType<typeof useMazeStore.getState>["vectorByWallsSettings"]): void {
-    const { x, y, w, h } = viewportWorldRect(this.viewport);
-    this.background.clear();
-    this.background.rect(x, y, w, h).fill({ color: settings.background });
-  }
-
   onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
     this.viewport = { x, y, w, h, scale };
+    this.backgroundGrid.onViewportChanged(this.viewport);
     const state = useMazeStore.getState();
     if (state.openCard === "image_export") {
-      this.renderBackground(state.vectorByWallsSettings);
-      this.gridContainer.visible = state.vectorByWallsSettings.showGrid;
-      if (state.vectorByWallsSettings.showGrid) {
-        this.grid.render({ viewport: this.viewport, color: state.vectorByWallsSettings.gridColor }, state.activeTessellationConfig);
-      }
+      this.backgroundGrid.render(state.vectorByWallsSettings, state.activeTessellationConfig);
     }
   }
 
@@ -401,11 +438,7 @@ export class VectorByWallsRenderer {
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const cfg = state.activeTessellationConfig;
-    this.renderBackground(state.vectorByWallsSettings);
-    this.gridContainer.visible = state.vectorByWallsSettings.showGrid;
-    if (state.vectorByWallsSettings.showGrid) {
-      this.grid.render({ viewport: this.viewport, color: state.vectorByWallsSettings.gridColor }, cfg);
-    }
+    this.backgroundGrid.render(state.vectorByWallsSettings, cfg);
 
     const { nodes, edges } = state;
     const { start, finish } = resolveEffectiveEndpoints(state);
@@ -494,8 +527,7 @@ export class VectorByWallsRenderer {
 
   destroy(): void {
     this.unsubscribe?.();
-    this.background.destroy();
-    this.grid.destroy();
+    this.backgroundGrid.destroy();
     this.floor.destroy();
     this.closedCells.destroy();
     this.walls.destroy();
@@ -503,7 +535,6 @@ export class VectorByWallsRenderer {
     this.teleports.destroy();
     this.markers.destroy();
     this.warningHighlight.destroy();
-    this.gridContainer.destroy();
     this.floorContainer.destroy();
     this.closedCellsContainer.destroy();
     this.wallsContainer.destroy();
@@ -511,6 +542,5 @@ export class VectorByWallsRenderer {
     this.teleportContainer.destroy();
     this.markersContainer.destroy();
     this.warningHighlightContainer.destroy();
-    this.backgroundContainer.destroy();
   }
 }

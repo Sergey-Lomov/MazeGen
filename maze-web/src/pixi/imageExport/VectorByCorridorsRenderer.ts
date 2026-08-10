@@ -7,16 +7,16 @@ import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { drawMarkerWidenPatches } from "../renderers/markerWidenPatches";
 import { drawOneWayChevronRow } from "../renderers/wallUtils";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
-import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, ExportWarningHighlight } from "./VectorByWallsRenderer";
+import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
 import { computeVectorByCorridorsWarnings } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { TeleportEdge, MarkerData } from "../renderers/types";
+import type { Viewport, TeleportEdge, MarkerData } from "../renderers/types";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import type { ModeRenderer } from "./modeRendererFactory";
-import { computeVectorByCorridorsExportMargin, type ExportMargin } from "./exportMargins";
+import { computeVectorByCorridorsExportMargin, resolveBackgroundColor, type ExportMargin } from "./exportMargins";
 
 /** Builds one `MarkerData` per unique teleport point (GitHub issue #313 follow-up: teleport markers
  *  also need their corridor-line widen patch, same `markerWidenPadding` waypoints use — no separate
@@ -73,9 +73,12 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
  * `Graphics`, never shared with `VectorByWallsRenderer` or any other feature's renderer — its own
  * `TeleportRenderer` instance (GitHub issue #313) follows the same rule, even though teleports
  * aren't tied to the corridor-vs-wall visual model and render identically to "Vector by walls"'
- * own. Split points are skipped entirely — their own follow-up sub-issue, same as
- * `VectorByCorridorsSettings`' own doc comment. */
+ * own. Its background/grid section (GitHub issue #309) is its own `BackgroundGridLayer` instance,
+ * same shared-mechanics-own-instance convention as `ExportWarningHighlight`. Split points are
+ * skipped entirely — their own follow-up sub-issue, same as `VectorByCorridorsSettings`' own doc
+ * comment. */
 export class VectorByCorridorsRenderer implements ModeRenderer {
+  private readonly backgroundGrid: BackgroundGridLayer<VectorByCorridorsSettings>;
   private readonly corridorsContainer: Container;
   private readonly corridors: Graphics;
   private readonly teleportContainer: Container;
@@ -90,6 +93,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  shared with `VectorByWallsRenderer`'s own via `ExportWarningHighlight`. */
   private readonly warningHighlight: ExportWarningHighlight<VectorByCorridorsSettings>;
 
+  private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
 
   private geometryCache: {
@@ -101,6 +105,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   } | null = null;
 
   constructor(container: Container) {
+    this.backgroundGrid = new BackgroundGridLayer(container);
+
     this.corridorsContainer = new Container();
     container.addChild(this.corridorsContainer);
 
@@ -156,6 +162,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
   private syncVisibility(state: ReturnType<typeof useMazeStore.getState>): void {
     const visible = state.openCard === "image_export";
+    this.backgroundGrid.setVisible(visible);
     this.corridorsContainer.visible = visible;
     this.teleportContainer.visible = visible;
     this.markersContainer.visible = visible;
@@ -163,7 +170,14 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     if (visible) this.renderAll(state);
   }
 
-  onViewportChanged(_x: number, _y: number, _w: number, _h: number, _scale: number): void {}
+  onViewportChanged(x: number, y: number, w: number, h: number, scale: number): void {
+    this.viewport = { x, y, w, h, scale };
+    this.backgroundGrid.onViewportChanged(this.viewport);
+    const state = useMazeStore.getState();
+    if (state.openCard === "image_export") {
+      this.backgroundGrid.render(state.vectorByCorridorsSettings, state.activeTessellationConfig);
+    }
+  }
 
   getRequiredExportMargin(): ExportMargin {
     return computeVectorByCorridorsExportMargin(useMazeStore.getState().vectorByCorridorsSettings);
@@ -174,12 +188,15 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   }
 
   getBackgroundColor(): number {
-    return canvas.stage.background;
+    const state = useMazeStore.getState();
+    return resolveBackgroundColor("vector_by_corridors", { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const { nodes, edges } = state;
     const cfg = state.activeTessellationConfig;
+
+    this.backgroundGrid.render(state.vectorByCorridorsSettings, cfg);
 
     if (
       !this.geometryCache ||
@@ -306,6 +323,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
   destroy(): void {
     this.unsubscribe?.();
+    this.backgroundGrid.destroy();
     this.corridors.destroy();
     this.corridorsContainer.destroy();
     this.teleports.destroy();

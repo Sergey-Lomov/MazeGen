@@ -1,7 +1,6 @@
 import { useMazeStore } from "../../store/mazeStore";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields, RenderModeId, MarkerSettings } from "../../store/storeTypes";
 import { TILE_SIZE } from "../constants";
-import { canvas } from "../colorTokens";
 
 /** World-space required margin around a maze's raw cell-boundary bounding box, per side — how far
  * a mode's own drawn geometry (walls, markers, indicators...) can visually extend past it. Not
@@ -112,13 +111,13 @@ export function resolveWallExportMargin(mode: RenderModeId, state: Pick<ReturnTy
  * `ExportFrameOverlay` to pick a frame color that stays visible against whatever's actually drawn
  * behind it (which may differ from the app's own dark canvas background — a mode's background is
  * user-editable, e.g. "Vector by walls"' white/light default for print). "Vector by corridors" has
- * no user-configurable background yet (a follow-up sub-issue's concern), so it always resolves to
- * the fixed editor canvas background. */
+ * its own user-configurable background too (GitHub issue #309), same field/default as
+ * "Vector by walls". */
 export function resolveBackgroundColor(mode: RenderModeId, state: Pick<ReturnType<typeof useMazeStore.getState>, "vectorByWallsSettings" | "vectorByCorridorsSettings">): number {
   switch (mode) {
     case "vector_by_walls":
       return state.vectorByWallsSettings.background;
     case "vector_by_corridors":
-      return canvas.stage.background;
+      return state.vectorByCorridorsSettings.background;
   }
 }

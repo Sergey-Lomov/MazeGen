@@ -49,6 +49,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
 
 function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {}): VectorByCorridorsSettings {
   return {
+    background: 0, showGrid: true, gridColor: 0,
     color: 0, thickness: 4, join: "round",
     startMarker: defaultMarker, finishMarker: defaultMarker,
     markerWidenPadding: 0, markerWidenShape: "match_marker",

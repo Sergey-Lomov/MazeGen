@@ -724,6 +724,9 @@ function validateVectorByCorridorsSettings(v: unknown, path: string): VectorByCo
   }
   const d = DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS;
   return {
+    background: optNumber(obj, "background", d.background),
+    showGrid: optBool(obj, "showGrid", d.showGrid),
+    gridColor: optNumber(obj, "gridColor", d.gridColor),
     color: optNumber(obj, "color", d.color),
     thickness: optNumber(obj, "thickness", d.thickness),
     join: optJoin(obj, "join", d.join),

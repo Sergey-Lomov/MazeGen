@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { VectorByCorridorsRenderer, buildTeleportWidenMarkers } from "../pixi/imageExport/VectorByCorridorsRenderer";
 import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges } from "../pixi/selectors/mazeSelectors";
 import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
-import { canvas } from "../pixi/colorTokens";
 import { TILE_SIZE } from "../pixi/constants";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -20,6 +19,13 @@ vi.mock("../pixi/renderers/WallRenderer", () => ({
 
 vi.mock("../pixi/renderers/TeleportRenderer", () => ({
   TeleportRenderer: vi.fn().mockImplementation(function (this: { render: () => void; destroy: () => void }) {
+    this.render = vi.fn();
+    this.destroy = vi.fn();
+  }),
+}));
+
+vi.mock("../pixi/renderers/GridRenderer", () => ({
+  GridRenderer: vi.fn().mockImplementation(function (this: { render: () => void; destroy: () => void }) {
     this.render = vi.fn();
     this.destroy = vi.fn();
   }),
@@ -44,7 +50,7 @@ vi.mock("pixi.js", () => ({
     this.destroy = vi.fn();
     this.visible = false;
   }),
-  Graphics: vi.fn().mockImplementation(function (this: { clear: () => void; moveTo: () => unknown; lineTo: () => unknown; arcTo: () => unknown; closePath: () => unknown; stroke: () => unknown; circle: () => unknown; poly: () => unknown; fill: () => unknown; destroy: () => void }) {
+  Graphics: vi.fn().mockImplementation(function (this: { clear: () => void; moveTo: () => unknown; lineTo: () => unknown; arcTo: () => unknown; closePath: () => unknown; stroke: () => unknown; circle: () => unknown; poly: () => unknown; rect: () => unknown; fill: () => unknown; setStrokeStyle: () => unknown; destroy: () => void }) {
     this.clear = vi.fn();
     this.moveTo = vi.fn(() => this);
     this.lineTo = vi.fn(() => this);
@@ -53,7 +59,9 @@ vi.mock("pixi.js", () => ({
     this.stroke = vi.fn(() => this);
     this.circle = vi.fn(() => this);
     this.poly = vi.fn(() => this);
+    this.rect = vi.fn(() => this);
     this.fill = vi.fn(() => this);
+    this.setStrokeStyle = vi.fn(() => this);
     this.destroy = vi.fn();
   }),
 }));
@@ -75,8 +83,8 @@ const teleportDefaults: Pick<VectorByCorridorsSettings,
 const oneWayDefaults: Pick<VectorByCorridorsSettings, "oneWayColor" | "oneWayCount" | "oneWayThickness" | "oneWayGap" | "oneWayWidth" | "oneWayLength" | "oneWayJoin"> = {
   oneWayColor: 0, oneWayCount: 1, oneWayThickness: 4, oneWayGap: 4, oneWayWidth: 1, oneWayLength: 10, oneWayJoin: "round",
 };
-const settingsA: VectorByCorridorsSettings = { color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults };
-const settingsB: VectorByCorridorsSettings = { color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults };
+const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults };
+const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults };
 
 // Stable references reused across `baseState()` calls — the renderer's own geometry cache keys off
 // reference-equality of `nodes`/`edges`/`activeTessellationConfig` (same convention as
@@ -171,9 +179,52 @@ describe("VectorByCorridorsRenderer", () => {
     expect(renderer.getRequiredWallExportMargin()).toEqual(renderer.getRequiredExportMargin());
   });
 
-  it("getBackgroundColor always resolves to the fixed editor canvas background", () => {
+  it("getBackgroundColor resolves to the mode's own configurable background (GitHub issue #309)", () => {
+    currentState = baseState({ vectorByCorridorsSettings: settingsB });
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-    expect(renderer.getBackgroundColor()).toBe(canvas.stage.background);
+    expect(renderer.getBackgroundColor()).toBe(settingsB.background);
+  });
+
+  it("onViewportChanged redraws the background and grid against the new viewport while the image-export card is open (GitHub issue #309)", () => {
+    currentState = baseState({ vectorByCorridorsSettings: settingsB });
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    const backgroundGrid = (renderer as unknown as { backgroundGrid: { grid: { render: ReturnType<typeof vi.fn> }; background: { rect: ReturnType<typeof vi.fn> } } }).backgroundGrid;
+    vi.mocked(backgroundGrid.grid.render).mockClear();
+    vi.mocked(backgroundGrid.background.rect).mockClear();
+
+    renderer.onViewportChanged(10, 20, 800, 600, 2);
+
+    expect(backgroundGrid.background.rect).toHaveBeenCalledTimes(1);
+    expect(backgroundGrid.grid.render).toHaveBeenCalledWith(
+      { viewport: { x: 10, y: 20, w: 800, h: 600, scale: 2 }, color: settingsB.gridColor },
+      currentState.activeTessellationConfig,
+    );
+  });
+
+  it("onViewportChanged does not redraw while the image-export card is closed", () => {
+    currentState = baseState({ openCard: "generation" });
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    const backgroundGrid = (renderer as unknown as { backgroundGrid: { grid: { render: ReturnType<typeof vi.fn> }; background: { rect: ReturnType<typeof vi.fn> } } }).backgroundGrid;
+    vi.mocked(backgroundGrid.grid.render).mockClear();
+    vi.mocked(backgroundGrid.background.rect).mockClear();
+
+    renderer.onViewportChanged(10, 20, 800, 600, 2);
+
+    expect(backgroundGrid.background.rect).not.toHaveBeenCalled();
+    expect(backgroundGrid.grid.render).not.toHaveBeenCalled();
+  });
+
+  it("onViewportChanged skips the grid draw when showGrid is off, but still redraws the background", () => {
+    currentState = baseState({ vectorByCorridorsSettings: { ...settingsB, showGrid: false } });
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    const backgroundGrid = (renderer as unknown as { backgroundGrid: { grid: { render: ReturnType<typeof vi.fn> }; background: { rect: ReturnType<typeof vi.fn> } } }).backgroundGrid;
+    vi.mocked(backgroundGrid.grid.render).mockClear();
+    vi.mocked(backgroundGrid.background.rect).mockClear();
+
+    renderer.onViewportChanged(10, 20, 800, 600, 2);
+
+    expect(backgroundGrid.background.rect).toHaveBeenCalledTimes(1);
+    expect(backgroundGrid.grid.render).not.toHaveBeenCalled();
   });
 
   it("container starts hidden and becomes visible only while the image-export card is open", () => {

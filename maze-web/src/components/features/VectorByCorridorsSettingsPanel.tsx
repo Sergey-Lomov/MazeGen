@@ -5,6 +5,7 @@ import { inset, spacing, ui } from "../../styles/theme";
 import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
+import { ToggleRow } from "../ToggleRow";
 import { SectionHeader } from "../SectionHeader";
 import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
@@ -14,7 +15,11 @@ import { ExportWarningsSection } from "./ExportWarningsSection";
 import { TILE_SIZE } from "../../pixi/constants";
 import * as m from "~/paraglide/messages";
 
-/** "Vector by corridors" mode's own settings panel (GitHub issue #310) — a collapsible "Cells"
+/** "Vector by corridors" mode's own settings panel (GitHub issue #310) — a collapsible "Background"
+ * section (GitHub issue #309) reusing `VectorByWallsSettingsPanel`'s own section, same field set
+ * (background color, grid visibility, grid color) and same `i18n` message keys (no corridors-specific
+ * wording needed, mirrors the "Waypoints" section's own key-reuse convention below), placed first —
+ * same position as in `VectorByWallsSettingsPanel`. A collapsible "Cells"
  * section (mirrors `VectorByWallsSettingsPanel`'s own "Tiles" section naming/collapse convention,
  * `vectorByCorridorsSectionsExpanded` keyed the same way) covering the corridor stroke's color,
  * corners & ends (round/miter join, paired with a round/square cap, same convention as
@@ -35,6 +40,9 @@ import * as m from "~/paraglide/messages";
  * `VectorByWallsSettingsPanel`'s own layout so both panels stay visually consistent. */
 export function VectorByCorridorsSettingsPanel() {
   const settings = useMazeStore((s) => s.vectorByCorridorsSettings);
+  const setBackground = useMazeStore((s) => s.setVectorByCorridorsBackground);
+  const setShowGrid = useMazeStore((s) => s.setVectorByCorridorsShowGrid);
+  const setGridColor = useMazeStore((s) => s.setVectorByCorridorsGridColor);
   const setColor = useMazeStore((s) => s.setVectorByCorridorsColor);
   const setJoin = useMazeStore((s) => s.setVectorByCorridorsJoin);
   const setThickness = useMazeStore((s) => s.setVectorByCorridorsThickness);
@@ -112,6 +120,26 @@ export function VectorByCorridorsSettingsPanel() {
 
   return (
     <div style={styles.root}>
+      <SectionHeader
+        label={m["image_export.vector_by_walls.section_background"]()}
+        expanded={isExpanded("background")}
+        onToggle={() => toggleSection("background")}
+      />
+      {isExpanded("background") && (
+        <div style={styles.block}>
+          <ColorRow label={m["image_export.vector_by_walls.background_color"]()} color={settings.background} onChange={setBackground} />
+          <ToggleRow label={m["image_export.vector_by_walls.show_grid"]()} checked={settings.showGrid} onChange={setShowGrid} />
+          <ColorRow
+            label={m["image_export.vector_by_walls.grid_color"]()}
+            color={settings.gridColor}
+            onChange={setGridColor}
+            disabled={!settings.showGrid}
+          />
+        </div>
+      )}
+
+      <div style={styles.divider} />
+
       <SectionHeader
         label={m["image_export.vector_by_corridors.section_cells"]()}
         expanded={isExpanded("cells")}
