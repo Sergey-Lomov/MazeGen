@@ -123,8 +123,8 @@ export class GenerationRenderer {
       }
 
       const dataChanged =
-        state.nodes !== prev.nodes ||
-        state.edges !== prev.edges ||
+        state._generatedNodes !== prev._generatedNodes ||
+        state._generatedEdges !== prev._generatedEdges ||
         state.start !== prev.start ||
         state.finish !== prev.finish ||
         state.tessellationConfig !== prev.tessellationConfig ||
@@ -165,22 +165,27 @@ export class GenerationRenderer {
     this.viewport = { x, y, w, h, scale };
     const state = useMazeStore.getState();
     if (state.openCard === "generation" && state.showMaze) {
-      const cfg = state.nodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
+      const cfg = state._generatedNodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
       this.grid.render({ viewport: this.viewport }, cfg);
     }
   }
 
+  // Reads `_generatedNodes`/`_generatedEdges`, not `state.nodes`/`state.edges` — the latter are
+  // overwritten by every confirmPostEdit with the current (possibly manually-edited) graph so
+  // other consumers (PostEditController/PostEditRenderer/ManageSplitNodesDialog/AnalyticsRenderer)
+  // keep seeing confirmed post-edit state. The Generation feature must always show the generation
+  // result itself, unaffected by post-edit, so it needs its own frozen snapshot (GitHub issue #323).
   private debugView(state: ReturnType<typeof useMazeStore.getState>, debugMazeView: DebugMazeView | null) {
     return {
-      nodes: debugMazeView ? debugMazeView.nodes : state.nodes,
-      edges: debugMazeView ? debugMazeView.edges : state.edges,
+      nodes: debugMazeView ? debugMazeView.nodes : state._generatedNodes,
+      edges: debugMazeView ? debugMazeView.edges : state._generatedEdges,
       start: debugMazeView ? debugMazeView.start : state.start,
       finish: debugMazeView ? debugMazeView.finish : state.finish,
     };
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
-    const cfg = state.nodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
+    const cfg = state._generatedNodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
     this.grid.render({ viewport: this.viewport }, cfg);
     // Single call, reused below for both highlight overlays — selectDebugMazeView is itself
     // memoized per (arena, debugStep), but calling it three times per render still meant three

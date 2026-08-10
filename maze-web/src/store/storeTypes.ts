@@ -864,6 +864,15 @@ export interface PostEditState {
   /** start/finish as generated — restored on resetPostEdit. */
   _generatedStart: number | null;
   _generatedFinish: number | null;
+  /** nodes/edges as generated — the Generation feature's own frozen snapshot, restored on
+   * resetPostEdit. Unlike `state.nodes`/`state.edges` (which confirmPostEdit overwrites with the
+   * current, possibly manually-edited graph so PostEditController/PostEditRenderer/
+   * ManageSplitNodesDialog/AnalyticsRenderer keep seeing confirmed post-edit state, including
+   * confirmed auto-split nodes), these two are never touched by confirmPostEdit — only by
+   * generate() and resetPostEdit — so GenerationRenderer can read them and always show the
+   * generation result regardless of what post-edit has done since. */
+  _generatedNodes: NodeDto[];
+  _generatedEdges: EdgeDto[];
   /** True after any manual post-edit change since the last generate/reset. */
   postEditDirty: boolean;
   /** The link (edge/teleport) currently hovered in the "Manage split nodes" panel's link bubbles

@@ -61,6 +61,8 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   _postEditRequestId: 0,
   _generatedStart: null,
   _generatedFinish: null,
+  _generatedNodes: [],
+  _generatedEdges: [],
   postEditDirty: false,
 
   setPostEditAutoConfirm: (v) => set({ postEditAutoConfirm: v }),
@@ -80,7 +82,11 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
           edgeKey,
           from_,
           to_,
-          state.edges,
+          // `_generatedEdges`, not `state.edges` — the latter is overwritten by every
+          // confirmPostEdit with the current (possibly manually-edited) graph, so the "reset"
+          // tool would compare against whatever the last edit produced instead of the actual
+          // generation output (GitHub issue #323).
+          state._generatedEdges,
         ),
         postEditDirty: true,
       };
@@ -232,22 +238,24 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   resetPostEdit: () => {
     set((state) => {
       // Re-derive split points from the generated snapshot (GitHub issue #222) rather than
-      // clearing them — an auto-split node still exists in `state.nodes`/`state.edges`, and every
-      // reference to it must be a `split` endpoint, not a stale raw id (see
+      // clearing them — an auto-split node still exists in `_generatedNodes`/`_generatedEdges`,
+      // and every reference to it must be a `split` endpoint, not a stale raw id (see
       // `resolverForNodeId`'s doc comment). A manually `addSplitNode`-added slot doesn't survive
       // a reset either way (it was never real, being neither generated nor yet confirmed), so this
       // is a strict superset of the old "just clear it" behavior for anything that actually exists.
-      const splitPoints = deriveSplitPointsFromNodes(state.nodes);
-      const pointNodeMap = new Map<string, number[]>();
-      for (const n of state.nodes) {
-        const key = `${n.x},${n.y}`;
-        const list = pointNodeMap.get(key);
-        if (list) list.push(n.id); else pointNodeMap.set(key, [n.id]);
-      }
+      //
+      // Must read `_generatedNodes`/`_generatedEdges`, not `state.nodes`/`state.edges` — the
+      // latter are overwritten by every confirmPostEdit with the current (possibly manually
+      // edited) graph, so once at least one edit has been confirmed they no longer reflect the
+      // original generation and a reset built from them is a no-op (GitHub issue #323).
+      const splitPoints = deriveSplitPointsFromNodes(state._generatedNodes);
+      const pointNodeMap = buildPointNodeMap(state._generatedNodes);
       const endpointFor = resolverForNodeId(pointNodeMap, splitPoints);
-      const { teleports, nextId } = extractPostEditTeleports(state.edges, endpointFor);
+      const { teleports, nextId } = extractPostEditTeleports(state._generatedEdges, endpointFor);
       return {
-        postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(state.edges, endpointFor),
+        nodes: state._generatedNodes,
+        edges: state._generatedEdges,
+        postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(state._generatedEdges, endpointFor),
         postEditDraftTeleports: teleports,
         _nextPostEditTeleportId: nextId,
         postEditTeleportPendingFrom: null,

@@ -352,6 +352,8 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       mazeDirty: true,
       _generatedStart: snapshot.start,
       _generatedFinish: snapshot.finish,
+      _generatedNodes: snapshot.nodes,
+      _generatedEdges: snapshot.edges,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

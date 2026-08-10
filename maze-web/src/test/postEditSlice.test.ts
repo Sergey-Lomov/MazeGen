@@ -26,6 +26,8 @@ beforeEach(() => {
   useMazeStore.setState({
     edges: [{ from: 0, to: 1, kind: "basic" }],
     nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
+    _generatedEdges: [{ from: 0, to: 1, kind: "basic" }],
+    _generatedNodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
     start: 0,
     finish: 1,
     activeTessellationConfig: { type: "square", width: 2, height: 1 },
@@ -64,6 +66,18 @@ describe("mazeStore post-edit actions", () => {
     useMazeStore.setState({ postEditTool: "passage", postEditDraftEdges: {} });
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
     expect(useMazeStore.getState().postEditDraftEdges?.[key01]?.kind).toBe("basic");
+  });
+
+  it("applyPostEditTool('reset') restores the edge from _generatedEdges, not the current (edited) state.edges (GitHub issue #323)", () => {
+    // Simulates state after a confirmed manual edit: state.edges no longer has 0-1 (a wall was
+    // confirmed there), while _generatedEdges still holds the original generation output.
+    useMazeStore.setState({
+      postEditTool: "reset",
+      edges: [],
+      postEditDraftEdges: {},
+    });
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditDraftEdges?.[key01]?.kind).toBe("one_way_forward");
   });
 
   it("applyPostEditTool is no-op when there is no draft yet", () => {
@@ -200,11 +214,29 @@ describe("mazeStore post-edit actions", () => {
 
   it("resetPostEdit repopulates postEditDraftTeleports from generated edges", () => {
     useMazeStore.setState({
-      edges: [{ from: 0, to: 1, kind: "basic" }, { from: 2, to: 3, kind: "teleport" }],
+      _generatedEdges: [{ from: 0, to: 1, kind: "basic" }, { from: 2, to: 3, kind: "teleport" }],
       postEditDraftTeleports: [],
     });
     useMazeStore.getState().resetPostEdit();
     expect(useMazeStore.getState().postEditDraftTeleports).toEqual([{ id: 1, from: n(2), to: n(3), direction: "forward" }]);
+  });
+
+  it("resetPostEdit restores nodes/edges/draft from _generatedNodes/_generatedEdges, not the current (edited) state.nodes/edges (GitHub issue #323)", () => {
+    // Simulates state after a confirmed manual edit: state.edges/nodes reflect the edited graph
+    // (edge 0-1 removed by a wall), while _generatedNodes/_generatedEdges still hold the original
+    // generation output — GenerationRenderer must show the latter, and reset must restore from it.
+    useMazeStore.setState({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
+      edges: [],
+      postEditDraftEdges: {},
+      postEditDirty: true,
+    });
+    useMazeStore.getState().resetPostEdit();
+    const s = useMazeStore.getState();
+    expect(s.nodes).toEqual(s._generatedNodes);
+    expect(s.edges).toEqual(s._generatedEdges);
+    expect(s.postEditDraftEdges).toEqual({ [key01]: { from: n(0), to: n(1), kind: "one_way_forward" } });
+    expect(s.postEditDirty).toBe(false);
   });
 
   it("resetPostEdit clears split-point draft state", () => {

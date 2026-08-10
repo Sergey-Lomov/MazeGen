@@ -176,6 +176,8 @@ export function buildResetMazeState() {
     edgeStats: null as SpatialEdgeStatsDto | null,
     teleportEdgeStats: null as TeleportEdgeStatsDto | null,
     routeInfo: null as RouteInfoDto | null,
+    _generatedNodes: [] as NodeDto[],
+    _generatedEdges: [] as EdgeDto[],
   };
 }
 
