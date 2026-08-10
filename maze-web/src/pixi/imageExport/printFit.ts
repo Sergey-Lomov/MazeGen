@@ -1,4 +1,4 @@
-import { contentWorldBounds } from "./contentBounds";
+import { contentWorldBounds, type ContentBoundsBasis } from "./contentBounds";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { ExportMargin } from "./exportMargins";
 import type { PrintExportSettings } from "../../store/storeTypes";
@@ -32,8 +32,8 @@ export function resolveSheetSizeMm(settings: PrintExportSettings): { widthMm: nu
   return settings.orientation === "landscape" ? { widthMm: h, heightMm: w } : { widthMm: w, heightMm: h };
 }
 
-function rawContentSizePx(cfg: TessellationConfig, nodes: { x: number; y: number; id: number }[], margin: ExportMargin, scale: number) {
-  const { minX, minY, width, height } = contentWorldBounds(cfg, nodes, margin);
+function rawContentSizePx(cfg: TessellationConfig, nodes: { x: number; y: number; id: number }[], margin: ExportMargin, scale: number, basis: ContentBoundsBasis = "cell") {
+  const { minX, minY, width, height } = contentWorldBounds(cfg, nodes, margin, basis);
   return { minXWorld: minX, minYWorld: minY, widthPx: width * scale, heightPx: height * scale };
 }
 
@@ -59,12 +59,10 @@ export interface PrintFit {
 /** Computes the print canvas's fit — a fixed-size sheet (`sheetWidthPx`×`sheetHeightPx`, from
  * paper size + DPI), with the maze content (its real drawn extent — `contentMargin`'s bbox inset,
  * scaled by `settings.scale`) placed inside the sheet's margin-inset area per `settings.anchor`.
- * Pure function — `contentMargin` should be the render mode's tight wall-only margin
- * (`resolveWallExportMargin`), the same "how big is the maze, actually" question
- * `computeDigitalExportFit`'s `edge_to_edge`/`margin_px`/`margin_cells` branches answer — using the
- * wider marker/indicator-inclusive margin here would leave unwanted extra space around content
- * that doesn't actually have those markers, the same bug edge-to-edge digital export originally
- * had (see `contentBounds.ts`).
+ * Pure function — `contentMargin` should be the render mode's pixel-accurate export margin
+ * (`ModeRenderer.getRequiredExportMargin()`, GitHub issue #324 follow-up), the same "how big is
+ * the maze, actually" question `computeDigitalExportFit`'s `edge_to_edge`/`margin_px`/
+ * `margin_cells` branches answer.
  *
  * `clipsSheetBounds`/`entersMarginZone` are informational only — export still proceeds when either
  * is true; content outside the sheet's own pixel bounds is simply not drawn (hardware clip). Both
@@ -76,6 +74,7 @@ export function computePrintExportFit(
   nodes: { x: number; y: number; id: number }[],
   contentMargin: ExportMargin,
   settings: PrintExportSettings,
+  basis: ContentBoundsBasis = "cell",
 ): PrintFit {
   const dpi = DPI_BY_DENSITY[settings.density];
   const { widthMm, heightMm } = resolveSheetSizeMm(settings);
@@ -86,7 +85,7 @@ export function computePrintExportFit(
   const availableWidth = sheetWidthPx - marginHPx * 2;
   const availableHeight = sheetHeightPx - marginVPx * 2;
 
-  const { minXWorld, minYWorld, widthPx: contentWidth, heightPx: contentHeight } = rawContentSizePx(cfg, nodes, contentMargin, settings.scale);
+  const { minXWorld, minYWorld, widthPx: contentWidth, heightPx: contentHeight } = rawContentSizePx(cfg, nodes, contentMargin, settings.scale, basis);
 
   // "custom" bypasses placeInBox's 9-way anchor math — the user positioned the content directly
   // (panning/zooming under the on-canvas frame, see ExportFrameOverlay), and offsetXMm/offsetYMm
@@ -153,6 +152,7 @@ export function computePrintPlacementFromViewport(
   settings: PrintExportSettings,
   viewport: { x: number; y: number; scale: number },
   frameLayout: { x: number; y: number; w: number; h: number },
+  basis: ContentBoundsBasis = "cell",
 ): { scale: number; offsetXMm: number; offsetYMm: number } {
   const dpi = DPI_BY_DENSITY[settings.density];
   const { widthMm } = resolveSheetSizeMm(settings);
@@ -163,7 +163,7 @@ export function computePrintPlacementFromViewport(
   const frameToSheetScale = sheetWidthPx / frameLayout.w;
   const scale = viewport.scale * frameToSheetScale;
 
-  const { minX: minXWorld, minY: minYWorld } = contentWorldBounds(cfg, nodes, contentMargin);
+  const { minX: minXWorld, minY: minYWorld } = contentWorldBounds(cfg, nodes, contentMargin, basis);
   const contentScreenX = minXWorld * viewport.scale + viewport.x;
   const contentScreenY = minYWorld * viewport.scale + viewport.y;
   const contentSheetX = (contentScreenX - frameLayout.x) * frameToSheetScale;
@@ -190,13 +190,14 @@ export function computeViewportFromPrintPlacement(
   contentMargin: ExportMargin,
   settings: PrintExportSettings,
   frameLayout: { x: number; y: number; w: number; h: number },
+  basis: ContentBoundsBasis = "cell",
 ): { x: number; y: number; scale: number } {
   const dpi = DPI_BY_DENSITY[settings.density];
   const { widthMm } = resolveSheetSizeMm(settings);
   const sheetWidthPx = mmToPx(widthMm, dpi);
   const frameToSheetScale = sheetWidthPx / frameLayout.w;
 
-  const printFit = computePrintExportFit(cfg, nodes, contentMargin, settings);
+  const printFit = computePrintExportFit(cfg, nodes, contentMargin, settings, basis);
   const viewportScale = printFit.scale / frameToSheetScale;
 
   return {
@@ -216,13 +217,14 @@ export function computeAutoFitPrintScale(
   nodes: { x: number; y: number; id: number }[],
   contentMargin: ExportMargin,
   settings: PrintExportSettings,
+  basis: ContentBoundsBasis = "cell",
 ): number {
   const dpi = DPI_BY_DENSITY[settings.density];
   const { widthMm, heightMm } = resolveSheetSizeMm(settings);
   const availableWidth = mmToPx(widthMm, dpi) - mmToPx(settings.marginHMm, dpi) * 2;
   const availableHeight = mmToPx(heightMm, dpi) - mmToPx(settings.marginVMm, dpi) * 2;
 
-  const { widthPx: rawContentWidth, heightPx: rawContentHeight } = rawContentSizePx(cfg, nodes, contentMargin, 1);
+  const { widthPx: rawContentWidth, heightPx: rawContentHeight } = rawContentSizePx(cfg, nodes, contentMargin, 1, basis);
   if (rawContentWidth <= 0 || rawContentHeight <= 0) return settings.scale;
 
   return Math.min(availableWidth / rawContentWidth, availableHeight / rawContentHeight);

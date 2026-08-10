@@ -33,6 +33,16 @@ export class ImageExportRenderer implements ViewportListener {
     this.modeRenderers.set(mode, createModeRenderer(mode, modeContainer));
   }
 
+  /** The live mode-renderer instance for `mode`, if one has ever been constructed (`ensureMode`
+   *  builds one the first time a mode becomes active — never eagerly for every registered mode).
+   *  Lets a caller outside this class (`ExportFrameOverlay`, GitHub issue #324 follow-up) read a
+   *  pixel-accurate margin (`ModeRenderer.getRequiredExportMargin()`) off the same already-
+   *  rendered instance the on-screen canvas itself uses, instead of re-deriving an approximation of
+   *  it via a Pixi-free pure function. */
+  getModeRenderer(mode: RenderModeId): ModeRenderer | undefined {
+    return this.modeRenderers.get(mode);
+  }
+
   private syncVisibility(activeMode: RenderModeId | null): void {
     for (const [mode, modeContainer] of this.modeContainers) {
       modeContainer.visible = mode === activeMode;

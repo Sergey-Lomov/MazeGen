@@ -124,6 +124,7 @@ export class MazeScene {
       this.imageExportFrameContainer,
       (x, y, scale) => this.setViewportTransform(x, y, scale),
       () => ({ width: this.app.screen.width, height: this.app.screen.height }),
+      this.imageExportRenderer,
     );
     this.pngExporter = new PngExporter(this.app);
 

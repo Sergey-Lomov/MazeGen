@@ -2,10 +2,11 @@ import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
 import { computePrintExportFit, computeSheetScreenLayout, computePrintPlacementFromViewport, computeViewportFromPrintPlacement, DPI_BY_DENSITY, mmToPx } from "./printFit";
 import { computeDigitalExportFit } from "./exportFit";
-import { resolveExportMargin, resolveWallExportMargin, resolveBackgroundColor } from "./exportMargins";
+import { resolveBackgroundColor, resolveContentBoundsBasis } from "./exportMargins";
 import { contrastGray } from "../colorTokens";
 import type { ViewportListener } from "../sceneTypes";
 import type { PrintExportSettings } from "../../store/storeTypes";
+import type { ImageExportRenderer } from "./ImageExportRenderer";
 
 const DASH_LENGTH = 10;
 const GAP_LENGTH = 6;
@@ -45,6 +46,11 @@ export class ExportFrameOverlay implements ViewportListener {
     container: Container,
     private readonly setViewportTransform: (x: number, y: number, scale: number) => void,
     private readonly getScreenSize: () => { width: number; height: number },
+    // Optional — lets the frame read a pixel-accurate margin off the same live mode-renderer
+    // instance the on-screen canvas itself uses (GitHub issue #324 follow-up), instead of a
+    // Pixi-free geometric approximation. Undefined only in tests that don't need it (an
+    // `ImageExportRenderer` always exists in the real scene — `MazeScene` constructs both together).
+    private readonly imageExportRenderer?: ImageExportRenderer,
   ) {
     this.graphics = new Graphics();
     container.addChild(this.graphics);
@@ -97,10 +103,20 @@ export class ExportFrameOverlay implements ViewportListener {
       && state.nodes.length > 0;
   }
 
+  /** Resolves the active mode's own pixel-accurate export margin (GitHub issue #324 follow-up) off
+   * the live mode-renderer instance the on-screen canvas itself uses — zero margin (not "no frame
+   * at all") when there's no `ImageExportRenderer` on hand, which only happens in tests that don't
+   * exercise margin precision; the real scene always constructs both together. */
+  private resolveMargin(state: ReturnType<typeof useMazeStore.getState>) {
+    if (state.activeRenderMode === null) return { left: 0, right: 0, top: 0, bottom: 0 };
+    return this.imageExportRenderer?.getModeRenderer(state.activeRenderMode)?.getRequiredExportMargin()
+      ?? { left: 0, right: 0, top: 0, bottom: 0 };
+  }
+
   private currentPrintFrameLayout(state: ReturnType<typeof useMazeStore.getState>): PrintFrameLayout | null {
     if (!this.isExportPanelOpen(state) || state.pngExportSettings.outputMode !== "print" || state.activeRenderMode === null) return null;
-    const wallMargin = resolveWallExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
-    const printFit = computePrintExportFit(state.activeTessellationConfig, state.nodes, wallMargin, state.pngExportSettings.print);
+    const margin = this.resolveMargin(state);
+    const printFit = computePrintExportFit(state.activeTessellationConfig, state.nodes, margin, state.pngExportSettings.print, resolveContentBoundsBasis(state.activeRenderMode));
     if (printFit.sheetWidthPx <= 0 || printFit.sheetHeightPx <= 0) return null;
     const screenSize = this.getScreenSize();
     const layout = computeSheetScreenLayout(printFit.sheetWidthPx, printFit.sheetHeightPx, screenSize.width, screenSize.height);
@@ -113,9 +129,8 @@ export class ExportFrameOverlay implements ViewportListener {
    * derived from the current maze bbox + settings, nothing to keep in sync). */
   private currentDigitalFrameLayout(state: ReturnType<typeof useMazeStore.getState>): ScreenRect | null {
     if (!this.isExportPanelOpen(state) || state.pngExportSettings.outputMode !== "digital" || state.activeRenderMode === null) return null;
-    const margin = resolveExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
-    const wallMargin = resolveWallExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
-    const fit = computeDigitalExportFit(state.activeTessellationConfig, state.nodes, margin, state.pngExportSettings.digital, wallMargin);
+    const margin = this.resolveMargin(state);
+    const fit = computeDigitalExportFit(state.activeTessellationConfig, state.nodes, margin, state.pngExportSettings.digital, resolveContentBoundsBasis(state.activeRenderMode));
     if (fit.width <= 0 || fit.height <= 0) return null;
     const { scale } = this.lastViewport;
     return {
@@ -136,9 +151,9 @@ export class ExportFrameOverlay implements ViewportListener {
    * overwrite the scale this call is about to set, back to the auto-fit value, every render). */
   private syncPlacementToViewport(state: ReturnType<typeof useMazeStore.getState>, frameLayout: ScreenRect): void {
     if (state.activeRenderMode === null) return;
-    const wallMargin = resolveWallExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
+    const margin = this.resolveMargin(state);
     const { scale, offsetXMm, offsetYMm } = computePrintPlacementFromViewport(
-      state.activeTessellationConfig, state.nodes, wallMargin, state.pngExportSettings.print, this.lastViewport, frameLayout,
+      state.activeTessellationConfig, state.nodes, margin, state.pngExportSettings.print, this.lastViewport, frameLayout, resolveContentBoundsBasis(state.activeRenderMode),
     );
     this.syncingDepth++;
     try {
@@ -156,9 +171,9 @@ export class ExportFrameOverlay implements ViewportListener {
    * the viewport back into itself. */
   private syncViewportToPlacement(state: ReturnType<typeof useMazeStore.getState>, frameLayout: ScreenRect): void {
     if (state.activeRenderMode === null) return;
-    const wallMargin = resolveWallExportMargin(state.activeRenderMode, { vectorByWallsSettings: state.vectorByWallsSettings, vectorByCorridorsSettings: state.vectorByCorridorsSettings });
+    const margin = this.resolveMargin(state);
     const { x, y, scale } = computeViewportFromPrintPlacement(
-      state.activeTessellationConfig, state.nodes, wallMargin, state.pngExportSettings.print, frameLayout,
+      state.activeTessellationConfig, state.nodes, margin, state.pngExportSettings.print, frameLayout, resolveContentBoundsBasis(state.activeRenderMode),
     );
     this.lastViewport = { x, y, scale };
     // setViewportTransform synchronously fans out into onViewportChanged -> syncPlacementToViewport

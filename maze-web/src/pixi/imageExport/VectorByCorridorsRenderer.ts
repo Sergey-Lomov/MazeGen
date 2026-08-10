@@ -17,7 +17,8 @@ import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { disabledOfNumber } from "../../styles/palette";
 import type { ModeRenderer } from "./modeRendererFactory";
-import { computeVectorByCorridorsExportMargin, resolveBackgroundColor, type ExportMargin } from "./exportMargins";
+import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
+import { cellCenterBounds } from "../tessellationGeometry";
 
 /** Builds one `MarkerData` per unique teleport point (GitHub issue #313 follow-up: teleport markers
  *  also need their corridor-line widen patch, same `markerWidenPadding` waypoints use — no separate
@@ -406,12 +407,32 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     }
   }
 
+  /** Pixel-accurate export margin (GitHub issue #324 follow-up) — reads the actual drawn geometry's
+   *  own world-space bounds (`Container.getLocalBounds()`, exact per pixi's own stroke/join/cap/
+   *  shape math) instead of re-deriving an approximation of it. `renderAll` runs unconditionally
+   *  first (not gated on `openCard === "image_export"` the way the store-subscription path is) — see
+   *  `VectorByWallsRenderer.getRequiredExportMargin`'s own doc comment for why: that gate is a perf
+   *  optimization for the on-screen instance only, and a caller reading this margin (a throwaway
+   *  measurement-only instance, or any instance queried before its card was ever opened) needs
+   *  correct bounds regardless. `backgroundGrid`/`warningHighlightContainer` are deliberately
+   *  excluded — a background fill or warning highlight is not maze content whose export margin
+   *  should ever grow to fit it. */
   getRequiredExportMargin(): ExportMargin {
-    return computeVectorByCorridorsExportMargin(useMazeStore.getState().vectorByCorridorsSettings);
-  }
+    const state = useMazeStore.getState();
+    if (state.nodes.length === 0) return { left: 0, right: 0, top: 0, bottom: 0 };
+    this.renderAll(state);
 
-  getRequiredWallExportMargin(): ExportMargin {
-    return computeVectorByCorridorsExportMargin(useMazeStore.getState().vectorByCorridorsSettings);
+    // `getLocalBounds()`, not `getBounds()` — the live instance's containers sit under
+    // `MazeScene`'s own pan/zoom-transformed layer, so world-space `getBounds()` would read this
+    // maze's on-screen position/zoom into the margin instead of its actual drawn content size.
+    // `PngExporter`'s temporary instance never gets positioned at all before this method runs (its
+    // own `exportContainer.position`/`scale.set` happen afterward), so `getLocalBounds()` there is
+    // simply a no-op identity transform away from `getBounds()` — same result either way.
+    const cellBounds = cellCenterBounds(state.nodes, state.activeTessellationConfig);
+    return measureContentMargin(
+      [this.corridorsContainer, this.splitShapesLayer, this.teleportContainer, this.markersContainer],
+      cellBounds,
+    );
   }
 
   getBackgroundColor(): number {

@@ -70,13 +70,13 @@ describe("computeDigitalExportFit — edge_to_edge", () => {
     expect(fit.contentHeight).toBeCloseTo(fit.height);
   });
 
-  it("uses the narrower wallMargin, not the full margin, when both are given", () => {
-    const fullMargin = uniformMargin(TILE_SIZE); // e.g. a marker-inclusive margin
-    const wallMargin = uniformMargin(1); // e.g. a thin wall stroke
-    const fit = computeDigitalExportFit(cfg, [{ id: 0, x: 0, y: 0 }], fullMargin, edgeToEdgeSettings(1), wallMargin);
-    const fitFull = computeDigitalExportFit(cfg, [{ id: 0, x: 0, y: 0 }], fullMargin, edgeToEdgeSettings(1));
-    expect(fit.width).toBeLessThan(fitFull.width);
-    expect(fit.width).toBeCloseTo(TILE_SIZE + 2); // tile width + 1px margin each side
+  it("a smaller margin produces a smaller canvas than a larger one for the same content", () => {
+    const smallMargin = uniformMargin(1);
+    const bigMargin = uniformMargin(TILE_SIZE);
+    const fitSmall = computeDigitalExportFit(cfg, [{ id: 0, x: 0, y: 0 }], smallMargin, edgeToEdgeSettings(1));
+    const fitBig = computeDigitalExportFit(cfg, [{ id: 0, x: 0, y: 0 }], bigMargin, edgeToEdgeSettings(1));
+    expect(fitSmall.width).toBeLessThan(fitBig.width);
+    expect(fitSmall.width).toBeCloseTo(TILE_SIZE + 2); // tile width + 1px margin each side
   });
 });
 
@@ -90,12 +90,12 @@ describe("computeDigitalExportFit — margin_px", () => {
     expect(fit.height).toBeCloseTo(fitNoMargin.height + 40);
   });
 
-  it("at marginValue=0, matches edge_to_edge exactly (uses wallMargin as its base, not the raw cell bound)", () => {
+  it("at marginValue=0, matches edge_to_edge exactly (uses margin as its base, not the raw cell bound)", () => {
     const nodes = [{ id: 0, x: 0, y: 0 }];
-    const wallMargin = uniformMargin(2);
+    const margin = uniformMargin(2);
     const settings: DigitalExportSettings = { scale: 1, canvasMode: "margin_px", marginValue: 0, fixedWidth: 0, fixedHeight: 0 };
-    const fitMarginPx = computeDigitalExportFit(cfg, nodes, zeroMargin, settings, wallMargin);
-    const fitEdgeToEdge = computeDigitalExportFit(cfg, nodes, zeroMargin, edgeToEdgeSettings(1), wallMargin);
+    const fitMarginPx = computeDigitalExportFit(cfg, nodes, margin, settings);
+    const fitEdgeToEdge = computeDigitalExportFit(cfg, nodes, margin, edgeToEdgeSettings(1));
     expect(fitMarginPx.width).toBeCloseTo(fitEdgeToEdge.width);
     expect(fitMarginPx.height).toBeCloseTo(fitEdgeToEdge.height);
     expect(fitMarginPx.x).toBeCloseTo(fitEdgeToEdge.x);
@@ -112,12 +112,12 @@ describe("computeDigitalExportFit — margin_cells", () => {
     expect(fit.width).toBeCloseTo(fitNoMargin.width + 2 * TILE_SIZE * settings.scale);
   });
 
-  it("at marginValue=0, matches edge_to_edge exactly (uses wallMargin as its base, not the raw cell bound)", () => {
+  it("at marginValue=0, matches edge_to_edge exactly (uses margin as its base, not the raw cell bound)", () => {
     const nodes = [{ id: 0, x: 0, y: 0 }];
-    const wallMargin = uniformMargin(2);
+    const margin = uniformMargin(2);
     const settings: DigitalExportSettings = { scale: 1, canvasMode: "margin_cells", marginValue: 0, fixedWidth: 0, fixedHeight: 0 };
-    const fitMarginCells = computeDigitalExportFit(cfg, nodes, zeroMargin, settings, wallMargin);
-    const fitEdgeToEdge = computeDigitalExportFit(cfg, nodes, zeroMargin, edgeToEdgeSettings(1), wallMargin);
+    const fitMarginCells = computeDigitalExportFit(cfg, nodes, margin, settings);
+    const fitEdgeToEdge = computeDigitalExportFit(cfg, nodes, margin, edgeToEdgeSettings(1));
     expect(fitMarginCells.width).toBeCloseTo(fitEdgeToEdge.width);
     expect(fitMarginCells.height).toBeCloseTo(fitEdgeToEdge.height);
   });
@@ -162,5 +162,25 @@ describe("placeInBox", () => {
     const { x, y } = placeInBox(10, 10, 100, 100, 0, 0, "bottom_right");
     expect(x).toBeCloseTo(90);
     expect(y).toBeCloseTo(90);
+  });
+});
+
+// GitHub issue #324 — "Vector by corridors" draws center-to-center lines that stop well short of a
+// cell's own polygon boundary, so its tight/edge_to_edge fit must hug the cell *centers*
+// (`basis: "center"`), not the cell polygon (`basis: "cell"`, the default every other mode uses).
+describe("computeDigitalExportFit — edge_to_edge with basis: \"center\"", () => {
+  it("produces a smaller canvas than the default cell-polygon basis for the same margin", () => {
+    const nodes = [{ id: 0, x: 0, y: 0 }, { id: 1, x: 1, y: 0 }];
+    const margin = uniformMargin(TILE_SIZE / 2);
+    const cellFit = computeDigitalExportFit(cfg, nodes, margin, edgeToEdgeSettings(1));
+    const centerFit = computeDigitalExportFit(cfg, nodes, margin, edgeToEdgeSettings(1), "center");
+    expect(centerFit.width).toBeLessThan(cellFit.width);
+    expect(centerFit.height).toBeLessThan(cellFit.height);
+  });
+
+  it("with zero margin, a single node's canvas collapses to zero size (bbox of one center point)", () => {
+    const fit = computeDigitalExportFit(cfg, [{ id: 0, x: 0, y: 0 }], zeroMargin, edgeToEdgeSettings(1), "center");
+    expect(fit.width).toBeCloseTo(0);
+    expect(fit.height).toBeCloseTo(0);
   });
 });

@@ -1,10 +1,28 @@
+import type { Container } from "pixi.js";
+import type { RenderModeId } from "../../store/storeTypes";
 import { useMazeStore } from "../../store/mazeStore";
-import type { VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields, RenderModeId, MarkerSettings } from "../../store/storeTypes";
-import { TILE_SIZE } from "../constants";
+import type { ContentBoundsBasis } from "./contentBounds";
+
+/** Axis-aligned bbox shape shared by pixi's own `Bounds` and the plain `{minX,minY,maxX,maxY}`
+ * objects `exactCellBounds`/`cellCenterBounds` return — `measureContentMargin`'s `cellBounds` param
+ * only ever reads these four fields, so it accepts either without needing a full pixi `Bounds`. */
+interface AxisAlignedBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
 
 /** World-space required margin around a maze's raw cell-boundary bounding box, per side — how far
- * a mode's own drawn geometry (walls, markers, indicators...) can visually extend past it. Not
- * necessarily symmetric for every mode (e.g. a future mode drawing a legend only on one side). */
+ * a mode's own drawn geometry (walls, markers, indicators...) actually extends past it, on this
+ * specific maze. Not necessarily symmetric (e.g. a start marker sitting only on the maze's top
+ * edge widens `top` alone). Every `ModeRenderer.getRequiredExportMargin()` (GitHub issue #324
+ * follow-up) measures this directly off the mode's own already-rendered content
+ * (`Container.getLocalBounds()`) rather than approximating it from settings — see
+ * `VectorByWallsRenderer`'s/`VectorByCorridorsRenderer`'s own `getRequiredExportMargin` doc
+ * comments for why a single pixel-accurate method now serves every canvas-fit mode
+ * (`edge_to_edge`, `margin_px`/`margin_cells`, `fixed_size`, print) with no separate "settings-only
+ * worst case" or "wall-only vs. full" variant needed anywhere. */
 export interface ExportMargin {
   left: number;
   right: number;
@@ -12,107 +30,28 @@ export interface ExportMargin {
   bottom: number;
 }
 
-/** Exported so mode renderers with a trivially uniform margin (e.g. `VectorByCorridorsRenderer`'s
- * corridor-stroke-half-width margin) don't need to hand-build the `ExportMargin` shape themselves. */
-export function uniform(v: number): ExportMargin {
-  return { left: v, right: v, top: v, bottom: v };
-}
-
-/** A marker's own visible half-extent past its center — `size` (fraction of `TILE_SIZE`) plus
- * border/gap width, optionally with extra padding on top (e.g. `VectorByCorridorsSettings`'
- * `markerWidenPadding`, whose widen-patch geometry extends past the marker's own footprint).
- * Shared by both modes' export-margin calculations so the footprint formula can't drift between
- * them. */
-function markerFootprintHalf(marker: MarkerSettings, extraPadding = 0): number {
-  return (marker.size * TILE_SIZE) / 2 + marker.borderWidth + marker.gapWidth + extraPadding;
-}
-
-/** A teleport marker/connector's own widest visible half-extent past its center, from a
- * `TeleportSettingsFields` slice — shared by both modes' export-margin calculations (GitHub issue
- * #313) since `VectorByWallsSettings` and `VectorByCorridorsSettings` both `extends` the same
- * teleport field set and now both actually draw teleports via `TeleportRenderer`. */
-function teleportFootprintHalf(settings: TeleportSettingsFields): number {
-  const markerHalf = (settings.teleportLineSize * TILE_SIZE) / 2 + settings.teleportEdgeBorderWidth + settings.teleportEdgeGapWidth;
-  const connectorHalf = settings.teleportConnectorWidth / 2 + settings.teleportConnectorGapWidth;
-  return Math.max(markerHalf, connectorHalf);
-}
-
-/** Required export margin for the "Vector by walls" render mode — the widest visible stroke/
- * marker half-extent past a cell's raw boundary, across every `VectorByWallsSettings` field that
- * draws in world coordinates. Symmetric on every side for this mode today. Exported as a pure
- * function (not only reachable through a live `VectorByWallsRenderer` instance) so callers that
- * only need the number — e.g. the settings panel's live preview — never have to construct a Pixi
- * renderer just to read it; `VectorByWallsRenderer.getRequiredExportMargin()` delegates to this
- * same function. */
-export function computeVectorByWallsExportMargin(settings: VectorByWallsSettings): ExportMargin {
-  const wallHalf = settings.wallThickness / 2;
-  const oneWayHalf = settings.oneWayGapWidth + settings.oneWaySize * TILE_SIZE + settings.oneWayThickness / 2;
-  const startMarkerHalf = markerFootprintHalf(settings.startMarker);
-  const finishMarkerHalf = markerFootprintHalf(settings.finishMarker);
-
-  return uniform(Math.max(wallHalf, oneWayHalf, startMarkerHalf, finishMarkerHalf, teleportFootprintHalf(settings)));
-}
-
-/** Wall-only margin — how far a cell's own wall stroke extends past its raw boundary. Used by the
- * digital export's "edge to edge" canvas mode, which is meant to hug the walls tightly rather than
- * reserve room for markers/indicators that may not even be present in a given maze (unlike
- * `computeVectorByWallsExportMargin`, which sizes for whatever could be drawn). */
-export function computeVectorByWallsWallMargin(settings: VectorByWallsSettings): ExportMargin {
-  return uniform(settings.wallThickness / 2);
-}
-
-/** Required export margin for "Vector by corridors" — the widest of half the corridor stroke's own
- * width, a start/finish marker's own widen-patch footprint (`markerWidenPadding` included, since
- * that's the actual geometry drawn — see `drawMarkerWidenPatches`) (GitHub issue #310, markers
- * added in #311) and a teleport marker/connector's own footprint (GitHub issue #313). Same
- * "always pure function" rationale as `computeVectorByWallsExportMargin`. */
-export function computeVectorByCorridorsExportMargin(settings: VectorByCorridorsSettings): ExportMargin {
-  const corridorHalf = settings.thickness / 2;
-  const startMarkerHalf = markerFootprintHalf(settings.startMarker, settings.markerWidenPadding);
-  const finishMarkerHalf = markerFootprintHalf(settings.finishMarker, settings.markerWidenPadding);
-  // One-way chevron row's own half-extent across the corridor (GitHub issue #312) — matches
-  // `drawOneWayChevronRow`'s own `width` argument in `VectorByCorridorsRenderer`, the wider of its
-  // own width and the corridor stroke it sits on, same "widest of everything drawn" rationale as
-  // every other term here.
-  const oneWayHalf = Math.max(corridorHalf, (settings.oneWayWidth * settings.thickness) / 2);
-  return uniform(Math.max(corridorHalf, startMarkerHalf, finishMarkerHalf, oneWayHalf, teleportFootprintHalf(settings)));
-}
-
-/** Resolves the export margin for a given render mode directly from store state — the
- * chiefly-functional counterpart to `modeRendererFactory.ts`'s `createModeRenderer`, minus any
- * Pixi/`Container` dependency. Callers needing a live preview (the export settings panel's
- * `useMemo`, re-evaluated on every settings change) use this instead of spinning up a temporary
- * renderer instance. `PngExporter` may use either this or the equivalent instance method — both
- * delegate to the same per-mode pure function, so they can never disagree. */
-export function resolveExportMargin(mode: RenderModeId, state: Pick<ReturnType<typeof useMazeStore.getState>, "vectorByWallsSettings" | "vectorByCorridorsSettings">): ExportMargin {
+/** Which raw bbox (`ContentBoundsBasis`) a render mode's own drawn content is measured against
+ * before its `ExportMargin` is derived from it — `"cell"` for a mode whose content reaches the
+ * cell's own polygon boundary ("Vector by walls"' floor fill/wall stroke sit on the cell face),
+ * `"center"` for one whose content stops at the cell center ("Vector by corridors": a line runs
+ * cell-center to cell-center, so a border cell's own segment never reaches the tile edge — GitHub
+ * issue #324). Purely a choice of reference frame for `contentWorldBounds`'s `basis` param — it
+ * does not affect how big the margin itself is, only what it's measured relative to. */
+export function resolveContentBoundsBasis(mode: RenderModeId): ContentBoundsBasis {
   switch (mode) {
     case "vector_by_walls":
-      return computeVectorByWallsExportMargin(state.vectorByWallsSettings);
+      return "cell";
     case "vector_by_corridors":
-      return computeVectorByCorridorsExportMargin(state.vectorByCorridorsSettings);
+      return "center";
   }
 }
 
-/** Wall-only counterpart of `resolveExportMargin`, for the digital export's "edge to edge" canvas
- * mode — see `computeVectorByWallsWallMargin`. "Vector by corridors" has no separate wall stroke
- * (the corridor stroke itself is the only line-work), so its wall-only margin is the same as its
- * full margin. */
-export function resolveWallExportMargin(mode: RenderModeId, state: Pick<ReturnType<typeof useMazeStore.getState>, "vectorByWallsSettings" | "vectorByCorridorsSettings">): ExportMargin {
-  switch (mode) {
-    case "vector_by_walls":
-      return computeVectorByWallsWallMargin(state.vectorByWallsSettings);
-    case "vector_by_corridors":
-      return computeVectorByCorridorsExportMargin(state.vectorByCorridorsSettings);
-  }
-}
-
-/** Resolves the active render mode's own background fill color directly from store state — same
- * chiefly-functional counterpart-to-`createModeRenderer` pattern as `resolveExportMargin`, used by
- * `ExportFrameOverlay` to pick a frame color that stays visible against whatever's actually drawn
- * behind it (which may differ from the app's own dark canvas background — a mode's background is
- * user-editable, e.g. "Vector by walls"' white/light default for print). "Vector by corridors" has
- * its own user-configurable background too (GitHub issue #309), same field/default as
- * "Vector by walls". */
+/** Resolves the active render mode's own background fill color directly from store state —
+ * used by `ExportFrameOverlay` to pick a frame color that stays visible against whatever's
+ * actually drawn behind it (which may differ from the app's own dark canvas background — a
+ * mode's background is user-editable, e.g. "Vector by walls"' white/light default for print).
+ * "Vector by corridors" has its own user-configurable background too (GitHub issue #309), same
+ * field/default as "Vector by walls". */
 export function resolveBackgroundColor(mode: RenderModeId, state: Pick<ReturnType<typeof useMazeStore.getState>, "vectorByWallsSettings" | "vectorByCorridorsSettings">): number {
   switch (mode) {
     case "vector_by_walls":
@@ -120,4 +59,25 @@ export function resolveBackgroundColor(mode: RenderModeId, state: Pick<ReturnTyp
     case "vector_by_corridors":
       return state.vectorByCorridorsSettings.background;
   }
+}
+
+/** Shared body of every `ModeRenderer.getRequiredExportMargin()` (GitHub issue #324 follow-up):
+ * unions the world-space local bounds of a mode's own content containers, then diffs that against
+ * the maze's raw cell-boundary bbox (`cellBounds`) to get a per-side pixel-accurate margin. Each
+ * mode supplies its own content-container list (which layers count as "drawn content" differs per
+ * mode) and its own `cellBounds` basis (`exactCellBounds` vs. `cellCenterBounds`) — see
+ * `resolveContentBoundsBasis`'s doc comment for why that basis differs. */
+export function measureContentMargin(contentContainers: Container[], cellBounds: AxisAlignedBounds): ExportMargin {
+  const [first, ...rest] = contentContainers;
+  const contentBounds = first.getLocalBounds().clone();
+  for (const container of rest) {
+    contentBounds.addBounds(container.getLocalBounds());
+  }
+
+  return {
+    left: cellBounds.minX - contentBounds.minX,
+    top: cellBounds.minY - contentBounds.minY,
+    right: contentBounds.maxX - cellBounds.maxX,
+    bottom: contentBounds.maxY - cellBounds.maxY,
+  };
 }

@@ -11,9 +11,11 @@ import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/t
 import { PngOverflowWarningBubble, PngFitWarningBubble } from "./PngOverflowWarningBubble";
 import { computeDigitalExportFit } from "../../pixi/imageExport/exportFit";
 import { computePrintExportFit, computeAutoFitPrintScale, resolveSheetSizeMm, DPI_BY_DENSITY, pxToMm } from "../../pixi/imageExport/printFit";
-import { resolveExportMargin, resolveWallExportMargin } from "../../pixi/imageExport/exportMargins";
+import { resolveContentBoundsBasis } from "../../pixi/imageExport/exportMargins";
+import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
+import { createModeRenderer } from "../../pixi/imageExport/modeRendererFactory";
+import { Container } from "pixi.js";
 import { getCurrentViewportScale } from "../../pixi/viewportScaleBridge";
-import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../../store/slices/imageExportSlice";
 import { TILE_SIZE } from "../../pixi/constants";
 import type { PngCanvasMode, PrintDensity, PaperSize, PrintAnchor } from "../../store/storeTypes";
 import * as m from "~/paraglide/messages";
@@ -98,7 +100,12 @@ export function PngExportSettingsPanel() {
 
   const activeRenderMode = useMazeStore((s) => s.activeRenderMode);
   const nodes = useMazeStore((s) => s.nodes);
+  const edges = useMazeStore((s) => s.edges);
   const cfg = useMazeStore((s) => s.activeTessellationConfig);
+  const rawStart = useMazeStore((s) => s.start);
+  const rawFinish = useMazeStore((s) => s.finish);
+  const postEditMeta = useMazeStore((s) => s.postEditMeta);
+  const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
   // Only subscribed to the currently active mode's own settings — the inactive mode's settings
   // can't affect this panel's margin/fit computation below, so subscribing to both unconditionally
   // would re-render this panel on every edit to a render mode's settings the user isn't even
@@ -106,29 +113,38 @@ export function PngExportSettingsPanel() {
   const vectorByWallsSettings = useMazeStore((s) => (activeRenderMode === "vector_by_walls" ? s.vectorByWallsSettings : null));
   const vectorByCorridorsSettings = useMazeStore((s) => (activeRenderMode === "vector_by_corridors" ? s.vectorByCorridorsSettings : null));
 
-  const marginState = {
-    vectorByWallsSettings: vectorByWallsSettings ?? DEFAULT_VECTOR_BY_WALLS_SETTINGS,
-    vectorByCorridorsSettings: vectorByCorridorsSettings ?? DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
-  };
-
-  const margin = useMemo(
-    () => (activeRenderMode ? resolveExportMargin(activeRenderMode, marginState) : { left: 0, right: 0, top: 0, bottom: 0 }),
-    [activeRenderMode, vectorByWallsSettings, vectorByCorridorsSettings],
+  const { start: effStart, finish: effFinish } = useMemo(
+    () => resolveEffectiveEndpoints({ nodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
+    [nodes, rawStart, rawFinish, postEditMeta, postEditDraftSplitPoints],
   );
 
-  const wallMargin = useMemo(
-    () => (activeRenderMode ? resolveWallExportMargin(activeRenderMode, marginState) : { left: 0, right: 0, top: 0, bottom: 0 }),
-    [activeRenderMode, vectorByWallsSettings, vectorByCorridorsSettings],
-  );
+  // Pixel-accurate (GitHub issue #324 follow-up): a throwaway, never-rendered-to-screen mode
+  // renderer instance reads the real drawn geometry's own bounds (`getRequiredExportMargin`,
+  // same method `PngExporter`'s actual export pass uses) instead of a settings-derived
+  // approximation of it. Construct/render/measure/destroy is pure bounds math (no GPU/canvas
+  // work — nothing is ever drawn to a screen or texture here).
+  const margin = useMemo(() => {
+    if (!activeRenderMode || nodes.length === 0) return { left: 0, right: 0, top: 0, bottom: 0 };
+    const container = new Container();
+    const renderer = createModeRenderer(activeRenderMode, container);
+    try {
+      return renderer.getRequiredExportMargin();
+    } finally {
+      renderer.destroy();
+      container.destroy();
+    }
+  }, [activeRenderMode, vectorByWallsSettings, vectorByCorridorsSettings, cfg, nodes, edges, effStart, effFinish]);
+
+  const basis = activeRenderMode ? resolveContentBoundsBasis(activeRenderMode) : "cell";
 
   const digitalFit = useMemo(
-    () => (nodes.length > 0 ? computeDigitalExportFit(cfg, nodes, margin, digital, wallMargin) : null),
-    [cfg, nodes, margin, digital, wallMargin],
+    () => (nodes.length > 0 ? computeDigitalExportFit(cfg, nodes, margin, digital, basis) : null),
+    [cfg, nodes, margin, digital, basis],
   );
 
   const printFit = useMemo(
-    () => (nodes.length > 0 ? computePrintExportFit(cfg, nodes, wallMargin, print) : null),
-    [cfg, nodes, wallMargin, print],
+    () => (nodes.length > 0 ? computePrintExportFit(cfg, nodes, margin, print, basis) : null),
+    [cfg, nodes, margin, print, basis],
   );
 
   function handleCanvasModeChange(mode: PngCanvasMode) {
@@ -143,12 +159,12 @@ export function PngExportSettingsPanel() {
 
   // While print.scaleAutoFit is on, keeps print.scale in lockstep with computeAutoFitPrintScale —
   // recomputed on every change that could affect the fit (sheet size/orientation/DPI, margins, or
-  // the maze itself, all folded into wallMargin/cfg/nodes/print's own dependencies).
+  // the maze itself, all folded into margin/cfg/nodes/print's own dependencies).
   useEffect(() => {
     if (!print.scaleAutoFit || nodes.length === 0) return;
-    const autoScale = floor2(computeAutoFitPrintScale(cfg, nodes, wallMargin, print));
+    const autoScale = floor2(computeAutoFitPrintScale(cfg, nodes, margin, print, basis));
     if (autoScale !== print.scale) setPrintScale(autoScale);
-  }, [print.scaleAutoFit, print.scale, cfg, nodes, wallMargin, print, setPrintScale]);
+  }, [print.scaleAutoFit, print.scale, cfg, nodes, margin, print, basis, setPrintScale]);
 
   const digitalCellSizePx = TILE_SIZE * digital.scale;
   const printDpi = DPI_BY_DENSITY[print.density];

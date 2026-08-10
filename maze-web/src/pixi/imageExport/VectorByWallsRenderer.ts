@@ -19,7 +19,8 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { splitSlotColor } from "../colorUtils";
-import { computeVectorByWallsExportMargin, computeVectorByWallsWallMargin, resolveBackgroundColor, type ExportMargin } from "./exportMargins";
+import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
+import { exactCellBounds } from "../tessellationGeometry";
 
 /** Cell-fill highlight color for a hovered export warning (GitHub issue #298 follow-up) — same
  *  yellow as `styles/palette.ts`'s `warning` token, duplicated here since the pixi render layer
@@ -423,12 +424,38 @@ export class VectorByWallsRenderer {
     }
   }
 
+  /** Pixel-accurate export margin (GitHub issue #324 follow-up) — reads the actual drawn content's
+   *  own world-space bounds (`Container.getLocalBounds()`, exact per pixi's own stroke/join/cap/
+   *  shape math) instead of a settings-derived approximation of it. `renderAll` runs unconditionally
+   *  first (not gated on `openCard === "image_export"` the way the store-subscription path is) —
+   *  that gate exists purely as a perf optimization for the *on-screen* instance (skip re-rendering
+   *  geometry nobody can see while its own card is closed), but a caller reading this margin needs
+   *  correct bounds regardless of whether the card happens to be open: `PngExportSettingsPanel`'s
+   *  own throwaway measurement-only instance, or any renderer queried before its card was ever
+   *  opened, would otherwise measure stale/empty containers and silently return a garbage margin.
+   *  Cheap to always do — pure geometry recording, no GPU/canvas work happens until an actual
+   *  `renderer.render()` call, which this never triggers. `backgroundGrid`/`warningHighlightContainer`
+   *  are excluded from the bounds union — not maze content. `floorContainer` is included even though
+   *  a plain (non-closed) cell's floor fill reaches exactly the cell's own polygon boundary — same
+   *  "basis: cell" extent `exactCellBounds` used to approximate — so this naturally still returns ~0
+   *  margin past `exactCellBounds` wherever no marker/indicator pokes further, without needing a
+   *  separate "wall-only" concept at all: unlike "Vector by corridors" (whose content stops well
+   *  short of the cell boundary, hence needed its own `cellCenterBounds` basis), every render mode
+   *  here converges on the exact same idea — "how far past the cell's own raw boundary does this
+   *  maze's actual drawn content go" — once the bounds themselves are pixel-measured instead of
+   *  estimated, so one method now serves every canvas-fit mode (`edge_to_edge`, `margin_px`/
+   *  `margin_cells`, `fixed_size`, print) with no separate "settings-only worst case" variant
+   *  needed anywhere. */
   getRequiredExportMargin(): ExportMargin {
-    return computeVectorByWallsExportMargin(useMazeStore.getState().vectorByWallsSettings);
-  }
+    const state = useMazeStore.getState();
+    if (state.nodes.length === 0) return { left: 0, right: 0, top: 0, bottom: 0 };
+    this.renderAll(state);
 
-  getRequiredWallExportMargin(): ExportMargin {
-    return computeVectorByWallsWallMargin(useMazeStore.getState().vectorByWallsSettings);
+    const cellBounds = exactCellBounds(state.nodes, state.activeTessellationConfig);
+    return measureContentMargin(
+      [this.floorContainer, this.closedCellsContainer, this.wallsContainer, this.splitJunctionContainer, this.teleportContainer, this.markersContainer],
+      cellBounds,
+    );
   }
 
   getBackgroundColor(): number {

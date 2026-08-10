@@ -6,15 +6,12 @@ import type { ViewportListener } from "../sceneTypes";
 import type { ExportMargin } from "./exportMargins";
 
 export interface ModeRenderer extends ViewportListener {
-  /** World-space required margin around the maze's raw cell-boundary bounding box, per side, for
-   * this mode's own current settings — see `exportMargins.ts`'s doc comment. Every mode must
-   * implement this so PNG export's "edge-to-edge" canvas mode works for any render mode, not just
-   * "Vector by walls". */
+  /** World-space required margin around the maze's raw cell-boundary bounding box, per side —
+   * pixel-accurate (GitHub issue #324 follow-up), measured off this mode's own already-rendered
+   * content (`Container.getLocalBounds()`), not approximated from settings. Every mode must
+   * implement this so PNG export's canvas-fit math works for any render mode, not just
+   * "Vector by walls" — see `exportMargins.ts`'s `ExportMargin` doc comment. */
   getRequiredExportMargin(): ExportMargin;
-  /** Narrower margin used only by PNG export's "edge to edge" canvas mode — just enough for the
-   * mode's own wall/border stroke, not markers/indicators — see `exportMargins.ts`'s
-   * `computeVectorByWallsWallMargin`. */
-  getRequiredWallExportMargin(): ExportMargin;
   /** This mode's own current background fill color (0xRRGGBB) — see `exportMargins.ts`'s
    * `resolveBackgroundColor`. Used to pick a contrasting color for canvas-drawn UI (e.g. the
    * print-mode export frame) that must stay visible against it. */

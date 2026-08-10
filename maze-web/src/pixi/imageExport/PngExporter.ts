@@ -4,6 +4,7 @@ import { useMazeStore } from "../../store/mazeStore";
 import { createModeRenderer } from "./modeRendererFactory";
 import { computeDigitalExportFit } from "./exportFit";
 import { computePrintExportFit } from "./printFit";
+import { resolveContentBoundsBasis } from "./exportMargins";
 import type { PngExportSettings } from "../../store/storeTypes";
 
 /** Renders the active image-export render mode to a PNG `Blob`, sized/positioned by
@@ -39,10 +40,10 @@ export class PngExporter {
     let renderTexture: RenderTexture | null = null;
     try {
       const margin = modeRenderer.getRequiredExportMargin();
-      const wallMargin = modeRenderer.getRequiredWallExportMargin();
+      const basis = resolveContentBoundsBasis(mode);
       const fit = settings.outputMode === "print"
-        ? toDigitalShapedFit(computePrintExportFit(state.activeTessellationConfig, state.nodes, wallMargin, settings.print))
-        : computeDigitalExportFit(state.activeTessellationConfig, state.nodes, margin, settings.digital, wallMargin);
+        ? toDigitalShapedFit(computePrintExportFit(state.activeTessellationConfig, state.nodes, margin, settings.print, basis))
+        : computeDigitalExportFit(state.activeTessellationConfig, state.nodes, margin, settings.digital, basis);
 
       if (fit.width <= 0 || fit.height <= 0) return null;
 

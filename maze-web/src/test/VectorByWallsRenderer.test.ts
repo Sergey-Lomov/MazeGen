@@ -1,11 +1,141 @@
-import { describe, it, expect } from "vitest";
-import { viewportWorldRect, buildWallStyle, buildOneWayStyle, buildTeleportLineStyle, buildEffectiveSplitNodeColors, buildMarkerStyle, resolveEffectiveEndpoints } from "../pixi/imageExport/VectorByWallsRenderer";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import type { NodeDto } from "../wasm/types";
 import { TILE_SIZE } from "../pixi/constants";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
 import type { VectorByWallsSettings } from "../store/storeTypes";
+
+// Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path only
+// ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`) — same convention as
+// `VectorByCorridorsRenderer.test.ts`'s own `FakeBounds`.
+interface FakeBounds { minX: number; minY: number; maxX: number; maxY: number; clone(): FakeBounds; addBounds(b: FakeBounds): void }
+function makeBounds(minX: number, minY: number, maxX: number, maxY: number): FakeBounds {
+  return {
+    minX, minY, maxX, maxY,
+    clone() { return makeBounds(this.minX, this.minY, this.maxX, this.maxY); },
+    addBounds(b: FakeBounds) {
+      this.minX = Math.min(this.minX, b.minX);
+      this.minY = Math.min(this.minY, b.minY);
+      this.maxX = Math.max(this.maxX, b.maxX);
+      this.maxY = Math.max(this.maxY, b.maxY);
+    },
+  };
+}
+function makeEmptyBounds(): FakeBounds {
+  return makeBounds(Infinity, Infinity, -Infinity, -Infinity);
+}
+
+// getCartesian (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment —
+// same square-tessellation mock as VectorByCorridorsRenderer.test.ts, needed since
+// getRequiredExportMargin's pixel-accurate path calls exactCellBounds/getCellCenter directly.
+vi.mock("../pixi/cartesianCache", () => ({
+  getCartesian: (x: number, y: number): [number, number] => [x, y],
+}));
+
+vi.mock("../pixi/selectors/mazeSelectors", () => ({
+  buildMazeWalls: vi.fn(() => []),
+  buildMazeMarkers: vi.fn(() => []),
+  buildTeleportEdges: vi.fn(() => []),
+  buildClosedCells: vi.fn(() => []),
+  buildSplitPassages: vi.fn(() => ({ passages: [], wallFaces: [], specialShapes: [] })),
+  maxSplitNodeCount: vi.fn(() => 0),
+}));
+
+vi.mock("../pixi/renderers/WallRenderer", () => ({
+  WallRenderer: vi.fn().mockImplementation(function (this: { render: () => void; destroy: () => void }) {
+    this.render = vi.fn();
+    this.destroy = vi.fn();
+  }),
+  chainSegmentsAtSharedVertices: vi.fn(() => []),
+}));
+
+vi.mock("../pixi/renderers/CellFillRenderer", () => ({
+  CellFillRenderer: vi.fn().mockImplementation(function (this: { render: () => void; destroy: () => void }) {
+    this.render = vi.fn();
+    this.destroy = vi.fn();
+  }),
+}));
+
+vi.mock("../pixi/renderers/SplitJunctionRenderer", () => ({
+  SplitJunctionRenderer: vi.fn().mockImplementation(function (this: { render: () => void; destroy: () => void }) {
+    this.render = vi.fn();
+    this.destroy = vi.fn();
+  }),
+}));
+
+vi.mock("../pixi/renderers/TeleportRenderer", () => ({
+  TeleportRenderer: vi.fn().mockImplementation(function (this: { render: () => void; destroy: () => void }) {
+    this.render = vi.fn();
+    this.destroy = vi.fn();
+  }),
+}));
+
+vi.mock("../pixi/renderers/WaypointsRenderer", () => ({
+  WaypointsRenderer: vi.fn().mockImplementation(function (this: { render: () => void; destroy: () => void }) {
+    this.render = vi.fn();
+    this.destroy = vi.fn();
+  }),
+}));
+
+vi.mock("../pixi/renderers/GridRenderer", () => ({
+  GridRenderer: vi.fn().mockImplementation(function (this: { render: () => void; destroy: () => void }) {
+    this.render = vi.fn();
+    this.destroy = vi.fn();
+  }),
+}));
+
+vi.mock("../pixi/renderers/RegionHighlightRenderer", () => ({
+  RegionHighlightRenderer: vi.fn().mockImplementation(function (this: { render: () => void; clear: () => void; destroy: () => void }) {
+    this.render = vi.fn();
+    this.clear = vi.fn();
+    this.destroy = vi.fn();
+  }),
+}));
+
+let currentState: Record<string, unknown>;
+
+vi.mock("../store/mazeStore", () => ({
+  useMazeStore: {
+    getState: vi.fn(() => currentState),
+    subscribe: vi.fn((_cb: (state: unknown) => void) => {
+      return () => {};
+    }),
+  },
+}));
+
+vi.mock("pixi.js", () => ({
+  Container: vi.fn().mockImplementation(function (this: { addChild: () => void; addChildAt: () => void; destroy: () => void; visible: boolean; getLocalBounds: () => unknown }) {
+    this.addChild = vi.fn();
+    this.addChildAt = vi.fn();
+    this.destroy = vi.fn();
+    this.visible = false;
+    // Empty by default (Infinity/-Infinity, pixi's own "nothing drawn" convention) — tests that
+    // care about `getRequiredExportMargin`'s pixel-accurate path override this per-container.
+    this.getLocalBounds = vi.fn(() => makeEmptyBounds());
+  }),
+  Graphics: vi.fn().mockImplementation(function (this: { clear: () => void; moveTo: () => unknown; lineTo: () => unknown; arcTo: () => unknown; quadraticCurveTo: () => unknown; bezierCurveTo: () => unknown; closePath: () => unknown; stroke: () => unknown; circle: () => unknown; poly: () => unknown; rect: () => unknown; fill: () => unknown; setStrokeStyle: () => unknown; destroy: () => void }) {
+    this.clear = vi.fn();
+    this.moveTo = vi.fn(() => this);
+    this.lineTo = vi.fn(() => this);
+    this.arcTo = vi.fn(() => this);
+    this.quadraticCurveTo = vi.fn(() => this);
+    this.bezierCurveTo = vi.fn(() => this);
+    this.closePath = vi.fn(() => this);
+    this.stroke = vi.fn(() => this);
+    this.circle = vi.fn(() => this);
+    this.poly = vi.fn(() => this);
+    this.rect = vi.fn(() => this);
+    this.fill = vi.fn(() => this);
+    this.setStrokeStyle = vi.fn(() => this);
+    this.destroy = vi.fn();
+  }),
+}));
+
+const {
+  VectorByWallsRenderer,
+  viewportWorldRect, buildWallStyle, buildOneWayStyle, buildTeleportLineStyle, buildEffectiveSplitNodeColors, buildMarkerStyle, resolveEffectiveEndpoints,
+} = await import("../pixi/imageExport/VectorByWallsRenderer");
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
@@ -46,6 +176,32 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     ...overrides,
   };
 }
+
+const stableNodes: NodeDto[] = [];
+const stableEdges: never[] = [];
+const stableCfg = { type: "square" as const, width: 4, height: 4 };
+
+function baseState(overrides: Record<string, unknown> = {}) {
+  return {
+    openCard: "image_export",
+    nodes: stableNodes,
+    edges: stableEdges,
+    activeTessellationConfig: stableCfg,
+    vectorByWallsSettings: baseSettings(),
+    vectorByWallsSectionsExpanded: {},
+    start: null,
+    finish: null,
+    postEditMeta: null,
+    postEditDraftSplitPoints: {},
+    hoveredExportWarningKey: null,
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  currentState = baseState();
+});
 
 describe("viewportWorldRect", () => {
   it("inverts the viewport's screen-space offset and scale into world-space", () => {
@@ -201,6 +357,50 @@ describe("resolveEffectiveEndpoints", () => {
       postEditMeta: { start: splitEndpoint([0, 0], 7), finish: nodeEndpoint(2) },
       postEditDraftSplitPoints: { "0,0": [7] },
     })).toEqual({ start: null, finish: 2 });
+  });
+});
+
+describe("VectorByWallsRenderer", () => {
+  it("getRequiredExportMargin returns zero margin when this maze has no nodes (nothing drawn)", () => {
+    currentState = baseState();
+    const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
+    expect(renderer.getRequiredExportMargin()).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+
+  it("getRequiredExportMargin reads the actual drawn content's pixel bounds, not a settings-derived approximation (GitHub issue #324 follow-up)", () => {
+    // TILE_SIZE=40, 3x3 grid — exactCellBounds for this grid is minX=0,minY=-120,maxX=120,maxY=0
+    // (verified directly against the tessellation's own cell-polygon math).
+    const nodes: NodeDto[] = [];
+    for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) nodes.push({ id: y * 3 + x, x, y, i: 0 });
+    currentState = baseState({ nodes, activeTessellationConfig: { type: "square", width: 3, height: 3 } });
+    const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
+
+    const asAny = renderer as unknown as {
+      floorContainer: { getLocalBounds: () => FakeBounds };
+      closedCellsContainer: { getLocalBounds: () => FakeBounds };
+      wallsContainer: { getLocalBounds: () => FakeBounds };
+      splitJunctionContainer: { getLocalBounds: () => FakeBounds };
+      teleportContainer: { getLocalBounds: () => FakeBounds };
+      markersContainer: { getLocalBounds: () => FakeBounds };
+    };
+    // Simulate a start marker's own bulge drawn past the floor fill's own bbox on the left edge
+    // only (screen minX) — every other container stays at the plain cell-polygon bbox, the marker
+    // pokes 15px past it on the left alone.
+    asAny.floorContainer.getLocalBounds = () => makeBounds(0, -120, 120, 0);
+    asAny.closedCellsContainer.getLocalBounds = () => makeEmptyBounds();
+    asAny.wallsContainer.getLocalBounds = () => makeEmptyBounds();
+    asAny.splitJunctionContainer.getLocalBounds = () => makeEmptyBounds();
+    asAny.teleportContainer.getLocalBounds = () => makeEmptyBounds();
+    asAny.markersContainer.getLocalBounds = () => makeBounds(-15, -120, 120, 0);
+
+    const margin = renderer.getRequiredExportMargin();
+    expect(margin).toEqual({ left: 15, right: 0, top: 0, bottom: 0 });
+  });
+
+  it("getBackgroundColor resolves to the mode's own configurable background", () => {
+    currentState = baseState({ vectorByWallsSettings: baseSettings({ background: 0xabcdef }) });
+    const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
+    expect(renderer.getBackgroundColor()).toBe(0xabcdef);
   });
 });
 

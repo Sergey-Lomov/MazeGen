@@ -141,6 +141,27 @@ export function exactCellBounds(nodes: { x: number; y: number; id: number }[], c
   return { minX, minY, maxX, maxY };
 }
 
+/** Bounding box of every node's own cell **center** (`getCellCenter`), not its full polygon
+ * (`exactCellBounds`) — needed wherever the drawn content never reaches a cell's outer boundary
+ * (PNG export's "edge to edge" canvas for the "Vector by corridors" render mode: a corridor line
+ * runs center-to-center, so a border cell's own segment stops well short of the tile edge — using
+ * `exactCellBounds` there leaves a visible gap between the tight canvas edge and the actual line
+ * work, GitHub issue #324). Every `CorridorSegment` endpoint (`buildCorridorSegments`) is either a
+ * cell center or the midpoint between two adjacent cell centers (a split-neighbor's shared-face
+ * midpoint), so it always lies within the convex hull of all cell centers — this bbox safely
+ * bounds every segment endpoint too, not just the centers themselves. */
+export function cellCenterBounds(nodes: { x: number; y: number; id: number }[], cfg: TessellationConfig): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    const c = getCellCenter(n.x, n.y, cfg);
+    if (c.x < minX) minX = c.x;
+    if (c.y < minY) minY = c.y;
+    if (c.x > maxX) maxX = c.x;
+    if (c.y > maxY) maxY = c.y;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
 export function getCellCenter(x: number, y: number, cfg: TessellationConfig): Pos {
   switch (cfg.type) {
     case "square":

@@ -1,5 +1,5 @@
 import { TILE_SIZE } from "../constants";
-import { contentWorldBounds } from "./contentBounds";
+import { contentWorldBounds, type ContentBoundsBasis } from "./contentBounds";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { ExportMargin } from "./exportMargins";
 import type { DigitalExportSettings, PrintAnchor } from "../../store/storeTypes";
@@ -47,15 +47,14 @@ function addUniform(margin: ExportMargin, extra: number): ExportMargin {
  * line/marker thickness stays visually consistent relative to a tile regardless of overall maze
  * size.
  *
- * `margin` is the render mode's own required edge margin (`resolveExportMargin`/
- * `ModeRenderer.getRequiredExportMargin`) — this function stays pure and mode-agnostic, never
- * reading `VectorByWallsSettings` itself. `wallMargin` (`resolveWallExportMargin`/
- * `computeVectorByWallsWallMargin`) is the narrower "just enough for the wall stroke" margin —
- * `edge_to_edge` uses it alone (hugs the walls tightly, no room reserved for markers/indicators
- * the maze may not even have); `margin_px`/`margin_cells` add the user's own `marginValue` on top
- * of it, so a margin of 0 in either unit reproduces `edge_to_edge` exactly rather than a raw,
- * wall-clipping cell-boundary bound. `fixed_size`'s auto-centering still uses the full `margin` so
- * a marker never gets clipped by a coincidentally tight fixed canvas.
+ * `margin` is the render mode's own pixel-accurate required edge margin
+ * (`ModeRenderer.getRequiredExportMargin()`, GitHub issue #324 follow-up) — this function stays
+ * pure and mode-agnostic, never reading a mode's settings itself. `edge_to_edge` uses it alone
+ * (hugs the actual drawn content tightly); `margin_px`/`margin_cells` add the user's own
+ * `marginValue` on top of it, so a margin of 0 in either unit reproduces `edge_to_edge` exactly.
+ * `fixed_size`'s auto-centering uses the same margin too — now that it's pixel-accurate rather
+ * than a settings-only worst case, there's no separate wider variant needed to guard against a
+ * coincidentally tight fixed canvas clipping a marker.
  *
  * `contentWidth`/`contentHeight` (the maze's own rendered size after scaling, always returned)
  * let a caller compute a fill percentage for a "doesn't fit" warning — distinct from `width`/
@@ -63,19 +62,23 @@ function addUniform(margin: ExportMargin, extra: number): ExportMargin {
  * `settings.fixedWidth`/`fixedHeight`, not the content size). `overflow` is only ever true for
  * `fixed_size`, when the content doesn't fit the fixed canvas — export still proceeds; anything
  * outside the `RenderTexture`'s bounds is simply not drawn (hardware clip), same as the print
- * mode's own overflow warnings. */
+ * mode's own overflow warnings.
+ *
+ * `basis` (`ContentBoundsBasis`) selects the mode's own raw bbox before margin is applied —
+ * `"cell"` (default) for a mode whose content reaches the cell's own polygon boundary, `"center"`
+ * for one whose content stops at the cell center (e.g. "Vector by corridors", GitHub issue #324). */
 export function computeDigitalExportFit(
   cfg: TessellationConfig,
   nodes: { x: number; y: number; id: number }[],
   margin: ExportMargin,
   settings: DigitalExportSettings,
-  wallMargin: ExportMargin = margin,
+  basis: ContentBoundsBasis = "cell",
 ): ExportFit & { contentWidth: number; contentHeight: number; overflow: boolean } {
   const { scale, canvasMode, marginValue, fixedWidth, fixedHeight } = settings;
 
   if (canvasMode === "margin_px") {
     const extra = marginValue / scale;
-    const raw = contentWorldBounds(cfg, nodes, addUniform(wallMargin, extra));
+    const raw = contentWorldBounds(cfg, nodes, addUniform(margin, extra), basis);
     const contentWidth = raw.width * scale;
     const contentHeight = raw.height * scale;
     return { width: contentWidth, height: contentHeight, x: -raw.minX * scale, y: -raw.minY * scale, scale, contentWidth, contentHeight, overflow: false, worldX: raw.minX, worldY: raw.minY };
@@ -83,14 +86,14 @@ export function computeDigitalExportFit(
 
   if (canvasMode === "margin_cells") {
     const extra = marginValue * TILE_SIZE;
-    const raw = contentWorldBounds(cfg, nodes, addUniform(wallMargin, extra));
+    const raw = contentWorldBounds(cfg, nodes, addUniform(margin, extra), basis);
     const contentWidth = raw.width * scale;
     const contentHeight = raw.height * scale;
     return { width: contentWidth, height: contentHeight, x: -raw.minX * scale, y: -raw.minY * scale, scale, contentWidth, contentHeight, overflow: false, worldX: raw.minX, worldY: raw.minY };
   }
 
   if (canvasMode === "fixed_size") {
-    const raw = contentWorldBounds(cfg, nodes, margin);
+    const raw = contentWorldBounds(cfg, nodes, margin, basis);
     const contentWidth = raw.width * scale;
     const contentHeight = raw.height * scale;
     const { x: contentX, y: contentY } = placeInBox(contentWidth, contentHeight, fixedWidth, fixedHeight, 0, 0, "center");
@@ -109,7 +112,7 @@ export function computeDigitalExportFit(
   }
 
   // edge_to_edge
-  const raw = contentWorldBounds(cfg, nodes, wallMargin);
+  const raw = contentWorldBounds(cfg, nodes, margin, basis);
   const contentWidth = raw.width * scale;
   const contentHeight = raw.height * scale;
   return { width: contentWidth, height: contentHeight, x: -raw.minX * scale, y: -raw.minY * scale, scale, contentWidth, contentHeight, overflow: false, worldX: raw.minX, worldY: raw.minY };

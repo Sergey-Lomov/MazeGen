@@ -8,6 +8,32 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByCorridorsSettings } from "../store/storeTypes";
 
+// Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path
+// only ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`).
+interface FakeBounds { minX: number; minY: number; maxX: number; maxY: number; clone(): FakeBounds; addBounds(b: FakeBounds): void }
+function makeBounds(minX: number, minY: number, maxX: number, maxY: number): FakeBounds {
+  return {
+    minX, minY, maxX, maxY,
+    clone() { return makeBounds(this.minX, this.minY, this.maxX, this.maxY); },
+    addBounds(b: FakeBounds) {
+      this.minX = Math.min(this.minX, b.minX);
+      this.minY = Math.min(this.minY, b.minY);
+      this.maxX = Math.max(this.maxX, b.maxX);
+      this.maxY = Math.max(this.maxY, b.maxY);
+    },
+  };
+}
+function makeEmptyBounds(): FakeBounds {
+  return makeBounds(Infinity, Infinity, -Infinity, -Infinity);
+}
+
+// getCartesian (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment —
+// same square-tessellation mock as exportFit.test.ts/exportMargins.test.ts, needed since
+// getRequiredExportMargin's pixel-accurate path calls cellCenterBounds/getCellCenter directly.
+vi.mock("../pixi/cartesianCache", () => ({
+  getCartesian: (x: number, y: number): [number, number] => [x, y],
+}));
+
 vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildCorridorSegments: vi.fn(() => []),
   buildMazeMarkers: vi.fn(() => []),
@@ -48,11 +74,14 @@ vi.mock("../store/mazeStore", () => ({
 }));
 
 vi.mock("pixi.js", () => ({
-  Container: vi.fn().mockImplementation(function (this: { addChild: () => void; addChildAt: () => void; destroy: () => void; visible: boolean }) {
+  Container: vi.fn().mockImplementation(function (this: { addChild: () => void; addChildAt: () => void; destroy: () => void; visible: boolean; getLocalBounds: () => unknown }) {
     this.addChild = vi.fn();
     this.addChildAt = vi.fn();
     this.destroy = vi.fn();
     this.visible = false;
+    // Empty by default (Infinity/-Infinity, pixi's own "nothing drawn" convention) — tests that
+    // care about `getRequiredExportMargin`'s pixel-accurate path override this per-container.
+    this.getLocalBounds = vi.fn(() => makeEmptyBounds());
   }),
   Graphics: vi.fn().mockImplementation(function (this: { clear: () => void; moveTo: () => unknown; lineTo: () => unknown; arcTo: () => unknown; quadraticCurveTo: () => unknown; bezierCurveTo: () => unknown; closePath: () => unknown; stroke: () => unknown; circle: () => unknown; poly: () => unknown; rect: () => unknown; fill: () => unknown; setStrokeStyle: () => unknown; destroy: () => void }) {
     this.clear = vi.fn();
@@ -240,11 +269,36 @@ describe("computeDiagonalGapPatchGeometry", () => {
 });
 
 describe("VectorByCorridorsRenderer", () => {
-  it("getRequiredExportMargin/getRequiredWallExportMargin both return half the current thickness", () => {
+  it("getRequiredExportMargin returns zero margin when this maze has no nodes (nothing drawn)", () => {
     currentState = baseState({ vectorByCorridorsSettings: settingsB });
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-    expect(renderer.getRequiredExportMargin()).toEqual({ left: 10, right: 10, top: 10, bottom: 10 });
-    expect(renderer.getRequiredWallExportMargin()).toEqual(renderer.getRequiredExportMargin());
+    expect(renderer.getRequiredExportMargin()).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+
+  it("getRequiredExportMargin reads the actual drawn content's pixel bounds, not a settings-derived approximation (GitHub issue #324 follow-up)", () => {
+    // TILE_SIZE=40, 3x3 grid — cellCenterBounds for this grid is minX=20,maxX=100,minY=-100,maxY=-20
+    // (verified directly against squareCenter's own Y-flip/half-tile-offset convention).
+    const nodes: NodeDto[] = [];
+    for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) nodes.push({ id: y * 3 + x, x, y, i: 0 });
+    currentState = baseState({ nodes, vectorByCorridorsSettings: settingsA, activeTessellationConfig: { type: "square", width: 3, height: 3 } });
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+
+    const asAny = renderer as unknown as {
+      corridorsContainer: { getLocalBounds: () => FakeBounds };
+      splitShapesLayer: { getLocalBounds: () => FakeBounds };
+      teleportContainer: { getLocalBounds: () => FakeBounds };
+      markersContainer: { getLocalBounds: () => FakeBounds };
+    };
+    // Simulate a teleport marker's own widen patch drawn well past the corridor lines' own bbox on
+    // the top edge only (screen minY) — corridors/splits/markers stay at the plain cell-center
+    // bbox, teleport pokes 30px past it on top alone.
+    asAny.corridorsContainer.getLocalBounds = () => makeBounds(20, -100, 100, -20);
+    asAny.splitShapesLayer.getLocalBounds = () => makeEmptyBounds();
+    asAny.teleportContainer.getLocalBounds = () => makeBounds(20, -130, 100, -20);
+    asAny.markersContainer.getLocalBounds = () => makeEmptyBounds();
+
+    const margin = renderer.getRequiredExportMargin();
+    expect(margin).toEqual({ left: 0, right: 0, top: 30, bottom: 0 });
   });
 
   it("getBackgroundColor resolves to the mode's own configurable background (GitHub issue #309)", () => {
