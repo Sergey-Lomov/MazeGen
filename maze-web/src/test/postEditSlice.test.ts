@@ -150,9 +150,9 @@ describe("mazeStore post-edit actions", () => {
         strategyId: null,
         disabled: false,
         ruleDisabled: false,
-        params: {}, nestedStrategies: [],
+        params: {}, nestedStrategies: [], collapsed: false,
       }],
-      stages: [{ id: "s1", name: "Stage 1", ruleIds: ["r1"], disabled: false }],
+      stages: [{ id: "s1", name: "Stage 1", ruleIds: ["r1"], disabled: false, collapsed: false }],
     });
     await useMazeStore.getState().confirmPostEdit();
     const calls = vi.mocked(computeAnalytics).mock.calls;
@@ -253,12 +253,12 @@ describe("mazeStore post-edit actions", () => {
   it("confirmPostEdit excludes rules belonging to a disabled stage from checks", async () => {
     useMazeStore.setState({
       rules: [
-        { id: "rule_1", name: "Rule 1", kind: "unreachable", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [] },
-        { id: "rule_2", name: "Rule 2", kind: "unreachable", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [] },
+        { id: "rule_1", name: "Rule 1", kind: "unreachable", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false },
+        { id: "rule_2", name: "Rule 2", kind: "unreachable", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false },
       ],
       stages: [
-        { id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false },
-        { id: "stage_2", name: "Stage 2", ruleIds: ["rule_2"], disabled: true },
+        { id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false, collapsed: false },
+        { id: "stage_2", name: "Stage 2", ruleIds: ["rule_2"], disabled: true, collapsed: false },
       ],
     });
     await useMazeStore.getState().confirmPostEdit();
@@ -281,8 +281,9 @@ describe("mazeStore post-edit actions", () => {
         ruleDisabled: false,
         params: { protect_route: "false" },
         nestedStrategies: [],
+        collapsed: false,
       }],
-      stages: [{ id: "s1", name: "Stage 1", ruleIds: ["r1"], disabled: false }],
+      stages: [{ id: "s1", name: "Stage 1", ruleIds: ["r1"], disabled: false, collapsed: false }],
     });
     await useMazeStore.getState().confirmPostEdit();
     const calls = vi.mocked(computeAnalytics).mock.calls;

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X, ChevronUp, ChevronDown, Plus, Pencil } from "lucide-react";
 import { useMazeStore } from "../../../store/mazeStore";
+import { CollapseButton } from "../../CollapseButton";
 import { CheckSelectDialog } from "../CheckSelectDialog";
 import { IssueSelectDialog } from "../IssueSelectDialog";
 import { NewRuleStrategyDialog } from "../NewRuleStrategyDialog";
@@ -71,6 +72,8 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   const removeStage = useMazeStore((s) => s.removeStage);
   const moveStage = useMazeStore((s) => s.moveStage);
   const toggleStageDisabled = useMazeStore((s) => s.toggleStageDisabled);
+  const toggleStageCollapsed = useMazeStore((s) => s.toggleStageCollapsed);
+  const toggleRuleCollapsed = useMazeStore((s) => s.toggleRuleCollapsed);
   const [newRuleStep, setNewRuleStep] = useState<NewRuleStep>(null);
   const [strategyDialogRuleId, setStrategyDialogRuleId] = useState<string | null>(null);
   const [addToRuleId, setAddToRuleId] = useState<string | null>(null);
@@ -172,6 +175,13 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                 )}
               </div>
               <div style={styles.stageToolbar}>
+                <CollapseButton
+                  collapsed={stage.collapsed}
+                  onToggle={() => toggleStageCollapsed(stage.stageId)}
+                  collapseTitle={m["quality.collapse_stage"]()}
+                  expandTitle={m["quality.expand_stage"]()}
+                  style={styles.collapseBtn}
+                />
                 <button
                   className="hoverable"
                   style={styles.stageToolbarBtn}
@@ -216,6 +226,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                   <X size={16} color={ui.text.tertiary} />
                 </button>
               </div>
+              {!stage.collapsed && (
               <div style={styles.stageCards}>
                 {stage.slots.map((slot, ruleIndex) => {
                   const strategySelected = (selection?.type === "strategy" || selection?.type === "logging") && selection.ruleId === slot.ruleId;
@@ -228,6 +239,13 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                   return (
                     <div key={slot.ruleId} style={{ ...styles.ruleCard, ...(slot.ruleDisabled ? styles.ruleCardDisabled : {}) }}>
                       <div style={styles.ruleCardTitle}>
+                        <CollapseButton
+                          collapsed={slot.collapsed}
+                          onToggle={() => toggleRuleCollapsed(slot.ruleId)}
+                          collapseTitle={m["quality.collapse_rule"]()}
+                          expandTitle={m["quality.expand_rule"]()}
+                          style={styles.collapseBtn}
+                        />
                         {isRenaming ? (
                           <input
                             style={styles.ruleCardTitleInput}
@@ -281,6 +299,8 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                           </button>
                         </div>
                       </div>
+                      {!slot.collapsed && (
+                      <>
                       <RuleParamsSection slot={slot} />
                       <div style={styles.ruleCardBody}>
                         <div style={styles.ruleChecksList}>
@@ -317,6 +337,8 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                           onEdit={() => setStrategyDialogRuleId(slot.ruleId)}
                         />
                       </div>
+                      </>
+                      )}
                     </div>
                   );
                 })}
@@ -324,6 +346,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                   <span style={styles.stageEmptyHint}>{m["status.stage_empty"]()}</span>
                 )}
               </div>
+              )}
             </div>
           );
         })}

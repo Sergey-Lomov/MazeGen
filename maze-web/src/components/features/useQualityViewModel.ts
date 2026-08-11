@@ -79,6 +79,8 @@ export interface StrategySlotVM {
    * GitHub issue #253. Mirrors `QcRuleState.params` unchanged (no per-rule descriptor resolution
    * needed here, the catalog itself — `availableRuleParams` — is global and shown separately). */
   params: Record<string, string>;
+  /** Mirrors `QcRuleState.collapsed` — see GitHub issue #320. */
+  collapsed: boolean;
 }
 
 /** One stage's rule cards, in `RepairStageState.ruleIds` order — see GitHub issue #65. */
@@ -89,6 +91,8 @@ export interface QualityStageVM {
   /** Whole-stage toggle — when true, every member rule is excluded from generation entirely.
    * Independent of any member rule's own `ruleDisabled`. */
   disabled: boolean;
+  /** Mirrors `RepairStageState.collapsed` — see GitHub issue #320. */
+  collapsed: boolean;
 }
 
 export interface QualityViewModel {
@@ -189,6 +193,7 @@ export function useQualityViewModel(): QualityViewModel {
         producedBy,
         nestedStrategies: s ? buildNested(r.nestedStrategies) : [],
         params: r.params,
+        collapsed: r.collapsed,
       };
     }
 
@@ -202,6 +207,7 @@ export function useQualityViewModel(): QualityViewModel {
       stageId: stage.id,
       name: stage.name,
       disabled: stage.disabled,
+      collapsed: stage.collapsed,
       slots: stage.ruleIds
         .map((id) => ruleById.get(id))
         .filter((r): r is NonNullable<typeof r> => r !== undefined)

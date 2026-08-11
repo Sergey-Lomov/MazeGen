@@ -40,6 +40,7 @@ interface QcRuleState {
   strategyId: string | null;
   disabled: boolean;     // strategy-only toggle, see below
   ruleDisabled: boolean; // whole-rule toggle, see below
+  collapsed: boolean;    // UI-only card collapse state, see below
 }
 ```
 
@@ -66,6 +67,7 @@ single-instance type as addable.
 - `disabled` (strategy-only toggle) vs `ruleDisabled` (whole-rule toggle) are independent: `disabled` skips the fix but the rule's checks still run (QC still reports the issue, just unfixed); `ruleDisabled` excludes the rule's checks from generation entirely, as if never selected.
 - `CheckInstance.disabled` — a per-check toggle, independent of `disabled`/`ruleDisabled` above. A disabled check is excluded entirely from the next `generate()` call (dropped from its rule's `checks` before crossing the wasm boundary — see "Generate pipeline" below), as if it were never added to the rule, mirroring `ruleDisabled`'s effect at check granularity. Unlike `ruleDisabled`, it still counts as "active" for `isTypeAlreadyActive`'s single-instance-per-type gating (`addCheck`/`createRule` above) — re-enabling the existing disabled instance is the way back to using that type again, not adding a second one. If disabling a check leaves its rule with zero *effective* (non-disabled) checks, that rule itself is omitted from `GenerateConfig` the same way a `ruleDisabled` rule is — core's `build_qc_and_repair` rejects a rule with an empty `checks` array outright.
 - `nextLocalCheckId` starts at the rule's initial check count, increments on every check added to this rule, and never resets or reuses a previously-issued `localId` even after that check is removed — addressing a check is always the pair `(ruleId, localId)`, never a bare `localId` searched across all rules. Not serialized to project files (see "Project file persistence" below) — recomputed on load as `max(checks.map(c => c.localId)) + 1` (or `0` if `checks` is empty).
+- `collapsed` (GitHub issue #320) — UI-only card collapse state, toggled via `toggleRuleCollapsed`. When `true`, `RulesColumn` hides the whole card body (checks list, `RuleParamsSection`, and `RuleStrategyPanel`), showing only the title row. Purely cosmetic — has no effect on `GenerateConfig` or any other generation-facing behavior, unlike `disabled`/`ruleDisabled` above. Still serialized to project files (see "Project file persistence" below) since it's part of the rule's own persisted UI state, defaulting to `false` for files saved before it existed.
 
 ## What a stage is
 
@@ -78,6 +80,7 @@ interface RepairStageState {
                       // (quality.default_stage_name), later stages to "Stage N" at creation time — editable
   ruleIds: string[]; // order = dispatch order within this stage AND UI/serialization order
   disabled: boolean; // whole-stage toggle — see below
+  collapsed: boolean; // UI-only section collapse state — see below
 }
 ```
 
@@ -86,6 +89,7 @@ interface RepairStageState {
 - A stage's `ruleIds` **can be empty** (e.g. `addStage()`, or after `moveRule` moves its last rule out) — this is a normal, permanent state, not auto-cleaned-up. `RulesColumn` renders an empty stage as a visible section with a hint (`status.stage_empty`) rather than hiding it, since it's still a valid drop target for `moveRule`.
 - **`disabled`** — a whole-stage toggle, independent of any member rule's own `ruleDisabled`. A `disabled` stage is omitted entirely from `GenerateConfig.stages` (not sent with an empty `rules: []`), as if the stage didn't exist for this run — see `toggleStageDisabled` and "Generate pipeline" below.
 - `GenerateConfig.stages` (see `quality_control.md`'s `StageConfig`) is built from `state.stages` by `buildGenerateConfig` — `ruleDisabled` filtering happens per-stage there, before any config crosses the wasm boundary (see "Generate pipeline" below), not by sending a disabled rule through as `strategy: null`.
+- **`collapsed`** (GitHub issue #320) — UI-only section collapse state, toggled via `toggleStageCollapsed`. When `true`, `RulesColumn` hides the stage's entire `stageCards` block (every member rule card), showing only the stage header/toolbar. Independent of `disabled` and purely cosmetic — no effect on `GenerateConfig`. Both this and rule-level `collapsed` (see "What a rule is" above) share one small `CollapseButton` component (`maze-web/src/components/CollapseButton.tsx`) for the chevron toggle itself, since the two sites are otherwise identical (chevron + collapse/expand title + onToggle). Still serialized to project files, defaulting to `false` for files saved before it existed.
 
 ## QualityCanvas layout
 
@@ -314,6 +318,7 @@ interface QualityStageVM {
   name: string;
   slots: StrategySlotVM[];
   disabled: boolean;                // whole-stage toggle
+  collapsed: boolean;               // UI-only section collapse state, mirrors RepairStageState.collapsed
 }
 
 interface CheckVM {
@@ -335,6 +340,7 @@ interface StrategySlotVM {
   ruleDisabled: boolean;
   producedBy: CheckVM[];    // this rule's member check instances, resolved to full CheckVMs
   nestedStrategies: NestedStrategyVM[]; // resolved nested-strategy entries for strategy's nested slots — see "Nested strategies (UI)" above
+  collapsed: boolean;       // UI-only card collapse state, mirrors QcRuleState.collapsed
 }
 interface StrategyVM {
   id: string; label: string; handles: string; params: ParamDescriptor[]; experimental: boolean;
@@ -418,6 +424,7 @@ setStrategy(ruleId: string, strategyId: string): void
 clearStrategy(ruleId: string): void
 toggleStrategyDisabled(ruleId: string): void
 toggleRuleDisabled(ruleId: string): void
+toggleRuleCollapsed(ruleId: string): void
 renameRule(ruleId: string, name: string): void
 removeRule(ruleId: string): void
 moveRule(ruleId: string, direction: "up" | "down"): void
@@ -426,6 +433,7 @@ renameStage(stageId: string, name: string): void
 removeStage(stageId: string): void
 moveStage(stageId: string, direction: "up" | "down"): void
 toggleStageDisabled(stageId: string): void
+toggleStageCollapsed(stageId: string): void
 setStrategyParam(strategyId: string, paramId: string, value: string): void
 setNestedStrategy(ruleId: string, path: PathSegment[], strategyId: string | null): void
 setNestedStrategyParam(ruleId: string, path: PathSegment[], paramId: string, value: string): void
@@ -491,6 +499,14 @@ id searched across all rules.
 - Flips the rule's `ruleDisabled`.
 - When `true`: this rule's member checks are excluded entirely from the next `generate()` call (removed from the `checks` list sent to wasm, not just unfixed) — as if they were never selected.
 
+### toggleRuleCollapsed(ruleId) / toggleStageCollapsed(stageId)
+
+See GitHub issue #320. Flip the rule/stage's own `collapsed` — purely a UI presentation toggle, no effect on `GenerateConfig` or any other generation-facing state, unlike every other toggle in this section. `RulesColumn` renders a `CollapseButton` (`maze-web/src/components/CollapseButton.tsx`, a shared chevron-only toggle) at the front of the stage toolbar and the rule card title row:
+- A collapsed stage hides its entire `stageCards` block (every member rule card) — only the header/toolbar row remains visible.
+- A collapsed rule hides its whole card body — checks list, `RuleParamsSection`, and `RuleStrategyPanel` — only the title row remains visible.
+
+Both default to `false` (expanded) for a freshly created rule/stage (`newRule`/`newStage` in `generationSliceHelpers.ts`) and for project files saved before this field existed (see "Project file persistence" below).
+
 ### renameRule(ruleId, name) / removeRule(ruleId)
 
 - `renameRule`: sets the rule's `name`.
@@ -539,12 +555,12 @@ as on `loadRegistry`'s own rule construction. `CheckInstance.localId` itself **i
 the only contract is uniqueness within its rule's `checks` at any given moment, not identity
 across time.
 
-`RepairStageState[]` is serialized as `quality.stages` (`{ id, name, ruleIds, disabled }[]`), a
+`RepairStageState[]` is serialized as `quality.stages` (`{ id, name, ruleIds, disabled, collapsed }[]`), a
 flat sibling of `quality.rules` — plain structure, nothing computed on load. Two load-time cases:
 
 - **`quality.stages` key absent** (file saved before GitHub issue #65): recovery synthesizes one
   stage containing every loaded rule's id, in `rules` array order — `{ id: "stage_1", name: "Stage 1",
-  ruleIds: rules.map(r => r.id), disabled: false }`. This satisfies "every rule belongs to exactly
+  ruleIds: rules.map(r => r.id), disabled: false, collapsed: false }`. This satisfies "every rule belongs to exactly
   one stage" by construction, so no further validation is needed for this path. This is *not* a
   registered file migration (see this repo's "no migrations without an explicit user request"
   policy) — it's a same-shape default-fill for a field that plainly didn't exist yet, the same
@@ -552,12 +568,16 @@ flat sibling of `quality.rules` — plain structure, nothing computed on load. T
   pre-existing-field gaps.
 - **`quality.stages` key present**: each entry's `disabled` defaults to `false` if absent (files
   saved before the whole-stage toggle existed — same pattern as `ruleDisabled`'s own default in
-  `validateQcRule`). The list is then validated for three integrity properties, each a hard parse
+  `validateQcRule`); `collapsed` (GitHub issue #320) likewise defaults to `false` if absent, same
+  pattern. The list is then validated for three integrity properties, each a hard parse
   error (not a silent recovery) if violated — a `quality.stages` key that exists but is
   inconsistent means the file is corrupted, not merely old: (1) no `ruleId` appears in two
   different stages' `ruleIds`; (2) every `ruleId` in every stage's `ruleIds` resolves to a rule
   actually present in `quality.rules`; (3) every rule in `quality.rules` appears in at least one
   stage's `ruleIds`. Together (1)+(3) mean every rule appears in **exactly** one stage.
+
+`QcRuleState.collapsed` (GitHub issue #320) is serialized as `quality.rules[].collapsed`, same
+default-`false`-if-absent recovery as the fields above (`validateQcRule`).
 
 ## Generate pipeline
 

@@ -23,9 +23,10 @@ beforeEach(() => {
           { localId: 1, typeId: "c2", params: {}, disabled: true },
         ],
         nextLocalCheckId: 2, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [],
+        collapsed: false,
       },
     ],
-    stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false }],
+    stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
   });
 });
 

@@ -19,8 +19,8 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     splitMaxNodes: 2,
     splitPatterns: [],
     qcExperiment: false,
-    rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], nextLocalCheckId: 1, strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [], params: {} }],
-    stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false }],
+    rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], nextLocalCheckId: 1, strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false }],
+    stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false, collapsed: false }],
     strategyParams: { strategy_a: { param_b: "2" } },
     repairMaxIterations: 100,
     repairTimeBudgetSecs: 10,
@@ -406,7 +406,7 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
   it("round-trips quality.rules", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);
-    expect(result.quality.rules).toEqual([{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [], params: {} }]);
+    expect(result.quality.rules).toEqual([{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false }]);
   });
 
   it("defaults check disabled to false when absent (pre-toggle project files)", () => {
@@ -444,7 +444,7 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     const data = valid_without_optional_sections();
     delete (data.quality as { stages?: unknown }).stages;
     const result = parseAndValidate(data);
-    expect(result.quality.stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false }]);
+    expect(result.quality.stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false, collapsed: false }]);
   });
 
   it("rejects quality.stages when a known rule is not assigned to any stage", () => {
@@ -468,13 +468,13 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     (data.quality as { stages: unknown }).stages = [{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"] }];
     const result = parseAndValidate(data);
     expect(result.quality.rules).toEqual([]);
-    expect(result.quality.stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: [], disabled: false }]);
+    expect(result.quality.stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: [], disabled: false, collapsed: false }]);
   });
 
   it("round-trips quality.stages", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);
-    expect(result.quality.stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false }]);
+    expect(result.quality.stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false, collapsed: false }]);
   });
 
   function valid_without_optional_sections(): Record<string, unknown> {

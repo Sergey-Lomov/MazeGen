@@ -407,7 +407,7 @@ describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
         makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
         makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
       ],
-      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false, collapsed: false }],
     });
     useMazeStore.getState().removeRule("g1");
     expect(useMazeStore.getState().rules).toEqual([
@@ -421,10 +421,10 @@ describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
         makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
         makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
       ],
-      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false, collapsed: false }],
     });
     useMazeStore.getState().removeRule("g1");
-    expect(useMazeStore.getState().stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: ["g2"], disabled: false }]);
+    expect(useMazeStore.getState().stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: ["g2"], disabled: false, collapsed: false }]);
   });
 
   it("removeRule is a no-op for an unknown rule id", () => {
@@ -443,6 +443,20 @@ describe("mazeStore.renameRule / removeRule / toggleRuleDisabled", () => {
     const g = useMazeStore.getState().rules.find((g) => g.id === "g1")!;
     expect(g.ruleDisabled).toBe(true);
     expect(g.disabled).toBe(false);
+  });
+
+  it("toggleRuleCollapsed flips collapsed independent of disabled/ruleDisabled", () => {
+    useMazeStore.setState({
+      rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1" })],
+    });
+    useMazeStore.getState().toggleRuleCollapsed("g1");
+    let g = useMazeStore.getState().rules.find((g) => g.id === "g1")!;
+    expect(g.collapsed).toBe(true);
+    expect(g.disabled).toBe(false);
+    expect(g.ruleDisabled).toBe(false);
+    useMazeStore.getState().toggleRuleCollapsed("g1");
+    g = useMazeStore.getState().rules.find((g) => g.id === "g1")!;
+    expect(g.collapsed).toBe(false);
   });
 
   it("toggleCheckDisabled flips a single check's disabled, other checks and the rule untouched", () => {
@@ -468,31 +482,31 @@ describe("mazeStore.moveRule", () => {
   }
 
   it("moves a rule up within its stage, swapping with its predecessor", () => {
-    useMazeStore.setState({ rules: makeRules(), stages: [{ id: "s1", name: "Stage 1", ruleIds: ["g1", "g2", "g3"], disabled: false }] });
+    useMazeStore.setState({ rules: makeRules(), stages: [{ id: "s1", name: "Stage 1", ruleIds: ["g1", "g2", "g3"], disabled: false, collapsed: false }] });
     useMazeStore.getState().moveRule("g2", "up");
     expect(useMazeStore.getState().stages[0].ruleIds).toEqual(["g2", "g1", "g3"]);
   });
 
   it("moves a rule down within its stage, swapping with its successor", () => {
-    useMazeStore.setState({ rules: makeRules(), stages: [{ id: "s1", name: "Stage 1", ruleIds: ["g1", "g2", "g3"], disabled: false }] });
+    useMazeStore.setState({ rules: makeRules(), stages: [{ id: "s1", name: "Stage 1", ruleIds: ["g1", "g2", "g3"], disabled: false, collapsed: false }] });
     useMazeStore.getState().moveRule("g2", "down");
     expect(useMazeStore.getState().stages[0].ruleIds).toEqual(["g1", "g3", "g2"]);
   });
 
   it("is a no-op moving the first rule of the first stage up", () => {
-    useMazeStore.setState({ rules: makeRules(), stages: [{ id: "s1", name: "Stage 1", ruleIds: ["g1", "g2", "g3"], disabled: false }] });
+    useMazeStore.setState({ rules: makeRules(), stages: [{ id: "s1", name: "Stage 1", ruleIds: ["g1", "g2", "g3"], disabled: false, collapsed: false }] });
     useMazeStore.getState().moveRule("g1", "up");
     expect(useMazeStore.getState().stages[0].ruleIds).toEqual(["g1", "g2", "g3"]);
   });
 
   it("is a no-op moving the last rule of the last stage down", () => {
-    useMazeStore.setState({ rules: makeRules(), stages: [{ id: "s1", name: "Stage 1", ruleIds: ["g1", "g2", "g3"], disabled: false }] });
+    useMazeStore.setState({ rules: makeRules(), stages: [{ id: "s1", name: "Stage 1", ruleIds: ["g1", "g2", "g3"], disabled: false, collapsed: false }] });
     useMazeStore.getState().moveRule("g3", "down");
     expect(useMazeStore.getState().stages[0].ruleIds).toEqual(["g1", "g2", "g3"]);
   });
 
   it("is a no-op for an unknown rule id", () => {
-    useMazeStore.setState({ rules: makeRules(), stages: [{ id: "s1", name: "Stage 1", ruleIds: ["g1", "g2", "g3"], disabled: false }] });
+    useMazeStore.setState({ rules: makeRules(), stages: [{ id: "s1", name: "Stage 1", ruleIds: ["g1", "g2", "g3"], disabled: false, collapsed: false }] });
     useMazeStore.getState().moveRule("missing", "up");
     expect(useMazeStore.getState().stages[0].ruleIds).toEqual(["g1", "g2", "g3"]);
   });
@@ -501,8 +515,8 @@ describe("mazeStore.moveRule", () => {
     useMazeStore.setState({
       rules: makeRules(),
       stages: [
-        { id: "s1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false },
-        { id: "s2", name: "Stage 2", ruleIds: ["g3"], disabled: false },
+        { id: "s1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false, collapsed: false },
+        { id: "s2", name: "Stage 2", ruleIds: ["g3"], disabled: false, collapsed: false },
       ],
     });
     useMazeStore.getState().moveRule("g2", "down");
@@ -515,8 +529,8 @@ describe("mazeStore.moveRule", () => {
     useMazeStore.setState({
       rules: makeRules(),
       stages: [
-        { id: "s1", name: "Stage 1", ruleIds: ["g1"], disabled: false },
-        { id: "s2", name: "Stage 2", ruleIds: ["g2", "g3"], disabled: false },
+        { id: "s1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false },
+        { id: "s2", name: "Stage 2", ruleIds: ["g2", "g3"], disabled: false, collapsed: false },
       ],
     });
     useMazeStore.getState().moveRule("g2", "up");
@@ -529,8 +543,8 @@ describe("mazeStore.moveRule", () => {
     useMazeStore.setState({
       rules: makeRules(),
       stages: [
-        { id: "s1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false },
-        { id: "s2", name: "Stage 2", ruleIds: [], disabled: false },
+        { id: "s1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false, collapsed: false },
+        { id: "s2", name: "Stage 2", ruleIds: [], disabled: false, collapsed: false },
       ],
     });
     useMazeStore.getState().moveRule("g2", "down");
@@ -543,8 +557,8 @@ describe("mazeStore.moveRule", () => {
     useMazeStore.setState({
       rules: makeRules(),
       stages: [
-        { id: "s1", name: "Stage 1", ruleIds: [], disabled: false },
-        { id: "s2", name: "Stage 2", ruleIds: ["g1"], disabled: false },
+        { id: "s1", name: "Stage 1", ruleIds: [], disabled: false, collapsed: false },
+        { id: "s2", name: "Stage 2", ruleIds: ["g1"], disabled: false, collapsed: false },
       ],
     });
     useMazeStore.getState().moveRule("g1", "down");
@@ -556,7 +570,7 @@ describe("mazeStore.moveRule", () => {
 
 describe("mazeStore stage actions", () => {
   it("addStage appends a new empty stage with a default name", () => {
-    useMazeStore.setState({ stages: [{ id: "s1", name: "Stage 1", ruleIds: [], disabled: false }] });
+    useMazeStore.setState({ stages: [{ id: "s1", name: "Stage 1", ruleIds: [], disabled: false, collapsed: false }] });
     useMazeStore.getState().addStage();
     const stages = useMazeStore.getState().stages;
     expect(stages).toHaveLength(2);
@@ -567,8 +581,8 @@ describe("mazeStore stage actions", () => {
   it("addStage does not reuse a name still present after a middle stage was removed", () => {
     useMazeStore.setState({
       stages: [
-        { id: "s1", name: "Waypoints", ruleIds: [], disabled: false },
-        { id: "s3", name: "Stage 3", ruleIds: [], disabled: false },
+        { id: "s1", name: "Waypoints", ruleIds: [], disabled: false, collapsed: false },
+        { id: "s3", name: "Stage 3", ruleIds: [], disabled: false, collapsed: false },
       ],
     });
     useMazeStore.getState().addStage();
@@ -578,7 +592,7 @@ describe("mazeStore stage actions", () => {
   });
 
   it("renameStage sets the stage's name", () => {
-    useMazeStore.setState({ stages: [{ id: "s1", name: "Stage 1", ruleIds: [], disabled: false }] });
+    useMazeStore.setState({ stages: [{ id: "s1", name: "Stage 1", ruleIds: [], disabled: false, collapsed: false }] });
     useMazeStore.getState().renameStage("s1", "My stage");
     expect(useMazeStore.getState().stages[0].name).toBe("My stage");
   });
@@ -586,8 +600,8 @@ describe("mazeStore stage actions", () => {
   it("removeStage removes an empty stage when another stage remains", () => {
     useMazeStore.setState({
       stages: [
-        { id: "s1", name: "Stage 1", ruleIds: [], disabled: false },
-        { id: "s2", name: "Stage 2", ruleIds: [], disabled: false },
+        { id: "s1", name: "Stage 1", ruleIds: [], disabled: false, collapsed: false },
+        { id: "s2", name: "Stage 2", ruleIds: [], disabled: false, collapsed: false },
       ],
     });
     useMazeStore.getState().removeStage("s1");
@@ -598,8 +612,8 @@ describe("mazeStore stage actions", () => {
     useMazeStore.setState({
       rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null })],
       stages: [
-        { id: "s1", name: "Stage 1", ruleIds: ["g1"], disabled: false },
-        { id: "s2", name: "Stage 2", ruleIds: [], disabled: false },
+        { id: "s1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false },
+        { id: "s2", name: "Stage 2", ruleIds: [], disabled: false, collapsed: false },
       ],
     });
     useMazeStore.getState().removeStage("s1");
@@ -608,7 +622,7 @@ describe("mazeStore stage actions", () => {
   });
 
   it("removeStage removes the sole remaining stage when empty (no minimum-stage invariant)", () => {
-    useMazeStore.setState({ stages: [{ id: "s1", name: "Stage 1", ruleIds: [], disabled: false }] });
+    useMazeStore.setState({ stages: [{ id: "s1", name: "Stage 1", ruleIds: [], disabled: false, collapsed: false }] });
     useMazeStore.getState().removeStage("s1");
     expect(useMazeStore.getState().stages).toEqual([]);
   });
@@ -616,8 +630,8 @@ describe("mazeStore stage actions", () => {
   it("moveStage swaps adjacent stages", () => {
     useMazeStore.setState({
       stages: [
-        { id: "s1", name: "Stage 1", ruleIds: [], disabled: false },
-        { id: "s2", name: "Stage 2", ruleIds: [], disabled: false },
+        { id: "s1", name: "Stage 1", ruleIds: [], disabled: false, collapsed: false },
+        { id: "s2", name: "Stage 2", ruleIds: [], disabled: false, collapsed: false },
       ],
     });
     useMazeStore.getState().moveStage("s2", "up");
@@ -627,12 +641,23 @@ describe("mazeStore stage actions", () => {
   it("moveStage is a no-op at the global boundary", () => {
     useMazeStore.setState({
       stages: [
-        { id: "s1", name: "Stage 1", ruleIds: [], disabled: false },
-        { id: "s2", name: "Stage 2", ruleIds: [], disabled: false },
+        { id: "s1", name: "Stage 1", ruleIds: [], disabled: false, collapsed: false },
+        { id: "s2", name: "Stage 2", ruleIds: [], disabled: false, collapsed: false },
       ],
     });
     useMazeStore.getState().moveStage("s1", "up");
     expect(useMazeStore.getState().stages.map((s) => s.id)).toEqual(["s1", "s2"]);
+  });
+
+  it("toggleStageCollapsed flips collapsed independent of disabled", () => {
+    useMazeStore.setState({ stages: [{ id: "s1", name: "Stage 1", ruleIds: [], disabled: false, collapsed: false }] });
+    useMazeStore.getState().toggleStageCollapsed("s1");
+    let stage = useMazeStore.getState().stages.find((s) => s.id === "s1")!;
+    expect(stage.collapsed).toBe(true);
+    expect(stage.disabled).toBe(false);
+    useMazeStore.getState().toggleStageCollapsed("s1");
+    stage = useMazeStore.getState().stages.find((s) => s.id === "s1")!;
+    expect(stage.collapsed).toBe(false);
   });
 });
 
@@ -641,10 +666,10 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       rules: [
-        { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: true, params: {}, nestedStrategies: [] },
+        { id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: true, params: {}, nestedStrategies: [], collapsed: false },
         makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
       ],
-      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false, collapsed: false }],
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
@@ -657,7 +682,7 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
       rules: [
         makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: true }, { localId: 1, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 2, strategyId: null }),
       ],
-      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
@@ -671,7 +696,7 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
         makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: true }], nextLocalCheckId: 1, strategyId: null }),
         makeRule({ id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
       ],
-      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false, collapsed: false }],
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];
@@ -684,7 +709,7 @@ describe("buildGenerateConfig — ruleDisabled exclusion", () => {
       rules: [
         makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 0, strategyId: null }),
       ],
-      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];

@@ -109,6 +109,17 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     opacity: 0.3,
     cursor: "default",
   },
+  collapseBtn: {
+    background: "none",
+    border: "none",
+    color: ui.text.tertiary,
+    padding: 0,
+    cursor: "default",
+    lineHeight: 1,
+    display: "flex",
+    alignItems: "center",
+    flexShrink: 0,
+  },
   stageCards: {
     display: "flex",
     flexDirection: "column",

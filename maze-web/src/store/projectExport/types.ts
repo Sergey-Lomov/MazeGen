@@ -91,6 +91,8 @@ export interface ProjectFileQcRule {
   nestedStrategies: ProjectFileNestedStrategy[];
   /** Mirrors `QcRuleState.params` — rule-level parameters (GitHub issue #253). */
   params: Record<string, string>;
+  /** Mirrors `QcRuleState.collapsed` — UI-only rule card collapse state (GitHub issue #320). */
+  collapsed: boolean;
 }
 
 /** A named, ordered group of rule ids — see GitHub issue #65 and `RepairStageState`'s doc
@@ -100,6 +102,9 @@ export interface ProjectFileStage {
   name: string;
   ruleIds: string[];
   disabled: boolean;
+  /** Mirrors `RepairStageState.collapsed` — UI-only stage section collapse state (GitHub issue
+   * #320). */
+  collapsed: boolean;
 }
 
 export interface ProjectFile {

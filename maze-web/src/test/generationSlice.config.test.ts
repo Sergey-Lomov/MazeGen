@@ -146,6 +146,7 @@ describe("mazeStore generation misc actions", () => {
       checks: [{ localId: 0, typeId: "scc_count", params: {}, disabled: false }], nextLocalCheckId: 1,
       strategyId: "reduce_scc_count", disabled: false, ruleDisabled: false, params: {},
       nestedStrategies: [{ slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest" }, nested: [] }],
+      collapsed: false,
     };
   }
 
@@ -197,6 +198,7 @@ describe("mazeStore generation misc actions", () => {
         slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest" },
         nested: [{ slotId: "inner_slot", strategyId: "other_expand_strategy", params: { foo: "bar" }, nested: [] }],
       }],
+      collapsed: false,
     };
     useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
     useMazeStore.getState().setNestedStrategyParam("g1", [{ slotId: "merge_target", index: 0 }, { slotId: "inner_slot", index: 0 }], "foo", "baz");
@@ -241,6 +243,7 @@ describe("mazeStore generation misc actions", () => {
         { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
         { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
       ],
+      collapsed: false,
     };
     useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
     useMazeStore.getState().removeNestedStrategy("g1", [{ slotId: "merge_target", index: 0 }]);
@@ -266,6 +269,7 @@ describe("mazeStore generation misc actions", () => {
         { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
         { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
       ],
+      collapsed: false,
     };
     useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
     useMazeStore.getState().moveNestedStrategy("g1", [{ slotId: "merge_target", index: 1 }], "up");
@@ -285,6 +289,7 @@ describe("mazeStore generation misc actions", () => {
         { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
         { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
       ],
+      collapsed: false,
     };
     useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
     useMazeStore.getState().moveNestedStrategy("g1", [{ slotId: "merge_target", index: 0 }], "down");
@@ -304,6 +309,7 @@ describe("mazeStore generation misc actions", () => {
         { slotId: "merge_target", strategyId: "expand_region_passage", params: { tag: "first" }, nested: [] },
         { slotId: "merge_target", strategyId: "other_expand_strategy", params: { tag: "second" }, nested: [] },
       ],
+      collapsed: false,
     };
     useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
     useMazeStore.getState().moveNestedStrategy("g1", [{ slotId: "merge_target", index: 0 }], "up");
@@ -332,6 +338,7 @@ describe("mazeStore generation misc actions", () => {
           ],
         },
       ],
+      collapsed: false,
     };
     useMazeStore.setState({ rules: [rule], availableStrategies: nestedTestStrategies });
     useMazeStore.getState().moveNestedStrategy("g1", [{ slotId: "merge_target", index: 0 }, { slotId: "inner_slot", index: 0 }], "down");

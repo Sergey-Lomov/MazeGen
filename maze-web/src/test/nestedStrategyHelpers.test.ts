@@ -85,6 +85,7 @@ function ruleWith(nestedStrategies: NestedStrategyState[]): QcRuleState {
   return {
     id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 0,
     strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies,
+    collapsed: false,
   };
 }
 

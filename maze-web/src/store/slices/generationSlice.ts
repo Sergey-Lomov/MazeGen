@@ -402,6 +402,10 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     debugStale: debugStaleOf(state),
   })),
 
+  toggleRuleCollapsed: (ruleId) => set((state) => ({
+    rules: state.rules.map((g) => g.id === ruleId ? { ...g, collapsed: !g.collapsed } : g),
+  })),
+
   renameRule: (ruleId, name) => set((state) => ({
     rules: state.rules.map((g) => g.id === ruleId ? { ...g, name } : g),
   })),
@@ -497,6 +501,10 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   toggleStageDisabled: (stageId) => set((state) => ({
     stages: state.stages.map((s) => s.id === stageId ? { ...s, disabled: !s.disabled } : s),
     debugStale: debugStaleOf(state),
+  })),
+
+  toggleStageCollapsed: (stageId) => set((state) => ({
+    stages: state.stages.map((s) => s.id === stageId ? { ...s, collapsed: !s.collapsed } : s),
   })),
 
   setStrategyParam: (strategyId, paramId, value) => set((state) => ({

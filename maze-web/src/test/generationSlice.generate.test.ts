@@ -234,7 +234,7 @@ describe("mazeStore.generate", () => {
     useMazeStore.setState({
       tessellationConfig: { type: "square", width: 10, height: 10 },
       rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "scored_endpoints" })],
-      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
       strategyParams: { scored_endpoints: { path_weight: "2", junction_weight: "6" } },
       availableStrategies: [{
         id: "scored_endpoints",
@@ -275,7 +275,7 @@ describe("mazeStore.generate", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
       rules: [makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "missing_endpoints", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "scored_endpoints" })],
-      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
       strategyParams: { scored_endpoints: { unknown_param: "99" } },
       availableStrategies: [{
         id: "scored_endpoints",
@@ -305,8 +305,9 @@ describe("mazeStore.generate", () => {
           { slotId: "merge_target", strategyId: "expand_region_passage", params: { target_mode: "largest", weight: "3.0" }, nested: [] },
           { slotId: "merge_target", strategyId: "teleport_region_merge", params: { weight: "1.0" }, nested: [] },
         ],
+        collapsed: false,
       }],
-      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
       availableStrategies: [
         {
           id: "weighted_region_merge",
@@ -345,9 +346,9 @@ describe("mazeStore.generate", () => {
     useMazeStore.setState({
       rules: [
         makeRule({ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null }),
-        { id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "some_strategy", disabled: true, ruleDisabled: false, params: {}, nestedStrategies: [] },
+        { id: "g2", name: "Rule 2", kind: "k1", checks: [{ localId: 0, typeId: "check_b", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "some_strategy", disabled: true, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false },
       ],
-      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1", "g2"], disabled: false, collapsed: false }],
     });
     useMazeStore.getState().generate();
     const call = vi.mocked(generateMaze).mock.calls[0];

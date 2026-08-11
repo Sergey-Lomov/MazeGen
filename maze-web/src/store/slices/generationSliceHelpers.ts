@@ -97,6 +97,7 @@ export function newRule(kind: string, checks: CheckInstance[], strategyId: strin
     ruleDisabled: false,
     nestedStrategies: strategyId ? buildDefaultNestedStrategies(strategyId, availableStrategies) : [],
     params: {},
+    collapsed: false,
   };
 }
 
@@ -112,6 +113,7 @@ export function newStage(index: number, ruleIds: string[] = []): RepairStageStat
     name: index === 0 ? m["quality.default_stage_name"]() : `Stage ${index + 1}`,
     ruleIds,
     disabled: false,
+    collapsed: false,
   };
 }
 

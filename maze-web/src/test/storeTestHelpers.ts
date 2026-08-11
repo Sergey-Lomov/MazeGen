@@ -13,6 +13,7 @@ export function makeRule(overrides: Partial<QcRuleState> = {}): QcRuleState {
     id: "g1", name: "Rule 1", kind: "k1",
     checks: [], nextLocalCheckId: 0,
     strategyId: null, disabled: false, ruleDisabled: false, nestedStrategies: [], params: {},
+    collapsed: false,
     ...overrides,
   };
 }
@@ -161,7 +162,7 @@ export function baseStoreState() {
     splitMaxNodes: 2,
     splitPatterns: [],
     rules: [],
-    stages: [{ id: "stage_1", name: "Stage 1", ruleIds: [], disabled: false }],
+    stages: [{ id: "stage_1", name: "Stage 1", ruleIds: [], disabled: false, collapsed: false }],
     strategyParams: {},
     registryLoaded: false,
     availableChecks: [],

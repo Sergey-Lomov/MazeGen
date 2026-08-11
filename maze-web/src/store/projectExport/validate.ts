@@ -449,7 +449,10 @@ function validateQcRule(v: unknown, path: string, index: number): ProjectFileQcR
   // Absent entirely for project files saved before rule-level params existed (GitHub issue
   // #253) — same recovery pattern `nestedStrategies` above uses.
   const params = assertStringRecord(obj.params ?? {}, `${path}.params`);
-  return { id, name, kind, checks, strategyId, disabled, ruleDisabled, nestedStrategies, params };
+  // `collapsed` defaults to `false` for files saved before rule collapsing existed (GitHub issue
+  // #320) — same recovery pattern `ruleDisabled` above uses.
+  const collapsed = typeof obj.collapsed === "boolean" ? obj.collapsed : false;
+  return { id, name, kind, checks, strategyId, disabled, ruleDisabled, nestedStrategies, params, collapsed };
 }
 
 // See GitHub issue #65. Shape-only validation here — cross-stage integrity (duplicate rule id
@@ -464,7 +467,10 @@ function validateQcStage(v: unknown, path: string): ProjectFileStage {
   const name = assertString(obj.name, `${path}.name`);
   const ruleIds = assertArray(obj.ruleIds, `${path}.ruleIds`).map((r, i) => assertString(r, `${path}.ruleIds[${i}]`));
   const disabled = typeof obj.disabled === "boolean" ? obj.disabled : false;
-  return { id, name, ruleIds, disabled };
+  // `collapsed` defaults to `false` for files saved before stage collapsing existed (GitHub
+  // issue #320) — same pattern as `disabled`'s own default above.
+  const collapsed = typeof obj.collapsed === "boolean" ? obj.collapsed : false;
+  return { id, name, ruleIds, disabled, collapsed };
 }
 
 function validatePresetTeleportEntry(v: unknown, path: string): PresetTeleportEntry {
@@ -831,7 +837,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   const ruleIds = new Set(rules.map((r) => r.id));
   let stages: ProjectFileStage[];
   if (!("stages" in qualObj)) {
-    stages = [{ id: "stage_1", name: "Stage 1", ruleIds: rules.map((r) => r.id), disabled: false }];
+    stages = [{ id: "stage_1", name: "Stage 1", ruleIds: rules.map((r) => r.id), disabled: false, collapsed: false }];
   } else {
     const parsedStages = assertArray(qualObj.stages, "quality.stages").map((v, i) => validateQcStage(v, `quality.stages[${i}]`));
     // A `ruleId` in a stage that doesn't resolve to a surviving rule is only ever a rule dropped

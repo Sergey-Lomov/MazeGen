@@ -29,7 +29,7 @@ describe("CheckSelectDialog", () => {
   it("Next stays disabled when the default-selected check is already active elsewhere", () => {
     useMazeStore.setState({
       availableChecks,
-      rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "min_loop_length", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [] }],
+      rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "min_loop_length", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
     });
     render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByText("Next")).toBeDisabled();

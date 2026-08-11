@@ -235,6 +235,9 @@ export interface QcRuleState {
    * that has been migrated to consume it instead of its own per-instance override (GitHub issue
    * #253). Keyed by `ParamDescriptor.id`, same shape as `CheckInstance.params`. */
   params: Record<string, string>;
+  /** UI-only collapse state for the rule card (GitHub issue #320) — hides checks, strategy panel,
+   * and rule-level params when true. Purely cosmetic, has no effect on generation. */
+  collapsed: boolean;
 }
 
 /** A named, ordered group of rule ids — see `Specs/repair.md`'s "Stages" section and GitHub
@@ -260,6 +263,9 @@ export interface RepairStageState {
    * with an empty `rules` list), as if the stage didn't exist for this run. Independent of any
    * member rule's own `ruleDisabled`. */
   disabled: boolean;
+  /** UI-only collapse state for the stage section (GitHub issue #320) — hides its rule cards when
+   * true. Purely cosmetic, has no effect on generation. */
+  collapsed: boolean;
 }
 
 export const DEFAULT_HEX_ORI: HexOrientation = "flat_top";
@@ -717,6 +723,8 @@ export interface GenerationActions {
   moveNestedStrategy: (ruleId: string, path: PathSegment[], direction: "up" | "down") => void;
   toggleStrategyDisabled: (ruleId: string) => void;
   toggleRuleDisabled: (ruleId: string) => void;
+  /** Flips the rule card's `collapsed` — UI-only, does not mark the config stale. */
+  toggleRuleCollapsed: (ruleId: string) => void;
   renameRule: (ruleId: string, name: string) => void;
   /** Removes a rule entirely along with its member checks — the inverse of a rule existing
    * only ever meaning its checks are active. Also removes the rule's id from whichever stage's
@@ -747,6 +755,8 @@ export interface GenerationActions {
   moveStage: (stageId: string, direction: "up" | "down") => void;
   /** Flips the stage's `disabled` — see `RepairStageState`'s doc comment. */
   toggleStageDisabled: (stageId: string) => void;
+  /** Flips the stage section's `collapsed` — UI-only, does not mark the config stale. */
+  toggleStageCollapsed: (stageId: string) => void;
   setStrategyParam: (strategyId: string, paramId: string, value: string) => void;
   /** Sets one rule-level parameter (e.g. `protect_route`) on `ruleId`'s own `params` — see
    * GitHub issue #253. Unlike `setStrategyParam`, scoped to a single rule, not shared globally

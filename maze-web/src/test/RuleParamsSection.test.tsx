@@ -32,6 +32,7 @@ function makeSlot(overrides: Partial<StrategySlotVM> = {}): StrategySlotVM {
     producedBy: [],
     nestedStrategies: [],
     params: {},
+    collapsed: false,
     ...overrides,
   };
 }
@@ -87,8 +88,8 @@ describe("RuleParamsSection", () => {
   it("commits a value change to the owning rule via setRuleParam, not some other rule", async () => {
     useMazeStore.setState({
       rules: [
-        { id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 0, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [] },
-        { id: "g2", name: "Rule 2", kind: "k1", checks: [], nextLocalCheckId: 0, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [] },
+        { id: "g1", name: "Rule 1", kind: "k1", checks: [], nextLocalCheckId: 0, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false },
+        { id: "g2", name: "Rule 2", kind: "k1", checks: [], nextLocalCheckId: 0, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false },
       ],
     });
     const slot = makeSlot({ ruleId: "g1", producedBy: [makeCheck("teleport_waypoint_distance")] });
