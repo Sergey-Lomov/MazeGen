@@ -55,6 +55,14 @@ describe("computeFloorsCard", () => {
     expect(card.status).toBe("set");
   });
 
+  it("subtitle reports floor count", () => {
+    expect(computeFloorsCard([{ id: "a", title: "Floor 1" }]).subtitle).toBe("1 floor");
+    expect(computeFloorsCard([
+      { id: "a", title: "Floor 1" },
+      { id: "b", title: "Floor 2" },
+    ]).subtitle).toBe("2 floors");
+  });
+
   it("returns warning when two floors share the same title", () => {
     const card = computeFloorsCard([
       { id: "a", title: "Same" },

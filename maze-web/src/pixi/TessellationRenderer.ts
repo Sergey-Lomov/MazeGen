@@ -21,7 +21,7 @@ export class TessellationRenderer {
 
     this.unsubscribe = useMazeStore.subscribe((state, prev) => {
       const openChanged = state.openCard !== prev.openCard;
-      const shouldShow = state.openCard === "basic_config";
+      const shouldShow = state.openCard === "basic_config" || state.openCard === "floors";
       if (openChanged) {
         this.root.visible = shouldShow;
         if (shouldShow) this.redraw(state.previewTessellationConfig);
@@ -33,7 +33,7 @@ export class TessellationRenderer {
     });
 
     const s = useMazeStore.getState();
-    const shouldShow = s.openCard === "basic_config";
+    const shouldShow = s.openCard === "basic_config" || s.openCard === "floors";
     this.root.visible = shouldShow;
     // Viewport not yet set; onViewportChanged will trigger first real draw.
   }

@@ -5,6 +5,7 @@ beforeEach(() => {
   useMazeStore.setState({
     floors: [{ id: "floor_1", title: "Floor 1" }],
     nextFloorNumber: 2,
+    activeFloorId: "floor_1",
   });
 });
 
@@ -117,6 +118,46 @@ describe("floorsSlice", () => {
       const before = useMazeStore.getState().floors;
       useMazeStore.getState().moveFloor("not_a_real_id", "down");
       expect(useMazeStore.getState().floors).toEqual(before);
+    });
+  });
+
+  describe("activeFloorId", () => {
+    it("starts pointed at the initial floor", () => {
+      const id = useMazeStore.getState().floors[0].id;
+      expect(useMazeStore.getState().activeFloorId).toBe(id);
+    });
+
+    describe("setActiveFloorId", () => {
+      it("sets activeFloorId to a known floor id", () => {
+        useMazeStore.getState().addFloor();
+        const secondId = useMazeStore.getState().floors[1].id;
+        useMazeStore.getState().setActiveFloorId(secondId);
+        expect(useMazeStore.getState().activeFloorId).toBe(secondId);
+      });
+
+      it("is a no-op for an unknown id", () => {
+        const before = useMazeStore.getState().activeFloorId;
+        useMazeStore.getState().setActiveFloorId("not_a_real_id");
+        expect(useMazeStore.getState().activeFloorId).toBe(before);
+      });
+    });
+
+    describe("removeFloor", () => {
+      it("falls back to the bottom floor when the active floor is removed", () => {
+        useMazeStore.getState().addFloor();
+        const [first, second] = useMazeStore.getState().floors;
+        useMazeStore.getState().setActiveFloorId(second.id);
+        useMazeStore.getState().removeFloor(second.id);
+        expect(useMazeStore.getState().activeFloorId).toBe(first.id);
+      });
+
+      it("leaves activeFloorId untouched when a different floor is removed", () => {
+        useMazeStore.getState().addFloor();
+        const [first, second] = useMazeStore.getState().floors;
+        useMazeStore.getState().setActiveFloorId(first.id);
+        useMazeStore.getState().removeFloor(second.id);
+        expect(useMazeStore.getState().activeFloorId).toBe(first.id);
+      });
     });
   });
 });

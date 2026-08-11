@@ -61,15 +61,33 @@ Reorder uses its own `floors.confirm_reorder` message (never the field/preset me
 | Two or more floors share a title | `warning` | "Two or more floors share the same title" |
 | Otherwise | `set` | "Floors configured" |
 
-`computeFloorsCard` (`FeaturesPanel.tsx`) computes this from `floors` alone.
+`computeFloorsCard` (`FeaturesPanel.tsx`) computes this from `floors` alone. The card's subtitle always shows the floor count (`floors.count_active`/`_plural`), independent of status.
 
 ## Persistence (project file)
 
 `floors: { floors: { id, title }[], nextFloorNumber }` — optional section on disk (absent in files saved before this feature existed); `validate.ts`'s `validateFloors` defaults to a single floor (`nextFloorNumber: 2`) when the section is missing entirely. A malformed individual floor entry (non-string `id`/`title`) is dropped rather than failing the whole load; an entry sharing an `id` with an earlier one is dropped too (would otherwise collide as a React list key). If every entry is dropped, falls back to the same single-floor default as a missing section. In the post-validation `ProjectFile` type this field is *not* optional — same convention as `dirtyFlags`/`analytics`/`ui` — the optionality is only on the raw JSON on disk.
 
+## Floor switcher (`FloorSwitcher.tsx`, GitHub issue #336)
+
+Shared panel docked top-center over the canvas (`App.tsx`'s `canvasColumn`, absolutely positioned, not full-width) — shows the active floor's title with up/down arrows to move to the adjacent floor. This is the mechanism floor-aware features are expected to use to scope their displayed data to one floor at a time, once such features exist (see "Non-goals" below — none do yet).
+
+Shown for every feature card except `basic_config`, `floors`, and `quality` (`FLOOR_SWITCHER_HIDDEN_CARDS` in `App.tsx`) — tessellation is floor-independent by definition, "Floors" configures the floor set itself, and QC spans the whole maze rather than one floor. Also hidden whenever `floors.length <= 1` — with a single floor there is nothing to switch between.
+
+**State** — `activeFloorId: string` (`FloorsState`, `floorsSlice.ts`), a purely client-side, non-persisted UI cursor into `floors`. Not written to the project file: reset to `floors[0].id` on every `loadProject`, and whenever `removeFloor` removes the currently active floor. Always a valid id into `floors`; `setActiveFloorId` no-ops for an unknown id.
+
+**Adjacent-floor direction mapping** mirrors `FloorsFeature`'s own inversion: `floors` is stored bottom-to-top, so the switcher's up arrow ("go to the floor above") moves `activeFloorId` toward the *end* of the array, and the down arrow moves it toward the start. Arrows disable at either array end.
+
+**Panel width** is fixed to the widest floor title (measured via an offscreen `CanvasRenderingContext2D`, `measureMaxTitleWidth`), capped at 300px total — beyond the cap the title truncates with an ellipsis instead of growing the panel further. Computed once per `floors` change (`useMemo`, keyed on the `floors` array), not per active-floor switch, so the panel never reflows/jumps width as the user steps between floors of different name lengths.
+
+Nothing yet reads `activeFloorId` besides the switcher itself — see "Non-goals".
+
+## Grid visibility while the Floors card is open
+
+`TessellationRenderer` (the sole owner of `GridRenderer` for the tessellation feature — see `maze-web/CLAUDE.md`'s feature-renderer ownership rule) shows its grid while `openCard` is `"basic_config"` **or** `"floors"`. Floors doesn't edit tessellation, so it always draws the confirmed `tessellationConfig`, never `previewTessellationConfig` (that preview-vs-confirmed split is `basic_config`-only, both in `TessellationRenderer` and in `MazeScene.refit`'s own `fieldCfg` selection).
+
 ## Non-goals (deferred to later epic #333 issues)
 
-- No per-floor field shape, preset connections, or generation config — everything remains maze-wide.
+- No per-floor field shape, preset connections, or generation config — everything remains maze-wide. `activeFloorId` exists but nothing scopes displayed data by it yet.
 - No wiring into generation/QC/post-edit pipelines.
-- No stairs/elevators/cross-floor teleports (issue #337) or floor switcher UI.
+- No stairs/elevators/cross-floor teleports (issue #337).
 - No connection between the web `floor.id` (UUID) and core's `LevelId` (`Specs/space.md`) — core is never called from this card. Synchronizing the two identity spaces is deferred to whichever future issue actually sends floor configuration to `maze-core`.

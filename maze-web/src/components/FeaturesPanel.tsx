@@ -41,6 +41,7 @@ export function computeFieldStatus(
 export interface FloorsCardData {
   status: FeatureStatus;
   comment: string;
+  subtitle: string;
 }
 
 // floors.length === 0 is unreachable through the UI (removeFloor refuses to drop the last floor,
@@ -48,11 +49,14 @@ export interface FloorsCardData {
 // a defensive fallback if a future path (e.g. a malformed loaded project) ever produces an empty
 // list.
 export function computeFloorsCard(floors: FloorState[]): FloorsCardData {
-  if (floors.length === 0) return { status: "critical", comment: m["status.floors_none"]() };
+  const subtitle = floors.length === 1
+    ? m["floors.count_active"]({ count: floors.length })
+    : m["floors.count_active_plural"]({ count: floors.length });
+  if (floors.length === 0) return { status: "critical", comment: m["status.floors_none"](), subtitle };
   const titles = floors.map((f) => f.title);
   const hasDuplicate = new Set(titles).size !== titles.length;
-  if (hasDuplicate) return { status: "warning", comment: m["status.floors_duplicate_title"]() };
-  return { status: "set", comment: m["status.floors_ready"]() };
+  if (hasDuplicate) return { status: "warning", comment: m["status.floors_duplicate_title"](), subtitle };
+  return { status: "set", comment: m["status.floors_ready"](), subtitle };
 }
 
 export function presetConnectionsSubtitle(
@@ -333,6 +337,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
         title={m["floors.title"]()}
         status={floorsCard.status}
         comment={floorsCard.comment}
+        subtitle={floorsCard.subtitle}
         expanded={openCard === "floors"}
         onOpen={() => handleToggle("floors")}
       >

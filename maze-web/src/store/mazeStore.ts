@@ -178,6 +178,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       // floors
       floors: file.floors.floors,
       nextFloorNumber: file.floors.nextFloorNumber,
+      activeFloorId: file.floors.floors[0].id,
     });
 
     // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store.

@@ -5,8 +5,10 @@ import { FeaturesPanel } from "./components/FeaturesPanel";
 import { QualityCanvas } from "./components/features/QualityCanvas";
 import { DebugPanel } from "./components/DebugPanel";
 import { HoverInfoPanel } from "./components/HoverInfoPanel";
+import { FloorSwitcher } from "./components/FloorSwitcher";
 import { SIDE_PANEL_SLOT_ID } from "./components/SidePanel";
 import { useMazeStore } from "./store/mazeStore";
+import type { FeatureId } from "./store/mazeStore";
 import { ui, typography, disabled, inset } from "./styles/theme";
 import { canvas } from "./pixi/colorTokens";
 import { useLocale } from "./i18n/useLocale";
@@ -14,6 +16,11 @@ import { setViewportScaleGetter } from "./pixi/viewportScaleBridge";
 import * as m from "~/paraglide/messages";
 
 const PANEL_WIDTH = 260;
+
+/** Feature cards the floor switcher stays hidden for (GitHub issue #336): "Basic configuration"
+ *  (tessellation is floor-independent), "Floors" (configures the floor set itself), and "Quality
+ *  control" (spans the whole maze, not scoped to one floor). */
+const FLOOR_SWITCHER_HIDDEN_CARDS: ReadonlySet<FeatureId> = new Set(["basic_config", "floors", "quality"]);
 
 export function App() {
   useLocale(); // re-render entire tree on locale change
@@ -26,6 +33,8 @@ export function App() {
   const openCard = useMazeStore((s) => s.openCard);
   const generationOpen = openCard === "generation";
   const qualityOpen = openCard === "quality";
+  const floorCount = useMazeStore((s) => s.floors.length);
+  const showFloorSwitcher = floorCount > 1 && !FLOOR_SWITCHER_HIDDEN_CARDS.has(openCard);
 
   useEffect(() => {
     loadRegistry();
@@ -82,6 +91,7 @@ export function App() {
         <div ref={canvasRef} style={{ ...styles.canvas, display: qualityOpen ? "none" : undefined }} />
         {qualityOpen && <QualityCanvas />}
         {!qualityOpen && <HoverInfoPanel scene={ready ? sceneRef.current : null} />}
+        {showFloorSwitcher && <FloorSwitcher />}
       </div>
       {generationOpen && debugMode && debugArena && <DebugPanel />}
       {/* Portal target for `SidePanel` (GitHub issue #237) — split-node management panels
@@ -105,7 +115,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     overflowY: "auto",
   },
-  canvasColumn: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
+  canvasColumn: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" },
   canvas: { flex: 1, overflow: "hidden" },
   loading: {
     position: "fixed",

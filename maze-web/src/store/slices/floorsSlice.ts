@@ -5,9 +5,12 @@ export function newFloor(number: number): FloorState {
   return { id: `floor_${crypto.randomUUID()}`, title: `Floor ${number}` };
 }
 
-export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & FloorsActions> = (set, get) => ({
-  floors: [newFloor(1)],
+export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & FloorsActions> = (set, get) => {
+  const initialFloor = newFloor(1);
+  return {
+  floors: [initialFloor],
   nextFloorNumber: 2,
+  activeFloorId: initialFloor.id,
 
   addFloor: () => set((state) => ({
     floors: [...state.floors, newFloor(state.nextFloorNumber)],
@@ -15,9 +18,15 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
   })),
 
   removeFloor: (id) => {
-    const { floors } = get();
+    const { floors, activeFloorId } = get();
     if (floors.length <= 1) return;
-    set({ floors: floors.filter((f) => f.id !== id) });
+    const next = floors.filter((f) => f.id !== id);
+    set({
+      floors: next,
+      // The active floor may be the one just removed — fall back to the bottom floor rather than
+      // leaving `activeFloorId` pointing at a floor that no longer exists.
+      activeFloorId: activeFloorId === id ? next[0].id : activeFloorId,
+    });
   },
 
   renameFloor: (id, title) => {
@@ -38,4 +47,11 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
     [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
     set({ floors: next });
   },
-});
+
+  setActiveFloorId: (id) => {
+    const { floors } = get();
+    if (!floors.some((f) => f.id === id)) return;
+    set({ activeFloorId: id });
+  },
+  };
+};
