@@ -428,7 +428,7 @@ export class TeleportRenderer {
    *  follow-up) is passed separately from `style` since a group override can replace it. */
   private drawRoutedConnector(g: Graphics, routed: RoutedConnector, style: TeleportLineStyle, color: number, oneWay: boolean): void {
     const pts = routed.points;
-    const placements = oneWay ? arrowPlacements(pts, style.arrowMode, style.arrowPeriod * TILE_SIZE) : [];
+    const placements = oneWay ? arrowPlacements(pts, style.arrowMode, style.arrowPeriod * TILE_SIZE, style.arrowSize) : [];
 
     const draw = (width: number, drawColor: number, arrowSize: number) => {
       g.moveTo(pts[0], pts[1]);

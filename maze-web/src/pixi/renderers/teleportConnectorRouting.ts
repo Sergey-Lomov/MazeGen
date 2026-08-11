@@ -15,18 +15,13 @@ export function routeStraightConnectors(edges: TeleportEdge[]): RoutedConnector[
  *  points. */
 export type ArrowPlacement = { x: number; y: number; dx: number; dy: number };
 
-/** Minimum distance (world-space units) an arrow's placement is kept from any interior bend point
- *  of an orthogonal path — landing exactly on a bend leaves the arrow straddling two different
- *  segment directions (its own drawn direction becomes whichever segment `pointAtLength` happens
- *  to resolve to first), reading as a visibly broken/misaligned arrowhead. */
-const BEND_AVOIDANCE_DISTANCE = 6;
-
 /** A point at `distance` along `pts` (a flat `[x0,y0,x1,y1,...]` polyline), plus the unit direction
  *  of the segment it landed in. `distance` is clamped to `[0, totalLength]`, then nudged away from
  *  any interior bend point (a join between two segments — not the path's own start/end) by up to
- *  `BEND_AVOIDANCE_DISTANCE`, toward whichever side leaves more room (see `avoidBends`). Returns
+ *  `bendAvoidance`, toward whichever side it already sits on (see `avoidBends`) — never crossing the
+ *  bend onto the other segment, so the arrow keeps the direction of the side it started on. Returns
  *  `null` for a zero-length path (every point coincides). */
-function pointAtLength(pts: number[], distance: number): ArrowPlacement | null {
+function pointAtLength(pts: number[], distance: number, bendAvoidance: number): ArrowPlacement | null {
   const segLengths: number[] = [];
   let totalLength = 0;
   for (let i = 0; i + 3 < pts.length; i += 2) {
@@ -36,7 +31,7 @@ function pointAtLength(pts: number[], distance: number): ArrowPlacement | null {
   }
   if (totalLength === 0) return null;
   const clamped = Math.min(Math.max(distance, 0), totalLength);
-  let target = avoidBends(clamped, segLengths, totalLength);
+  let target = avoidBends(clamped, segLengths, totalLength, bendAvoidance);
   for (let s = 0; s < segLengths.length; s++) {
     const [ax, ay, bx, by] = [pts[s * 2], pts[s * 2 + 1], pts[s * 2 + 2], pts[s * 2 + 3]];
     if (target > segLengths[s] && s < segLengths.length - 1) {
@@ -52,26 +47,24 @@ function pointAtLength(pts: number[], distance: number): ArrowPlacement | null {
   return null;
 }
 
-/** Nudges `distance` (already clamped to `[0, totalLength]`) away from any interior bend — a
+/** Pushes `distance` (already clamped to `[0, totalLength]`) away from any interior bend — a
  *  cumulative segment-length boundary that isn't the path's own start (0) or end (`totalLength`) —
- *  by up to `BEND_AVOIDANCE_DISTANCE`, toward whichever side of the bend has more room (falls back
- *  to the side with room if only one does, and gives up — leaving `distance` unchanged — if neither
- *  side has room, which only happens on a path shorter than `2 * BEND_AVOIDANCE_DISTANCE`). */
-function avoidBends(distance: number, segLengths: number[], totalLength: number): number {
+ *  by up to `bendAvoidance`, staying on whichever side of the bend `distance` already falls on
+ *  (so the arrow never crosses onto the other segment's direction). Falls back to the closest point
+ *  that still has room on that side, and gives up — leaving `distance` unchanged — if that side has
+ *  no room at all, which only happens on a segment shorter than `bendAvoidance`. */
+function avoidBends(distance: number, segLengths: number[], totalLength: number, bendAvoidance: number): number {
   let cumulative = 0;
   for (let s = 0; s < segLengths.length - 1; s++) {
     cumulative += segLengths[s];
     const delta = distance - cumulative;
-    if (Math.abs(delta) >= BEND_AVOIDANCE_DISTANCE) continue;
+    if (Math.abs(delta) >= bendAvoidance) continue;
+    if (delta >= 0) {
+      const roomAfter = totalLength - cumulative;
+      return cumulative + Math.min(bendAvoidance, roomAfter);
+    }
     const roomBefore = cumulative;
-    const roomAfter = totalLength - cumulative;
-    if (roomAfter >= BEND_AVOIDANCE_DISTANCE && (delta >= 0 || roomBefore < BEND_AVOIDANCE_DISTANCE)) {
-      return cumulative + BEND_AVOIDANCE_DISTANCE;
-    }
-    if (roomBefore >= BEND_AVOIDANCE_DISTANCE) {
-      return cumulative - BEND_AVOIDANCE_DISTANCE;
-    }
-    return distance;
+    return cumulative - Math.min(bendAvoidance, roomBefore);
   }
   return distance;
 }
@@ -80,20 +73,23 @@ function avoidBends(distance: number, segLengths: number[], totalLength: number)
  *  `TeleportArrowMode`. `"periodic"` starts at half a period in (not at the very start) so a short
  *  connector — shorter than one period but not zero-length — still gets exactly one arrow instead
  *  of none; `periodTiles` is in the same world-space units as `pts` (already tile-size-scaled by
- *  the caller, see `TeleportRenderer`). Degenerate (zero-length) paths return no arrows for every
- *  mode. */
-export function arrowPlacements(pts: number[], mode: TeleportArrowMode, periodTiles: number): ArrowPlacement[] {
+ *  the caller, see `TeleportRenderer`). `arrowSize` is the drawn arrowhead's size — also used as the
+ *  minimum distance a placement is kept from any interior bend point of an orthogonal path, since an
+ *  arrow landing at or right next to a bend would straddle two differently-angled segments, reading
+ *  as a visibly broken/misaligned arrowhead. Degenerate (zero-length) paths return no arrows for
+ *  every mode. */
+export function arrowPlacements(pts: number[], mode: TeleportArrowMode, periodTiles: number, arrowSize: number): ArrowPlacement[] {
   if (mode === "none") return [];
   let totalLength = 0;
   for (let i = 0; i + 3 < pts.length; i += 2) totalLength += Math.hypot(pts[i + 2] - pts[i], pts[i + 3] - pts[i + 1]);
   if (totalLength === 0) return [];
 
   if (mode === "center") {
-    const p = pointAtLength(pts, totalLength / 2);
+    const p = pointAtLength(pts, totalLength / 2, arrowSize);
     return p ? [p] : [];
   }
   if (mode === "double") {
-    return [pointAtLength(pts, totalLength / 3), pointAtLength(pts, (totalLength * 2) / 3)].filter(
+    return [pointAtLength(pts, totalLength / 3, arrowSize), pointAtLength(pts, (totalLength * 2) / 3, arrowSize)].filter(
       (p): p is ArrowPlacement => p !== null,
     );
   }
@@ -102,12 +98,12 @@ export function arrowPlacements(pts: number[], mode: TeleportArrowMode, periodTi
   if (periodTiles >= totalLength) {
     // Shorter than one full period — still gets exactly one arrow (at the midpoint) instead of
     // none, same rationale as `"center"`.
-    const p = pointAtLength(pts, totalLength / 2);
+    const p = pointAtLength(pts, totalLength / 2, arrowSize);
     return p ? [p] : [];
   }
   const placements: ArrowPlacement[] = [];
   for (let d = periodTiles / 2; d < totalLength; d += periodTiles) {
-    const p = pointAtLength(pts, d);
+    const p = pointAtLength(pts, d, arrowSize);
     if (p) placements.push(p);
   }
   return placements;
