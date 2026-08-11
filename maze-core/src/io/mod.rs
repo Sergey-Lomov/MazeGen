@@ -2,10 +2,12 @@ use crate::space::{SquareTessellation, SquarePoint};
 use crate::Maze;
 
 pub fn render_ascii(maze: &Maze<SquareTessellation>) -> String {
+    let level = maze.field.single_level_id();
+    let field = maze.field.field_of(level).expect("single_level_id always resolves");
     let (width, height) = {
         let mut max_x = 0i32;
         let mut max_y = 0i32;
-        for p in maze.field.all_points() {
+        for p in field.all_points() {
             if p.x > max_x { max_x = p.x; }
             if p.y > max_y { max_y = p.y; }
         }
@@ -32,7 +34,7 @@ pub fn render_ascii(maze: &Maze<SquareTessellation>) -> String {
             } else {
                 let point_a = SquarePoint { x: x as i32, y: y as i32 };
                 let point_b = SquarePoint { x: x as i32, y: y as i32 - 1 };
-                match (maze.field.nodes_at(point_a).first().copied(), maze.field.nodes_at(point_b).first().copied()) {
+                match (field.nodes_at(point_a).first().copied(), field.nodes_at(point_b).first().copied()) {
                     (Some(a), Some(b)) => {
                         let ab = maze.graph.edge_between(a, b).is_some();
                         let ba = maze.graph.edge_between(b, a).is_some();
@@ -60,7 +62,7 @@ pub fn render_ascii(maze: &Maze<SquareTessellation>) -> String {
             } else {
                 let point_a = SquarePoint { x: x as i32, y: y as i32 };
                 let point_b = SquarePoint { x: x as i32 - 1, y: y as i32 };
-                match (maze.field.nodes_at(point_a).first().copied(), maze.field.nodes_at(point_b).first().copied()) {
+                match (field.nodes_at(point_a).first().copied(), field.nodes_at(point_b).first().copied()) {
                     (Some(a), Some(b)) => {
                         let ab = maze.graph.edge_between(a, b).is_some();
                         let ba = maze.graph.edge_between(b, a).is_some();

@@ -88,7 +88,7 @@ where
         .map_err(|e| JsValue::from_str(&e))?;
 
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
 
     let mut maze = Maze::<T>::new(field, graph);
 
@@ -227,7 +227,7 @@ mod tests {
 
             let (field, existing_by_index, index_by_node) = build_field_from_nodes::<SquareTessellation>(&nodes, &xy_to_point).unwrap();
             let mut graph = Graph::new();
-            field.build_nodes(&mut graph);
+            for node in field.all_node_ids() { graph.add_node(node); }
             let mut maze = Maze::<SquareTessellation>::new(field, graph);
             let split_map = apply_split_points(&mut maze, xy_to_point, &split_points, &existing_by_index).unwrap();
             let split_node = split_map[&([0, 0], 0)];

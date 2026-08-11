@@ -1,4 +1,4 @@
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 
 pub type NodeId = u64;
 pub type EdgeId = usize;
@@ -24,7 +24,7 @@ impl IdGenerator {
     /// GitHub issue #219: `Maze::new` uses this instead of accepting an `IdGenerator` as a
     /// parameter, so there is no way for a caller to accidentally pass in a fresh, incompatible
     /// generator that would collide with IDs the field already holds.
-    pub(crate) fn resume_after<T: Tessellation>(field: &Field<T>) -> Self {
+    pub(crate) fn resume_after<T: Tessellation>(field: &MultiLevelField<T>) -> Self {
         let next = field.max_node_id().map_or(0, |max| max + 1);
         Self { next }
     }

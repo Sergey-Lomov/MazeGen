@@ -34,16 +34,17 @@ mod tests {
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 
     const TEST_ID: &str = "scc_count";
 
     fn maze_with_two_isolated_components() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         // Two disconnected directed edges -> 4 singleton-ish components (no mutual reachability).
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[2], nodes[3], EdgeKind::Basic);
@@ -52,10 +53,11 @@ mod tests {
 
     fn maze_with_one_scc() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);

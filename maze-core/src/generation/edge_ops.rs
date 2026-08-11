@@ -2,7 +2,7 @@ use crate::random::MazeRng;
 use rand::Rng;
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use super::types::ElementsConfig;
 use super::preset_state::PresetState;
 
@@ -67,9 +67,9 @@ pub(crate) fn add_edge_and_detect_direction(
 /// so it can no longer be `node`'s neighbor too. An unsplit point (the common case, `nodes_at`
 /// returns a single-element slice) never has a "different sibling" to check against, so this is a
 /// no-op there — identical to calling `field.neighbors` directly.
-pub(crate) fn split_aware_neighbors<T: Tessellation>(field: &Field<T>, graph: &Graph, node: NodeId) -> Vec<NodeId> {
-    let siblings: &[NodeId] = field.point_of(node)
-        .map(|point| field.nodes_at(point))
+pub(crate) fn split_aware_neighbors<T: Tessellation>(field: &MultiLevelField<T>, graph: &Graph, node: NodeId) -> Vec<NodeId> {
+    let siblings: &[NodeId] = field.level_of(node).zip(field.point_of(node))
+        .map(|(level, point)| field.nodes_at(level, point))
         .unwrap_or(&[]);
     field.neighbors(node)
         .into_iter()

@@ -116,10 +116,11 @@ mod tests {
 
     fn maze_with_triangle() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
@@ -209,10 +210,11 @@ mod tests {
         // Bowtie graph: cutting one shared edge first must not panic when the
         // strategy later tries to cut the same already-removed edge in the other cycle.
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic); // B->C
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic); // C->A
@@ -245,10 +247,11 @@ mod tests {
         // once A->B is cut, so D keeps at least one of its two edges.
         fn build() -> Maze<SquareTessellation> {
             let mut ids = IdGenerator::new();
-            let field = crate::space::Field::new(square_rect(4, 1), &mut ids).unwrap();
+            let field = crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            let field_level = field.single_level_id();
             let mut g = Graph::new();
-            field.build_nodes(&mut g);
-            let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+            for node in field.all_node_ids() { g.add_node(node); }
+            let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
             g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B (shared)
             g.add_edge(nodes[1], nodes[2], EdgeKind::Basic); // B->C
             g.add_edge(nodes[2], nodes[0], EdgeKind::Basic); // C->A
@@ -264,7 +267,7 @@ mod tests {
         check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
         let issue = issues.into_iter().next().unwrap();
 
-        let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
+        let nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
         let d = nodes[3];
 
         for seed in 0..20 {
@@ -286,10 +289,11 @@ mod tests {
         // Triangle (invalid, 3 tile-hops) plus a separate valid 10-tile-hop loop sharing no edges.
         fn build() -> Maze<SquareTessellation> {
             let mut ids = IdGenerator::new();
-            let field = crate::space::Field::new(square_rect(13, 1), &mut ids).unwrap();
+            let field = crate::space::MultiLevelField::single_level(square_rect(13, 1), &mut ids).unwrap();
+            let field_level = field.single_level_id();
             let mut g = Graph::new();
-            field.build_nodes(&mut g);
-            let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+            for node in field.all_node_ids() { g.add_node(node); }
+            let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
             g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
             g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
             g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);

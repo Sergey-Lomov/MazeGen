@@ -72,17 +72,18 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::Graph;
     use crate::IdGenerator;
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     /// 1x3 corridor, all three nodes in the pool but only the middle one (n1) has two neighbors
     /// (n0, n2) — isolates the "reject one neighbor, retry the next" branch from pool eviction
     /// (a 1-neighbor node can only ever hit accept-immediately or evict, never a retry).
     fn maze_with_middle_node_having_two_neighbors() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId) {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let (n0, n1, n2) = (p(0), p(1), p(2));
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         (maze, n0, n1, n2)

@@ -5,8 +5,9 @@ use crate::space::SquarePoint;
 use crate::IdGenerator;
 use crate::event_log::EventLog;
 
-fn node_at(field: &Field<crate::space::SquareTessellation>, x: i32, y: i32) -> NodeId {
-    field.node_at(SquarePoint { x, y }).unwrap()
+fn node_at(field: &MultiLevelField<crate::space::SquareTessellation>, x: i32, y: i32) -> NodeId {
+    let level = field.single_level_id();
+    field.node_at(level, SquarePoint { x, y }).unwrap()
 }
 
 fn original(x: i32, y: i32) -> PresetEndpoint {
@@ -317,9 +318,10 @@ fn for_repair_returns_self_unchanged_when_not_qc_experiment() {
 fn locked_node_on_a_multi_node_point_without_slot_locks_only_the_original_node() {
     let (mut field, mut graph) = make_field_and_graph(3, 3);
     let mut ids = IdGenerator::resume_after(&field);
+    let level = field.single_level_id();
     let point = SquarePoint { x: 0, y: 0 };
-    let original_id = field.nodes_at(point)[0];
-    let added = field.add_node_at(point, &mut ids);
+    let original_id = field.nodes_at(level, point)[0];
+    let added = field.add_node_at(level, point, &mut ids);
     graph.add_node(added);
 
     let locks = vec![LockedNode { point: original(0, 0), kind: NodeLockKind::Both }];
@@ -342,8 +344,8 @@ fn locked_node_addressing_a_declared_slot_locks_only_that_node() {
     let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &locks, &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
 
     let point = SquarePoint { x: 0, y: 0 };
-    let original_id = field.nodes_at(point)[0];
-    let added_id = field.nodes_at(point)[1];
+    let original_id = field.nodes_at(field.single_level_id(), point)[0];
+    let added_id = field.nodes_at(field.single_level_id(), point)[1];
     assert!(!state.locked_in.contains(&original_id));
     assert!(state.locked_in.contains(&added_id));
     assert!(state.locked_out.contains(&added_id));
@@ -356,9 +358,10 @@ fn locked_node_addressing_a_declared_slot_locks_only_that_node() {
 fn preset_connection_without_slot_connects_only_the_original_node() {
     let (mut field, mut graph) = make_field_and_graph(3, 3);
     let mut ids = IdGenerator::resume_after(&field);
+    let level = field.single_level_id();
     let point = SquarePoint { x: 0, y: 0 };
-    let original_id = field.nodes_at(point)[0];
-    let added = field.add_node_at(point, &mut ids);
+    let original_id = field.nodes_at(level, point)[0];
+    let added = field.add_node_at(level, point, &mut ids);
     graph.add_node(added);
 
     let presets = vec![PresetConnection {
@@ -389,8 +392,8 @@ fn preset_connection_addressing_a_declared_slot_connects_only_that_node() {
     let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
 
     let point = SquarePoint { x: 0, y: 0 };
-    let original_id = field.nodes_at(point)[0];
-    let added_id = field.nodes_at(point)[1];
+    let original_id = field.nodes_at(field.single_level_id(), point)[0];
+    let added_id = field.nodes_at(field.single_level_id(), point)[1];
     let b = node_at(&field, 1, 0);
     assert!(graph.edge_between(original_id, b).is_none());
     assert!(graph.edge_between(added_id, b).is_some());
@@ -428,7 +431,10 @@ fn split_points_creates_identical_nodes_regardless_of_input_order() {
     build_preset_state(&mut graph2, &mut field2, &mut ids2, &[], &[], &split_points_b, |x, y| SquarePoint { x, y }, None, None).unwrap();
 
     let point = SquarePoint { x: 0, y: 0 };
-    assert_eq!(field1.nodes_at(point), field2.nodes_at(point));
+    assert_eq!(
+        field1.nodes_at(field1.single_level_id(), point),
+        field2.nodes_at(field2.single_level_id(), point)
+    );
 }
 
 /// `split_points` referencing an unknown point surfaces as an `Err`, not a panic
@@ -469,8 +475,8 @@ fn resolve_endpoint_with_a_declared_slot_resolves_to_that_specific_node() {
     let split_points = vec![((0, 0), 0)];
     let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
     let point = SquarePoint { x: 0, y: 0 };
-    let original_id = field.nodes_at(point)[0];
-    let added_id = field.nodes_at(point)[1];
+    let original_id = field.nodes_at(field.single_level_id(), point)[0];
+    let added_id = field.nodes_at(field.single_level_id(), point)[1];
 
     let resolved_original = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, original(0, 0));
     assert_eq!(resolved_original, Some(original_id));
@@ -509,8 +515,8 @@ fn resolve_endpoint_distinguishes_between_two_declared_slots_at_the_same_point()
     let split_points = vec![((0, 0), 0), ((0, 0), 1)];
     let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
     let point = SquarePoint { x: 0, y: 0 };
-    let slot0_id = field.nodes_at(point)[1];
-    let slot1_id = field.nodes_at(point)[2];
+    let slot0_id = field.nodes_at(field.single_level_id(), point)[1];
+    let slot1_id = field.nodes_at(field.single_level_id(), point)[2];
 
     let resolved0 = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, split(0, 0, 0));
     let resolved1 = state.resolve_endpoint(&field, |x, y| SquarePoint { x, y }, split(0, 0, 1));
@@ -534,7 +540,7 @@ fn is_preset_locked_node_true_when_declared_and_all_incident_edges_are_preset() 
     ];
     let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
     let point = SquarePoint { x: 0, y: 0 };
-    let added_id = field.nodes_at(point)[1];
+    let added_id = field.nodes_at(field.single_level_id(), point)[1];
     assert!(state.is_preset_locked_node(added_id, &graph));
 }
 
@@ -563,7 +569,7 @@ fn is_preset_locked_node_false_when_not_all_incident_edges_are_preset() {
     }];
     let state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
     let point = SquarePoint { x: 0, y: 0 };
-    let added_id = field.nodes_at(point)[1];
+    let added_id = field.nodes_at(field.single_level_id(), point)[1];
     let other = node_at(&field, 2, 2);
     graph.build_initial_edge(added_id, other, EdgeKind::Basic);
     assert!(!state.is_preset_locked_node(added_id, &graph));
@@ -577,6 +583,6 @@ fn is_preset_locked_node_false_when_declared_node_has_no_edges() {
     let split_points = vec![((0, 0), 0)];
     let state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
     let point = SquarePoint { x: 0, y: 0 };
-    let added_id = field.nodes_at(point)[1];
+    let added_id = field.nodes_at(field.single_level_id(), point)[1];
     assert!(!state.is_preset_locked_node(added_id, &graph));
 }

@@ -33,9 +33,9 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue> for SplitNo
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitNodeConnectionGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         let mut seen_points = std::collections::HashSet::new();
-        let split_points: Vec<T::Point> = maze.field.all_points()
-            .filter(|&point| seen_points.insert(point))
-            .filter(|&point| maze.field.nodes_at(point).len() >= 2)
+        let split_points: Vec<(crate::space::LevelId, T::Point)> = maze.field.all_points_with_level()
+            .filter(|&(level, point)| seen_points.insert((level, point)))
+            .filter(|&(level, point)| maze.field.nodes_at(level, point).len() >= 2)
             .collect();
         if split_points.is_empty() {
             return;
@@ -43,8 +43,8 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeConnectionGroupIssue> for SplitNo
 
         let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
 
-        for &point in &split_points {
-            let nodes = maze.field.nodes_at(point);
+        for &(level, point) in &split_points {
+            let nodes = maze.field.nodes_at(level, point);
             // Bucket every outgoing edge to an outside neighbor by its face-direction index --
             // edges toward different neighbors sharing the same face direction land in the same
             // bucket.

@@ -97,7 +97,7 @@ pub fn classify_regions(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
     use crate::graph::nav::build_nav_graph_pinned;
@@ -109,13 +109,14 @@ mod tests {
     /// 1 -> 3 -> 2                  (alternative route back into finish's SCC via 3)
     /// 4 -> 5 -> 4                  (isolated cyclic region, unreachable from start)
     /// 1 -> 6                       (trap: reachable from start, dead end, can't reach finish)
-    fn layout() -> (Field<SquareTessellation>, Graph, Vec<NodeId>) {
+    fn layout() -> (MultiLevelField<SquareTessellation>, Graph, Vec<NodeId>) {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(7, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(7, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let nodes: Vec<NodeId> = (0..7)
-            .map(|x| field.node_at(SquarePoint { x, y: 0 }).unwrap())
+            .map(|x| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap())
             .collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
@@ -155,11 +156,12 @@ mod tests {
         // start fully walled off (no edges at all) — its region must not be Path just because
         // it's the start (regression for issue #104).
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(field_level, SquarePoint { x: 1, y: 0 }).unwrap();
         let scc = build_scc(&g);
 
         let classes = classify_regions(&g, &scc, None, a, b);

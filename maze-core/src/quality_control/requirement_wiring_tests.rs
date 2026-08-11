@@ -36,9 +36,9 @@ impl RepairStrategy<SquareTessellation, InvalidLoopIssue> for InvalidOnlyStrateg
 
 fn empty_maze() -> Maze<SquareTessellation> {
     let mut ids = crate::IdGenerator::new();
-    let field = crate::space::Field::new(crate::space::square_rect(1, 1), &mut ids).unwrap();
+    let field = crate::space::MultiLevelField::single_level(crate::space::square_rect(1, 1), &mut ids).unwrap();
     let mut g = crate::Graph::new();
-    field.build_nodes(&mut g);
+    for node in field.all_node_ids() { g.add_node(node); }
     Maze::new(field, g)
 }
 

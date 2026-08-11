@@ -1,7 +1,7 @@
 use rand::SeedableRng;
 use crate::random::MazeRng;
 use crate::{Graph, Maze};
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::event_log::EventLog;
 use crate::quality_control::{Issue, QualityControlEngine, QcEvent};
 use super::PresetState;
@@ -110,7 +110,7 @@ pub struct GenerationTiming {
 /// each rule its own checks and strategy. This function itself is now just plumbing: construct
 /// `Maze`, seed the shared `MazeRng`, delegate to `qc_engine.run_full`.
 pub fn build_maze<T: Tessellation>(
-    field: Field<T>,
+    field: MultiLevelField<T>,
     graph: Graph,
     seed: u64,
     qc_engine: QualityControlEngine<T>,

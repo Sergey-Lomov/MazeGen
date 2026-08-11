@@ -32,11 +32,12 @@ fn fix_target_nested<T: Tessellation>() -> Vec<NestedStrategyConfig<T>> {
 /// Two split tiles (extra node each) on a 3-node row.
 fn maze_with_two_split_tiles() -> (Maze<SquareTessellation>, NodeId, NodeId) {
     let mut ids = IdGenerator::new();
-    let mut field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
-    let extra1 = field.add_node_at(SquarePoint { x: 0, y: 0 }, &mut ids);
-    let extra2 = field.add_node_at(SquarePoint { x: 2, y: 0 }, &mut ids);
+    let mut field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
+    let extra1 = field.add_node_at(field_level, SquarePoint { x: 0, y: 0 }, &mut ids);
+    let extra2 = field.add_node_at(field_level, SquarePoint { x: 2, y: 0 }, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
+    for node in field.all_node_ids() { g.add_node(node); }
     (Maze::new(field, g), extra1, extra2)
 }
 
@@ -51,7 +52,7 @@ fn tile(nodes: Vec<NodeId>) -> SplitTileNodes {
 /// `extra` node where the fixture never bound its own `slot0` variable.
 fn tile_with_slot0(maze: &Maze<SquareTessellation>, extra: NodeId) -> SplitTileNodes {
     let point = maze.field.point_of(extra).expect("extra must still be in the field");
-    tile(maze.field.nodes_at(point).to_vec())
+    tile(maze.field.nodes_at(maze.field.single_level_id(), point).to_vec())
 }
 
 fn group_issue(groups: Vec<(Vec<SplitTileNodes>, u32)>) -> InvalidSplitTileGroupIssue {
@@ -118,28 +119,29 @@ fn apply_stops_once_to_remove_is_reached() {
 fn apply_collapses_the_selected_tile_to_exactly_one_node() {
     let (mut maze, extra1, _extra2) = maze_with_two_split_tiles();
     let point = maze.field.point_of(extra1).unwrap();
-    let slot0 = maze.field.nodes_at(point)[0];
+    let slot0 = maze.field.nodes_at(maze.field.single_level_id(), point)[0];
     let issue = group_issue(vec![(vec![tile(vec![slot0, extra1])], 1)]);
     let mut rng = MazeRng::seed_from_u64(1);
     let nested = fix_target_nested();
     let result = apply_and_commit(&SplitGroupSelectStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
     assert!(matches!(result, RepairResult::Fixed { score: None }));
 
-    assert_eq!(maze.field.nodes_at(point).len(), 1, "the tile must collapse to exactly one node, slot-0 no longer guaranteed to be the survivor");
+    assert_eq!(maze.field.nodes_at(maze.field.single_level_id(), point).len(), 1, "the tile must collapse to exactly one node, slot-0 no longer guaranteed to be the survivor");
 }
 
 /// Two split points: `small` carries 1 extra node (2 nodes total), `big` carries 2 extra nodes
 /// (3 nodes total) -- `big`'s `SplitTileNodes` is strictly more voluminous.
 fn maze_with_a_small_and_a_big_split_tile() -> (Maze<SquareTessellation>, SplitTileNodes, SplitTileNodes) {
     let mut ids = IdGenerator::new();
-    let mut field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
-    field.add_node_at(SquarePoint { x: 0, y: 0 }, &mut ids);
-    field.add_node_at(SquarePoint { x: 2, y: 0 }, &mut ids);
-    field.add_node_at(SquarePoint { x: 2, y: 0 }, &mut ids);
+    let mut field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
+    field.add_node_at(field_level, SquarePoint { x: 0, y: 0 }, &mut ids);
+    field.add_node_at(field_level, SquarePoint { x: 2, y: 0 }, &mut ids);
+    field.add_node_at(field_level, SquarePoint { x: 2, y: 0 }, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let small = SplitTileNodes::new(field.nodes_at(SquarePoint { x: 0, y: 0 }).to_vec());
-    let big = SplitTileNodes::new(field.nodes_at(SquarePoint { x: 2, y: 0 }).to_vec());
+    for node in field.all_node_ids() { g.add_node(node); }
+    let small = SplitTileNodes::new(field.nodes_at(field_level, SquarePoint { x: 0, y: 0 }).to_vec());
+    let big = SplitTileNodes::new(field.nodes_at(field_level, SquarePoint { x: 2, y: 0 }).to_vec());
     (Maze::new(field, g), small, big)
 }
 
@@ -148,7 +150,7 @@ fn maze_with_a_small_and_a_big_split_tile() -> (Maze<SquareTessellation>, SplitT
 fn tile_collapsed(maze: &Maze<SquareTessellation>, tile: &SplitTileNodes) -> bool {
     let point = tile.0.iter().find_map(|&n| maze.field.point_of(n));
     match point {
-        Some(p) => maze.field.nodes_at(p).len() == 1,
+        Some(p) => maze.field.nodes_at(maze.field.single_level_id(), p).len() == 1,
         // Every old node of the tile is gone -- collapsed into a brand-new node at some point we
         // can no longer address by any of `tile`'s own ids. Callers needing to inspect the
         // survivor's own edges must resolve the point some other way (e.g. `only_surviving_node`
@@ -194,16 +196,17 @@ fn least_voluminous_priority_picks_the_smaller_tile() {
 /// `plain`'s does not -- `hub`'s tile is strictly more connected.
 fn maze_with_a_plain_and_a_hub_split_tile() -> (Maze<SquareTessellation>, SplitTileNodes, SplitTileNodes) {
     let mut ids = IdGenerator::new();
-    let mut field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(4, 1), &mut ids).unwrap();
-    field.add_node_at(SquarePoint { x: 0, y: 0 }, &mut ids);
-    field.add_node_at(SquarePoint { x: 2, y: 0 }, &mut ids);
+    let mut field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
+    field.add_node_at(field_level, SquarePoint { x: 0, y: 0 }, &mut ids);
+    field.add_node_at(field_level, SquarePoint { x: 2, y: 0 }, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let hub_slot0 = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
-    let far = field.node_at(SquarePoint { x: 3, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let hub_slot0 = field.node_at(field_level, SquarePoint { x: 2, y: 0 }).unwrap();
+    let far = field.node_at(field_level, SquarePoint { x: 3, y: 0 }).unwrap();
     g.add_bidirectional_edge(hub_slot0, far, EdgeKind::Basic);
-    let plain = SplitTileNodes::new(field.nodes_at(SquarePoint { x: 0, y: 0 }).to_vec());
-    let hub = SplitTileNodes::new(field.nodes_at(SquarePoint { x: 2, y: 0 }).to_vec());
+    let plain = SplitTileNodes::new(field.nodes_at(field_level, SquarePoint { x: 0, y: 0 }).to_vec());
+    let hub = SplitTileNodes::new(field.nodes_at(field_level, SquarePoint { x: 2, y: 0 }).to_vec());
     (Maze::new(field, g), plain, hub)
 }
 

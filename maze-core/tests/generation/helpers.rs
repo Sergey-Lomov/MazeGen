@@ -1,25 +1,26 @@
-﻿use maze_core::{Graph, IdGenerator, NodeId};
-use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use maze_core::{Graph, IdGenerator, NodeId};
+use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{
     EdgeBasedParams, ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams, PresetState,
     build_preset_state, PresetConnection, PresetConnectionState, PresetEndpoint,
 };
 
-pub fn build(width: usize, height: usize) -> (Graph, Field<SquareTessellation>, NodeId) {
+pub fn build(width: usize, height: usize) -> (Graph, MultiLevelField<SquareTessellation>, NodeId) {
     let (graph, field, start, _ids) = build_with_ids(width, height);
     (graph, field, start)
 }
 
 /// Same as `build`, but also returns the `IdGenerator` used to construct `field` — needed by
 /// callers that go on to declare `split_points` (GitHub issue #231) via `build_preset_state`,
-/// which itself calls `Field::add_node_at` and needs an `IdGenerator` that won't collide with the
-/// field's already-assigned ids.
-pub fn build_with_ids(width: usize, height: usize) -> (Graph, Field<SquareTessellation>, NodeId, IdGenerator) {
+/// which itself calls `MultiLevelField::add_node_at` and needs an `IdGenerator` that won't collide
+/// with the field's already-assigned ids.
+pub fn build_with_ids(width: usize, height: usize) -> (Graph, MultiLevelField<SquareTessellation>, NodeId, IdGenerator) {
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(width, height), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(width, height), &mut ids).unwrap();
+    let level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
-    let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+    for node in field.all_node_ids() { graph.add_node(node); }
+    let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     (graph, field, start, ids)
 }
 
@@ -32,11 +33,12 @@ pub fn empty_preset() -> PresetState { PresetState::empty() }
 /// Regression fixture for GitHub issue #226: every generation algorithm must treat a preset
 /// teleport as a traversable extra neighbor, not a dead end. Returns
 /// `(graph, field, start, preset_state, node_count, teleport_a, teleport_b, ids)`.
-pub fn build_with_preset_teleport_bridge() -> (Graph, Field<SquareTessellation>, NodeId, PresetState, usize, NodeId, NodeId, IdGenerator) {
+pub fn build_with_preset_teleport_bridge() -> (Graph, MultiLevelField<SquareTessellation>, NodeId, PresetState, usize, NodeId, NodeId, IdGenerator) {
     let (mut graph, field, start, ids) = build_with_ids(4, 1);
+    let level = field.single_level_id();
     let node_count = graph.nodes().count();
-    let a = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
-    let b = field.nodes_at(SquarePoint { x: 2, y: 0 }).first().copied().unwrap();
+    let a = field.nodes_at(level, SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
+    let b = field.nodes_at(level, SquarePoint { x: 2, y: 0 }).first().copied().unwrap();
 
     graph.build_initial_edge(a, b, maze_core::graph::EdgeKind::Teleport);
     graph.build_initial_edge(b, a, maze_core::graph::EdgeKind::Teleport);
@@ -57,11 +59,12 @@ pub fn build_with_preset_teleport_bridge() -> (Graph, Field<SquareTessellation>,
 /// Regression fixture for GitHub issue #226: a one-way preset teleport must still be traversed
 /// (from `a`'s side only) exactly like the two-way case, not silently treated symmetrically.
 /// Returns `(graph, field, start, preset_state, node_count, ids)`.
-pub fn build_with_one_way_preset_teleport_bridge() -> (Graph, Field<SquareTessellation>, NodeId, PresetState, usize, IdGenerator) {
+pub fn build_with_one_way_preset_teleport_bridge() -> (Graph, MultiLevelField<SquareTessellation>, NodeId, PresetState, usize, IdGenerator) {
     let (mut graph, field, start, ids) = build_with_ids(4, 1);
+    let level = field.single_level_id();
     let node_count = graph.nodes().count();
-    let a = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
-    let b = field.nodes_at(SquarePoint { x: 2, y: 0 }).first().copied().unwrap();
+    let a = field.nodes_at(level, SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
+    let b = field.nodes_at(level, SquarePoint { x: 2, y: 0 }).first().copied().unwrap();
 
     graph.build_initial_edge(a, b, maze_core::graph::EdgeKind::Teleport);
 
@@ -83,7 +86,7 @@ pub fn no_one_way_elements() -> ElementsConfig { ElementsConfig { one_way_chance
 /// claimed by the original node's preset passage. Returns
 /// `(graph, field, preset_state, original, slot, left, right)` where `left` is `(0,0)` (claimed by
 /// `original`) and `right` is `(2,0)` (still free for either split node).
-pub fn build_with_split_point_preset_claim() -> (Graph, Field<SquareTessellation>, PresetState, NodeId, NodeId, NodeId, NodeId) {
+pub fn build_with_split_point_preset_claim() -> (Graph, MultiLevelField<SquareTessellation>, PresetState, NodeId, NodeId, NodeId, NodeId) {
     let (mut graph, mut field, _start, mut ids) = build_with_ids(3, 1);
     let split_points = vec![((1, 0), 0)];
     let presets = vec![PresetConnection {
@@ -91,11 +94,12 @@ pub fn build_with_split_point_preset_claim() -> (Graph, Field<SquareTessellation
     }];
     let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
 
-    let nodes = field.nodes_at(SquarePoint { x: 1, y: 0 });
+    let level = field.single_level_id();
+    let nodes = field.nodes_at(level, SquarePoint { x: 1, y: 0 });
     let original = nodes[0];
     let slot = nodes[1];
-    let left = field.nodes_at(SquarePoint { x: 0, y: 0 })[0];
-    let right = field.nodes_at(SquarePoint { x: 2, y: 0 })[0];
+    let left = field.nodes_at(level, SquarePoint { x: 0, y: 0 })[0];
+    let right = field.nodes_at(level, SquarePoint { x: 2, y: 0 })[0];
 
     (graph, field, preset_state, original, slot, left, right)
 }
@@ -113,7 +117,7 @@ pub fn build_with_split_point_preset_claim() -> (Graph, Field<SquareTessellation
 /// edge that `split_aware_neighbors`'s sibling-exclusivity check alone already catches, masking this
 /// second bug — here, neither split node ever has an edge to `left`, isolating the flat-set
 /// false-positive specifically. Returns `(graph, field, preset_state, original, slot, left, right)`.
-pub fn build_with_split_point_preset_connected_false_positive() -> (Graph, Field<SquareTessellation>, PresetState, NodeId, NodeId, NodeId, NodeId) {
+pub fn build_with_split_point_preset_connected_false_positive() -> (Graph, MultiLevelField<SquareTessellation>, PresetState, NodeId, NodeId, NodeId, NodeId) {
     let (mut graph, mut field, _start, mut ids) = build_with_ids(3, 2);
     let split_points = vec![((1, 0), 0)];
     let presets = vec![
@@ -127,11 +131,12 @@ pub fn build_with_split_point_preset_connected_false_positive() -> (Graph, Field
     ];
     let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &split_points, |x, y| SquarePoint { x, y }, None, None).unwrap();
 
-    let nodes = field.nodes_at(SquarePoint { x: 1, y: 0 });
+    let level = field.single_level_id();
+    let nodes = field.nodes_at(level, SquarePoint { x: 1, y: 0 });
     let original = nodes[0];
     let slot = nodes[1];
-    let left = field.nodes_at(SquarePoint { x: 0, y: 0 })[0];
-    let right = field.nodes_at(SquarePoint { x: 2, y: 0 })[0];
+    let left = field.nodes_at(level, SquarePoint { x: 0, y: 0 })[0];
+    let right = field.nodes_at(level, SquarePoint { x: 2, y: 0 })[0];
 
     (graph, field, preset_state, original, slot, left, right)
 }
@@ -143,13 +148,14 @@ pub fn build_with_split_point_preset_connected_false_positive() -> (Graph, Field
 /// cycle-free candidate edges — nothing but split-awareness stops Kruskal from adding both, wiring
 /// `left`'s one physical face to two different split passages at once. Returns
 /// `(graph, field, original, slot, left)`.
-pub fn build_with_split_point_single_free_neighbor() -> (Graph, Field<SquareTessellation>, NodeId, NodeId, NodeId) {
+pub fn build_with_split_point_single_free_neighbor() -> (Graph, MultiLevelField<SquareTessellation>, NodeId, NodeId, NodeId) {
     let (mut graph, mut field, _start, mut ids) = build_with_ids(2, 1);
+    let level = field.single_level_id();
     let point = SquarePoint { x: 1, y: 0 };
-    let original = field.nodes_at(point)[0];
-    let slot = field.add_node_at(point, &mut ids);
+    let original = field.nodes_at(level, point)[0];
+    let slot = field.add_node_at(level, point, &mut ids);
     graph.add_node(slot);
-    let left = field.nodes_at(SquarePoint { x: 0, y: 0 })[0];
+    let left = field.nodes_at(level, SquarePoint { x: 0, y: 0 })[0];
     (graph, field, original, slot, left)
 }
 
@@ -161,10 +167,11 @@ pub fn build_with_split_point_single_free_neighbor() -> (Graph, Field<SquareTess
 /// free — filtering candidates with `can_connect` let a pair like this pass the filter, get
 /// narrated as connected (or, for Kruskal, DSU-unioned), while `try_add_bidirectional_edge` silently
 /// refused to add anything. Returns `(graph, field, preset_state, a, b)`.
-pub fn build_with_one_directionally_blocked_pair() -> (Graph, Field<SquareTessellation>, PresetState, NodeId, NodeId) {
+pub fn build_with_one_directionally_blocked_pair() -> (Graph, MultiLevelField<SquareTessellation>, PresetState, NodeId, NodeId) {
     let (graph, field, _start, _ids) = build_with_ids(2, 1);
-    let a = field.nodes_at(SquarePoint { x: 0, y: 0 })[0];
-    let b = field.nodes_at(SquarePoint { x: 1, y: 0 })[0];
+    let level = field.single_level_id();
+    let a = field.nodes_at(level, SquarePoint { x: 0, y: 0 })[0];
+    let b = field.nodes_at(level, SquarePoint { x: 1, y: 0 })[0];
     let mut preset_state = PresetState::empty();
     preset_state.blocked.insert((a, b));
     (graph, field, preset_state, a, b)
@@ -179,11 +186,12 @@ pub fn build_with_one_directionally_blocked_pair() -> (Graph, Field<SquareTessel
 /// prevent `start`/`middle` from generating normally — the outer unvisited-set loop has to make
 /// progress and terminate even though one node can never be committed. Returns
 /// `(graph, field, preset_state, start, middle, isolated)`.
-pub fn build_with_isolated_node_among_others() -> (Graph, Field<SquareTessellation>, PresetState, NodeId, NodeId, NodeId) {
+pub fn build_with_isolated_node_among_others() -> (Graph, MultiLevelField<SquareTessellation>, PresetState, NodeId, NodeId, NodeId) {
     let (graph, field, _start, _ids) = build_with_ids(3, 1);
-    let start = field.nodes_at(SquarePoint { x: 0, y: 0 })[0];
-    let middle = field.nodes_at(SquarePoint { x: 1, y: 0 })[0];
-    let isolated = field.nodes_at(SquarePoint { x: 2, y: 0 })[0];
+    let level = field.single_level_id();
+    let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 })[0];
+    let middle = field.nodes_at(level, SquarePoint { x: 1, y: 0 })[0];
+    let isolated = field.nodes_at(level, SquarePoint { x: 2, y: 0 })[0];
     let mut preset_state = PresetState::empty();
     preset_state.blocked.insert((middle, isolated));
     (graph, field, preset_state, start, middle, isolated)

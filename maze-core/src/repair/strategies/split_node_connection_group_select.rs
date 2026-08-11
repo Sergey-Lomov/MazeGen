@@ -118,8 +118,9 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeConnectionGroupIssue> fo
 
         let is_original_node = |edge: &EdgeId| -> bool {
             let Some(e) = maze.graph.edge(*edge) else { return false };
+            let Some(level) = maze.field.level_of(e.from) else { return false };
             let Some(point) = maze.field.point_of(e.from) else { return false };
-            maze.field.nodes_at(point).first() == Some(&e.from)
+            maze.field.nodes_at(level, point).first() == Some(&e.from)
         };
         // A candidate whose removal (forward + reverse, per `RemoveEdgeWithReverse` semantics) is
         // fully blocked by preset edges would let `group_select_apply` "resolve" the group's budget

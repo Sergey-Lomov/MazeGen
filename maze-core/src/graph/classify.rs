@@ -1,5 +1,5 @@
 use crate::ids::NodeId;
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::graph::Graph;
 
 #[derive(Debug)]
@@ -17,7 +17,7 @@ pub(crate) fn unique_neighbors(graph: &Graph, node: NodeId) -> Vec<NodeId> {
     v
 }
 
-pub fn classify_node<T: Tessellation>(graph: &Graph, node: NodeId, field: &Field<T>) -> GeometricNodeClass {
+pub fn classify_node<T: Tessellation>(graph: &Graph, node: NodeId, field: &MultiLevelField<T>) -> GeometricNodeClass {
     let neighbors = unique_neighbors(graph, node);
     match neighbors.len() {
         0 | 1 => GeometricNodeClass::DeadEnd,
@@ -36,19 +36,20 @@ pub fn classify_node<T: Tessellation>(graph: &Graph, node: NodeId, field: &Field
 mod tests {
     use super::*;
     use crate::graph::{Graph, EdgeKind};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::IdGenerator;
 
-    fn make_field_and_graph(w: usize, h: usize) -> (Field<SquareTessellation>, Graph) {
+    fn make_field_and_graph(w: usize, h: usize) -> (MultiLevelField<SquareTessellation>, Graph) {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(w, h), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
-        field.build_nodes(&mut graph);
+        for node in field.all_node_ids() { graph.add_node(node); }
         (field, graph)
     }
 
-    fn node_at(field: &Field<SquareTessellation>, x: i32, y: i32) -> NodeId {
-        field.node_at(SquarePoint { x, y }).unwrap()
+    fn node_at(field: &MultiLevelField<SquareTessellation>, x: i32, y: i32) -> NodeId {
+        let level = field.single_level_id();
+        field.node_at(level, SquarePoint { x, y }).unwrap()
     }
 
     #[test]

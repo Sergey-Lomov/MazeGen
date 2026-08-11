@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use maze_core::{Graph, IdGenerator, Maze};
-use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationAlgorithm, EdgeBasedParams, ElementsConfig, GenerationConfig, PresetState, pipeline::{build_maze, RepairLimits}};
 use maze_core::graph::EdgeKind;
 use maze_core::quality_control::{
@@ -36,7 +36,7 @@ fn pipeline_assigns_start_and_finish() {
 #[test]
 fn preset_start_is_honored_by_farthest_endpoints_before_repair_runs() {
     let (field, graph) = make_generated_graph(42);
-    let preset_start = field.nodes_at(SquarePoint { x: 4, y: 4 }).first().copied().unwrap();
+    let preset_start = field.nodes_at(field.single_level_id(), SquarePoint { x: 4, y: 4 }).first().copied().unwrap();
     let qc = engine_with_rule(
         vec![("missing_endpoints", Box::new(MissingEndpointsCheck { instance_id: "g:missing_endpoints".to_string() }))],
         Box::new(FarthestEndpointsStrategy),
@@ -224,10 +224,10 @@ fn pipeline_merges_issues_from_duplicate_checks_into_one_strategy_call() {
 #[test]
 fn pipeline_breaks_short_loop_via_min_loop_length() {
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
-    let nodes: Vec<_> = field.all_points().map(|p| field.nodes_at(p).first().copied().unwrap()).collect();
+    for node in field.all_node_ids() { graph.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field.single_level_id()).unwrap().all_points().map(|p| field.nodes_at(field.single_level_id(), p).first().copied().unwrap()).collect();
     graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
     graph.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
     graph.build_initial_edge(nodes[2], nodes[0], EdgeKind::Basic);
@@ -253,10 +253,10 @@ fn full_pipeline_with_min_loop_length_never_isolates_a_node() {
     // no repair iteration should ever leave a node with zero edges.
     for seed in 0..200u64 {
         let mut ids = IdGenerator::new();
-        let mut field = Field::new(square_rect(11, 11), &mut ids).unwrap();
+        let mut field = MultiLevelField::single_level(square_rect(11, 11), &mut ids).unwrap();
         let mut graph = Graph::new();
-        field.build_nodes(&mut graph);
-        let start = field.nodes_at(SquarePoint { x: 5, y: 5 }).first().copied().unwrap();
+        for node in field.all_node_ids() { graph.add_node(node); }
+        let start = field.nodes_at(field.single_level_id(), SquarePoint { x: 5, y: 5 }).first().copied().unwrap();
 
         let gen_config = GenerationConfig {
             algorithm: GenerationAlgorithm::CustomEdgeBased(EdgeBasedParams {
@@ -294,12 +294,12 @@ fn full_pipeline_with_min_loop_length_never_isolates_a_node() {
 fn exact_issue_23_seed_never_isolates_a_node() {
     let seed = 292118u64;
     let mut ids = IdGenerator::new();
-    let mut field = Field::new(square_rect(11, 11), &mut ids).unwrap();
+    let mut field = MultiLevelField::single_level(square_rect(11, 11), &mut ids).unwrap();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     // UI picks the field's centroid as generation start (see tessellation_dispatch::pick_start),
     // not (0,0) — for an 11x11 square field (coords 0..10) that's (5,5).
-    let start = field.nodes_at(SquarePoint { x: 5, y: 5 }).first().copied().unwrap();
+    let start = field.nodes_at(field.single_level_id(), SquarePoint { x: 5, y: 5 }).first().copied().unwrap();
 
     let gen_config = GenerationConfig {
         algorithm: GenerationAlgorithm::CustomEdgeBased(EdgeBasedParams {
@@ -341,10 +341,10 @@ fn pipeline_merges_invalid_loop_from_two_independent_checks_and_breaks_both_cycl
     // triangles sharing no edge, so each check's cycle is independently verifiable as broken
     // afterward.
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(6, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.nodes_at(p).first().copied().unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field.single_level_id()).unwrap().all_points().map(|p| field.nodes_at(field.single_level_id(), p).first().copied().unwrap()).collect();
     // Triangle A: 0->1->2->0
     let e0 = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
     let e1 = g.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
@@ -411,10 +411,10 @@ fn pipeline_does_not_false_stop_when_same_rule_reports_different_content_each_it
     // stopping before cycle B was ever repaired. The content-aware guard must tell these
     // apart and keep going.
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(6, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.nodes_at(p).first().copied().unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field.single_level_id()).unwrap().all_points().map(|p| field.nodes_at(field.single_level_id(), p).first().copied().unwrap()).collect();
     // Triangle A: 0->1->2->0
     let e0 = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
     let e1 = g.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);

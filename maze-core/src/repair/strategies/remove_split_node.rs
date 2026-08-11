@@ -85,6 +85,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeIssue> for RemoveSplitNo
             if !crate::generation::remove_node_feasible(&maze.field, preset_state, node) {
                 continue;
             }
+            let level = maze.field.level_of(node).expect("remove_node_feasible confirmed this node exists");
             let point = maze.field.point_of(node).expect("remove_node_feasible confirmed this node exists");
             any_removable = true;
 
@@ -98,7 +99,7 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeIssue> for RemoveSplitNo
                 // removed and remains a perfectly safe target -- excluding it too would wrongly
                 // shrink the candidate pool, even to empty for a 2-node split whose only other node
                 // is a flagged-but-undeletable last remaining node.
-                let siblings: Vec<NodeId> = maze.field.nodes_at(point).iter().copied()
+                let siblings: Vec<NodeId> = maze.field.nodes_at(level, point).iter().copied()
                     .filter(|&n| n != node)
                     .filter(|&n| !issue.invalid.contains(&n) || !crate::generation::remove_node_feasible(&maze.field, preset_state, n))
                     .collect();
@@ -159,7 +160,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::random::MazeRng;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
 
@@ -177,14 +178,15 @@ mod tests {
 
     fn maze_with_split_node() -> (Maze<SquareTessellation>, NodeId, NodeId) {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
-        let slot0 = field.node_at(p).unwrap();
-        let extra = field.add_node_at(p, &mut ids);
+        let slot0 = field.node_at(level, p).unwrap();
+        let extra = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let left = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let right = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let left = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let right = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
         g.add_bidirectional_edge(slot0, left, EdgeKind::Basic);
         g.add_bidirectional_edge(extra, right, EdgeKind::Basic);
         let maze = Maze::new(field, g);
@@ -206,11 +208,12 @@ mod tests {
     #[test]
     fn apply_never_removes_slot0_when_it_is_the_last_node() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
-        let slot0 = field.node_at(p).unwrap();
+        let slot0 = field.node_at(level, p).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         // slot0 is the point's only node here -- RemoveNode must be declined by
         // try_remove_node's own feasibility check, same as any other last-remaining node would be.
@@ -237,7 +240,7 @@ mod tests {
     #[test]
     fn apply_with_redistribute_reconnects_the_removed_nodes_neighbor_to_the_sibling() {
         let (mut maze, slot0, extra) = maze_with_split_node();
-        let right = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        let right = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap();
         let issue = InvalidSplitNodeIssue::new_from_check("test", vec![extra]);
         let params = params_with(&[(PARAM_REDISTRIBUTE, "true")]);
         let mut rng = MazeRng::seed_from_u64(1);
@@ -253,14 +256,15 @@ mod tests {
     #[test]
     fn apply_with_redistribute_picks_among_multiple_siblings() {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
-        let slot0 = field.node_at(p).unwrap();
-        let extra1 = field.add_node_at(p, &mut ids);
-        let extra2 = field.add_node_at(p, &mut ids);
+        let slot0 = field.node_at(level, p).unwrap();
+        let extra1 = field.add_node_at(level, p, &mut ids);
+        let extra2 = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let right = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let right = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
         g.add_bidirectional_edge(extra1, right, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -284,15 +288,16 @@ mod tests {
         // across the whole node, so a multi-edge removal can scatter its connections across
         // different remaining siblings instead of funneling them all onto one.
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
-        let slot0 = field.node_at(p).unwrap();
-        let extra1 = field.add_node_at(p, &mut ids);
-        let extra2 = field.add_node_at(p, &mut ids);
+        let slot0 = field.node_at(level, p).unwrap();
+        let extra1 = field.add_node_at(level, p, &mut ids);
+        let extra2 = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let right1 = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
-        let right2 = field.node_at(SquarePoint { x: 3, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let right1 = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
+        let right2 = field.node_at(level, SquarePoint { x: 3, y: 0 }).unwrap();
         g.add_bidirectional_edge(extra1, right1, EdgeKind::Basic);
         g.add_bidirectional_edge(extra1, right2, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -323,14 +328,15 @@ mod tests {
         // forward and reverse edges landing on different siblings (slot0 vs extra2).
         for seed in 0..50u64 {
             let mut ids = IdGenerator::new();
-            let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+            let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            let level = field.single_level_id();
             let p = SquarePoint { x: 1, y: 0 };
-            let slot0 = field.node_at(p).unwrap();
-            let extra1 = field.add_node_at(p, &mut ids);
-            let extra2 = field.add_node_at(p, &mut ids);
+            let slot0 = field.node_at(level, p).unwrap();
+            let extra1 = field.add_node_at(level, p, &mut ids);
+            let extra2 = field.add_node_at(level, p, &mut ids);
             let mut g = Graph::new();
-            field.build_nodes(&mut g);
-            let right = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+            for node in field.all_node_ids() { g.add_node(node); }
+            let right = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
             g.add_bidirectional_edge(extra1, right, EdgeKind::Basic);
             let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -353,14 +359,15 @@ mod tests {
         // that just-added edge out again (RemoveNode clears every incident edge). The only safe
         // target is slot0, which survives the whole batch.
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
-        let slot0 = field.node_at(p).unwrap();
-        let extra1 = field.add_node_at(p, &mut ids);
-        let extra2 = field.add_node_at(p, &mut ids);
+        let slot0 = field.node_at(level, p).unwrap();
+        let extra1 = field.add_node_at(level, p, &mut ids);
+        let extra2 = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let right = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let right = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
         g.add_bidirectional_edge(extra1, right, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -408,12 +415,13 @@ mod tests {
     #[test]
     fn apply_with_redistribute_skips_the_sibling_edge_to_the_target_itself() {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
-        let slot0 = field.node_at(p).unwrap();
-        let extra = field.add_node_at(p, &mut ids);
+        let slot0 = field.node_at(level, p).unwrap();
+        let extra = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         // The only edge on `extra` is its sibling edge to slot0 -- redistributing it (target =
         // slot0, the only sibling) would be a self-loop, which must never be proposed.
         g.add_bidirectional_edge(slot0, extra, EdgeKind::Basic);
@@ -432,13 +440,14 @@ mod tests {
     #[test]
     fn apply_with_redistribute_preserves_teleport_kind() {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
-        let slot0 = field.node_at(p).unwrap();
-        let extra = field.add_node_at(p, &mut ids);
+        let slot0 = field.node_at(level, p).unwrap();
+        let extra = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let far = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let far = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
         g.add_edge(extra, far, EdgeKind::Teleport);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -455,7 +464,7 @@ mod tests {
     fn apply_reports_failed_when_the_only_flagged_node_is_preset_protected() {
         let (mut maze, slot0, extra) = maze_with_split_node();
         let mut preset_state = PresetState::empty();
-        preset_state.preset_edges.insert((extra, maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap()));
+        preset_state.preset_edges.insert((extra, maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap()));
         let issue = InvalidSplitNodeIssue::new_from_check("test", vec![extra]);
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit(&RemoveSplitNodeStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);

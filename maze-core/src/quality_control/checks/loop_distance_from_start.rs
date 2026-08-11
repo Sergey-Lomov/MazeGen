@@ -42,7 +42,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::meta::MazeMeta;
 
     const TEST_ID: &str = "loop_distance_from_start";
@@ -52,10 +52,11 @@ mod tests {
     fn maze_with_triangle_at_distance(distance: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let width = distance + 3;
-        let field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         for x in 0..distance as i32 {
             g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
         }
@@ -105,10 +106,11 @@ mod tests {
     fn maze_with_two_triangles(far_distance: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let width = far_distance + 6;
-        let field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
 
         // near triangle: start (node 0) is itself a triangle vertex -> distance 0
         let (na, nb, nc) = (p(0), p(1), p(2));
@@ -166,10 +168,11 @@ mod tests {
     #[test]
     fn silent_when_no_cycle() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -185,24 +188,25 @@ mod tests {
     fn silent_when_cycle_enumeration_overflows() {
         const SIDE: i32 = 6;
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         for y in 0..SIDE {
             for x in 0..SIDE {
-                let here = field.node_at(SquarePoint { x, y }).unwrap();
+                let here = field.node_at(field_level, SquarePoint { x, y }).unwrap();
                 if x + 1 < SIDE {
-                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
+                    let right = field.node_at(field_level, SquarePoint { x: x + 1, y }).unwrap();
                     g.add_bidirectional_edge(here, right, EdgeKind::Basic);
                 }
                 if y + 1 < SIDE {
-                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
+                    let up = field.node_at(field_level, SquarePoint { x, y: y + 1 }).unwrap();
                     g.add_bidirectional_edge(here, up, EdgeKind::Basic);
                 }
             }
         }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        maze.meta.start = Some(maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap());
+        maze.meta.start = Some(maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap());
         let check = LoopDistanceFromStartCheck { instance_id: TEST_ID.to_string(), min_distance_from_start: 100, cycle_kind: CycleKind::Any };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
@@ -216,10 +220,11 @@ mod tests {
     /// far below a threshold of 1000 (so both cycles are "too close" under the base predicate).
     fn maze_with_one_way_and_two_way_triangle() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 2), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32, y: i32| field.node_at(SquarePoint { x, y }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32, y: i32| field.node_at(field_level, SquarePoint { x, y }).unwrap();
 
         // one-way triangle on row 0
         let (a, b, c) = (p(0, 0), p(1, 0), p(2, 0));

@@ -189,12 +189,13 @@ fn kruskal_no_preset_connections_emits_no_preset_unions_applied() {
 #[test]
 fn kruskal_preset_connection_emits_preset_unions_applied_before_the_main_loop() {
     let (mut graph, mut field, _start, mut ids) = build_with_ids(3, 3);
+    let level = field.single_level_id();
     let presets = vec![PresetConnection {
         from: PresetEndpoint::original((0, 0)), to: PresetEndpoint::original((1, 0)), state: PresetConnectionState::Passage,
     }];
     let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
-    let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-    let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
+    let a = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+    let b = field.nodes_at(level, SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
 
     let mut log: EventLog<KruskalEvent> = EventLog::new();
     generate_kruskal(&mut graph, &field, 1, &preset_state, Some(&mut log));
@@ -232,12 +233,13 @@ fn kruskal_preset_teleport_emits_preset_unions_applied_with_teleport_kind() {
     // GitHub issue #193: a preset teleport pre-merged before generation starts must be
     // distinguishable from a preset passage in PresetUnionsApplied's payload.
     let (mut graph, mut field, _start, mut ids) = build_with_ids(3, 3);
+    let level = field.single_level_id();
     let presets = vec![PresetConnection {
         from: PresetEndpoint::original((0, 0)), to: PresetEndpoint::original((2, 2)), state: PresetConnectionState::Teleport(TeleportDirection::TwoWay),
     }];
     let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
-    let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-    let b = field.nodes_at(SquarePoint { x: 2, y: 2 }).first().copied().unwrap();
+    let a = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+    let b = field.nodes_at(level, SquarePoint { x: 2, y: 2 }).first().copied().unwrap();
 
     let mut log: EventLog<KruskalEvent> = EventLog::new();
     generate_kruskal(&mut graph, &field, 1, &preset_state, Some(&mut log));
@@ -262,12 +264,13 @@ fn kruskal_one_way_preset_teleport_emits_only_the_single_directed_edge() {
     // exists as a single directed graph edge, and PresetUnionsApplied must reflect exactly that
     // direction, not fabricate a reverse edge.
     let (mut graph, mut field, _start, mut ids) = build_with_ids(3, 3);
+    let level = field.single_level_id();
     let presets = vec![PresetConnection {
         from: PresetEndpoint::original((0, 0)), to: PresetEndpoint::original((2, 2)), state: PresetConnectionState::Teleport(TeleportDirection::Forward),
     }];
     let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
-    let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-    let b = field.nodes_at(SquarePoint { x: 2, y: 2 }).first().copied().unwrap();
+    let a = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+    let b = field.nodes_at(level, SquarePoint { x: 2, y: 2 }).first().copied().unwrap();
 
     let mut log: EventLog<KruskalEvent> = EventLog::new();
     generate_kruskal(&mut graph, &field, 1, &preset_state, Some(&mut log));

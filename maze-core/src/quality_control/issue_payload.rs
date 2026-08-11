@@ -3,7 +3,7 @@ use crate::ids::NodeId;
 use crate::graph::{Graph, bisect::group_by_unremovable_edges, scc::{ConnectedComponents, ComponentId}};
 use crate::generation::PresetState;
 use crate::generation::edge_ops::bidirectional_edge_feasible;
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use super::issue::Issue;
 use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, SplitRouteEdge, ExcessiveSccCountIssue};
 
@@ -383,7 +383,7 @@ fn region_preset_locked_for_shrink(graph: &Graph, region: &[NodeId], preset_stat
 /// it. Teleport-based expansion (`teleport_region_merge`) never goes through `Field::neighbors`,
 /// so it's unaffected by this criterion by construction.
 fn region_preset_locked_for_expansion<T: Tessellation>(
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     region: &[NodeId],
     region_idx: ComponentId,
     scc: &ConnectedComponents,
@@ -411,13 +411,13 @@ fn region_preset_locked_for_expansion<T: Tessellation>(
 /// when there is nowhere left to merge anything into, anywhere on the field. A field with zero
 /// regions (never happens once the check has fired, since firing requires at least 2 components)
 /// is vacuously not locked.
-fn excessive_scc_count_preset_locked<T: Tessellation>(field: &Field<T>, scc: &ConnectedComponents, preset_state: &PresetState) -> bool {
+fn excessive_scc_count_preset_locked<T: Tessellation>(field: &MultiLevelField<T>, scc: &ConnectedComponents, preset_state: &PresetState) -> bool {
     !scc.components.is_empty() && scc.components.iter().enumerate().all(|(idx, region)| {
         region_preset_locked_for_expansion(field, region, idx, scc, preset_state)
     })
 }
 
-pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, field: &Field<T>, scc: &ConnectedComponents, preset_state: &PresetState) -> IssuePayload {
+pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, field: &MultiLevelField<T>, scc: &ConnectedComponents, preset_state: &PresetState) -> IssuePayload {
     if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
         let cycles = invalid.iter().filter_map(|&idx| all.get(idx));
         if let Some(payload) = resolve_cycle_payload(cycles, invalid_sources, graph, preset_state) {
@@ -542,9 +542,9 @@ mod tests {
     /// (tests that don't exercise `RegionNeedsExpansion` never call `Field::neighbors` on ids
     /// outside it, so an arbitrary small field is a safe stand-in) — only region-expansion tests
     /// build a field whose points actually correspond to their graph's nodes.
-    fn dummy_field() -> Field<SquareTessellation> {
+    fn dummy_field() -> MultiLevelField<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        Field::new(square_rect(1, 1), &mut ids).unwrap()
+        MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap()
     }
 
     fn resolve(issue: &dyn Issue, graph: &Graph, scc: &ConnectedComponents) -> IssuePayload {
@@ -1458,13 +1458,13 @@ mod tests {
         // Regression: `region_preset_locked_for_shrink`'s `groups.len() < 2` must stay identical to
         // `region_shrink_split::split_region`'s own None/Failed condition -- both evaluated on the
         // same graph/region/preset_state here and compared directly.
-        use crate::space::{Field, SquareTessellation, square_rect};
+        use crate::space::{MultiLevelField, SquareTessellation, square_rect};
         use crate::Maze;
         let (graph, [a, b, c]) = triangle_graph();
         let region = vec![a, b, c];
 
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
         let maze = Maze::new(field, graph.clone());
 
         let mut preset_state = PresetState::empty();
@@ -1480,14 +1480,15 @@ mod tests {
 
     /// 2x1 field: two adjacent points, each with one node -- the region is just node `a`, its only
     /// geometric neighbor is `b` (outside the region). Used by every expansion test below.
-    fn two_point_field_and_region() -> (Field<crate::space::SquareTessellation>, Graph, NodeId, NodeId) {
-        use crate::space::{Field, SquareTessellation, square_rect};
+    fn two_point_field_and_region() -> (MultiLevelField<crate::space::SquareTessellation>, Graph, NodeId, NodeId) {
+        use crate::space::{MultiLevelField, SquareTessellation, square_rect};
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let mut graph = Graph::new();
-        field.build_nodes(&mut graph);
-        let a = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(crate::space::SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() { graph.add_node(node); }
+        let level = field.single_level_id();
+        let a = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(level, crate::space::SquarePoint { x: 1, y: 0 }).unwrap();
         (field, graph, a, b)
     }
 
@@ -1495,12 +1496,13 @@ mod tests {
     fn region_needs_expansion_not_locked_when_region_has_no_external_geometric_boundary() {
         // A region spanning the whole field has no neighbor outside itself -- has_boundary stays
         // false, so it must NOT be reported preset_locked (a different, non-preset problem).
-        use crate::space::{Field, SquareTessellation, square_rect};
+        use crate::space::{MultiLevelField, SquareTessellation, square_rect};
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
         let mut graph = Graph::new();
-        field.build_nodes(&mut graph);
-        let a = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        for node in field.all_node_ids() { graph.add_node(node); }
+        let level = field.single_level_id();
+        let a = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
         let scc = region_scc(vec![a]);
         let mut invalid_sources = HashMap::new();
         invalid_sources.insert(0usize, vec!["check1".to_string()]);
@@ -1602,14 +1604,15 @@ mod tests {
         // 3x1 field, one node per point: three separate regions a/b/c in a row. Only the a<->b
         // boundary is blocked -- b's other boundary (to c) stays free, so b (and c) remain unlocked
         // even though a is fully locked.
-        use crate::space::{Field, SquareTessellation, square_rect};
+        use crate::space::{MultiLevelField, SquareTessellation, square_rect};
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut graph = Graph::new();
-        field.build_nodes(&mut graph);
-        let a = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(crate::space::SquarePoint { x: 1, y: 0 }).unwrap();
-        let c = field.node_at(crate::space::SquarePoint { x: 2, y: 0 }).unwrap();
+        for node in field.all_node_ids() { graph.add_node(node); }
+        let level = field.single_level_id();
+        let a = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(level, crate::space::SquarePoint { x: 1, y: 0 }).unwrap();
+        let c = field.node_at(level, crate::space::SquarePoint { x: 2, y: 0 }).unwrap();
         let node_component = HashMap::from([(a, 0), (b, 1), (c, 2)]);
         let scc = ConnectedComponents { components: vec![vec![a], vec![b], vec![c]], node_component };
         let issue = excessive_scc_count_issue("check1", 1);

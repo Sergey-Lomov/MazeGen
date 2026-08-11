@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use rand::Rng;
 use crate::ids::{IdGenerator, NodeId};
 use crate::graph::{Graph, EdgeKind};
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, LevelId, Tessellation};
 use crate::event_log::ScopeGuard;
 use super::{ElementsConfig, PresetState, GenerationParams};
 use super::debug_state::DebugGenerationState;
@@ -40,7 +40,7 @@ struct Adaptation {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handle_pattern_split<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut IdGenerator,
     params: &GenerationParams,
     elements: &ElementsConfig,
@@ -108,7 +108,8 @@ struct AdaptationBuilder {
 /// whole adaptation (caller must abort the rest of this rotation/mirror combination).
 #[allow(clippy::too_many_arguments)]
 fn resolve_face<T: Tessellation>(
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
+    level: LevelId,
     point: T::Point,
     visited: &HashSet<NodeId>,
     bridge: Option<NodeId>,
@@ -140,7 +141,7 @@ fn resolve_face<T: Tessellation>(
     }
 
     let neighbor_point = T::step(point, tess_face);
-    let neighbor = field.nodes_at(neighbor_point).first().copied();
+    let neighbor = field.nodes_at(level, neighbor_point).first().copied();
 
     match face.requirement {
         SplitFaceRequirement::Wall => {
@@ -195,11 +196,12 @@ fn resolve_face<T: Tessellation>(
 /// candidate if every face resolved and bridge/parent/preset requirements were all met.
 #[allow(clippy::too_many_arguments)]
 fn try_adaptation<T: Tessellation>(
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     preset_state: &PresetState,
     visited: &HashSet<NodeId>,
     pattern: &SplitPattern,
     src: NodeId,
+    level: LevelId,
     point: T::Point,
     bridge: Option<NodeId>,
     parent: Option<NodeId>,
@@ -220,7 +222,7 @@ fn try_adaptation<T: Tessellation>(
     for (node_index, node_faces) in pattern.faces.iter().enumerate() {
         for face in node_faces {
             let ok = resolve_face(
-                field, point, visited, bridge, parent, parent_fwd, parent_bwd, cyclic_fired,
+                field, level, point, visited, bridge, parent, parent_fwd, parent_bwd, cyclic_fired,
                 node_index, face, rotation, mirror, &mut builder,
             );
             if !ok {
@@ -259,7 +261,7 @@ fn try_adaptation<T: Tessellation>(
 /// reinterpretation) rather than falling through to the ordinary visited-neighbor check.
 fn enumerate_adaptations<T: Tessellation>(
     graph: &Graph,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     preset_state: &PresetState,
     visited: &HashSet<NodeId>,
     pattern: &SplitPattern,
@@ -268,6 +270,7 @@ fn enumerate_adaptations<T: Tessellation>(
     parent: Option<NodeId>,
     cyclic_fired: bool,
 ) -> Vec<Adaptation> {
+    let Some(level) = field.level_of(src) else { return Vec::new(); };
     let Some(point) = field.point_of(src) else { return Vec::new(); };
     let degree = T::faces().len();
     if degree == 0 {
@@ -283,7 +286,7 @@ fn enumerate_adaptations<T: Tessellation>(
     for rotation in 0..T::rotation_symmetries().len() {
         for &mirror in &mirror_choices {
             if let Some(adaptation) = try_adaptation(
-                field, preset_state, visited, pattern, src, point, bridge, parent, parent_fwd, parent_bwd, cyclic_fired, rotation, mirror,
+                field, preset_state, visited, pattern, src, level, point, bridge, parent, parent_fwd, parent_bwd, cyclic_fired, rotation, mirror,
             ) {
                 results.push(adaptation);
             }
@@ -429,7 +432,7 @@ fn apply_face_requirement(
 #[allow(clippy::too_many_arguments)]
 fn apply_pattern_adaptation<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut IdGenerator,
     elements: &ElementsConfig,
     preset_state: &PresetState,

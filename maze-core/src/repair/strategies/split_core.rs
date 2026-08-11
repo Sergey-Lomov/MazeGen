@@ -223,7 +223,8 @@ pub(crate) fn try_pattern_adaptation<T: Tessellation>(
                 SplitFaceRequirement::Passage | SplitFaceRequirement::OneWay(_) => {
                     let Some(tess_face) = T::face_at(resolved_index) else { return None; };
                     let neighbor_point = T::step(point, tess_face);
-                    let neighbor_candidates = maze.field.nodes_at(neighbor_point);
+                    let level = maze.field.level_of(at).expect("at must be in field");
+                    let neighbor_candidates = maze.field.nodes_at(level, neighbor_point);
                     if neighbor_candidates.is_empty() {
                         return None;
                     }
@@ -288,13 +289,13 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, SquarePoint, square_rect, Field};
+    use crate::space::{SquareTessellation, SquarePoint, square_rect, MultiLevelField};
 
     fn maze_line(len: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(len, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 
@@ -331,9 +332,9 @@ mod tests {
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(side, side), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 
@@ -343,9 +344,9 @@ mod tests {
         // bridge target) and a North face (the mandatory second edge) — both resolve to real
         // neighbors on a 3x3 grid, so the candidate must be accepted.
         let maze = maze_grid(3);
-        let at = maze.field.node_at(SquarePoint { x: 1, y: 1 }).unwrap();
+        let at = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 1 }).unwrap();
         let point = maze.field.point_of(at).unwrap();
-        let east_neighbor = maze.field.node_at(SquarePoint { x: 2, y: 1 }).unwrap();
+        let east_neighbor = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 1 }).unwrap();
         let required = RequiredConnection { neighbor: east_neighbor, direction: SplitNodeEdgeDirection::Passage };
 
         let plan = try_pattern_adaptation(&maze, at, point, &two_face_pattern(), 0, None, true, true, Some(&required), &HashSet::new())
@@ -359,9 +360,9 @@ mod tests {
         // Same setup, but the pattern's node 1 only has the East (bridge) face — no second edge
         // anywhere in the pattern for that node, so the candidate must be rejected outright.
         let maze = maze_grid(3);
-        let at = maze.field.node_at(SquarePoint { x: 1, y: 1 }).unwrap();
+        let at = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 1 }).unwrap();
         let point = maze.field.point_of(at).unwrap();
-        let east_neighbor = maze.field.node_at(SquarePoint { x: 2, y: 1 }).unwrap();
+        let east_neighbor = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 1 }).unwrap();
         let required = RequiredConnection { neighbor: east_neighbor, direction: SplitNodeEdgeDirection::Passage };
 
         let plan = try_pattern_adaptation(&maze, at, point, &one_face_pattern(), 0, None, true, true, Some(&required), &HashSet::new());
@@ -371,7 +372,7 @@ mod tests {
     #[test]
     fn plan_unconstrained_split_without_required_matches_original_behavior() {
         let mut maze = maze_line(3);
-        let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
         maze.graph.add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let mut rng = MazeRng::seed_from_u64(1);
         let plan = plan_unconstrained_split(&maze, nodes[1], 2, None, &HashSet::new(), &mut rng).unwrap();
@@ -385,7 +386,7 @@ mod tests {
         // (not a geometric neighbor, but required doesn't need it to be) plus a second edge drawn
         // from a real free neighbor (x=1 or x=3).
         let maze = maze_line(5);
-        let nodes: Vec<NodeId> = (0..5).map(|x| maze.field.node_at(SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..5).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
         let at = nodes[2];
         let bridge_target = nodes[0];
         let required = RequiredConnection { neighbor: bridge_target, direction: SplitNodeEdgeDirection::Passage };
@@ -401,7 +402,7 @@ mod tests {
         // `at` already has a real edge to the required neighbor — the bridge must be satisfied by
         // redistributing that existing connection (not by adding a redundant new one).
         let mut maze = maze_line(3);
-        let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
         let at = nodes[1];
         let bridge_target = nodes[0];
         maze.graph.add_bidirectional_edge(at, bridge_target, EdgeKind::Basic);
@@ -421,10 +422,11 @@ mod tests {
         // 1x1 field: the only point has no geometric neighbor at all, so a bridge-only node can
         // never gain a second edge.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let at = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let at = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         // A synthetic "elsewhere" neighbor id that isn't geometrically real — required connection
@@ -441,7 +443,7 @@ mod tests {
         // A caller must never plan a bridge to a point another command in the same batch already
         // committed to replace — that node's id won't exist by apply time.
         let maze = maze_line(3);
-        let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
         let at = nodes[1];
         let bridge_target = nodes[0];
         let required = RequiredConnection { neighbor: bridge_target, direction: SplitNodeEdgeDirection::Passage };
@@ -458,7 +460,7 @@ mod tests {
         // geometric neighbor that could supply a second edge on one side) is excluded — the only
         // remaining free neighbor is x=3.
         let maze = maze_line(5);
-        let nodes: Vec<NodeId> = (0..5).map(|x| maze.field.node_at(SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..5).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
         let at = nodes[2];
         let bridge_target = nodes[0];
         let required = RequiredConnection { neighbor: bridge_target, direction: SplitNodeEdgeDirection::Passage };

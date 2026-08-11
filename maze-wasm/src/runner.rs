@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 use maze_core::{
     graph::Graph,
     ids::IdGenerator,
-    space::{Field, Tessellation},
+    space::{MultiLevelField, Tessellation},
     generation::{generate_maze, generate_maze_with_events, build_preset_state, PresetEndpoint},
 };
 use crate::generation_config::{GenerateConfig, build_generation_config, build_repair_limits};
@@ -29,7 +29,7 @@ fn preset_endpoint_dto_to_core(dto: &maze_runner::config::PresetEndpointDto) -> 
 #[allow(clippy::too_many_arguments)]
 fn run_initial_generation<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut IdGenerator,
     seed: u64,
     start_id: maze_core::ids::NodeId,
@@ -95,7 +95,7 @@ mod tests;
 
 pub fn run_generate<T: Tessellation + 'static>(
     seed: u64,
-    mut field: Field<T>,
+    mut field: MultiLevelField<T>,
     mut ids: IdGenerator,
     start: T::Point,
     config: &GenerateConfig,
@@ -105,7 +105,7 @@ pub fn run_generate<T: Tessellation + 'static>(
     use maze_core::generation::pipeline::build_maze;
 
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
 
     let gen_config = build_generation_config(config);
 
@@ -150,9 +150,10 @@ pub fn run_generate<T: Tessellation + 'static>(
     // `start_id` prefers a resolved `preset_gen_source` marker (possibly slot-addressed, GitHub
     // issue #231) over the plain geometric `start` `tessellation_dispatch`'s `pick_start`/
     // `resolve_start` already chose — mirrors `maze-runner`'s `run_generate_typed`.
+    let level = field.single_level_id();
     let start_id = config.preset_gen_source.as_ref()
         .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)))
-        .or_else(|| field.nodes_at(start).first().copied())
+        .or_else(|| field.nodes_at(level, start).first().copied())
         .ok_or_else(|| JsValue::from_str("start node not found"))?;
 
     let (generation_source, generation_kind, generation_debug_value_names, initial_build_ms, start_reassignment, generation_node_points) = run_initial_generation(

@@ -1,7 +1,7 @@
 use super::*;
 use rand::SeedableRng;
 use crate::{Graph, IdGenerator};
-use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
 const TEST_ID: &str = "one_way_group_super_hub";
 
@@ -12,9 +12,9 @@ fn check(max_connections: u32) -> OneWayGroupSuperHubCheck {
 #[test]
 fn silent_when_no_one_way_edges() {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
+    for node in field.all_node_ids() { g.add_node(node); }
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
     let c = check(0);
@@ -28,10 +28,11 @@ fn silent_when_no_one_way_edges() {
 fn fires_when_vertex_outgoing_count_exceeds_max() {
     // node[0] has 3 outgoing one-ways -- exceeds max_connections=2.
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(4, 2), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 2), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32, y: i32| field.node_at(SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32, y: i32| field.node_at(field_level, SquarePoint { x, y }).unwrap();
     let e1 = g.add_edge(p(0, 0), p(1, 0), EdgeKind::Basic);
     let e2 = g.add_edge(p(0, 0), p(0, 1), EdgeKind::Basic);
     let e3 = g.add_edge(p(0, 0), p(1, 1), EdgeKind::Basic);
@@ -54,10 +55,11 @@ fn fires_when_vertex_outgoing_count_exceeds_max() {
 #[test]
 fn silent_when_vertex_outgoing_count_at_or_below_max() {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     g.add_edge(p(0), p(1), EdgeKind::Basic);
     g.add_edge(p(0), p(2), EdgeKind::Basic);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -74,10 +76,11 @@ fn ignores_bidirectional_edges() {
     // A bidirectional passage is two edges (0->1 and 1->0), each from a different `from` vertex --
     // neither vertex's outgoing one-way count includes it, since it isn't a one-way at all.
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
     g.add_bidirectional_edge(p(0), p(2), EdgeKind::Basic);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -94,10 +97,11 @@ fn incoming_and_outgoing_one_ways_count_toward_the_same_vertex_total() {
     // node[1] has 1 outgoing one-way (to node[2]) and 2 incoming (from node[0], node[3]) -- 3
     // total, exceeding max_connections=2, even though neither direction alone would.
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     let e1 = g.add_edge(p(0), p(1), EdgeKind::Basic);
     let e2 = g.add_edge(p(3), p(1), EdgeKind::Basic);
     let e3 = g.add_edge(p(1), p(2), EdgeKind::Basic);
@@ -120,10 +124,11 @@ fn incoming_and_outgoing_one_ways_count_toward_the_same_vertex_total() {
 #[test]
 fn ignores_teleport_edges() {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     g.add_edge(p(0), p(1), EdgeKind::Teleport);
     g.add_edge(p(0), p(2), EdgeKind::Teleport);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -144,10 +149,11 @@ fn shared_edge_between_two_over_threshold_vertices_appears_in_both_groups() {
     // level (that responsibility belongs to the repair strategy's own `resolved` bookkeeping, see
     // `OneWayGroupSelectStrategy`'s shared-edge tests).
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(5, 2), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 2), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32, y: i32| field.node_at(SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32, y: i32| field.node_at(field_level, SquarePoint { x, y }).unwrap();
     let e_shared = g.add_edge(p(1, 0), p(2, 0), EdgeKind::Basic);
     let e_a = g.add_edge(p(1, 0), p(1, 1), EdgeKind::Basic);
     let e_b = g.add_edge(p(2, 0), p(2, 1), EdgeKind::Basic);
@@ -181,10 +187,11 @@ fn shared_edge_between_two_over_threshold_vertices_appears_in_both_groups() {
 #[test]
 fn flags_multiple_vertices_as_separate_groups() {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(4, 2), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 2), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32, y: i32| field.node_at(SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32, y: i32| field.node_at(field_level, SquarePoint { x, y }).unwrap();
     g.add_edge(p(0, 0), p(1, 0), EdgeKind::Basic);
     g.add_edge(p(0, 0), p(0, 1), EdgeKind::Basic);
     g.add_edge(p(3, 0), p(2, 0), EdgeKind::Basic);

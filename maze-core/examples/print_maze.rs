@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use maze_core::{IdGenerator, Graph};
-use maze_core::space::{Field, SquarePoint, square_rect};
+use maze_core::space::{MultiLevelField, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationConfig, PresetState, pipeline::{build_maze, RepairLimits}};
 use maze_core::validation::is_connected;
 use maze_core::io::render_ascii;
@@ -10,10 +10,11 @@ use maze_core::repair::FarthestEndpointsStrategy;
 fn main() {
     let seed = 3u64;
     let mut ids = IdGenerator::new();
-    let mut field = Field::new(square_rect(10, 10), &mut ids).unwrap();
-    let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+    let mut field = MultiLevelField::single_level(square_rect(10, 10), &mut ids).unwrap();
+    let level = field.single_level_id();
+    let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     generate_maze(&mut graph, &mut field, &mut ids, seed, start, GenerationConfig::default(), &PresetState::empty());
     assert!(is_connected(&graph, start));
 

@@ -3,7 +3,7 @@ use rand::SeedableRng;
 use crate::random::MazeRng;
 use crate::graph::EdgeKind;
 use crate::{Graph, IdGenerator};
-use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 use crate::repair::strategies::test_utils::{apply_and_commit, apply_and_commit_default};
 use crate::repair::strategies::group_select::PRIORITY_RANDOM;
 
@@ -20,13 +20,14 @@ fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
 /// non-split edge on this particular route.
 fn maze_with_all_split_route() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
     let mut ids = IdGenerator::new();
-    let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
-    let slot0 = field.node_at(p).unwrap();
-    let extra = field.add_node_at(p, &mut ids);
+    let slot0 = field.node_at(field_level, p).unwrap();
+    let extra = field.add_node_at(field_level, p, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     let e0 = g.build_initial_edge(slot0, a, EdgeKind::Basic);
     let e1 = g.build_initial_edge(a, extra, EdgeKind::Basic);
     let maze = Maze::new(field, g);
@@ -37,14 +38,15 @@ fn maze_with_all_split_route() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
 /// the one non-split edge on the route.
 fn maze_with_mixed_route() -> (Maze<SquareTessellation>, EdgeId, EdgeId, EdgeId) {
     let mut ids = IdGenerator::new();
-    let mut field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
-    let slot0 = field.node_at(p).unwrap();
-    let extra = field.add_node_at(p, &mut ids);
+    let slot0 = field.node_at(field_level, p).unwrap();
+    let extra = field.add_node_at(field_level, p, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let b = field.node_at(field_level, SquarePoint { x: 2, y: 0 }).unwrap();
     let e0 = g.build_initial_edge(slot0, a, EdgeKind::Basic);
     let e1 = g.build_initial_edge(a, b, EdgeKind::Basic);
     let e2 = g.build_initial_edge(b, extra, EdgeKind::Basic);
@@ -115,14 +117,15 @@ fn any_scope_cuts_some_eligible_edge() {
 #[test]
 fn cutting_a_bidirectional_passage_removes_both_directions() {
     let mut ids = IdGenerator::new();
-    let mut field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
-    let slot0 = field.node_at(p).unwrap();
-    let extra = field.add_node_at(p, &mut ids);
+    let slot0 = field.node_at(field_level, p).unwrap();
+    let extra = field.add_node_at(field_level, p, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let b = field.node_at(field_level, SquarePoint { x: 2, y: 0 }).unwrap();
     let e0 = g.build_initial_edge(slot0, a, EdgeKind::Basic);
     let (e1_fwd, _e1_rev) = g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
     let e2 = g.build_initial_edge(b, extra, EdgeKind::Basic);
@@ -161,14 +164,15 @@ fn scored_selection_prefers_the_edge_shared_by_more_routes() {
     // whatever else -- and once e1 is cut, route_b (which also contains e1) is dropped without a
     // second cut, leaving e3's route to be cut independently for the strategy to succeed overall.
     let mut ids = IdGenerator::new();
-    let mut field: Field<SquareTessellation> = Field::new(square_rect(6, 1), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
-    let slot0 = field.node_at(p).unwrap();
-    let extra = field.add_node_at(p, &mut ids);
+    let slot0 = field.node_at(field_level, p).unwrap();
+    let extra = field.add_node_at(field_level, p, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let c = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let c = field.node_at(field_level, SquarePoint { x: 2, y: 0 }).unwrap();
     let e0 = g.build_initial_edge(slot0, a, EdgeKind::Basic);
     let e1 = g.build_initial_edge(a, c, EdgeKind::Basic); // shared non-split edge
     let e2 = g.build_initial_edge(c, extra, EdgeKind::Basic);

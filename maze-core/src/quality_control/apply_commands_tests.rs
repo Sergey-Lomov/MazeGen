@@ -1,6 +1,6 @@
 ﻿use rand::SeedableRng;
 use crate::random::MazeRng;
-use crate::space::{SquareTessellation, Field, square_rect};
+use crate::space::{SquareTessellation, MultiLevelField, square_rect};
 use crate::graph::{Graph, EdgeKind};
 use crate::generation::PresetState;
 use crate::repair::MutationCommand;
@@ -11,10 +11,11 @@ use super::*;
 
 fn maze_n(n: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
     let mut ids = crate::IdGenerator::new();
-    let field = Field::new(square_rect(n, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     (Maze::new(field, g), nodes)
 }
 
@@ -456,7 +457,7 @@ fn replace_point_nodes_declines_when_a_prior_batch_command_already_replaced_its_
 
     assert_eq!(outcome, ApplyOutcome { proposed: 2, applied: 1 }, "the second command must be declined, the first must still land");
     let point0 = maze.field.point_of(nodes[0]).expect("declined command must leave nodes[0]'s point untouched");
-    assert_eq!(maze.field.nodes_at(point0), &[nodes[0]], "nodes[0]'s point must be untouched by the declined second command");
+    assert_eq!(maze.field.nodes_at(maze.field.single_level_id(), point0), &[nodes[0]], "nodes[0]'s point must be untouched by the declined second command");
     assert!(maze.field.point_of(nodes[1]).is_none(), "nodes[1] must have been replaced by the first command");
 
     let events: Vec<&QcEvent> = tape.iter().collect();
@@ -476,8 +477,8 @@ fn remove_node_notes_the_removed_nodes_coordinates_into_the_debug_ledger() {
 
     let (mut maze, _nodes) = maze_n(1);
     let point = SquarePoint { x: 0, y: 0 };
-    let _slot0 = maze.field.node_at(point).unwrap();
-    let extra = maze.field.add_node_at(point, &mut maze.ids);
+    let _slot0 = maze.field.node_at(maze.field.single_level_id(), point).unwrap();
+    let extra = maze.field.add_node_at(maze.field.single_level_id(), point, &mut maze.ids);
     maze.graph.add_node(extra);
 
     let mut debug_state: DebugGenerationState<SquareTessellation> = DebugGenerationState::new();
@@ -508,7 +509,7 @@ fn replace_point_nodes_notes_every_old_nodes_coordinates_into_the_debug_ledger()
 
     let noted: std::collections::HashMap<_, _> = debug_state.all_node_points().collect();
     assert_eq!(noted.get(&slot0), Some(&point), "the replaced old node's own coordinates must be noted");
-    let new_slot0 = maze.field.nodes_at(point)[0];
+    let new_slot0 = maze.field.nodes_at(maze.field.single_level_id(), point)[0];
     assert_eq!(noted.get(&new_slot0), Some(&point), "the newly minted replacement is also noted (try_replace_point_nodes's own note())");
     assert_eq!(noted.len(), 2, "exactly the old node plus the one new node, no extras");
 }

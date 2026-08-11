@@ -6,7 +6,7 @@ use rand::{Rng, SeedableRng};
 use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::{EdgeKind, Graph};
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::dsu::Dsu;
 use crate::event_log::EventLog;
 use crate::event_log::wire_primitives::write_node_id;
@@ -114,7 +114,7 @@ impl KruskalEvent {
 
 pub fn generate<T: Tessellation>(
     graph: &mut Graph,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     seed: u64,
     preset_state: &PresetState,
     mut event_log: Option<&mut EventLog<KruskalEvent>>,
@@ -199,8 +199,8 @@ pub fn generate<T: Tessellation>(
         // that neighbor gets added first (shuffle order) locks it out for every other sibling —
         // same "first come, first served" semantics as the DSU cycle check itself.
         let has_edge = |x: NodeId, y: NodeId| graph.edge_between(x, y).is_some() || graph.edge_between(y, x).is_some();
-        let a_siblings = field.point_of(a).map(|p| field.nodes_at(p)).unwrap_or(&[]);
-        let b_siblings = field.point_of(b).map(|p| field.nodes_at(p)).unwrap_or(&[]);
+        let a_siblings = field.level_of(a).zip(field.point_of(a)).map(|(l, p)| field.nodes_at(l, p)).unwrap_or(&[]);
+        let b_siblings = field.level_of(b).zip(field.point_of(b)).map(|(l, p)| field.nodes_at(l, p)).unwrap_or(&[]);
         let split_conflict = a_siblings.iter().any(|&sib| sib != a && has_edge(sib, b))
             || b_siblings.iter().any(|&sib| sib != b && has_edge(sib, a));
 

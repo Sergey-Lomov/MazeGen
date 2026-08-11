@@ -1,6 +1,6 @@
 use super::*;
 use crate::generation::test_utils::{default_elements, make_field_and_graph};
-use crate::space::{SquareTessellation, square_rect};
+use crate::space::{SquareTessellation, MultiLevelField, square_rect};
 use rand::SeedableRng;
 
 fn rng(seed: u64) -> MazeRng { MazeRng::seed_from_u64(seed) }
@@ -73,9 +73,10 @@ fn weighted_sample_index_returns_roll_and_total_weight_used() {
 #[test]
 fn remove_from_active_removes_node_and_marks_visited() {
     let mut ids = crate::ids::IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 3), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+    let _level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     let all: Vec<_> = graph.nodes().map(|n| n.id).collect();
     let a = all[0];
     let b = all[1];
@@ -98,9 +99,10 @@ fn remove_from_active_marks_visited_even_when_not_present_in_active() {
     // absent from `active` still gets marked Visited (state is the source of truth for
     // exhaustion elsewhere in the algorithm; `active` is just the pending-src worklist).
     let mut ids = crate::ids::IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 3), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+    let _level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     let all: Vec<_> = graph.nodes().map(|n| n.id).collect();
     let a = all[0];
     let mut nodes: HashMap<_, _> = all.iter().map(|&n| (n, NodeEntry::unseen())).collect();
@@ -115,9 +117,10 @@ fn remove_from_active_marks_visited_even_when_not_present_in_active() {
 #[test]
 fn sorted_nodes_in_state_filters_by_state_and_extra_filter_and_sorts() {
     let mut ids = crate::ids::IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 3), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+    let _level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     let mut all: Vec<_> = graph.nodes().map(|n| n.id).collect();
     all.sort_unstable();
 
@@ -140,9 +143,10 @@ fn sorted_nodes_in_state_filters_by_state_and_extra_filter_and_sorts() {
 #[test]
 fn sorted_nodes_in_state_empty_when_no_match() {
     let mut ids = crate::ids::IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 3), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+    let _level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     let all: Vec<_> = graph.nodes().map(|n| n.id).collect();
     let nodes: HashMap<_, _> = all.iter().map(|&n| (n, NodeEntry::unseen())).collect();
 
@@ -152,9 +156,10 @@ fn sorted_nodes_in_state_empty_when_no_match() {
 #[test]
 fn choose_src_returns_last_dst_when_corridor_length_one() {
     let mut ids = crate::ids::IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 3), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+    let _level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
 
     let all: Vec<_> = graph.nodes().map(|n| n.id).collect();
     let center = all[4]; // middle node of 3x3
@@ -178,9 +183,10 @@ fn choose_src_returns_last_dst_when_corridor_length_one() {
 #[test]
 fn choose_src_ignores_corridor_when_length_zero() {
     let mut ids = crate::ids::IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 3), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+    let _level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
 
     let all: Vec<_> = graph.nodes().map(|n| n.id).collect();
     let a = all[0];
@@ -206,9 +212,10 @@ fn choose_src_ignores_corridor_when_length_zero() {
 #[test]
 fn choose_src_depth_first_one_prefers_newest() {
     let mut ids = crate::ids::IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(4, 4), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 4), &mut ids).unwrap();
+    let _level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
 
     let all: Vec<_> = graph.nodes().map(|n| n.id).collect();
     let oldest = all[0]; // position 0 in active
@@ -236,8 +243,9 @@ fn empty_presets() -> super::PresetState { super::PresetState::empty() }
 #[test]
 fn edge_based_visits_all_nodes() {
     let (field, mut graph) = make_field_and_graph(5, 5);
+    let level = field.single_level_id();
     let node_count = graph.nodes().count();
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 42, start, &EdgeBasedParams::default(), &default_elements(), &empty_presets(), None);
     assert_eq!(graph.edges().count(), 2 * (node_count - 1));
 }
@@ -245,8 +253,9 @@ fn edge_based_visits_all_nodes() {
 #[test]
 fn edge_based_is_deterministic() {
     let (field, mut g1) = make_field_and_graph(4, 4);
+    let level = field.single_level_id();
     let (_, mut g2) = make_field_and_graph(4, 4);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut g1, &field, 7, start, &EdgeBasedParams::default(), &default_elements(), &empty_presets(), None);
     generate(&mut g2, &field, 7, start, &EdgeBasedParams::default(), &default_elements(), &empty_presets(), None);
     let mut e1: Vec<_> = g1.edges().map(|e| (e.from, e.to)).collect();
@@ -278,7 +287,8 @@ fn full_one_way_teleport_elements() -> ElementsConfig {
 fn teleport_chance_zero_adds_no_teleport_edges() {
     for seed in [1, 7, 42, 1234, 9999] {
         let (field, mut graph) = make_field_and_graph(6, 6);
-        let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
         generate(&mut graph, &field, seed, start, &EdgeBasedParams::default(), &no_teleport_elements(), &empty_presets(), None);
         assert!(teleport_edges(&graph).is_empty(), "seed {seed}: teleport_chance=0.0 must add no teleport edges");
     }
@@ -287,7 +297,8 @@ fn teleport_chance_zero_adds_no_teleport_edges() {
 #[test]
 fn teleport_chance_one_adds_teleport_edges() {
     let (field, mut graph) = make_field_and_graph(6, 6);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 42, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &empty_presets(), None);
     assert!(!teleport_edges(&graph).is_empty(), "teleport_chance=1.0 should add at least one teleport edge on a 6x6 field");
 }
@@ -301,6 +312,7 @@ fn teleport_chance_one_adds_teleport_edges_when_every_geometric_pair_is_preset_p
     // (there, dst being preset_connected says nothing about the specific src-dst edge —
     // it's just "some other Unseen node happens to touch a preset passage elsewhere").
     let (mut field, mut graph) = make_field_and_graph(3, 3);
+    let level = field.single_level_id();
     let mut ids = crate::ids::IdGenerator::resume_after(&field);
     let mut connections = Vec::new();
     for y in 0..3 {
@@ -314,7 +326,7 @@ fn teleport_chance_one_adds_teleport_edges_when_every_geometric_pair_is_preset_p
         |x, y| crate::space::SquarePoint { x, y },
         None, None,
     ).unwrap();
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 42, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &preset_state, None);
     assert!(!teleport_edges(&graph).is_empty(), "teleport_chance=1.0 must still add teleport edges when the whole field is preset-passage");
 }
@@ -322,7 +334,8 @@ fn teleport_chance_one_adds_teleport_edges_when_every_geometric_pair_is_preset_p
 #[test]
 fn teleport_edges_can_connect_non_geometric_neighbors() {
     let (field, mut graph) = make_field_and_graph(8, 8);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 7, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &empty_presets(), None);
     let has_non_adjacent_teleport = teleport_edges(&graph).iter()
         .any(|&(from, to)| !field.neighbors(from).contains(&to));
@@ -332,7 +345,8 @@ fn teleport_edges_can_connect_non_geometric_neighbors() {
 #[test]
 fn teleport_one_way_chance_zero_all_teleports_are_two_way() {
     let (field, mut graph) = make_field_and_graph(6, 6);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 42, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &empty_presets(), None);
     let edges = teleport_edges(&graph);
     assert!(!edges.is_empty());
@@ -345,7 +359,8 @@ fn teleport_one_way_chance_zero_all_teleports_are_two_way() {
 #[test]
 fn teleport_one_way_chance_one_all_teleports_are_one_way() {
     let (field, mut graph) = make_field_and_graph(6, 6);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 42, start, &EdgeBasedParams::default(), &full_one_way_teleport_elements(), &empty_presets(), None);
     let edges = teleport_edges(&graph);
     assert!(!edges.is_empty());
@@ -358,8 +373,9 @@ fn teleport_one_way_chance_one_all_teleports_are_one_way() {
 #[test]
 fn teleport_full_chance_still_visits_all_nodes_and_stays_connected() {
     let (field, mut graph) = make_field_and_graph(6, 6);
+    let level = field.single_level_id();
     let node_count = graph.nodes().count();
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 42, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &empty_presets(), None);
     for node in graph.nodes() {
         let has_edge = graph.edges().any(|e| e.from == node.id || e.to == node.id);
@@ -372,8 +388,9 @@ fn teleport_full_chance_still_visits_all_nodes_and_stays_connected() {
 #[test]
 fn teleport_is_deterministic_for_fixed_seed() {
     let (field, mut g1) = make_field_and_graph(6, 6);
+    let level = field.single_level_id();
     let (_, mut g2) = make_field_and_graph(6, 6);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut g1, &field, 55, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &empty_presets(), None);
     generate(&mut g2, &field, 55, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &empty_presets(), None);
     let mut e1: Vec<_> = g1.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
@@ -386,11 +403,12 @@ fn teleport_is_deterministic_for_fixed_seed() {
 #[test]
 fn teleport_single_node_field_never_panics() {
     let mut ids = crate::ids::IdGenerator::new();
-    let field: Field<SquareTessellation> =
-        Field::new(vec![crate::space::SquarePoint { x: 0, y: 0 }], &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> =
+        MultiLevelField::single_level(vec![crate::space::SquarePoint { x: 0, y: 0 }], &mut ids).unwrap();
+    let level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    for node in field.all_node_ids() { graph.add_node(node); }
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 1, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &empty_presets(), None);
     assert!(teleport_edges(&graph).is_empty(), "single-node field has no partner for a teleport");
 }
@@ -398,7 +416,8 @@ fn teleport_single_node_field_never_panics() {
 #[test]
 fn teleport_respects_locked_out_source() {
     let (field, mut graph) = make_field_and_graph(4, 4);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     let a = start;
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(a);
@@ -411,8 +430,9 @@ fn teleport_respects_locked_out_source() {
 #[test]
 fn teleport_respects_locked_in_destination() {
     let (field, mut graph) = make_field_and_graph(4, 4);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = field.node_at(crate::space::SquarePoint { x: 3, y: 3 }).unwrap();
+    let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let b = field.node_at(level, crate::space::SquarePoint { x: 3, y: 3 }).unwrap();
     let mut preset_state = PresetState::empty();
     preset_state.locked_in.insert(b);
 
@@ -424,9 +444,10 @@ fn teleport_respects_locked_in_destination() {
 #[test]
 fn teleport_respects_blocked_pair() {
     let (field, mut graph) = make_field_and_graph(4, 4);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     let a = start;
-    let b = field.node_at(crate::space::SquarePoint { x: 3, y: 3 }).unwrap();
+    let b = field.node_at(level, crate::space::SquarePoint { x: 3, y: 3 }).unwrap();
     let mut preset_state = PresetState::empty();
     preset_state.blocked.insert((a, b));
     preset_state.blocked.insert((b, a));
@@ -445,7 +466,8 @@ fn teleport_respects_blocked_pair() {
 fn teleport_never_creates_self_loop() {
     for seed in 0..30 {
         let (field, mut graph) = make_field_and_graph(4, 4);
-        let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
         generate(&mut graph, &field, seed, start, &EdgeBasedParams::default(), &full_two_way_teleport_elements(), &empty_presets(), None);
         assert!(graph.edges().all(|e| e.from != e.to), "seed {seed}: no edge (teleport or otherwise) may be a self-loop");
     }
@@ -467,7 +489,8 @@ fn teleport_cyclic_together_widens_pool_to_any_visited_node() {
         cyclicity: 1.0,
     };
     let (field, mut graph) = make_field_and_graph(8, 8);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 21, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
 
     let has_non_adjacent_teleport = teleport_edges(&graph).iter()
@@ -496,7 +519,8 @@ fn teleport_without_cyclic_replaces_normal_dst_choice_with_teleport() {
         cyclicity: 0.0,
     };
     let (field, mut graph) = make_field_and_graph(5, 5);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 9, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
 
     // Note: not every node's outgoing edge is necessarily a Teleport even though
@@ -525,8 +549,9 @@ fn teleport_rolled_at_most_once_per_node() {
         cyclicity: 0.0,
     };
     let (field, mut graph) = make_field_and_graph(6, 6);
+    let level = field.single_level_id();
     let node_count = graph.nodes().count();
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate(&mut graph, &field, 3, start, &params, &one_way_only, &empty_presets(), None);
 
     let unordered_teleport_pairs: std::collections::HashSet<(NodeId, NodeId)> = graph.edges()

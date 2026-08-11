@@ -56,7 +56,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
     use crate::quality_control::Issue;
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "split_density";
 
@@ -67,12 +67,13 @@ mod tests {
     /// 10 field cells, `count` of them carrying a split tile.
     fn maze_with_split_tiles(count: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(10, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         for x in 0..count as i32 {
-            field.add_node_at(SquarePoint { x, y: 0 }, &mut ids);
+            field.add_node_at(field_level, SquarePoint { x, y: 0 }, &mut ids);
         }
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 

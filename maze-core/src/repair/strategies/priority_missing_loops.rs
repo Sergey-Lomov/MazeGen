@@ -82,7 +82,7 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::Graph;
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, square_rect, Field};
+    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
     use crate::repair::params::build_params;
     use crate::repair::strategies::{MissingLoopsRandomStrategy, MissingLoopsSplitStrategy};
     use crate::repair::strategy::ErasedRepairStrategy;
@@ -95,9 +95,9 @@ mod tests {
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(side, side), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 
@@ -151,10 +151,11 @@ mod tests {
         // assert the priority strategy reaches Failed only after trying every listed candidate,
         // observable via each candidate's own inability to add anything.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let mut preset_state = PresetState::empty();

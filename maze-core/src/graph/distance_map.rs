@@ -169,7 +169,7 @@ pub(crate) fn min_optional_distance(a: Option<usize>, b: Option<usize>) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
     use crate::graph::nav::build_nav_graph;
@@ -180,10 +180,11 @@ mod tests {
     /// nav-node). Returns the nav graph and the (single) cycle's nav-edge indices.
     fn triangle_cycle() -> (NavGraph, Vec<usize>) {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Basic);
         g.add_edge(p(1), p(2), EdgeKind::Basic);
         g.add_edge(p(2), p(0), EdgeKind::Basic);
@@ -234,11 +235,12 @@ mod tests {
 
     fn line_graph(len: usize) -> (Graph, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(len, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let nodes: Vec<crate::ids::NodeId> = (0..len)
-            .map(|x| field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap())
+            .map(|x| field.node_at(level, SquarePoint { x: x as i32, y: 0 }).unwrap())
             .collect();
         for i in 0..len - 1 {
             g.add_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
@@ -271,13 +273,14 @@ mod tests {
     #[test]
     fn unreachable_node_absent_from_map() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
-        let c = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
-        let d = field.node_at(SquarePoint { x: 3, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
+        let c = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
+        let d = field.node_at(level, SquarePoint { x: 3, y: 0 }).unwrap();
         g.add_bidirectional_edge(a, b, EdgeKind::Basic);
         g.add_bidirectional_edge(c, d, EdgeKind::Basic);
         let nav = build_nav_graph(&g);
@@ -292,11 +295,12 @@ mod tests {
     #[test]
     fn directed_only_one_way_edge_blocks_reverse_distance() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         g.add_edge(a, b, EdgeKind::Basic); // one-way a -> b only
 
         let nav = build_nav_graph(&g);
@@ -340,11 +344,12 @@ mod tests {
     #[test]
     fn exact_tile_distance_one_way_corridor_blocks_the_reverse_direction() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let nodes: Vec<crate::ids::NodeId> = (0..5)
-            .map(|x| field.node_at(SquarePoint { x, y: 0 }).unwrap())
+            .map(|x| field.node_at(level, SquarePoint { x, y: 0 }).unwrap())
             .collect();
         for w in nodes.windows(2) {
             g.add_edge(w[0], w[1], EdgeKind::Basic); // one-way only, corridor 0->1->2->3->4

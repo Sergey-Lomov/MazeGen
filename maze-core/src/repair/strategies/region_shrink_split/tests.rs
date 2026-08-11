@@ -4,15 +4,16 @@ use rand::SeedableRng;
 use crate::random::MazeRng;
 use crate::graph::{Graph, EdgeKind as EK};
 use crate::IdGenerator;
-use crate::space::{SquareTessellation, square_rect, Field};
+use crate::space::{SquareTessellation, square_rect, MultiLevelField};
 use crate::repair::strategies::test_utils::apply_and_commit_default;
 
 fn build_field(w: usize, h: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(w, h), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     (Maze::new(field, g), nodes)
 }
 

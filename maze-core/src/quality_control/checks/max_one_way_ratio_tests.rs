@@ -2,7 +2,7 @@ use super::*;
 use rand::SeedableRng;
 use crate::{Graph, IdGenerator};
 use crate::quality_control::Issue;
-use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
 const TEST_ID: &str = "max_one_way_ratio";
 
@@ -13,10 +13,11 @@ fn rng() -> crate::random::MazeRng {
 /// 10 field cells, 3 one-way edges -> 30 per 100 cells.
 fn maze_with_three_one_ways_on_ten_cells() -> Maze<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(10, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     g.add_edge(p(0), p(1), EdgeKind::Basic);
     g.add_edge(p(1), p(2), EdgeKind::Basic);
     g.add_edge(p(2), p(3), EdgeKind::Basic);
@@ -55,10 +56,11 @@ fn target_count_rounds_to_nearest_not_down() {
     // target_count under-reported to_remove as 3 instead of 4 for exactly this kind of
     // near-.5-but-not-quite fraction (reported as 3.92 in a different field-size scenario).
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(86, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(86, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     for i in 0..8 {
         g.add_edge(p(i * 2), p(i * 2 + 1), EdgeKind::Basic);
     }
@@ -80,10 +82,11 @@ fn silent_when_rounding_pushes_target_count_up_to_meet_count() {
     // and the check must stay silent instead of firing an empty-effort issue (or, if a plain `-`
     // were ever used instead of saturating_sub, underflowing/panicking).
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     g.add_edge(p(0), p(1), EdgeKind::Basic);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -96,10 +99,11 @@ fn silent_when_rounding_pushes_target_count_up_to_meet_count() {
 #[test]
 fn does_not_count_bidirectional_passage_as_one_way() {
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -116,10 +120,11 @@ fn does_not_floor_the_true_ratio_before_comparing() {
     // against a maximum of 30 even though 30.9% genuinely exceeds it.
     // 309*100 = 30900 > 30*1000 = 30000, so this must fire.
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(1000, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(1000, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     for i in 0..309 {
         g.add_edge(p(i), p(i + 1), EdgeKind::Basic);
     }

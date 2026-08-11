@@ -93,10 +93,10 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitDistanceFromWaypo
         // a seen-points set instead (order doesn't matter here — every point is only ever
         // resolved into `invalid` via its own `nodes_at`, never compared across points).
         let mut seen_points = std::collections::HashSet::new();
-        let invalid: Vec<SplitTileNodes> = maze.field.all_points()
-            .filter(|&point| seen_points.insert(point))
-            .filter_map(|point| {
-                let nodes = maze.field.nodes_at(point);
+        let invalid: Vec<SplitTileNodes> = maze.field.all_points_with_level()
+            .filter(|&(level, point)| seen_points.insert((level, point)))
+            .filter_map(|(level, point)| {
+                let nodes = maze.field.nodes_at(level, point);
                 if nodes.len() < 2 { return None; }
                 let point_distance = nodes.iter().filter_map(|&n| waypoint_distance(n)).min()?;
                 if !self.comparison.compare(point_distance as u32, self.distance) { return None; }
@@ -119,7 +119,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::meta::MazeMeta;
 
     const TEST_ID: &str = "split_distance_from_waypoint";
@@ -130,14 +130,15 @@ mod tests {
     fn maze_with_split_at_distance(split_distance: usize) -> (Maze<SquareTessellation>, SplitTileNodes) {
         let mut ids = IdGenerator::new();
         let width = split_distance + 1;
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let split_point = SquarePoint { x: split_distance as i32, y: 0 };
-        let slot0 = field.node_at(split_point).unwrap();
-        let extra = field.add_node_at(split_point, &mut ids);
+        let slot0 = field.node_at(level, split_point).unwrap();
+        let extra = field.add_node_at(level, split_point, &mut ids);
 
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         for x in 0..split_distance as i32 {
             g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
         }
@@ -201,10 +202,11 @@ mod tests {
     #[test]
     fn never_flags_a_point_with_no_extra_split_node() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         g.add_bidirectional_edge(p(1), p(2), EdgeKind::Basic);
         let start = p(0);
@@ -229,13 +231,14 @@ mod tests {
         // but close to finish must still fire, and a check instance with only Start set (finish
         // missing) must silently skip rather than measuring against start by mistake.
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(12, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let split_point = SquarePoint { x: 0, y: 0 };
-        let slot0 = field.node_at(split_point).unwrap();
-        let extra = field.add_node_at(split_point, &mut ids);
+        let slot0 = field.node_at(level, split_point).unwrap();
+        let extra = field.add_node_at(level, split_point, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         g.add_bidirectional_edge(p(1), p(2), EdgeKind::Basic);
         g.add_bidirectional_edge(p(0), extra, EdgeKind::Basic);
@@ -261,13 +264,14 @@ mod tests {
     #[test]
     fn waypoint_any_uses_the_closer_of_start_and_finish() {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(12, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let split_point = SquarePoint { x: 0, y: 0 };
-        let slot0 = field.node_at(split_point).unwrap();
-        let extra = field.add_node_at(split_point, &mut ids);
+        let slot0 = field.node_at(level, split_point).unwrap();
+        let extra = field.add_node_at(level, split_point, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         // finish(0) -- 1 -- 2, extra split node hanging off finish (distance 0 from finish).
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         g.add_bidirectional_edge(p(1), p(2), EdgeKind::Basic);

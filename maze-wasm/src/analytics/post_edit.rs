@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use maze_core::{
     space::Tessellation,
     graph::{Graph, EdgeKind},
-    space::Field,
+    space::{Field, MultiLevelField},
     Maze,
 };
 use crate::dto::{PostEditEdgeDto, PostEditEndpointDto};
@@ -93,8 +93,9 @@ pub(crate) fn apply_split_points<T: Tessellation>(
         let node = match existing_by_index.get(&(xy, slot_id + 1)) {
             Some(&id) => id,
             None => {
+                let level = maze.field.single_level_id();
                 let point = xy_to_point(xy)
-                    .filter(|&p| maze.field.contains(p))
+                    .filter(|&p| maze.field.field_of(level).is_some_and(|f| f.contains(p)))
                     .ok_or_else(|| format!("split_points references unknown point {xy:?}"))?;
                 maze.add_node_at(point)
             }
@@ -215,7 +216,7 @@ pub(crate) fn resolve_preset_nodes_for_post_edit(
 pub(crate) fn build_field_from_nodes<T: Tessellation>(
     nodes: &[crate::dto::NodeDto],
     xy_to_point: &impl Fn([i32; 2]) -> Option<T::Point>,
-) -> Result<(Field<T>, HashMap<([i32; 2], u32), u64>, HashMap<u64, u32>), String>
+) -> Result<(MultiLevelField<T>, HashMap<([i32; 2], u32), u64>, HashMap<u64, u32>), String>
 where
     T::Point: Copy,
 {
@@ -233,6 +234,7 @@ where
         .map(|n| (n.id as u64, n.i))
         .collect();
     let field = Field::<T>::from_id_points(entries.into_iter().map(|(id, p, _)| (id, p)));
+    let field = MultiLevelField::new([field]);
     Ok((field, existing_by_index, index_by_node))
 }
 
@@ -366,9 +368,10 @@ mod tests {
     fn build_field_from_nodes_preserves_given_ids_and_populates_index_maps() {
         let nodes = vec![node(10, 0, 0, 0), node(20, 1, 0, 0)];
         let (field, existing_by_index, index_by_node) = build_field_from_nodes::<SquareTessellation>(&nodes, &xy_to_square).unwrap();
+        let level = field.single_level_id();
 
-        assert_eq!(field.nodes_at(SquarePoint { x: 0, y: 0 }), &[10]);
-        assert_eq!(field.nodes_at(SquarePoint { x: 1, y: 0 }), &[20]);
+        assert_eq!(field.nodes_at(level, SquarePoint { x: 0, y: 0 }), &[10]);
+        assert_eq!(field.nodes_at(level, SquarePoint { x: 1, y: 0 }), &[20]);
         assert_eq!(existing_by_index[&([0, 0], 0)], 10);
         assert_eq!(existing_by_index[&([1, 0], 0)], 20);
         assert_eq!(index_by_node[&10], 0);
@@ -381,8 +384,9 @@ mod tests {
         // matching `nodes_at`'s creation-order contract regardless of input order.
         let nodes = vec![node(2, 0, 0, 1), node(1, 0, 0, 0)];
         let (field, _, _) = build_field_from_nodes::<SquareTessellation>(&nodes, &xy_to_square).unwrap();
+        let level = field.single_level_id();
 
-        assert_eq!(field.nodes_at(SquarePoint { x: 0, y: 0 }), &[1, 2]);
+        assert_eq!(field.nodes_at(level, SquarePoint { x: 0, y: 0 }), &[1, 2]);
     }
 
     #[test]
@@ -403,9 +407,10 @@ mod tests {
     #[test]
     fn apply_split_points_mints_distinct_new_nodes_when_none_exist_yet() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let _level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         let map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0), ([0, 0], 1), ([0, 0], 2)], &no_splits()).unwrap();
 
@@ -422,13 +427,14 @@ mod tests {
     #[test]
     fn apply_split_points_reuses_an_already_existing_slots_node_id() {
         let mut ids = IdGenerator::new();
-        let mut field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let mut field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let p = SquarePoint { x: 0, y: 0 };
         // Simulates a field rebuilt with slot 0 already confirmed at a prior call (i = 1: slot_id
         // 0 + 1, since i = 0 is always the point's original node).
-        let existing_node = field.add_node_at(p, &mut ids);
+        let existing_node = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         g.add_node(existing_node);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         let existing = HashMap::from([(([0, 0], 1u32), existing_node)]);
@@ -443,11 +449,12 @@ mod tests {
     #[test]
     fn apply_split_points_mints_only_the_newly_added_slot() {
         let mut ids = IdGenerator::new();
-        let mut field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let mut field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let p = SquarePoint { x: 0, y: 0 };
-        let existing_node = field.add_node_at(p, &mut ids);
+        let existing_node = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         g.add_node(existing_node);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         let existing = HashMap::from([(([0, 0], 1u32), existing_node)]);
@@ -467,12 +474,13 @@ mod tests {
     #[test]
     fn apply_split_points_keeps_a_surviving_later_slot_correct_after_an_earlier_slot_is_removed() {
         let mut ids = IdGenerator::new();
-        let mut field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let mut field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let p = SquarePoint { x: 0, y: 0 };
-        let removed_node = field.add_node_at(p, &mut ids);
-        let surviving_node = field.add_node_at(p, &mut ids);
+        let removed_node = field.add_node_at(level, p, &mut ids);
+        let surviving_node = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         g.add_node(removed_node);
         g.add_node(surviving_node);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -492,9 +500,10 @@ mod tests {
     #[test]
     fn split_map_is_internally_consistent_within_one_call() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let _level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         let map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0), ([0, 0], 1)], &no_splits()).unwrap();
 
@@ -506,9 +515,10 @@ mod tests {
     #[test]
     fn apply_split_points_rejects_unknown_point() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let _level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let err = apply_split_points(&mut maze, xy_to_square, &[([5, 5], 0)], &no_splits()).unwrap_err();
@@ -521,9 +531,10 @@ mod tests {
         // the field — must not panic (Field::add_node_at panics on an unknown point), must
         // surface as an ordinary Err instead (e.g. a project saved before the tessellation shrank).
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let _level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let err = apply_split_points(&mut maze, xy_to_square, &[([9, 9], 0)], &no_splits()).unwrap_err();
@@ -533,11 +544,12 @@ mod tests {
     #[test]
     fn build_graph_from_post_edit_edges_accepts_split_endpoints_end_to_end() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let _level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let a = maze.field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let a = maze.field.nodes_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
 
         let split_map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0)], &no_splits()).unwrap();
         let split_node = split_map[&([0, 0], 0)];
@@ -563,12 +575,13 @@ mod tests {
     #[test]
     fn route_exists_through_a_split_node_bridging_a_walled_off_pair() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let _level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let a = maze.field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let b = maze.field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
+        let a = maze.field.nodes_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let b = maze.field.nodes_at(maze.field.single_level_id(), SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
         // No edge at all between a and b — the direct passage is walled off.
 
         let split_map = apply_split_points(&mut maze, xy_to_square, &[([0, 0], 0)], &no_splits()).unwrap();

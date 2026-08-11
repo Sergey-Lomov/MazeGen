@@ -467,7 +467,7 @@ mod build_check_tests {
         // back to 0. Now parsed as f64: build a check with distance="1.1" from a raw config
         // string (as the web layer would send it) and confirm it actually flags a gap of 1.
         use maze_core::graph::EdgeKind;
-        use maze_core::space::{Field, SquarePoint, square_rect};
+        use maze_core::space::{MultiLevelField, SquarePoint, square_rect};
         use maze_core::{Graph, IdGenerator, Maze};
         use rand::SeedableRng;
 
@@ -482,10 +482,11 @@ mod build_check_tests {
         // threshold 1.1 (1 < 1.1), but would NOT be flagged against the old silently-truncated
         // fallback of 0.0.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.nodes_at(SquarePoint { x, y: 0 }).first().copied().unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.nodes_at(level, SquarePoint { x, y: 0 }).first().copied().unwrap();
         g.build_initial_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         g.build_initial_edge(p(0), p(2), EdgeKind::Teleport);
         g.build_initial_edge(p(1), p(3), EdgeKind::Teleport);

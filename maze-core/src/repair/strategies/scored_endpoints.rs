@@ -1,7 +1,7 @@
 ﻿use std::collections::HashSet;
 use rand::RngCore;
 use crate::Maze;
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::graph::nav::{NavGraph, NavNodeId, NavEdge};
 use crate::graph::pathfinding::{dijkstra_with_prev, build_outgoing_index};
 use crate::quality_control::MissingEndpointsIssue;
@@ -149,7 +149,7 @@ struct ScoredPathContext<'a> {
 }
 
 impl<'a> ScoredPathContext<'a> {
-    fn build<T: Tessellation>(nav: &'a NavGraph, field: &Field<T>) -> Self {
+    fn build<T: Tessellation>(nav: &'a NavGraph, field: &MultiLevelField<T>) -> Self {
         let edges: Vec<&'a NavEdge> = nav.edges().collect();
         let junction_flags = junction_flags(nav);
         let oneway_flags   = oneway_flags(&edges);
@@ -229,14 +229,15 @@ fn teleport_flags(edges: &[&NavEdge]) -> Vec<bool> {
 }
 
 /// True if `field.point_of(node_id)` is a split tile (a field point with >= 2 nodes).
-fn is_split_node<T: Tessellation>(field: &Field<T>, node_id: crate::ids::NodeId) -> bool {
-    field.point_of(node_id).is_some_and(|point| field.nodes_at(point).len() >= 2)
+fn is_split_node<T: Tessellation>(field: &MultiLevelField<T>, node_id: crate::ids::NodeId) -> bool {
+    field.level_of(node_id).zip(field.point_of(node_id))
+        .is_some_and(|(level, point)| field.nodes_at(level, point).len() >= 2)
 }
 
 /// Per-nav-node split flag, keyed by `NavNodeId` — used only for a route's own start nav node
 /// (`score_path`'s `nav_nodes_on_path[0]`, mirroring how `junction_flags` covers it), since
 /// `split_counts` below deliberately excludes each edge's `from` node.
-fn nav_node_split_flags<T: Tessellation>(nav: &NavGraph, field: &Field<T>) -> Vec<bool> {
+fn nav_node_split_flags<T: Tessellation>(nav: &NavGraph, field: &MultiLevelField<T>) -> Vec<bool> {
     nav.nodes.iter().map(|n| is_split_node(field, n.node_id)).collect()
 }
 
@@ -247,7 +248,7 @@ fn nav_node_split_flags<T: Tessellation>(nav: &NavGraph, field: &Field<T>) -> Ve
 /// very first node (edge 0's `from`, never anyone's `path[1..]`) is *not* covered here — callers
 /// must add `nav_node_split_flags` for that node separately, the same way `score_path` adds edge
 /// 0's `from` to `nav_nodes_on_path` for `junction_count`.
-fn split_counts<T: Tessellation>(edges: &[&NavEdge], field: &Field<T>) -> Vec<usize> {
+fn split_counts<T: Tessellation>(edges: &[&NavEdge], field: &MultiLevelField<T>) -> Vec<usize> {
     edges.iter().map(|e| {
         e.path.iter().skip(1).filter(|&&node_id| is_split_node(field, node_id)).count()
     }).collect()

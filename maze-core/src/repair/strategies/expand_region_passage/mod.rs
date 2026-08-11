@@ -160,7 +160,7 @@ fn scan_neighbor_pairs<'a, T: Tessellation>(
     region: &'a [NodeId],
     region_idx: ComponentId,
     scc: &'a ConnectedComponents,
-    field: &'a crate::space::Field<T>,
+    field: &'a crate::space::MultiLevelField<T>,
     preset_state: &'a PresetState,
 ) -> impl Iterator<Item = (NodeId, NodeId, ComponentId)> + 'a {
     region.iter().flat_map(move |&node| {

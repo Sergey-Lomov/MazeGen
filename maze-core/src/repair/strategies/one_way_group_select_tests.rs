@@ -47,10 +47,11 @@ fn fix_target_nested_passage<T: Tessellation>() -> Vec<NestedStrategyConfig<T>> 
 fn maze_with_two_one_ways() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
     let mut ids = IdGenerator::new();
     let field = square_rect(4, 1);
-    let field = crate::space::Field::new(field, &mut ids).unwrap();
+    let field = crate::space::MultiLevelField::single_level(field, &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     let e1 = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
     let e2 = g.add_edge(nodes[2], nodes[3], EdgeKind::Basic);
     (Maze::new(field, g), e1, e2)
@@ -109,10 +110,11 @@ fn apply_fixes_exactly_one_edge_from_a_group_larger_than_two() {
     // untouched (full resolution of a large group takes multiple fixpoint iterations, one fix
     // per call -- see GitHub issue #200's follow-up review).
     let mut ids = IdGenerator::new();
-    let field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(11, 1), &mut ids).unwrap();
+    let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(11, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     let edges: Vec<EdgeId> = (0..5).map(|i| g.add_edge(nodes[i * 2], nodes[i * 2 + 1], EdgeKind::Basic)).collect();
     let mut maze = Maze::new(field, g);
 
@@ -134,10 +136,11 @@ fn apply_fixes_to_remove_edges_from_a_single_group_in_one_call() {
     // of the group, not just one, so a large excess converges without needing one repair
     // iteration per excess edge.
     let mut ids = IdGenerator::new();
-    let field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(11, 1), &mut ids).unwrap();
+    let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(11, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     let edges: Vec<EdgeId> = (0..5).map(|i| g.add_edge(nodes[i * 2], nodes[i * 2 + 1], EdgeKind::Basic)).collect();
     let mut maze = Maze::new(field, g);
 
@@ -156,10 +159,11 @@ fn apply_stops_once_to_remove_is_reached_even_with_more_candidates_left() {
     // to_remove=2 on a 5-edge group -- exactly 2 must be fixed, the remaining 3 left untouched
     // (as opposed to draining the whole group).
     let mut ids = IdGenerator::new();
-    let field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(11, 1), &mut ids).unwrap();
+    let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(11, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     let edges: Vec<EdgeId> = (0..5).map(|i| g.add_edge(nodes[i * 2], nodes[i * 2 + 1], EdgeKind::Basic)).collect();
     let mut maze = Maze::new(field, g);
 
@@ -180,10 +184,11 @@ fn apply_fixes_a_shared_edge_once_but_decrements_to_remove_in_every_group_it_app
     // to_remove drops 2->1 (still needs e_a), group B's to_remove drops 1->0 (fully resolved by
     // e_shared alone, e_b survives untouched).
     let mut ids = IdGenerator::new();
-    let field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(6, 1), &mut ids).unwrap();
+    let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     let e_shared = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
     let e_a = g.add_edge(nodes[2], nodes[3], EdgeKind::Basic);
     let e_b = g.add_edge(nodes[4], nodes[5], EdgeKind::Basic);
@@ -209,10 +214,11 @@ fn problematic_priority_favors_highest_membership_edge_even_when_its_group_is_no
     // issue.groups order -- e_shared must still be picked first despite its groups not being
     // first in the list.
     let mut ids = IdGenerator::new();
-    let field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(8, 1), &mut ids).unwrap();
+    let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(8, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     let e_solo = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
     let e_shared = g.add_edge(nodes[2], nodes[3], EdgeKind::Basic);
     let e_x = g.add_edge(nodes[4], nodes[5], EdgeKind::Basic);
@@ -265,10 +271,11 @@ fn apply_with_passage_nested_resolves_a_shared_edge_across_two_groups_without_a_
     // `removed_edge_ids`) is what prevents e_shared's second group from being offered to the
     // nested strategy again.
     let mut ids = IdGenerator::new();
-    let field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(6, 1), &mut ids).unwrap();
+    let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     let e_shared = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
     let e_a = g.add_edge(nodes[2], nodes[3], EdgeKind::Basic);
     let e_b = g.add_edge(nodes[4], nodes[5], EdgeKind::Basic);
@@ -298,10 +305,11 @@ fn problematic_priority_picks_the_edge_in_more_groups() {
     // A single seed suffices: this scenario's max-membership edge is unique, so the shuffle's
     // random tie-break is never actually exercised regardless of seed.
     let mut ids = IdGenerator::new();
-    let field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(6, 1), &mut ids).unwrap();
+    let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     let e_shared = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
     let e_a = g.add_edge(nodes[2], nodes[3], EdgeKind::Basic);
     let e_b = g.add_edge(nodes[4], nodes[5], EdgeKind::Basic);
@@ -336,7 +344,7 @@ fn random_priority_picks_some_edge_from_the_pair() {
 #[test]
 fn protect_route_disabled_allows_a_route_critical_edge_to_be_picked() {
     let (mut maze, e1, _e2) = maze_with_two_one_ways();
-    let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
+    let nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
     // e1 (0->1) sits on the only route -- with protect_route disabled it's a legitimate
     // candidate again, unlike `protect_route_falls_back_to_the_other_side_of_the_pair`.
     maze.meta = MazeMeta { start: Some(nodes[0]), finish: Some(nodes[1]), route_score: None };
@@ -354,10 +362,11 @@ fn protect_route_disabled_allows_a_route_critical_edge_to_be_picked() {
 #[test]
 fn resolving_shared_edge_drops_the_other_group_without_a_second_fix() {
     let mut ids = IdGenerator::new();
-    let field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(6, 1), &mut ids).unwrap();
+    let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     let e_shared = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
     let e_a = g.add_edge(nodes[2], nodes[3], EdgeKind::Basic);
     let e_b = g.add_edge(nodes[4], nodes[5], EdgeKind::Basic);
@@ -379,7 +388,7 @@ fn resolving_shared_edge_drops_the_other_group_without_a_second_fix() {
 #[test]
 fn protect_route_falls_back_to_the_other_side_of_the_pair() {
     let (mut maze, e1, e2) = maze_with_two_one_ways();
-    let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
+    let nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
     // e1 (0->1) sits on the route; e2 (2->3) does not (disconnected).
     maze.meta = MazeMeta { start: Some(nodes[0]), finish: Some(nodes[1]), route_score: None };
 
@@ -399,10 +408,11 @@ fn protect_route_leaves_a_fully_protected_group_untouched() {
     // A route-only maze: start(0)->1->2(finish), both one-ways are route hops.
     use crate::space::SquarePoint;
     let mut ids = IdGenerator::new();
-    let field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p: Vec<_> = (0..3).map(|i| field.node_at(SquarePoint { x: i, y: 0 }).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p: Vec<_> = (0..3).map(|i| field.node_at(field_level, SquarePoint { x: i, y: 0 }).unwrap()).collect();
     let ea = g.add_edge(p[0], p[1], EdgeKind::Basic);
     let eb = g.add_edge(p[1], p[2], EdgeKind::Basic);
     let mut maze = Maze::new(field, g);

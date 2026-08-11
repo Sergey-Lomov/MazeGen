@@ -67,15 +67,16 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, square_rect, Field};
+    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
     use crate::repair::strategies::test_utils::apply_and_commit_default as apply_and_commit;
 
     fn make_connected_maze(n: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(n, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         for i in 0..n - 1 {
             g.build_initial_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
         }
@@ -114,7 +115,7 @@ mod tests {
         // A field must have at least one node (`Field::new` errors on empty input), so simulate
         // "no candidates" via an empty graph with no nodes registered at all.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
         let g = Graph::new(); // deliberately not populated via build_nodes
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         let mut rng = MazeRng::seed_from_u64(1);
@@ -142,10 +143,11 @@ mod tests {
         // fully disconnected graph: no edges at all means only finish itself is "reachable to
         // finish", and after excluding finish, candidates is empty.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         maze.meta.finish = Some(nodes[1]);
         let mut rng = MazeRng::seed_from_u64(1);
@@ -170,10 +172,11 @@ mod tests {
     #[test]
     fn only_start_set_fails_when_start_cannot_reach_anything() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         maze.meta.start = Some(nodes[0]);
         let mut rng = MazeRng::seed_from_u64(1);

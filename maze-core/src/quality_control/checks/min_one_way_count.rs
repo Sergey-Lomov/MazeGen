@@ -44,7 +44,7 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "min_one_way_count";
 
@@ -55,10 +55,11 @@ mod tests {
     /// 4-tile corridor with one one-way edge (0->1) and one bidirectional passage (1<->2<->3).
     fn maze_with_one_one_way() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Basic);
         g.add_bidirectional_edge(p(1), p(2), EdgeKind::Basic);
         g.add_bidirectional_edge(p(2), p(3), EdgeKind::Basic);
@@ -92,10 +93,11 @@ mod tests {
     #[test]
     fn does_not_count_bidirectional_passage_as_one_way() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -109,10 +111,11 @@ mod tests {
     #[test]
     fn does_not_count_a_teleport_edge() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -126,10 +129,11 @@ mod tests {
     #[test]
     fn flags_a_basic_one_way_paired_with_a_parallel_reverse_teleport() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Basic);
         g.add_edge(p(1), p(0), EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);

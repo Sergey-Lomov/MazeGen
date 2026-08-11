@@ -63,7 +63,8 @@ pub fn apply_commands<T: Tessellation>(
         // `try_replace_point_nodes` has replaced them.
         let old_point_nodes = match &cmd {
             MutationCommand::ReplacePointNodes { at, .. } =>
-                maze.field.point_of(*at).map(|point| maze.field.nodes_at(point).to_vec()),
+                maze.field.level_of(*at).zip(maze.field.point_of(*at))
+                    .map(|(level, point)| maze.field.nodes_at(level, point).to_vec()),
             _ => None,
         };
         // `reverse_removed` is only meaningful for `RemoveEdgeWithReverse`/
@@ -227,7 +228,8 @@ fn qc_event_proposed_for_command<T: Tessellation>(cmd: &MutationCommand, maze: &
         MutationCommand::SetFinish(node) => QcEvent::FinishSetProposed(*node),
         MutationCommand::RemoveNode { node } => QcEvent::NodeRemoveProposed(*node),
         MutationCommand::ReplacePointNodes { at, nodes } => {
-            let old_nodes = maze.field.point_of(*at).map(|point| maze.field.nodes_at(point).to_vec()).unwrap_or_default();
+            let old_nodes = maze.field.level_of(*at).zip(maze.field.point_of(*at))
+                .map(|(level, point)| maze.field.nodes_at(level, point).to_vec()).unwrap_or_default();
             QcEvent::PointNodesReplaceProposed { at: *at, old_nodes, nodes: nodes.clone() }
         }
     })

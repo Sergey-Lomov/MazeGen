@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use crate::ids::NodeId;
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::graph::nav::{NavGraph, NavNodeId};
 use super::pathfinding::{dijkstra_with_prev, build_outgoing_index};
 
@@ -81,13 +81,14 @@ fn count_junctions(nav: &NavGraph, nav_nodes_on_path: &[NavNodeId]) -> usize {
 
 /// Counts every path-node occurrence that sits on a split tile (a field point with >= 2 nodes) —
 /// each hop is counted independently, so a route crossing the same split tile twice counts twice.
-fn count_splits<T: Tessellation>(field: &Field<T>, path: &[NodeId]) -> usize {
+fn count_splits<T: Tessellation>(field: &MultiLevelField<T>, path: &[NodeId]) -> usize {
     path.iter().filter(|&&node_id| {
-        field.point_of(node_id).is_some_and(|point| field.nodes_at(point).len() >= 2)
+        field.level_of(node_id).zip(field.point_of(node_id))
+            .is_some_and(|(level, point)| field.nodes_at(level, point).len() >= 2)
     }).count()
 }
 
-pub fn compute_route_info<T: Tessellation>(nav: &NavGraph, field: &Field<T>, start: NodeId, finish: NodeId) -> Option<RouteInfo> {
+pub fn compute_route_info<T: Tessellation>(nav: &NavGraph, field: &MultiLevelField<T>, start: NodeId, finish: NodeId) -> Option<RouteInfo> {
     // Callers must build `nav` with build_nav_graph_pinned({start, finish}) so that both
     // nodes are guaranteed to be junction (nav) nodes, not corridor nodes.
     debug_assert!(
@@ -152,10 +153,11 @@ mod tests {
 
     /// A no-split `n`-node field (one node per point) — `NodeId`s come back in point order
     /// (x = 0..n) so tests can still address nodes by position, same as the old literal ids.
-    fn field_with_nodes(n: usize) -> (Field<SquareTessellation>, Vec<NodeId>) {
+    fn field_with_nodes(n: usize) -> (MultiLevelField<SquareTessellation>, Vec<NodeId>) {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(n.max(1), 1), &mut ids).unwrap();
-        let nodes = (0..n).map(|x| field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap()).collect();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(n.max(1), 1), &mut ids).unwrap();
+        let level = field.single_level_id();
+        let nodes = (0..n).map(|x| field.node_at(level, SquarePoint { x: x as i32, y: 0 }).unwrap()).collect();
         (field, nodes)
     }
 
@@ -279,11 +281,12 @@ mod tests {
         // through the split node once, so split_count must be 1 -- not deduped further, but
         // also not double-counted for the tile's other (off-route) node.
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
-        let extra = field.add_node_at(SquarePoint { x: 1, y: 0 }, &mut ids);
-        let n0 = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let n1 = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
-        let n2 = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
+        let extra = field.add_node_at(level, SquarePoint { x: 1, y: 0 }, &mut ids);
+        let n0 = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let n1 = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
+        let n2 = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
         assert_ne!(n1, extra, "split tile must carry two distinct nodes");
 
         let mut g = Graph::new();
@@ -303,11 +306,12 @@ mod tests {
         // both of them (n0 -> n1 -> extra -> n2), so split_count must count each occurrence --
         // 2 -- even though no single NodeId repeats (shortest-path routes never revisit a node).
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
-        let extra = field.add_node_at(SquarePoint { x: 1, y: 0 }, &mut ids);
-        let n0 = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let n1 = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
-        let n2 = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
+        let extra = field.add_node_at(level, SquarePoint { x: 1, y: 0 }, &mut ids);
+        let n0 = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let n1 = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
+        let n2 = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
 
         let mut g = Graph::new();
         for id in [n0, n1, n2, extra] { g.add_node(id); }

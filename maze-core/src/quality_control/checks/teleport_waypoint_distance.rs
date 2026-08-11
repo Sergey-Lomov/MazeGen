@@ -113,7 +113,7 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::meta::MazeMeta;
 
     const TEST_ID: &str = "teleport_waypoint_distance";
@@ -123,10 +123,11 @@ mod tests {
     fn maze_with_teleport_entry_at_distance(entry_distance: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
         let width = entry_distance + 2;
-        let field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let nodes: Vec<_> = (0..width as i32).map(p).collect();
         for x in 0..entry_distance as i32 {
             g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
@@ -219,10 +220,11 @@ mod tests {
         // Build so the teleport's exit is close to start via a separate path, even though entry
         // is far -- EntryOrExit must catch it via the exit side.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(12, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         // start -- 1 -- 2 (exit, distance 2 from start)
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         g.add_bidirectional_edge(p(1), p(2), EdgeKind::Basic);
@@ -251,10 +253,11 @@ mod tests {
     fn waypoint_any_uses_the_closer_of_start_and_finish() {
         // finish is very close to the teleport entry, start is far -- Any must catch it via finish.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(12, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         // finish(0) -- 1 -- 2 (entry, distance 2 from finish, following reverse edges)
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         g.add_bidirectional_edge(p(1), p(2), EdgeKind::Basic);
@@ -362,10 +365,11 @@ mod tests {
         // Entry node has no path back to/from start at all (one-way corridor away from start,
         // teleport starts past a one-way wall) -- distance map has no entry for it.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         // Isolated pair -- no edge at all connects it to start's component.
         g.add_bidirectional_edge(p(2), p(3), EdgeKind::Basic);
         g.add_edge(p(2), p(3), EdgeKind::Teleport);

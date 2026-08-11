@@ -109,7 +109,7 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::meta::MazeMeta;
 
     const TEST_ID: &str = "one_way_waypoint_distance";
@@ -120,10 +120,11 @@ mod tests {
     fn maze_with_one_way_at_distance(one_way_from: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
         let width = one_way_from + 2;
-        let field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let nodes: Vec<_> = (0..width as i32).map(p).collect();
         for x in 0..one_way_from as i32 {
             g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
@@ -192,10 +193,11 @@ mod tests {
         // uses distance_from_finish and correctly ignores distance_from_start, not just that
         // Any's "closer of both" reduction happens to also catch it.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         // finish(0) -- 1 -- 2(one_way_from) -> 3(one_way_to), one_way_from is 2 tiles from finish
         // via reverse edges. start is unset -- if the check wrongly consulted distance_from_start
         // it would find None and silently skip instead of firing.
@@ -225,10 +227,11 @@ mod tests {
         // Same corridor but the tested edge is bidirectional (both directions present) -- must
         // never be flagged, regardless of distance, since it isn't a one-way.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         g.add_bidirectional_edge(p(1), p(2), EdgeKind::Basic);
         let start_node = p(0);
@@ -255,10 +258,11 @@ mod tests {
         // mistaken for the Basic edge's own reverse, or a genuine one-way silently escapes
         // detection.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let one_way_id = g.add_edge(p(0), p(2), EdgeKind::Basic);
         g.add_edge(p(2), p(0), EdgeKind::Teleport);
         let start_node = p(0);
@@ -285,10 +289,11 @@ mod tests {
         // is only 1 hop further -- min(from,to) = 9, still far. Build a case where `to` is
         // reachable at a much closer distance via a separate path, so the min catches it via `to`.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(12, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         // start -- 1 -- 2 (close to start)
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         g.add_bidirectional_edge(p(1), p(2), EdgeKind::Basic);
@@ -315,10 +320,11 @@ mod tests {
     #[test]
     fn waypoint_any_uses_the_closer_of_start_and_finish() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(12, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(12, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         // finish(0) -- 1 -- 2 (one-way `from`, distance 2 from finish, reverse-reachable)
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         g.add_bidirectional_edge(p(1), p(2), EdgeKind::Basic);
@@ -419,10 +425,11 @@ mod tests {
     #[test]
     fn silent_when_one_way_endpoint_unreachable_from_waypoint() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         // Isolated pair -- no edge at all connects it to start's component.
         g.add_edge(p(2), p(3), EdgeKind::Basic);
         let start = p(0);

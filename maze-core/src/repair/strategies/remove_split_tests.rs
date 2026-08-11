@@ -2,7 +2,7 @@ use super::*;
 use rand::SeedableRng;
 use crate::random::MazeRng;
 use crate::{Graph, IdGenerator};
-use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 use crate::quality_control::SplitTileNodes;
 use crate::repair::params::build_params;
 use crate::repair::strategies::test_utils::apply_and_commit;
@@ -22,14 +22,15 @@ fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
 /// A 2-node split (slot0 + extra): slot0 <-> left, extra <-> right.
 fn maze_with_split_node() -> (Maze<SquareTessellation>, NodeId, NodeId) {
     let mut ids = IdGenerator::new();
-    let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
-    let slot0 = field.node_at(p).unwrap();
-    let extra = field.add_node_at(p, &mut ids);
+    let slot0 = field.node_at(field_level, p).unwrap();
+    let extra = field.add_node_at(field_level, p, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let left = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let right = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let left = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let right = field.node_at(field_level, SquarePoint { x: 2, y: 0 }).unwrap();
     g.add_bidirectional_edge(slot0, left, EdgeKind::Basic);
     g.add_bidirectional_edge(extra, right, EdgeKind::Basic);
     let maze = Maze::new(field, g);
@@ -37,7 +38,7 @@ fn maze_with_split_node() -> (Maze<SquareTessellation>, NodeId, NodeId) {
 }
 
 fn only_surviving_node(maze: &Maze<SquareTessellation>, point: SquarePoint) -> NodeId {
-    let remaining = maze.field.nodes_at(point);
+    let remaining = maze.field.nodes_at(maze.field.single_level_id(), point);
     assert_eq!(remaining.len(), 1, "collapse must leave exactly one node at the point");
     remaining[0]
 }
@@ -60,8 +61,8 @@ fn apply_collapses_the_tile_to_exactly_one_node() {
 #[test]
 fn apply_most_connected_default_keeps_the_more_connected_nodes_edges() {
     let (mut maze, slot0, extra) = maze_with_split_node();
-    let left = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let right = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    let left = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
+    let right = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap();
     // Give extra a second connection so it strictly outranks slot0 (1 vs 2).
     maze.graph.add_edge(extra, left, EdgeKind::Basic);
 
@@ -79,8 +80,8 @@ fn apply_most_connected_default_keeps_the_more_connected_nodes_edges() {
 #[test]
 fn apply_least_connected_keeps_the_less_connected_nodes_edges() {
     let (mut maze, slot0, extra) = maze_with_split_node();
-    let left = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let right = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    let left = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
+    let right = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap();
     maze.graph.add_edge(extra, left, EdgeKind::Basic); // extra now has degree 2, slot0 has 1
 
     let issue = InvalidSplitTileIssue::new_from_check("test", vec![SplitTileNodes::new(vec![slot0, extra])]);
@@ -100,7 +101,7 @@ fn apply_most_connected_counts_basic_and_teleport_to_the_same_target_as_two_conn
     // connections in the degree tie-break, not dedupe into one the way a bidirectional Basic
     // pair does (`Graph::add_edge`'s own dedup is kind-aware -- a node can genuinely hold both).
     let (mut maze, slot0, extra) = maze_with_split_node();
-    let right = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    let right = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap();
     // extra: bidirectional Basic to `right` (degree 1 if kind-aware, would wrongly stay 1 even
     // after adding a same-target Teleport if the dedup ignored kind) plus a Teleport to `right` --
     // true degree 2, same as slot0's own bidirectional-to-`left` (also degree 1) plus nothing else
@@ -120,8 +121,8 @@ fn apply_most_connected_counts_basic_and_teleport_to_the_same_target_as_two_conn
 #[test]
 fn apply_merge_unions_edges_from_every_node() {
     let (mut maze, slot0, extra) = maze_with_split_node();
-    let left = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let right = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    let left = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
+    let right = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap();
 
     let issue = InvalidSplitTileIssue::new_from_check("test", vec![SplitTileNodes::new(vec![slot0, extra])]);
     let params = params_with(&[(PARAM_SELECTION, SELECTION_MERGE)]);
@@ -139,13 +140,14 @@ fn apply_merge_unions_edges_from_every_node() {
 #[test]
 fn apply_merge_unions_forward_and_backward_to_the_same_target_into_a_passage() {
     let mut ids = IdGenerator::new();
-    let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
-    let slot0 = field.node_at(p).unwrap();
-    let extra = field.add_node_at(p, &mut ids);
+    let slot0 = field.node_at(field_level, p).unwrap();
+    let extra = field.add_node_at(field_level, p, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let right = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let right = field.node_at(field_level, SquarePoint { x: 2, y: 0 }).unwrap();
     // slot0 -> right (Forward), right -> extra (Backward relative to extra) -- same target,
     // opposite directions from the tile's two different nodes.
     g.add_edge(slot0, right, EdgeKind::Basic);
@@ -166,12 +168,13 @@ fn apply_merge_unions_forward_and_backward_to_the_same_target_into_a_passage() {
 #[test]
 fn apply_never_creates_a_self_loop_from_the_sibling_edge() {
     let mut ids = IdGenerator::new();
-    let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
-    let slot0 = field.node_at(p).unwrap();
-    let extra = field.add_node_at(p, &mut ids);
+    let slot0 = field.node_at(field_level, p).unwrap();
+    let extra = field.add_node_at(field_level, p, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
+    for node in field.all_node_ids() { g.add_node(node); }
     // The only edge on `extra` is its sibling edge to slot0 -- must never be carried over as a
     // self-loop on the surviving node.
     g.add_bidirectional_edge(slot0, extra, EdgeKind::Basic);
@@ -192,13 +195,14 @@ fn apply_never_creates_a_self_loop_from_the_sibling_edge() {
 #[test]
 fn apply_preserves_teleport_kind() {
     let mut ids = IdGenerator::new();
-    let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
-    let slot0 = field.node_at(p).unwrap();
-    let extra = field.add_node_at(p, &mut ids);
+    let slot0 = field.node_at(field_level, p).unwrap();
+    let extra = field.add_node_at(field_level, p, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let far = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let far = field.node_at(field_level, SquarePoint { x: 2, y: 0 }).unwrap();
     g.add_edge(extra, far, EdgeKind::Teleport);
     let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 

@@ -86,10 +86,11 @@ mod tests {
 
     fn maze_with_duplicate_teleport() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
         g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
         Maze::new(field, g)
@@ -127,10 +128,11 @@ mod tests {
     #[test]
     fn apply_removes_both_directions_of_a_two_way_duplicate_teleport() {
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
         g.add_edge(nodes[2], nodes[0], EdgeKind::Teleport);
         g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
@@ -157,10 +159,11 @@ mod tests {
         // that only ever inspects/flags one end) -- the strategy must still remove the backward
         // Teleport counterpart so a two-way teleport is never left downgraded to one-way.
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let forward_id = g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
         let backward_id = g.add_edge(nodes[2], nodes[0], EdgeKind::Teleport);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -180,10 +183,11 @@ mod tests {
         // "reverse" -- only a Teleport-kind reverse counts. Regression guard for
         // `Graph::teleport_reverse`'s kind check.
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let teleport_id = g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
         let reverse_basic_id = g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -200,10 +204,11 @@ mod tests {
     #[test]
     fn apply_with_allow_reverse_removes_only_the_flagged_direction() {
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let forward_id = g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
         let backward_id = g.add_edge(nodes[2], nodes[0], EdgeKind::Teleport);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -221,10 +226,11 @@ mod tests {
     #[test]
     fn apply_default_still_removes_the_reverse_direction() {
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let forward_id = g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
         let backward_id = g.add_edge(nodes[2], nodes[0], EdgeKind::Teleport);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);

@@ -9,7 +9,7 @@ use maze_core::{Graph, IdGenerator, Maze, NodeId};
 use maze_core::generation::PresetState;
 use maze_core::generation::pipeline::RepairLimits;
 use maze_core::graph::EdgeKind;
-use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 use maze_core::quality_control::{
     QualityControlEngine, Stage, Rule, RuleTrait, MissingEndpointsIssue, QcEvent,
 };
@@ -51,12 +51,13 @@ fn now_ms_stub() -> f64 { 0.0 }
 /// converges (no issue) on iteration 2.
 fn connected_chain_missing_endpoints() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     let mut maze = Maze::new(field, graph);
+    let level = maze.field.single_level_id();
     let ordered: Vec<NodeId> = (0..3)
-        .map(|x| maze.field.nodes_at(SquarePoint { x, y: 0 }).first().copied().unwrap())
+        .map(|x| maze.field.nodes_at(level, SquarePoint { x, y: 0 }).first().copied().unwrap())
         .collect();
     for i in 0..ordered.len() - 1 {
         maze.graph.build_initial_bidirectional_edge(ordered[i], ordered[i + 1], EdgeKind::Basic);

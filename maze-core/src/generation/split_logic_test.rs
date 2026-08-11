@@ -52,7 +52,8 @@ fn split_chance_zero_matches_baseline_exactly() {
     // actually split — output must be byte-identical to a run with the feature entirely absent.
     for seed in [1u64, 7, 42, 1234] {
         let (mut field_a, mut graph_a, mut ids_a) = make_field_graph_ids(6, 6);
-        let start_a = field_a.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let field_a_level = field_a.single_level_id();
+        let start_a = field_a.node_at(field_a_level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut sr_a = None;
         super::super::vertex_based::generate(
             &mut graph_a, &mut field_a, &mut ids_a, seed, start_a,
@@ -61,7 +62,8 @@ fn split_chance_zero_matches_baseline_exactly() {
         );
 
         let (mut field_b, mut graph_b, mut ids_b) = make_field_graph_ids(6, 6);
-        let start_b = field_b.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let field_b_level = field_b.single_level_id();
+        let start_b = field_b.node_at(field_b_level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut sr_b = None;
         super::super::vertex_based::generate(
             &mut graph_b, &mut field_b, &mut ids_b, seed, start_b,
@@ -83,7 +85,8 @@ fn split_chance_zero_matches_baseline_exactly() {
 #[test]
 fn non_pattern_split_creates_exact_node_count() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let field_level = field.single_level_id();
+    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     let node_count_before = graph.nodes().count();
     let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 3, patterns: vec![] };
     let mut sr = None;
@@ -111,7 +114,8 @@ fn non_pattern_split_every_resulting_node_gets_at_least_one_connection() {
     // (partitioning can't manufacture neighbors that don't exist) falls back to an already-visited
     // geometric neighbor of the point — see `non_pattern_split_falls_back_to_visited_neighbor_when_no_unvisited_left`.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(8, 8);
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let field_level = field.single_level_id();
+    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] };
     let mut sr = None;
     super::super::vertex_based::generate(
@@ -120,8 +124,8 @@ fn non_pattern_split_every_resulting_node_gets_at_least_one_connection() {
         &empty_presets(), &mut sr, None, None,
     );
     let mut checked_a_split = false;
-    for point in field.all_points() {
-        let nodes = field.nodes_at(point);
+    for point in field.field_of(field_level).unwrap().all_points() {
+        let nodes = field.nodes_at(field_level, point);
         if nodes.len() <= 1 {
             continue;
         }
@@ -140,7 +144,8 @@ fn non_pattern_split_falls_back_to_visited_neighbor_when_no_unvisited_left() {
     // corridor/junction step can't connect any resulting node to anything new), each node must
     // still fall back to an already-visited neighbor rather than end up permanently isolated.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-    let start = field.node_at(SquarePoint { x: 1, y: 1 }).unwrap();
+        let field_level = field.single_level_id();
+    let start = field.node_at(field_level, SquarePoint { x: 1, y: 1 }).unwrap();
     let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] };
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     for n in field.neighbors(start) {
@@ -153,7 +158,7 @@ fn non_pattern_split_falls_back_to_visited_neighbor_when_no_unvisited_left() {
     );
     assert_eq!(outcome, SplitOutcome::Handled);
     let point = field.point_of(start).unwrap();
-    for &n in field.nodes_at(point) {
+    for &n in field.nodes_at(field_level, point) {
         let degree = graph.outgoing_neighbors(n).count() + graph.incoming_neighbors(n).count();
         assert!(degree > 0, "split node {n:?} must fall back to a visited neighbor, not stay isolated");
     }
@@ -163,7 +168,8 @@ fn non_pattern_split_falls_back_to_visited_neighbor_when_no_unvisited_left() {
 fn non_pattern_max_split_nodes_one_is_a_valid_noop() {
     // max_split_nodes == 1 spends the split roll's RNG sample but mints nothing new.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(4, 4);
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let field_level = field.single_level_id();
+    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     let node_count_before = graph.nodes().count();
     let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 1, patterns: vec![] };
     let mut sr = None;
@@ -180,7 +186,8 @@ fn non_pattern_max_split_nodes_one_is_a_valid_noop() {
 #[test]
 fn split_is_eligible_false_when_locked() {
     let (field, _graph, mut ids) = make_field_graph_ids(3, 3);
-    let node = field.node_at(SquarePoint { x: 1, y: 1 }).unwrap();
+    let level = field.single_level_id();
+    let node = field.node_at(level, SquarePoint { x: 1, y: 1 }).unwrap();
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(node);
     assert!(!split_is_eligible(&field, &preset_state, node));
@@ -193,16 +200,18 @@ fn split_is_eligible_false_when_locked() {
 #[test]
 fn split_is_eligible_false_when_already_split() {
     let (mut field, _graph, mut ids) = make_field_graph_ids(3, 3);
+    let level = field.single_level_id();
     let point = SquarePoint { x: 1, y: 1 };
-    field.add_node_at(point, &mut ids);
-    let node = field.node_at(point).unwrap();
+    field.add_node_at(level, point, &mut ids);
+    let node = field.node_at(level, point).unwrap();
     assert!(!split_is_eligible(&field, &empty_presets(), node));
 }
 
 #[test]
 fn split_is_eligible_true_for_plain_unlocked_unsplit_node() {
     let (field, _graph, _ids) = make_field_graph_ids(3, 3);
-    let node = field.node_at(SquarePoint { x: 1, y: 1 }).unwrap();
+    let level = field.single_level_id();
+    let node = field.node_at(level, SquarePoint { x: 1, y: 1 }).unwrap();
     assert!(split_is_eligible(&field, &empty_presets(), node));
 }
 
@@ -211,7 +220,8 @@ fn split_is_eligible_true_for_plain_unlocked_unsplit_node() {
 #[test]
 fn try_split_src_returns_miss_when_roll_misses() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let field_level = field.single_level_id();
+    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     let mut sr = None;
     let outcome = try_split_src(
@@ -224,7 +234,8 @@ fn try_split_src_returns_miss_when_roll_misses() {
 #[test]
 fn try_split_src_returns_ineligible_when_locked() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let field_level = field.single_level_id();
+    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(start);
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
@@ -243,7 +254,8 @@ fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_ad
     // and retried against a lower-weight pattern that *can* adapt, rather than the whole split
     // failing outright.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let field_level = field.single_level_id();
+    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
 
     // SquareFace order [N, S, E, W] (indices 0-3). At (0,0) on a 3x3 grid: S (index 1) points
     // off-field, E (index 2) has a real neighbor at (1,0).
@@ -280,7 +292,8 @@ fn handle_pattern_split_retries_a_different_pattern_after_the_first_yields_no_ad
 #[test]
 fn try_split_src_returns_no_adaptation_when_pattern_mode_has_no_patterns() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let field_level = field.single_level_id();
+    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     let split_config = SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![] };
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     let mut sr = None;
@@ -294,7 +307,8 @@ fn try_split_src_returns_no_adaptation_when_pattern_mode_has_no_patterns() {
 #[test]
 fn try_split_src_returns_handled_on_non_pattern_hit() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let field_level = field.single_level_id();
+    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] };
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     let mut sr = None;
@@ -313,10 +327,11 @@ fn split_roll_skipped_entirely_for_a_point_with_declared_split_points() {
     // A point already split via GenerationConfig.split_points (issue #231) must never be
     // re-split by the generator — split_is_eligible must reject it outright.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
+        let field_level = field.single_level_id();
     let point = SquarePoint { x: 1, y: 1 };
-    let extra = field.add_node_at(point, &mut ids);
+    let extra = field.add_node_at(field_level, point, &mut ids);
     graph.add_node(extra);
-    let original = field.node_at(point).unwrap();
+    let original = field.node_at(field_level, point).unwrap();
     assert!(!split_is_eligible(&field, &empty_presets(), original));
 }
 
@@ -348,7 +363,8 @@ fn pattern_split_emits_edge_added_for_every_face_edge_it_creates() {
     // saw these edges, so a pattern-split point (and its neighbors) rendered as fully closed at
     // every debug step, including the final one, even though the real graph was fully connected.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
-    let src = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
+        let field_level = field.single_level_id();
+    let src = field.node_at(field_level, SquarePoint { x: 2, y: 2 }).unwrap();
     let split_config = SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![simple_two_node_pattern()] };
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, src);
     let mut sr = None;
@@ -362,7 +378,7 @@ fn pattern_split_emits_edge_added_for_every_face_edge_it_creates() {
     assert_eq!(outcome, SplitOutcome::Handled);
 
     let point = field.point_of(src).unwrap();
-    let split_nodes: Vec<NodeId> = field.nodes_at(point).to_vec();
+    let split_nodes: Vec<NodeId> = field.nodes_at(field_level, point).to_vec();
     assert_eq!(split_nodes.len(), 2, "simple_two_node_pattern mints exactly 2 nodes total");
 
     // Every edge actually present in the graph between the split point's own nodes, or between a
@@ -397,13 +413,14 @@ fn pattern_split_never_pushes_src_or_siblings_into_frontier() {
     // this event's own nodes) into `frontier` — either path let a split node get popped from
     // `frontier` again on a later step, even though it was already fully processed.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
-    let src = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
+        let field_level = field.single_level_id();
+    let src = field.node_at(field_level, SquarePoint { x: 2, y: 2 }).unwrap();
     let split_config = SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![simple_two_node_pattern()] };
     // Seeded with a different node as `start` — GenState::new unconditionally seeds frontier with
     // `start` itself, which would make `src` already-in-frontier before try_split_src even runs,
     // an artifact of this direct call bypassing step_from_frontier (which always pops `src` out of
     // frontier first) rather than anything this test means to exercise.
-    let other = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    let other = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, other);
     let mut sr = None;
     let outcome = try_split_src(
@@ -413,7 +430,7 @@ fn pattern_split_never_pushes_src_or_siblings_into_frontier() {
     assert_eq!(outcome, SplitOutcome::Handled);
 
     let point = field.point_of(src).unwrap();
-    let split_nodes: Vec<NodeId> = field.nodes_at(point).to_vec();
+    let split_nodes: Vec<NodeId> = field.nodes_at(field_level, point).to_vec();
     assert_eq!(split_nodes.len(), 2, "simple_two_node_pattern mints exactly 2 nodes total");
 
     for &node in &split_nodes {
@@ -430,11 +447,12 @@ fn non_pattern_split_with_bridge_never_pushes_src_into_frontier() {
     // `step_from_frontier` would pop and re-process it a second time (re-rolling `split_chance`
     // and re-running corridor/junction logic on an already-connected node).
     let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
-    let src = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
-    let bridge = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let field_level = field.single_level_id();
+    let src = field.node_at(field_level, SquarePoint { x: 2, y: 2 }).unwrap();
+    let bridge = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     graph.add_node(bridge);
     let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] };
-    let other = field.node_at(SquarePoint { x: 4, y: 4 }).unwrap();
+    let other = field.node_at(field_level, SquarePoint { x: 4, y: 4 }).unwrap();
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, other);
     state.visited.insert(bridge);
     let mut sr = None;
@@ -456,8 +474,9 @@ fn pattern_split_relocates_the_parent_edge_to_the_sibling_that_caught_it() {
     // caught it — the point ends up with exactly the same total parent<->point connectivity, just
     // owned by a different node, and a SplitParentEdgeRelocated event records the move.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
-    let src = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
-    let parent = field.node_at(SquarePoint { x: 2, y: 3 }).unwrap(); // north neighbor (face 0)
+        let field_level = field.single_level_id();
+    let src = field.node_at(field_level, SquarePoint { x: 2, y: 2 }).unwrap();
+    let parent = field.node_at(field_level, SquarePoint { x: 2, y: 3 }).unwrap(); // north neighbor (face 0)
     graph.add_bidirectional_edge(src, parent, crate::graph::EdgeKind::Basic);
     // Rotated `simple_two_node_pattern` by hand: node 1 (the sibling) owns face 0 (N, Passage) —
     // the face that must catch `parent`. Node 0 keeps only its sibling-edge face.
@@ -470,7 +489,7 @@ fn pattern_split_relocates_the_parent_edge_to_the_sibling_that_caught_it() {
         weight: 1.0,
     };
     let split_config = SplitGenerationConfig { pattern_mode: true, max_split_nodes: 2, patterns: vec![pattern] };
-    let other = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    let other = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, other);
     let mut sr = None;
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
@@ -483,7 +502,7 @@ fn pattern_split_relocates_the_parent_edge_to_the_sibling_that_caught_it() {
     assert_eq!(outcome, SplitOutcome::Handled);
 
     let point = field.point_of(src).unwrap();
-    let split_nodes: Vec<NodeId> = field.nodes_at(point).to_vec();
+    let split_nodes: Vec<NodeId> = field.nodes_at(field_level, point).to_vec();
     assert_eq!(split_nodes.len(), 2);
     let sibling = split_nodes[1];
 
@@ -505,7 +524,8 @@ fn pattern_split_relocates_the_parent_edge_to_the_sibling_that_caught_it() {
 #[test]
 fn non_pattern_split_teleport_is_rolled_once_per_event_not_per_node() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let field_level = field.single_level_id();
+    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 4, patterns: vec![] };
     let elements = ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 0.0, split_chance: 1.0 };
     let mut state = super::super::vertex_based::GenState::new(&graph, 9, start);
@@ -526,7 +546,8 @@ fn non_pattern_split_teleport_is_rolled_once_per_event_not_per_node() {
 #[test]
 fn split_reassigns_start_when_start_node_itself_splits() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-    let start = field.node_at(SquarePoint { x: 1, y: 1 }).unwrap();
+        let field_level = field.single_level_id();
+    let start = field.node_at(field_level, SquarePoint { x: 1, y: 1 }).unwrap();
     let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] };
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     let mut sr = None;
@@ -543,8 +564,9 @@ fn split_reassigns_start_when_start_node_itself_splits() {
 #[test]
 fn split_never_reassigns_start_for_a_non_start_node() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let other = field.node_at(SquarePoint { x: 1, y: 1 }).unwrap();
+        let field_level = field.single_level_id();
+    let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let other = field.node_at(field_level, SquarePoint { x: 1, y: 1 }).unwrap();
     let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] };
     let mut state = super::super::vertex_based::GenState::new(&graph, 1, start);
     let mut sr = None;
@@ -563,7 +585,8 @@ fn non_pattern_split_nodes_processed_in_creation_order() {
     // With a fixed seed, re-running the exact same split twice must produce identical additional
     // edges — confirms nodes are processed src-first, then in add_node_at order, not shuffled.
     let (mut field_a, mut graph_a, mut ids_a) = make_field_graph_ids(6, 6);
-    let start_a = field_a.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
+        let field_a_level = field_a.single_level_id();
+    let start_a = field_a.node_at(field_a_level, SquarePoint { x: 2, y: 2 }).unwrap();
     let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 3, patterns: vec![] };
     let mut state_a = super::super::vertex_based::GenState::new(&graph_a, 4, start_a);
     let mut sr_a = None;
@@ -573,7 +596,8 @@ fn non_pattern_split_nodes_processed_in_creation_order() {
     );
 
     let (mut field_b, mut graph_b, mut ids_b) = make_field_graph_ids(6, 6);
-    let start_b = field_b.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
+        let field_b_level = field_b.single_level_id();
+    let start_b = field_b.node_at(field_b_level, SquarePoint { x: 2, y: 2 }).unwrap();
     let mut state_b = super::super::vertex_based::GenState::new(&graph_b, 4, start_b);
     let mut sr_b = None;
     try_split_src(

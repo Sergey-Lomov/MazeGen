@@ -63,7 +63,7 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "min_one_way_ratio";
 
@@ -74,10 +74,11 @@ mod tests {
     /// 10 field cells, 1 one-way edge -> 10 per 100 cells.
     fn maze_with_one_one_way_on_ten_cells() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(10, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Basic);
         Maze::new(field, g)
     }
@@ -120,10 +121,11 @@ mod tests {
     #[test]
     fn does_not_count_bidirectional_passage_as_one_way() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -140,10 +142,11 @@ mod tests {
         // minimum of 29 even though 29.9% genuinely doesn't meet a 30% minimum's neighborhood.
         // 299*100 = 29900 < 30*1000 = 30000, so this must still fire.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(1000, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(1000, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         for i in 0..299 {
             g.add_edge(p(i), p(i + 1), EdgeKind::Basic);
         }

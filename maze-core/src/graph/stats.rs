@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use crate::ids::NodeId;
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::graph::Graph;
 use super::classify::{GeometricNodeClass, classify_node};
 
@@ -31,7 +31,7 @@ pub struct TeleportEdgeStats {
     pub one_way: usize,
 }
 
-pub fn compute_node_stats<T: Tessellation>(graph: &Graph, field: &Field<T>) -> GeometricNodeStats {
+pub fn compute_node_stats<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>) -> GeometricNodeStats {
     let mut dead_ends = 0usize;
     let mut straight = 0usize;
     let mut turns = 0usize;
@@ -67,7 +67,7 @@ pub fn compute_node_stats<T: Tessellation>(graph: &Graph, field: &Field<T>) -> G
     stats
 }
 
-fn adjacency_pairs<T: Tessellation>(graph: &Graph, field: &Field<T>) -> Vec<(NodeId, NodeId)> {
+fn adjacency_pairs<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>) -> Vec<(NodeId, NodeId)> {
     let mut seen: HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut pairs = Vec::new();
     for node in graph.nodes() {
@@ -85,7 +85,7 @@ fn adjacency_pairs<T: Tessellation>(graph: &Graph, field: &Field<T>) -> Vec<(Nod
     pairs
 }
 
-pub fn compute_spatial_edge_stats<T: Tessellation>(graph: &Graph, field: &Field<T>) -> SpatialEdgeStats {
+pub fn compute_spatial_edge_stats<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>) -> SpatialEdgeStats {
     let pairs = adjacency_pairs(graph, field);
     let total = pairs.len();
     let mut bidirectional = 0usize;
@@ -137,19 +137,20 @@ pub fn compute_teleport_edge_stats(graph: &Graph) -> TeleportEdgeStats {
 mod tests {
     use super::*;
     use crate::graph::{Graph, EdgeKind};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::IdGenerator;
 
-    fn make_field_and_graph(w: usize, h: usize) -> (Field<SquareTessellation>, Graph) {
+    fn make_field_and_graph(w: usize, h: usize) -> (MultiLevelField<SquareTessellation>, Graph) {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(w, h), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
-        field.build_nodes(&mut graph);
+        for node in field.all_node_ids() { graph.add_node(node); }
         (field, graph)
     }
 
-    fn node_at(field: &Field<SquareTessellation>, x: i32, y: i32) -> NodeId {
-        field.node_at(SquarePoint { x, y }).unwrap()
+    fn node_at(field: &MultiLevelField<SquareTessellation>, x: i32, y: i32) -> NodeId {
+        let level = field.single_level_id();
+        field.node_at(level, SquarePoint { x, y }).unwrap()
     }
 
     #[test]

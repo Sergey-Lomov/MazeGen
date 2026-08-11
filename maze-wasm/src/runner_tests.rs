@@ -42,17 +42,17 @@ mod run_initial_generation_tests {
     use super::super::run_initial_generation;
     use maze_core::graph::Graph;
     use maze_core::ids::IdGenerator;
-    use maze_core::space::{Field, SquareTessellation, SquarePoint};
+    use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint};
     use maze_core::generation::{GenerationAlgorithm, GenerationConfig, PresetState, build_preset_state};
 
     /// A 3x3 square field with no preset connections/locks — enough for Recursive Backtracker
     /// to actually run and emit events.
-    fn field_and_state() -> (Graph, Field<SquareTessellation>, PresetState, IdGenerator) {
+    fn field_and_state() -> (Graph, MultiLevelField<SquareTessellation>, PresetState, IdGenerator) {
         let points: Vec<SquarePoint> = (0..3).flat_map(|x| (0..3).map(move |y| SquarePoint { x, y })).collect();
         let mut ids = IdGenerator::new();
-        let mut field = Field::<SquareTessellation>::new(points, &mut ids).unwrap();
+        let mut field = MultiLevelField::<SquareTessellation>::single_level(points, &mut ids).unwrap();
         let mut graph = Graph::new();
-        field.build_nodes(&mut graph);
+        for node in field.all_node_ids() { graph.add_node(node); }
         let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
         (graph, field, preset_state, ids)
     }
@@ -64,7 +64,8 @@ mod run_initial_generation_tests {
     #[test]
     fn debug_events_false_yields_no_debug_tape() {
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
-        let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let level = field.single_level_id();
+        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
         let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 1, start, rb_config(), &preset_state, false, false);
         assert!(raw_source.is_none(), "debug_events: false must not produce a tape");
         assert!(event_kind.is_none(), "debug_events: false must not produce an event kind");
@@ -74,7 +75,8 @@ mod run_initial_generation_tests {
     #[test]
     fn debug_events_true_yields_correctly_strided_debug_tape() {
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
-        let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let level = field.single_level_id();
+        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
         let (raw_source, _, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 2, start, rb_config(), &preset_state, false, true);
         let source = raw_source.expect("debug_events: true must produce a tape");
 
@@ -97,7 +99,8 @@ mod run_initial_generation_tests {
         // its event kind is web-decodable — it declares the "visited", "frontier", and "reserve"
         // debug values (all Region-kind).
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
-        let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let level = field.single_level_id();
+        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
         let config = GenerationConfig { algorithm: GenerationAlgorithm::CustomVertexBased(maze_core::generation::GenerationParams::default()), ..GenerationConfig::default() };
         let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 3, start, config, &preset_state, false, true);
         let source = raw_source.expect("CustomVertexBased's event kind is web-decodable");
@@ -120,7 +123,8 @@ mod run_initial_generation_tests {
         // event kind is web-decodable — it declares the "active" and "visited" debug values (both
         // Region-kind).
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
-        let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let level = field.single_level_id();
+        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
         let config = GenerationConfig {
             algorithm: GenerationAlgorithm::CustomEdgeBased(maze_core::generation::EdgeBasedParams::default()),
             ..GenerationConfig::default()
@@ -145,7 +149,8 @@ mod run_initial_generation_tests {
         // kind is web-decodable — but Kruskal's arm never produces debug values (out of scope for
         // #146, see Specs/event_log.md's #146/#161 sections).
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
-        let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let level = field.single_level_id();
+        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
         let config = GenerationConfig { algorithm: GenerationAlgorithm::KruskalAlgorithm, ..GenerationConfig::default() };
         let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 4, start, config, &preset_state, false, true);
         let source = raw_source.expect("Kruskal's event kind is web-decodable");
@@ -159,7 +164,8 @@ mod run_initial_generation_tests {
         // Wilson is instrumented in generate_maze_with_events (GitHub issue #145) and its event
         // kind is web-decodable — it declares the "visited" and "current_walk" debug values.
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
-        let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let level = field.single_level_id();
+        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
         let config = GenerationConfig { algorithm: GenerationAlgorithm::WilsonAlgorithm, ..GenerationConfig::default() };
         let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 5, start, config, &preset_state, false, true);
         let source = raw_source.expect("Wilson's event kind is web-decodable");
@@ -180,7 +186,8 @@ mod run_initial_generation_tests {
     #[test]
     fn qc_experiment_ignores_debug_events_and_skips_generation() {
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
-        let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let level = field.single_level_id();
+        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
         let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 5, start, rb_config(), &preset_state, true, true);
         assert!(raw_source.is_none(), "qc_experiment must skip the event tree entirely");
         assert!(event_kind.is_none(), "qc_experiment must skip the event kind entirely");
@@ -191,7 +198,8 @@ mod run_initial_generation_tests {
     #[test]
     fn initial_build_ms_is_a_plausible_finite_duration() {
         let (mut graph, mut field, preset_state, mut ids) = field_and_state();
-        let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let level = field.single_level_id();
+        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
         let (_, _, _, initial_build_ms, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 6, start, rb_config(), &preset_state, false, true);
         assert!(initial_build_ms.is_finite() && initial_build_ms >= 0.0);
     }
@@ -734,7 +742,7 @@ mod timing_dto_tests {
 mod preset_locked_end_to_end_tests {
     use std::collections::HashMap;
     use maze_core::{Graph, IdGenerator, Maze};
-    use maze_core::space::{Field, SquareTessellation, square_rect};
+    use maze_core::space::{MultiLevelField, SquareTessellation, square_rect};
     use maze_core::graph::EdgeKind;
     use maze_core::generation::{PresetState, pipeline::{build_maze, RepairLimits}};
     use maze_core::quality_control::{
@@ -748,10 +756,11 @@ mod preset_locked_end_to_end_tests {
     /// the check's `length: 10` threshold, so `LoopLengthCheck` always flags it.
     fn maze_with_triangle() -> (Maze<SquareTessellation>, Vec<maze_core::ids::EdgeId>) {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.nodes_at(p)[0]).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(level).unwrap().all_points().map(|p| field.nodes_at(level, p)[0]).collect();
         let e0 = g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let e1 = g.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let e2 = g.build_initial_edge(nodes[2], nodes[0], EdgeKind::Basic);
@@ -819,9 +828,9 @@ mod preset_locked_end_to_end_tests {
         // (0,0) -- same converging-on-one-neighbor shape as maze_with_triangle's sibling fixture
         // in split_node_connection_group_select_tests.rs, but built via the real config path.
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut graph = Graph::new();
-        field.build_nodes(&mut graph);
+        for node in field.all_node_ids() { graph.add_node(node); }
 
         let xy_to_point = |x: i32, y: i32| SquarePoint { x, y };
         let split_points = vec![((1, 0), 0u32)];

@@ -27,14 +27,15 @@ pub fn count_distinct_teleports<T: Tessellation>(maze: &Maze<T>) -> u32 {
 mod tests {
     use super::*;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     fn maze_with_edges(edges: &[(i32, i32, EdgeKind)]) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         for (from, to, kind) in edges {
             g.add_edge(p(*from), p(*to), kind.clone());
         }

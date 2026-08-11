@@ -78,16 +78,16 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 
     const TEST_ID: &str = "teleport_super_hub_avoidance";
 
     #[test]
     fn silent_when_no_teleport() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = TeleportSuperHubAvoidanceCheck { instance_id: TEST_ID.to_string(), max_connections: 1, edge: TeleportHubEdgeSelector::EntryOrExit, protect_route: true };
         let mut issues = Vec::new();
@@ -100,10 +100,11 @@ mod tests {
     fn fires_when_entry_vertex_exceeds_max_connections() {
         // node[1] (entry) has 3 outgoing edges: to node[0], node[2], and the teleport target.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[1], nodes[0], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[3], EdgeKind::Teleport);
@@ -123,10 +124,11 @@ mod tests {
         // Same busy-hub setup, but the teleport 1->3 is the maze's only start->finish route
         // (start=1, finish=3) -- with protect_route enabled it must not be flagged.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[1], nodes[0], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[3], EdgeKind::Teleport);
@@ -144,10 +146,11 @@ mod tests {
     #[test]
     fn silent_when_entry_vertex_at_or_below_max_connections() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[1], nodes[3], EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -164,10 +167,11 @@ mod tests {
         // (node[0], a single outgoing edge -- the teleport itself) is checked, so it must stay
         // silent even though the exit side alone would exceed max_connections.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[3], EdgeKind::Teleport);
         g.add_edge(nodes[3], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[3], nodes[2], EdgeKind::Basic);
@@ -187,10 +191,11 @@ mod tests {
         // outgoing edges of its own -- the teleport itself (from=0) never contributes to node[3]'s
         // outgoing count, so it must NOT be double counted.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[0], nodes[3], EdgeKind::Teleport);
@@ -207,10 +212,11 @@ mod tests {
     #[test]
     fn exit_only_fires_when_exit_vertex_exceeds_max_connections() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[3], EdgeKind::Teleport);
         g.add_edge(nodes[3], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
@@ -226,10 +232,11 @@ mod tests {
     #[test]
     fn entry_or_exit_flags_when_only_exit_exceeds_max() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[3], EdgeKind::Teleport);
         g.add_edge(nodes[3], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[3], nodes[4], EdgeKind::Basic);
@@ -245,10 +252,11 @@ mod tests {
     #[test]
     fn ignores_basic_edges() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -265,10 +273,11 @@ mod tests {
         // Each direction of a two-way teleport is its own Teleport edge and must be flagged
         // independently, since the check operates per-edge, not per-pair.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[1], nodes[0], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[3], EdgeKind::Teleport);

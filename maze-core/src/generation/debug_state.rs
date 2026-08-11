@@ -4,7 +4,7 @@
 // `neighbors` correctness depends on it), so this is a separate, append-only record.
 //
 // **Minting invariant**: the only sanctioned way to learn a freshly minted `NodeId` in the
-// runtime pipeline is to call `.note(id, point)` immediately alongside `field.add_node_at(...)`.
+// runtime pipeline is to call `.note(id, point)` immediately alongside `field.add_node_at(field_level, ...)`.
 // Every runtime call site that mints a node is required to pair it with a `.note()` call in the
 // same diff — exhaustive list (see `Specs/event_log.md`'s #271 section):
 //   - `generation::preset_state::apply_split_points` (preset split points, all algorithms)

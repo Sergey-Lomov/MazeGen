@@ -30,11 +30,11 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeGroupIssue> for MaxSplitTileNodeC
         let mut seen_points = std::collections::HashSet::new();
         let mut groups: Vec<(Vec<NodeId>, u32)> = Vec::new();
 
-        for point in maze.field.all_points() {
-            if !seen_points.insert(point) {
+        for (level, point) in maze.field.all_points_with_level() {
+            if !seen_points.insert((level, point)) {
                 continue;
             }
-            let nodes = maze.field.nodes_at(point);
+            let nodes = maze.field.nodes_at(level, point);
             if nodes.len() < 2 {
                 continue; // not a split point.
             }
@@ -62,16 +62,16 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "max_split_tile_node_count";
 
     #[test]
     fn silent_when_no_split_points() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let check = MaxSplitTileNodeCountCheck { instance_id: TEST_ID.to_string(), max: 2 };
@@ -84,13 +84,14 @@ mod tests {
     #[test]
     fn fires_when_tile_exceeds_the_limit() {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
-        let slot0 = field.node_at(p).unwrap();
-        let extra1 = field.add_node_at(p, &mut ids);
-        let extra2 = field.add_node_at(p, &mut ids);
+        let slot0 = field.node_at(level, p).unwrap();
+        let extra1 = field.add_node_at(level, p, &mut ids);
+        let extra2 = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let check = MaxSplitTileNodeCountCheck { instance_id: TEST_ID.to_string(), max: 2 };
@@ -109,12 +110,13 @@ mod tests {
     #[test]
     fn does_not_fire_when_tile_is_at_the_limit() {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
-        field.node_at(p).unwrap();
-        field.add_node_at(p, &mut ids);
+        field.node_at(level, p).unwrap();
+        field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let check = MaxSplitTileNodeCountCheck { instance_id: TEST_ID.to_string(), max: 2 };
@@ -127,17 +129,18 @@ mod tests {
     #[test]
     fn flags_every_exceeding_tile_in_one_call() {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let p1 = SquarePoint { x: 1, y: 0 };
-        field.node_at(p1).unwrap();
-        field.add_node_at(p1, &mut ids);
-        field.add_node_at(p1, &mut ids);
+        field.node_at(level, p1).unwrap();
+        field.add_node_at(level, p1, &mut ids);
+        field.add_node_at(level, p1, &mut ids);
         let p3 = SquarePoint { x: 3, y: 0 };
-        field.node_at(p3).unwrap();
-        field.add_node_at(p3, &mut ids);
-        field.add_node_at(p3, &mut ids);
+        field.node_at(level, p3).unwrap();
+        field.add_node_at(level, p3, &mut ids);
+        field.add_node_at(level, p3, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let check = MaxSplitTileNodeCountCheck { instance_id: TEST_ID.to_string(), max: 2 };

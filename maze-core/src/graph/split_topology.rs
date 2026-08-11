@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::graph::Graph;
-use crate::space::{Field, Tessellation, transform_face_index};
+use crate::space::{MultiLevelField, Tessellation, transform_face_index};
 use crate::generation::SplitFaceRequirement;
 use crate::quality_control::split_pattern_match::reconstruct_tile_faces;
 
@@ -28,7 +28,7 @@ pub type SplitTopology = Vec<Vec<SplitFaceRequirement>>;
 /// (`T::faces()` empty).
 pub fn canonical_split_topology<T: Tessellation>(
     graph: &Graph,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     nodes: &[crate::ids::NodeId],
 ) -> Option<SplitTopology> {
     if nodes.len() < 2 {
@@ -83,18 +83,18 @@ pub fn canonical_split_topology<T: Tessellation>(
 /// shape as `build_analytics_snapshot`'s node listing (GitHub issue #223).
 pub fn split_totals<T: Tessellation>(
     graph: &Graph,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
 ) -> (usize, usize, HashMap<SplitTopology, usize>) {
     let mut tile_count = 0usize;
     let mut node_count = 0usize;
     let mut groups: HashMap<SplitTopology, usize> = HashMap::new();
 
-    let mut seen_points: std::collections::HashSet<T::Point> = std::collections::HashSet::new();
-    for point in field.all_points() {
-        if !seen_points.insert(point) {
+    let mut seen_points: std::collections::HashSet<(crate::space::LevelId, T::Point)> = std::collections::HashSet::new();
+    for (level, point) in field.all_points_with_level() {
+        if !seen_points.insert((level, point)) {
             continue;
         }
-        let nodes = field.nodes_at(point);
+        let nodes = field.nodes_at(level, point);
         if nodes.len() < 2 {
             continue;
         }
@@ -112,32 +112,34 @@ pub fn split_totals<T: Tessellation>(
 mod tests {
     use super::*;
     use crate::{Graph, IdGenerator};
-    use crate::space::{SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     /// 3x1 field, middle point split into 2 nodes, each connected to one horizontal neighbor.
-    fn maze_with_middle_split() -> (Graph, Field<SquareTessellation>, Vec<crate::ids::NodeId>) {
+    fn maze_with_middle_split() -> (Graph, MultiLevelField<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mid = SquarePoint { x: 1, y: 0 };
-        let extra = field.add_node_at(mid, &mut ids);
+        let extra = field.add_node_at(level, mid, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let west = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let east = field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
-        let slot0 = field.nodes_at(mid)[0];
+        for node in field.all_node_ids() { g.add_node(node); }
+        let west = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let east = field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
+        let slot0 = field.nodes_at(level, mid)[0];
         g.add_bidirectional_edge(slot0, west, crate::graph::EdgeKind::Basic);
         g.add_bidirectional_edge(extra, east, crate::graph::EdgeKind::Basic);
-        let nodes = field.nodes_at(mid).to_vec();
+        let nodes = field.nodes_at(level, mid).to_vec();
         (g, field, nodes)
     }
 
     #[test]
     fn non_split_tile_has_no_canonical_topology() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let node = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let node = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         assert!(canonical_split_topology(&g, &field, &[node]).is_none());
     }
 
@@ -157,17 +159,18 @@ mod tests {
         // Same middle-split shape, but built on the vertical axis instead of horizontal — a 90
         // degree rotation of the first fixture's shape.
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(1, 3), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 3), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mid = SquarePoint { x: 0, y: 1 };
-        let extra = field.add_node_at(mid, &mut ids);
+        let extra = field.add_node_at(level, mid, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let south = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let north = field.node_at(SquarePoint { x: 0, y: 2 }).unwrap();
-        let slot0 = field.nodes_at(mid)[0];
+        for node in field.all_node_ids() { g.add_node(node); }
+        let south = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let north = field.node_at(level, SquarePoint { x: 0, y: 2 }).unwrap();
+        let slot0 = field.nodes_at(level, mid)[0];
         g.add_bidirectional_edge(slot0, south, crate::graph::EdgeKind::Basic);
         g.add_bidirectional_edge(extra, north, crate::graph::EdgeKind::Basic);
-        let nodes = field.nodes_at(mid).to_vec();
+        let nodes = field.nodes_at(level, mid).to_vec();
 
         let (g0, field0, nodes0) = maze_with_middle_split();
         let horizontal = canonical_split_topology(&g0, &field0, &nodes0).unwrap();
@@ -178,14 +181,15 @@ mod tests {
     #[test]
     fn split_totals_counts_tiles_and_nodes_and_groups_by_topology() {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         // Two equivalent 2-node split tiles (same shape, different points) plus one 3-node tile.
-        field.add_node_at(SquarePoint { x: 1, y: 0 }, &mut ids);
-        field.add_node_at(SquarePoint { x: 3, y: 0 }, &mut ids);
-        field.add_node_at(SquarePoint { x: 4, y: 0 }, &mut ids);
-        field.add_node_at(SquarePoint { x: 4, y: 0 }, &mut ids);
+        field.add_node_at(level, SquarePoint { x: 1, y: 0 }, &mut ids);
+        field.add_node_at(level, SquarePoint { x: 3, y: 0 }, &mut ids);
+        field.add_node_at(level, SquarePoint { x: 4, y: 0 }, &mut ids);
+        field.add_node_at(level, SquarePoint { x: 4, y: 0 }, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
 
         let (tile_count, node_count, groups) = split_totals(&g, &field);
         assert_eq!(tile_count, 3, "three field points have 2+ nodes");
@@ -204,9 +208,9 @@ mod tests {
     #[test]
     fn silent_when_no_split_tiles() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
 
         let (tile_count, node_count, groups) = split_totals(&g, &field);
         assert_eq!(tile_count, 0);

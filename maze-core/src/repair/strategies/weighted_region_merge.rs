@@ -208,7 +208,7 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::Graph;
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, square_rect, Field};
+    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
     use crate::repair::params::build_params;
     use crate::repair::strategies::{ExpandRegionPassageStrategy, TeleportRegionMergeStrategy};
     use crate::repair::strategy::ErasedRepairStrategy;
@@ -223,9 +223,9 @@ mod tests {
     /// adjacent in a chain: 0-1-2-3. Same fixture shape as `reduce_scc_count.rs`'s tests.
     fn maze_4_singletons() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 
@@ -338,7 +338,7 @@ mod tests {
         // succeed. Whichever dispatch_weighted tries first, the end result must be Fixed with no
         // trace of ExpandRegionPassageStrategy's (rolled-back) attempt.
         let mut maze = maze_4_singletons();
-        let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
+        let nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
         let mut preset_state = PresetState::empty();
         preset_state.blocked.insert((nodes[0], nodes[1]));
         preset_state.blocked.insert((nodes[1], nodes[0]));

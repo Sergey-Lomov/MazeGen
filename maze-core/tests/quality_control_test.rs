@@ -1,5 +1,5 @@
 use maze_core::{Graph, IdGenerator, Maze, RegionClass};
-use maze_core::space::{Field, SquareTessellation, square_rect};
+use maze_core::space::{MultiLevelField, SquareTessellation, square_rect};
 use maze_core::quality_control::{
     Rule, Check, Issue, IssueMerge, IssueRequirement, MissingEndpointsCheck, UnreachableFinishCheck, MinRegionCountCheck,
     MissingEndpointsIssue, UnreachableFinishIssue, MissingRegionsIssue,
@@ -10,9 +10,9 @@ use std::collections::HashMap;
 
 fn make_empty_square_maze() -> Maze<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(2, 2), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(2, 2), &mut ids).unwrap();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     Maze::new(field, graph)
 }
 
@@ -88,9 +88,9 @@ fn missing_endpoints_check_no_false_positive_when_both_set() {
 #[test]
 fn unreachable_finish_check_detects_when_not_reachable() {
     let mut ids = IdGenerator::new();
-    let field = Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap();
+    let field = MultiLevelField::<SquareTessellation>::single_level(square_rect(2, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     let nodes: Vec<_> = graph.nodes().map(|n| n.id).collect();
     let mut maze = Maze::new(field, graph);
     maze.meta.start = Some(nodes[0]);
@@ -115,9 +115,9 @@ fn unreachable_finish_check_skips_when_endpoints_missing() {
 #[test]
 fn unreachable_finish_check_no_false_positive_when_reachable() {
     let mut ids = IdGenerator::new();
-    let field = Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap();
+    let field = MultiLevelField::<SquareTessellation>::single_level(square_rect(2, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     let nodes: Vec<_> = graph.nodes().map(|n| n.id).collect();
     graph.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
     let mut maze = Maze::new(field, graph);
@@ -138,9 +138,9 @@ fn unreachable_finish_check_no_false_positive_when_reachable() {
 #[test]
 fn one_min_region_count_instance_reports_multiple_classes_at_once() {
     let mut ids = IdGenerator::new();
-    let field = Field::<SquareTessellation>::new(square_rect(7, 1), &mut ids).unwrap();
+    let field = MultiLevelField::<SquareTessellation>::single_level(square_rect(7, 1), &mut ids).unwrap();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     let nodes: Vec<_> = graph.nodes().map(|n| n.id).collect();
     graph.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
     graph.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);

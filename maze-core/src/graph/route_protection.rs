@@ -80,16 +80,17 @@ mod tests {
     use super::*;
     use crate::graph::{Graph, EdgeKind};
     use crate::meta::MazeMeta;
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::IdGenerator;
 
     /// 1x3 corridor: n0 -> n1 -> n2, start = n0, finish = n2.
     fn maze_with_corridor_route() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId) {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let (n0, n1, n2) = (p(0), p(1), p(2));
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
         g.add_bidirectional_edge(n1, n2, EdgeKind::Basic);
@@ -115,10 +116,11 @@ mod tests {
     #[test]
     fn route_direction_is_none_for_a_pair_not_on_the_route() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(2, 2), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 2), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32, y: i32| field.node_at(SquarePoint { x, y }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32, y: i32| field.node_at(field_level, SquarePoint { x, y }).unwrap();
         let (n0, n1) = (p(0, 0), p(1, 0));
         let (n2, n3) = (p(0, 1), p(1, 1));
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);

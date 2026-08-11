@@ -58,7 +58,7 @@ pub(crate) use mutation_commands::{
 use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 #[cfg(test)]
 use crate::graph::EdgeKind;
 #[cfg(test)]
@@ -70,7 +70,7 @@ pub(crate) fn gaussian_weighted_index(len: usize, depth_first: f64, rng: &mut Ma
 
 fn dispatch<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut crate::ids::IdGenerator,
     seed: u64,
     start: NodeId,
@@ -107,7 +107,7 @@ fn dispatch<T: Tessellation>(
 
 pub fn generate_maze<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut crate::ids::IdGenerator,
     seed: u64,
     start: NodeId,
@@ -184,7 +184,7 @@ pub fn qualify_debug_value_names(
 /// caller (`maze-wasm/src/runner.rs::run_generate`).
 pub fn generate_maze_with_events<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut crate::ids::IdGenerator,
     seed: u64,
     start: NodeId,
@@ -247,27 +247,27 @@ pub fn generate_maze_with_events<T: Tessellation>(
 pub(crate) mod test_utils {
     use crate::graph::Graph;
     use crate::ids::IdGenerator;
-    use crate::space::{Field, SquareTessellation, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use super::ElementsConfig;
 
     pub fn default_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 } }
 
-    pub fn make_field_and_graph(w: usize, h: usize) -> (Field<SquareTessellation>, Graph) {
+    pub fn make_field_and_graph(w: usize, h: usize) -> (MultiLevelField<SquareTessellation>, Graph) {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(w, h), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
-        field.build_nodes(&mut graph);
+        for node in field.all_node_ids() { graph.add_node(node); }
         (field, graph)
     }
 
     /// Same as `make_field_and_graph`, but also hands back the `IdGenerator` used to build the
     /// field — needed by any test calling `vertex_based::generate` directly, since it now takes
     /// `&mut IdGenerator` for the split-node-minting path (GitHub issue #222).
-    pub fn make_field_graph_ids(w: usize, h: usize) -> (Field<SquareTessellation>, Graph, IdGenerator) {
+    pub fn make_field_graph_ids(w: usize, h: usize) -> (MultiLevelField<SquareTessellation>, Graph, IdGenerator) {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(w, h), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
         let mut graph = Graph::new();
-        field.build_nodes(&mut graph);
+        for node in field.all_node_ids() { graph.add_node(node); }
         (field, graph, ids)
     }
 }

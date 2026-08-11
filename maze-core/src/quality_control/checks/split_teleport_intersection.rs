@@ -63,10 +63,10 @@ impl<T: Tessellation> Check<T, InvalidSplitTileIssue> for SplitTeleportIntersect
         };
 
         let mut seen_points = HashSet::new();
-        let invalid: Vec<SplitTileNodes> = maze.field.all_points()
-            .filter(|&point| seen_points.insert(point))
-            .filter_map(|point| {
-                let nodes = maze.field.nodes_at(point);
+        let invalid: Vec<SplitTileNodes> = maze.field.all_points_with_level()
+            .filter(|&(level, point)| seen_points.insert((level, point)))
+            .filter_map(|(level, point)| {
+                let nodes = maze.field.nodes_at(level, point);
                 if nodes.len() < 2 { return None; }
                 if !nodes.iter().any(|&n| node_matches(n)) { return None; }
                 Some(SplitTileNodes::new(nodes.to_vec()))
@@ -85,20 +85,21 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "split_teleport_intersection";
 
-    fn split_field(width: usize) -> (Field<SquareTessellation>, IdGenerator, NodeId) {
+    fn split_field(width: usize) -> (MultiLevelField<SquareTessellation>, IdGenerator, NodeId) {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let split_point = SquarePoint { x: 0, y: 0 };
-        let _base = field.node_at(split_point).unwrap();
-        let extra = field.add_node_at(split_point, &mut ids);
+        let _base = field.node_at(level, split_point).unwrap();
+        let extra = field.add_node_at(level, split_point, &mut ids);
         (field, ids, extra)
     }
 
-    fn run(field: Field<SquareTessellation>, g: Graph, direction: SplitTeleportDirection) -> Vec<InvalidSplitTileIssue> {
+    fn run(field: MultiLevelField<SquareTessellation>, g: Graph, direction: SplitTeleportDirection) -> Vec<InvalidSplitTileIssue> {
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = SplitTeleportIntersectionCheck { instance_id: TEST_ID.to_string(), direction };
         let mut issues = Vec::new();
@@ -110,10 +111,11 @@ mod tests {
     #[test]
     fn silent_when_no_split_tiles() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(2), EdgeKind::Teleport);
         assert!(run(field, g, SplitTeleportDirection::Any).is_empty());
     }
@@ -121,9 +123,10 @@ mod tests {
     #[test]
     fn silent_when_teleport_does_not_touch_a_split_tile() {
         let (field, _ids, _extra) = split_field(3);
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(1), p(2), EdgeKind::Teleport);
         assert!(run(field, g, SplitTeleportDirection::Any).is_empty());
     }
@@ -131,10 +134,11 @@ mod tests {
     #[test]
     fn incoming_fires_for_a_one_way_teleport_into_the_split_tile() {
         let (field, _ids, extra) = split_field(3);
-        let base = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(2), base, EdgeKind::Teleport);
         let issues = run(field, g, SplitTeleportDirection::Incoming);
         assert_eq!(issues.len(), 1);
@@ -144,10 +148,11 @@ mod tests {
     #[test]
     fn incoming_ignores_a_one_way_teleport_out_of_the_split_tile() {
         let (field, _ids, _extra) = split_field(3);
-        let base = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(base, p(2), EdgeKind::Teleport);
         assert!(run(field, g, SplitTeleportDirection::Incoming).is_empty());
     }
@@ -156,10 +161,11 @@ mod tests {
     fn incoming_ignores_a_bidirectional_teleport() {
         // Both legs present between base and neighbor -- not a one-way incoming connection.
         let (field, _ids, _extra) = split_field(3);
-        let base = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(2), base, EdgeKind::Teleport);
         g.add_edge(base, p(2), EdgeKind::Teleport);
         assert!(run(field, g, SplitTeleportDirection::Incoming).is_empty());
@@ -168,10 +174,11 @@ mod tests {
     #[test]
     fn outgoing_fires_for_a_one_way_teleport_out_of_the_split_tile() {
         let (field, _ids, extra) = split_field(3);
-        let base = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(extra, p(2), EdgeKind::Teleport);
         let issues = run(field, g, SplitTeleportDirection::Outgoing);
         assert_eq!(issues.len(), 1);
@@ -181,10 +188,11 @@ mod tests {
     #[test]
     fn outgoing_ignores_a_one_way_teleport_into_the_split_tile() {
         let (field, _ids, _extra) = split_field(3);
-        let base = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(2), base, EdgeKind::Teleport);
         assert!(run(field, g, SplitTeleportDirection::Outgoing).is_empty());
     }
@@ -192,10 +200,11 @@ mod tests {
     #[test]
     fn outgoing_ignores_a_bidirectional_teleport() {
         let (field, _ids, _extra) = split_field(3);
-        let base = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(base, p(2), EdgeKind::Teleport);
         g.add_edge(p(2), base, EdgeKind::Teleport);
         assert!(run(field, g, SplitTeleportDirection::Outgoing).is_empty());
@@ -204,10 +213,11 @@ mod tests {
     #[test]
     fn bidirectional_fires_when_both_legs_present_with_the_same_neighbor() {
         let (field, _ids, extra) = split_field(3);
-        let base = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(base, p(2), EdgeKind::Teleport);
         g.add_edge(p(2), base, EdgeKind::Teleport);
         let issues = run(field, g, SplitTeleportDirection::Bidirectional);
@@ -220,10 +230,11 @@ mod tests {
         // base -> neighbor A and neighbor B -> base: two one-way legs, no shared neighbor with
         // both directions present, so not a genuine bidirectional pair.
         let (field, _ids, _extra) = split_field(4);
-        let base = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(base, p(2), EdgeKind::Teleport);
         g.add_edge(p(3), base, EdgeKind::Teleport);
         assert!(run(field, g, SplitTeleportDirection::Bidirectional).is_empty());
@@ -232,10 +243,11 @@ mod tests {
     #[test]
     fn any_fires_for_a_one_way_leg() {
         let (field, _ids, extra) = split_field(4);
-        let base = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(extra, p(3), EdgeKind::Teleport);
         let issues = run(field, g, SplitTeleportDirection::Any);
         assert_eq!(issues.len(), 1);
@@ -247,10 +259,11 @@ mod tests {
         // No separate one-way leg exists here -- the node's only teleport connection is the
         // bidirectional pair itself, so Any must still match through that shape alone.
         let (field, _ids, extra) = split_field(3);
-        let base = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(extra, p(2), EdgeKind::Teleport);
         g.add_edge(p(2), extra, EdgeKind::Teleport);
         let issues = run(field, g, SplitTeleportDirection::Any);
@@ -261,10 +274,11 @@ mod tests {
     #[test]
     fn dedups_multiple_teleports_into_the_same_split_tile_into_one_entry() {
         let (field, _ids, extra) = split_field(4);
-        let base = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let base = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(2), base, EdgeKind::Teleport);
         g.add_edge(p(3), extra, EdgeKind::Teleport);
         let issues = run(field, g, SplitTeleportDirection::Any);

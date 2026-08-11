@@ -9,7 +9,7 @@ use rand::SeedableRng;
 use crate::random::MazeRng;
 use crate::graph::{Graph as G, EdgeKind as EK};
 use crate::IdGenerator;
-use crate::space::{SquareTessellation, square_rect, Field};
+use crate::space::{SquareTessellation, square_rect, MultiLevelField};
 use crate::repair::params::build_params;
 use crate::graph::scc::ComponentId;
 use crate::quality_control::MissingRegionsIssue;
@@ -43,12 +43,13 @@ fn test_ctx<'a>(committed_nodes: &'a HashSet<NodeId>, preset_state: &'a PresetSt
 
 /// Builds a `1xN` row field with an empty graph and returns its nodes in x-order — the shared
 /// boilerplate every linear `maze_with_*` fixture in this file starts from.
-fn linear_field(n: usize) -> (Field<SquareTessellation>, G, Vec<NodeId>) {
+fn linear_field(n: usize) -> (MultiLevelField<SquareTessellation>, G, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(n, 1), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = G::new();
-    field.build_nodes(&mut g);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     (field, g, nodes)
 }
 
@@ -231,12 +232,13 @@ fn apply_grows_from_a_tree_shaped_maze_with_no_non_path_regions_at_all() {
     // reachable both ways through the tree's single connecting path but NOT on the
     // critical path -- a valid growth seed.
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(3, 3), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = G::new();
-    field.build_nodes(&mut g);
+    for node in field.all_node_ids() { g.add_node(node); }
     let all_coords: Vec<(i32, i32)> = (0..3).flat_map(|y| (0..3).map(move |x| (x, y))).collect();
     let nodes: StdHashMap<(i32, i32), NodeId> = all_coords.iter()
-        .map(|&(x, y)| ((x, y), field.node_at(crate::space::SquarePoint { x, y }).unwrap()))
+        .map(|&(x, y)| ((x, y), field.node_at(field_level, crate::space::SquarePoint { x, y }).unwrap()))
         .collect();
     g.add_bidirectional_edge(nodes[&(0, 0)], nodes[&(1, 0)], EK::Basic);
     g.add_bidirectional_edge(nodes[&(1, 0)], nodes[&(2, 0)], EK::Basic);
@@ -433,10 +435,11 @@ fn maze_with_two_isolated_unreachable_components() -> (Maze<SquareTessellation>,
 /// 4-node set is what actually reaches `Trap`, not `region6` alone.
 fn maze_with_mergeable_pair_bordering_finish() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(1, 6), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 6), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = G::new();
-    field.build_nodes(&mut g);
-    let n = |x: i32, y: i32| field.node_at(crate::space::SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let n = |x: i32, y: i32| field.node_at(field_level, crate::space::SquarePoint { x, y }).unwrap();
     let start = n(0, 0);
     let finish = n(0, 1);
     let region6 = n(0, 2);
@@ -657,10 +660,11 @@ fn apply_undo_does_not_destroy_a_pre_existing_edge_shared_by_two_candidates() {
     // real-world shape: "Unreachable region that already happens to reach finish through
     // one existing edge" rather than many.
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(10, 11), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(10, 11), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = G::new();
-    field.build_nodes(&mut g);
-    let n = |x: i32, y: i32| field.node_at(crate::space::SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let n = |x: i32, y: i32| field.node_at(field_level, crate::space::SquarePoint { x, y }).unwrap();
 
     for x in 0..9 {
         g.add_bidirectional_edge(n(x, 0), n(x + 1, 0), EK::Basic);
@@ -881,10 +885,11 @@ fn absorb_until_min_size_skips_a_blocked_edge_and_succeeds_via_another_in_the_po
     // component, proving a single blocked edge is discarded from the pool, not its entire
     // bordering component.
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 2), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = G::new();
-    field.build_nodes(&mut g);
-    let n = |x: i32, y: i32| field.node_at(crate::space::SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let n = |x: i32, y: i32| field.node_at(field_level, crate::space::SquarePoint { x, y }).unwrap();
     let start = n(2, 0);
     let finish = n(2, 1);
     let candidate = n(1, 0); // Unreachable singleton, field-neighbors: start(2,0), trap_a(0,0), trap_b(1,1)
@@ -1008,10 +1013,11 @@ fn convert_region_unreachable_to_trap_adds_inbound_from_scratch() {
 /// deterministically regardless of shuffle.
 fn maze_with_isolated_candidate_having_two_distinct_neighbors() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(5, 3), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 3), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = G::new();
-    field.build_nodes(&mut g);
-    let n = |x: i32, y: i32| field.node_at(crate::space::SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let n = |x: i32, y: i32| field.node_at(field_level, crate::space::SquarePoint { x, y }).unwrap();
     let start = n(0, 0);
     let finish = n(4, 0);
     let mid = n(1, 2);
@@ -1060,10 +1066,11 @@ fn convert_region_unreachable_to_alternative_adds_both_inbound_and_outbound() {
 /// regardless of shuffle.
 fn maze_with_trap_candidate() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(5, 3), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 3), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = G::new();
-    field.build_nodes(&mut g);
-    let n = |x: i32, y: i32| field.node_at(crate::space::SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let n = |x: i32, y: i32| field.node_at(field_level, crate::space::SquarePoint { x, y }).unwrap();
     let start = n(0, 0);
     let finish = n(4, 0);
     let mid = n(1, 2);
@@ -1281,10 +1288,11 @@ fn maze_with_three_armed_star(arm_len: i32) -> (Maze<SquareTessellation>, NodeId
     let mut ids = IdGenerator::new();
     let width = (arm_len + 4) as usize;
     let height = (arm_len * 2 + 2) as usize;
-    let field: Field<SquareTessellation> = Field::new(square_rect(width, height), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, height), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = G::new();
-    field.build_nodes(&mut g);
-    let n = |x: i32, y: i32| field.node_at(crate::space::SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let n = |x: i32, y: i32| field.node_at(field_level, crate::space::SquarePoint { x, y }).unwrap();
 
     let start = n(0, arm_len);
     let finish = n(1, arm_len);
@@ -1373,10 +1381,11 @@ fn grow_front_with_locality_zero_spreads_breadth_first_across_arms() {
 /// edge back). Growth from `seed` must only ever pick `two_way` as a candidate.
 fn maze_with_one_way_and_two_way_neighbor() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 2), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = G::new();
-    field.build_nodes(&mut g);
-    let n = |x: i32, y: i32| field.node_at(crate::space::SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let n = |x: i32, y: i32| field.node_at(field_level, crate::space::SquarePoint { x, y }).unwrap();
     let start = n(0, 0);
     let finish = n(1, 0);
     let seed = n(2, 0);
@@ -1649,10 +1658,11 @@ fn grow_front_crosses_into_excess_budgeted_neighbor_component_and_continues_grow
 /// nodes left to grow into.
 fn maze_with_uneven_branches_and_a_bridgeable_neighbor() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(4, 2), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 2), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = G::new();
-    field.build_nodes(&mut g);
-    let n = |x: i32, y: i32| field.node_at(crate::space::SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let n = |x: i32, y: i32| field.node_at(field_level, crate::space::SquarePoint { x, y }).unwrap();
     let start = n(0, 0);
     let finish = n(1, 0);
     let seed = n(2, 0);
@@ -1733,10 +1743,11 @@ fn grow_front_fails_when_frontier_exhausted_and_no_excess_budget_to_cross() {
 /// survive untouched.
 fn maze_with_plus_shaped_region_and_external_edge() -> (Maze<SquareTessellation>, Vec<NodeId>) {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 4), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 4), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = G::new();
-    field.build_nodes(&mut g);
-    let n = |x: i32, y: i32| field.node_at(crate::space::SquarePoint { x, y }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let n = |x: i32, y: i32| field.node_at(field_level, crate::space::SquarePoint { x, y }).unwrap();
     let start = n(0, 0);
     let finish = n(1, 0);
     g.add_edge(start, finish, EK::Basic);

@@ -3,7 +3,7 @@ use crate::quality_control::Issue;
 use rand::SeedableRng;
 use crate::{Graph, IdGenerator};
 use crate::ids::NodeId;
-use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
 const TEST_ID: &str = "teleport_group_proximity";
 
@@ -24,18 +24,19 @@ fn pairs_of(issue: &InvalidTeleportGroupIssue) -> Vec<(EdgeId, EdgeId)> {
 /// Shared test-maze bootstrap: a `width`-wide, 1-tall `SquareTessellation` field with an empty
 /// `Graph` (no edges built in yet) plus a `p(x)` helper resolving row-0 tile x to its `NodeId` —
 /// every test below builds its own edges on top of this same field/graph shape.
-fn bootstrap_row(width: usize) -> (Field<SquareTessellation>, Graph) {
+fn bootstrap_row(width: usize) -> (MultiLevelField<SquareTessellation>, Graph) {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
+    for node in field.all_node_ids() { g.add_node(node); }
     (field, g)
 }
 
 #[test]
 fn silent_with_fewer_than_two_teleports() {
     let (field, mut g) = bootstrap_row(3);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let field_level = field.single_level_id();
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -50,7 +51,8 @@ fn silent_with_fewer_than_two_teleports() {
 fn maze_with_two_teleport_entries_at_gap(entry_gap: usize) -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
     let width = entry_gap + 3;
     let (field, mut g) = bootstrap_row(width);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     for x in 0..entry_gap as i32 {
         g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
     }
@@ -130,7 +132,8 @@ fn respects_directed_edges_reverse_still_counts_via_min() {
     // A one-way corridor a->b: forward distance a->b is 2, reverse (b->a) is unreachable.
     // min(forward, reverse) must still catch it via the forward side.
     let (field, mut g) = bootstrap_row(5);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     g.add_edge(p(0), p(1), EdgeKind::Basic); // one-way only
     g.add_edge(p(1), p(2), EdgeKind::Basic); // one-way only
     let id_a = g.add_edge(p(0), p(3), EdgeKind::Teleport);
@@ -163,7 +166,8 @@ fn maze_with_one_close_endpoint_pair(close: ClosePair) -> (Maze<SquareTessellati
     // exit_b=[60..80]. Every block is a straight bidirectional corridor with no cross-links,
     // so the only routes between blocks are the two teleport edges themselves.
     let (field, mut g) = bootstrap_row(80);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     for block_start in [0, 20, 40, 60] {
         for x in block_start..block_start + 19 {
             g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
@@ -278,7 +282,8 @@ fn both_entry_or_exit_fires_for_any_close_combination() {
 #[test]
 fn entry_or_exit_silent_when_nothing_is_close() {
     let (field, mut g) = bootstrap_row(6);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     g.add_edge(p(0), p(1), EdgeKind::Teleport);
     g.add_edge(p(4), p(5), EdgeKind::Teleport);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -315,7 +320,8 @@ fn exit_vs_exit_selector_silent_when_the_close_pair_is_elsewhere() {
 #[test]
 fn unreachable_pair_in_both_directions_is_never_flagged() {
     let (field, mut g) = bootstrap_row(6);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     // Two isolated teleport pairs, no path connects them at all.
     g.add_edge(p(0), p(1), EdgeKind::Teleport);
     g.add_edge(p(4), p(5), EdgeKind::Teleport);
@@ -338,7 +344,8 @@ fn unreachable_pair_in_both_directions_is_never_flagged() {
 /// entry_a/entry_b look close to each other.
 fn maze_with_two_route_critical_teleports_and_a_direct_corridor_between_entries() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId, NodeId) {
     let (field, mut g) = bootstrap_row(6);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     let entry_a = p(0);
     let exit_a = p(1);
     let entry_b = p(2);
@@ -401,7 +408,8 @@ fn protect_route_skips_a_fully_protected_pair_and_still_finds_a_farther_unprotec
     //         exit_b --- entry_c(4)  is NOT built -- c is reached via its own short bridge
     //         from entry_a instead, so it's close to a but off the actual route entirely.
     let (field, mut g) = bootstrap_row(7);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     let entry_a = p(0);
     let exit_a = p(1);
     let entry_b = p(2);
@@ -451,7 +459,8 @@ fn stops_at_first_problematic_pair_per_teleport() {
     // teleport, record it and move to the next teleport"), scanning from a's side must
     // record exactly one pair (a, _), not both (a, b) and (a, c).
     let (field, mut g) = bootstrap_row(3);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     let entry_a = p(0);
     let entry_b = p(1);
     let entry_c = p(2);
@@ -494,7 +503,8 @@ fn fires_for_both_directions_of_a_two_way_teleport_independently() {
     // A two-way teleport is two independent Teleport edges -- each direction is scanned as
     // its own element, same as TeleportSuperHubAvoidanceCheck/TeleportWaypointDistanceCheck.
     let (field, mut g) = bootstrap_row(5);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     g.add_bidirectional_edge(p(0), p(2), EdgeKind::Basic);
     let entry_a = p(0);
     let entry_b = p(2);
@@ -524,7 +534,8 @@ fn a_teleport_hop_is_never_used_as_a_shortcut_when_measuring_proximity() {
     // teleport a (1 hop) then the basic corridor (1 hop) to reach entry_b, reporting dist=2.
     // With teleport hops excluded from the traversal, entry_a has no path to entry_b at all.
     let (field, mut g) = bootstrap_row(4);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     let entry_a = p(0);
     let exit_a = p(1);
     let entry_b = p(2);
@@ -548,7 +559,8 @@ fn a_basic_edge_running_parallel_to_a_teleport_still_counts_as_pedestrian_proxim
     // close -- the presence of a parallel Teleport edge between the same pair must not blind the
     // Dijkstra pass to the genuinely pedestrian Basic edge sitting right alongside it.
     let (field, mut g) = bootstrap_row(3);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     let entry_a = p(0);
     let exit_a_entry_b = p(1);
     let exit_b = p(2);
@@ -572,7 +584,8 @@ fn a_third_unrelated_teleport_is_never_used_as_a_shortcut_when_measuring_proximi
     // proximity, it's three teleport-assisted jumps. With ALL teleport hops excluded (not just
     // a's own), entry_a has no path to entry_b at all: it has no basic edges whatsoever.
     let (field, mut g) = bootstrap_row(6);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     let entry_a = p(0);
     let far_a = p(1);
     let entry_c = p(2);
@@ -598,7 +611,8 @@ fn a_two_way_teleport_never_pairs_with_its_own_reverse_direction() {
     // #190: the reverse direction must never be recorded as a problematic pair with `own_id`,
     // regardless of distance.
     let (field, mut g) = bootstrap_row(3);
-    let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+    let field_level = field.single_level_id();
+    let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
     g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
     g.add_edge(nodes[2], nodes[0], EdgeKind::Teleport);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);

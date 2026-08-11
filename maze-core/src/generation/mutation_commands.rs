@@ -14,7 +14,7 @@
 
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::repair::command::{MutationCommand, SplitNodeEdge};
 use super::preset_state::PresetState;
 use super::edge_ops::{directed_edge_feasible, bidirectional_edge_feasible, remove_edge_between_feasible};
@@ -89,13 +89,13 @@ pub(crate) fn cmd_remove_edge_with_reverse(graph: &Graph, id: crate::ids::EdgeId
 }
 
 #[allow(dead_code)]
-pub(crate) fn cmd_remove_node<T: Tessellation>(field: &Field<T>, preset_state: &PresetState, node: NodeId) -> Vec<MutationCommand> {
+pub(crate) fn cmd_remove_node<T: Tessellation>(field: &MultiLevelField<T>, preset_state: &PresetState, node: NodeId) -> Vec<MutationCommand> {
     if !remove_node_feasible(field, preset_state, node) { return vec![]; }
     vec![MutationCommand::RemoveNode { node }]
 }
 
 #[allow(dead_code)]
-pub(crate) fn cmd_replace_point_nodes<T: Tessellation>(field: &Field<T>, preset_state: &PresetState, at: NodeId, nodes: Vec<Vec<SplitNodeEdge>>) -> Vec<MutationCommand> {
+pub(crate) fn cmd_replace_point_nodes<T: Tessellation>(field: &MultiLevelField<T>, preset_state: &PresetState, at: NodeId, nodes: Vec<Vec<SplitNodeEdge>>) -> Vec<MutationCommand> {
     if !replace_point_nodes_feasible(field, preset_state, at, &nodes) { return vec![]; }
     vec![MutationCommand::ReplacePointNodes { at, nodes }]
 }
@@ -110,27 +110,28 @@ pub(crate) fn cmd_replace_point_nodes<T: Tessellation>(field: &Field<T>, preset_
 #[cfg(test)]
 mod cmd_builders_tests {
     use super::*;
-    use crate::space::{Field, SquareTessellation, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use super::super::edge_ops::{try_add_directed_edge, try_add_bidirectional_edge, try_remove_edge_by_id};
 
     fn graph_and_nodes(n: usize) -> (Graph, Vec<NodeId>) {
         let mut ids = crate::IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(n, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<NodeId> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let nodes: Vec<NodeId> = field.all_node_ids().collect();
+        for &node in &nodes { g.add_node(node); }
         (g, nodes)
     }
 
-    /// Field + extra split node at its first point — the shape `cmd_remove_node` needs (a `Field`
-    /// to resolve slot-0/point identity against, unlike every other `cmd_*` builder here which
-    /// only ever touches `Graph`).
-    fn field_with_extra_node() -> (Field<SquareTessellation>, NodeId, NodeId) {
+    /// Field + extra split node at its first point — the shape `cmd_remove_node` needs (a
+    /// `MultiLevelField` to resolve slot-0/point identity against, unlike every other `cmd_*`
+    /// builder here which only ever touches `Graph`).
+    fn field_with_extra_node() -> (MultiLevelField<SquareTessellation>, NodeId, NodeId) {
         let mut ids = crate::IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
-        let p = field.all_points().next().unwrap();
-        let slot0 = field.node_at(p).unwrap();
-        let extra = field.add_node_at(p, &mut ids);
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
+        let p = field.field_of(level).unwrap().all_points().next().unwrap();
+        let slot0 = field.node_at(level, p).unwrap();
+        let extra = field.add_node_at(level, p, &mut ids);
         (field, slot0, extra)
     }
 
@@ -377,9 +378,10 @@ mod cmd_builders_tests {
     #[test]
     fn cmd_remove_node_empty_for_a_points_last_remaining_node() {
         let mut ids = crate::IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
-        let p = field.all_points().next().unwrap();
-        let slot0 = field.node_at(p).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
+        let p = field.field_of(level).unwrap().all_points().next().unwrap();
+        let slot0 = field.node_at(level, p).unwrap();
         assert!(cmd_remove_node(&field, &PresetState::empty(), slot0).is_empty(),
             "a point's last remaining node must never be proposed for removal");
     }
@@ -410,7 +412,7 @@ mod cmd_builders_tests {
         ] {
             let (mut field, slot0, extra) = field_with_extra_node();
             let mut g = Graph::new();
-            field.build_nodes(&mut g);
+            for node in field.all_node_ids() { g.add_node(node); }
             g.add_node(extra);
             let mut preset_state = PresetState::empty();
             if locked_out { preset_state.locked_out.insert(extra); }

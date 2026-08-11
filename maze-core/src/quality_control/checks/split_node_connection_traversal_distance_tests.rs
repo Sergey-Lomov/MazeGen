@@ -2,7 +2,7 @@ use super::*;
 use rand::SeedableRng;
 use crate::graph::EdgeKind;
 use crate::{Graph, IdGenerator};
-use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
 const TEST_ID: &str = "split_node_connection_traversal_distance";
 
@@ -12,12 +12,13 @@ fn rng() -> crate::random::MazeRng {
 
 fn maze_with_split() -> (Maze<SquareTessellation>, NodeId, NodeId) {
     let mut ids = IdGenerator::new();
-    let mut field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+    let level = field.single_level_id();
     let p = SquarePoint { x: 2, y: 0 };
-    let slot0 = field.node_at(p).unwrap();
-    let extra = field.add_node_at(p, &mut ids);
+    let slot0 = field.node_at(level, p).unwrap();
+    let extra = field.add_node_at(level, p, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
+    for node in field.all_node_ids() { g.add_node(node); }
     let maze = Maze::new(field, g);
     (maze, slot0, extra)
 }
@@ -25,9 +26,9 @@ fn maze_with_split() -> (Maze<SquareTessellation>, NodeId, NodeId) {
 #[test]
 fn silent_when_no_split_points() {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
+    for node in field.all_node_ids() { g.add_node(node); }
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
     let check = SplitNodeConnectionTraversalDistanceCheck { instance_id: TEST_ID.to_string(), min_detour: 3 };
@@ -66,10 +67,11 @@ fn silent_when_only_path_meets_the_minimum_detour() {
     let (mut maze, slot0, extra) = maze_with_split();
     // Build an explicit path of exactly min_detour steps between slot0 and extra via outside
     // nodes -- must NOT fire (min_detour itself is allowed, only strictly shorter is flagged).
-    let a = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = maze.field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
-    let c = maze.field.node_at(SquarePoint { x: 3, y: 0 }).unwrap();
-    let d = maze.field.node_at(SquarePoint { x: 4, y: 0 }).unwrap();
+    let level = maze.field.single_level_id();
+    let a = maze.field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let b = maze.field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
+    let c = maze.field.node_at(level, SquarePoint { x: 3, y: 0 }).unwrap();
+    let d = maze.field.node_at(level, SquarePoint { x: 4, y: 0 }).unwrap();
     // Path: slot0 -> a -> b -> c -> d -> extra == 5 steps.
     maze.graph.build_initial_edge(slot0, a, EdgeKind::Basic);
     maze.graph.build_initial_edge(a, b, EdgeKind::Basic);
@@ -100,7 +102,8 @@ fn fires_only_for_the_direction_that_has_a_short_path() {
 #[test]
 fn route_carries_full_ordered_path_with_split_edge_flags() {
     let (mut maze, slot0, extra) = maze_with_split();
-    let a = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    let level = maze.field.single_level_id();
+    let a = maze.field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
     // slot0 -> a -> extra: 2 steps, below min_detour - 1 = 3.
     let e0 = maze.graph.build_initial_edge(slot0, a, EdgeKind::Basic);
     let e1 = maze.graph.build_initial_edge(a, extra, EdgeKind::Basic);
@@ -118,8 +121,9 @@ fn route_carries_full_ordered_path_with_split_edge_flags() {
 #[test]
 fn middle_edge_of_a_longer_route_is_not_marked_a_split_edge() {
     let (mut maze, slot0, extra) = maze_with_split();
-    let a = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = maze.field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+    let level = maze.field.single_level_id();
+    let a = maze.field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let b = maze.field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
     // slot0 -> a -> b -> extra: 3 steps, below min_detour - 1 = 4.
     let e0 = maze.graph.build_initial_edge(slot0, a, EdgeKind::Basic);
     let e1 = maze.graph.build_initial_edge(a, b, EdgeKind::Basic);
@@ -158,9 +162,10 @@ fn finds_the_shorter_of_two_paths_between_split_nodes() {
     // must find the 2-step path and must not get stuck on `b`/`c` from a stale/duplicate visit
     // of a node already reached via the shorter branch.
     let (mut maze, slot0, extra) = maze_with_split();
-    let a = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = maze.field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
-    let c = maze.field.node_at(SquarePoint { x: 3, y: 0 }).unwrap();
+    let level = maze.field.single_level_id();
+    let a = maze.field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
+    let b = maze.field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
+    let c = maze.field.node_at(level, SquarePoint { x: 3, y: 0 }).unwrap();
     let e0 = maze.graph.build_initial_edge(slot0, a, EdgeKind::Basic);
     let e1 = maze.graph.build_initial_edge(a, extra, EdgeKind::Basic);
     maze.graph.build_initial_edge(slot0, b, EdgeKind::Basic);

@@ -22,7 +22,7 @@ pub use graph::graph_analytics::{GraphAnalytics, compute_graph_analytics};
 pub use graph::split_topology::{SplitTopology, canonical_split_topology, split_totals};
 pub use graph::region_class::{RegionClass, classify_regions};
 pub use space::{
-    Tessellation, Field, geometric_distance,
+    Tessellation, Field, LevelId, MultiLevelField, geometric_distance,
     HexPoint, HexFace, HexTessellation, hex_parallelogram, hex_hexagon,
     SquarePoint, SquareTessellation, SquareFace, square_rect,
     TriPoint, TriFace, TriTessellation, tri_rect, tri_triangle, tri_hexagon,
@@ -99,7 +99,7 @@ impl MazeAnalysis {
     ///
     /// Returns `None` if either `meta.start` or `meta.finish` is unset, or if no route exists
     /// between them.
-    pub fn route_info<T: space::Tessellation>(&self, graph: &Graph, field: &space::Field<T>, meta: &MazeMeta) -> Option<graph::routing::RouteInfo> {
+    pub fn route_info<T: space::Tessellation>(&self, graph: &Graph, field: &space::MultiLevelField<T>, meta: &MazeMeta) -> Option<graph::routing::RouteInfo> {
         let (start, finish) = (meta.start?, meta.finish?);
         let version = graph.version();
         let mut cache = self.route_info.borrow_mut();
@@ -122,7 +122,7 @@ impl MazeAnalysis {
     ///
     /// Returns an empty map if either `meta.start` or `meta.finish` is unset — there is no
     /// start/finish to classify regions relative to.
-    pub fn region_classes<T: space::Tessellation>(&self, graph: &Graph, field: &space::Field<T>, meta: &MazeMeta) -> std::collections::HashMap<graph::scc::ComponentId, RegionClass> {
+    pub fn region_classes<T: space::Tessellation>(&self, graph: &Graph, field: &space::MultiLevelField<T>, meta: &MazeMeta) -> std::collections::HashMap<graph::scc::ComponentId, RegionClass> {
         let Some(start) = meta.start else { return std::collections::HashMap::new(); };
         let Some(finish) = meta.finish else { return std::collections::HashMap::new(); };
         let key = (graph.version(), Some(start), Some(finish));
@@ -236,7 +236,7 @@ impl MazeAnalysis {
 }
 
 pub struct Maze<T: Tessellation> {
-    pub field: Field<T>,
+    pub field: MultiLevelField<T>,
     pub graph: Graph,
     pub meta: MazeMeta,
     pub analysis: MazeAnalysis,
@@ -251,7 +251,7 @@ pub struct Maze<T: Tessellation> {
 }
 
 impl<T: Tessellation> Maze<T> {
-    pub fn new(field: Field<T>, graph: Graph) -> Self {
+    pub fn new(field: MultiLevelField<T>, graph: Graph) -> Self {
         let ids = IdGenerator::resume_after(&field);
         Self {
             field,
@@ -262,19 +262,21 @@ impl<T: Tessellation> Maze<T> {
         }
     }
 
-    /// Adds another `NodeId` to `point` and registers it in `graph` in the same call (GitHub
-    /// issue #219) — the only correct way to add a node to an already-built maze; a raw
-    /// `field.add_node_at` without a paired `graph.add_node` would leave `Graph` unaware of the
-    /// new node.
+    /// Adds another `NodeId` to `point` on the maze's single level and registers it in `graph` in
+    /// the same call (GitHub issue #219) — the only correct way to add a node to an already-built
+    /// maze; a raw `field.add_node_at` without a paired `graph.add_node` would leave `Graph`
+    /// unaware of the new node. Uses `field.single_level_id()` — single-level mazes only until a
+    /// level-aware caller exists (GitHub issue #334/#337).
     pub fn add_node_at(&mut self, point: T::Point) -> NodeId {
-        let node = self.field.add_node_at(point, &mut self.ids);
+        let level = self.field.single_level_id();
+        let node = self.field.add_node_at(level, point, &mut self.ids);
         self.graph.add_node(node);
         node
     }
 
-    /// Removes `node` from `point`, clearing every edge incident to it (both directions) first
-    /// — the atomic graph+field counterpart of `add_node_at` (GitHub issue #221). No caller in
-    /// this codebase yet — see `Field::remove_node_at`'s doc comment for why (groundwork for a
+    /// Removes `node`, clearing every edge incident to it (both directions) first — the atomic
+    /// graph+field counterpart of `add_node_at` (GitHub issue #221). No caller in this codebase
+    /// yet — see `MultiLevelField::remove_node_at`'s doc comment for why (groundwork for a
     /// future repair `MutationCommand::RemoveNode`, not used by the WASM/PostEdit flow).
     ///
     /// `Graph` itself gains no `remove_node` here — whether a "dead" `Node` entry should linger
@@ -283,14 +285,14 @@ impl<T: Tessellation> Maze<T> {
     /// deliberately left open for whichever issue introduces the first actual caller of this
     /// method (`MutationCommand::RemoveNode` or similar) to decide with a concrete use case in
     /// hand.
-    pub fn remove_node_at(&mut self, point: T::Point, node: NodeId) {
+    pub fn remove_node_at(&mut self, node: NodeId) {
         let incident: Vec<ids::EdgeId> = self.graph.outgoing_edges(node).map(|e| e.id)
             .chain(self.graph.edges().filter(|e| e.to == node).map(|e| e.id))
             .collect();
         for id in incident {
             self.graph.remove_initial_edge(id);
         }
-        self.field.remove_node_at(point, node);
+        self.field.remove_node_at(node);
     }
 
     /// An independent working copy for a `RepairStrategy` that needs to mutate-and-inspect
@@ -321,14 +323,14 @@ impl<T: Tessellation> Maze<T> {
 mod draft_tests {
     use super::*;
     use crate::graph::EdgeKind;
-    use crate::space::{Field, SquareTessellation, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 
     fn maze_n(n: usize) -> (Maze<SquareTessellation>, Vec<ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(n, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        let nodes: Vec<_> = field.all_node_ids().collect();
+        for &node in &nodes { g.add_node(node); }
         (Maze::new(field, g), nodes)
     }
 
@@ -392,17 +394,15 @@ mod draft_tests {
 #[cfg(test)]
 mod add_node_at_tests {
     use super::*;
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     #[test]
     fn add_node_at_yields_an_id_not_colliding_with_any_existing_node() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 3), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let existing: Vec<ids::NodeId> = field.all_points()
-            .flat_map(|p| field.nodes_at(p).to_vec())
-            .collect();
+        let existing: Vec<ids::NodeId> = field.all_node_ids().collect();
+        for &node in &existing { g.add_node(node); }
 
         let mut maze = Maze::new(field, g);
         let added = maze.add_node_at(SquarePoint { x: 1, y: 1 });
@@ -413,15 +413,16 @@ mod add_node_at_tests {
     #[test]
     fn add_node_at_registers_the_new_node_in_the_graph() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(2, 2), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 2), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
 
         let mut maze = Maze::new(field, g);
         let added = maze.add_node_at(SquarePoint { x: 0, y: 0 });
+        let level = maze.field.single_level_id();
 
         assert!(maze.graph.nodes().any(|n| n.id == added));
-        assert!(maze.field.nodes_at(SquarePoint { x: 0, y: 0 }).contains(&added));
+        assert!(maze.field.nodes_at(level, SquarePoint { x: 0, y: 0 }).contains(&added));
     }
 }
 
@@ -431,62 +432,68 @@ mod add_node_at_tests {
 mod remove_node_at_tests {
     use super::*;
     use crate::graph::EdgeKind;
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     #[test]
     fn removes_the_node_and_clears_edges_in_both_directions_leaving_the_sibling_slot_intact() {
         let mut ids = IdGenerator::new();
         // A - B - C line, B split into b0/b1. Wire both b0<->A and b1<->C, then remove b1: its
         // edges must disappear while b0's stay untouched.
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze = Maze::new(field, g);
+        let level = maze.field.single_level_id();
 
-        let a = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let a = maze.field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         let b_point = SquarePoint { x: 1, y: 0 };
-        let b0 = maze.field.node_at(b_point).unwrap();
-        let c = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        let b0 = maze.field.node_at(level, b_point).unwrap();
+        let c = maze.field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
         let b1 = maze.add_node_at(b_point);
 
         maze.graph.add_bidirectional_edge(a, b0, EdgeKind::Basic);
         maze.graph.add_bidirectional_edge(b1, c, EdgeKind::Basic);
 
-        maze.remove_node_at(b_point, b1);
+        maze.remove_node_at(b1);
 
         assert!(maze.graph.edge_between(a, b0).is_some(), "b0's own edge must survive");
         assert!(maze.graph.edge_between(b1, c).is_none());
         assert!(maze.graph.edge_between(c, b1).is_none());
-        assert!(!maze.field.nodes_at(b_point).contains(&b1));
+        assert!(!maze.field.nodes_at(level, b_point).contains(&b1));
     }
 
     #[test]
     #[should_panic(expected = "cannot remove a point's last remaining node")]
     fn delegates_the_last_remaining_node_panic() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze = Maze::new(field, g);
+        let level = maze.field.single_level_id();
         let p = SquarePoint { x: 0, y: 0 };
-        let original = maze.field.node_at(p).unwrap();
+        let original = maze.field.node_at(level, p).unwrap();
 
-        maze.remove_node_at(p, original);
+        maze.remove_node_at(original);
     }
 
     #[test]
-    #[should_panic(expected = "node does not belong to point")]
-    fn delegates_the_foreign_node_panic() {
+    fn removes_a_node_that_is_not_a_points_original_slot() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze = Maze::new(field, g);
-        let p0 = SquarePoint { x: 0, y: 0 };
         let p1 = SquarePoint { x: 1, y: 0 };
         let extra_at_p1 = maze.add_node_at(p1);
 
-        maze.remove_node_at(p0, extra_at_p1);
+        // extra_at_p1 belongs to p1, not p0 — MultiLevelField::remove_node_at resolves the point
+        // from the node itself, so removal always targets the node's real point; this test's
+        // "wrong point" premise no longer applies to the node-id-only API (GitHub issue #334).
+        // Kept as a regression check that remove_node_at still works correctly on a node that
+        // isn't a point's original/last slot.
+        maze.remove_node_at(extra_at_p1);
+        assert!(maze.field.level_of(extra_at_p1).is_none());
     }
 }
 
@@ -494,15 +501,16 @@ mod remove_node_at_tests {
 mod distance_cache_tests {
     use super::*;
     use crate::graph::EdgeKind;
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     fn line_maze(len: usize) -> (Maze<SquareTessellation>, Vec<ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(len, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
+        let level = field.single_level_id();
         let nodes: Vec<ids::NodeId> = (0..len)
-            .map(|x| field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap())
+            .map(|x| field.node_at(level, SquarePoint { x: x as i32, y: 0 }).unwrap())
             .collect();
         for i in 0..len - 1 {
             g.add_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
@@ -564,11 +572,12 @@ mod distance_cache_tests {
     /// never merge into a single component the way `line_maze`'s bidirectional ones would).
     fn directed_line_maze(len: usize) -> (Maze<SquareTessellation>, Vec<ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(len, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
+        let level = field.single_level_id();
         let nodes: Vec<ids::NodeId> = (0..len)
-            .map(|x| field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap())
+            .map(|x| field.node_at(level, SquarePoint { x: x as i32, y: 0 }).unwrap())
             .collect();
         for i in 0..len - 1 {
             g.add_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);

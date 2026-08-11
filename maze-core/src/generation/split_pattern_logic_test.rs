@@ -29,7 +29,8 @@ fn simple_two_node_pattern() -> SplitPattern {
 #[test]
 fn enumerate_adaptations_pure_rng_free_same_inputs_same_output() {
     let (field, graph, _ids) = make_field_graph_ids(5, 5);
-    let src = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
+    let field_level = field.single_level_id();
+    let src = field.node_at(field_level, SquarePoint { x: 2, y: 2 }).unwrap();
     let pattern = simple_two_node_pattern();
     let visited: std::collections::HashSet<NodeId> = std::collections::HashSet::new();
 
@@ -48,7 +49,8 @@ fn enumerate_adaptations_boundary_excludes_off_field_non_wall_faces() {
     // A corner point of a small field has geometric neighbors missing on 2 of 4 sides — any
     // rotation placing a Passage face toward a missing neighbor must be excluded.
     let (field, graph, _ids) = make_field_graph_ids(2, 2);
-    let src = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let src = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     // Single-node pattern requiring Passage on face 0 (N) — only valid where N exists.
     let pattern = SplitPattern {
         node_count: 1,
@@ -69,8 +71,9 @@ fn enumerate_adaptations_boundary_excludes_off_field_non_wall_faces() {
 #[test]
 fn enumerate_adaptations_requires_bridge_targeted_face_when_bridge_present() {
     let (field, graph, _ids) = make_field_graph_ids(5, 5);
-    let src = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
-    let bridge = field.node_at(SquarePoint { x: 2, y: 3 }).unwrap(); // north neighbor
+    let field_level = field.single_level_id();
+    let src = field.node_at(field_level, SquarePoint { x: 2, y: 2 }).unwrap();
+    let bridge = field.node_at(field_level, SquarePoint { x: 2, y: 3 }).unwrap(); // north neighbor
     let pattern = SplitPattern {
         node_count: 1,
         faces: vec![vec![SplitPatternFace { face_index: 0, requirement: SplitFaceRequirement::Passage, sibling_target: None }]],
@@ -94,8 +97,9 @@ fn enumerate_adaptations_accepts_a_face_matching_the_existing_parent_edge() {
     // a Passage face resolving to `parent` must be accepted (parent_targeted requirement
     // satisfied), not rejected as "targets an already-visited neighbor".
     let (field, mut graph, _ids) = make_field_graph_ids(5, 5);
-    let src = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
-    let parent = field.node_at(SquarePoint { x: 2, y: 3 }).unwrap(); // north neighbor
+    let field_level = field.single_level_id();
+    let src = field.node_at(field_level, SquarePoint { x: 2, y: 2 }).unwrap();
+    let parent = field.node_at(field_level, SquarePoint { x: 2, y: 3 }).unwrap(); // north neighbor
     graph.add_bidirectional_edge(src, parent, EdgeKind::Basic);
     let pattern = SplitPattern {
         node_count: 1,
@@ -117,8 +121,9 @@ fn enumerate_adaptations_rejects_a_one_way_face_against_a_bidirectional_parent_e
     // bidirectional (Passage) — direction/kind mismatch must invalidate every adaptation that
     // would otherwise resolve there, not silently reinterpret the edge.
     let (field, mut graph, _ids) = make_field_graph_ids(5, 5);
-    let src = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
-    let parent = field.node_at(SquarePoint { x: 2, y: 3 }).unwrap();
+    let field_level = field.single_level_id();
+    let src = field.node_at(field_level, SquarePoint { x: 2, y: 2 }).unwrap();
+    let parent = field.node_at(field_level, SquarePoint { x: 2, y: 3 }).unwrap();
     graph.add_bidirectional_edge(src, parent, EdgeKind::Basic);
     let pattern = SplitPattern {
         node_count: 1,
@@ -135,8 +140,9 @@ fn enumerate_adaptations_requires_parent_targeted_face_when_parent_present() {
     // No face of this pattern can ever resolve to `parent` at all (single Wall face, no
     // geometric resolution) — every adaptation must be rejected, mirroring bridge_targeted.
     let (field, mut graph, _ids) = make_field_graph_ids(5, 5);
-    let src = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
-    let parent = field.node_at(SquarePoint { x: 2, y: 3 }).unwrap();
+    let field_level = field.single_level_id();
+    let src = field.node_at(field_level, SquarePoint { x: 2, y: 2 }).unwrap();
+    let parent = field.node_at(field_level, SquarePoint { x: 2, y: 3 }).unwrap();
     graph.add_bidirectional_edge(src, parent, EdgeKind::Basic);
     let pattern = SplitPattern {
         node_count: 1,
@@ -153,8 +159,9 @@ fn enumerate_adaptations_requires_parent_targeted_face_when_parent_present() {
 #[test]
 fn adaptation_respects_presets_rejects_locked_out_node_zero_passage() {
     let (field, _graph, _ids) = make_field_graph_ids(5, 5);
-    let src = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
-    let neighbor = field.node_at(SquarePoint { x: 2, y: 3 }).unwrap();
+    let field_level = field.single_level_id();
+    let src = field.node_at(field_level, SquarePoint { x: 2, y: 2 }).unwrap();
+    let neighbor = field.node_at(field_level, SquarePoint { x: 2, y: 3 }).unwrap();
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(src);
     let faces = vec![ResolvedFace_for_test(0, SplitFaceRequirement::Passage, None, Some(neighbor))];
@@ -166,8 +173,9 @@ fn adaptation_respects_presets_allows_unconstrained_new_node_faces() {
     // Presets only ever constrain pattern-local node 0 (= src) — a face on node 1+ must never be
     // rejected regardless of what's locked, since PresetState can't know about it.
     let (field, _graph, _ids) = make_field_graph_ids(5, 5);
-    let src = field.node_at(SquarePoint { x: 2, y: 2 }).unwrap();
-    let neighbor = field.node_at(SquarePoint { x: 2, y: 3 }).unwrap();
+    let field_level = field.single_level_id();
+    let src = field.node_at(field_level, SquarePoint { x: 2, y: 2 }).unwrap();
+    let neighbor = field.node_at(field_level, SquarePoint { x: 2, y: 3 }).unwrap();
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(neighbor); // locks the *neighbor*, not src or node 1
     let faces = vec![ResolvedFace_for_test(1, SplitFaceRequirement::Passage, None, Some(neighbor))];

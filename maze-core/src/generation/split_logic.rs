@@ -1,7 +1,7 @@
 use rand::Rng;
 use crate::ids::{IdGenerator, NodeId};
 use crate::graph::Graph;
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::event_log::ScopeGuard;
 use super::{ElementsConfig, PresetState, GenerationParams};
 use super::debug_state::DebugGenerationState;
@@ -43,15 +43,16 @@ pub struct StartReassignment {
 /// only way a point could already be multi-node at generation time, post-edit splits happen after
 /// generation) is never double-split.
 pub(crate) fn split_is_eligible<T: Tessellation>(
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     preset_state: &PresetState,
     src: NodeId,
 ) -> bool {
     if preset_state.locked_out.contains(&src) || preset_state.locked_in.contains(&src) {
         return false;
     }
+    let Some(level) = field.level_of(src) else { return false; };
     let Some(point) = field.point_of(src) else { return false; };
-    field.nodes_at(point).len() <= 1
+    field.nodes_at(level, point).len() <= 1
 }
 
 /// Shared split-roll entry point, called from `step_from_frontier` and both `handle_empty_frontier`
@@ -71,7 +72,7 @@ pub(crate) fn split_is_eligible<T: Tessellation>(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn try_split_src<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut IdGenerator,
     params: &GenerationParams,
     elements: &ElementsConfig,

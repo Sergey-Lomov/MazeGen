@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use crate::ids::{IdGenerator, NodeId};
 use crate::graph::{Graph, EdgeKind};
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::event_log::EventLog;
 use super::{PresetConnection, PresetConnectionState, PresetEndpoint, TeleportDirection, LockedNode, NodeLockKind};
 use super::preset_setup_event::{emit, PresetSetupEvent};
@@ -108,11 +108,12 @@ impl PresetState {
     /// undeclared slot), same "silently unresolved" contract `build_preset_state` uses internally.
     pub fn resolve_endpoint<T: Tessellation>(
         &self,
-        field: &Field<T>,
+        field: &MultiLevelField<T>,
         xy_to_point: impl Fn(i32, i32) -> T::Point,
         endpoint: PresetEndpoint,
     ) -> Option<NodeId> {
-        resolve_preset_endpoint(field, &self.slots_by_point, &xy_to_point, endpoint)
+        let level = field.single_level_id();
+        resolve_preset_endpoint(field, level, &self.slots_by_point, &xy_to_point, endpoint)
     }
 }
 
@@ -131,13 +132,14 @@ impl PresetState {
 /// "Split nodes" section), but this is not assumed; `Field::add_node_at` panics on an unknown
 /// point, so this guards against it explicitly, same defense-in-depth `apply_split_points` uses.
 fn apply_split_points<T: Tessellation>(
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     graph: &mut Graph,
     ids: &mut IdGenerator,
     split_points: &[((i32, i32), u32)],
     xy_to_point: &impl Fn(i32, i32) -> T::Point,
     mut debug_state: Option<&mut super::DebugGenerationState<T>>,
 ) -> Result<(HashMap<(i32, i32), Vec<u32>>, HashSet<NodeId>), String> {
+    let level = field.single_level_id();
     let mut sorted: Vec<((i32, i32), u32)> = split_points.to_vec();
     sorted.sort_unstable();
 
@@ -145,10 +147,10 @@ fn apply_split_points<T: Tessellation>(
     let mut minted_nodes: HashSet<NodeId> = HashSet::new();
     for (xy, slot_id) in sorted {
         let point = xy_to_point(xy.0, xy.1);
-        if !field.contains(point) {
+        if field.field_of(level).is_none_or(|f| !f.contains(point)) {
             return Err(format!("split_points references unknown point {xy:?}"));
         }
-        let node = field.add_node_at(point, ids);
+        let node = field.add_node_at(level, point, ids);
         graph.add_node(node);
         minted_nodes.insert(node);
         if let Some(state) = debug_state.as_deref_mut() {
@@ -164,13 +166,14 @@ fn apply_split_points<T: Tessellation>(
 /// order). Returns `None` if the point isn't in the field, or if `slot: Some(s)` names a slot not
 /// present in `slots_by_point` for that point.
 fn resolve_preset_endpoint<T: Tessellation>(
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
+    level: crate::space::LevelId,
     slots_by_point: &HashMap<(i32, i32), Vec<u32>>,
     xy_to_point: &impl Fn(i32, i32) -> T::Point,
     endpoint: PresetEndpoint,
 ) -> Option<NodeId> {
     let point = xy_to_point(endpoint.point.0, endpoint.point.1);
-    let nodes = field.nodes_at(point);
+    let nodes = field.nodes_at(level, point);
     match endpoint.slot {
         None => nodes.first().copied(),
         Some(slot) => {
@@ -199,7 +202,7 @@ fn resolve_preset_endpoint<T: Tessellation>(
 /// — see `apply_split_points` above.
 pub fn build_preset_state<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut IdGenerator,
     preset_connections: &[PresetConnection],
     locked_nodes: &[LockedNode],
@@ -216,7 +219,8 @@ pub fn build_preset_state<T: Tessellation>(
     let mut preset_teleports: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 
     let (slots_by_point, preset_declared_nodes) = apply_split_points(field, graph, ids, split_points, &xy_to_point, debug_state)?;
-    let resolve = |ep: PresetEndpoint| resolve_preset_endpoint(field, &slots_by_point, &xy_to_point, ep);
+    let level = field.single_level_id();
+    let resolve = |ep: PresetEndpoint| resolve_preset_endpoint(field, level, &slots_by_point, &xy_to_point, ep);
 
     for preset in preset_connections {
         let (Some(from_id), Some(to_id)) = (resolve(preset.from), resolve(preset.to)) else { continue };

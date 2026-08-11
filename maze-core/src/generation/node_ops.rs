@@ -4,7 +4,7 @@
 
 use crate::ids::{NodeId, IdGenerator};
 use crate::graph::Graph;
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use super::preset_state::PresetState;
 use super::debug_state::DebugGenerationState;
 use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
@@ -16,9 +16,10 @@ use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
 /// since `ReplacePointNodes` replaces every node at a point at once, with a guaranteed non-empty
 /// replacement set, so the point is never actually left empty — unlike single-node removal
 /// (`try_remove_node`), which would leave the point with zero nodes if its last one were removed.
-fn node_removal_allowed<T: Tessellation>(field: &Field<T>, preset_state: &PresetState, node: NodeId, allow_last_node: bool) -> bool {
+fn node_removal_allowed<T: Tessellation>(field: &MultiLevelField<T>, preset_state: &PresetState, node: NodeId, allow_last_node: bool) -> bool {
+    let Some(level) = field.level_of(node) else { return false; };
     let Some(point) = field.point_of(node) else { return false; };
-    if !allow_last_node && field.nodes_at(point).len() == 1 {
+    if !allow_last_node && field.nodes_at(level, point).len() == 1 {
         return false; // node is this point's only remaining node — never removable by this path
     }
     !preset_state.is_node_locked_for_removal(node)
@@ -28,8 +29,8 @@ fn node_removal_allowed<T: Tessellation>(field: &Field<T>, preset_state: &Preset
 /// it isn't the last node left at its point — a point must always keep at least one node — and
 /// isn't itself preset-protected (locked in/out, or the endpoint of a preset connection).
 /// Structural existence (`field.point_of(node).is_some()`) is checked by the caller, since only
-/// `try_remove_node` has a `&mut Field` to also act on that check's result.
-pub(crate) fn remove_node_feasible<T: Tessellation>(field: &Field<T>, preset_state: &PresetState, node: NodeId) -> bool {
+/// `try_remove_node` has a `&mut MultiLevelField` to also act on that check's result.
+pub(crate) fn remove_node_feasible<T: Tessellation>(field: &MultiLevelField<T>, preset_state: &PresetState, node: NodeId) -> bool {
     node_removal_allowed(field, preset_state, node, false)
 }
 
@@ -38,7 +39,7 @@ pub(crate) fn remove_node_feasible<T: Tessellation>(field: &Field<T>, preset_sta
 /// (`Maze::remove_node_at` itself has no `PresetState` parameter, so repair goes through this
 /// instead). Returns `true` if the node was actually removed.
 pub(crate) fn try_remove_node<T: Tessellation>(
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     graph: &mut Graph,
     node: NodeId,
     preset_state: &PresetState,
@@ -46,14 +47,13 @@ pub(crate) fn try_remove_node<T: Tessellation>(
     if !remove_node_feasible(field, preset_state, node) {
         return false;
     }
-    let point = field.point_of(node).expect("remove_node_feasible confirmed this node exists");
     let incident: Vec<crate::ids::EdgeId> = graph.outgoing_edges(node).map(|e| e.id)
         .chain(graph.edges().filter(|e| e.to == node).map(|e| e.id))
         .collect();
     for id in incident {
         graph.remove_initial_edge(id);
     }
-    field.remove_node_at(point, node);
+    field.remove_node_at(node);
     true
 }
 
@@ -79,7 +79,7 @@ pub(crate) fn try_remove_node<T: Tessellation>(
 /// `*_feasible` check already has, just newly reachable here because this command is the first one
 /// that can invalidate another command's edge target mid-batch.
 pub(crate) fn replace_point_nodes_feasible<T: Tessellation>(
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     preset_state: &PresetState,
     at: NodeId,
     nodes: &[Vec<SplitNodeEdge>],
@@ -87,8 +87,9 @@ pub(crate) fn replace_point_nodes_feasible<T: Tessellation>(
     if nodes.is_empty() {
         return false;
     }
+    let Some(level) = field.level_of(at) else { return false; };
     let Some(point) = field.point_of(at) else { return false; };
-    if !field.nodes_at(point).iter().all(|&node| node_removal_allowed(field, preset_state, node, true)) {
+    if !field.nodes_at(level, point).iter().all(|&node| node_removal_allowed(field, preset_state, node, true)) {
         return false;
     }
     nodes.iter().flatten().all(|edge| {
@@ -116,7 +117,7 @@ pub(crate) fn replace_point_nodes_feasible<T: Tessellation>(
 /// `new_nodes[0]` the point's new slot-0. See `MutationCommand::ReplacePointNodes`'s doc comment
 /// for the full contract (GitHub issue #247, epic #246).
 pub(crate) fn try_replace_point_nodes<T: Tessellation>(
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     graph: &mut Graph,
     ids: &mut IdGenerator,
     at: NodeId,
@@ -127,8 +128,9 @@ pub(crate) fn try_replace_point_nodes<T: Tessellation>(
     if !replace_point_nodes_feasible(field, preset_state, at, nodes) {
         return None;
     }
+    let level = field.level_of(at).expect("replace_point_nodes_feasible confirmed this node exists");
     let point = field.point_of(at).expect("replace_point_nodes_feasible confirmed this point exists");
-    let old_nodes: Vec<NodeId> = field.nodes_at(point).to_vec();
+    let old_nodes: Vec<NodeId> = field.nodes_at(level, point).to_vec();
     for &old in &old_nodes {
         let incident: Vec<crate::ids::EdgeId> = graph.outgoing_edges(old).map(|e| e.id)
             .chain(graph.edges().filter(|e| e.to == old).map(|e| e.id))
@@ -145,7 +147,7 @@ pub(crate) fn try_replace_point_nodes<T: Tessellation>(
         }
         new_nodes.push(new_id);
     }
-    field.replace_nodes_at(point, new_nodes.clone());
+    field.replace_nodes_at(level, point, new_nodes.clone());
     for (i, edges) in nodes.iter().enumerate() {
         let node = new_nodes[i];
         graph.add_node(node);
@@ -163,18 +165,19 @@ pub(crate) fn try_replace_point_nodes<T: Tessellation>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::space::{SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::graph::EdgeKind;
     use crate::IdGenerator;
 
-    fn field_with_extra_node() -> (Field<SquareTessellation>, Graph, NodeId, NodeId) {
+    fn field_with_extra_node() -> (MultiLevelField<SquareTessellation>, Graph, NodeId, NodeId) {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let p0 = SquarePoint { x: 0, y: 0 };
-        let slot0 = field.node_at(p0).unwrap();
-        let extra = field.add_node_at(p0, &mut ids);
+        let slot0 = field.node_at(level, p0).unwrap();
+        let extra = field.add_node_at(level, p0, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         (field, g, slot0, extra)
     }
 
@@ -186,7 +189,8 @@ mod tests {
 
         assert!(try_remove_node(&mut field, &mut g, extra, &PresetState::empty()));
 
-        assert!(!field.nodes_at(SquarePoint { x: 0, y: 0 }).contains(&extra));
+        let level = field.single_level_id();
+        assert!(!field.nodes_at(level, SquarePoint { x: 0, y: 0 }).contains(&extra));
         assert!(g.edge_between(slot0, extra).is_none());
         assert!(g.edge_between(extra, slot0).is_none());
     }
@@ -203,11 +207,12 @@ mod tests {
     #[test]
     fn try_remove_node_refuses_to_remove_a_points_last_remaining_node() {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let p0 = SquarePoint { x: 0, y: 0 };
-        let slot0 = field.node_at(p0).unwrap();
+        let slot0 = field.node_at(level, p0).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         assert!(!try_remove_node(&mut field, &mut g, slot0, &PresetState::empty()),
             "a point's last remaining node must never be removable");
     }
@@ -245,23 +250,25 @@ mod tests {
         assert!(!try_remove_node(&mut field, &mut g, extra, &preset_state));
     }
 
-    fn field_for_add_split(width: usize) -> (Field<SquareTessellation>, Graph, IdGenerator, NodeId) {
+    fn field_for_add_split(width: usize) -> (MultiLevelField<SquareTessellation>, Graph, IdGenerator, NodeId) {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let slot0 = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let level = field.single_level_id();
+        let slot0 = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         (field, g, ids, slot0)
     }
 
     #[test]
     fn try_replace_point_nodes_mints_a_new_slot0_at_the_same_point() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(1);
+        let level = field.single_level_id();
         let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &PresetState::empty(), None);
         let new_nodes = new_nodes.expect("an unlocked unsplit point must be replaceable");
         assert_eq!(new_nodes.len(), 1);
         assert_ne!(new_nodes[0], slot0, "replacement mints a brand-new id for the new slot-0");
-        let at_point = field.nodes_at(SquarePoint { x: 0, y: 0 });
+        let at_point = field.nodes_at(level, SquarePoint { x: 0, y: 0 });
         assert_eq!(at_point, &[new_nodes[0]]);
         assert!(field.point_of(slot0).is_none(), "old slot-0 id must be gone from the field");
     }
@@ -269,17 +276,19 @@ mod tests {
     #[test]
     fn try_replace_point_nodes_mints_multiple_nodes_in_one_atomic_call() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(1);
+        let level = field.single_level_id();
         let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![], vec![]], &PresetState::empty(), None).unwrap();
         assert_eq!(new_nodes.len(), 2);
         assert_ne!(new_nodes[0], new_nodes[1]);
-        let at_point = field.nodes_at(SquarePoint { x: 0, y: 0 });
+        let at_point = field.nodes_at(level, SquarePoint { x: 0, y: 0 });
         assert_eq!(at_point, &[new_nodes[0], new_nodes[1]], "new_nodes[0] is the new slot-0, in order");
     }
 
     #[test]
     fn try_replace_point_nodes_wires_forward_backward_and_passage_edges() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(4);
-        let right = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let right = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         let edges = vec![SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Passage, kind: EdgeKind::Basic }];
         let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &PresetState::empty(), None).unwrap();
         let new_node = new_nodes[0];
@@ -290,7 +299,8 @@ mod tests {
     #[test]
     fn try_replace_point_nodes_forward_direction_is_one_way_from_new_node() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(4);
-        let right = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let right = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         let edges = vec![SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Forward, kind: EdgeKind::Basic }];
         let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &PresetState::empty(), None).unwrap();
         let new_node = new_nodes[0];
@@ -301,7 +311,8 @@ mod tests {
     #[test]
     fn try_replace_point_nodes_backward_direction_is_one_way_into_new_node() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(4);
-        let right = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let right = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         let edges = vec![SplitNodeEdge { target: right, direction: SplitNodeEdgeDirection::Backward, kind: EdgeKind::Basic }];
         let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &PresetState::empty(), None).unwrap();
         let new_node = new_nodes[0];
@@ -315,11 +326,12 @@ mod tests {
         // already has extra nodes — every one of them (slot-0 included) is among the old nodes
         // removed, not just an addition alongside them.
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(1);
-        let extra = field.add_node_at(SquarePoint { x: 0, y: 0 }, &mut ids);
+        let level = field.single_level_id();
+        let extra = field.add_node_at(level, SquarePoint { x: 0, y: 0 }, &mut ids);
         g.add_node(extra);
         let new_nodes = try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[vec![]], &PresetState::empty(), None);
         let new_nodes = new_nodes.expect("a point with an extra node must still be replaceable");
-        let at_point = field.nodes_at(SquarePoint { x: 0, y: 0 });
+        let at_point = field.nodes_at(level, SquarePoint { x: 0, y: 0 });
         assert_eq!(at_point, &[new_nodes[0]], "both old nodes gone, only the new one remains");
         assert!(field.point_of(slot0).is_none());
         assert!(field.point_of(extra).is_none());
@@ -328,7 +340,8 @@ mod tests {
     #[test]
     fn try_replace_point_nodes_drops_slot0s_old_edges_not_reproduced_by_the_new_set() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(4);
-        let right = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let right = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         g.build_initial_edge(slot0, right, EdgeKind::Basic);
         g.build_initial_edge(right, slot0, EdgeKind::Basic);
         // New slot-0 has no edges at all — the old passage to `right` must vanish, not survive.
@@ -351,7 +364,8 @@ mod tests {
     #[test]
     fn try_replace_point_nodes_refuses_when_an_extra_node_is_locked() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(1);
-        let extra = field.add_node_at(SquarePoint { x: 0, y: 0 }, &mut ids);
+        let level = field.single_level_id();
+        let extra = field.add_node_at(level, SquarePoint { x: 0, y: 0 }, &mut ids);
         g.add_node(extra);
         let mut preset_state = PresetState::empty();
         preset_state.locked_out.insert(extra);
@@ -377,7 +391,8 @@ mod tests {
     #[test]
     fn try_replace_point_nodes_all_or_nothing_when_one_edge_is_infeasible() {
         let (mut field, mut g, mut ids, slot0) = field_for_add_split(4);
-        let right = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let right = field.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         let mut preset_state = PresetState::empty();
         preset_state.locked_in.insert(right); // forbids Forward into `right`
         let edges = vec![
@@ -385,6 +400,6 @@ mod tests {
         ];
         assert!(try_replace_point_nodes(&mut field, &mut g, &mut ids, slot0, &[edges], &preset_state, None).is_none(),
             "a single infeasible edge must fail the whole command, replacing nothing at all");
-        assert_eq!(field.nodes_at(SquarePoint { x: 0, y: 0 }), &[slot0], "old slot0 must survive a declined command");
+        assert_eq!(field.nodes_at(level, SquarePoint { x: 0, y: 0 }), &[slot0], "old slot0 must survive a declined command");
     }
 }

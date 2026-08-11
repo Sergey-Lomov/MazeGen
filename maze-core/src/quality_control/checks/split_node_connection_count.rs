@@ -107,12 +107,13 @@ impl<T: Tessellation> Check<T, InvalidSplitNodeIssue> for SplitNodeConnectionCou
         // flags individual nodes, not points, so no point-level dedup is needed here (unlike
         // SplitDistanceFromWaypointCheck, which flags the whole tile as one unit).
         let mut seen_points = std::collections::HashSet::new();
-        let invalid: Vec<NodeId> = maze.field.all_points()
-            .filter(|&point| seen_points.insert(point))
-            .flat_map(|point| maze.field.nodes_at(point).to_vec())
+        let invalid: Vec<NodeId> = maze.field.all_points_with_level()
+            .filter(|&(level, point)| seen_points.insert((level, point)))
+            .flat_map(|(level, point)| maze.field.nodes_at(level, point).to_vec())
             .filter(|&node| {
+                let level = maze.field.level_of(node).expect("node resolved from field.nodes_at");
                 let point = maze.field.point_of(node).expect("node resolved from field.nodes_at");
-                maze.field.nodes_at(point).len() >= 2
+                maze.field.nodes_at(level, point).len() >= 2
             })
             .filter(|&node| {
                 let count = counts.count(node, self.direction);
@@ -135,18 +136,19 @@ mod tests {
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "split_node_connection_count";
 
     fn maze_with_split_node() -> (Maze<SquareTessellation>, NodeId, NodeId) {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
-        let slot0 = field.node_at(p).unwrap();
-        let extra = field.add_node_at(p, &mut ids);
+        let slot0 = field.node_at(level, p).unwrap();
+        let extra = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let maze = Maze::new(field, g);
         (maze, slot0, extra)
     }
@@ -154,9 +156,9 @@ mod tests {
     #[test]
     fn silent_when_no_split_points() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let check = SplitNodeConnectionCountCheck { instance_id: TEST_ID.to_string(), count: 2, comparison: Comparison::Lt, direction: SplitNodeConnectionDirection::Any };
@@ -169,7 +171,7 @@ mod tests {
     #[test]
     fn fires_when_extra_node_below_threshold_any_direction() {
         let (mut maze, slot0, extra) = maze_with_split_node();
-        let left = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let left = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
         maze.graph.add_bidirectional_edge(slot0, left, EdgeKind::Basic);
         // extra has zero connections -- below threshold 1.
         let check = SplitNodeConnectionCountCheck { instance_id: TEST_ID.to_string(), count: 1, comparison: Comparison::Lt, direction: SplitNodeConnectionDirection::Any };
@@ -186,7 +188,7 @@ mod tests {
         // split node (whether the repair strategy can actually remove it depends only on whether
         // it's the tile's last remaining node, unrelated to being slot-0).
         let (mut maze, slot0, extra) = maze_with_split_node();
-        let right = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        let right = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap();
         maze.graph.add_bidirectional_edge(extra, right, EdgeKind::Basic);
         // slot0 has zero connections -- below threshold 1. extra has one neighbor.
         let check = SplitNodeConnectionCountCheck { instance_id: TEST_ID.to_string(), count: 1, comparison: Comparison::Lt, direction: SplitNodeConnectionDirection::Any };
@@ -203,14 +205,15 @@ mod tests {
         // threshold must batch both into the same InvalidSplitNodeIssue.invalid list -- repair_check
         // bundles every flagged instance per call, same convention every other check follows.
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
-        let slot0 = field.node_at(p).unwrap();
-        let extra1 = field.add_node_at(p, &mut ids);
-        let extra2 = field.add_node_at(p, &mut ids);
+        let slot0 = field.node_at(level, p).unwrap();
+        let extra1 = field.add_node_at(level, p, &mut ids);
+        let extra2 = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let left = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let left = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
         // slot0 has one connection (at threshold, not flagged); extra1/extra2 have zero (flagged).
         g.add_bidirectional_edge(slot0, left, EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -230,9 +233,9 @@ mod tests {
     #[test]
     fn never_flags_a_node_at_an_unsplit_point() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         // every node here has zero connections, but no point is split -- nothing should fire.
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -246,7 +249,7 @@ mod tests {
     #[test]
     fn bidirectional_direction_counts_full_passage_neighbors_once() {
         let (mut maze, slot0, extra) = maze_with_split_node();
-        let left = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let left = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
         // slot0 <-> left is a full bidirectional passage: one neighbor under Bidirectional.
         maze.graph.add_bidirectional_edge(slot0, left, EdgeKind::Basic);
         // extra -> left is one-way only: must not count under Bidirectional.
@@ -264,7 +267,7 @@ mod tests {
     #[test]
     fn incoming_direction_counts_only_edges_into_the_node() {
         let (mut maze, slot0, extra) = maze_with_split_node();
-        let left = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let left = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
         maze.graph.add_edge(left, slot0, EdgeKind::Basic); // incoming to slot0
         maze.graph.add_edge(extra, left, EdgeKind::Basic);  // outgoing from extra, not incoming
 
@@ -279,7 +282,7 @@ mod tests {
     #[test]
     fn outgoing_direction_counts_only_edges_out_of_the_node() {
         let (mut maze, slot0, extra) = maze_with_split_node();
-        let left = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let left = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
         maze.graph.add_edge(slot0, left, EdgeKind::Basic); // outgoing from slot0
         maze.graph.add_edge(left, extra, EdgeKind::Basic);  // incoming to extra, not outgoing
 
@@ -294,8 +297,8 @@ mod tests {
     #[test]
     fn teleport_edges_count_toward_the_threshold() {
         let (mut maze, slot0, extra) = maze_with_split_node();
-        let left = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let right = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        let left = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
+        let right = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap();
         maze.graph.add_bidirectional_edge(slot0, left, EdgeKind::Basic);
         maze.graph.add_edge(extra, right, EdgeKind::Teleport);
 
@@ -309,8 +312,8 @@ mod tests {
     #[test]
     fn gt_comparison_flags_excess_connections() {
         let (mut maze, slot0, extra) = maze_with_split_node();
-        let left = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let right = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+        let left = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
+        let right = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap();
         maze.graph.add_edge(slot0, left, EdgeKind::Basic);
         maze.graph.add_edge(slot0, right, EdgeKind::Basic);
         maze.graph.add_edge(slot0, extra, EdgeKind::Basic);

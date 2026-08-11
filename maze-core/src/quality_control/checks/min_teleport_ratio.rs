@@ -55,7 +55,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "min_teleport_ratio";
 
@@ -66,10 +66,11 @@ mod tests {
     /// 10 field cells, 1 teleport edge -> 10 per 100 cells.
     fn maze_with_one_teleport_on_ten_cells() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(10, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Teleport);
         Maze::new(field, g)
     }
@@ -112,10 +113,11 @@ mod tests {
     #[test]
     fn does_not_count_a_basic_edge() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -133,10 +135,11 @@ mod tests {
         // Exercise the boundary the cross-multiplied comparison must get right: 299*100 = 29900
         // < 30*1000 = 30000, so this must still fire.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(1000, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(1000, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         for i in 0..299 {
             g.add_edge(p(i), p(i + 1), EdgeKind::Teleport);
         }
@@ -152,10 +155,11 @@ mod tests {
     #[test]
     fn a_bidirectional_teleport_pair_counts_as_one_for_the_ratio() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(10, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Teleport);
         g.add_edge(p(1), p(0), EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);

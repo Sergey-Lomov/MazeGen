@@ -151,7 +151,7 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::Graph;
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, square_rect, Field};
+    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
     use crate::repair::strategies::ExpandRegionPassageStrategy;
     use crate::repair::strategies::test_utils::apply_and_commit;
 
@@ -286,9 +286,9 @@ mod tests {
     /// adjacent in a chain: 0-1-2-3.
     fn maze_4_singletons() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 
@@ -394,10 +394,11 @@ mod tests {
         // Block every possible bridge -- nested ExpandRegionPassageStrategy must fail to find
         // any candidate, and that Failed must propagate through unchanged.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         let mut preset_state = PresetState::empty();
         preset_state.blocked.insert((nodes[0], nodes[1]));

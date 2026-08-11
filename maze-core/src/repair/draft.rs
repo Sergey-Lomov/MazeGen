@@ -90,14 +90,15 @@ impl<T: Tessellation> DraftMaze<T> {
 mod tests {
     use super::*;
     use crate::graph::{Graph, EdgeKind};
-    use crate::space::{SquareTessellation, Field, square_rect};
+    use crate::space::{SquareTessellation, MultiLevelField, square_rect};
 
     fn maze_n(n: usize) -> (Maze<SquareTessellation>, Vec<NodeId>) {
         let mut ids = crate::IdGenerator::new();
-        let field = Field::new(square_rect(n, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         (Maze::new(field, g), nodes)
     }
 

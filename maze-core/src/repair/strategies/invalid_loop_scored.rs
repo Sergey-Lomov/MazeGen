@@ -254,7 +254,7 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{SquareTessellation, square_rect, Field};
+    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
     use crate::quality_control::check::Check;
     use crate::quality_control::checks::LoopLengthCheck;
     use crate::quality_control::Comparison;
@@ -337,15 +337,16 @@ mod tests {
     /// bowtie's two opposite-direction edges between a shared pair, which are distinct
     /// EdgeIds). Cutting A->B breaks both triangles at once, so it must score higher than any
     /// edge unique to a single triangle.
-    fn shared_edge_triangle_nodes(field: &Field<SquareTessellation>) -> Vec<crate::NodeId> {
-        field.all_points().map(|p| field.node_at(p).unwrap()).collect()
+    fn shared_edge_triangle_nodes(field: &MultiLevelField<SquareTessellation>) -> Vec<crate::NodeId> {
+        let level = field.single_level_id();
+        field.field_of(level).unwrap().all_points().map(|p| field.node_at(level, p).unwrap()).collect()
     }
 
     fn maze_with_shared_edge_triangles() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let nodes = shared_edge_triangle_nodes(&field);
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B (shared)
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic); // B->C
@@ -399,9 +400,9 @@ mod tests {
     /// isolate the mechanism under test from unrelated basis/composite behavior.
     fn opposite_direction_shared_triangles() -> (Maze<SquareTessellation>, InvalidLoopIssue) {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let nodes = shared_edge_triangle_nodes(&field);
         let ab = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B (shared corridor, forward leg)
         let bc = g.add_edge(nodes[1], nodes[2], EdgeKind::Basic); // B->C
@@ -485,10 +486,11 @@ mod tests {
     /// involved at all — this isolates the penalty term from the bonus term tested above.
     fn maze_with_plain_edge_and_penalized_edge() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(11, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(11, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B (plain)
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic); // B->C (plain)
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic); // C->A (shared with the long loop)
@@ -515,7 +517,7 @@ mod tests {
         let issue = issues.into_iter().next().unwrap();
         assert_eq!(issue.invalid.len(), 1, "only the triangle should be invalid; the long loop must stay valid");
 
-        let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
+        let nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
         let (a, c) = (nodes[0], nodes[2]);
 
         for seed in 0..20 {
@@ -558,10 +560,11 @@ mod tests {
     fn apply_reports_failed_when_the_whole_cycle_is_preset_protected() {
         fn maze_with_single_triangle() -> Maze<SquareTessellation> {
             let mut ids = IdGenerator::new();
-            let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+            let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+            let field_level = field.single_level_id();
             let mut g = Graph::new();
-            field.build_nodes(&mut g);
-            let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+            for node in field.all_node_ids() { g.add_node(node); }
+            let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
             g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
             g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
             g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);

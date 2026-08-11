@@ -42,10 +42,10 @@ impl<T: Tessellation> Check<T, MissingSplitTilesIssue> for SplitCountCheck {
 /// split tile counts, no reconstruction/matching attempted at all).
 pub(super) fn count_matching_split_tiles<T: Tessellation>(maze: &Maze<T>, patterns: &[SplitPattern]) -> usize {
     let mut seen_points = std::collections::HashSet::new();
-    maze.field.all_points()
-        .filter(|&point| seen_points.insert(point))
-        .filter(|&point| {
-            let nodes = maze.field.nodes_at(point);
+    maze.field.all_points_with_level()
+        .filter(|&(level, point)| seen_points.insert((level, point)))
+        .filter(|&(level, point)| {
+            let nodes = maze.field.nodes_at(level, point);
             if nodes.len() < 2 {
                 return false;
             }
@@ -60,7 +60,7 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "split_count";
 
@@ -70,12 +70,13 @@ mod tests {
 
     fn maze_with_split_tiles(count: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(count.max(1) + 1, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(count.max(1) + 1, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         for x in 0..count as i32 {
-            field.add_node_at(SquarePoint { x, y: 0 }, &mut ids);
+            field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
         }
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 

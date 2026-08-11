@@ -6,10 +6,12 @@ use crate::graph::Graph;
 pub mod square;
 pub mod hex;
 pub mod triangle;
+pub mod multi_level;
 
 pub use square::{SquareTessellation, SquarePoint, SquareFace, square_rect};
 pub use hex::{HexTessellation, HexPoint, HexFace, hex_parallelogram, hex_hexagon};
 pub use triangle::{TriTessellation, TriPoint, TriFace, tri_rect, tri_triangle, tri_hexagon};
+pub use multi_level::{LevelId, MultiLevelField};
 
 pub trait Tessellation {
     type Point: Copy + Eq + Hash;
@@ -388,14 +390,6 @@ impl<T: Tessellation> Field<T> {
         let mut ids: Vec<NodeId> = self.node_to_point.keys().copied().collect();
         ids.sort_unstable();
         ids.into_iter()
-    }
-
-    /// The largest `NodeId` currently in the field, `None` if empty — used by
-    /// `IdGenerator::resume_after` (GitHub issue #219). A plain `max()` over unsorted ids, not
-    /// `all_node_ids().max()`: that would pay for a full sort just to then discard everything but
-    /// the last element.
-    pub(crate) fn max_node_id(&self) -> Option<NodeId> {
-        self.node_to_point.keys().copied().max()
     }
 }
 

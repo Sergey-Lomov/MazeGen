@@ -4,7 +4,7 @@ use rand::SeedableRng;
 use crate::random::MazeRng;
 use crate::graph::{Graph, EdgeKind};
 use crate::IdGenerator;
-use crate::space::{SquareTessellation, square_rect, Field, SquarePoint};
+use crate::space::{SquareTessellation, square_rect, MultiLevelField, SquarePoint};
 use crate::repair::params::build_params;
 use crate::quality_control::MissingEndpointsIssue;
 use crate::repair::strategies::test_utils::apply_and_commit;
@@ -18,16 +18,16 @@ fn default_params() -> StrategyParams {
 
 fn make_maze(n_cols: usize, n_rows: usize) -> Maze<SquareTessellation> {
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(n_cols, n_rows), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(n_cols, n_rows), &mut ids).unwrap();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     Maze::new(field, graph)
 }
 
 fn make_connected_maze(n_cols: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
     let mut maze = make_maze(n_cols, 1);
     let ordered: Vec<_> = (0..n_cols)
-        .map(|x| maze.field.node_at(SquarePoint { x: x as i32, y: 0 }).unwrap())
+        .map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: x as i32, y: 0 }).unwrap())
         .collect();
     for i in 0..ordered.len() - 1 {
         maze.graph.build_initial_bidirectional_edge(ordered[i], ordered[i + 1], EdgeKind::Basic);
@@ -108,7 +108,7 @@ fn apply_fails_when_disconnected_and_start_cannot_reach_anything() {
     // Two disconnected singleton nodes -- no edges at all -- start fixed, no finish
     // reachable from it.
     let mut maze = make_maze(2, 1);
-    let a = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    let a = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
     maze.meta.start = Some(a);
     let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(false, true), &mut maze, &mut rng(), &default_params(), &PresetState::empty(), &[]);
     assert!(matches!(result, RepairResult::Failed));
@@ -120,12 +120,13 @@ fn apply_prefers_junction_path_when_junction_weight_dominates() {
     // (1,0) a 3-way junction. With junction_weight dominating and path/one-way zeroed,
     // the best-scoring pair must be the one whose route passes through (1,0).
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(4, 2), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(4, 2), &mut ids).unwrap();
+    let level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     let nodes: StdHashMap<(i32, i32), crate::ids::NodeId> = [(0, 0), (1, 0), (2, 0), (3, 0), (1, 1)]
         .iter()
-        .map(|&(x, y)| ((x, y), field.node_at(SquarePoint { x, y }).unwrap()))
+        .map(|&(x, y)| ((x, y), field.node_at(level, SquarePoint { x, y }).unwrap()))
         .collect();
     for x in 0..3 {
         graph.build_initial_bidirectional_edge(nodes[&(x, 0)], nodes[&(x + 1, 0)], EdgeKind::Basic);
@@ -162,12 +163,13 @@ fn apply_prefers_teleport_path_when_teleport_weight_dominates() {
     // teleport edge 1 -> 4. With teleport_weight dominating and path/junction/one-way
     // zeroed, the best-scoring pair must be the one whose route crosses the teleport.
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(3, 2), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
+    let level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     let nodes: StdHashMap<(i32, i32), crate::ids::NodeId> = [(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)]
         .iter()
-        .map(|&(x, y)| ((x, y), field.node_at(SquarePoint { x, y }).unwrap()))
+        .map(|&(x, y)| ((x, y), field.node_at(level, SquarePoint { x, y }).unwrap()))
         .collect();
     for x in 0..2 {
         graph.build_initial_bidirectional_edge(nodes[&(x, 0)], nodes[&(x + 1, 0)], EdgeKind::Basic);
@@ -209,14 +211,14 @@ fn apply_prefers_pair_whose_own_endpoint_sits_on_a_split_tile() {
     // only a pair that includes node 0 or `s` as an endpoint scores positively -- regression
     // for the route's own start/finish node being excluded from split_count (GitHub issue #261).
     let mut ids = IdGenerator::new();
-    let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 2), &mut ids).unwrap();
-    let extra = field.add_node_at(SquarePoint { x: 0, y: 0 }, &mut ids);
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 2), &mut ids).unwrap();
+    let level = field.single_level_id();
+    let extra = field.add_node_at(level, SquarePoint { x: 0, y: 0 }, &mut ids);
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
-    graph.add_node(extra);
+    for node in field.all_node_ids() { graph.add_node(node); }
     let nodes: StdHashMap<(i32, i32), crate::ids::NodeId> = [(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)]
         .iter()
-        .map(|&(x, y)| ((x, y), field.node_at(SquarePoint { x, y }).unwrap()))
+        .map(|&(x, y)| ((x, y), field.node_at(level, SquarePoint { x, y }).unwrap()))
         .collect();
     for x in 0..2 {
         graph.build_initial_bidirectional_edge(nodes[&(x, 0)], nodes[&(x + 1, 0)], EdgeKind::Basic);

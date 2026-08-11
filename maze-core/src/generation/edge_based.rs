@@ -8,7 +8,7 @@ use rand::{Rng, SeedableRng};
 use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::{Graph, EdgeKind};
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::event_log::{EventLog, ScopeGuard};
 use super::{EdgeBasedParams, ElementsConfig, PresetState, try_add_edge, try_add_edge_kind, can_connect, gaussian_weighted_index, add_edge_and_detect_direction};
 pub use edge_based_event::{EdgeBasedEvent, debug_value_names};
@@ -39,7 +39,7 @@ impl NodeEntry {
 
 pub fn generate<T: Tessellation>(
     graph: &mut Graph,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     seed: u64,
     start: NodeId,
     params: &EdgeBasedParams,
@@ -281,7 +281,7 @@ fn build_candidate_pool<T: Tessellation>(
     nodes: &HashMap<NodeId, NodeEntry>,
     preset_connected: &std::collections::BTreeSet<NodeId>,
     preset_state: &PresetState,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
 ) -> Vec<NodeId> {
     if use_geometric_pool {
         // Preset-teleport destinations of `src` are traversable extra neighbors (GitHub issue
@@ -316,7 +316,7 @@ fn build_candidate_pool<T: Tessellation>(
 /// (GitHub issue #144).
 fn try_add_cyclic_edge<T: Tessellation>(
     graph: &mut Graph,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     src: NodeId,
     cyclic_flag: bool,
     teleport_flag: bool,
@@ -388,7 +388,7 @@ fn dst_weights<T: Tessellation>(
     corridor_fired: bool,
     nodes: &HashMap<NodeId, NodeEntry>,
     params: &EdgeBasedParams,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
 ) -> Vec<f64> {
     candidates.iter().map(|&dst| {
         let free = field.neighbors(dst).iter()
@@ -413,7 +413,7 @@ fn is_src_exhausted<T: Tessellation>(
     nodes: &HashMap<NodeId, NodeEntry>,
     preset_connected: &std::collections::BTreeSet<NodeId>,
     preset_state: &PresetState,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
 ) -> bool {
     let teleport_dsts = preset_state.preset_teleports.get(&src).map(Vec::as_slice).unwrap_or(&[]);
     let no_reachable_teleport_dst = teleport_dsts.iter()
@@ -458,7 +458,7 @@ fn choose_src<T: Tessellation>(
     nodes: &HashMap<NodeId, NodeEntry>,
     params: &EdgeBasedParams,
     preset_state: &PresetState,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     rng: &mut MazeRng,
 ) -> SrcChoice {
     let depth_first_pick = |rng: &mut MazeRng| {

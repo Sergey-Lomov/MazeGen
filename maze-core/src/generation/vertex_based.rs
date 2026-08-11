@@ -8,7 +8,7 @@ use rand::{Rng, SeedableRng};
 use crate::random::MazeRng;
 use crate::ids::{NodeId, IdGenerator};
 use crate::graph::{Graph, EdgeKind};
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::event_log::{EventLog, ScopeGuard};
 use super::{ElementsConfig, GenerationParams, PresetState, try_add_edge, try_add_edge_kind, can_connect, gaussian_weighted_index};
 pub(super) use super::add_edge_and_detect_direction;
@@ -61,7 +61,7 @@ impl GenState {
 #[allow(clippy::too_many_arguments)]
 pub fn generate<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut IdGenerator,
     seed: u64,
     start: NodeId,
@@ -107,7 +107,7 @@ pub fn generate<T: Tessellation>(
 #[allow(clippy::too_many_arguments)]
 fn handle_empty_frontier<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut IdGenerator,
     params: &GenerationParams,
     elements: &ElementsConfig,
@@ -242,7 +242,7 @@ fn handle_empty_frontier<T: Tessellation>(
 #[allow(clippy::too_many_arguments)]
 fn step_from_frontier<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut IdGenerator,
     params: &GenerationParams,
     elements: &ElementsConfig,
@@ -284,7 +284,7 @@ fn step_from_frontier<T: Tessellation>(
 /// rolls teleport once for the whole split event instead (see `handle_non_pattern_split`).
 pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
     graph: &mut Graph,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     params: &GenerationParams,
     elements: &ElementsConfig,
     preset_state: &PresetState,
@@ -424,7 +424,7 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
 /// cyclic edge in that case, and must not also apply to the corridor/junction step).
 fn roll_cyclic_edge<T: Tessellation>(
     graph: &Graph,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     params: &GenerationParams,
     preset_state: &PresetState,
     state: &mut GenState,
@@ -476,7 +476,7 @@ fn roll_cyclic_edge<T: Tessellation>(
 /// count-1 geometric connections are taken, leaving exactly one slot for the teleport connection
 /// `step_from_frontier` adds afterward.
 fn choose_connect_targets<T: Tessellation>(
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     params: &GenerationParams,
     state: &mut GenState,
     free_regular: &[NodeId],
@@ -589,7 +589,7 @@ struct PickContext<'a, T: Tessellation> {
     src: NodeId,
     params: &'a GenerationParams,
     rng: &'a mut MazeRng,
-    field: &'a Field<T>,
+    field: &'a MultiLevelField<T>,
 }
 
 /// Returns the chosen candidate and whether the directionality shortcut (continue straight from

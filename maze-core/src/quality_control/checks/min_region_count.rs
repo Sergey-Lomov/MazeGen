@@ -90,7 +90,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 
     const TEST_ID: &str = "min_region_count";
 
@@ -103,10 +103,11 @@ mod tests {
     /// reach finish (finish=2 is upstream of them) -> both Trap.
     fn maze_with_trap_tail() -> (Maze<SquareTessellation>, crate::ids::NodeId, crate::ids::NodeId) {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         g.add_edge(nodes[2], nodes[3], EdgeKind::Basic);
@@ -126,9 +127,9 @@ mod tests {
     #[test]
     fn silent_when_skipped_without_endpoints() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let maze = Maze::new(field, g);
         let c = check(vec![(RegionClass::Trap, 1)]);
         let mut issues = Vec::new();
@@ -178,10 +179,11 @@ mod tests {
     #[test]
     fn multiple_deficit_classes_carry_no_min_count_detail() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let mut maze = Maze::new(field, g);
         maze.meta.start = Some(nodes[0]);

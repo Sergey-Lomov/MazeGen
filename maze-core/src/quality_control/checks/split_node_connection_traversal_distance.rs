@@ -84,9 +84,9 @@ impl<T: Tessellation> Check<T, InvalidSplitRouteIssue> for SplitNodeConnectionTr
         let max_steps = self.min_detour.saturating_sub(1) as usize;
 
         let mut seen_points = std::collections::HashSet::new();
-        let split_points: Vec<T::Point> = maze.field.all_points()
-            .filter(|&point| seen_points.insert(point))
-            .filter(|&point| maze.field.nodes_at(point).len() >= 2)
+        let split_points: Vec<(crate::space::LevelId, T::Point)> = maze.field.all_points_with_level()
+            .filter(|&(level, point)| seen_points.insert((level, point)))
+            .filter(|&(level, point)| maze.field.nodes_at(level, point).len() >= 2)
             .collect();
         if split_points.is_empty() {
             return;
@@ -94,8 +94,8 @@ impl<T: Tessellation> Check<T, InvalidSplitRouteIssue> for SplitNodeConnectionTr
 
         let mut routes: Vec<Vec<SplitRouteEdge>> = Vec::new();
 
-        for &point in &split_points {
-            let nodes = maze.field.nodes_at(point);
+        for &(level, point) in &split_points {
+            let nodes = maze.field.nodes_at(level, point);
             for &a in nodes {
                 for &b in nodes {
                     if a == b {

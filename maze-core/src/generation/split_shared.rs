@@ -1,7 +1,7 @@
 use rand::Rng;
 use crate::ids::{IdGenerator, NodeId};
 use crate::graph::{Graph, EdgeKind};
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::event_log::ScopeGuard;
 use super::{ElementsConfig, PresetState};
 use super::debug_state::DebugGenerationState;
@@ -14,16 +14,17 @@ use super::split_logic::StartReassignment;
 /// pool) see them.
 pub(super) fn mint_split_nodes<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut IdGenerator,
     src: NodeId,
     count: usize,
     mut debug_state: Option<&mut DebugGenerationState<T>>,
 ) -> Vec<NodeId> {
+    let level = field.level_of(src).expect("src must be in field");
     let point = field.point_of(src).expect("src must be in field");
     let mut nodes = vec![src];
     for _ in 1..count {
-        let node = field.add_node_at(point, ids);
+        let node = field.add_node_at(level, point, ids);
         graph.add_node(node);
         if let Some(state) = debug_state.as_deref_mut() {
             state.note(node, point);

@@ -55,10 +55,11 @@ mod tests {
     #[test]
     fn apply_removes_the_flagged_one_way() {
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let one_way_id = g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -73,10 +74,11 @@ mod tests {
     #[test]
     fn apply_does_not_remove_a_preset_protected_one_way() {
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let one_way_id = g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -97,9 +99,9 @@ mod tests {
     #[test]
     fn apply_succeeds_on_empty_invalid_list() {
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let issue = InvalidOneWayIssue::new_from_check("test", vec![]);

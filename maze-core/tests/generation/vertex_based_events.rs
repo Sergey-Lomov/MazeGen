@@ -1,7 +1,7 @@
 use maze_core::generation::{generate_vertex_based, generate_maze_with_events, vertex_based_debug_value_names, VertexBasedEvent, GenerationParams, GenerationAlgorithm, SplitGenerationConfig};
 use maze_core::event_log::{DebugEvent, DebugValueDelta, DebugValueKind, DebugValueOp, EncodeEventPayload, EventLog, EventedEventKind, NodePayload, TAG_SCOPE};
 use maze_core::{Graph, IdGenerator, NodeId};
-use maze_core::space::{Field, SquareTessellation};
+use maze_core::space::{MultiLevelField, SquareTessellation};
 use super::helpers::*;
 
 fn no_randomness_params() -> GenerationParams {
@@ -14,7 +14,7 @@ fn no_randomness_params() -> GenerationParams {
 #[allow(clippy::too_many_arguments)]
 fn generate_vertex_based_default_split(
     graph: &mut Graph,
-    field: &mut Field<SquareTessellation>,
+    field: &mut MultiLevelField<SquareTessellation>,
     ids: &mut IdGenerator,
     seed: u64,
     start: NodeId,

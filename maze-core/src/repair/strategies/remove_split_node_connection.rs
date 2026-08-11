@@ -75,17 +75,18 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::repair::strategies::test_utils::apply_and_commit_default;
 
     #[test]
     fn apply_removes_the_flagged_edge() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(field_level, SquarePoint { x: 1, y: 0 }).unwrap();
         let edge_id = g.add_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -99,11 +100,12 @@ mod tests {
     #[test]
     fn apply_removes_both_directions_of_a_bidirectional_connection() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(field_level, SquarePoint { x: 1, y: 0 }).unwrap();
         g.add_bidirectional_edge(a, b, EdgeKind::Basic);
         let forward_id = g.edge_between(a, b).unwrap();
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -124,11 +126,12 @@ mod tests {
         // always-propose behavior, or it would falsely report Fixed and loop the repair fixpoint
         // to its limit (GitHub issue #251 bug report).
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(field_level, SquarePoint { x: 1, y: 0 }).unwrap();
         let edge_id = g.add_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         let mut preset_state = PresetState::empty();
@@ -144,9 +147,9 @@ mod tests {
     #[test]
     fn apply_succeeds_on_empty_invalid_list() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let issue = InvalidSplitNodeConnectionIssue::new_from_check("test", vec![]);

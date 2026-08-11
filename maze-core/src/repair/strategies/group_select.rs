@@ -262,9 +262,9 @@ mod tests {
 
     fn empty_maze() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 

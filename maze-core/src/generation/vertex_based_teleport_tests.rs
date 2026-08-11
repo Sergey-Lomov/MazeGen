@@ -1,6 +1,7 @@
 use super::*;
 use super::tests::{default_params, generate_default_split, empty_presets};
 use crate::generation::test_utils::make_field_graph_ids;
+use crate::space::MultiLevelField;
 
 fn teleport_edges(graph: &Graph) -> Vec<(NodeId, NodeId)> {
     graph.edges().filter(|e| e.kind == EdgeKind::Teleport).map(|e| (e.from, e.to)).collect()
@@ -25,7 +26,8 @@ fn teleport_chance_zero_matches_baseline_exactly() {
     // for the refactor that threaded teleport rolls through this function).
     for seed in [1, 7, 42, 1234, 9999] {
         let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
-        let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
         generate_default_split(&mut graph, &mut field, &mut ids, seed, start, &default_params(), &no_teleport_elements(), &empty_presets(), None);
         assert!(teleport_edges(&graph).is_empty(), "seed {seed}: teleport_chance=0.0 must add no teleport edges");
     }
@@ -34,7 +36,8 @@ fn teleport_chance_zero_matches_baseline_exactly() {
 #[test]
 fn teleport_chance_one_adds_teleport_edges() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     assert!(!teleport_edges(&graph).is_empty(), "teleport_chance=1.0 should add at least one teleport edge on a 6x6 field");
 }
@@ -44,7 +47,8 @@ fn teleport_edges_can_connect_non_geometric_neighbors() {
     // At least one teleport edge in a large-enough field must link two nodes that are not
     // geometric neighbors — otherwise the "regardless of adjacency" property isn't exercised.
     let (mut field, mut graph, mut ids) = make_field_graph_ids(8, 8);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 7, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     let has_non_adjacent_teleport = teleport_edges(&graph).iter()
         .any(|&(from, to)| !field.neighbors(from).contains(&to));
@@ -54,7 +58,8 @@ fn teleport_edges_can_connect_non_geometric_neighbors() {
 #[test]
 fn teleport_one_way_chance_zero_all_teleports_are_two_way() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     let edges = teleport_edges(&graph);
     assert!(!edges.is_empty(), "expected teleport edges to assert two-way-ness over");
@@ -67,7 +72,8 @@ fn teleport_one_way_chance_zero_all_teleports_are_two_way() {
 #[test]
 fn teleport_one_way_chance_one_all_teleports_are_one_way() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_one_way_teleport_elements(), &empty_presets(), None);
     let edges = teleport_edges(&graph);
     assert!(!edges.is_empty(), "expected teleport edges to assert one-way-ness over");
@@ -80,8 +86,9 @@ fn teleport_one_way_chance_one_all_teleports_are_one_way() {
 #[test]
 fn teleport_full_chance_still_visits_all_nodes_and_stays_connected() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
+        let level = field.single_level_id();
     let node_count = graph.nodes().count();
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     assert_eq!(graph.nodes().count(), node_count);
     for node in graph.nodes() {
@@ -94,8 +101,9 @@ fn teleport_full_chance_still_visits_all_nodes_and_stays_connected() {
 #[test]
 fn teleport_is_deterministic_for_fixed_seed() {
     let (mut field, mut g1, mut ids) = make_field_graph_ids(6, 6);
+    let level = field.single_level_id();
     let (_, mut g2, mut ids2) = make_field_graph_ids(6, 6);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut g1, &mut field, &mut ids, 55, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     let mut field2 = field.clone();
     generate_default_split(&mut g2, &mut field2, &mut ids2, 55, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
@@ -109,11 +117,12 @@ fn teleport_is_deterministic_for_fixed_seed() {
 #[test]
 fn teleport_single_node_field_never_panics() {
     let mut ids = crate::ids::IdGenerator::new();
-    let mut field: Field<crate::space::SquareTessellation> =
-        Field::new(vec![crate::space::SquarePoint { x: 0, y: 0 }], &mut ids).unwrap();
+    let mut field: MultiLevelField<crate::space::SquareTessellation> =
+        MultiLevelField::single_level(vec![crate::space::SquarePoint { x: 0, y: 0 }], &mut ids).unwrap();
+    let level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    for node in field.all_node_ids() { graph.add_node(node); }
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 1, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     assert!(teleport_edges(&graph).is_empty(), "single-node field has no partner for a teleport");
 }
@@ -128,10 +137,11 @@ fn teleport_fragmented_field_frontier_empty_branch_stays_connected() {
     // 3x3 block plus one far-away isolated point, connected to nothing geometrically.
     let mut points: Vec<SquarePoint> = crate::space::square_rect(3, 3);
     points.push(SquarePoint { x: 100, y: 100 });
-    let mut field: Field<crate::space::SquareTessellation> = Field::new(points, &mut ids).unwrap();
+    let mut field: MultiLevelField<crate::space::SquareTessellation> = MultiLevelField::single_level(points, &mut ids).unwrap();
+    let level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
-    let start = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+    for node in field.all_node_ids() { graph.add_node(node); }
+    let start = field.node_at(level, SquarePoint { x: 0, y: 0 }).unwrap();
     let node_count = graph.nodes().count();
 
     generate_default_split(&mut graph, &mut field, &mut ids, 3, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
@@ -149,7 +159,8 @@ fn teleport_respects_locked_out_source() {
     // A teleport roll must still honor preset_state: a locked_out source can never gain an
     // outgoing teleport (nor an outgoing geometric edge).
     let (mut field, mut graph, mut ids) = make_field_graph_ids(4, 4);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     let a = start;
     let mut preset_state = PresetState::empty();
     preset_state.locked_out.insert(a);
@@ -162,8 +173,9 @@ fn teleport_respects_locked_out_source() {
 #[test]
 fn teleport_respects_locked_in_destination() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(4, 4);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
-    let b = field.node_at(crate::space::SquarePoint { x: 3, y: 3 }).unwrap();
+        let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let b = field.node_at(level, crate::space::SquarePoint { x: 3, y: 3 }).unwrap();
     let mut preset_state = PresetState::empty();
     preset_state.locked_in.insert(b);
 
@@ -175,9 +187,10 @@ fn teleport_respects_locked_in_destination() {
 #[test]
 fn teleport_respects_blocked_pair() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(4, 4);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     let a = start;
-    let b = field.node_at(crate::space::SquarePoint { x: 3, y: 3 }).unwrap();
+    let b = field.node_at(level, crate::space::SquarePoint { x: 3, y: 3 }).unwrap();
     let mut preset_state = PresetState::empty();
     preset_state.blocked.insert((a, b));
     preset_state.blocked.insert((b, a));
@@ -207,8 +220,9 @@ fn teleport_junction_reduces_geometric_count_by_one_when_teleport_added() {
         cyclicity: 0.0,
     };
     let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
+        let level = field.single_level_id();
     // Center node of a 5x5 field has 4 free geometric neighbors when starting there.
-    let start = field.node_at(crate::space::SquarePoint { x: 2, y: 2 }).unwrap();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 2, y: 2 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 11, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
 
     // src's out-degree (counting both directions of any bidirectional edge as present)
@@ -241,7 +255,8 @@ fn teleport_corridor_adds_exactly_one_geometric_and_one_teleport() {
         cyclicity: 0.0,
     };
     let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
-    let start = field.node_at(crate::space::SquarePoint { x: 2, y: 2 }).unwrap();
+        let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 2, y: 2 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 13, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
 
     let src_edges: Vec<_> = graph.edges().filter(|e| e.from == start || e.to == start).collect();
@@ -264,7 +279,8 @@ fn teleport_cyclic_roll_widens_pool_to_any_visited_node() {
         cyclicity: 1.0,
     };
     let (mut field, mut graph, mut ids) = make_field_graph_ids(8, 8);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+    let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 21, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
 
     // At least one Teleport-kind edge should exist that isn't a geometric neighbor pair —
@@ -279,7 +295,8 @@ fn teleport_cyclic_roll_widens_pool_to_any_visited_node() {
 fn teleport_never_creates_self_loop() {
     for seed in 0..30 {
         let (mut field, mut graph, mut ids) = make_field_graph_ids(4, 4);
-        let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+        let level = field.single_level_id();
+        let start = field.node_at(level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
         generate_default_split(&mut graph, &mut field, &mut ids, seed, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
         assert!(graph.edges().all(|e| e.from != e.to), "seed {seed}: no edge (teleport or otherwise) may be a self-loop");
     }

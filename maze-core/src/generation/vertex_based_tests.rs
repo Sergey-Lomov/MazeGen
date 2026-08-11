@@ -14,7 +14,7 @@ pub(super) fn no_split() -> SplitGenerationConfig { SplitGenerationConfig::defau
 #[allow(clippy::too_many_arguments)]
 pub(super) fn generate_default_split<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut IdGenerator,
     seed: u64,
     start: NodeId,
@@ -157,8 +157,9 @@ fn junction_count_result_in_range() {
 #[test]
 fn vertex_based_visits_all_nodes() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
+    let field_level = field.single_level_id();
     let node_count = graph.nodes().count();
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = field.node_at(field_level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &default_elements(), &empty_presets(), None);
     assert_eq!(graph.edges().count(), 2 * (node_count - 1));
 }
@@ -166,8 +167,9 @@ fn vertex_based_visits_all_nodes() {
 #[test]
 fn vertex_based_is_deterministic() {
     let (mut field, mut g1, mut ids) = make_field_graph_ids(4, 4);
+    let field_level = field.single_level_id();
     let (_, mut g2, mut ids2) = make_field_graph_ids(4, 4);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let start = field.node_at(field_level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut g1, &mut field, &mut ids, 7, start, &default_params(), &default_elements(), &empty_presets(), None);
     let mut field2 = field.clone();
     generate_default_split(&mut g2, &mut field2, &mut ids2, 7, start, &default_params(), &default_elements(), &empty_presets(), None);

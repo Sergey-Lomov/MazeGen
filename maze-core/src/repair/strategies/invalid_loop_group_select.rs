@@ -245,10 +245,11 @@ mod tests {
     /// flagged invalid.
     fn maze_with_two_disjoint_loops() -> (Maze<SquareTessellation>, Vec<EdgeId>, Vec<EdgeId>) {
         let mut ids = IdGenerator::new();
-        let field = crate::space::Field::new(square_rect(7, 1), &mut ids).unwrap();
+        let field = crate::space::MultiLevelField::single_level(square_rect(7, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let e0 = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let e1 = g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let e2 = g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
@@ -377,10 +378,11 @@ mod tests {
         // already broken and must be dropped from the queue rather than offered to the nested
         // strategy a second time.
         let mut ids = IdGenerator::new();
-        let field: crate::space::Field<SquareTessellation> = crate::space::Field::new(square_rect(4, 1), &mut ids).unwrap();
+        let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let shared = g.add_edge(nodes[0], nodes[1], EdgeKind::Basic); // A->B (shared)
         let bc = g.add_edge(nodes[1], nodes[2], EdgeKind::Basic); // B->C
         let ca = g.add_edge(nodes[2], nodes[0], EdgeKind::Basic); // C->A

@@ -110,7 +110,7 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, square_rect, Field};
+    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
     use crate::repair::strategies::test_utils::apply_and_commit_default as apply_and_commit;
 
     fn issue(missing_start: bool, missing_finish: bool) -> MissingEndpointsIssue {
@@ -121,10 +121,11 @@ mod tests {
     /// is unambiguous in each direction.
     fn directed_line_maze(len: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(len, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         for i in 0..len - 1 {
             g.build_initial_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
         }
@@ -133,10 +134,11 @@ mod tests {
 
     fn bidirectional_line_maze(len: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(len, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         for i in 0..len - 1 {
             g.build_initial_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
         }
@@ -156,7 +158,7 @@ mod tests {
     #[test]
     fn apply_fails_on_empty_nav_graph() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
         let g = Graph::new(); // no nodes registered -- empty nav graph
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         let mut rng = MazeRng::seed_from_u64(1);
@@ -179,9 +181,9 @@ mod tests {
     fn neither_set_fails_when_farthest_equals_source_on_a_single_isolated_node() {
         let mut maze = {
             let mut ids = IdGenerator::new();
-            let field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+            let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
             let mut g = Graph::new();
-            field.build_nodes(&mut g);
+            for node in field.all_node_ids() { g.add_node(node); }
             Maze::<SquareTessellation>::new(field, g)
         };
         let mut rng = MazeRng::seed_from_u64(1);
@@ -204,10 +206,11 @@ mod tests {
     fn only_start_set_fails_when_start_cannot_reach_anything() {
         // Directed edge pointing INTO node 0 (1 -> 0), so node 0 (start) has no outgoing reach.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.build_initial_edge(nodes[1], nodes[0], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         maze.meta.start = Some(nodes[0]);
@@ -232,10 +235,11 @@ mod tests {
         // Directed edge pointing OUT of node 1 (1 -> 0), so nothing besides finish itself can
         // reach node 1 (finish) via incoming edges.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.build_initial_edge(nodes[1], nodes[0], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         maze.meta.finish = Some(nodes[1]);
@@ -299,10 +303,11 @@ mod tests {
         // a -> b is a short 1-hop direct edge; b -> a is routed the long way around through
         // extra nodes, making the reverse direction strictly longer -- must swap to (b, a).
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         // Short forward: nodes[0] -> nodes[1] (1 hop).
         g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
         // Long backward: nodes[1] -> 2 -> 3 -> 4 -> nodes[0] (4 hops).

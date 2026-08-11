@@ -64,7 +64,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "external_escape_diversity";
 
@@ -73,10 +73,11 @@ mod tests {
     /// center node, so distinct exit count is 1 despite 8 outgoing edges.
     fn maze_with_trapped_ring() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 3), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 3), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32, y: i32| field.node_at(SquarePoint { x, y }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32, y: i32| field.node_at(field_level, SquarePoint { x, y }).unwrap();
         let ring = [(0,0),(1,0),(2,0),(2,1),(2,2),(1,2),(0,2),(0,1)];
         for i in 0..ring.len() {
             let (x1, y1) = ring[i];
@@ -94,10 +95,11 @@ mod tests {
     /// shared center — 8 outgoing edges, 8 distinct destinations.
     fn maze_with_diverse_ring() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(5, 5), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(5, 5), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32, y: i32| field.node_at(SquarePoint { x, y }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32, y: i32| field.node_at(field_level, SquarePoint { x, y }).unwrap();
         let ring = [(1,1),(2,1),(3,1),(3,2),(3,3),(2,3),(1,3),(1,2)];
         for i in 0..ring.len() {
             let (x1, y1) = ring[i];
@@ -151,18 +153,19 @@ mod tests {
     fn silent_when_cycle_enumeration_overflows() {
         const SIDE: i32 = 6;
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         for y in 0..SIDE {
             for x in 0..SIDE {
-                let here = field.node_at(SquarePoint { x, y }).unwrap();
+                let here = field.node_at(field_level, SquarePoint { x, y }).unwrap();
                 if x + 1 < SIDE {
-                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
+                    let right = field.node_at(field_level, SquarePoint { x: x + 1, y }).unwrap();
                     g.add_bidirectional_edge(here, right, EdgeKind::Basic);
                 }
                 if y + 1 < SIDE {
-                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
+                    let up = field.node_at(field_level, SquarePoint { x, y: y + 1 }).unwrap();
                     g.add_bidirectional_edge(here, up, EdgeKind::Basic);
                 }
             }
@@ -178,10 +181,11 @@ mod tests {
     #[test]
     fn silent_when_no_cycle() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);

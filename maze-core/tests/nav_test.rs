@@ -2,7 +2,7 @@ use maze_core::graph::Graph;
 use maze_core::graph::nav::{build_nav_graph, build_nav_graph_pinned};
 use maze_core::graph::EdgeKind;
 use maze_core::ids::IdGenerator;
-use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationConfig, PresetState};
 
 fn bi(g: &mut Graph, a: u64, b: u64) {
@@ -160,10 +160,11 @@ fn deterministic() {
 #[test]
 fn nav_paths_only_contain_adjacent_maze_nodes() {
     let mut ids = IdGenerator::new();
-    let mut field = Field::<SquareTessellation>::new(square_rect(10, 10), &mut ids).unwrap();
+    let mut field = MultiLevelField::<SquareTessellation>::single_level(square_rect(10, 10), &mut ids).unwrap();
+    let level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
-    let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+    for node in field.all_node_ids() { graph.add_node(node); }
+    let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     generate_maze(&mut graph, &mut field, &mut ids, 42, start, GenerationConfig::default(), &PresetState::empty());
 
     let maze_nodes: std::collections::HashSet<u64> = graph.nodes().map(|n| n.id).collect();

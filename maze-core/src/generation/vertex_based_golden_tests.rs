@@ -31,7 +31,8 @@ fn snapshot(graph: &Graph) -> Vec<(NodeId, NodeId, &'static str)> {
 #[test]
 fn golden_baseline_params_seed_42() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let start = field.node_at(field_level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &default_elements(), &empty_presets(), None);
     // Regenerated for GitHub issue #222: the split roll is always consumed regardless of
     // split_chance (RNG-parity discipline, see vertex_based.rs's `try_split_src` doc comment) —
@@ -56,7 +57,8 @@ fn golden_baseline_params_seed_42() {
 #[test]
 fn golden_full_two_way_teleport_seed_42() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let start = field.node_at(field_level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &empty_presets(), None);
     // Regenerated for GitHub issue #222 — see golden_baseline_params_seed_42's comment.
     assert_eq!(snapshot(&graph), vec![
@@ -78,7 +80,8 @@ fn golden_full_two_way_teleport_seed_42() {
 #[test]
 fn golden_full_one_way_teleport_seed_42() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let start = field.node_at(field_level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_one_way_teleport_elements(), &empty_presets(), None);
     // Regenerated for GitHub issue #222 — see golden_baseline_params_seed_42's comment.
     assert_eq!(snapshot(&graph), vec![
@@ -98,7 +101,8 @@ fn golden_full_one_way_teleport_seed_42() {
 fn golden_high_cyclicity_seed_21() {
     let params = GenerationParams { depth_first: 0.0, corridor_chance: 1.0, branching: 0.0, directionality: 0.0, cyclicity: 1.0 };
     let (mut field, mut graph, mut ids) = make_field_graph_ids(8, 8);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let start = field.node_at(field_level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 21, start, &params, &full_two_way_teleport_elements(), &empty_presets(), None);
     // Regenerated for GitHub issue #222 — see golden_baseline_params_seed_42's comment.
     assert_eq!(snapshot(&graph), vec![
@@ -150,7 +154,8 @@ fn golden_high_cyclicity_seed_21() {
 fn golden_all_one_way_seed_7() {
     let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 };
     let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 6);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let start = field.node_at(field_level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     generate_default_split(&mut graph, &mut field, &mut ids, 7, start, &default_params(), &elements, &empty_presets(), None);
     // Regenerated for GitHub issue #222 — see golden_baseline_params_seed_42's comment.
     assert_eq!(snapshot(&graph), vec![
@@ -166,10 +171,11 @@ fn golden_all_one_way_seed_7() {
 #[test]
 fn golden_with_preset_locks_seed_42() {
     let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
-    let start = field.node_at(crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
+    let field_level = field.single_level_id();
+    let start = field.node_at(field_level, crate::space::SquarePoint { x: 0, y: 0 }).unwrap();
     let mut preset_state = PresetState::empty();
-    preset_state.locked_out.insert(field.node_at(crate::space::SquarePoint { x: 2, y: 2 }).unwrap());
-    preset_state.locked_in.insert(field.node_at(crate::space::SquarePoint { x: 4, y: 4 }).unwrap());
+    preset_state.locked_out.insert(field.node_at(field_level, crate::space::SquarePoint { x: 2, y: 2 }).unwrap());
+    preset_state.locked_in.insert(field.node_at(field_level, crate::space::SquarePoint { x: 4, y: 4 }).unwrap());
     generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &default_params(), &full_two_way_teleport_elements(), &preset_state, None);
     // Regenerated for GitHub issue #222 — see golden_baseline_params_seed_42's comment.
     assert_eq!(snapshot(&graph), vec![

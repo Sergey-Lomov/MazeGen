@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use maze_core::{Graph, IdGenerator, Maze};
-use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{generate_maze, GenerationConfig, PresetState};
 use maze_core::quality_control::{
     QualityControlEngine, Rule, RuleTrait, Stage, Check, Issue, IssueMerge, IssueRequirement,
@@ -96,12 +96,13 @@ pub fn make_engines() -> QualityControlEngine<SquareTessellation> {
     )])
 }
 
-pub fn make_generated_graph(seed: u64) -> (Field<SquareTessellation>, Graph) {
+pub fn make_generated_graph(seed: u64) -> (MultiLevelField<SquareTessellation>, Graph) {
     let mut ids = IdGenerator::new();
-    let mut field = Field::new(square_rect(5, 5), &mut ids).unwrap();
+    let mut field = MultiLevelField::single_level(square_rect(5, 5), &mut ids).unwrap();
+    let level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
-    let start = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+    for node in field.all_node_ids() { graph.add_node(node); }
+    let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     generate_maze(&mut graph, &mut field, &mut ids, seed, start, GenerationConfig::default(), &PresetState::empty());
     (field, graph)
 }
@@ -130,7 +131,7 @@ impl Check<SquareTessellation, MissingEndpointsIssue> for NeverConvergingCheck {
 
 pub fn never_converging_setup(
     on_apply: impl Fn() + Send + Sync + 'static,
-) -> (Field<SquareTessellation>, Graph, QualityControlEngine<SquareTessellation>) {
+) -> (MultiLevelField<SquareTessellation>, Graph, QualityControlEngine<SquareTessellation>) {
     use maze_core::repair::{RepairResult, RepairStrategy};
 
     struct NoOpFix<F> {

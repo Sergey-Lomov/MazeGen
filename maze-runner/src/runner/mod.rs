@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use maze_core::{
     graph::Graph,
     ids::IdGenerator,
-    space::{Field, Tessellation},
+    space::{MultiLevelField, Tessellation},
     generation::{generate_maze, build_preset_state, GenerationConfig, PresetEndpoint},
     RegionClass, GenerationTiming,
     quality_control::{Issue, QcEvent},
@@ -68,7 +68,7 @@ fn preset_endpoint_dto_to_core(dto: &PresetEndpointDto) -> PresetEndpoint {
 
 fn run_generate_typed<T: Tessellation + 'static>(
     seed: u64,
-    mut field: Field<T>,
+    mut field: MultiLevelField<T>,
     mut ids: IdGenerator,
     start: T::Point,
     config: &GenerateConfig,
@@ -81,7 +81,7 @@ fn run_generate_typed<T: Tessellation + 'static>(
     maze_core::generation::validate_split_patterns(&gen_config.split_generation.patterns, degree)?;
 
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
 
     let preset_state = build_preset_state(
         &mut graph, &mut field, &mut ids,
@@ -97,9 +97,10 @@ fn run_generate_typed<T: Tessellation + 'static>(
     // `start` geometrically, but now against `PresetState` — a slot-addressed gen_source needs
     // the split node `build_preset_state` just created above, which `resolve_start` (geometry
     // only, no `Field`/`NodeId` access) can't have resolved on its own.
+    let level = field.single_level_id();
     let start_id = config.preset_gen_source.as_ref()
         .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)))
-        .or_else(|| field.nodes_at(start).first().copied())
+        .or_else(|| field.nodes_at(level, start).first().copied())
         .ok_or_else(|| "start node not found".to_string())?;
 
     // QC experiment mode skips the generation algorithm entirely — mirrors `maze-wasm`'s
@@ -160,7 +161,7 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
                 .map(|&[x, y]| SquarePoint { x, y }).collect();
             if pts.is_empty() { return Err("tessellation points must not be empty".to_string()); }
             let start = resolve_start(&pts, gen_source_xy, |p| (p.x, p.y));
-            let field = Field::<SquareTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
+            let field = MultiLevelField::<SquareTessellation>::single_level(pts, &mut ids).map_err(|e| e.to_string())?;
             run_generate_typed(seed, field, ids, start, config, gen_config, |x, y| SquarePoint { x, y })
         }
         TessellationType::Hex => {
@@ -169,7 +170,7 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
                 .map(|&[q, r]| HexPoint { q, r }).collect();
             if pts.is_empty() { return Err("tessellation points must not be empty".to_string()); }
             let start = resolve_start(&pts, gen_source_xy, |p| (p.q, p.r));
-            let field = Field::<HexTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
+            let field = MultiLevelField::<HexTessellation>::single_level(pts, &mut ids).map_err(|e| e.to_string())?;
             run_generate_typed(seed, field, ids, start, config, gen_config, |q, r| HexPoint { q, r })
         }
         TessellationType::Tri => {
@@ -178,7 +179,7 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
                 .map(|&[col, row]| TriPoint { col, row }).collect();
             if pts.is_empty() { return Err("tessellation points must not be empty".to_string()); }
             let start = resolve_start(&pts, gen_source_xy, |p| (p.col, p.row));
-            let field = Field::<TriTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
+            let field = MultiLevelField::<TriTessellation>::single_level(pts, &mut ids).map_err(|e| e.to_string())?;
             run_generate_typed(seed, field, ids, start, config, gen_config, |col, row| TriPoint { col, row })
         }
     }

@@ -35,10 +35,10 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGraphPr
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitTileGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         let mut seen_points = std::collections::HashSet::new();
-        let tiles: Vec<(T::Point, Vec<NodeId>)> = maze.field.all_points()
-            .filter(|&point| seen_points.insert(point))
-            .filter_map(|point| {
-                let nodes = maze.field.nodes_at(point);
+        let tiles: Vec<(T::Point, Vec<NodeId>)> = maze.field.all_points_with_level()
+            .filter(|&(level, point)| seen_points.insert((level, point)))
+            .filter_map(|(level, point)| {
+                let nodes = maze.field.nodes_at(level, point);
                 if nodes.len() < 2 { None } else { Some((point, nodes.to_vec())) }
             })
             .collect();
@@ -91,7 +91,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "split_group_graph_proximity";
 
@@ -102,20 +102,21 @@ mod tests {
     /// A straight corridor of `width` tiles, with an extra split node minted at each of `xs`.
     fn maze_with_splits_at(width: usize, xs: &[i32]) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         for &x in xs {
-            field.add_node_at(SquarePoint { x, y: 0 }, &mut ids);
+            field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
         }
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         for x in 0..(width as i32 - 1) {
             g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
         }
         // Give every extra split node its own edge so it's a real junction, not compressed out
         // as an unreachable/degree-0 node.
         for &x in xs {
-            let extra = field.nodes_at(SquarePoint { x, y: 0 })[1];
+            let extra = field.nodes_at(level, SquarePoint { x, y: 0 })[1];
             g.add_bidirectional_edge(p(x), extra, EdgeKind::Basic);
         }
         Maze::new(field, g)
@@ -163,20 +164,21 @@ mod tests {
     /// tiles actually separate them (GitHub issue #249 regression report).
     fn maze_with_inline_splits_at(width: usize, xs: &[i32]) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         for &x in xs {
-            field.add_node_at(SquarePoint { x, y: 0 }, &mut ids);
+            field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
         }
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(level, SquarePoint { x, y: 0 }).unwrap();
         for x in 0..(width as i32 - 1) {
             g.add_bidirectional_edge(p(x), p(x + 1), EdgeKind::Basic);
         }
         // Wire each extra split node in-line on the corridor (both directions) instead of as its
         // own branch -- a plain 2-degree pass-through, compressed into the nav graph's interior.
         for &x in xs {
-            let extra = field.nodes_at(SquarePoint { x, y: 0 })[1];
+            let extra = field.nodes_at(level, SquarePoint { x, y: 0 })[1];
             g.add_bidirectional_edge(p(x), extra, EdgeKind::Basic);
             if x + 1 < width as i32 {
                 g.add_bidirectional_edge(extra, p(x + 1), EdgeKind::Basic);

@@ -65,13 +65,13 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, SquarePoint, square_rect, Field};
+    use crate::space::{SquareTessellation, SquarePoint, square_rect, MultiLevelField};
 
     fn maze_line(len: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(len, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 
@@ -92,7 +92,7 @@ mod tests {
         // 1x3 line, only the middle node connected both ways: ends (nodes[0]/[1]) are dead ends
         // (degree 1), the isolated node (nodes[2], degree 0) is not.
         let mut maze = maze_line(3);
-        let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..3).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
         maze.graph.add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
 
         let pool: Vec<NodeId> = maze.field.all_node_ids().collect();
@@ -125,7 +125,7 @@ mod tests {
         // pool — every original candidate must be visited exactly once, confirming the dead-end
         // exhaustion case (GitHub issue #278) falls through instead of leaving candidates stranded.
         let mut maze = maze_line(5);
-        let nodes: Vec<NodeId> = (0..5).map(|x| maze.field.node_at(SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..5).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
         maze.graph.add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
         maze.graph.add_bidirectional_edge(nodes[3], nodes[4], EdgeKind::Basic);
 
@@ -148,7 +148,7 @@ mod tests {
         // A node with a single bidirectional passage (two directed edges, one partner) must still
         // count as a dead end — degree is measured by distinct partner count, not edge count.
         let mut maze = maze_line(2);
-        let nodes: Vec<NodeId> = (0..2).map(|x| maze.field.node_at(SquarePoint { x, y: 0 }).unwrap()).collect();
+        let nodes: Vec<NodeId> = (0..2).map(|x| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y: 0 }).unwrap()).collect();
         maze.graph.add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
 
         assert!(is_dead_end(&maze, nodes[0]));
@@ -158,10 +158,11 @@ mod tests {
     #[test]
     fn two_one_way_edges_to_different_neighbors_is_not_a_dead_end() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<NodeId> = (0..3).map(|x| field.node_at(SquarePoint { x, y: 0 }).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<NodeId> = (0..3).map(|x| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap()).collect();
         g.add_edge(nodes[1], nodes[0], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);

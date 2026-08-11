@@ -135,7 +135,7 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::Graph;
     use crate::ids::{IdGenerator, NodeId};
-    use crate::space::{SquareTessellation, square_rect, Field};
+    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
     use crate::quality_control::{MissingEndpointsIssue, MISSING_ENDPOINTS};
     use crate::repair::strategy::{RepairStrategy, ErasedRepairStrategy, NestedSlot, NestedDispatchKind};
     use crate::repair::params::StrategyParams;
@@ -210,9 +210,9 @@ mod tests {
 
     fn maze_2_nodes() -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 

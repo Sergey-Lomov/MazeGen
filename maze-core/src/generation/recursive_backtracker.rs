@@ -6,7 +6,7 @@ use rand::{Rng, SeedableRng};
 use crate::random::MazeRng;
 use crate::ids::NodeId;
 use crate::graph::Graph;
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::event_log::{DebugValueDelta, DebugValueKind, DebugValueOp, EventLog};
 use super::{PresetState, try_add_bidirectional_edge, bidirectional_edge_feasible, split_aware_neighbors};
 
@@ -91,7 +91,7 @@ pub fn debug_value_names() -> &'static [(&'static str, DebugValueKind)] {
 
 pub fn generate<T: Tessellation>(
     graph: &mut Graph,
-    field: &Field<T>,
+    field: &MultiLevelField<T>,
     seed: u64,
     start: NodeId,
     preset_state: &PresetState,

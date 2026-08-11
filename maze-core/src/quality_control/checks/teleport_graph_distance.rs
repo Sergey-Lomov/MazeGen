@@ -82,7 +82,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "teleport_graph_distance";
 
@@ -91,10 +91,11 @@ mod tests {
     /// entirely independent of the teleport edge itself.
     fn maze_with_corridor_and_teleport(len: usize) -> (Maze<SquareTessellation>, Vec<crate::ids::NodeId>) {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(len, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(len, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let nodes: Vec<_> = (0..len as i32).map(p).collect();
         for i in 0..len - 1 {
             g.add_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
@@ -152,11 +153,12 @@ mod tests {
         // graph distance is undefined (unreachable), not 1 (which a naive "count this edge" bug
         // would report).
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(20, 20), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 5, y: 5 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(field_level, SquarePoint { x: 5, y: 5 }).unwrap();
         g.add_edge(a, b, EdgeKind::Teleport);
         let maze = Maze::new(field, g);
 
@@ -172,11 +174,12 @@ mod tests {
         // Two-way teleport (both directions), nothing else connects the pair -- graph distance
         // must stay undefined for both directions, not 1 via the opposite-direction edge.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(20, 20), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 5, y: 5 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(field_level, SquarePoint { x: 5, y: 5 }).unwrap();
         g.add_bidirectional_edge(a, b, EdgeKind::Teleport);
         let maze = Maze::new(field, g);
 
@@ -219,11 +222,12 @@ mod tests {
         // teleport must not hide this genuine pedestrian passage, since the pair is one Basic hop
         // apart regardless of the teleport's presence.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(20, 20), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(field_level, SquarePoint { x: 1, y: 0 }).unwrap();
         g.add_edge(a, b, EdgeKind::Basic);
         g.add_edge(a, b, EdgeKind::Teleport);
         let maze = Maze::new(field, g);
@@ -240,11 +244,12 @@ mod tests {
     #[test]
     fn ignores_basic_edges() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(20, 20), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
-        let b = field.node_at(SquarePoint { x: 1, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(field_level, SquarePoint { x: 1, y: 0 }).unwrap();
         g.add_edge(a, b, EdgeKind::Basic);
         let maze = Maze::new(field, g);
 

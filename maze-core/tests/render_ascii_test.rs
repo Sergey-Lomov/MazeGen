@@ -1,18 +1,19 @@
 use maze_core::{Maze, Graph, IdGenerator};
 use maze_core::graph::EdgeKind;
-use maze_core::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 use maze_core::io::render_ascii;
 
 use maze_core::NodeId;
 
 fn make_maze(width: usize, height: usize) -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
     let mut ids = IdGenerator::new();
-    let field = Field::new(square_rect(width, height), &mut ids).unwrap();
+    let field = MultiLevelField::single_level(square_rect(width, height), &mut ids).unwrap();
+    let level = field.single_level_id();
     let mut graph = Graph::new();
-    field.build_nodes(&mut graph);
+    for node in field.all_node_ids() { graph.add_node(node); }
     let nodes: Vec<Vec<NodeId>> = (0..height)
         .map(|y| (0..width)
-            .map(|x| field.nodes_at(SquarePoint { x: x as i32, y: y as i32 }).first().copied().unwrap())
+            .map(|x| field.nodes_at(level, SquarePoint { x: x as i32, y: y as i32 }).first().copied().unwrap())
             .collect())
         .collect();
     let maze = Maze::new(field, graph);

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use rand::Rng;
 use crate::ids::{IdGenerator, NodeId};
 use crate::graph::Graph;
-use crate::space::{Field, Tessellation};
+use crate::space::{MultiLevelField, Tessellation};
 use crate::event_log::ScopeGuard;
 use super::{ElementsConfig, PresetState, GenerationParams};
 use super::debug_state::DebugGenerationState;
@@ -26,7 +26,7 @@ use super::split_shared::{mint_split_nodes, sync_all_nodes, maybe_reassign_start
 #[allow(clippy::too_many_arguments)]
 pub(super) fn handle_non_pattern_split<T: Tessellation>(
     graph: &mut Graph,
-    field: &mut Field<T>,
+    field: &mut MultiLevelField<T>,
     ids: &mut IdGenerator,
     params: &GenerationParams,
     elements: &ElementsConfig,

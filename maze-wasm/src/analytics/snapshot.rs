@@ -156,11 +156,14 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     // `nodes_at(p)` isn't flat-mapped once per repeat, which would emit a split point's node list
     // N times over (GitHub issue #223 surfaced this once split-junction rendering started reading
     // every node of a point instead of just one).
+    let level = maze.field.single_level_id();
     let mut seen_points: std::collections::HashSet<T::Point> = std::collections::HashSet::new();
     let nodes: Vec<NodeDto> = maze.field
+        .field_of(level)
+        .expect("single_level_id always resolves")
         .all_points()
         .filter(|p| seen_points.insert(*p))
-        .flat_map(|p| maze.field.nodes_at(p).iter().enumerate().map(move |(pos, &id)| (id, p, pos)))
+        .flat_map(|p| maze.field.nodes_at(level, p).iter().enumerate().map(move |(pos, &id)| (id, p, pos)))
         .filter_map(|(id, p, pos)| {
             let id32 = u32::try_from(id).ok()?;
             let (x, y) = point_to_xy(p);
@@ -325,7 +328,7 @@ mod tests {
     use super::*;
     use maze_core::ids::IdGenerator;
     use maze_core::graph::{Graph, EdgeKind};
-    use maze_core::space::{SquareTessellation, SquarePoint, square_rect, Field};
+    use maze_core::space::{SquareTessellation, SquarePoint, square_rect, MultiLevelField};
     use maze_core::quality_control::CYCLE_ANALYSIS_OVERFLOWED;
 
     #[test]
@@ -334,18 +337,19 @@ mod tests {
         // tests for issue #22 (2,444,782 simple cycles — far past MAX_SIMPLE_CYCLES).
         const SIDE: i32 = 6;
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(SIDE as usize, SIDE as usize), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         for y in 0..SIDE {
             for x in 0..SIDE {
-                let here = field.nodes_at(SquarePoint { x, y }).first().copied().unwrap();
+                let here = field.nodes_at(level, SquarePoint { x, y }).first().copied().unwrap();
                 if x + 1 < SIDE {
-                    let right = field.nodes_at(SquarePoint { x: x + 1, y }).first().copied().unwrap();
+                    let right = field.nodes_at(level, SquarePoint { x: x + 1, y }).first().copied().unwrap();
                     g.build_initial_bidirectional_edge(here, right, EdgeKind::Basic);
                 }
                 if y + 1 < SIDE {
-                    let up = field.nodes_at(SquarePoint { x, y: y + 1 }).first().copied().unwrap();
+                    let up = field.nodes_at(level, SquarePoint { x, y: y + 1 }).first().copied().unwrap();
                     g.build_initial_bidirectional_edge(here, up, EdgeKind::Basic);
                 }
             }
@@ -361,11 +365,12 @@ mod tests {
     #[test]
     fn no_overflow_issue_on_sparse_graph() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let b = field.nodes_at(level, SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -382,11 +387,12 @@ mod tests {
         // node pair once per its own node count — a 2-node split point appeared 2x (4 entries
         // instead of 2), a 3-node split point 3x, etc.
         let mut ids = IdGenerator::new();
-        let mut field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let mut field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let p = SquarePoint { x: 1, y: 0 };
-        let extra = field.add_node_at(p, &mut ids);
+        let extra = field.add_node_at(level, p, &mut ids);
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         g.add_node(extra);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -403,11 +409,12 @@ mod tests {
     #[test]
     fn region_classes_empty_when_start_or_finish_unset() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let b = field.nodes_at(level, SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         // Neither start nor finish set.
@@ -420,12 +427,13 @@ mod tests {
     #[test]
     fn region_classes_populated_when_start_and_finish_set() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let a = field.nodes_at(SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let b = field.nodes_at(SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
-        let c = field.nodes_at(SquarePoint { x: 2, y: 0 }).first().copied().unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let b = field.nodes_at(level, SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
+        let c = field.nodes_at(level, SquarePoint { x: 2, y: 0 }).first().copied().unwrap();
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         g.build_initial_bidirectional_edge(b, c, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);

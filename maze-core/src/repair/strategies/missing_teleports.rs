@@ -284,7 +284,7 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, square_rect, Field};
+    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
 
@@ -294,9 +294,9 @@ mod tests {
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(side, side), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 
@@ -328,9 +328,9 @@ mod tests {
     #[test]
     fn apply_fails_on_single_node_field() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(1, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let issue = missing_issue(1);
@@ -384,10 +384,11 @@ mod tests {
         // instead assert on distance directly -- with min=max=3, any accepted teleport not
         // falling back to set 3/1 must land exactly 3 tile-hops from its entry.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(10, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(10, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         for i in 0..9 {
             g.build_initial_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
         }
@@ -426,7 +427,7 @@ mod tests {
         // instead of proposing an AddBidirectionalTeleport that would be silently dropped whole
         // by apply_commands' preset revalidation.
         let mut maze = maze_grid(5);
-        let all_nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
+        let all_nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
         let mut preset_state = PresetState::empty();
         for &a in &all_nodes {
             for &b in &all_nodes {
@@ -458,7 +459,7 @@ mod tests {
         // node's outgoing edges are blocked so the FIRST candidate the RNG draws deterministically
         // fails -- but only one node is blocked this way, so eviction guarantees progress.
         let mut maze = maze_grid(5);
-        let all_nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
+        let all_nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
         let mut preset_state = PresetState::empty();
         // Lock every node's outgoing edges except the very last -- whichever the RNG draws first
         // among the locked ones fails immediately (pick_exit returns None since no exit is
@@ -507,10 +508,11 @@ mod tests {
     #[test]
     fn apply_does_not_duplicate_an_existing_edge_between_the_same_pair() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -532,10 +534,11 @@ mod tests {
         // regardless of which candidate the pool's random pick offers, which is exactly what
         // distinguishes this mode from plain `random` (whose entry would vary with the pick).
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         for i in 0..4 {
             g.build_initial_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
         }
@@ -566,10 +569,11 @@ mod tests {
         // only way apply() can still succeed is by falling through to set 1 (out_of_interval),
         // which requires allow_out_of_interval=true.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         for i in 0..4 {
             g.build_initial_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
         }
@@ -598,10 +602,11 @@ mod tests {
         // allow_out_of_interval=false: set 1 is never offered, and with a single connected
         // component the unreachable set is always empty too, so every entry attempt must fail.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         for i in 0..4 {
             g.build_initial_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
         }
@@ -633,10 +638,11 @@ mod tests {
         // empty here (the other component's 3 nodes are always unreachable from any entry), the
         // resulting teleport must land on a node in the OTHER component from its entry.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(6, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         for i in 0..2 {
             g.build_initial_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
         }

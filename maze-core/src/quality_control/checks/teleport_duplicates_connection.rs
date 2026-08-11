@@ -49,16 +49,17 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, square_rect};
 
     const TEST_ID: &str = "teleport_duplicates_connection";
 
     fn maze_with_teleport(add_duplicate_basic: bool) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
         if add_duplicate_basic {
             g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
@@ -69,9 +70,9 @@ mod tests {
     #[test]
     fn silent_when_no_teleport() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
         let check = TeleportDuplicatesConnectionCheck { instance_id: TEST_ID.to_string(), protect_route: true };
         let mut issues = Vec::new();
@@ -109,10 +110,11 @@ mod tests {
         // the same pair — each direction is its own Teleport edge and must be flagged
         // independently, since the check operates per-edge, not per-pair.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
         g.add_edge(nodes[2], nodes[0], EdgeKind::Teleport);
         g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
@@ -138,10 +140,11 @@ mod tests {
         // duplicate Basic 0->2 alone wouldn't matter here -- what matters is that the teleport
         // itself sits on the route). With protect_route enabled it must not be flagged at all.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
         g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -158,10 +161,11 @@ mod tests {
     #[test]
     fn protect_route_disabled_flags_the_route_teleport_as_before() {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
         g.add_edge(nodes[0], nodes[2], EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -179,10 +183,11 @@ mod tests {
     fn does_not_flag_teleport_with_only_reverse_basic() {
         // A Basic edge in the opposite direction is not a duplicate — direction matters.
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         g.add_edge(nodes[0], nodes[2], EdgeKind::Teleport);
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);

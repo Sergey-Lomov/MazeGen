@@ -1,7 +1,7 @@
 use super::*;
 use rand::SeedableRng;
 use crate::{Graph, IdGenerator};
-use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 use crate::meta::MazeMeta;
 
 const TEST_ID: &str = "one_way_group_graph_proximity";
@@ -15,10 +15,11 @@ fn check(distance: f64, protect_route: bool) -> OneWayGroupGraphProximityCheck {
 fn maze_with_two_one_ways_gapped(gap: usize) -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
     let mut ids = IdGenerator::new();
     let width = gap + 4;
-    let field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     let e1 = g.add_edge(p(0), p(1), EdgeKind::Basic);
     for i in 1..(1 + gap as i32) {
         g.add_bidirectional_edge(p(i), p(i + 1), EdgeKind::Basic);
@@ -97,10 +98,11 @@ fn silent_when_threshold_is_zero() {
 #[test]
 fn silent_with_fewer_than_two_one_ways() {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     g.add_edge(p(0), p(1), EdgeKind::Basic);
     let maze = Maze::new(field, g);
 
@@ -114,10 +116,11 @@ fn silent_with_fewer_than_two_one_ways() {
 #[test]
 fn ignores_bidirectional_passage() {
     let mut ids = IdGenerator::new();
-    let field: Field<SquareTessellation> = Field::new(square_rect(4, 1), &mut ids).unwrap();
+    let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
-    let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
     g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
     let one_way = g.add_edge(p(2), p(3), EdgeKind::Basic);
     let maze = Maze::new(field, g);
@@ -133,7 +136,7 @@ fn ignores_bidirectional_passage() {
 #[test]
 fn protect_route_excludes_a_pair_fully_on_route() {
     let (mut maze, e1, e2) = maze_with_two_one_ways_gapped(0);
-    let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
+    let nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
     maze.meta = MazeMeta { start: Some(nodes[0]), finish: Some(nodes[2]), route_score: None };
 
     let c = check(1000.0, true);
@@ -147,7 +150,7 @@ fn protect_route_excludes_a_pair_fully_on_route() {
 #[test]
 fn protect_route_disabled_flags_the_route_pair_as_before() {
     let (mut maze, _, _) = maze_with_two_one_ways_gapped(0);
-    let nodes: Vec<_> = maze.field.all_points().map(|p| maze.field.node_at(p).unwrap()).collect();
+    let nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
     maze.meta = MazeMeta { start: Some(nodes[0]), finish: Some(nodes[2]), route_score: None };
 
     let c = check(1000.0, false);

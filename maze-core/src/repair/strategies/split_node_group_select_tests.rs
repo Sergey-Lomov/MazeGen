@@ -3,7 +3,7 @@ use rand::SeedableRng;
 use crate::random::MazeRng;
 use crate::graph::EdgeKind;
 use crate::{Graph, IdGenerator};
-use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 use crate::repair::strategies::RemoveSplitNodeStrategy;
 use crate::repair::strategies::test_utils::apply_and_commit;
 
@@ -35,13 +35,14 @@ fn group_issue(groups: Vec<(Vec<NodeId>, u32)>) -> InvalidSplitNodeGroupIssue {
 /// A 3-node split tile (slot0 + two extras), no outside connections needed for these tests.
 fn maze_with_three_node_split() -> (Maze<SquareTessellation>, NodeId, NodeId, NodeId) {
     let mut ids = IdGenerator::new();
-    let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
-    let slot0 = field.node_at(p).unwrap();
-    let extra1 = field.add_node_at(p, &mut ids);
-    let extra2 = field.add_node_at(p, &mut ids);
+    let slot0 = field.node_at(field_level, p).unwrap();
+    let extra1 = field.add_node_at(field_level, p, &mut ids);
+    let extra2 = field.add_node_at(field_level, p, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
+    for node in field.all_node_ids() { g.add_node(node); }
     (Maze::new(field, g), slot0, extra1, extra2)
 }
 
@@ -105,14 +106,15 @@ fn removes_exactly_one_node_of_the_group() {
 #[test]
 fn apply_fixes_to_remove_multiple_nodes_from_a_single_group_in_one_call() {
     let mut ids = IdGenerator::new();
-    let mut field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
     let p = SquarePoint { x: 1, y: 0 };
-    let slot0 = field.node_at(p).unwrap();
-    let extra1 = field.add_node_at(p, &mut ids);
-    let extra2 = field.add_node_at(p, &mut ids);
-    let extra3 = field.add_node_at(p, &mut ids);
+    let slot0 = field.node_at(field_level, p).unwrap();
+    let extra1 = field.add_node_at(field_level, p, &mut ids);
+    let extra2 = field.add_node_at(field_level, p, &mut ids);
+    let extra3 = field.add_node_at(field_level, p, &mut ids);
     let mut g = Graph::new();
-    field.build_nodes(&mut g);
+    for node in field.all_node_ids() { g.add_node(node); }
     let mut maze = Maze::new(field, g);
 
     let issue = group_issue(vec![(vec![slot0, extra1, extra2, extra3], 2)]);
@@ -129,7 +131,7 @@ fn apply_fixes_to_remove_multiple_nodes_from_a_single_group_in_one_call() {
 #[test]
 fn selection_most_connected_picks_the_more_connected_extra_node() {
     let (mut maze, _slot0, extra1, extra2) = maze_with_three_node_split();
-    let far = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    let far = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap();
     maze.graph.add_edge(extra1, far, EdgeKind::Basic);
 
     let issue = group_issue(vec![(vec![extra1, extra2], 1)]);
@@ -146,7 +148,7 @@ fn selection_most_connected_picks_the_more_connected_extra_node() {
 #[test]
 fn selection_least_connected_picks_the_less_connected_extra_node() {
     let (mut maze, _slot0, extra1, extra2) = maze_with_three_node_split();
-    let far = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    let far = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap();
     maze.graph.add_edge(extra1, far, EdgeKind::Basic);
 
     let issue = group_issue(vec![(vec![extra1, extra2], 1)]);
@@ -163,7 +165,7 @@ fn selection_least_connected_picks_the_less_connected_extra_node() {
 #[test]
 fn preset_protected_candidate_is_excluded_and_group_reports_failed() {
     let (mut maze, _slot0, extra1, _extra2) = maze_with_three_node_split();
-    let far = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    let far = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap();
     maze.graph.add_edge(extra1, far, EdgeKind::Basic);
     let mut preset = PresetState::empty();
     preset.preset_edges.insert((extra1, far));
@@ -180,7 +182,7 @@ fn preset_protected_candidate_is_excluded_and_group_reports_failed() {
 #[test]
 fn partially_preset_protected_group_removes_only_the_unprotected_candidate() {
     let (mut maze, _slot0, extra1, extra2) = maze_with_three_node_split();
-    let far = maze.field.node_at(SquarePoint { x: 2, y: 0 }).unwrap();
+    let far = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 2, y: 0 }).unwrap();
     maze.graph.add_edge(extra1, far, EdgeKind::Basic);
     let mut preset = PresetState::empty();
     preset.preset_edges.insert((extra1, far));

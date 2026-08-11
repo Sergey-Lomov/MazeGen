@@ -55,15 +55,16 @@ pub(super) fn candidate_edges<T: Tessellation>(
 mod tests {
     use super::*;
     use crate::graph::{Graph, EdgeKind};
-    use crate::space::{SquareTessellation, square_rect, Field};
+    use crate::space::{SquareTessellation, square_rect, MultiLevelField};
     use crate::IdGenerator;
 
     fn make_maze_and_edges(n: usize) -> (Maze<SquareTessellation>, Vec<EdgeId>) {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(n, 1), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut graph = Graph::new();
-        field.build_nodes(&mut graph);
-        let nodes: Vec<_> = field.all_points().map(|p| field.node_at(p).unwrap()).collect();
+        for node in field.all_node_ids() { graph.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
         let mut edge_ids = Vec::new();
         for i in 0..n - 1 {
             edge_ids.push(graph.add_edge(nodes[i], nodes[i + 1], EdgeKind::Basic));

@@ -159,8 +159,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsSplit
                 // to still resolve) — the whole command would be silently declined. Skip any `dst`
                 // whose point is already split-committed this call, rather than propose a command
                 // guaranteed to be rejected.
-                let dst_already_split = maze.field.point_of(dst)
-                    .is_some_and(|p| maze.field.nodes_at(p).iter().any(|n| split_points.contains(n)));
+                let dst_already_split = maze.field.level_of(dst).zip(maze.field.point_of(dst))
+                    .is_some_and(|(l, p)| maze.field.nodes_at(l, p).iter().any(|n| split_points.contains(n)));
                 if already_connected || dst_already_split {
                     continue;
                 }
@@ -225,7 +225,7 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, SquarePoint, square_rect, Field};
+    use crate::space::{SquareTessellation, SquarePoint, square_rect, MultiLevelField};
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
 
@@ -239,9 +239,9 @@ mod tests {
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(side, side), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 
@@ -287,9 +287,9 @@ mod tests {
         apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
 
         let split_point = (0..4).flat_map(|x| (0..4).map(move |y| SquarePoint { x, y }))
-            .find(|&p| maze.field.nodes_at(p).len() > 1)
+            .find(|&p| maze.field.nodes_at(maze.field.single_level_id(), p).len() > 1)
             .expect("exactly one point must have been split");
-        let tile_nodes = maze.field.nodes_at(split_point);
+        let tile_nodes = maze.field.nodes_at(maze.field.single_level_id(), split_point);
         let bridge_node = tile_nodes.iter().find(|&&n| {
             maze.graph.outgoing_neighbors(n).chain(maze.graph.incoming_neighbors(n))
                 .any(|nb| maze.field.point_of(nb) != Some(split_point))
@@ -329,7 +329,7 @@ mod tests {
         // endpoints.
         let mut maze = maze_grid(4);
         let coords: Vec<SquarePoint> = (0..4).flat_map(|x| (0..4).map(move |y| SquarePoint { x, y })).collect();
-        let nodes: Vec<NodeId> = coords.iter().map(|&p| maze.field.node_at(p).unwrap()).collect();
+        let nodes: Vec<NodeId> = coords.iter().map(|&p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
         maze.graph.add_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
         let dead_end_points = [coords[0], coords[1]];
 
@@ -343,7 +343,7 @@ mod tests {
         assert!(matches!(result, RepairResult::Fixed { score: None }));
 
         let split_point = coords.iter().copied()
-            .find(|&p| maze.field.nodes_at(p).len() > 1)
+            .find(|&p| maze.field.nodes_at(maze.field.single_level_id(), p).len() > 1)
             .expect("exactly one point must have been split");
         assert!(dead_end_points.contains(&split_point), "split must land on one of the two dead-end points, got {split_point:?}");
     }
@@ -382,7 +382,7 @@ mod tests {
     #[test]
     fn apply_fails_when_no_split_eligible_candidate_exists() {
         let mut maze = maze_grid(1);
-        let node = maze.field.node_at(SquarePoint { x: 0, y: 0 }).unwrap();
+        let node = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
         let mut preset_state = PresetState::empty();
         preset_state.locked_out.insert(node);
         preset_state.locked_in.insert(node);

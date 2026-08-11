@@ -5,8 +5,9 @@ use rand::SeedableRng;
 
 fn rng(seed: u64) -> MazeRng { MazeRng::seed_from_u64(seed) }
 
-fn node_at(field: &Field<crate::space::SquareTessellation>, x: i32, y: i32) -> NodeId {
-    field.node_at(SquarePoint { x, y }).unwrap()
+fn node_at(field: &MultiLevelField<crate::space::SquareTessellation>, x: i32, y: i32) -> NodeId {
+    let level = field.single_level_id();
+    field.node_at(level, SquarePoint { x, y }).unwrap()
 }
 
 #[test]

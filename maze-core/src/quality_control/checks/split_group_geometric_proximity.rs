@@ -29,11 +29,11 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGeometr
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitTileGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         let mut seen_points = std::collections::HashSet::new();
-        let tiles: Vec<(T::Point, Vec<NodeId>)> = maze.field.all_points()
-            .filter(|&point| seen_points.insert(point))
-            .filter_map(|point| {
-                let nodes = maze.field.nodes_at(point);
-                if nodes.len() < 2 { None } else { Some((point, nodes.to_vec())) }
+        let tiles: Vec<(crate::space::LevelId, T::Point, Vec<NodeId>)> = maze.field.all_points_with_level()
+            .filter(|&(level, point)| seen_points.insert((level, point)))
+            .filter_map(|(level, point)| {
+                let nodes = maze.field.nodes_at(level, point);
+                if nodes.len() < 2 { None } else { Some((level, point, nodes.to_vec())) }
             })
             .collect();
         if tiles.len() < 2 {
@@ -42,9 +42,15 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGeometr
 
         let mut groups: Vec<(Vec<SplitTileNodes>, u32)> = Vec::new();
 
-        for &(own_point, ref own_nodes) in &tiles {
-            for &(other_point, ref other_nodes) in &tiles {
-                if other_point == own_point {
+        for &(own_level, own_point, ref own_nodes) in &tiles {
+            for &(other_level, other_point, ref other_nodes) in &tiles {
+                if other_level == own_level && other_point == own_point {
+                    continue;
+                }
+                // Geometric proximity is only meaningful within the same level — cross-level tiles
+                // never count as "close" here (GitHub issue #334: geometric distance is undefined
+                // between levels).
+                if other_level != own_level {
                     continue;
                 }
                 if geometric_distance::<T>(own_point, other_point) < self.distance {
@@ -68,7 +74,7 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
-    use crate::space::{Field, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "split_group_geometric_proximity";
 
@@ -79,12 +85,13 @@ mod tests {
     fn maze_with_splits_at(xs: &[i32]) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
         let width = xs.iter().copied().max().unwrap_or(0) as usize + 1;
-        let mut field: Field<SquareTessellation> = Field::new(square_rect(width, 1), &mut ids).unwrap();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(width, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
         for &x in xs {
-            field.add_node_at(SquarePoint { x, y: 0 }, &mut ids);
+            field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
         }
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         Maze::new(field, g)
     }
 

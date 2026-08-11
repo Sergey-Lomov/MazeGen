@@ -136,7 +136,7 @@ mod tests {
     use crate::random::MazeRng;
     use crate::graph::Graph;
     use crate::IdGenerator;
-    use crate::space::{SquareTessellation, square_rect, Field, SquarePoint};
+    use crate::space::{SquareTessellation, square_rect, MultiLevelField, SquarePoint};
     use crate::repair::strategies::test_utils::{apply_and_commit, apply_and_commit_default};
     use crate::meta::MazeMeta;
 
@@ -146,18 +146,19 @@ mod tests {
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
         let mut ids = IdGenerator::new();
-        let field = Field::new(square_rect(side, side), &mut ids).unwrap();
+        let field = MultiLevelField::single_level(square_rect(side, side), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
+        for node in field.all_node_ids() { g.add_node(node); }
         for y in 0..side as i32 {
             for x in 0..side as i32 {
-                let here = field.node_at(SquarePoint { x, y }).unwrap();
+                let here = field.node_at(field_level, SquarePoint { x, y }).unwrap();
                 if x + 1 < side as i32 {
-                    let right = field.node_at(SquarePoint { x: x + 1, y }).unwrap();
+                    let right = field.node_at(field_level, SquarePoint { x: x + 1, y }).unwrap();
                     g.add_bidirectional_edge(here, right, EdgeKind::Basic);
                 }
                 if y + 1 < side as i32 {
-                    let up = field.node_at(SquarePoint { x, y: y + 1 }).unwrap();
+                    let up = field.node_at(field_level, SquarePoint { x, y: y + 1 }).unwrap();
                     g.add_bidirectional_edge(here, up, EdgeKind::Basic);
                 }
             }
@@ -197,10 +198,11 @@ mod tests {
     fn apply_downgrades_a_route_protected_passage_keeping_the_routes_own_direction() {
         // 1x3 corridor: the only passage is the entire start->finish route (n0 -> n1 -> n2).
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let (n0, n1, n2) = (p(0), p(1), p(2));
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
         g.add_bidirectional_edge(n1, n2, EdgeKind::Basic);
@@ -227,10 +229,11 @@ mod tests {
         // strategy must never remove n1->n0 instead (that would still downgrade the pair, just
         // not in the direction the route needs kept), so this hop must be skipped entirely.
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let (n0, n1, n2) = (p(0), p(1), p(2));
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
@@ -254,10 +257,11 @@ mod tests {
         use crate::repair::params::build_params;
 
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(3, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let (n0, n1, n2) = (p(0), p(1), p(2));
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
         g.add_bidirectional_edge(n1, n2, EdgeKind::Basic);
@@ -282,10 +286,11 @@ mod tests {
     #[test]
     fn apply_does_not_pick_an_existing_one_way() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         g.add_edge(p(0), p(1), EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
@@ -299,10 +304,11 @@ mod tests {
     #[test]
     fn apply_does_not_downgrade_a_preset_protected_passage() {
         let mut ids = IdGenerator::new();
-        let field: Field<SquareTessellation> = Field::new(square_rect(2, 1), &mut ids).unwrap();
+        let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
         let mut g = Graph::new();
-        field.build_nodes(&mut g);
-        let p = |x: i32| field.node_at(SquarePoint { x, y: 0 }).unwrap();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
         let (n0, n1) = (p(0), p(1));
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
