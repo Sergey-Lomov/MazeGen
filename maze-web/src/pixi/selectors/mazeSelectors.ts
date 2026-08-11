@@ -692,6 +692,25 @@ export function selectTessellationWouldLoseData(s: Pick<MazeState,
   return s.fieldDirty || s.presetsDirty || s.mazeDirty || s.postEditDirty;
 }
 
+/** True when removing `floorId` would discard field/preset data configured on that floor.
+ * Field/preset state is currently maze-wide, not per-floor (see Specs/space.md's "Not yet built
+ * on top of this layer" note) — always false until a future issue introduces per-floor
+ * field/preset data. Takes `floorId` (would additionally take state once real per-floor data
+ * exists) rather than being a bare constant, so the call site and signature don't need to change
+ * when this stops being a stub — only the body does. */
+export function selectFloorRemovalLosesFieldData(_floorId: string): boolean {
+  return false;
+}
+
+/** True when removing or reordering floors would require resetting the current generation/
+ * post-edit results — floor identity shift affects underlying node/graph state (see
+ * Specs/space.md). The caller (FloorsFeature) must actually call `reset()` on confirm when this
+ * is true, not just warn — a stale maze left on screen after floor identity changed underneath it
+ * would be actively misleading, not merely "possibly outdated". */
+export function selectFloorChangeLosesGenerationData(s: Pick<MazeState, "mazeDirty" | "postEditDirty">): boolean {
+  return s.mazeDirty || s.postEditDirty;
+}
+
 const PIPELINE_ONLY_ISSUE_KINDS = ["repair_limit_reached"];
 
 /** Issues shown by the Analytics card/feature — `postEditAnalytics.issues` when present

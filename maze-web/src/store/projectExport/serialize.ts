@@ -90,6 +90,10 @@ export function serializeProject(state: MazeState): ProjectFile {
       vectorByCorridorsSectionsExpanded: state.vectorByCorridorsSectionsExpanded,
       pngExportSettings: state.pngExportSettings,
     },
+    floors: {
+      floors: state.floors,
+      nextFloorNumber: state.nextFloorNumber,
+    },
   };
 }
 

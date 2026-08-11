@@ -7,6 +7,7 @@ import { createGenerationSlice, generateWithSeed } from "./slices/generationSlic
 import { createAnalyticsOverlaySlice } from "./slices/analyticsOverlaySlice";
 import { createPostEditSlice } from "./slices/postEditSlice";
 import { createImageExportSlice } from "./slices/imageExportSlice";
+import { createFloorsSlice } from "./slices/floorsSlice";
 import { buildPreviewState, buildResetMazeState, deriveTessellationFromConfig, recomputeAutoLock } from "./storeHelpers";
 import { warmCartesianCache } from "../pixi/cartesianCache";
 
@@ -16,7 +17,7 @@ export type {
   TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation,
   FieldPrimitive, FeatureId, RenderModeId, ExportFormatId, MazeState,
   PngExportOutputMode, PngCanvasMode, PrintDensity, PaperSize, PaperOrientation, PrintAnchor,
-  DigitalExportSettings, PrintExportSettings, PngExportSettings,
+  DigitalExportSettings, PrintExportSettings, PngExportSettings, FloorState,
 } from "./storeTypes";
 
 export { decodePoint };
@@ -28,6 +29,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
   ...createAnalyticsOverlaySlice(...a),
   ...createPostEditSlice(...a),
   ...createImageExportSlice(...a),
+  ...createFloorsSlice(...a),
 
   loadProject: (file) => {
     const [set, get] = a;
@@ -173,6 +175,9 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       vectorByCorridorsSettings: file.imageExport.vectorByCorridorsSettings,
       vectorByCorridorsSectionsExpanded: file.imageExport.vectorByCorridorsSectionsExpanded,
       pngExportSettings: file.imageExport.pngExportSettings,
+      // floors
+      floors: file.floors.floors,
+      nextFloorNumber: file.floors.nextFloorNumber,
     });
 
     // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store.

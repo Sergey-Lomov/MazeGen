@@ -28,6 +28,17 @@
   "tessellation.confirm_btn": "Подтвердить тесселяцию",
   "tessellation.reset_warning": "Изменение тесселяции приведёт к потере большинства настроек и результатов генерации. Продолжить?",
 
+  "floors.title": "Этажи",
+  "floors.add_floor": "+ Добавить этаж",
+  "floors.rename_floor": "Переименовать этаж",
+  "floors.remove_floor": "Удалить этаж",
+  "floors.move_floor_up": "Переместить этаж вверх",
+  "floors.move_floor_down": "Переместить этаж вниз",
+  "floors.confirm_remove_field": "На этом этаже настроены данные поля/пресетов. При удалении они будут потеряны. Продолжить?",
+  "floors.confirm_remove_generation": "Удаление этажа сбросит текущие результаты генерации и пост-редактирования. Продолжить?",
+  "floors.confirm_remove_both": "На этом этаже настроены данные поля/пресетов, а удаление также сбросит текущие результаты генерации и пост-редактирования. Будет потеряно и то, и другое. Продолжить?",
+  "floors.confirm_reorder": "Изменение порядка этажей сбросит текущие результаты генерации и пост-редактирования. Продолжить?",
+
   "field.title": "Поле",
 
   "preset.title": "Предустановки",
@@ -300,6 +311,9 @@
   "debug.value.reserve": "Резерв",
   "debug.value.kruskal_dsu_groups": "Группы объединения множеств",
 
+  "status.floors_none": "Этажи не настроены",
+  "status.floors_duplicate_title": "У двух или более этажей одинаковое название",
+  "status.floors_ready": "Этажи настроены",
   "status.not_confirmed": "Ещё не подтверждено",
   "status.tessellation_confirmed": "Тесселяция подтверждена",
   "status.confirm_tessellation_first": "Сначала подтвердите тесселяцию",

@@ -62,7 +62,7 @@ export type TriangleShape = "rect" | "triangle" | "hexagon" | "free";
 export type HexOrientation = "flat_top" | "pointy_top";
 export type TriOrientation = "r0" | "r90" | "r180" | "r270";
 export type FieldPrimitive = "point" | "square_rect" | "hex_parallelogram" | "hex_hexagon" | "tri_rect" | "tri_triangle" | "tri_hexagon";
-export type FeatureId = "basic_config" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
+export type FeatureId = "basic_config" | "floors" | "field_setup" | "preset_connections" | "quality" | "generation" | "post_edit" | "analytics" | "image_export";
 
 /** Registry id of a maze image-export rendering mode (see `Specs/image-export.md` and
  * `imageExportRegistry.ts`) — one entry per switcher item in the Image Export feature card. */
@@ -1409,6 +1409,41 @@ export interface RootActions {
   loadProject: (file: import("./projectExport").ProjectFile) => void;
 }
 
-export type MazeState = TessellationState & PresetConnectionsState & GenerationState & AnalyticsOverlayState & PostEditState & ImageExportState;
-export type MazeActions = RootActions & TessellationActions & PresetConnectionsActions & GenerationActions & AnalyticsOverlayActions & PostEditActions & ImageExportActions;
+/** One floor (level) in the floor set — GitHub issue #335, epic #333. Purely a client-side list
+ * entry today: no field/preset/generation data is attached per-floor yet (see Specs/space.md's
+ * "Not yet built on top of this layer" note), and this `id` is never sent to maze-core. */
+export interface FloorState {
+  id: string;
+  title: string;
+}
+
+export interface FloorsState {
+  /** Always >= 1 through the UI — `removeFloor` refuses to drop the last floor. Stored
+   * bottom-to-top: `floors[0]` is "Floor 1" (the bottom floor), the last entry is the newest/
+   * topmost floor — `addFloor` appends, which is exactly "add on top". FloorsFeature renders the
+   * reverse of this order (newest/topmost first on screen) and maps its visual up/down arrows
+   * accordingly — see that component's own comment. */
+  floors: FloorState[];
+  /** Monotonic counter for default "Floor N" titles — never reused, even after the floor bearing
+   * that number is removed (otherwise removing "Floor 2" and adding a new floor would mint
+   * "Floor 2" again, colliding with a title the user may have since renamed something else to).
+   * Not derivable from `floors` at load time: the user may rename "Floor 5" and remove "Floor
+   * 2..4", after which recomputing from remaining titles would yield 3 instead of the true 6,
+   * reissuing an already-used number. Persisted in the project file for this reason. */
+  nextFloorNumber: number;
+}
+
+export interface FloorsActions {
+  addFloor: () => void;
+  /** No-op if `id` is the only remaining floor. No confirmation here — the caller (FloorsFeature)
+   * gates destructive removal behind ConfirmModal before calling this. */
+  removeFloor: (id: string) => void;
+  /** No-op on an empty/whitespace-only title. */
+  renameFloor: (id: string, title: string) => void;
+  /** Adjacent swap in `floors` order. No-op at either end of the list. */
+  moveFloor: (id: string, direction: "up" | "down") => void;
+}
+
+export type MazeState = TessellationState & PresetConnectionsState & GenerationState & AnalyticsOverlayState & PostEditState & ImageExportState & FloorsState;
+export type MazeActions = RootActions & TessellationActions & PresetConnectionsActions & GenerationActions & AnalyticsOverlayActions & PostEditActions & ImageExportActions & FloorsActions;
 export type MazeStore = MazeState & MazeActions;

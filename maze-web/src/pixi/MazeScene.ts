@@ -28,6 +28,7 @@ type ConfigResolver = (st: ReturnType<typeof useMazeStore.getState>) => Tessella
 
 export const TESSELLATION_CONFIG_BY_CARD: Record<FeatureId, ConfigResolver> = {
   basic_config: (st) => st.previewTessellationConfig,
+  floors: (st) => st.tessellationConfig,
   field_setup: (st) => st.tessellationConfig,
   preset_connections: (st) => st.tessellationConfig,
   quality: (st) => st.tessellationConfig,

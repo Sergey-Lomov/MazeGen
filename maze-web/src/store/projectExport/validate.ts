@@ -23,6 +23,7 @@ import {
   type ProjectFileStage,
   type ProjectFileNestedStrategy,
   type ProjectFileImageExport,
+  type ProjectFileFloors,
 } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
@@ -126,6 +127,41 @@ function optEnum<T extends string>(obj: Record<string, unknown> | null, key: str
 
 function optSection(parent: Record<string, unknown>, key: string, path: string): Record<string, unknown> | null {
   return parent[key] != null ? assertObject(parent[key], path) : null;
+}
+
+/** Validates `floors` (GitHub issue #335) — absent in project files saved before this feature
+ * existed, so it defaults to a single floor, same default as a fresh store. A malformed floor
+ * entry is dropped individually rather than failing the whole load, same leniency
+ * `validateSplitGeneration`'s pattern list applies; an empty result after dropping falls back to
+ * the single-floor default too (floors must never end up empty). */
+function validateFloors(v: unknown, path: string): { floors: { id: string; title: string }[]; nextFloorNumber: number } {
+  const fallback = { floors: [{ id: `floor_${crypto.randomUUID()}`, title: "Floor 1" }], nextFloorNumber: 2 };
+  if (v == null) return fallback;
+  let obj: Record<string, unknown>;
+  try {
+    obj = assertObject(v, path);
+  } catch {
+    return fallback;
+  }
+  const rawFloors = Array.isArray(obj.floors) ? obj.floors : [];
+  const floors: { id: string; title: string }[] = [];
+  const seenIds = new Set<string>();
+  for (const raw of rawFloors) {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
+    const entry = raw as Record<string, unknown>;
+    if (typeof entry.id !== "string" || typeof entry.title !== "string") continue;
+    // A duplicate id would collide as a React list key (FloorsFeature keys rows by `floor.id`) —
+    // drop the later duplicate rather than throw, same "recoverable, not fatal" leniency this
+    // function already applies to a malformed entry (unlike `assertUniqueIds`'s throw-on-dup
+    // convention used for other id-bearing arrays, where a duplicate signals real corruption —
+    // here it's just as likely a hand-edited file, and the file otherwise loads fine either way).
+    if (seenIds.has(entry.id)) continue;
+    seenIds.add(entry.id);
+    floors.push({ id: entry.id, title: entry.title });
+  }
+  if (floors.length === 0) return fallback;
+  const nextFloorNumber = Math.max(1, Math.trunc(optNumber(obj, "nextFloorNumber", floors.length + 1)));
+  return { floors, nextFloorNumber };
 }
 
 /** Validates `generation.splitGeneration` (GitHub issue #222) — absent in project files saved
@@ -993,13 +1029,16 @@ export function parseAndValidate(raw: unknown): ProjectFile {
 
   // ui (optional section — defaults for old files)
   const uiObj = optSection(migrated, "ui", "ui");
-  const validFeatureIds: FeatureId[] = ["basic_config", "field_setup", "preset_connections", "quality", "generation", "post_edit", "analytics", "image_export"];
+  const validFeatureIds: FeatureId[] = ["basic_config", "floors", "field_setup", "preset_connections", "quality", "generation", "post_edit", "analytics", "image_export"];
   const ui: ProjectFileUi = {
     showPresetOrigin: optBool(uiObj, "showPresetOrigin", false),
     showFieldOrigin: optBool(uiObj, "showFieldOrigin", true),
     openCard: uiObj != null && typeof uiObj.openCard === "string" && validFeatureIds.includes(uiObj.openCard as FeatureId) ? uiObj.openCard as FeatureId : "basic_config",
     postEditAutoConfirm: optBool(uiObj, "postEditAutoConfirm", true),
   };
+
+  // floors (optional section — defaults to a single floor for old files)
+  const floors: ProjectFileFloors = validateFloors(migrated.floors, "floors");
 
   return {
     version: CURRENT_VERSION,
@@ -1023,5 +1062,6 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     debug,
     ui,
     imageExport: validateImageExport(migrated.imageExport, "imageExport"),
+    floors,
   };
 }

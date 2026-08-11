@@ -55,6 +55,13 @@ export interface ProjectFileImageExport {
   pngExportSettings: PngExportSettings;
 }
 
+/** Floor list — GitHub issue #335, epic #333. See `FloorsState`'s doc comment for why
+ * `nextFloorNumber` must be persisted rather than recomputed from `floors` on load. */
+export interface ProjectFileFloors {
+  floors: { id: string; title: string }[];
+  nextFloorNumber: number;
+}
+
 export interface ProjectFileDirtyFlags {
   postEdit: boolean;
   field: boolean;
@@ -152,6 +159,7 @@ export interface ProjectFile {
   debug: ProjectFileDebug;
   ui: ProjectFileUi;
   imageExport: ProjectFileImageExport;
+  floors: ProjectFileFloors;
 }
 
 export const CURRENT_VERSION = 2;

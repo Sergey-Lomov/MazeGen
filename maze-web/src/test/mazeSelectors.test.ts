@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { getCellCenter } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
@@ -782,5 +782,30 @@ describe("buildLinkHoverHighlight", () => {
     const result = buildLinkHoverHighlight(link, nodes, resolveSplit, squareCfg);
     expect(result).toHaveLength(1);
     expect(result[0].from).not.toEqual(result[0].to);
+  });
+});
+
+describe("selectFloorRemovalLosesFieldData", () => {
+  it("always returns false — field/preset state isn't per-floor yet", () => {
+    expect(selectFloorRemovalLosesFieldData("floor_1")).toBe(false);
+    expect(selectFloorRemovalLosesFieldData("anything")).toBe(false);
+  });
+});
+
+describe("selectFloorChangeLosesGenerationData", () => {
+  it("false when neither maze nor post-edit is dirty", () => {
+    expect(selectFloorChangeLosesGenerationData({ mazeDirty: false, postEditDirty: false })).toBe(false);
+  });
+
+  it("true when a generation result exists (mazeDirty)", () => {
+    expect(selectFloorChangeLosesGenerationData({ mazeDirty: true, postEditDirty: false })).toBe(true);
+  });
+
+  it("true when post-edit changes exist", () => {
+    expect(selectFloorChangeLosesGenerationData({ mazeDirty: false, postEditDirty: true })).toBe(true);
+  });
+
+  it("true when both are dirty", () => {
+    expect(selectFloorChangeLosesGenerationData({ mazeDirty: true, postEditDirty: true })).toBe(true);
   });
 });

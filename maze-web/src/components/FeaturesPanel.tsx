@@ -6,6 +6,7 @@ import type { FeatureStatus } from "./FeatureCard";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { HoverIconButton } from "./HoverIconButton";
 import { BasicConfigFeature, getHexOrientationLabel, getTriOrientationLabel } from "./features/BasicConfigFeature";
+import { FloorsFeature } from "./features/FloorsFeature";
 import { FieldSetupFeature, fieldSetupSubtitle, configCellCount } from "./features/FieldSetupFeature";
 import { PresetConnectionsFeature } from "./features/PresetConnectionsFeature";
 import { QualityFeature } from "./features/QualityFeature";
@@ -16,7 +17,7 @@ import { ImageExportFeature } from "./features/ImageExportFeature";
 import { resolveRenderMode } from "./features/imageExportRegistry";
 import { resolveIssue, isIssueEntirelyHidden } from "./issueRegistry";
 import { useMazeStore } from "../store/mazeStore";
-import type { TessellationKind, FeatureId, PngExportSettings } from "../store/mazeStore";
+import type { TessellationKind, FeatureId, FloorState, PngExportSettings } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers } from "../pixi/fieldEditUtils";
@@ -35,6 +36,23 @@ export function computeFieldStatus(
   const count = fieldEditMode === "custom" ? fieldPoints.size : configCellCount(tessellationConfig);
   if (count === 0) return "critical";
   return "set";
+}
+
+export interface FloorsCardData {
+  status: FeatureStatus;
+  comment: string;
+}
+
+// floors.length === 0 is unreachable through the UI (removeFloor refuses to drop the last floor,
+// default state always starts with one) — kept anyway per the issue's own status mapping, and as
+// a defensive fallback if a future path (e.g. a malformed loaded project) ever produces an empty
+// list.
+export function computeFloorsCard(floors: FloorState[]): FloorsCardData {
+  if (floors.length === 0) return { status: "critical", comment: m["status.floors_none"]() };
+  const titles = floors.map((f) => f.title);
+  const hasDuplicate = new Set(titles).size !== titles.length;
+  if (hasDuplicate) return { status: "warning", comment: m["status.floors_duplicate_title"]() };
+  return { status: "set", comment: m["status.floors_ready"]() };
 }
 
 export function presetConnectionsSubtitle(
@@ -132,6 +150,8 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
 }) {
   const openCard = useMazeStore((s) => s.openCard);
   const setOpenCard = useMazeStore((s) => s.setOpenCard);
+
+  const floors = useMazeStore((s) => s.floors);
 
   const tessellationConfirmed = useMazeStore((s) => s.tessellationConfirmed);
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
@@ -231,6 +251,8 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     return label;
   }
 
+  const floorsCard = computeFloorsCard(floors);
+
   const fieldStatus = computeFieldStatus(tessellationConfirmed, fieldEditMode, fieldPoints, tessellationConfig);
   const fieldSetupComment = fieldStatus === "unavailable"
     ? m["status.confirm_tessellation_first"]()
@@ -306,6 +328,15 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
         onOpen={() => handleToggle("basic_config")}
       >
         <BasicConfigFeature />
+      </FeatureCard>
+      <FeatureCard
+        title={m["floors.title"]()}
+        status={floorsCard.status}
+        comment={floorsCard.comment}
+        expanded={openCard === "floors"}
+        onOpen={() => handleToggle("floors")}
+      >
+        <FloorsFeature />
       </FeatureCard>
       <FeatureCard
         title={m["field.title"]()}

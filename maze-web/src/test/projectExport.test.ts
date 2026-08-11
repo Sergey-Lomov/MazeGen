@@ -66,6 +66,8 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     vectorByCorridorsSettings: DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
     vectorByCorridorsSectionsExpanded: {},
     pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
+    floors: [{ id: "floor_1", title: "Floor 1" }],
+    nextFloorNumber: 2,
   };
   return { ...base, ...overrides } as unknown as MazeState;
 }
@@ -475,6 +477,55 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);
     expect(result.quality.stages).toEqual([{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false, collapsed: false }]);
+  });
+
+  // --- Floors (GitHub issue #335) ---
+
+  it("defaults to a single floor when floors is absent (pre-floors project files)", () => {
+    const data = valid_without_optional_sections();
+    delete data.floors;
+    const result = parseAndValidate(data);
+    expect(result.floors.floors).toHaveLength(1);
+    expect(result.floors.floors[0].title).toBe("Floor 1");
+    expect(result.floors.nextFloorNumber).toBe(2);
+  });
+
+  it("round-trips floors", () => {
+    const data = valid_without_optional_sections();
+    const result = parseAndValidate(data);
+    expect(result.floors).toEqual({ floors: [{ id: "floor_1", title: "Floor 1" }], nextFloorNumber: 2 });
+  });
+
+  it("drops a malformed floor entry (missing title) and keeps the rest", () => {
+    const data = valid_without_optional_sections();
+    (data.floors as { floors: unknown[] }).floors = [
+      { id: "floor_1", title: "Floor 1" },
+      { id: "floor_2" }, // missing title
+    ];
+    const result = parseAndValidate(data);
+    expect(result.floors.floors).toEqual([{ id: "floor_1", title: "Floor 1" }]);
+  });
+
+  it("falls back to a single default floor when every entry is malformed", () => {
+    const data = valid_without_optional_sections();
+    (data.floors as { floors: unknown[] }).floors = [{ id: "floor_1" }];
+    const result = parseAndValidate(data);
+    expect(result.floors.floors).toHaveLength(1);
+    expect(result.floors.floors[0].title).toBe("Floor 1");
+  });
+
+  it("drops a floor entry sharing an id with an earlier entry", () => {
+    const data = valid_without_optional_sections();
+    (data.floors as { floors: unknown[] }).floors = [
+      { id: "floor_1", title: "Floor 1" },
+      { id: "floor_1", title: "Duplicate Id" },
+      { id: "floor_2", title: "Floor 2" },
+    ];
+    const result = parseAndValidate(data);
+    expect(result.floors.floors).toEqual([
+      { id: "floor_1", title: "Floor 1" },
+      { id: "floor_2", title: "Floor 2" },
+    ]);
   });
 
   function valid_without_optional_sections(): Record<string, unknown> {
