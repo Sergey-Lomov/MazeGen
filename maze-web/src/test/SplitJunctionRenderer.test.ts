@@ -6,6 +6,9 @@ vi.mock("pixi.js", () => {
     moveTo(...args: unknown[]) { this.calls.push({ fn: "moveTo", args }); return this; }
     lineTo(...args: unknown[]) { this.calls.push({ fn: "lineTo", args }); return this; }
     stroke(...args: unknown[]) { this.calls.push({ fn: "stroke", args }); return this; }
+    circle(...args: unknown[]) { this.calls.push({ fn: "circle", args }); return this; }
+    fill(...args: unknown[]) { this.calls.push({ fn: "fill", args }); return this; }
+    closePath(...args: unknown[]) { this.calls.push({ fn: "closePath", args }); return this; }
     clear() { this.calls = []; return this; }
   }
   class FakeContainer {
@@ -50,7 +53,7 @@ const passage = (pointKey: string, color: number) => ({
   color,
   pointKey,
   center: { x: 5, y: 5 },
-  wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false }],
+  wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false, atFaceStart: true, atFaceEnd: true }],
   connectors: [{ from: { x: 5, y: 0 }, to: { x: 5, y: 5 }, isUndefined: false }],
 });
 
@@ -149,12 +152,13 @@ describe("SplitJunctionRenderer.render special shapes", () => {
     expect(strokeCalls[0].args[0]).toMatchObject({ color: 0xabcdef, width: 5, join: "miter", cap: "butt" });
   });
 
-  it("a caller-supplied wallFaceStyleOverride's width applies to ordinary passages (segment and connector); color stays the node's own and cap is always forced to 'butt'", () => {
+  it("a caller-supplied wallFaceStyleOverride's width applies to ordinary passages (segment and connector); color stays the node's own; connector cap is always forced to 'butt', wallSegment cap follows the caller since its lone share spans the whole (free-ended) face", () => {
     // GitHub issue #304: width was previously hardcoded to WALL_THICKNESS for ordinary
-    // (non-special) passages, ignoring the caller's wall style entirely. Follow-up: cap must stay
-    // "butt" regardless of the caller's own cap — every segment/connector end here sits on a
-    // shared point (face boundary, tile corner, or hub), same as the special-shape fix, so a
-    // round/square cap protrudes past it.
+    // (non-special) passages, ignoring the caller's wall style entirely. GitHub issue #317: a
+    // wallSegment end landing on the face's own real boundary (`atFaceStart`/`atFaceEnd`, both true
+    // here since this node is alone on the face) has no neighboring sub-segment to butt against, so
+    // it follows the caller's own cap instead of always "butt". The connector still has no such
+    // concept (its outer end is always a hub or a shared face-division point) — always "butt".
     const renderer = new SplitJunctionRenderer(new Container());
     renderer.render(
       { passages: [passage("9,9", 0xaaaaaa)], wallFaces: [] },
@@ -162,9 +166,9 @@ describe("SplitJunctionRenderer.render special shapes", () => {
     );
     const strokeCalls = graphicsOf(renderer).calls.filter((c) => c.fn === "stroke");
     expect(strokeCalls).toHaveLength(2);
-    for (const call of strokeCalls) {
-      expect(call.args[0]).toMatchObject({ color: 0xaaaaaa, width: 7, cap: "butt" });
-    }
+    const [connectorStroke, segmentStroke] = strokeCalls;
+    expect(connectorStroke.args[0]).toMatchObject({ color: 0xaaaaaa, width: 7, cap: "butt" });
+    expect(segmentStroke.args[0]).toMatchObject({ color: 0xaaaaaa, width: 7, cap: "square" });
   });
 
   it("a node's own two wallSegments meeting at a shared angled vertex chain into one stroked path with the caller's join, instead of leaving a gap at butt-capped independent strokes", () => {
@@ -177,8 +181,8 @@ describe("SplitJunctionRenderer.render special shapes", () => {
       pointKey: "3,3",
       center: { x: 5, y: 5 },
       wallSegments: [
-        { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false },
-        { v0: { x: 10, y: 0 }, v1: { x: 15, y: 8 }, center: { x: 12.5, y: 4 }, isUndefined: false },
+        { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+        { v0: { x: 10, y: 0 }, v1: { x: 15, y: 8 }, center: { x: 12.5, y: 4 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
       ],
       connectors: [],
     };
@@ -204,9 +208,9 @@ describe("SplitJunctionRenderer.render special shapes", () => {
       pointKey: "7,7",
       center: { x: 5, y: 5 },
       wallSegments: [
-        { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false },
-        { v0: { x: 20, y: 0 }, v1: { x: 30, y: 0 }, center: { x: 25, y: 0 }, isUndefined: true },
-        { v0: { x: 30, y: 0 }, v1: { x: 35, y: 8 }, center: { x: 32.5, y: 4 }, isUndefined: true },
+        { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+        { v0: { x: 20, y: 0 }, v1: { x: 30, y: 0 }, center: { x: 25, y: 0 }, isUndefined: true, atFaceStart: false, atFaceEnd: false },
+        { v0: { x: 30, y: 0 }, v1: { x: 35, y: 8 }, center: { x: 32.5, y: 4 }, isUndefined: true, atFaceStart: false, atFaceEnd: false },
       ],
       connectors: [],
     };
@@ -233,5 +237,51 @@ describe("SplitJunctionRenderer.render special shapes", () => {
     // 2 for the bridge + 2 (segment/connector) for the unrelated point's ordinary passage.
     expect(strokeCalls).toHaveLength(4);
     expect(strokeCalls.some((c) => (c.args[0] as { color: number }).color === 0xaaaaaa)).toBe(true);
+  });
+
+  it("GitHub issue #317: a wallSegment's face-boundary free end gets a round cap patch while its internal-division end stays butt", () => {
+    // Two nodes divide the same face: node A's share runs from the face's real start (a free end,
+    // no neighbor sub-segment there) to the division point with node B (an internal end, always
+    // butt). Only the free end should get a patched cap.
+    const halfFacePassage = {
+      color: 0xaaaaaa,
+      pointKey: "4,4",
+      center: { x: 5, y: 5 },
+      wallSegments: [
+        { v0: { x: 0, y: 0 }, v1: { x: 5, y: 0 }, center: { x: 2.5, y: 0 }, isUndefined: false, atFaceStart: true, atFaceEnd: false },
+      ],
+      connectors: [],
+    };
+    const renderer = new SplitJunctionRenderer(new Container());
+    renderer.render({ passages: [halfFacePassage], wallFaces: [] });
+    const calls = graphicsOf(renderer).calls;
+    const strokeCalls = calls.filter((c) => c.fn === "stroke");
+    expect(strokeCalls).toHaveLength(1);
+    // No override at all -> default free-end cap is "round" (mirrors wallFaces' own no-override cap).
+    expect(strokeCalls[0].args[0]).toMatchObject({ cap: "butt" });
+    const circleCalls = calls.filter((c) => c.fn === "circle");
+    expect(circleCalls).toHaveLength(1);
+    expect(circleCalls[0].args[0]).toBe(0);
+    expect(circleCalls[0].args[1]).toBe(0);
+  });
+
+  it("GitHub issue #317: with a 'square' caller cap, the free end gets a square patch instead of a circle", () => {
+    const halfFacePassage = {
+      color: 0xaaaaaa,
+      pointKey: "6,6",
+      center: { x: 5, y: 5 },
+      wallSegments: [
+        { v0: { x: 0, y: 0 }, v1: { x: 5, y: 0 }, center: { x: 2.5, y: 0 }, isUndefined: false, atFaceStart: true, atFaceEnd: false },
+      ],
+      connectors: [],
+    };
+    const renderer = new SplitJunctionRenderer(new Container());
+    renderer.render({ passages: [halfFacePassage], wallFaces: [] }, { cap: "square" });
+    const calls = graphicsOf(renderer).calls;
+    expect(calls.filter((c) => c.fn === "circle")).toHaveLength(0);
+    expect(calls.filter((c) => c.fn === "closePath")).toHaveLength(1);
+    const fillCalls = calls.filter((c) => c.fn === "fill");
+    expect(fillCalls).toHaveLength(1);
+    expect(fillCalls[0].args[0]).toBe(0xaaaaaa);
   });
 });

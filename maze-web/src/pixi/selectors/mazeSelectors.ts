@@ -623,6 +623,8 @@ export function buildSplitPassagesCore<Id>(
             v0: s.v0, v1: s.v1, center,
             isUndefined: s.kind === "undefined",
             oneWayOut: s.kind === "one_way_out" ? true : s.kind === "one_way_in" ? false : undefined,
+            atFaceStart: s.atFaceStart,
+            atFaceEnd: s.atFaceEnd,
           };
         });
       const connectors = lines.map((line) => ({ from: line.from, to: line.to, oneWayOut: line.oneWayOut, isUndefined: line.isUndefined }));

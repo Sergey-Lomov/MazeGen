@@ -93,6 +93,12 @@ export type SplitPassage = {
      *  `oneWayOut`): `true` if this node's passage runs outward (away from the point's own center,
      *  toward the face), `false` if inward. `undefined` for a two-way passage. */
     oneWayOut?: boolean;
+    /** `true` when `v0`/`v1` lands on the face's own real endpoint (the boundary shared with a
+     *  neighboring tile/wall) rather than an internal division point between two nodes sharing this
+     *  face (GitHub issue #317) — a "free" end with no neighbor sub-segment to butt against, so
+     *  `SplitJunctionRenderer` caps it with the caller's own style instead of always `"butt"`. */
+    atFaceStart: boolean;
+    atFaceEnd: boolean;
   }[];
   /** Lines connecting the node's `wallSegments` together. Exactly one straight line between the
    *  two share centers when `wallSegments.length === 2` and both are plain two-way passages;

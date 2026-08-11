@@ -5,7 +5,7 @@ import { chainSegmentsAtSharedVertices } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { drawMarkerWidenPatches } from "../renderers/markerWidenPatches";
-import { drawOneWayChevronRow } from "../renderers/wallUtils";
+import { drawOneWayChevronRow, computeSquareCapPatch } from "../renderers/wallUtils";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
 import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildEffectiveSplitNodeColors, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
 import { computeVectorByCorridorsWarnings } from "../selectors/exportWarnings";
@@ -66,34 +66,6 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
     }
   }
   return markers;
-}
-
-/** Computes the square-cap "restore" patch geometry for a plain corridor chain's own free end that
- *  butts against a split tile at its *other* end (GitHub issue #314 follow-up) — pure function,
- *  extracted out of `renderAll`'s own split-touch cap-restore logic so this geometry is directly
- *  unit-testable rather than only reachable through mocked-`Graphics` draw-call assertions. `freeEnd`
- *  is the path's own ordinary (non-split) endpoint, `neighbor` is the adjacent path point one step
- *  in from it (used only to find the path's own local direction there), `width` is the stroke's own
- *  full width. Returns the four corners of a `width`-square cap extending `width/2` past `freeEnd`
- *  along the path's own direction, in draw order (a simple quad, not self-intersecting) — the same
- *  shape Pixi's own `cap: "square"` would draw at an ordinary (non-`butt`) stroke end. */
-export function computeSquareCapPatch(
-  freeEnd: { x: number; y: number },
-  neighbor: { x: number; y: number },
-  width: number,
-): [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }] {
-  const dx = freeEnd.x - neighbor.x, dy = freeEnd.y - neighbor.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len, uy = dy / len;
-  const half = width / 2;
-  const nx = -uy * half, ny = ux * half;
-  const tipX = freeEnd.x + ux * half, tipY = freeEnd.y + uy * half;
-  return [
-    { x: freeEnd.x + nx, y: freeEnd.y + ny },
-    { x: tipX + nx, y: tipY + ny },
-    { x: tipX - nx, y: tipY - ny },
-    { x: freeEnd.x - nx, y: freeEnd.y - ny },
-  ];
 }
 
 /** Each face's own perpendicular at `p`, oriented so its dot product with `other - p` is positive

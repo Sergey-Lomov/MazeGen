@@ -70,6 +70,15 @@ export interface SplitFaceSegment {
   kind: SplitFaceKind;
   v0: { x: number; y: number };
   v1: { x: number; y: number };
+  /** `true` when `v0`/`v1` lands exactly on the face's own real endpoint (`face.v0`/`face.v1`, the
+   *  boundary shared with a neighboring tile/wall) rather than an internal division point between
+   *  two nodes sharing this face (GitHub issue #317) — a shape sharing this face with another node
+   *  divides it into contiguous sub-segments in slot order, so only the first share's `v0` and the
+   *  last share's `v1` ever touch the face's real ends; a lone node on the face gets both. Lets
+   *  `SplitJunctionRenderer` cap a "free" end (no neighbor sub-segment to butt against) with the
+   *  caller's own join/cap style instead of the always-`"butt"` internal-division ends. */
+  atFaceStart: boolean;
+  atFaceEnd: boolean;
 }
 
 export interface SplitFaceLayout {
@@ -131,6 +140,8 @@ export function computeSplitFaceLayouts(
         kind: entry.kind,
         v0: { x: face.v0.x + (face.v1.x - face.v0.x) * t0, y: face.v0.y + (face.v1.y - face.v0.y) * t0 },
         v1: { x: face.v0.x + (face.v1.x - face.v0.x) * t1, y: face.v0.y + (face.v1.y - face.v0.y) * t1 },
+        atFaceStart: i === 0,
+        atFaceEnd: i === n - 1,
       };
     });
     return { segments, allWall };

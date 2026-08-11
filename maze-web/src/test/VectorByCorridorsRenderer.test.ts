@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Graphics } from "pixi.js";
-import { VectorByCorridorsRenderer, buildTeleportWidenMarkers, computeSquareCapPatch, computeDiagonalGapPatchGeometry } from "../pixi/imageExport/VectorByCorridorsRenderer";
+import { VectorByCorridorsRenderer, buildTeleportWidenMarkers, computeDiagonalGapPatchGeometry } from "../pixi/imageExport/VectorByCorridorsRenderer";
+import { computeSquareCapPatch } from "../pixi/renderers/wallUtils";
 import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildSplitPassages } from "../pixi/selectors/mazeSelectors";
 import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
 import { TILE_SIZE } from "../pixi/constants";
@@ -552,12 +553,12 @@ describe("VectorByCorridorsRenderer", () => {
         passages: [
           {
             color: 0xaaaaaa, pointKey: "0,0", center: { x: 5, y: 5 },
-            wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 0, y: 10 }, center: { x: 10, y: 5 }, isUndefined: false }],
+            wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 0, y: 10 }, center: { x: 10, y: 5 }, isUndefined: false, atFaceStart: false, atFaceEnd: false }],
             connectors: [],
           },
           {
             color: 0xbbbbbb, pointKey: "0,0", center: { x: 5, y: 5 },
-            wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 10 }, isUndefined: false }],
+            wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 10 }, isUndefined: false, atFaceStart: false, atFaceEnd: false }],
             connectors: [],
           },
         ],
@@ -578,9 +579,9 @@ describe("VectorByCorridorsRenderer", () => {
         passages: [{
           color: 0xaaaaaa, pointKey: "0,0", center: { x: 5, y: 5 },
           wallSegments: [
-            { v0: { x: 0, y: 0 }, v1: { x: 0, y: 0 }, center: { x: 10, y: 5 }, isUndefined: false },
-            { v0: { x: 0, y: 0 }, v1: { x: 0, y: 0 }, center: { x: 0, y: 5 }, isUndefined: false },
-            { v0: { x: 0, y: 0 }, v1: { x: 0, y: 0 }, center: { x: 5, y: 10 }, isUndefined: false },
+            { v0: { x: 0, y: 0 }, v1: { x: 0, y: 0 }, center: { x: 10, y: 5 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+            { v0: { x: 0, y: 0 }, v1: { x: 0, y: 0 }, center: { x: 0, y: 5 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
+            { v0: { x: 0, y: 0 }, v1: { x: 0, y: 0 }, center: { x: 5, y: 10 }, isUndefined: false, atFaceStart: false, atFaceEnd: false },
           ],
           connectors: [],
         }],
@@ -597,7 +598,7 @@ describe("VectorByCorridorsRenderer", () => {
       vi.mocked(buildSplitPassages).mockReturnValueOnce({
         passages: [{
           color: 0xff0000, pointKey: "0,0", center: { x: 5, y: 5 },
-          wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: true }],
+          wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: true, atFaceStart: false, atFaceEnd: false }],
           connectors: [],
         }],
         wallFaces: [],
@@ -613,7 +614,7 @@ describe("VectorByCorridorsRenderer", () => {
       vi.mocked(buildSplitPassages).mockReturnValueOnce({
         passages: [{
           color: 0xaaaaaa, pointKey: "0,0", center: { x: 5, y: 5 },
-          wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false }],
+          wallSegments: [{ v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 }, center: { x: 5, y: 0 }, isUndefined: false, atFaceStart: false, atFaceEnd: false }],
           connectors: [],
         }],
         wallFaces: [],
@@ -629,7 +630,7 @@ describe("VectorByCorridorsRenderer", () => {
       vi.mocked(buildSplitPassages).mockReturnValueOnce({
         passages: [{
           color: 0xaaaaaa, pointKey: "0,0", center: { x: 20, y: 20 },
-          wallSegments: [{ v0: { x: 0, y: 20 }, v1: { x: 0, y: 20 }, center: { x: 0, y: 20 }, isUndefined: false }],
+          wallSegments: [{ v0: { x: 0, y: 20 }, v1: { x: 0, y: 20 }, center: { x: 0, y: 20 }, isUndefined: false, atFaceStart: false, atFaceEnd: false }],
           connectors: [],
         }],
         wallFaces: [],
@@ -738,7 +739,7 @@ describe("VectorByCorridorsRenderer", () => {
       vi.mocked(buildSplitPassages).mockReturnValueOnce({
         passages: [{
           color: 0xaaaaaa, pointKey: "0,0", center: { x: 20, y: 20 },
-          wallSegments: [{ v0: { x: 0, y: 20 }, v1: { x: 0, y: 20 }, center: { x: 0, y: 20 }, isUndefined: false }],
+          wallSegments: [{ v0: { x: 0, y: 20 }, v1: { x: 0, y: 20 }, center: { x: 0, y: 20 }, isUndefined: false, atFaceStart: false, atFaceEnd: false }],
           connectors: [],
         }],
         wallFaces: [],

@@ -32,9 +32,13 @@ describe("computeSplitFaceLayouts", () => {
     expect(layouts[0].segments).toHaveLength(1);
     expect(layouts[0].segments[0].v0).toEqual({ x: 0, y: 0 });
     expect(layouts[0].segments[0].v1).toEqual({ x: 10, y: 0 });
+    // GitHub issue #317: a lone node's segment spans the whole face, so both its own ends land on
+    // the face's real boundary — no neighbor sub-segment on either side to butt against.
+    expect(layouts[0].segments[0].atFaceStart).toBe(true);
+    expect(layouts[0].segments[0].atFaceEnd).toBe(true);
   });
 
-  it("two connected nodes split the face into two equal, non-overlapping halves", () => {
+  it("two connected nodes split the face into two equal, non-overlapping halves; only the outer ends touch the face's real boundary (GitHub issue #317)", () => {
     const kinds: SplitNodeFaceKind[][] = [[{ nodeIndex: 0, kind: "passage" }, { nodeIndex: 1, kind: "one_way_out" }]];
     const layouts = computeSplitFaceLayouts([face], kinds, null);
     const [a, b] = layouts[0].segments;
@@ -42,12 +46,30 @@ describe("computeSplitFaceLayouts", () => {
     expect(a.v1).toEqual({ x: 5, y: 0 });
     expect(b.v0).toEqual({ x: 5, y: 0 });
     expect(b.v1).toEqual({ x: 10, y: 0 });
+    // `a.v0` and `b.v1` sit on the face's own real endpoints (free ends); `a.v1`/`b.v0` are the
+    // same internal division point shared between the two nodes (never a free end).
+    expect(a.atFaceStart).toBe(true);
+    expect(a.atFaceEnd).toBe(false);
+    expect(b.atFaceStart).toBe(false);
+    expect(b.atFaceEnd).toBe(true);
   });
 
   it("without an active node, segments are ordered by node index", () => {
     const kinds: SplitNodeFaceKind[][] = [[{ nodeIndex: 2, kind: "passage" }, { nodeIndex: 0, kind: "passage" }]];
     const layouts = computeSplitFaceLayouts([face], kinds, null);
     expect(layouts[0].segments.map(s => s.nodeIndex)).toEqual([0, 2]);
+  });
+
+  it("three connected nodes: only the first/last share touch the face's real boundary, the middle share's both ends are internal divisions (GitHub issue #317)", () => {
+    const kinds: SplitNodeFaceKind[][] = [[
+      { nodeIndex: 0, kind: "passage" },
+      { nodeIndex: 1, kind: "passage" },
+      { nodeIndex: 2, kind: "passage" },
+    ]];
+    const [first, middle, last] = computeSplitFaceLayouts([face], kinds, null)[0].segments;
+    expect([first.atFaceStart, first.atFaceEnd]).toEqual([true, false]);
+    expect([middle.atFaceStart, middle.atFaceEnd]).toEqual([false, false]);
+    expect([last.atFaceStart, last.atFaceEnd]).toEqual([false, true]);
   });
 
   it("the active node's segment always sorts last (drawn on top), regardless of node index", () => {

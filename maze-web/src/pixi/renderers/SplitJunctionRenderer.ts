@@ -1,11 +1,13 @@
 import { Container, Graphics } from "pixi.js";
 import type { SplitPassage, SplitSpecialShape, SplitStyleOverride, WallStyleOverride } from "./types";
-import { drawDirectionArrow } from "./wallUtils";
+import { drawDirectionArrow, computeSquareCapPatch } from "./wallUtils";
 import { chainSegmentsAtSharedVertices } from "./WallRenderer";
 import { WALL_THICKNESS } from "../renderConstants";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
 import { disabledOfNumber } from "../../styles/palette";
+
+const pointKeyOf = (p: { x: number; y: number }) => `${Math.round(p.x * 100)},${Math.round(p.y * 100)}`;
 
 const DEFAULT_JOIN = "round" as const;
 
@@ -122,26 +124,32 @@ export class SplitJunctionRenderer {
     // own node-identity *color* stays fixed (GitHub issue #304: width was previously hardcoded to
     // `WALL_THICKNESS`, ignoring the caller's wall style entirely).
     //
-    // `cap: "butt"` at a path's own free ends (GitHub issue #304 follow-up), never the caller's
-    // own cap — every wallSegment/connector free end sits exactly on a shared point (a
-    // face-division boundary, a tile corner, or the hub point several other nodes' own connectors
-    // also meet at), same reasoning as the special-shape fix (GitHub issue #294): a round or
-    // square cap would protrude past that shared point into the neighboring segment/wall.
+    // `cap: "butt"` by default (GitHub issue #304 follow-up) — a connector's outer end always sits
+    // on a shared point (a face-division boundary or the hub point several other nodes' own
+    // connectors also meet at), same reasoning as the special-shape fix (GitHub issue #294): a
+    // round or square cap would protrude past it into the neighboring segment. A wallSegment end
+    // can instead be a genuine free end (GitHub issue #317, see `freeEndCap` below) with nothing to
+    // protrude into, in which case it follows the caller's own cap instead.
     const passageStrokeBase = {
       width: wallFaceStyleOverride?.width ?? WALL_THICKNESS,
       cap: "butt",
     } as const;
     // `join` only follows the caller's own style for wallSegments, and only where it can actually
     // apply — two of the *same* node's own segments meeting at a shared tile vertex under an angle
-    // (adjacent faces on a hexagon, say) need a real join there, not a `butt` cap, or the outer
-    // side of that angle opens into a visible gap (GitHub issue #304 follow-up). Segments are
-    // chained per node via `chainSegmentsAtSharedVertices` (same helper `wallFaces` uses) so a
-    // `join` renders at that interior vertex; `cap: "butt"` still applies at each chained path's
-    // own two free ends (a boundary shared with another node/wallFace, never colinear with this
-    // node's own next segment). Connectors never chain with anything (fan-out lines meet only at
-    // the hub, radiating at unrelated angles with no shared path to join along) — `cap: "butt"`
-    // only, same as before.
+    // (adjacent faces on a hexagon, say) need a real join there, not a cap, or the outer side of
+    // that angle opens into a visible gap (GitHub issue #304 follow-up). Segments are chained per
+    // node via `chainSegmentsAtSharedVertices` (same helper `wallFaces` uses) so a `join` renders
+    // at that interior vertex; a chained path's own two outer ends are cap-checked separately (see
+    // `freeEndCap` below). Connectors never chain with anything (fan-out lines meet only at the
+    // hub, radiating at unrelated angles with no shared path to join along) — `cap: "butt"` only,
+    // same as before.
     const wallSegmentJoin = wallFaceStyleOverride?.join ?? DEFAULT_JOIN;
+    // The caller's own cap style, for a wallSegment end that sits on the face's own real endpoint
+    // (GitHub issue #317) — that end has no neighboring sub-segment to butt against (unlike a
+    // division point between two nodes sharing the same face, still always `"butt"`), so it reads
+    // as a genuine free end and should follow the caller's cap the same way `wallFaces` does when
+    // no override is given (`cap: "round"`).
+    const freeEndCap = wallFaceStyleOverride?.cap ?? "round";
 
     for (const passage of data.passages) {
       if (specialPointKeys.has(passage.pointKey)) continue;
@@ -167,6 +175,18 @@ export class SplitJunctionRenderer {
         }
       }
 
+      // Free-end lookup (GitHub issue #317) — points where some segment's `v0`/`v1` lands on the
+      // face's own real endpoint (`atFaceStart`/`atFaceEnd`), keyed the same way
+      // `chainSegmentsAtSharedVertices` keys its own vertices so a chained path's first/last point
+      // can be looked up directly. A chained path's *interior* points (division points between two
+      // nodes sharing a face) are never in this set, so they keep `cap: "butt"` implicitly (the
+      // chain draws as one continuous stroke; only its two outer ends are ever cap-checked below).
+      const freeEnds = new Set<string>();
+      for (const s of passage.wallSegments) {
+        if (s.atFaceStart) freeEnds.add(pointKeyOf(s.v0));
+        if (s.atFaceEnd) freeEnds.add(pointKeyOf(s.v1));
+      }
+
       const definedSegments = passage.wallSegments.filter((s) => !s.isUndefined);
       const undefinedSegments = passage.wallSegments.filter((s) => s.isUndefined);
       for (const [segs, color] of [
@@ -174,9 +194,34 @@ export class SplitJunctionRenderer {
         [undefinedSegments, disabledColor],
       ] as const) {
         for (const path of chainSegmentsAtSharedVertices(segs)) {
+          const startsFree = freeEnds.has(pointKeyOf(path[0]));
+          const endsFree = freeEnds.has(pointKeyOf(path[path.length - 1]));
+          // Pixi's `stroke()` applies one `cap` to both of a path's ends. Both free (e.g. a lone
+          // node's single segment spanning the whole face): draw once with the real cap directly.
+          // Otherwise: draw `butt` (safe for any non-free end), then patch each individual free
+          // end's own cap in separately as a standalone filled shape (same technique as
+          // `VectorByCorridorsRenderer`'s free-end restore).
+          const bothFree = startsFree && endsFree;
+          const strokeCap = bothFree ? freeEndCap : "butt";
+
           this.g.moveTo(path[0].x, path[0].y);
           for (let i = 1; i < path.length; i++) this.g.lineTo(path[i].x, path[i].y);
-          this.g.stroke({ ...passageStrokeBase, color, join: wallSegmentJoin });
+          this.g.stroke({ ...passageStrokeBase, color, join: wallSegmentJoin, cap: strokeCap });
+
+          if (!bothFree) {
+            for (const [isFree, freeEnd, neighbor] of [
+              [startsFree, path[0], path[1]],
+              [endsFree, path[path.length - 1], path[path.length - 2]],
+            ] as const) {
+              if (!isFree) continue;
+              if (freeEndCap === "round") {
+                this.g.circle(freeEnd.x, freeEnd.y, passageStrokeBase.width / 2).fill(color);
+              } else if (freeEndCap === "square") {
+                const [p0, p1, p2, p3] = computeSquareCapPatch(freeEnd, neighbor, passageStrokeBase.width);
+                this.g.moveTo(p0.x, p0.y).lineTo(p1.x, p1.y).lineTo(p2.x, p2.y).lineTo(p3.x, p3.y).closePath().fill(color);
+              }
+            }
+          }
         }
       }
     }
