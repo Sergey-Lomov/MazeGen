@@ -9,6 +9,7 @@ import { ToggleRow } from "../ToggleRow";
 import { SectionHeader } from "../SectionHeader";
 import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
+import { SharedStyleSection, sharedStyleFieldReset } from "./SharedStyleSection";
 import { computeVectorByCorridorsWarnings } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
@@ -74,6 +75,13 @@ export function VectorByCorridorsSettingsPanel() {
   const setSplitSpecialShapes = useMazeStore((s) => s.setVectorByCorridorsSplitSpecialShapes);
   const setSplitGapWidth = useMazeStore((s) => s.setVectorByCorridorsSplitGapWidth);
   const setSplitDiagonalBowAmount = useMazeStore((s) => s.setVectorByCorridorsSplitDiagonalBowAmount);
+  const setSharedCornerStyle = useMazeStore((s) => s.setVectorByCorridorsSharedCornerStyle);
+  const setSharedMarkerSize = useMazeStore((s) => s.setVectorByCorridorsSharedMarkerSize);
+  const setSharedMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsSharedMarkerBorderWidth);
+  const setSharedGapWidth = useMazeStore((s) => s.setVectorByCorridorsSharedGapWidth);
+  const resetSharedStyleField = useMazeStore((s) => s.resetVectorByCorridorsSharedStyleField);
+  const forceSharedStyle = useMazeStore((s) => s.forceVectorByCorridorsSharedStyle);
+  const resetAllSettings = useMazeStore((s) => s.resetVectorByCorridorsSettings);
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByCorridorsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByCorridorsSectionExpanded);
@@ -132,6 +140,28 @@ export function VectorByCorridorsSettingsPanel() {
   return (
     <div style={styles.root}>
       <SectionHeader
+        label={m["image_export.vector_by_walls.section_shared_style"]()}
+        expanded={isExpanded("shared_style")}
+        onToggle={() => toggleSection("shared_style")}
+      />
+      {isExpanded("shared_style") && (
+        <SharedStyleSection
+          cornerStyle={settings.sharedStyle.cornerStyle}
+          markerSize={settings.sharedStyle.markerSize}
+          markerBorderWidth={settings.sharedStyle.markerBorderWidth}
+          gapWidth={settings.sharedStyle.gapWidth}
+          onCornerStyleChange={setSharedCornerStyle}
+          onMarkerSizeChange={setSharedMarkerSize}
+          onMarkerBorderWidthChange={setSharedMarkerBorderWidth}
+          onGapWidthChange={setSharedGapWidth}
+          onForce={forceSharedStyle}
+          onResetAll={resetAllSettings}
+        />
+      )}
+
+      <div style={styles.divider} />
+
+      <SectionHeader
         label={m["image_export.vector_by_walls.section_background"]()}
         expanded={isExpanded("background")}
         onToggle={() => toggleSection("background")}
@@ -167,6 +197,7 @@ export function VectorByCorridorsSettingsPanel() {
               { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
             ]}
             onChange={setJoin}
+            resetButton={sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "join", () => resetSharedStyleField("cornerStyle", "join"))}
           />
           <SliderRow
             label={m["image_export.vector_by_corridors.thickness"]()}
@@ -220,6 +251,12 @@ export function VectorByCorridorsSettingsPanel() {
               if (patch.gapWidth !== undefined) setStartMarkerGapWidth(patch.gapWidth);
               if (patch.size !== undefined) setStartMarkerSize(patch.size);
             }}
+            resetButtons={{
+              cornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "startMarker", () => resetSharedStyleField("cornerStyle", "startMarker")),
+              size: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "startMarker", () => resetSharedStyleField("markerSize", "startMarker")),
+              borderWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerBorderWidth", "startMarker", () => resetSharedStyleField("markerBorderWidth", "startMarker")),
+              gapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "startMarker", () => resetSharedStyleField("gapWidth", "startMarker")),
+            }}
           />
           <MarkerSettingsGroup
             title={m["image_export.vector_by_walls.markers_finish"]()}
@@ -232,6 +269,12 @@ export function VectorByCorridorsSettingsPanel() {
               if (patch.borderWidth !== undefined) setFinishMarkerBorderWidth(patch.borderWidth);
               if (patch.gapWidth !== undefined) setFinishMarkerGapWidth(patch.gapWidth);
               if (patch.size !== undefined) setFinishMarkerSize(patch.size);
+            }}
+            resetButtons={{
+              cornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "finishMarker", () => resetSharedStyleField("cornerStyle", "finishMarker")),
+              size: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "finishMarker", () => resetSharedStyleField("markerSize", "finishMarker")),
+              borderWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerBorderWidth", "finishMarker", () => resetSharedStyleField("markerBorderWidth", "finishMarker")),
+              gapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "finishMarker", () => resetSharedStyleField("gapWidth", "finishMarker")),
             }}
           />
         </div>
@@ -306,6 +349,7 @@ export function VectorByCorridorsSettingsPanel() {
                   { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
                 ]}
                 onChange={(join) => patchOneWaySettings({ oneWayJoin: join })}
+                resetButton={sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "oneWayJoin", () => resetSharedStyleField("cornerStyle", "oneWayJoin"))}
               />
             </div>
           )}
@@ -329,6 +373,13 @@ export function VectorByCorridorsSettingsPanel() {
               onGroupOverrideChange={setTeleportGroupOverride}
               teleportGroups={teleportGroups}
               teleportCollisionKeys={teleportCollisionKeys}
+              resetButtons={{
+                lineCornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "teleportLine", () => resetSharedStyleField("cornerStyle", "teleportLine")),
+                lineSize: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "teleportLine", () => resetSharedStyleField("markerSize", "teleportLine")),
+                edgeBorderWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerBorderWidth", "teleportEdge", () => resetSharedStyleField("markerBorderWidth", "teleportEdge")),
+                edgeGapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "teleportEdge", () => resetSharedStyleField("gapWidth", "teleportEdge")),
+                connectorGapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "teleportConnector", () => resetSharedStyleField("gapWidth", "teleportConnector")),
+              }}
             />
           )}
         </>
@@ -367,6 +418,7 @@ export function VectorByCorridorsSettingsPanel() {
                 step={1}
                 format={(v) => String(v)}
                 disabled={!settings.splitSpecialShapes}
+                resetButton={sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "split", () => resetSharedStyleField("gapWidth", "split"))}
               />
               <SliderRow
                 label={m["image_export.vector_by_corridors.split_diagonal_bow_amount"]()}

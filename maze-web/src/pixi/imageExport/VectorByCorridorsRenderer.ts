@@ -14,7 +14,6 @@ import type { Viewport, TeleportEdge, MarkerData, SplitPassage, SplitSpecialShap
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
-import { canvas } from "../colorTokens";
 import { disabledOfNumber } from "../../styles/palette";
 import type { ModeRenderer } from "./modeRendererFactory";
 import { resolveBackgroundColor, measureContentMargin, type ExportMargin } from "./exportMargins";
@@ -543,8 +542,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
     const markerData = buildMazeMarkers(
       nodeById, effStart, effFinish, cfg,
-      buildMarkerStyle(settings.startMarker, canvas.stage.background),
-      buildMarkerStyle(settings.finishMarker, canvas.stage.background),
+      buildMarkerStyle(settings.startMarker, settings.color),
+      buildMarkerStyle(settings.finishMarker, settings.color),
       edges,
     );
 

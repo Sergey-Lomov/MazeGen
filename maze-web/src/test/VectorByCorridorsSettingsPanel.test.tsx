@@ -80,7 +80,11 @@ describe("VectorByCorridorsSettingsPanel", () => {
 
   it("changing the join select updates the store", () => {
     render(<VectorByCorridorsSettingsPanel />);
-    const select = screen.getByDisplayValue(m["image_export.vector_by_walls.wall_join_round"]());
+    // The "Cells" section's own join select is the first `<select>` in document order (GitHub
+    // issue #322 follow-up: `startMarker.cornerStyle`'s default changed from "sharp" to "round",
+    // so `getByDisplayValue("Round")` is now ambiguous with the "Waypoints" section's own marker
+    // corner-style select).
+    const select = document.querySelectorAll("select")[0];
     fireEvent.change(select, { target: { value: "miter" } });
     expect(useMazeStore.getState().vectorByCorridorsSettings.join).toBe("miter");
   });
@@ -186,8 +190,12 @@ describe("VectorByCorridorsSettingsPanel", () => {
     it("changing the teleport size slider patches vectorByCorridorsSettings, same reuse convention as MarkerSettingsGroup", () => {
       useMazeStore.setState({ vectorByCorridorsSectionsExpanded: { cells: true, waypoints: true, teleports: true } });
       render(<VectorByCorridorsSettingsPanel />);
-      const slider = screen.getByDisplayValue(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.teleportLineSize.toFixed(2));
-      fireEvent.change(slider, { target: { value: "0.5" } });
+      // GitHub issue #322 follow-up: `teleportLineSize` now shares its default (0.16) with
+      // `startMarker`/`finishMarker.size`, so `getByDisplayValue` alone is ambiguous with the
+      // "Waypoints" section's own size sliders also expanded — the Teleports section's slider is
+      // the last of the three "0.16" sliders in document order.
+      const sliders = screen.getAllByDisplayValue(DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.teleportLineSize.toFixed(2));
+      fireEvent.change(sliders[sliders.length - 1], { target: { value: "0.5" } });
       expect(useMazeStore.getState().vectorByCorridorsSettings.teleportLineSize).toBe(0.5);
     });
   });

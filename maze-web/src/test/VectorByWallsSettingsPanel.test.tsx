@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { VectorByWallsSettingsPanel } from "../components/features/VectorByWallsSettingsPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
+import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE } from "../store/slices/imageExportSlice";
 import * as m from "~/paraglide/messages";
 
 // getCellCenter (via squareGeometry's getCartesian, used by buildTeleportEdges for the Teleports
@@ -68,6 +69,7 @@ beforeEach(() => {
       teleportGroupOverrides: {},
       splitNodeColors: [],
       splitSpecialShapes: false,
+      sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
     },
   });
 });
@@ -117,6 +119,7 @@ describe("VectorByWallsSettingsPanel", () => {
         teleportArrowMode: "center", teleportArrowPeriod: 5, teleportArrowSize: 6, teleportConnectorGapWidth: 0,
         teleportGroupCustomization: false, teleportGroupOverrides: {},
         splitNodeColors: [], splitSpecialShapes: false,
+        sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
       },
     });
     render(<VectorByWallsSettingsPanel />);

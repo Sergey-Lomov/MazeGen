@@ -51,7 +51,7 @@ Renders the maze **1:1 identically** to the main generation/post-edit view — s
 Its settings panel (`VectorByWallsSettingsPanel.tsx`) has six collapsible sections, backed by `VectorByWallsSettings` (`imageExportSlice.ts`), all collapsed by default:
 - **Background** (issue #289) — background color, grid visibility, grid color. Defaults match the editor's own canvas/grid colors (`canvas.stage.background`/`canvas.grid.line`) so the exported image looks identical to the editor view until changed.
 - **Tiles** (issues #290/#291) — floor fill color, wall color, corners & ends (round/miter, wall thickness 1-20). Floor and wall settings are folded into one section because both draw on the maze's cells/tiles, unlike Background which draws on the viewport (background rect, grid lines). Defaults match `canvas.floor.default`/`canvas.wall.default`/`WALL_THICKNESS`/round, so the exported image looks identical to the editor view until changed. Wall settings are applied via `WallStyleOverride` (`pixi/renderers/types.ts`) to `WallRenderer`'s `solid` `WallStyle` segments, `SplitJunctionRenderer`'s `wallFaces` segments, and the closed-cells fill color — never the `faint`/`background` `WallStyle` variants or a split passage's own node-identity color, which stay fixed. The "corners & ends" setting drives Pixi's stroke `join` and `cap` together (`round`+`round` or `miter`+`square`) — a `join` only renders where two segments share one continuous stroked path, so `chainSegmentsAtSharedVertices` (`WallRenderer.ts`) first groups wall segments into polylines wherever exactly two segments meet at a vertex (ordinary corners); vertices with any other segment count (T-junctions, dead-ends) stay as separate path endpoints, where `cap` applies instead. **Vertex-chaining only runs when a `WallStyleOverride` is actually passed** — `WallRenderer.render`/`SplitJunctionRenderer.render` fall back to the original independent per-segment stroke (no chaining, no join) when called without one, so `GenerationRenderer`, `PostEditRenderer`, `PresetConnectionsRenderer` and `MazeOverlayRenderer` (all default callers) keep their exact prior look unchanged.
-- **Waypoints** (issue #296, corner style/size/gap width added in #302) — start/finish marker appearance, as two plain-label sub-groups ("Start"/"Finish") inside the one collapsible section rather than two separate `SectionHeader`s (too small to warrant independent collapse each). Row order per sub-group: shape, corner style (sharp/round — own per-marker setting, not shared with the Teleports section's `teleportLineCornerStyle`), size (0-1, fraction of the tile size — same convention as `teleportLineSize`), fill color, border color, border width (0-10, `0` draws no border — no separate show-border toggle), gap width (0-10, `0` draws no gap — no separate show-gap toggle). Backed by `MarkerSettings` (`storeTypes.ts`); defaults are a plain sharp-cornered circle matching `canvas.node.start`/`canvas.node.finish` with no border/gap and a size matching the editor's own fixed `NODE_RADIUS * 1.5` marker radius, so the exported image looks identical to the editor view until changed. `buildMazeMarkers` (`mazeSelectors.ts`) takes the marker style as an optional `MarkerStyle` parameter (defaulting to that same borderless sharp circle at the fixed radius) so every other caller — `GenerationRenderer`, `PostEditRenderer`, `MazeOverlayRenderer` — is unaffected; `VectorByWallsRenderer` is the only caller passing a user-configured style, built by its own `buildMarkerStyle` helper which merges `gapColor: floorColor` into the `MarkerSettings` (`gapColor` is not itself a `MarkerSettings` field — always mirrors the floor color, same convention as the one-way indicator's own gap color). `WaypointsRenderer` (`pixi/renderers/WaypointsRenderer.ts`) draws the shape via the shared `drawMarkerShape` (`pixi/renderers/markerShapes.ts` — see "Shared marker shape set" below, `rounded` param driven by `cornerStyle`), then a floor-colored gap ring (widened by `borderWidth + gapWidth`) underneath when `gapWidth > 0`, matching the connector gap's own draw-wider-underneath convention, then strokes a border on top (`alignment: 0`, pixi's outer alignment) when `borderWidth > 0`. Every border/gap stroke in this codebase now uses `alignment: 0` uniformly (GitHub issue #302 follow-up — previously the waypoint marker's border defaulted to pixi's centered `0.5`, the only one that didn't match) specifically so a marker/indicator's own `radius`-like field always denotes its true fill/inner edge and its gap-ring formula is always `radius + borderWidth + gapWidth` everywhere (teleport edge marker, one-way indicator, waypoint marker alike) rather than needing a per-caller `borderWidth/2` correction.
+- **Waypoints** (issue #296, corner style/size/gap width added in #302) — start/finish marker appearance, as two plain-label sub-groups ("Start"/"Finish") inside the one collapsible section rather than two separate `SectionHeader`s (too small to warrant independent collapse each). Row order per sub-group: shape, corner style (sharp/round — own per-marker setting, not shared with the Teleports section's `teleportLineCornerStyle`), size (0-1, fraction of the tile size — same convention as `teleportLineSize`), fill color, border color, border width (0-10, `0` draws no border — no separate show-border toggle), gap width (0-10, `0` draws no gap — no separate show-gap toggle). Backed by `MarkerSettings` (`storeTypes.ts`); `shape`/`fillColor`/`borderColor` default to a plain circle matching `canvas.node.start`/`canvas.node.finish`, while `cornerStyle`/`size`/`borderWidth`/`gapWidth` default to whatever the "Shared style" section's own defaults are (round corners, size 0.16, border/gap width 3 — see the "Shared style" section below; these four fields are centralized, not independently hardcoded here) — this no longer matches the editor's own fixed `NODE_RADIUS * 1.5` marker radius/no-border look exactly (GitHub issue #322 changed the panel's own default appearance deliberately, trading exact editor-parity for a consistent shared-style baseline). `buildMazeMarkers` (`mazeSelectors.ts`) takes the marker style as an optional `MarkerStyle` parameter (defaulting to a borderless sharp circle at the editor's own fixed radius, unrelated to `VectorByWallsSettings`' own shared-style defaults) so every other caller — `GenerationRenderer`, `PostEditRenderer`, `MazeOverlayRenderer` — is unaffected; `VectorByWallsRenderer` is the only caller passing a user-configured style, built by its own `buildMarkerStyle` helper which merges `gapColor: floorColor` into the `MarkerSettings` (`gapColor` is not itself a `MarkerSettings` field — always mirrors the floor color, same convention as the one-way indicator's own gap color). `WaypointsRenderer` (`pixi/renderers/WaypointsRenderer.ts`) draws the shape via the shared `drawMarkerShape` (`pixi/renderers/markerShapes.ts` — see "Shared marker shape set" below, `rounded` param driven by `cornerStyle`), then a floor-colored gap ring (widened by `borderWidth + gapWidth`) underneath when `gapWidth > 0`, matching the connector gap's own draw-wider-underneath convention, then strokes a border on top (`alignment: 0`, pixi's outer alignment) when `borderWidth > 0`. Every border/gap stroke in this codebase now uses `alignment: 0` uniformly (GitHub issue #302 follow-up — previously the waypoint marker's border defaulted to pixi's centered `0.5`, the only one that didn't match) specifically so a marker/indicator's own `radius`-like field always denotes its true fill/inner edge and its gap-ring formula is always `radius + borderWidth + gapWidth` everywhere (teleport edge marker, one-way indicator, waypoint marker alike) rather than needing a per-caller `borderWidth/2` correction.
 - **One-ways** (issue #292, placed after Waypoints per the issue's own section order; gap width renamed from border width in #302 follow-up, consistent with the marker/connector gap convention — it's a floor-colored separation gap, not a real border) — the one-way indicator's pattern (triangle/chevron/arrow), its own color (always set — no toggleable custom-color fallback), a gap whose color always mirrors the Tiles section's floor color (only its width is settable, 0-10px, `0` draws no gap), corners & ends (round/miter join, independent of the Tiles section's own wall join/cap) and two independent scale knobs: size (0.05-0.5 of the tile size — geometric scale) and thickness (1-10px — chevron/arrow's own line width, no effect on the filled triangle pattern). Built into an `OneWayStyleOverride` (`pixi/renderers/types.ts`) by `buildOneWayStyle` (`VectorByWallsRenderer.ts`, a pure function extracted for unit-testability alongside `buildWallStyle`/`viewportWorldRect`), applied only to `WallRenderer`'s plain wall one-way indicators — never a split passage's own connector arrow (`SplitJunctionRenderer` always draws that with the node's own identity color via `drawDirectionArrow`, unaffected). Defaults to a brighter standalone color (`0xffaa00`) than the editor's own `canvas.edge.oneWay`, plus a 3px gap and larger-than-editor size/thickness, matching the new shared default described below.
 - **Teleports** (issue #293, placed after One-ways; edge gap width added in #302) — teleport display style plus per-group customization, both backed by `TeleportRenderer`'s extended `render` API (`pixi/renderers/TeleportRenderer.ts`; every other caller — `GenerationRenderer`, `PostEditRenderer`, `PresetConnectionsRenderer`, `MazeOverlayRenderer` — omits the new params entirely and gets `TeleportRenderer`'s own `DEFAULT_LINE_STYLE`: diamond, round corners, size 0.16, border/connector/connector-gap/edge-gap width all 3, orthogonal connector, periodic arrows (period 5, size 10) — the same defaults `VectorByWallsSettings`' own initial state uses, kept in sync deliberately so every teleport-drawing feature shares one visual baseline). One shared `teleportCornerStyle` (`"sharp"`/`"round"`) rounds the four regular-polygon `MarkerShape`s (`triangle`/`square`/`diamond`/`pentagon`/`hexagon`, via the shared `drawRoundedPolygon`) only; `circle` has no corners, `star`/`cross` have no regular-polygon equivalent — `star`'s reflex corners stay sharp regardless of `cornerStyle` (see "Shared marker shape set" below for why). Marker size (`teleportLineSize`) is a fraction of the tile size (0-1), same convention as the One-ways section's own `size` knob, not a fixed pixel radius. Edges subsection row order: shape, corner style, size, color, border color, border width, then gap width (0-10px, default 3, `0` draws no gap — `teleportEdgeGapWidth`/`TeleportLineStyle.edgeGapWidth`, GitHub issue #302) — a floor-colored ring drawn outside the marker's own border. Every border/gap stroke in this codebase draws with `alignment: 0` (pixi's outer alignment, grows entirely outward from its own shape) uniformly, so a marker's true outer edge is always `radius + borderWidth`, and every gap-ring formula follows the same `radius + borderWidth + gapWidth` shape regardless of caller (teleport edge marker, waypoint marker, one-way indicator alike). Unlike the marker/one-way/connector gaps (which only ever sit under their own single shape), an edge gap ring can visually overlap the point's own connector — so `TeleportRenderer.renderGroups` draws each group as its own 3-sub-pass block (that group's gap rings, then that group's connectors, then that group's points) rather than a single interleaved pass. A gap only ever needs to stay clear of its *own* group's connector/marker geometry; a later group's whole block (gaps, connectors and points alike) still draws on top of an earlier group's whole block, same "later group wins" rule the pre-#302 single interleaved pass used. `planGroupDrawOrder` still buckets connectors per group; `drawGroupGaps`/`drawGroupPoints` are separate per-group draw calls, both invoked inside the same per-group loop as `drawRoutedConnector`.
 
@@ -112,9 +112,9 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   ownership rule — never the walls renderer's instance), built the same way
   `VectorByWallsRenderer` builds its own (`buildMazeMarkers`, node positions from
   `resolveEffectiveEndpoints` so a post-edit start/finish move is picked up); gap color always
-  mirrors `canvas.stage.background` (this mode's own fixed background, mirroring how
-  `VectorByWallsRenderer`'s marker gap mirrors its own floor color) rather than a user-set floor
-  color, since this mode has none. Start/finish marker footprint is folded into
+  mirrors `settings.color` (the corridor's own stroke color, same convention this mode's Teleports
+  section uses for its own edge markers — see below), not the canvas background, since a marker sits
+  directly on the corridor line here rather than an empty floor tile. Start/finish marker footprint is folded into
   `computeVectorByCorridorsExportMargin` the same way `computeVectorByWallsExportMargin` folds in
   its own waypoint margins.
 - **"One-ways"** (GitHub issue #312) — a one-way basic passage's own indicator: a row of chevrons
@@ -157,10 +157,12 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   `Container` (per the feature-renderer ownership rule — never `VectorByWallsRenderer`'s own
   instance), same group-customization/selection/click-to-select behavior described under "Vector by
   walls"' own Teleports section above. Two differences: `floorColor` passed to
-  `buildTeleportLineStyle` is this mode's own `settings.color` (the corridor's own stroke color, not
-  a canvas background) — a teleport point sits directly on the passage line here, not on an empty
-  floor tile, so an outline point's fill and gap rings must occlude the line the same way an entry
-  point's real fill does; and every teleport marker also gets its own widen patch under the corridor
+  `buildTeleportLineStyle` and `buildMarkerStyle` (start/finish markers) is this mode's own
+  `settings.color` (the corridor's own stroke color, not a canvas background) — a teleport point (and
+  a start/finish waypoint) sits directly on the passage line here, not on an empty floor tile, so an
+  outline point's fill and gap rings must occlude the line the same way an entry point's real fill
+  does, and a marker's floor-colored gap ring must cut through the corridor's own color rather than
+  the canvas background behind it; and every teleport marker also gets its own widen patch under the corridor
   stroke (`buildTeleportWidenMarkers`, `VectorByCorridorsRenderer.ts` — exported, unit-tested
   directly), reusing the Cells section's `markerWidenPadding`/`markerWidenShape` rather than a
   separate teleport-only setting, with each point's own shape/corner-style resolved from its
@@ -189,6 +191,73 @@ cell's raw center point; unlike "Vector by walls" there's no separate wall-only 
 distinguish, so both getters return the same value. Background color is not yet user-configurable
 — always `canvas.stage.background` (`resolveBackgroundColor`'s `"vector_by_corridors"` case), a
 follow-up sub-issue's concern.
+
+### "Shared style" — centralized marker/corner-style settings (GitHub issue #322)
+
+Both render mode settings panels have a "Shared style" section, always the first section (before
+"Background"), backed by `VectorByWallsSettings.sharedStyle`/`VectorByCorridorsSettings.sharedStyle`
+(`VectorByWallsSharedStyle`/`VectorByCorridorsSharedStyle`, `storeTypes.ts`). It centralizes four
+values that would otherwise need editing separately on every marker-like field that conceptually
+shares them:
+
+| Shared value | Default | Drives |
+|---|---|---|
+| `cornerStyle` (sharp/round) | round | `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`, and each mode's own wall/corridor join field (`wallJoin`+`oneWayJoin` for "Vector by walls", `join`+`oneWayJoin` for "Vector by corridors") |
+| `markerSize` | 0.16 | `startMarker`/`finishMarker.size`, `teleportLineSize` |
+| `markerBorderWidth` | 3 | `startMarker`/`finishMarker.borderWidth`, `teleportEdgeBorderWidth` |
+| `gapWidth` | 3 | `startMarker`/`finishMarker.gapWidth`, `teleportEdgeGapWidth`, `teleportConnectorGapWidth`, and "Vector by corridors"' own `splitGapWidth` |
+
+`cornerStyle` drives two differently-spelled enums at once — `sharp` maps to the wall/corridor join
+field's `"miter"`, `round` maps to its own `"round"` (`cornerStyleToJoin`,
+`imageExportSliceHelpers.ts`) — since both enums mean the same visual intent (sharp vs. rounded
+corners) despite the value-name mismatch.
+
+**Override mechanics.** Each dependent field carries its own override flag in
+`sharedStyle.overrides` (`VectorByWallsSharedStyleOverrides`/`VectorByCorridorsSharedStyleOverrides`
+— a sparse `{ [group]: { [field]: true } }` map, same "absent means default, `true` means
+overridden" convention `TeleportGroupOverride` uses), not a per-group single bit — so overriding
+`startMarker.size` directly leaves `finishMarker.size`/`teleportLineSize` still following the shared
+`markerSize`. Editing a dependent field through its own per-mode setter (e.g.
+`setVectorByWallsStartMarkerSize`) both writes the value and marks that field overridden
+(`withOverride`); editing the shared value itself (`setVectorByWallsSharedMarkerSize`) re-applies it
+to every field in that group *not* marked overridden (`applyVectorByWallsSharedStyle`/
+`applyVectorByCorridorsSharedStyle`). Each dependent field's own settings-panel row carries a
+per-field reset button (`OverrideResetButton`, mirroring `TeleportGroupRow`'s own reset-icon
+convention) — dim/inert while the field still follows the shared value, active once overridden;
+clicking it clears that one field's override flag and re-applies the shared value
+(`resetVectorBy*SharedStyleField`). Built into `SliderRow`/`SelectRow`'s own optional `resetButton`
+prop (a trailing control that shrinks the slider's own track, never the label) rather than a
+`ColorRow` prop, since no dependent field's color is centralized — only shape-adjacent geometry
+(corner style, size, border width, gap width), not fill/border color, is shared.
+
+The section's own two buttons: **"Synchronize"** clears every override across every group at once,
+re-applying all four shared values to every dependent field
+(`forceVectorByWallsSharedStyle`/`forceVectorByCorridorsSharedStyle`); **"Reset all settings"**
+restores the whole render mode's settings object (shared style included, overrides cleared) to its
+defaults (`resetVectorByWallsSettings`/`resetVectorByCorridorsSettings`) — a full-panel reset, not
+scoped to shared style alone.
+
+**Defaults are derived, not duplicated.** `DEFAULT_VECTOR_BY_WALLS_SETTINGS`/
+`DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS` (`imageExportSlice.ts`) build their dependent fields from
+placeholder values, then pipe the whole object through `applyVectorByWallsSharedStyle`/
+`applyVectorByCorridorsSharedStyle` against `DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE`/
+`DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE` — so every dependent field's default is a single source
+of truth (the shared default), not a separately-hardcoded number that could drift from it.
+
+**No migration for project files predating this feature** — per project policy, `validate.ts`'s
+`validateVectorByWallsSharedStyle`/`validateVectorByCorridorsSharedStyle` simply default a missing
+`sharedStyle` key to `DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE`/`DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE`
+like any other optional section. That alone would leave a stale gap, though: a pre-#322 file's
+`startMarker.size` (etc.) keeps its own saved value while `sharedStyle` silently defaults, with no
+override recorded — so a later edit to the shared value would otherwise snap that field to the
+shared default and discard the loaded value with no warning. `reconcileVectorByWallsSharedStyle`/
+`reconcileVectorByCorridorsSharedStyle` close that gap: called once right after
+`validateVectorByWallsSettings`/`validateVectorByCorridorsSettings` assemble the full settings
+object, they compare every dependent field's *actual* (loaded) value against `sharedStyle`'s own
+restored value and mark any mismatch overridden — never touching the field's own value, only which
+fields the four shared values are still allowed to drive going forward. The same reconciliation
+also covers a hand-edited project file whose `sharedStyle` and dependent-field values simply
+disagree for any other reason.
 
 ### Widening a corridor under a marker (`drawMarkerWidenPatches`, `pixi/renderers/markerWidenPatches.ts`)
 

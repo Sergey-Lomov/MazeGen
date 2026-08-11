@@ -160,6 +160,7 @@ export function TeleportSettingsSection({
   onGroupOverrideChange,
   teleportGroups,
   teleportCollisionKeys,
+  resetButtons,
 }: {
   settings: TeleportSettingsFields;
   onChange: (patch: Partial<TeleportSettingsFields>) => void;
@@ -167,6 +168,15 @@ export function TeleportSettingsSection({
   onGroupOverrideChange: (groupKey: string, patch: TeleportGroupOverride | null) => void;
   teleportGroups: TeleportGroup[];
   teleportCollisionKeys: Set<string>;
+  /** Per-field "Shared style" reset buttons (GitHub issue #322) — same opt-in convention as
+   *  `MarkerSettingsGroup`'s own `resetButtons` prop. */
+  resetButtons?: {
+    lineCornerStyle?: React.ReactNode;
+    lineSize?: React.ReactNode;
+    edgeBorderWidth?: React.ReactNode;
+    edgeGapWidth?: React.ReactNode;
+    connectorGapWidth?: React.ReactNode;
+  };
 }) {
   const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
 
@@ -182,6 +192,7 @@ export function TeleportSettingsSection({
             { value: "round", label: m["image_export.vector_by_walls.teleport_corner_style_round"]() },
           ]}
           onChange={(v) => onChange({ teleportLineCornerStyle: v })}
+          resetButton={resetButtons?.lineCornerStyle}
         />
         <SelectRow
           label={m["image_export.vector_by_walls.teleport_shape"]()}
@@ -197,6 +208,7 @@ export function TeleportSettingsSection({
           max={1}
           step={0.01}
           format={(v) => v.toFixed(2)}
+          resetButton={resetButtons?.lineSize}
         />
         <ColorRow label={m["image_export.vector_by_walls.teleport_edge_color"]()} color={settings.teleportEdgeColor} onChange={(v) => onChange({ teleportEdgeColor: v })} />
         <ColorRow label={m["image_export.vector_by_walls.teleport_edge_border_color"]()} color={settings.teleportEdgeBorderColor} onChange={(v) => onChange({ teleportEdgeBorderColor: v })} />
@@ -208,6 +220,7 @@ export function TeleportSettingsSection({
           max={10}
           step={1}
           format={(v) => String(v)}
+          resetButton={resetButtons?.edgeBorderWidth}
         />
         <SliderRow
           label={m["image_export.vector_by_walls.teleport_edge_gap_width"]()}
@@ -217,6 +230,7 @@ export function TeleportSettingsSection({
           max={10}
           step={1}
           format={(v) => String(v)}
+          resetButton={resetButtons?.edgeGapWidth}
         />
       </div>
 
@@ -260,6 +274,7 @@ export function TeleportSettingsSection({
             max={10}
             step={1}
             format={(v) => String(v)}
+            resetButton={resetButtons?.connectorGapWidth}
           />
         </div>
 

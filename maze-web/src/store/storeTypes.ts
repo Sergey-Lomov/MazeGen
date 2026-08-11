@@ -1005,6 +1005,65 @@ export interface MarkerSettings {
   size: number;
 }
 
+/** Which dependent fields of "Vector by walls" mode's `SharedStyle` currently hold a
+ *  user-set value instead of following the shared setting (GitHub issue #322) — `true` marks an
+ *  overridden field, absent/`undefined` means "still follows the shared value". Mirrors
+ *  `TeleportGroupOverride`'s own sparse-optional-field convention, but keyed by dependent-field
+ *  identity rather than by teleport group. */
+export interface VectorByWallsSharedStyleOverrides {
+  cornerStyle?: { wallJoin?: true; oneWayJoin?: true; startMarker?: true; finishMarker?: true; teleportLine?: true };
+  markerSize?: { startMarker?: true; finishMarker?: true; teleportLine?: true };
+  markerBorderWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true };
+  gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true };
+}
+
+/** "Vector by walls" mode's centralized marker/corner-style settings (GitHub issue #322) — one
+ *  shared value per group of conceptually-related fields (cell/marker corner style, marker size,
+ *  marker border width, gap width) that every dependent field in that group follows by default.
+ *  Changing a dependent field directly (its own per-mode setter) marks it overridden in
+ *  `overrides`, detaching it from the shared value until reset (the settings panel's own
+ *  per-field reset button, mirroring `TeleportGroupRow`'s reset convention) or until "Force shared
+ *  style" clears every override at once. `cornerStyle` drives two different underlying enums —
+ *  `"sharp"` maps to `wallJoin`/`oneWayJoin`'s `"miter"` and to the marker/teleport-line
+ *  `TeleportCornerStyle`'s own `"sharp"`; `"round"` maps to both enums' `"round"` — since the two
+ *  enums mean the same visual intent (sharp vs. rounded corners) despite different value spellings. */
+export interface VectorByWallsSharedStyle {
+  cornerStyle: TeleportCornerStyle;
+  markerSize: number;
+  markerBorderWidth: number;
+  gapWidth: number;
+  overrides: VectorByWallsSharedStyleOverrides;
+}
+
+/** Same role as `VectorByWallsSharedStyleOverrides`, for "Vector by corridors" — its dependent
+ *  field set differs (no `wallJoin`, has `join`/`oneWayJoin` instead; `gapWidth` also reaches
+ *  `splitGapWidth`). */
+export interface VectorByCorridorsSharedStyleOverrides {
+  cornerStyle?: { join?: true; oneWayJoin?: true; startMarker?: true; finishMarker?: true; teleportLine?: true };
+  markerSize?: { startMarker?: true; finishMarker?: true; teleportLine?: true };
+  markerBorderWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true };
+  gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true; split?: true };
+}
+
+/** Same role as `VectorByWallsSharedStyle`, for "Vector by corridors" (GitHub issue #322) — see
+ *  that type's own doc comment for the shared-value/override/reset mechanics. */
+export interface VectorByCorridorsSharedStyle {
+  cornerStyle: TeleportCornerStyle;
+  markerSize: number;
+  markerBorderWidth: number;
+  gapWidth: number;
+  overrides: VectorByCorridorsSharedStyleOverrides;
+}
+
+/** The set of valid field names for one group `G` of one mode's `overrides` record `O` — e.g. for
+ *  `VectorByWallsSharedStyleOverrides["cornerStyle"]` that's `"wallJoin" | "oneWayJoin" |
+ *  "startMarker" | "finishMarker" | "teleportLine"`. Constrains `withOverride`/`withoutOverride`/
+ *  `resetVectorBy*SharedStyleField`'s `field` parameter so a typo (e.g. `"wallJoinn"`) is a compile
+ *  error instead of a silently-inert reset button (GitHub issue #322 follow-up — `field` was
+ *  previously a bare `string`). */
+export type SharedStyleField<O extends VectorByWallsSharedStyleOverrides | VectorByCorridorsSharedStyleOverrides, G extends keyof O> =
+  keyof NonNullable<O[G]> & string;
+
 /** "Vector by walls" mode's own settings (GitHub issue #289, floor color added in #290) —
  * background appearance and floor appearance ("general settings" and "floor" sections of #288's
  * panel). Defaults match the editor's normal grid/floor appearance (`canvas.stage.background`,
@@ -1059,6 +1118,9 @@ export interface VectorByWallsSettings extends TeleportSettingsFields {
    *  adjacent-face pair) draw as a dedicated shape (see `SplitSpecialShapeKind`) instead of the
    *  generic per-node segment/connector reading. */
   splitSpecialShapes: boolean;
+  /** Centralized corner-style/marker-size/marker-border/gap settings (GitHub issue #322) — see
+   *  `VectorByWallsSharedStyle`'s own doc comment. */
+  sharedStyle: VectorByWallsSharedStyle;
 }
 
 /** One-way passage indicator settings (GitHub issue #312) — a row of chevrons ("`>`" shapes with
@@ -1160,6 +1222,9 @@ export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWa
    *  on. `0` draws a plain straight connector (the two nodes' lines would coincide at the tile
    *  center, same as the generic non-special reading). */
   splitDiagonalBowAmount: number;
+  /** Centralized corner-style/marker-size/marker-border/gap settings (GitHub issue #322) — see
+   *  `VectorByCorridorsSharedStyle`'s own doc comment. */
+  sharedStyle: VectorByCorridorsSharedStyle;
 }
 
 /** See `VectorByCorridorsSettings.markerWidenShape`'s own doc comment. */
@@ -1258,6 +1323,28 @@ export interface ImageExportActions {
   setVectorByCorridorsSplitSpecialShapes: (v: boolean) => void;
   setVectorByCorridorsSplitGapWidth: (v: number) => void;
   setVectorByCorridorsSplitDiagonalBowAmount: (v: number) => void;
+  /** Sets the shared corner style and re-applies it to every non-overridden dependent field
+   *  (`join`, `oneWayJoin`, `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`).
+   *  See `VectorByCorridorsSharedStyle`'s own doc comment for the `"sharp"`/`"round"` -> `"miter"`/
+   *  `"round"` mapping. */
+  setVectorByCorridorsSharedCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsSharedMarkerSize: (v: number) => void;
+  setVectorByCorridorsSharedMarkerBorderWidth: (v: number) => void;
+  setVectorByCorridorsSharedGapWidth: (v: number) => void;
+  /** Clears the override flag for one dependent field of one shared-style group, re-applying that
+   *  group's current shared value to it — the settings panel's own per-field reset button. `field`
+   *  is constrained to that group's own valid field names (see `SharedStyleField`), so a typo is a
+   *  compile error rather than a silently-inert reset button. */
+  resetVectorByCorridorsSharedStyleField: <G extends keyof VectorByCorridorsSharedStyleOverrides>(
+    group: G,
+    field: SharedStyleField<VectorByCorridorsSharedStyleOverrides, G>,
+  ) => void;
+  /** "Synchronize" — clears every override across every group, re-applying all four shared values
+   *  to every dependent field. */
+  forceVectorByCorridorsSharedStyle: () => void;
+  /** "Reset all settings" — restores the whole `vectorByCorridorsSettings` object (shared style
+   *  included, overrides cleared) to its defaults. */
+  resetVectorByCorridorsSettings: () => void;
   setVectorByWallsBackground: (color: number) => void;
   setVectorByWallsShowGrid: (v: boolean) => void;
   setVectorByWallsGridColor: (color: number) => void;
@@ -1293,6 +1380,28 @@ export interface ImageExportActions {
    *  #294. */
   setVectorByWallsSplitNodeColor: (index: number, color: number) => void;
   setVectorByWallsSplitSpecialShapes: (v: boolean) => void;
+  /** Sets the shared corner style and re-applies it to every non-overridden dependent field
+   *  (`wallJoin`, `oneWayJoin`, `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`).
+   *  See `VectorByWallsSharedStyle`'s own doc comment for the `"sharp"`/`"round"` -> `"miter"`/
+   *  `"round"` mapping. */
+  setVectorByWallsSharedCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByWallsSharedMarkerSize: (v: number) => void;
+  setVectorByWallsSharedMarkerBorderWidth: (v: number) => void;
+  setVectorByWallsSharedGapWidth: (v: number) => void;
+  /** Clears the override flag for one dependent field of one shared-style group, re-applying that
+   *  group's current shared value to it — the settings panel's own per-field reset button. `field`
+   *  is constrained to that group's own valid field names (see `SharedStyleField`), so a typo is a
+   *  compile error rather than a silently-inert reset button. */
+  resetVectorByWallsSharedStyleField: <G extends keyof VectorByWallsSharedStyleOverrides>(
+    group: G,
+    field: SharedStyleField<VectorByWallsSharedStyleOverrides, G>,
+  ) => void;
+  /** "Synchronize" — clears every override across every group, re-applying all four shared values
+   *  to every dependent field. */
+  forceVectorByWallsSharedStyle: () => void;
+  /** "Reset all settings" — restores the whole `vectorByWallsSettings` object (shared style
+   *  included, overrides cleared) to its defaults. */
+  resetVectorByWallsSettings: () => void;
   setHoveredExportWarningKey: (key: string | null) => void;
 }
 

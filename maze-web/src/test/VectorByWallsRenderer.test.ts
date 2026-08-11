@@ -173,6 +173,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportGroupOverrides: {},
     splitNodeColors: [],
     splitSpecialShapes: false,
+    sharedStyle: { cornerStyle: "round", markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3, overrides: {} },
     ...overrides,
   };
 }

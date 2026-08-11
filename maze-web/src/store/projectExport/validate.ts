@@ -4,12 +4,13 @@ import type { PostEditEdge, PostEditTeleportEntry, FeatureId, RenderModeId } fro
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import {
-  MAX_NESTED_STRATEGY_DEPTH, type MarkerSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type TeleportSettingsFields, type MarkerWidenShape, type PngExportSettings,
+  MAX_NESTED_STRATEGY_DEPTH, type MarkerSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type VectorByWallsSharedStyle, type VectorByCorridorsSharedStyle, type TeleportSettingsFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
 import type { MarkerShape } from "../../pixi/renderers/types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
+import { reconcileVectorByWallsSharedStyle, reconcileVectorByCorridorsSharedStyle } from "../slices/imageExportSliceHelpers";
 import {
   CURRENT_VERSION,
   type ProjectFile,
@@ -601,6 +602,57 @@ function validateTeleportGroupOverrides(v: unknown, path: string): Record<string
   return result;
 }
 
+/** Format-only validation of a shared-style overrides record — same "drop malformed entries rather
+ * than fail the whole file" convention as `tryValidateTeleportGroupOverride`. Every group/field
+ * pairing is accepted as-is (`true`) regardless of whether it names a field the current build
+ * actually has — an unknown pairing is simply never looked up, same as a stale `teleportGroupOverrides`
+ * entry for a group that no longer exists. */
+function validateSharedStyleOverrides<G extends string>(v: unknown): Partial<Record<G, Partial<Record<string, true>>>> {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return {};
+  const result: Partial<Record<G, Partial<Record<string, true>>>> = {};
+  for (const [group, raw] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
+    const fields: Partial<Record<string, true>> = {};
+    for (const field of Object.keys(raw as Record<string, unknown>)) fields[field] = true;
+    result[group as G] = fields;
+  }
+  return result;
+}
+
+function validateVectorByWallsSharedStyle(v: unknown, d: VectorByWallsSharedStyle): VectorByWallsSharedStyle {
+  if (v == null) return d;
+  let obj: Record<string, unknown> | null;
+  try {
+    obj = assertObject(v, "sharedStyle");
+  } catch {
+    return d;
+  }
+  return {
+    cornerStyle: optTeleportCornerStyle(obj, "cornerStyle", d.cornerStyle),
+    markerSize: optNumber(obj, "markerSize", d.markerSize),
+    markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
+    gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
+    overrides: validateSharedStyleOverrides(obj.overrides),
+  };
+}
+
+function validateVectorByCorridorsSharedStyle(v: unknown, d: VectorByCorridorsSharedStyle): VectorByCorridorsSharedStyle {
+  if (v == null) return d;
+  let obj: Record<string, unknown> | null;
+  try {
+    obj = assertObject(v, "sharedStyle");
+  } catch {
+    return d;
+  }
+  return {
+    cornerStyle: optTeleportCornerStyle(obj, "cornerStyle", d.cornerStyle),
+    markerSize: optNumber(obj, "markerSize", d.markerSize),
+    markerBorderWidth: optNumber(obj, "markerBorderWidth", d.markerBorderWidth),
+    gapWidth: optNumber(obj, "gapWidth", d.gapWidth),
+    overrides: validateSharedStyleOverrides(obj.overrides),
+  };
+}
+
 /** Lenient — every field falls back to its own default when absent or malformed, same recovery
  * pattern `validateSplitGeneration` uses, since this whole section is optional (absent entirely
  * for project files saved before GitHub issue #295). */
@@ -613,7 +665,12 @@ function validateVectorByWallsSettings(v: unknown, path: string): VectorByWallsS
   } catch {
     return d;
   }
-  return {
+  // `reconcileVectorByWallsSharedStyle` marks any dependent field whose restored value disagrees
+  // with `sharedStyle`'s own restored value as overridden (GitHub issue #322 follow-up) — covers
+  // both a pre-#322 file (no `sharedStyle` key, so it defaults while dependent fields keep their
+  // real saved values) and a hand-edited file, so a later shared-style edit never silently
+  // overwrites a loaded value that was never marked as following it.
+  return reconcileVectorByWallsSharedStyle({
     background: optNumber(obj, "background", d.background),
     showGrid: optBool(obj, "showGrid", d.showGrid),
     gridColor: optNumber(obj, "gridColor", d.gridColor),
@@ -632,7 +689,8 @@ function validateVectorByWallsSettings(v: unknown, path: string): VectorByWallsS
     ...validateTeleportSettingsFields(obj, path, d),
     splitNodeColors: Array.isArray(obj.splitNodeColors) ? obj.splitNodeColors.filter((n): n is number => typeof n === "number") : d.splitNodeColors,
     splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
-  };
+    sharedStyle: validateVectorByWallsSharedStyle(obj.sharedStyle, d.sharedStyle),
+  });
 }
 
 const KNOWN_RENDER_MODE_IDS: RenderModeId[] = ["vector_by_walls", "vector_by_corridors"];
@@ -729,7 +787,9 @@ function validateVectorByCorridorsSettings(v: unknown, path: string): VectorByCo
     }
   }
   const d = DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS;
-  return {
+  // See `validateVectorByWallsSettings`'s own comment on `reconcileVectorByWallsSharedStyle` — same
+  // rationale, mirrored for this mode's own dependent-field set.
+  return reconcileVectorByCorridorsSharedStyle({
     background: optNumber(obj, "background", d.background),
     showGrid: optBool(obj, "showGrid", d.showGrid),
     gridColor: optNumber(obj, "gridColor", d.gridColor),
@@ -752,7 +812,8 @@ function validateVectorByCorridorsSettings(v: unknown, path: string): VectorByCo
     splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
     splitGapWidth: optNumber(obj, "splitGapWidth", d.splitGapWidth),
     splitDiagonalBowAmount: optNumber(obj, "splitDiagonalBowAmount", d.splitDiagonalBowAmount),
-  };
+    sharedStyle: validateVectorByCorridorsSharedStyle(obj?.sharedStyle, d.sharedStyle),
+  });
 }
 
 function validateImageExport(v: unknown, path: string): ProjectFileImageExport {

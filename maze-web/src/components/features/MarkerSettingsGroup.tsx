@@ -1,4 +1,4 @@
-import type React from "react";
+import type * as React from "react";
 import type { MarkerSettings } from "../../store/storeTypes";
 import type { MarkerShape } from "../../pixi/renderers/types";
 import { spacing, typography } from "../../styles/theme";
@@ -28,10 +28,14 @@ export const MARKER_SHAPE_OPTIONS: { value: MarkerShape; label: () => string }[]
  *  show-border/show-gap toggle for either. Shared by `VectorByWallsSettingsPanel` and
  *  `VectorByCorridorsSettingsPanel` (GitHub issue #311) — both modes' waypoint settings mirror
  *  each other exactly, only the underlying store setters differ. */
-export function MarkerSettingsGroup({ title, settings, onChange }: {
+export function MarkerSettingsGroup({ title, settings, onChange, resetButtons }: {
   title: string;
   settings: MarkerSettings;
   onChange: (patch: Partial<MarkerSettings>) => void;
+  /** Per-field "Shared style" reset buttons (GitHub issue #322) — omitted fields render with no
+   *  trailing reset control, same as before that issue. Built by the caller (`SharedStyleSection`'s
+   *  `sharedStyleFieldReset`) since this component stays agnostic of the shared-style mechanism. */
+  resetButtons?: { cornerStyle?: React.ReactNode; size?: React.ReactNode; borderWidth?: React.ReactNode; gapWidth?: React.ReactNode };
 }) {
   return (
     <div style={styles.markerGroupWrap}>
@@ -51,6 +55,7 @@ export function MarkerSettingsGroup({ title, settings, onChange }: {
             { value: "round", label: m["image_export.vector_by_walls.teleport_corner_style_round"]() },
           ]}
           onChange={(cornerStyle) => onChange({ cornerStyle })}
+          resetButton={resetButtons?.cornerStyle}
         />
         <SliderRow
           label={m["image_export.vector_by_walls.marker_size"]()}
@@ -60,6 +65,7 @@ export function MarkerSettingsGroup({ title, settings, onChange }: {
           max={1}
           step={0.01}
           format={(v) => v.toFixed(2)}
+          resetButton={resetButtons?.size}
         />
         <ColorRow label={m["image_export.vector_by_walls.marker_fill_color"]()} color={settings.fillColor} onChange={(fillColor) => onChange({ fillColor })} />
         <ColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} />
@@ -71,6 +77,7 @@ export function MarkerSettingsGroup({ title, settings, onChange }: {
           max={10}
           step={1}
           format={(v) => String(v)}
+          resetButton={resetButtons?.borderWidth}
         />
         <SliderRow
           label={m["image_export.vector_by_walls.marker_gap_width"]()}
@@ -80,6 +87,7 @@ export function MarkerSettingsGroup({ title, settings, onChange }: {
           max={10}
           step={1}
           format={(v) => String(v)}
+          resetButton={resetButtons?.gapWidth}
         />
       </div>
     </div>

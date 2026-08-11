@@ -1,3 +1,4 @@
+import type React from "react";
 import { sharedStyles } from "../styles/shared";
 import { typography, spacing } from "../styles/theme";
 
@@ -12,9 +13,13 @@ interface Props {
   /** Value display formatter. Defaults to `toFixed(2)`, matching the default 0..1/0.01 range. */
   format?: (v: number) => string;
   disabled?: boolean;
+  /** Trailing control (GitHub issue #322's per-field "Shared style" reset button,
+   *  `OverrideResetButton`) — shrinks the slider's own `flex: 1` track, never the label, per that
+   *  issue's own spec. */
+  resetButton?: React.ReactNode;
 }
 
-export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, disabled }: Props) {
+export function SliderRow({ label, value, onChange, description, min = 0, max = 1, step = 0.01, format, disabled, resetButton }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: spacing.elementsGap }}>
       <div style={sharedStyles.sliderRow}>
@@ -31,6 +36,7 @@ export function SliderRow({ label, value, onChange, description, min = 0, max = 
           onChange={(e) => onChange(Number(e.target.value))}
         />
         <span style={sharedStyles.sliderRowValue}>{format ? format(value) : value.toFixed(2)}</span>
+        {resetButton}
       </div>
       {description && <div style={{ ...typography.caption, lineHeight: 1.4 }}>{description}</div>}
     </div>

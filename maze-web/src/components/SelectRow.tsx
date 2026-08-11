@@ -11,12 +11,16 @@ export function SelectRow<T extends string>({
   options,
   onChange,
   disabled,
+  resetButton,
 }: {
   label: string;
   value: T;
   options: { value: T; label: string; disabled?: boolean }[];
   onChange: (value: T) => void;
   disabled?: boolean;
+  /** Trailing control (GitHub issue #322's per-field "Shared style" reset button,
+   *  `OverrideResetButton`) — the label stays `flex: 1`, so this never shrinks it. */
+  resetButton?: React.ReactNode;
 }) {
   return (
     <Inline gap="groupGap">
@@ -31,6 +35,7 @@ export function SelectRow<T extends string>({
           <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
         ))}
       </select>
+      {resetButton}
     </Inline>
   );
 }
