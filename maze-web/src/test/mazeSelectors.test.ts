@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, maxSplitNodeCount, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { getCellCenter } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
@@ -627,6 +627,45 @@ describe("buildTeleportEdges", () => {
   });
 });
 
+// --- getSplitAwareNodePosition ---
+// Direct tests (GitHub issue #318 follow-up) — buildMazeMarkers/buildTeleportEdges no longer call
+// this function themselves (they build the position map once via buildNodePositions instead), so
+// it needs its own coverage as a still-exported, still-used (exportWarnings.ts) function.
+
+describe("getSplitAwareNodePosition", () => {
+  it("returns null for an unknown node id", () => {
+    const nodes = [n(0, 0, 0)];
+    expect(getSplitAwareNodePosition(nodes, 99, squareCfg)).toBeNull();
+  });
+
+  it("an unsplit node resolves to its plain cell center", () => {
+    const nodes = [n(0, 1, 1)];
+    expect(getSplitAwareNodePosition(nodes, 0, squareCfg)).toEqual(getCellCenter(1, 1, squareCfg));
+  });
+
+  it("a split node without edges falls back to the generic hub position", () => {
+    const nodes = [n(0, 0, 0), n(1, 0, 0)];
+    const center = getCellCenter(0, 0, squareCfg);
+    const dist = Math.hypot(
+      getSplitAwareNodePosition(nodes, 1, squareCfg)!.x - center.x,
+      getSplitAwareNodePosition(nodes, 1, squareCfg)!.y - center.y,
+    );
+    expect(dist).toBeCloseTo(10); // TILE_SIZE / 4
+  });
+
+  it("a node recognized as a diagonal split shape resolves to its own half-tile point, not the hub circle", () => {
+    const nodes = [
+      n(0, 0, 0), n(1, 0, 0),
+      n(10, 1, 0), n(11, 0, 1), n(12, -1, 0), n(13, 0, -1), // E,N,W,S neighbors
+    ];
+    const edges: EdgeDto[] = [e(0, 10), e(0, 11), e(1, 12), e(1, 13)];
+    const pos = getSplitAwareNodePosition(nodes, 0, squareCfg, edges)!;
+    const center = getCellCenter(0, 0, squareCfg);
+    expect(pos.x).toBeCloseTo(center.x + 40 / 4);
+    expect(pos.y).toBeCloseTo(center.y - 40 / 4);
+  });
+});
+
 // --- buildMazeMarkers ---
 
 describe("buildMazeMarkers", () => {
@@ -650,6 +689,33 @@ describe("buildMazeMarkers", () => {
   it("null start/finish produce no markers", () => {
     const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)]]);
     expect(buildMazeMarkers(nodeById, null, null, squareCfg)).toEqual([]);
+  });
+
+  it("start on a node recognized as a diagonal split shape anchors to its own half-tile point, not the hub circle (GitHub issue #318)", () => {
+    // Point (0,0) split into node 0 (connects E,N) and node 1 (connects W,S) — a recognized
+    // "diagonal" topology. Node 0 is start.
+    const nodeById = new Map<number, NodeDto>([
+      [0, n(0, 0, 0)], [1, n(1, 0, 0)],
+      [10, n(10, 1, 0)], [11, n(11, 0, 1)], [12, n(12, -1, 0)], [13, n(13, 0, -1)], // E,N,W,S neighbors
+    ]);
+    const edges: EdgeDto[] = [e(0, 10), e(0, 11), e(1, 12), e(1, 13)];
+    const markers = buildMazeMarkers(nodeById, 0, null, squareCfg, undefined, undefined, edges);
+    expect(markers).toHaveLength(1);
+    const center = getCellCenter(0, 0, squareCfg);
+    // Diagonal offset for node0's (E,N) face pair: (TILE_SIZE/4, -TILE_SIZE/4).
+    expect(markers[0].pos[0]).toBeCloseTo(center.x + 40 / 4);
+    expect(markers[0].pos[1]).toBeCloseTo(center.y - 40 / 4);
+    // Not on the generic hub circle (radius TILE_SIZE/4 from center).
+    const hubDist = Math.hypot(markers[0].pos[0] - center.x, markers[0].pos[1] - center.y);
+    expect(hubDist).not.toBeCloseTo(10);
+  });
+
+  it("without edges, a split node still falls back to the generic hub position (default edges=[])", () => {
+    const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)], [1, n(1, 0, 0)]]);
+    const markers = buildMazeMarkers(nodeById, 0, null, squareCfg);
+    const center = getCellCenter(0, 0, squareCfg);
+    const dist = Math.hypot(markers[0].pos[0] - center.x, markers[0].pos[1] - center.y);
+    expect(dist).toBeCloseTo(10);
   });
 
   it("a custom MarkerStyle's size/cornerStyle/gapWidth/gapColor pass through into MarkerData (GitHub issue #302 follow-up — size drives radius via TILE_SIZE, the rest map straight across)", () => {

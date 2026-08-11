@@ -9,10 +9,45 @@
  * SVG) — but the division/hub/straightening/z-order/arrow-placement rules are identical, so they
  * live here once. */
 
+import type { SplitSpecialShapeKind } from "./renderers/types";
+
 /** `"none"` deliberately doesn't exist here — every face always has a real decided-or-default
  *  kind (`wall` for post-edit, `undefined`/optional for presets); "no decision yet" is represented
  *  by `undefined`/`wall` themselves, not a separate absence state. */
 export type SplitFaceKind = "wall" | "passage" | "one_way_out" | "one_way_in" | "undefined";
+
+/** Recognizes a degree-4 split point's two-node topology as `"bridge"` (each node an
+ *  opposite-face pair) or `"diagonal"` (each node an adjacent-face pair) — GitHub issue #294.
+ *  `faceKindsByNode[nodeIndex]` is that node's kind on every one of the point's faces, in the same
+ *  order as `offsets`/`faceInputs`; a node only counts as "connected" on a face for `passage`/
+ *  `one_way_out`/`one_way_in` (mirrors `NO_OWN_SEGMENT_KINDS`). Returns `null` for anything else
+ *  (wrong degree/node count, not exactly 2 connected faces per node, or connected faces that are
+ *  neither opposite nor adjacent). Shared by `buildSplitPassagesCore` (`mazeSelectors.ts`, drawing)
+ *  and `getSplitAwareNodePosition`/`buildNodePositions` (GitHub issue #318, node-point
+ *  positioning) so both agree on what counts as a recognized shape. */
+export function detectSplitSpecialShapeKind(faceKindsByNode: SplitFaceKind[][]): SplitSpecialShapeKind | null {
+  const degree = faceKindsByNode[0]?.length ?? 0;
+  if (degree !== 4 || faceKindsByNode.length !== 2) return null;
+
+  const connectedIndices = faceKindsByNode.map((kinds) =>
+    kinds.reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []),
+  );
+  if (connectedIndices.some((idxs) => idxs.length !== 2)) return null;
+
+  const [a0, a1] = connectedIndices[0];
+  const [b0, b1] = connectedIndices[1];
+  const aOpposite = Math.abs(a0 - a1) === 2;
+  const bOpposite = Math.abs(b0 - b1) === 2;
+  if (aOpposite !== bOpposite) return null; // one node opposite, the other adjacent — not a recognized shape
+  return aOpposite ? "bridge" : "diagonal";
+}
+
+/** This node's own connected face indices, as recognized by `detectSplitSpecialShapeKind` (exactly
+ *  2, in ascending order) — GitHub issue #318. */
+export function connectedFacePair(kinds: SplitFaceKind[]): [number, number] {
+  const idxs = kinds.reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []);
+  return [idxs[0], idxs[1]];
+}
 
 /** Kinds that get no own colored segment/connector — `wall` (this node's face explicitly
  *  forbidden, whether by an explicit decision or by post-edit's default). */

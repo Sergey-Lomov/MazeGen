@@ -226,7 +226,7 @@ export class AnalyticsRenderer {
     const showNavGraph = analyticsOpen && showNavGraphOverlay && navNodes.length > 0;
     this.navGraphContainer.visible = showNavGraph;
     if (showNavGraph) {
-      this.navGraphRenderer.render({ nodes, navNodes, navEdges, start, finish, cfg });
+      this.navGraphRenderer.render({ nodes, navNodes, navEdges, edges, start, finish, cfg });
     }
 
     // Pure cycles overlay
@@ -237,7 +237,7 @@ export class AnalyticsRenderer {
     const showPureCycles = analyticsOpen && showPureCyclesOverlay && navNodes.length > 0;
     this.pureCyclesContainer.visible = showPureCycles;
     if (showPureCycles) {
-      this.pureCyclesRenderer.render({ nodes, navEdges, pureCycleNodeIds, pureCycleEdgeKeys, cfg });
+      this.pureCyclesRenderer.render({ nodes, navEdges, edges, pureCycleNodeIds, pureCycleEdgeKeys, cfg });
     } else {
       this.pureCyclesRenderer.clear();
     }
@@ -246,7 +246,7 @@ export class AnalyticsRenderer {
     const showRoute = analyticsOpen && showRouteOverlay && routeInfo != null;
     this.routeContainer.visible = showRoute;
     if (showRoute) {
-      this.routeRenderer.render({ routeInfo, nodes, cfg });
+      this.routeRenderer.render({ routeInfo, nodes, edges, cfg });
     } else {
       this.routeRenderer.clear();
     }
@@ -257,7 +257,7 @@ export class AnalyticsRenderer {
     const showIssueHighlight = analyticsOpen && (hasLoopEdges || hasRegionGroups);
     this.issueHighlightContainer.visible = showIssueHighlight;
     if (showIssueHighlight) {
-      this.issueHighlightRenderer.render({ nodes, edges: hoveredIssueLoopEdges, regionGroups: hoveredIssueRegionGroups, cfg });
+      this.issueHighlightRenderer.render({ nodes, edges: hoveredIssueLoopEdges, allEdges: edges, regionGroups: hoveredIssueRegionGroups, cfg });
     } else {
       this.issueHighlightRenderer.clear();
     }

@@ -119,6 +119,7 @@ function computeTeleportWarnings(
   finishMarker: { id: number | null; size: number; borderWidth: number },
   allNodes: NodeDto[],
   cfg: TessellationConfig,
+  edges: EdgeDto[],
 ): ExportWarning[] {
   const warnings: ExportWarning[] = [];
 
@@ -190,7 +191,7 @@ function computeTeleportWarnings(
   const overlappingNodeIds = new Set<number>();
   for (const waypoint of [startMarker, finishMarker]) {
     if (waypoint.id === null) continue;
-    const waypointPos = getSplitAwareNodePosition(allNodes, waypoint.id, cfg);
+    const waypointPos = getSplitAwareNodePosition(allNodes, waypoint.id, cfg, edges);
     if (!waypointPos) continue;
     const waypointRadius = markerWorldRadius(waypoint.size, waypoint.borderWidth);
     for (const e of teleportEdges) {
@@ -238,6 +239,7 @@ export function computeVectorByWallsWarnings(
     { id: finish, size: settings.finishMarker.size, borderWidth: settings.finishMarker.borderWidth },
     allNodes,
     cfg,
+    edges,
   );
 
   // Split points recognized as a dedicated "special shape" (bridge/diagonal, `SplitSpecialShapeKind`)
@@ -322,6 +324,7 @@ export function computeVectorByCorridorsWarnings(
     { id: finish, size: settings.finishMarker.size, borderWidth: settings.finishMarker.borderWidth },
     allNodes,
     cfg,
+    edges,
   );
 
   const specialSplitPointKeys = new Set<string>();

@@ -1,5 +1,5 @@
 import { Container, Graphics } from "pixi.js";
-import type { NodeDto } from "../wasm/types";
+import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import type { Pos } from "./tessellationGeometry";
@@ -17,6 +17,10 @@ export interface IssueHighlightData {
   /** Base-graph [from, to] edges to highlight — typically the loops of a hovered issue, or (GitHub
    * issue #195) a hovered invalid-teleport/teleport-group issue's flagged teleport edge(s). */
   edges: [number, number][] | null;
+  /** The maze's full edge list (`state.edges`, not the highlighted subset above) — drives
+   *  shape-aware split node-point positioning (GitHub issue #318), see `buildNodePositions`'s own
+   *  doc comment. `[]` falls back to the generic hub position. */
+  allEdges: EdgeDto[];
   /** SCC regions to highlight, each as its own list of maze node ids — typically the undersized
    * regions of a hovered issue. Kept as separate groups (not one flat list) so each region gets
    * its own perimeter/fill, instead of two adjacent-in-id-space-but-disjoint regions merging into
@@ -41,7 +45,7 @@ export class IssueHighlightOverlay {
 
   render(data: IssueHighlightData): void {
     this.clearEdges();
-    const { nodes, edges, regionGroups, cfg } = data;
+    const { nodes, edges, allEdges, regionGroups, cfg } = data;
     const hasEdges = edges != null && edges.length > 0;
     const hasRegions = regionGroups != null && regionGroups.length > 0 && nodes.length > 0;
 
@@ -55,7 +59,8 @@ export class IssueHighlightOverlay {
 
     const g = new Graphics();
 
-    const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg);
+    const directedPairs = allEdges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
+    const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg, directedPairs);
 
     for (const [from, to] of edges) {
       const a = nodePos.get(from);

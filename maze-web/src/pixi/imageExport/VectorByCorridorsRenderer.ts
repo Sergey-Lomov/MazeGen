@@ -573,6 +573,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       nodeById, effStart, effFinish, cfg,
       buildMarkerStyle(settings.startMarker, canvas.stage.background),
       buildMarkerStyle(settings.finishMarker, canvas.stage.background),
+      edges,
     );
 
     // Widen the corridor stroke under each marker so it doesn't get visually swallowed by/collide

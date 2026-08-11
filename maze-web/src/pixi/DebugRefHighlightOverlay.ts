@@ -1,5 +1,5 @@
 import { Container } from "pixi.js";
-import type { NodeDto } from "../wasm/types";
+import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { HoveredDebugRef } from "../store/storeTypes";
 import { NODE_RADIUS } from "./renderConstants";
@@ -19,6 +19,10 @@ export interface DebugRefHighlightData {
    *  highlighting by coordinate after its node is gone from `nodes` (GitHub issue #279), instead
    *  of silently drawing nothing. */
   allNodes: NodeDto[];
+  /** Drives shape-aware split node-point positioning (GitHub issue #318) — see
+   *  `buildNodePositions`'s own doc comment. `[]` (default at call sites with no edges in hand)
+   *  falls back to the generic hub position. */
+  edges: EdgeDto[];
   ref: HoveredDebugRef | null;
   cfg: TessellationConfig;
 }
@@ -55,7 +59,7 @@ export class DebugRefHighlightOverlay {
   }
 
   render(data: DebugRefHighlightData): void {
-    const { nodes, allNodes, ref, cfg } = data;
+    const { nodes, allNodes, edges, ref, cfg } = data;
 
     if (!ref || nodes.length === 0) {
       this.edgeRenderer.render([]);
@@ -63,7 +67,8 @@ export class DebugRefHighlightOverlay {
       return;
     }
 
-    const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg);
+    const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
+    const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg, directedPairs);
     const posOf = (id: bigint): Pos | undefined => nodePos.get(Number(id));
 
     switch (ref.kind) {

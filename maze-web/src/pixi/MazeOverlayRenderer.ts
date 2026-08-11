@@ -71,7 +71,7 @@ export class MazeOverlayRenderer {
     const teleportEdges = buildTeleportEdges(nodeById, edges, cfg);
     this.teleports.render({ edges: teleportEdges, cfg });
 
-    const markerData = buildMazeMarkers(nodeById, start, finish, cfg);
+    const markerData = buildMazeMarkers(nodeById, start, finish, cfg, undefined, undefined, edges);
     this.markers.render({ markers: markerData });
   }
 

@@ -427,6 +427,7 @@ describe("VectorByCorridorsRenderer", () => {
       expect.any(Map), 0, 1, stableCfg,
       expect.objectContaining(startMarker),
       expect.objectContaining(finishMarker),
+      expect.any(Array),
     );
   });
 

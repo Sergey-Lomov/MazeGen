@@ -1,10 +1,10 @@
 ﻿import type { NodeDto, EdgeDto, IssueDto } from "../../wasm/types";
 import type { MazeState, PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import type { WallEdge, MarkerData, MarkerShape, PassageKind, TeleportEdge, SplitPassage, SplitSpecialShape, SplitSpecialShapeKind, TeleportCornerStyle } from "../renderers/types";
+import type { WallEdge, MarkerData, MarkerShape, PassageKind, TeleportEdge, SplitPassage, SplitSpecialShape, TeleportCornerStyle } from "../renderers/types";
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
-import { getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment, splitHubPoint, SPLIT_HUB_RADIUS } from "../tessellationGeometry";
-import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceKind } from "../splitFaceLayout";
+import { getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment, buildNodePositions, SPLIT_HUB_RADIUS } from "../tessellationGeometry";
+import { computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, type SplitFaceKind } from "../splitFaceLayout";
 import { buildCellSet } from "./sharedSelectors";
 import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
 import { TILE_SIZE } from "../constants";
@@ -307,25 +307,28 @@ export function buildMazeWalls(
 }
 
 /** Position to draw a node-anchored entity (start/finish marker, teleport endpoint) at — the
- *  cell's own center for an ordinary (unsplit) node, or that node's hub point on the small circle
- *  `buildSplitPassages` places split-point nodes on (`splitHubPoint`, same formula), so a
- *  marker landing on a split point reads as belonging to one specific node of it, not the tile as
- *  a whole (GitHub issue #223). `nodes` must include every node of the point (not just `nodeId`)
- *  for the slot index to be computed correctly. */
+ *  cell's own center for an ordinary (unsplit) node; for a split point, a node recognized as part
+ *  of a `SplitSpecialShapeKind` (bridge/diagonal, GitHub issue #318) gets `specialSplitNodePoint`'s
+ *  dedicated point instead of the generic hub-circle position, since a bridge/diagonal reads
+ *  visually as belonging to a specific half/lane of the tile, not an evenly-spaced slot on a
+ *  circle; every other split node still gets `splitHubPoint`'s small-circle position. Thin wrapper
+ *  over `buildNodePositions` (`tessellationGeometry.ts`) — same shape detection, just resolving one
+ *  node id instead of building the whole map. `nodes` must include every node of the point (not
+ *  just `nodeId`) for the slot index/shape detection to be computed correctly. `edges` (directed
+ *  pairs only — teleports pre-filtered by the caller, same contract `buildSplitPassages` uses)
+ *  drives shape detection; omit it to always fall back to the generic hub position (e.g. a caller
+ *  with no edge data in hand). */
 export function getSplitAwareNodePosition(
   nodes: NodeDto[],
   nodeId: number,
   cfg: TessellationConfig,
+  edges: EdgeDto[] = [],
 ): { x: number; y: number } | null {
   const node = nodes.find((n) => n.id === nodeId);
   if (!node) return null;
 
-  const pointNodes = nodes.filter((n) => n.x === node.x && n.y === node.y);
-  const center = getCellCenter(node.x, node.y, cfg);
-  if (pointNodes.length <= 1) return center;
-
-  const slotIndex = pointNodes.findIndex((n) => n.id === nodeId);
-  return splitHubPoint(center, slotIndex, pointNodes.length, cfg);
+  const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
+  return buildNodePositions(nodes, cfg, directedPairs).get(nodeId) ?? null;
 }
 
 /** Colored passages for every split point (GitHub issue #223). Each node of a split point gets
@@ -378,30 +381,6 @@ export type SplitPassagesResult = {
    *  (diagonal) pair — see `SplitSpecialShapeKind`. */
   specialShapes: SplitSpecialShape[];
 };
-
-/** Recognizes a degree-4 split point's two-node topology as `"bridge"` (each node an
- *  opposite-face pair) or `"diagonal"` (each node an adjacent-face pair) — GitHub issue #294.
- *  `faceKindsByNode[nodeIndex]` is that node's kind on every one of the point's faces, in the same
- *  order as `offsets`/`faceInputs`; a node only counts as "connected" on a face for `passage`/
- *  `one_way_out`/`one_way_in` (mirrors `NO_OWN_SEGMENT_KINDS`). Returns `null` for anything else
- *  (wrong degree/node count, not exactly 2 connected faces per node, or connected faces that are
- *  neither opposite nor adjacent). */
-function detectSplitSpecialShapeKind(faceKindsByNode: SplitFaceKind[][]): SplitSpecialShapeKind | null {
-  const degree = faceKindsByNode[0]?.length ?? 0;
-  if (degree !== 4 || faceKindsByNode.length !== 2) return null;
-
-  const connectedIndices = faceKindsByNode.map((kinds) =>
-    kinds.reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []),
-  );
-  if (connectedIndices.some((idxs) => idxs.length !== 2)) return null;
-
-  const [a0, a1] = connectedIndices[0];
-  const [b0, b1] = connectedIndices[1];
-  const aOpposite = Math.abs(a0 - a1) === 2;
-  const bOpposite = Math.abs(b0 - b1) === 2;
-  if (aOpposite !== bOpposite) return null; // one node opposite, the other adjacent — not a recognized shape
-  return aOpposite ? "bridge" : "diagonal";
-}
 
 /** The tile's own vertex index shared by two adjacent faces (GitHub issue #294's diagonal-divider
  *  shape needs the real tile corner, not a face-midpoint-to-center bend) — `edgeVerts[i]` is that
@@ -734,9 +713,12 @@ export function selectAnalyticsIssues(s: Pick<MazeState, "issues" | "postEditAna
 // the pair; `oneWay: true` (with from/to = that edge's actual direction) when only one does.
 //
 // A teleport endpoint on a split point (GitHub issue #223) anchors to that node's own hub point
-// (`getSplitAwareNodePosition`), not the tile's plain center — `nodeById`'s full value set stands
-// in for `nodes` here (unsplit callers, e.g. GenerationRenderer, never have more than one node per
-// point, so this is a no-op for them; only PostEditRenderer's split points actually differ).
+// (`buildNodePositions`), not the tile's plain center — `nodeById`'s full value set stands in for
+// `nodes` here (unsplit callers, e.g. GenerationRenderer, never have more than one node per point,
+// so this is a no-op for them; only PostEditRenderer's split points actually differ). Builds the
+// position map once (GitHub issue #318 follow-up) rather than calling `getSplitAwareNodePosition`
+// per endpoint — that would rebuild the whole map from scratch for every one of up to `2 ×
+// teleport pair count` lookups.
 export function buildTeleportEdges(
   nodeById: Map<number, NodeDto>,
   edges: EdgeDto[],
@@ -747,6 +729,8 @@ export function buildTeleportEdges(
   const seenPairKey = new Set<string>();
   const result: TeleportEdge[] = [];
   const allNodes = Array.from(nodeById.values());
+  const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
+  const nodePos = buildNodePositions(allNodes, cfg, directedPairs);
 
   for (const e of teleports) {
     const pairKey = e.from < e.to ? `${e.from},${e.to}` : `${e.to},${e.from}`;
@@ -754,8 +738,8 @@ export function buildTeleportEdges(
     seenPairKey.add(pairKey);
 
     const reverseExists = byPair.has(`${e.to}->${e.from}`);
-    const fromPos = getSplitAwareNodePosition(allNodes, e.from, cfg);
-    const toPos = getSplitAwareNodePosition(allNodes, e.to, cfg);
+    const fromPos = nodePos.get(e.from);
+    const toPos = nodePos.get(e.to);
     if (!fromPos || !toPos) continue;
 
     result.push({
@@ -830,11 +814,12 @@ const DEFAULT_START_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.no
 const DEFAULT_FINISH_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, size: DEFAULT_MARKER_SIZE, cornerStyle: "sharp", gapWidth: 0, gapColor: 0 };
 
 /** A start/finish marker on a split point (GitHub issue #223) anchors to that node's own hub
- *  point (`getSplitAwareNodePosition`), not the tile's plain center — `nodeById`'s full value set
+ *  point (`buildNodePositions`), not the tile's plain center — `nodeById`'s full value set
  *  stands in for `nodes` (see `buildTeleportEdges`'s doc comment for why this is safe for
- *  unsplit callers). `startStyle`/`finishStyle` default to a plain circle with no border (every
- *  caller except `VectorByWallsRenderer`, whose marker appearance is user-configurable — see
- *  GitHub issue #296), so passing them is opt-in. */
+ *  unsplit callers). `edges` drives shape detection for a bridge/diagonal split point (GitHub issue
+ *  #318) — pass `[]` (default) to always use the generic hub position. `startStyle`/`finishStyle`
+ *  default to a plain circle with no border (every caller except `VectorByWallsRenderer`, whose
+ *  marker appearance is user-configurable — see GitHub issue #296), so passing them is opt-in. */
 export function buildMazeMarkers(
   nodeById: Map<number, NodeDto>,
   start: number | null,
@@ -842,11 +827,14 @@ export function buildMazeMarkers(
   cfg: TessellationConfig,
   startStyle: MarkerStyle = DEFAULT_START_STYLE,
   finishStyle: MarkerStyle = DEFAULT_FINISH_STYLE,
+  edges: EdgeDto[] = [],
 ): MarkerData[] {
   const markers: MarkerData[] = [];
   const allNodes = Array.from(nodeById.values());
+  const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
+  const nodePos = buildNodePositions(allNodes, cfg, directedPairs);
   if (start !== null) {
-    const c = getSplitAwareNodePosition(allNodes, start, cfg);
+    const c = nodePos.get(start);
     if (c) {
       markers.push({
         pos: [c.x, c.y], radius: startStyle.size * TILE_SIZE,
@@ -856,7 +844,7 @@ export function buildMazeMarkers(
     }
   }
   if (finish !== null) {
-    const c = getSplitAwareNodePosition(allNodes, finish, cfg);
+    const c = nodePos.get(finish);
     if (c) {
       markers.push({
         pos: [c.x, c.y], radius: finishStyle.size * TILE_SIZE,

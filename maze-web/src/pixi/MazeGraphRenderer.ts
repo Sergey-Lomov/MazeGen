@@ -63,7 +63,8 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
     this.nodeLabels.clear();
     this.resetContainers();
 
-    const nodePos = buildNodePositions(nodes, cfg);
+    const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
+    const nodePos = buildNodePositions(nodes, cfg, directedPairs);
 
     const renderEdges = buildPairedRenderEdges(edges, nodePos);
     this.drawEdges(renderEdges, canvas.edge.default);

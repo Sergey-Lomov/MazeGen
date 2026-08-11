@@ -241,7 +241,7 @@ export class GenerationRenderer {
     });
     this.teleports.render({ edges: this.geometryCache.teleportEdges, cfg });
 
-    const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg);
+    const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg, undefined, undefined, view.edges);
     this.markers.render({ markers: markerData });
 
     // Debug-tree ref highlighting (GitHub issue #130) — only meaningful while the debug panel is
@@ -249,7 +249,7 @@ export class GenerationRenderer {
     // `generationSlice.ts`), so this gate and that reset both independently prevent a stale
     // highlight from surviving debug mode being closed.
     if (state.debugMode) {
-      this.debugRefHighlight.render({ nodes: view.nodes, allNodes: state.debugArena?.allNodes ?? [], ref: state.hoveredDebugRef, cfg });
+      this.debugRefHighlight.render({ nodes: view.nodes, allNodes: state.debugArena?.allNodes ?? [], edges: view.edges, ref: state.hoveredDebugRef, cfg });
     } else {
       this.debugRefHighlight.clear();
     }

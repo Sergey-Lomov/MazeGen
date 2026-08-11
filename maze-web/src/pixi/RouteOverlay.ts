@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import { NODE_RADIUS } from "./renderConstants";
-import type { RouteInfoDto, NodeDto } from "../wasm/types";
+import type { RouteInfoDto, NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { buildNodePositions } from "./tessellationGeometry";
 
@@ -11,6 +11,10 @@ const ROUTE_DOT_RADIUS = NODE_RADIUS * 0.55;
 export interface RouteData {
   routeInfo: RouteInfoDto;
   nodes: NodeDto[];
+  /** The maze's full base-graph edges — drives shape-aware split node-point positioning (GitHub
+   *  issue #318), see `buildNodePositions`'s own doc comment. `[]` falls back to the generic hub
+   *  position. */
+  edges: EdgeDto[];
   cfg: TessellationConfig;
 }
 
@@ -23,11 +27,12 @@ export class RouteOverlay {
   }
 
   render(data: RouteData): void {
-    const { routeInfo, nodes, cfg } = data;
+    const { routeInfo, nodes, edges, cfg } = data;
     this.g.clear();
     if (routeInfo.path.length < 2) return;
 
-    const nodeMap = buildNodePositions(nodes, cfg);
+    const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
+    const nodeMap = buildNodePositions(nodes, cfg, directedPairs);
 
     const positions = routeInfo.path
       .map((id) => nodeMap.get(id))

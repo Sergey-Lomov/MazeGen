@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { SplitPattern } from "../wasm/types";
+import { TILE_SIZE } from "../pixi/constants";
 
 // `getCartesian` (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment
 // — same mock `hexGeometry.test.ts` uses, canonical (unit-tile-scale) formulas mirroring
@@ -20,7 +21,7 @@ vi.mock("../pixi/cartesianCache", () => ({
   },
 }));
 
-const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getNeighborData, getSplitCircleRotationDeg, splitHubPoint, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb } = await import("../pixi/tessellationGeometry");
+const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getNeighborData, getSplitCircleRotationDeg, splitHubPoint, specialSplitNodePoint, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb } = await import("../pixi/tessellationGeometry");
 
 // `maze-core`'s own `Tessellation::faces()` order per space (`Specs/split-patterns.md`,
 // GitHub issue #273) — used here only to name expected indices by face, not to duplicate the
@@ -125,6 +126,42 @@ describe("splitHubPoint", () => {
   });
 });
 
+describe("specialSplitNodePoint", () => {
+  const cfg: TessellationConfig = { type: "square", width: 10, height: 10 };
+  const center = { x: 0, y: 0 };
+
+  // GitHub issue #318 follow-up — the tessellation-type guard is only reachable directly (every
+  // caller today, `buildNodePositions`, never passes a non-null `kind` for a non-square cfg, since
+  // `detectSplitSpecialShapeKind` requires degree 4, which hex/triangle points never have).
+  it("returns null for a non-square tessellation even when kind/faces would otherwise resolve", () => {
+    const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    expect(specialSplitNodePoint(hexCfg, center, "diagonal", [0, 1], 0)).toBeNull();
+    expect(specialSplitNodePoint(hexCfg, center, "bridge", [0, 2], 0)).toBeNull();
+  });
+
+  it("returns null for a diagonal face pair with no dedicated table entry", () => {
+    // Only adjacent pairs (0,1)/(1,2)/(2,3)/(3,0) have entries — an opposite pair like (0,2)
+    // shouldn't reach this function via detectSplitSpecialShapeKind's own "diagonal" classification
+    // in practice, but the function itself stays total (returns null, not a throw/garbage value).
+    expect(specialSplitNodePoint(cfg, center, "diagonal", [0, 2], 0)).toBeNull();
+  });
+
+  it("bridge slot 1 always sits at plain center regardless of its own face pair", () => {
+    expect(specialSplitNodePoint(cfg, center, "bridge", [1, 3], 1)).toEqual(center);
+    expect(specialSplitNodePoint(cfg, center, "bridge", [0, 2], 1)).toEqual(center);
+  });
+
+  it("bridge slot 0 offsets toward its own first face", () => {
+    const east = specialSplitNodePoint(cfg, center, "bridge", [0, 2], 0)!; // faces[0] = E
+    expect(east.x).toBeCloseTo(TILE_SIZE * 0.25);
+    expect(east.y).toBeCloseTo(0);
+
+    const north = specialSplitNodePoint(cfg, center, "bridge", [1, 3], 0)!; // faces[0] = N
+    expect(north.x).toBeCloseTo(0);
+    expect(north.y).toBeCloseTo(-TILE_SIZE * 0.25);
+  });
+});
+
 describe("buildNodePositions", () => {
   const cfg: TessellationConfig = { type: "square", width: 10, height: 10 };
 
@@ -165,6 +202,89 @@ describe("buildNodePositions", () => {
     const nodes = [{ id: 5, x: 3, y: 3 }];
     const nodePos = buildNodePositions(nodes, cfg);
     expect(nodePos.get(5)).toEqual(getCellCenter(3, 3, cfg));
+  });
+
+  // GitHub issue #318 — a degree-4 split point recognized as a "diagonal"/"bridge" special shape
+  // gets a dedicated point instead of the generic hub circle, once `directedPairs` are supplied.
+  describe("shape-aware positioning for a recognized bridge/diagonal split point", () => {
+    // Split point at (2,2); neighbors at E(3,2), N(2,3), W(1,2), S(2,1) — face order per
+    // `getNeighborData`: 0=E, 1=N, 2=W, 3=S (confirmed by `splitFaceIndexToCore`'s own tests above).
+    const east = { id: 100, x: 3, y: 2 };
+    const north = { id: 101, x: 2, y: 3 };
+    const west = { id: 102, x: 1, y: 2 };
+    const south = { id: 103, x: 2, y: 1 };
+
+    it("diagonal: each node's point sits at the centroid of its own half (adjacent-face pair), not the hub circle", () => {
+      const node0 = { id: 0, x: 2, y: 2 }; // connects E, N
+      const node1 = { id: 1, x: 2, y: 2 }; // connects W, S
+      const nodes = [node0, node1, east, north, west, south];
+      const directedPairs = [
+        { from: node0.id, to: east.id }, { from: node0.id, to: north.id },
+        { from: node1.id, to: west.id }, { from: node1.id, to: south.id },
+      ];
+      const nodePos = buildNodePositions(nodes, cfg, directedPairs);
+      const center = getCellCenter(2, 2, cfg);
+
+      // node0 (E,N) — half-centroid direction, scaled to 1/4 tile (GitHub issue #318 follow-up:
+      // 1/3 sat too close to the corner, 1/6 and 1/5 overcorrected, 1/4 is the final value).
+      const p0 = nodePos.get(0)!;
+      expect(p0.x).toBeCloseTo(center.x + TILE_SIZE / 4);
+      expect(p0.y).toBeCloseTo(center.y - TILE_SIZE / 4);
+
+      // node1 (W,S) — the opposite half, offset (-1/4, 1/4) tile.
+      const p1 = nodePos.get(1)!;
+      expect(p1.x).toBeCloseTo(center.x - TILE_SIZE / 4);
+      expect(p1.y).toBeCloseTo(center.y + TILE_SIZE / 4);
+
+      // Neither point sits on the generic hub circle (radius SPLIT_HUB_RADIUS from center).
+      const hubDist0 = Math.hypot(p0.x - center.x, p0.y - center.y);
+      expect(hubDist0).not.toBeCloseTo(TILE_SIZE / 4);
+    });
+
+    it("bridge: slot 1 sits at tile center, slot 0 offsets toward its own first face (GitHub issue #318 follow-up: keyed by slot, and the offset axis is slot 0's own face pair, not slot 1's)", () => {
+      const node0 = { id: 0, x: 2, y: 2 }; // slot 0 — connects E, W (opposite)
+      const node1 = { id: 1, x: 2, y: 2 }; // slot 1 — connects N, S (opposite)
+      const nodes = [node0, node1, east, north, west, south];
+      const directedPairs = [
+        { from: node0.id, to: east.id }, { from: node0.id, to: west.id },
+        { from: node1.id, to: north.id }, { from: node1.id, to: south.id },
+      ];
+      const nodePos = buildNodePositions(nodes, cfg, directedPairs);
+      const center = getCellCenter(2, 2, cfg);
+
+      // Slot 1 (node1) sits at plain center.
+      expect(nodePos.get(1)).toEqual(center);
+
+      // Slot 0 (node0) offsets 0.25 tile toward its own first face (E).
+      const p0 = nodePos.get(0)!;
+      expect(p0.x).toBeCloseTo(center.x + TILE_SIZE * 0.25);
+      expect(p0.y).toBeCloseTo(center.y);
+    });
+
+    it("falls back to the generic hub circle when no directedPairs are given", () => {
+      const node0 = { id: 0, x: 2, y: 2 };
+      const node1 = { id: 1, x: 2, y: 2 };
+      const nodePos = buildNodePositions([node0, node1], cfg);
+      const center = getCellCenter(2, 2, cfg);
+      expect(nodePos.get(0)).toEqual(splitHubPoint(center, 0, 2, cfg));
+      expect(nodePos.get(1)).toEqual(splitHubPoint(center, 1, 2, cfg));
+    });
+
+    it("falls back to the generic hub circle for a non-degree-4 tessellation (hex)", () => {
+      const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+      const node0 = { id: 0, x: 0, y: 0 };
+      const node1 = { id: 1, x: 0, y: 0 };
+      const { offsets } = getNeighborData(hexCfg, 0, 0);
+      const [dx0, dy0] = offsets[0];
+      const [dx1, dy1] = offsets[1];
+      const neighbor0 = { id: 200, x: dx0, y: dy0 };
+      const neighbor1 = { id: 201, x: dx1, y: dy1 };
+      const directedPairs = [{ from: node0.id, to: neighbor0.id }, { from: node1.id, to: neighbor1.id }];
+      const nodePos = buildNodePositions([node0, node1, neighbor0, neighbor1], hexCfg, directedPairs);
+      const center = getCellCenter(0, 0, hexCfg);
+      expect(nodePos.get(0)).toEqual(splitHubPoint(center, 0, 2, hexCfg));
+      expect(nodePos.get(1)).toEqual(splitHubPoint(center, 1, 2, hexCfg));
+    });
   });
 });
 

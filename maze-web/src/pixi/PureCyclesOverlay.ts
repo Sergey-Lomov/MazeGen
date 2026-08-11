@@ -1,5 +1,5 @@
 import { Container, Graphics } from "pixi.js";
-import type { NodeDto, NavEdgeDto } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
@@ -15,6 +15,10 @@ const PURE_EDGE_WIDTH = 2;
 export interface PureCyclesData {
   nodes: NodeDto[];
   navEdges: NavEdgeDto[];
+  /** The maze's full base-graph edges — drives shape-aware split node-point positioning (GitHub
+   *  issue #318), see `buildNodePositions`'s own doc comment. `[]` falls back to the generic hub
+   *  position. */
+  edges: EdgeDto[];
   /** Set of maze node ids in the pure-cycle core. */
   pureCycleNodeIds: Set<number>;
   /** Set of "from_maze_id,to_maze_id" keys for pure-cycle edges. */
@@ -34,10 +38,11 @@ export class PureCyclesOverlay {
 
   render(data: PureCyclesData): void {
     this.clear();
-    const { nodes, navEdges, pureCycleNodeIds, pureCycleEdgeKeys, cfg } = data;
+    const { nodes, navEdges, edges, pureCycleNodeIds, pureCycleEdgeKeys, cfg } = data;
     if (nodes.length === 0) return;
 
-    const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg);
+    const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
+    const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg, directedPairs);
 
     const g = new Graphics();
 

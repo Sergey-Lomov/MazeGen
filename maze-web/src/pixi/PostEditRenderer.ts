@@ -210,6 +210,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.issueHighlight.render({
       nodes: state.nodes,
       edges: state.hoveredIssueLoopEdges,
+      allEdges: state.edges,
       regionGroups: state.hoveredIssueRegionGroups,
       cfg: this.cfg,
     });
@@ -285,7 +286,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg);
     this.teleports.render({ edges: teleportEdges, cfg });
 
-    const markerData = buildMazeMarkers(nodeById, start, finish, cfg);
+    const markerData = buildMazeMarkers(nodeById, start, finish, cfg, undefined, undefined, activeEdges);
     this.markers.render({ markers: markerData });
 
     this.hover.render({ highlights: [] });

@@ -524,6 +524,7 @@ export class VectorByWallsRenderer {
       nodeById, start, finish, cfg,
       buildMarkerStyle(startMarker, floorColor),
       buildMarkerStyle(finishMarker, floorColor),
+      edges,
     );
     this.teleports.render({
       edges: this.geometryCache.teleportEdges,
