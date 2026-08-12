@@ -607,6 +607,18 @@ export interface GenerationState {
    *  counter rather than a boolean so two clicks in a row (no other state change between them)
    *  each still produce a distinct value the tree's effect can react to. */
   debugStepFocusToken: number;
+  /** Whether stepping through the debug tape (autoplay, next/prev, scrubber settle, tree row
+   *  click) auto-switches the active floor to match the step being shown (GitHub issue #350's
+   *  follow-up) — on by default, matching the feature's original always-on behavior; the toggle
+   *  lets a user opt out when they want to keep manually driving the active floor while stepping.
+   *  Independent of a debug-tree bubble's own click-to-switch (`onClickFloor` in
+   *  `DebugEventTree.tsx`), which always switches regardless of this toggle — a bubble click is an
+   *  explicit "go to this floor" action, not an auto-switch. Never gates a scrubber drag's own
+   *  in-flight ticks either way — those already skip the switch unconditionally (`switchFloor:
+   *  false`) to avoid flicker; this toggle only affects the settle call and every other trigger.
+   *  Not reset by `setDebugMode`/a fresh `generate()` — a user's preference here should persist
+   *  across debug sessions within the same app session. */
+  debugAutoSwitchFloor: boolean;
   /** Node/edge/cycle/region ref currently hovered in the debug event tree (GitHub issue #130) —
    *  drives `DebugRefHighlightOverlay` canvas highlighting in `GenerationRenderer`. Not
    *  persisted/serialized (no `persist`/`devtools` middleware wraps this store) — `bigint` ids
@@ -778,7 +790,13 @@ export interface GenerationActions {
   setRandomSeed: (v: boolean) => void;
   setOpenCard: (card: FeatureId) => void;
   setDebugMode: (v: boolean) => void;
-  setDebugStep: (step: number) => void;
+  /** `switchFloor` (default `true`, GitHub issue #350) gates the auto floor-switch — pass `false`
+   *  while a scrubber drag is still in flight (`StepSlider`'s intermediate ticks) so the active
+   *  floor doesn't flicker across every floor the drag passes over; the final settle call (drag
+   *  release) passes `true`/omits it to apply the real switch once. */
+  setDebugStep: (step: number, switchFloor?: boolean) => void;
+  /** Flips `debugAutoSwitchFloor`. */
+  toggleDebugAutoSwitchFloor: () => void;
   /** Bumps `debugStepFocusToken` — see that field's doc comment. */
   focusDebugStep: () => void;
   setDebugAutoPlayDelay: (ms: number) => void;

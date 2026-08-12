@@ -11,21 +11,29 @@ const MAX_PANEL_WIDTH = 300;
 
 let measureCtx: CanvasRenderingContext2D | null = null;
 
-/** Widest rendered width, in px, of any floor's title under the switcher's own title style —
- *  the panel is sized to fit the longest title without reflowing every time the active floor
- *  changes (GitHub issue #336 follow-up). Falls back to a rough ch-based estimate when
+/** `"{n}: {title}"` — the switcher's own display label for a floor, 1-based index (array position
+ *  + 1) so it matches `NodeDto.level + 1`'s convention (see `DebugEventTree.tsx`'s `Lf:x:y` bubble
+ *  prefix, GitHub issue #350) rather than the raw 0-based array index. */
+function floorDisplayLabel(floor: FloorState, index: number): string {
+  return `${index + 1}: ${floor.title}`;
+}
+
+/** Widest rendered width, in px, of any floor's display label under the switcher's own title
+ *  style — the panel is sized to fit the longest label without reflowing every time the active
+ *  floor changes (GitHub issue #336 follow-up). Falls back to a rough ch-based estimate when
  *  `CanvasRenderingContext2D` isn't available (e.g. jsdom in tests). */
 function measureMaxTitleWidth(floors: FloorState[]): number {
+  const labels = floors.map((f, i) => floorDisplayLabel(f, i));
   if (!measureCtx) {
     const canvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
     measureCtx = canvas?.getContext("2d") ?? null;
   }
   if (!measureCtx) {
-    const longest = floors.reduce((max, f) => Math.max(max, f.title.length), 0);
+    const longest = labels.reduce((max, label) => Math.max(max, label.length), 0);
     return longest * (font.lg * 0.6);
   }
   measureCtx.font = `600 ${font.lg}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
-  return floors.reduce((max, f) => Math.max(max, measureCtx!.measureText(f.title).width), 0);
+  return labels.reduce((max, label) => Math.max(max, measureCtx!.measureText(label).width), 0);
 }
 
 /** Shared floor-scoping panel (GitHub issue #336), docked top-center over the canvas. Shown by
@@ -38,7 +46,10 @@ export function FloorSwitcher() {
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const setActiveFloorId = useMazeStore((s) => s.setActiveFloorId);
 
-  const index = floors.findIndex((f) => f.id === activeFloorId);
+  // `index` falls back to 0 alongside `activeFloor` itself when `activeFloorId` doesn't match any
+  // current floor (shouldn't happen — `setActiveFloorId` no-ops on an unknown id — but mirrors the
+  // existing `activeFloor` fallback below rather than letting a stray `-1` reach the display label).
+  const index = Math.max(floors.findIndex((f) => f.id === activeFloorId), 0);
   const activeFloor = floors[index] ?? floors[0];
   const canGoUp = index >= 0 && index < floors.length - 1;
   const canGoDown = index > 0;
@@ -71,7 +82,7 @@ export function FloorSwitcher() {
       >
         <ChevronDown size={16} color={ui.text.tertiary} />
       </button>
-      <span style={{ ...styles.title, width: titleWidth, textAlign: "center" }}>{activeFloor.title}</span>
+      <span style={{ ...styles.title, width: titleWidth, textAlign: "center" }}>{floorDisplayLabel(activeFloor, index)}</span>
       <button
         className={canGoUp ? "hoverable" : undefined}
         style={{ ...styles.arrowBtn, ...(canGoUp ? {} : styles.arrowBtnDisabled) }}

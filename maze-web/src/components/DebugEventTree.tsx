@@ -4,11 +4,12 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
 import {
   buildStepIndex, flattenVisibleRows, resolveHighlightTarget, buildNodeCoordIndex,
-  displayStepForRow, nodeIndexForStep, type TreeRow,
+  displayStepForRow, nodeIndexForStep, resolveBubbleFloor, type TreeRow,
 } from "../debug/debugTreeSelectors";
 import { nodeAt, nodeView, topLevelSourceScopes, type ParsedTape } from "../debug/eventTape";
 import { adapterForNode, type Token, type BaseAlgorithmAdapter, type ScopeTitleLookup } from "../debug/algorithmRegistry";
 import type { EventedEventKind } from "../wasm/mazeService";
+import type { HoveredDebugRef } from "../store/storeTypes";
 import { DebugRefBubble } from "./DebugRefBubble";
 import { resolveIssue } from "./issueRegistry";
 import { ui, typography, muted, spacing, indent } from "../styles/theme";
@@ -46,11 +47,19 @@ function estimateRowHeight(tokens: Token[], depth: number, containerWidth: numbe
 }
 
 /** Bubble label — coordinates only, per user decision (narration text around it stays wordless,
- *  e.g. "Passage added", not "Passage added: 3:18 → 3:19"). Format is `x:y`, no parens/comma. `issue`
- *  tokens are the one exception: there's no id to format, so the label is the issue kind's own
- *  resolved display name (`resolveIssue`, the same registry `IssuesBlock`'s `IssueBubble` reads),
- *  not a coordinate. */
-function bubbleLabel(token: Token, coords?: (id: bigint) => { x: number; y: number } | null): string {
+ *  e.g. "Passage added", not "Passage added: 3:18 → 3:19"). Format is `x:y`, no parens/comma —
+ *  or, on a multi-floor maze (GitHub issue #350), `Lf:x:y` (1-based floor index, `L` prefix so
+ *  it's unambiguous this is a floor, not another coordinate), so a bubble stays readable when
+ *  nodes on different floors legitimately share the same `(x, y)`. The floor prefix is only shown
+ *  when `multiFloor` — a single-floor maze's bubbles are unchanged, since every node is trivially
+ *  floor 1. `issue` tokens are the one exception: there's no id to format, so the label is the
+ *  issue kind's own resolved display name (`resolveIssue`, the same registry `IssuesBlock`'s
+ *  `IssueBubble` reads), not a coordinate. */
+function bubbleLabel(
+  token: Token,
+  coords?: (id: bigint) => { x: number; y: number; level: number } | null,
+  multiFloor = false,
+): string {
   const fmt = (id: bigint) => {
     if (!coords) return `${id}`;
     const p = coords(id);
@@ -63,7 +72,7 @@ function bubbleLabel(token: Token, coords?: (id: bigint) => { x: number; y: numb
     // rather than crashing the whole tree either way (a React render-time throw here previously
     // took down the entire debug panel).
     if (!p) return `#${id}`;
-    return `${p.x}:${p.y}`;
+    return multiFloor ? `L${p.level + 1}:${p.x}:${p.y}` : `${p.x}:${p.y}`;
   };
   switch (token.kind) {
     case "text": return token.text;
@@ -137,6 +146,7 @@ export function DebugEventTree() {
   const setDebugStep = useMazeStore((s) => s.setDebugStep);
   const stages = useMazeStore((s) => s.stages);
   const rules = useMazeStore((s) => s.rules);
+  const multiFloor = useMazeStore((s) => s.floors.length > 1);
   // Resolved live from the current store config, not from the tape (core has no concept of a
   // rule/stage's display title, only its opaque `id` — see `ScopeTitleLookup`'s doc comment).
   const titleLookup: ScopeTitleLookup = useMemo(() => {
@@ -214,6 +224,31 @@ export function DebugEventTree() {
     [debugArena],
   );
   const coords = useMemo(() => (coordIndex ? (id: bigint) => coordIndex.get(id) : () => null), [coordIndex]);
+
+  // Bubble click -> floor switch (GitHub issue #350): resolved from the same `coordIndex` used for
+  // bubble labels, against `activeFloorId`'s own array position (`floors` is bottom-to-top, per
+  // `Specs/floors.md` — `activeFloorIndex` here matches `NodeDto.level`'s own convention).
+  const floors = useMazeStore((s) => s.floors);
+  const activeFloorId = useMazeStore((s) => s.activeFloorId);
+  const setActiveFloorId = useMazeStore((s) => s.setActiveFloorId);
+  const activeFloorIndex = floors.findIndex((f) => f.id === activeFloorId);
+  const onBubbleClick = useMemo(() => {
+    if (!multiFloor) return undefined;
+    return (target: HoveredDebugRef) => {
+      const floorIndex = resolveBubbleFloor(target, coords, activeFloorIndex);
+      if (floorIndex !== null && floors[floorIndex]) setActiveFloorId(floors[floorIndex].id);
+    };
+  }, [multiFloor, coords, activeFloorIndex, floors, setActiveFloorId]);
+  // An `issue` bubble's own `L{n}` floor badge (GitHub issue #350, `DebugRefBubble` only reads
+  // this for `target.kind === "issue"` — every other bubble kind already shows its floor via the
+  // label's own `Lf:x:y` prefix). Unlike `onBubbleClick` above, this has no "stay put if already
+  // on `to`'s floor" bias: it always names the floor a click would land on, so `resolveBubbleFloor`
+  // is called with a `currentFloorIndex` no real floor ever has (`-1`), forcing the `edge` case
+  // (relevant to a `cycle`-payload issue) to resolve `from`'s floor unconditionally.
+  const resolveTargetFloor = useMemo(
+    () => (multiFloor ? (target: HoveredDebugRef) => resolveBubbleFloor(target, coords, -1) : undefined),
+    [multiFloor, coords],
+  );
 
   const { rows, labels, rowIndexByNodeIndex } = useMemo(() => {
     if (!tape) {
@@ -399,7 +434,13 @@ export function DebugEventTree() {
                   {tokens.map((token, i) =>
                     token.kind === "text"
                       ? <React.Fragment key={i}>{token.text}</React.Fragment>
-                      : <DebugRefBubble key={i} target={token} label={bubbleLabel(token, coords)} />
+                      : <DebugRefBubble
+                          key={i}
+                          target={token}
+                          label={bubbleLabel(token, coords, multiFloor)}
+                          onClickFloor={onBubbleClick}
+                          targetFloorIndex={resolveTargetFloor?.(token)}
+                        />
                   )}
                 </span>
               </span>

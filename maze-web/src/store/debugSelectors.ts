@@ -1,8 +1,9 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { DebugArenaHandle } from "./storeTypes";
-import { nearestCheckpointFromAtOrBefore, sourceContentStart } from "../debug/eventTape";
+import { nearestCheckpointFromAtOrBefore, sourceContentStart, nodeView } from "../debug/eventTape";
 import type { ApplyFrom, PresetSetupApplyResult, KruskalApplyResult, WilsonApplyResult, EdgeBasedApplyResult, VertexBasedApplyResult, QcApplyResult } from "../debug/eventTape";
-import { adapterFor } from "../debug/algorithmRegistry";
+import { adapterFor, adapterForNode, type Token, type BaseAlgorithmAdapter } from "../debug/algorithmRegistry";
+import { buildStepIndex, nodeIndexForStep } from "../debug/debugTreeSelectors";
 
 export interface DebugMazeView {
   nodes: NodeDto[];
@@ -394,4 +395,84 @@ export function selectDebugMazeView(arena: DebugArenaHandle | null, debugStep: n
   lastStep = debugStep;
   lastView = view;
   return view;
+}
+
+/** Extracts the node ids a decoded event's own narration tokens reference — `node`/`edge`/`cycle`/
+ *  `region` tokens carry ids, `text`/`issue` don't (an `issue` token's structural payload, when
+ *  present, is itself a `cycle`/`region` shape but represents a QC finding about existing state,
+ *  not a node this *step*'s own mutation touched — excluded here on purpose). */
+function tokenNodeIds(tokens: Token[]): bigint[] {
+  const ids: bigint[] = [];
+  for (const token of tokens) {
+    switch (token.kind) {
+      case "node": ids.push(token.id); break;
+      case "edge": ids.push(token.from, token.to); break;
+      case "cycle": for (const [f, t] of token.edges) ids.push(f, t); break;
+      case "region": ids.push(...token.nodes); break;
+    }
+  }
+  return ids;
+}
+
+// Per-arena memo of `NodeId -> level`, built once from `arena.nodes`/`arena.allNodes` (mirrors
+// `allSplitNodeIdsByArena`'s own per-arena WeakMap above) — `resolveStepFloorIndex` is called on
+// every `setDebugStep` (autoplay tick, next/prev, scrubber settle), so rebuilding this map from
+// scratch each time would be an avoidable O(nodes) pass per step on a large maze.
+const levelByIdByArena = new WeakMap<DebugArenaHandle, ReadonlyMap<bigint, number>>();
+
+function levelByIdOf(arena: DebugArenaHandle): ReadonlyMap<bigint, number> {
+  const cached = levelByIdByArena.get(arena);
+  if (cached) return cached;
+
+  const levelById = new Map<bigint, number>();
+  for (const n of arena.nodes) levelById.set(BigInt(n.id), n.level ?? 0);
+  for (const n of arena.allNodes) if (!levelById.has(BigInt(n.id))) levelById.set(BigInt(n.id), n.level ?? 0);
+
+  levelByIdByArena.set(arena, levelById);
+  return levelById;
+}
+
+/** Resolves which floor, if any, `debugStep`'s own mutating event touches (GitHub issue #350) —
+ *  used to auto-switch the active floor as the debug tape is stepped through. `null` means "don't
+ *  switch": the step touches nodes on more than one floor at once (e.g. a `VerticalPassage`/
+ *  `Elevator` edge added between floors — GitHub issue #337), or there's nothing to resolve (no
+ *  arena, no source declared for this step, or the step's own node carries no node-id tokens at
+ *  all, e.g. a `DeadEnd`/`CandidatesComputed` trace event — `debugStep` always lands on the tape's
+ *  own *mutating* events though, per `stepToNodeIndex`'s contract, so this last case shouldn't
+ *  actually occur in practice).
+ *
+ *  Reuses the exact same per-row decode path `DebugEventTree.tsx`'s `rowTokens` uses for bubble
+ *  labels (`adapterForNode` -> `decodeEvent` -> `narrationTokensFor`) rather than diffing two full
+ *  `selectDebugMazeView` replays — a diff would thrash that function's single-slot memo (every
+ *  call evicts the other step's cached view) and pay for a full source-list replay per step, when
+ *  only one event's own payload is actually needed here. */
+export function resolveStepFloorIndex(
+  arena: DebugArenaHandle | null,
+  floors: readonly { id: string }[],
+  debugStep: number,
+): number | null {
+  if (!arena || floors.length <= 1) return null;
+  const sourceEventKinds = arena.sources.map((s) => s.kind);
+  const stepIndexSources = arena.sources.map((s) => ({ kind: s.kind, nodeIndex: s.nodeIndex }));
+  const stepIndex = buildStepIndex(arena.tape, stepIndexSources);
+  if (debugStep < 0 || debugStep >= stepIndex.stepToNodeIndex.length) return null;
+
+  const nodeIndex = nodeIndexForStep(stepIndex, debugStep);
+  // Cast rationale mirrors `DebugEventTree.tsx`'s `rowTokens`: `adapterForNode` returns a union
+  // over six concrete adapter types, which TS can't instantiate `decodeEvent`/`narrationTokensFor`
+  // from directly (unsound in general) — safe here because the decoded `event`'s concrete type
+  // only ever flows from `decodeEvent` straight back into `narrationTokensFor` on this same
+  // adapter instance, never constructed independently.
+  const adapter = adapterForNode(arena.tape, nodeIndex, sourceEventKinds) as BaseAlgorithmAdapter<unknown>;
+  const payload = nodeView(arena.tape, nodeIndex).payload();
+  if (payload.kind !== "event") return null;
+  const event = adapter.decodeEvent(payload.tag, payload.bytes);
+  const ids = tokenNodeIds(adapter.narrationTokensFor(event));
+  if (ids.length === 0) return null;
+
+  const levelById = levelByIdOf(arena);
+  const levels = ids.map((id) => levelById.get(id));
+  if (levels.some((l) => l === undefined)) return null;
+  const first = levels[0] as number;
+  return levels.every((l) => l === first) ? first : null;
 }

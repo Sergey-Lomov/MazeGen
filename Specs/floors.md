@@ -77,9 +77,11 @@ Shown for every feature card except `basic_config`, `floors`, and `quality` (`FL
 
 **Adjacent-floor direction mapping** mirrors `FloorsFeature`'s own inversion: `floors` is stored bottom-to-top, so the switcher's up arrow ("go to the floor above") moves `activeFloorId` toward the *end* of the array, and the down arrow moves it toward the start. Arrows disable at either array end.
 
-**Panel width** is fixed to the widest floor title (measured via an offscreen `CanvasRenderingContext2D`, `measureMaxTitleWidth`), capped at 300px total — beyond the cap the title truncates with an ellipsis instead of growing the panel further. Computed once per `floors` change (`useMemo`, keyed on the `floors` array), not per active-floor switch, so the panel never reflows/jumps width as the user steps between floors of different name lengths.
+**Display label** is `"{n}: {title}"` (`floorDisplayLabel`), a 1-based index prefix (array position + 1) ahead of the floor's own title — e.g. `"1: Floor 1"` — matching the debug panel's own `Lf:x:y` bubble-prefix convention (GitHub issue #350, see `Specs/event_log.md`'s "Debug Panel Multi-Floor Awareness" section), both ultimately derived from the same `floors` array position / `NodeDto.level`.
 
-Nothing yet reads `activeFloorId` besides the switcher itself — see "Non-goals".
+**Panel width** is fixed to the widest floor's own display label (measured via an offscreen `CanvasRenderingContext2D`, `measureMaxTitleWidth` — measures `floorDisplayLabel`'s output, not the raw title, so the index prefix is accounted for too), capped at 300px total — beyond the cap the label truncates with an ellipsis instead of growing the panel further. Computed once per `floors` change (`useMemo`, keyed on the `floors` array), not per active-floor switch, so the panel never reflows/jumps width as the user steps between floors of different name lengths.
+
+Besides the switcher itself, `activeFloorId` now also drives the debug panel's multi-floor awareness (GitHub issue #350: bubble floor prefix/badge, click-to-switch, and auto-switch-on-step — see `Specs/event_log.md`) — see "Non-goals" below for what still doesn't read it.
 
 ## Grid visibility while the Floors card is open
 
@@ -88,5 +90,5 @@ Nothing yet reads `activeFloorId` besides the switcher itself — see "Non-goals
 ## Non-goals (deferred to later epic #333 issues)
 
 - No per-floor field shape, preset connections, or generation config — every floor shares one tessellation/preset setup, and `level_count` (the only thing sent to core) is just a count.
-- Generation now consumes `level_count` (issue #337) and builds/renders across every floor; QC/repair/routing, post-edit, and analytics/snapshot recompute are not wired in yet — they still only ever see floor 0, regardless of `level_count`. `activeFloorId` now scopes `GenerationRenderer`'s displayed nodes/edges (and the web store's post-edit reset logic filters to floor 0 before use), but no other feature reads it.
+- Generation now consumes `level_count` (issue #337) and builds/renders across every floor; QC/repair/routing, post-edit, and analytics/snapshot recompute are not wired in yet — they still only ever see floor 0, regardless of `level_count`. `activeFloorId` now scopes `GenerationRenderer`'s displayed nodes/edges (and the web store's post-edit reset logic filters to floor 0 before use) and the debug panel's multi-floor awareness (issue #350), but no other feature reads it.
 - No connection between the web `floor.id` (UUID) and core's `LevelId` (`Specs/space.md`) — the web client never sends or receives `LevelId`s, only a `level_count` number and, on `NodeDto`, a 0-based floor *index* (`levels_ordered()` position, not `LevelId`). Synchronizing the two identity spaces (e.g. so per-floor field/preset config could be sent) is deferred to whichever future issue actually needs it.

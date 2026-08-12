@@ -15,9 +15,9 @@ beforeEach(() => {
 });
 
 describe("FloorSwitcher", () => {
-  it("shows the active floor's title", () => {
+  it("shows the active floor's 1-based index and title", () => {
     render(<FloorSwitcher />);
-    expect(screen.getByText("Floor 2")).toBeInTheDocument();
+    expect(screen.getByText("2: Floor 2")).toBeInTheDocument();
   });
 
   it("moving up (toward the array's end) advances to the next floor", () => {
@@ -47,6 +47,6 @@ describe("FloorSwitcher", () => {
   it("falls back to the bottom floor when activeFloorId is stale", () => {
     useMazeStore.setState({ activeFloorId: "not_a_real_id" });
     render(<FloorSwitcher />);
-    expect(screen.getByText("Floor 1")).toBeInTheDocument();
+    expect(screen.getByText("1: Floor 1")).toBeInTheDocument();
   });
 });

@@ -251,4 +251,26 @@ describe("DebugPanel", () => {
     checkbox.click();
     expect(useMazeStore.getState().debugValueToggles.has("recursion_stack")).toBe(true);
   });
+
+  // --- Auto-switch floors toggle (GitHub issue #350 follow-up) ---
+
+  it("does not render the auto-switch-floors row on a single-floor maze", () => {
+    useMazeStore.setState({ debugArena: threeStepArena(), debugStep: 0, floors: [{ id: "floor_0", title: "Floor 1" }] });
+    render(<DebugPanel />);
+    expect(screen.queryByText("Auto-switch floors")).not.toBeInTheDocument();
+  });
+
+  it("renders the auto-switch-floors row on a multi-floor maze, reflecting debugAutoSwitchFloor", () => {
+    useMazeStore.setState({
+      debugArena: threeStepArena(), debugStep: 0,
+      floors: [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }],
+      debugAutoSwitchFloor: true,
+    });
+    render(<DebugPanel />);
+    const checkbox = screen.getByText("Auto-switch floors").closest("div")!.querySelector("input[type=checkbox]") as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+
+    checkbox.click();
+    expect(useMazeStore.getState().debugAutoSwitchFloor).toBe(false);
+  });
 });

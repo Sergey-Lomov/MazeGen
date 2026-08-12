@@ -384,6 +384,53 @@ describe("DebugEventTree", () => {
   });
 });
 
+// --- Multi-floor bubbles (GitHub issue #350) ---
+
+describe("DebugEventTree on a multi-floor maze", () => {
+  const floorNodes: NodeDto[] = [
+    { id: 1, x: 0, y: 0, i: 0, level: 1 },
+    { id: 2, x: 3, y: 4, i: 0, level: 1 },
+  ];
+  const floors = [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }];
+
+  beforeEach(() => {
+    useMazeStore.setState({
+      debugArena: { tape: buildTwoStepTape(), algorithmKind: "recursive_backtracker", sources: [{ scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 4, checkpointFroms: [] }], nodes: floorNodes, allNodes: floorNodes, totalSteps: 4, debugValueNames: [] },
+      debugStep: 0,
+      floors,
+      activeFloorId: "floor_0",
+    });
+  });
+
+  it("prefixes a bubble's coordinates with its 1-based floor (Lf:x:y)", () => {
+    render(<DebugEventTree />);
+    expandGeneration();
+    fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
+    // EdgeAdded(1, 2), bidirectional -> one "edge" bubble, "L2:0:0 <-> L2:3:4" — both nodes are
+    // floor index 1 -> "L2".
+    expect(screen.getByText("L2:0:0 <-> L2:3:4")).toBeInTheDocument();
+  });
+
+  it("clicking a bubble switches the active floor to the bubble's own floor", () => {
+    render(<DebugEventTree />);
+    expandGeneration();
+    fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
+
+    expect(useMazeStore.getState().activeFloorId).toBe("floor_0");
+    fireEvent.click(screen.getByText("L2:0:0 <-> L2:3:4"));
+    expect(useMazeStore.getState().activeFloorId).toBe("floor_1");
+  });
+
+  it("does not prefix bubbles with a floor on a single-floor maze", () => {
+    useMazeStore.setState({ floors: [floors[0]], activeFloorId: "floor_0" });
+    render(<DebugEventTree />);
+    expandGeneration();
+    fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
+    expect(screen.getByText("0:0 <-> 3:4")).toBeInTheDocument();
+    expect(screen.queryByText(/L2:/)).not.toBeInTheDocument();
+  });
+});
+
 describe("DebugEventTree with Wilson (GitHub issue #145's follow-up)", () => {
   beforeEach(() => {
     useMazeStore.setState({

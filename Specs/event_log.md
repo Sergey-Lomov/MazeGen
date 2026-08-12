@@ -1670,6 +1670,123 @@ itself, since `net` never held generation-time edges to begin with.
   coordinate lookup once, for every current and future node-mint/removal command, rather than
   growing every payload that references a `NodeId`.
 
+## Debug Panel Multi-Floor Awareness (#350)
+
+Generation debug tree/tape runs against multi-floor mazes (#337) since `NodeDto.level` (#337's own
+0-based floor index) started riding on every node in the replay engine's output — but the debug
+panel itself had no notion of floors until this issue: bubbles didn't show which floor a
+referenced node/edge was on, clicking a bubble never switched the active floor, and stepping
+through the tape never followed the run across floors. Web-only; no core changes (mirrors #130's
+own "no narration/presentation crosses the WASM boundary" principle) — `NodeDto.level` already
+carried everything needed.
+
+### Bubble floor prefix and badge
+
+`bubbleLabel` (`DebugEventTree.tsx`) prefixes a coordinate bubble's label with its 1-based floor
+index on a multi-floor maze (`floors.length > 1`, mirroring `AlgorithmSelectDialog.tsx`'s/
+`GenerationFeature.tsx`'s own `multiFloor` convention) — `Lf:x:y` (e.g. `L2:4:-2`) instead of
+plain `x:y`. `L`, not a bare number, so the floor digit is never mistaken for another coordinate
+component; 1-based to match `FloorSwitcher.tsx`'s own display convention (see below), not
+`NodeDto.level`'s raw 0-based value. `NodeCoordIndex.get` (`debugTreeSelectors.ts`) grew a third
+`level` field (defaulting a missing `NodeDto.level` to `0`, same convention as
+`selectFloorScopedMaze`) to supply this.
+
+An `issue`-kind bubble (#171) is the one exception — its label is a resolved issue-kind display
+name, not a coordinate, so it carries no floor information of its own. Per explicit user decision,
+it instead always shows a separate `L{n}` badge immediately outside the bubble (never inside its
+border) — `DebugRefBubble`'s `targetFloorIndex` prop, consulted only for `target.kind === "issue"`.
+Unconditional (not gated on "differs from the active floor"), unlike the coordinate bubbles' own
+prefix, which is already conditional on `multiFloor`.
+
+### Click-to-switch floor
+
+Clicking any bubble kind (node/edge/cycle/region/issue) switches `activeFloorId` to that bubble's
+own floor (`DebugEventTree.tsx`'s `onBubbleClick`, wired through `DebugRefBubble`'s `onClickFloor`
+prop — only passed at all on a multi-floor maze). Resolution logic lives in
+`resolveBubbleFloor` (`debugTreeSelectors.ts`), a pure function of `(target, coords,
+currentFloorIndex)`:
+
+- **`node`** — that node's own floor.
+- **`edge`/`issue`-with-`cycle`-target** — the one shape with two floors in play at once (a
+  `vertical_passage`/`elevator` edge connects different floors, #337): per explicit user decision,
+  switches to `from`'s floor, *unless* already standing on `to`'s floor, in which case it stays put
+  rather than jumping back to `from`. `currentFloorIndex` is the caller's own current active-floor
+  index for this comparison — the bubble's own floor **badge** (unlike the click) has no such bias,
+  so `DebugEventTree.tsx` calls `resolveBubbleFloor` with `currentFloorIndex: -1` (a value no real
+  floor ever has) when resolving the badge, forcing the `from`-floor branch unconditionally.
+- **`cycle`/`region`/`issue`-with-`region`-target** — no `from`/`to` asymmetry: switches to the one
+  floor every referenced node shares, or stays put if they span more than one (no principled single
+  target to pick).
+- **`issue`-with-`null`-target** — stays put (nothing to resolve).
+
+A bubble click always switches floor, entirely independent of the auto-switch toggle below
+(`debugAutoSwitchFloor`) — an explicit "go to this floor" action is never suppressed by a setting
+that only governs *automatic* switching.
+
+### Auto-switch on step
+
+Stepping through the tape (autoplay, next/prev, scrubber settle, tree row click — every path
+funnels through the single `setDebugStep` store action) auto-switches the active floor to the step
+being shown. `resolveStepFloorIndex` (`debugSelectors.ts`) resolves the step's own mutating event's
+floor: decodes the event at that step (same `adapterForNode` → `decodeEvent` →
+`narrationTokensFor` path `DebugEventTree.tsx`'s own row rendering uses, not a second
+`selectDebugMazeView` replay — a diff between two full replays would thrash that function's own
+single-slot memo and pay for a full source-list replay per step), extracts every referenced node id
+from the resulting `Token[]` (`node`/`edge`/`cycle`/`region` tokens; `tokenNodeIds`), and looks up
+each one's floor. If every referenced node shares one floor, switches to it; if the step touches
+more than one floor at once (e.g. a `VerticalPassage`/`Elevator` edge added between floors), stays
+on the current floor rather than guessing. `NodeId → level` lookup is memoized per arena
+(`levelByIdOf`, a `WeakMap<DebugArenaHandle, ...>` mirroring `allSplitNodeIdsByArena`'s own
+per-arena memo pattern) — `resolveStepFloorIndex` runs on every step, so rebuilding this map from
+`arena.nodes`/`arena.allNodes` from scratch each call would be an avoidable O(nodes) pass per step
+on a large maze.
+
+**Scrubber drag flicker fix**: `StepSlider.tsx`'s native range input fires one `input` event per
+pointer-move tick; forwarding every tick's `setDebugStep` call straight into the floor-switch logic
+flickered the active floor across every floor the drag happened to pass over, not just the final
+settled position. `StepSlider` gained an `onChangeEnd` callback (fires once, with the last
+delivered value, on `pointerup`/`keyup`/`blur` — i.e. drag settle) alongside its existing throttled
+`onChange` (still fires once per animation frame during the drag, unchanged). `DebugPanel.tsx`
+wires in-flight `onChange` ticks to `setDebugStep(v, false)` (`switchFloor: false` — skip the
+auto-switch entirely) and the settle `onChangeEnd` to `setDebugStep(v, true)`. `setDebugStep`'s
+second parameter, `switchFloor` (default `true`), is `StepSlider`-specific — every other trigger
+(autoplay, next/prev, row click) calls the single-argument form and gets the normal auto-switch
+behavior.
+
+**User-facing on/off toggle**: `debugAutoSwitchFloor: boolean` (`GenerationState`, on by default —
+matching the feature's original always-on behavior) gates auto-switching for every trigger *except*
+a bubble click (see above, which always switches). `DebugPanel.tsx` renders a `ToggleRow` ("Auto-
+switch floors" / "Автопереключение этажей") above the step slider, shown only on a multi-floor
+maze. `setDebugStep` checks both `switchFloor` (the scrubber-drag gate) and
+`state.debugAutoSwitchFloor` (the user toggle) — either being falsy skips the switch. Not reset by
+`setDebugMode(false)`/a fresh `generate()`, unlike most other debug-session UI state (`debugStale`,
+`hoveredDebugRef`, `debugValueToggles`, `showKruskalDsuGroups`) — a user's preference here is
+expected to persist across debug sessions within the same app session.
+
+### `FloorSwitcher` display convention
+
+`FloorSwitcher.tsx`'s title row gained a matching 1-based index prefix (`"{n}: {title}"`, e.g.
+`"1: Floor 1"`) — `floorDisplayLabel`, factored out so `measureMaxTitleWidth`'s panel-sizing measures
+the same string that's actually rendered, not just the raw floor title. Unrelated to (predates) this
+issue's own bubble-prefix convention, but both now agree on 1-based, `Lf:x:y`-vs-`{n}: title`-shaped
+display of the same underlying `NodeDto.level`/array-position value.
+
+### Out of Scope (#350)
+
+- Any change to `NodeDto`/the WASM boundary — `level` already existed (#337); this issue is a pure
+  web-side consumer of it.
+- `DebugRefHighlightOverlay`/`DebugValueHighlightOverlay` floor-conflation audit (done during this
+  issue's review, no code change needed) — both already receive `GenerationRenderer`'s
+  floor-scoped `view.nodes` (via `selectFloorScopedMaze`), so a same-`(x, y)`-different-floor
+  conflation was already impossible by construction; `selectFloorScopedMaze` itself gained unit
+  test coverage as part of this issue's own testability follow-up (it was already a standalone
+  exported function, just untested).
+- `resolveStepFloorIndex`'s `tokenNodeIds` helper's `cycle`/`region` branches are reachable in
+  practice (e.g. `CustomVertexBased`'s `ElevatorAdded`/`JunctionCandidatesChosen` narration) but
+  have no dedicated unit test — building a `CustomVertexBased` tape fixture was judged not worth
+  the cost for this issue's own scope; the underlying floor-resolution math is already fully
+  covered via `resolveBubbleFloor`'s equivalent `cycle`/`region` cases.
+
 ## Wire-Format Codegen
 
 Every section above that describes an event enum's wire tags/`EncodeEventPayload`/`is_mutating()`

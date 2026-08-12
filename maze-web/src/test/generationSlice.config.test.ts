@@ -405,6 +405,58 @@ describe("mazeStore generation misc actions", () => {
     expect(s.debugAutoPlayDelay).toBe(500);
   });
 
+  it("setDebugStep(step, false) skips the floor auto-switch, but a later plain setDebugStep(step) applies it (GitHub issue #350 flicker fix)", () => {
+    const debugTape = encodeEdgeAddedTape([[0n, 1n]]); // matches mockSnapshot.nodes' ids (0, 1)
+    vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });
+    useMazeStore.setState({
+      seed: 7, randomSeed: false, rules: [], debugMode: true,
+      floors: [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }],
+      activeFloorId: "floor_0",
+    });
+    useMazeStore.getState().generate();
+    // Both edge endpoints on floor 1 (index 1) — nodes come from `mockSnapshot`, which carries no
+    // `level`, so patched in directly (mirrors `debugSelectors.test.ts`'s own fixture pattern).
+    useMazeStore.setState((s) => ({
+      debugArena: s.debugArena && {
+        ...s.debugArena,
+        nodes: s.debugArena.nodes.map((n) => ({ ...n, level: 1 })),
+      },
+    }));
+
+    useMazeStore.getState().setDebugStep(0, false);
+    expect(useMazeStore.getState().activeFloorId).toBe("floor_0");
+
+    useMazeStore.getState().setDebugStep(0);
+    expect(useMazeStore.getState().activeFloorId).toBe("floor_1");
+  });
+
+  it("setDebugStep respects debugAutoSwitchFloor — off disables every trigger, not just the scrubber drag", () => {
+    const debugTape = encodeEdgeAddedTape([[0n, 1n]]);
+    vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });
+    useMazeStore.setState({
+      seed: 7, randomSeed: false, rules: [], debugMode: true,
+      floors: [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }],
+      activeFloorId: "floor_0",
+      debugAutoSwitchFloor: false,
+    });
+    useMazeStore.getState().generate();
+    useMazeStore.setState((s) => ({
+      debugArena: s.debugArena && {
+        ...s.debugArena,
+        nodes: s.debugArena.nodes.map((n) => ({ ...n, level: 1 })),
+      },
+    }));
+
+    // A plain (non-scrubber) setDebugStep call, `switchFloor` left at its default `true` — still
+    // no switch, since the user-facing toggle overrides it.
+    useMazeStore.getState().setDebugStep(0);
+    expect(useMazeStore.getState().activeFloorId).toBe("floor_0");
+
+    useMazeStore.getState().toggleDebugAutoSwitchFloor();
+    useMazeStore.getState().setDebugStep(0);
+    expect(useMazeStore.getState().activeFloorId).toBe("floor_1");
+  });
+
   it("generate() with debugMode on and a debug tape builds a debugArena and sets debugStep to the last step", () => {
     const debugTape = encodeEdgeAddedTape([[1n, 2n], [2n, 3n], [3n, 4n]]);
     vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });

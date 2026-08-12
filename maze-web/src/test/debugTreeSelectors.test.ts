@@ -2,9 +2,10 @@ import { describe, it, expect } from "vitest";
 import { parseTape, TAG_SCOPE, NO_NODE, RECURSIVE_BACKTRACKER_EVENT_TAG, KRUSKAL_EVENT_TAG, WILSON_EVENT_TAG, EDGE_BASED_EVENT_TAG, VERTEX_BASED_EVENT_TAG, type ParsedTape } from "../debug/eventTape";
 import {
   buildStepIndex, stepForNode, nodeIndexForStep, flattenVisibleRows, resolveHighlightTarget,
-  buildNodeCoordIndex, displayStepForRow,
+  buildNodeCoordIndex, displayStepForRow, resolveBubbleFloor,
 } from "../debug/debugTreeSelectors";
 import type { NodeDto } from "../wasm/types";
+import type { HoveredDebugRef } from "../store/storeTypes";
 
 // --- Hand-built fixture encoder, mirroring `eventTape.test.ts`'s own (kept local per that file's
 // "wynieś to shared test-util if duplication gets annoying" fallback — small enough not to yet).
@@ -406,13 +407,90 @@ describe("displayStepForRow (GitHub issue #166)", () => {
 });
 
 describe("buildNodeCoordIndex", () => {
-  it("joins bigint node ids to (x, y) without narrowing to number", () => {
+  it("joins bigint node ids to (x, y, level) without narrowing to number", () => {
     const nodes: NodeDto[] = [
       { id: 1, x: 0, y: 0, i: 0 },
-      { id: 2, x: 3, y: 4, i: 0 },
+      { id: 2, x: 3, y: 4, i: 0, level: 1 },
     ];
     const index = buildNodeCoordIndex(nodes);
-    expect(index.get(2n)).toEqual({ x: 3, y: 4 });
+    expect(index.get(2n)).toEqual({ x: 3, y: 4, level: 1 });
     expect(index.get(99n)).toBeNull();
+  });
+
+  it("defaults a missing level to 0", () => {
+    const nodes: NodeDto[] = [{ id: 1, x: 0, y: 0, i: 0 }];
+    const index = buildNodeCoordIndex(nodes);
+    expect(index.get(1n)).toEqual({ x: 0, y: 0, level: 0 });
+  });
+});
+
+describe("resolveBubbleFloor", () => {
+  const levels = new Map<bigint, number>([[1n, 0], [2n, 0], [3n, 1], [4n, 1]]);
+  const coords = (id: bigint) => (levels.has(id) ? { level: levels.get(id) as number } : null);
+
+  it("node target resolves its own floor", () => {
+    const target: HoveredDebugRef = { kind: "node", id: 3n };
+    expect(resolveBubbleFloor(target, coords, 0)).toBe(1);
+  });
+
+  it("node target with an unresolvable id returns null", () => {
+    const target: HoveredDebugRef = { kind: "node", id: 99n };
+    expect(resolveBubbleFloor(target, coords, 0)).toBeNull();
+  });
+
+  it("edge target on one floor resolves that floor", () => {
+    const target: HoveredDebugRef = { kind: "edge", from: 1n, to: 2n, bidirectional: true };
+    expect(resolveBubbleFloor(target, coords, 5)).toBe(0);
+  });
+
+  it("cross-floor edge jumps to `from`'s floor when not already on `to`'s floor", () => {
+    const target: HoveredDebugRef = { kind: "edge", from: 1n, to: 3n, bidirectional: false };
+    expect(resolveBubbleFloor(target, coords, 5)).toBe(0);
+  });
+
+  it("cross-floor edge stays put when already on `to`'s floor", () => {
+    const target: HoveredDebugRef = { kind: "edge", from: 1n, to: 3n, bidirectional: false };
+    expect(resolveBubbleFloor(target, coords, 1)).toBeNull();
+  });
+
+  it("region target resolves the shared floor of every member", () => {
+    const target: HoveredDebugRef = { kind: "region", nodes: [1n, 2n] };
+    expect(resolveBubbleFloor(target, coords, 5)).toBe(0);
+  });
+
+  it("region target spanning floors stays put", () => {
+    const target: HoveredDebugRef = { kind: "region", nodes: [1n, 3n] };
+    expect(resolveBubbleFloor(target, coords, 5)).toBeNull();
+  });
+
+  it("cycle target resolves the shared floor of every endpoint", () => {
+    const target: HoveredDebugRef = { kind: "cycle", edges: [[1n, 2n], [2n, 1n]] };
+    expect(resolveBubbleFloor(target, coords, 5)).toBe(0);
+  });
+
+  it("issue target with a null structural payload stays put", () => {
+    const target: HoveredDebugRef = { kind: "issue", issueKind: "x", target: null, reasons: [] };
+    expect(resolveBubbleFloor(target, coords, 5)).toBeNull();
+  });
+
+  it("issue target with a region payload resolves that region's floor", () => {
+    const target: HoveredDebugRef = {
+      kind: "issue", issueKind: "x", target: { kind: "region", nodes: [3n, 4n] }, reasons: [],
+    };
+    expect(resolveBubbleFloor(target, coords, 5)).toBe(1);
+  });
+
+  it("issue target with a cycle payload resolves the shared floor of every endpoint", () => {
+    const target: HoveredDebugRef = {
+      kind: "issue", issueKind: "x", target: { kind: "cycle", edges: [[1n, 2n], [2n, 1n]] }, reasons: [],
+    };
+    expect(resolveBubbleFloor(target, coords, 5)).toBe(0);
+  });
+
+  it("issue target with a cycle payload spanning floors stays put", () => {
+    const target: HoveredDebugRef = {
+      kind: "issue", issueKind: "x", target: { kind: "cycle", edges: [[1n, 3n]] }, reasons: [],
+    };
+    expect(resolveBubbleFloor(target, coords, 5)).toBeNull();
   });
 });

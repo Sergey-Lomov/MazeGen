@@ -1,6 +1,6 @@
 ﻿import { describe, it, expect } from "vitest";
 import { parseTape, RECURSIVE_BACKTRACKER_EVENT_TAG, WILSON_EVENT_TAG, KRUSKAL_EVENT_TAG, EDGE_BASED_EVENT_TAG, VERTEX_BASED_EVENT_TAG, PRESET_SETUP_EVENT_TAG, QC_EVENT_TAG, TAG_SCOPE, NO_NODE, type ParsedTape } from "../debug/eventTape";
-import { selectDebugMazeView } from "../store/debugSelectors";
+import { selectDebugMazeView, resolveStepFloorIndex } from "../store/debugSelectors";
 import type { DebugArenaHandle } from "../store/storeTypes";
 import type { NodeDto } from "../wasm/types";
 
@@ -678,5 +678,123 @@ describe("selectDebugMazeView", () => {
     expect(view?.dsuGroups).toBeNull();
     expect(view?.debugMaps.size).toBe(0);
     expect(view?.debugVertices.size).toBe(0);
+  });
+});
+
+// `resolveStepFloorIndex` (below) goes through `adapterForNode`, which — unlike
+// `selectDebugMazeView`'s own `adapterFor(kind)` calls above — walks a node's `.parent` chain
+// looking for a real top-level source scope (`sourceScopeForNode`, GitHub issue #147's Contract
+// B) and throws if it reaches node 0 directly. `buildTapeWithEdges`'s flat, unnested fixture
+// (every record's `parent` left at `NO_NODE`) doesn't have that shape — its `sources[0].nodeIndex`
+// points straight at the first event, not a scope. This nested-scope fixture, mirroring
+// `buildWilsonArenaTape` above, is the minimal shape `adapterForNode` actually requires:
+//   root (0) -> "step" scope (1) -> EdgeAdded(1,2) (2)
+function buildOneStepRbArenaTape(): ParsedTape {
+  const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
+    { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: TAG_SCOPE, bytes: new TextEncoder().encode("root") },
+    { parent: 0, firstChild: 2, nextSibling: NO_NODE, tag: TAG_SCOPE, bytes: new TextEncoder().encode("step") },
+    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, bytes: edgeAddedPayload(1n, 2n) },
+  ];
+  const payloadChunks = records.map((r) => r.bytes);
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const chunk of payloadChunks) {
+    offsets.push(cursor);
+    cursor += chunk.byteLength;
+  }
+  const payload = concatBytes(payloadChunks);
+  const nodeTable = new Uint8Array(records.length * 22);
+  const dv = new DataView(nodeTable.buffer);
+  records.forEach((r, i) => {
+    const base = i * 22;
+    dv.setUint32(base + 0, r.parent, true);
+    dv.setUint32(base + 4, r.firstChild, true);
+    dv.setUint32(base + 8, r.nextSibling, true);
+    dv.setUint16(base + 12, r.tag, true);
+    dv.setUint32(base + 14, offsets[i], true);
+    dv.setUint32(base + 18, r.bytes.byteLength, true);
+  });
+  return parseTape(nodeTable, payload);
+}
+
+// Same shape as `buildOneStepRbArenaTape`, but a `VertexPushed` node-only mutating event instead
+// of `EdgeAdded` — covers `tokenNodeIds`'s `"node"` branch (`debugSelectors.ts`), which a purely
+// `EdgeAdded`-based fixture never exercises (that always produces an `"edge"` token, never a bare
+// `"node"` one). root (0) -> "step" scope (1) -> VertexPushed(1) (2).
+function buildOneStepVertexPushedArenaTape(): ParsedTape {
+  const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
+    { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: TAG_SCOPE, bytes: new TextEncoder().encode("root") },
+    { parent: 0, firstChild: 2, nextSibling: NO_NODE, tag: TAG_SCOPE, bytes: new TextEncoder().encode("step") },
+    { parent: 1, firstChild: NO_NODE, nextSibling: NO_NODE, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_PUSHED, bytes: u64le(1n) },
+  ];
+  const payloadChunks = records.map((r) => r.bytes);
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const chunk of payloadChunks) {
+    offsets.push(cursor);
+    cursor += chunk.byteLength;
+  }
+  const payload = concatBytes(payloadChunks);
+  const nodeTable = new Uint8Array(records.length * 22);
+  const dv = new DataView(nodeTable.buffer);
+  records.forEach((r, i) => {
+    const base = i * 22;
+    dv.setUint32(base + 0, r.parent, true);
+    dv.setUint32(base + 4, r.firstChild, true);
+    dv.setUint32(base + 8, r.nextSibling, true);
+    dv.setUint16(base + 12, r.tag, true);
+    dv.setUint32(base + 14, offsets[i], true);
+    dv.setUint32(base + 18, r.bytes.byteLength, true);
+  });
+  return parseTape(nodeTable, payload);
+}
+
+describe("resolveStepFloorIndex (GitHub issue #350)", () => {
+  const floors = [{ id: "floor_0" }, { id: "floor_1" }];
+  const nodesOnFloors = (levels: Record<number, number>): NodeDto[] =>
+    nodes.map((n) => ({ ...n, level: levels[n.id] ?? 0 }));
+
+  function buildArena(): DebugArenaHandle {
+    return {
+      tape: buildOneStepRbArenaTape(), algorithmKind: "recursive_backtracker",
+      sources: [{ scopeName: "step", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1, checkpointFroms: [] }],
+      nodes, allNodes: nodes, totalSteps: 1, debugValueNames: [],
+    };
+  }
+
+  it("resolves the single floor an EdgeAdded step's endpoints share", () => {
+    const arena = buildArena();
+    arena.nodes = nodesOnFloors({ 1: 1, 2: 1 });
+    expect(resolveStepFloorIndex(arena, floors, 0)).toBe(1);
+  });
+
+  it("resolves a node-only mutating event's own floor (tokenNodeIds' \"node\" branch)", () => {
+    const arena: DebugArenaHandle = {
+      tape: buildOneStepVertexPushedArenaTape(), algorithmKind: "recursive_backtracker",
+      sources: [{ scopeName: "step", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1, checkpointFroms: [] }],
+      nodes: nodesOnFloors({ 1: 1 }), allNodes: nodes, totalSteps: 1, debugValueNames: [],
+    };
+    expect(resolveStepFloorIndex(arena, floors, 0)).toBe(1);
+  });
+
+  it("returns null when the step's endpoints span more than one floor (e.g. a vertical connection)", () => {
+    const arena = buildArena();
+    arena.nodes = nodesOnFloors({ 1: 0, 2: 1 });
+    expect(resolveStepFloorIndex(arena, floors, 0)).toBeNull();
+  });
+
+  it("returns null on a single-floor maze — nothing to switch to", () => {
+    const arena = buildArena();
+    expect(resolveStepFloorIndex(arena, [floors[0]], 0)).toBeNull();
+  });
+
+  it("returns null when there is no arena", () => {
+    expect(resolveStepFloorIndex(null, floors, 0)).toBeNull();
+  });
+
+  it("returns null for an out-of-range step", () => {
+    const arena = buildArena();
+    arena.nodes = nodesOnFloors({ 1: 1, 2: 1 });
+    expect(resolveStepFloorIndex(arena, floors, 99)).toBeNull();
   });
 });

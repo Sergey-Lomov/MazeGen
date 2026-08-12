@@ -5,6 +5,7 @@
 
 import type { NodeDto } from "../wasm/types";
 import type { EventedEventKind } from "../wasm/mazeService";
+import type { HoveredDebugRef } from "../store/storeTypes";
 import type { ParsedTape, NodePayload } from "./eventTape";
 import { nodeAt, nodeView, sourceContentStart } from "./eventTape";
 import { adapterForKind } from "./algorithmRegistry";
@@ -219,15 +220,17 @@ export function resolveHighlightTarget(
 }
 
 export interface NodeCoordIndex {
-  get(id: bigint): { x: number; y: number } | null;
+  get(id: bigint): { x: number; y: number; level: number } | null;
 }
 
 const coordIndexCache = new WeakMap<NodeDto[], NodeCoordIndex>();
 
 /** Joins RB event node ids (`bigint`, `u64` in core) against `NodeDto.id` for narration text
- *  (`(x, y)` display, per user decision). Keeps the `bigint` key as-is rather than narrowing to
- *  `number` — `NodeId` is a `u64` and narrowing is unsafe in general even though a real maze
- *  will never approach 2^53 nodes in practice. */
+ *  (`(x, y)` display, per user decision) and, since GitHub issue #350, the node's floor (used to
+ *  prefix a multi-floor maze's bubble label and to drive floor-switching on bubble click — see
+ *  `DebugEventTree.tsx`'s `bubbleLabel`/`resolveBubbleFloor`). Keeps the `bigint` key as-is rather
+ *  than narrowing to `number` — `NodeId` is a `u64` and narrowing is unsafe in general even though
+ *  a real maze will never approach 2^53 nodes in practice. */
 export function buildNodeCoordIndex(nodes: NodeDto[]): NodeCoordIndex {
   const cached = coordIndexCache.get(nodes);
   if (cached) return cached;
@@ -238,9 +241,57 @@ export function buildNodeCoordIndex(nodes: NodeDto[]): NodeCoordIndex {
   const result: NodeCoordIndex = {
     get(id: bigint) {
       const node = map.get(id);
-      return node ? { x: node.x, y: node.y } : null;
+      return node ? { x: node.x, y: node.y, level: node.level ?? 0 } : null;
     },
   };
   coordIndexCache.set(nodes, result);
   return result;
+}
+
+/** Resolves which floor, if any, a clicked debug-tree ref bubble (GitHub issue #350) should
+ *  switch the active floor to. `null` means "don't switch" — either every referenced node is
+ *  already on the same floor as `currentFloorIndex`, the ids don't resolve to a floor at all
+ *  (stale tape reference), or there's no single floor to jump to.
+ *
+ *  `edge`/`issue`-with-cycle-target is the one case with two floors in play at once
+ *  (`vertical_passage`/`elevator` connect different floors) — per explicit user decision: switch
+ *  to `from`'s floor unless already standing on `to`'s floor, in which case stay put rather than
+ *  jumping back to `from`. Every other multi-id shape (`cycle`, `region`, `issue`-with-region-
+ *  target) has no such asymmetry — if every referenced node shares one floor, jump there;
+ *  otherwise stay (there's no principled single target floor to pick). */
+export function resolveBubbleFloor(
+  target: HoveredDebugRef,
+  coords: (id: bigint) => { level: number } | null,
+  currentFloorIndex: number,
+): number | null {
+  const levelOf = (id: bigint): number | null => coords(id)?.level ?? null;
+
+  const singleFloorOf = (ids: bigint[]): number | null => {
+    if (ids.length === 0) return null;
+    const levels = ids.map(levelOf);
+    if (levels.some((l) => l === null)) return null;
+    const first = levels[0] as number;
+    return levels.every((l) => l === first) ? first : null;
+  };
+
+  switch (target.kind) {
+    case "node":
+      return levelOf(target.id);
+    case "edge": {
+      const fromLevel = levelOf(target.from);
+      const toLevel = levelOf(target.to);
+      if (fromLevel === null || toLevel === null) return null;
+      if (fromLevel === toLevel) return fromLevel;
+      return currentFloorIndex === toLevel ? null : fromLevel;
+    }
+    case "cycle":
+      return singleFloorOf(target.edges.flatMap(([f, t]) => [f, t]));
+    case "region":
+      return singleFloorOf(target.nodes);
+    case "issue":
+      if (!target.target) return null;
+      return target.target.kind === "cycle"
+        ? singleFloorOf(target.target.edges.flatMap(([f, t]) => [f, t]))
+        : singleFloorOf(target.target.nodes);
+  }
 }

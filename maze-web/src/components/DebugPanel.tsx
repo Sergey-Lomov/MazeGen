@@ -54,12 +54,15 @@ export function DebugPanel() {
   const delayMs     = useMazeStore((s) => s.debugAutoPlayDelay);
   const debugValueToggles = useMazeStore((s) => s.debugValueToggles);
   const showKruskalDsuGroups = useMazeStore((s) => s.showKruskalDsuGroups);
+  const debugAutoSwitchFloor = useMazeStore((s) => s.debugAutoSwitchFloor);
+  const multiFloor = useMazeStore((s) => s.floors.length > 1);
   const setDebugStep = useMazeStore((s) => s.setDebugStep);
   const focusDebugStep = useMazeStore((s) => s.focusDebugStep);
   const setDebugMode = useMazeStore((s) => s.setDebugMode);
   const setDelayMs   = useMazeStore((s) => s.setDebugAutoPlayDelay);
   const toggleDebugValue = useMazeStore((s) => s.toggleDebugValue);
   const toggleKruskalDsuGroups = useMazeStore((s) => s.toggleKruskalDsuGroups);
+  const toggleDebugAutoSwitchFloor = useMazeStore((s) => s.toggleDebugAutoSwitchFloor);
 
   const [playing, setPlaying] = React.useState(false);
   const [delayDraft, setDelayDraft] = React.useState(String(delayMs));
@@ -164,6 +167,16 @@ export function DebugPanel() {
         <button className="hoverable" style={styles.closeBtn} onClick={handleClose} title={m["debug.exit"]()}><X size={16} /></button>
       </div>
 
+      {multiFloor && (
+        <div style={styles.autoSwitchFloorRow}>
+          <ToggleRow
+            label={m["debug.auto_switch_floor"]()}
+            checked={debugAutoSwitchFloor}
+            onChange={toggleDebugAutoSwitchFloor}
+          />
+        </div>
+      )}
+
       <div style={styles.stepRow}>
         <span
           className="hoverable"
@@ -179,7 +192,12 @@ export function DebugPanel() {
           value={debugStep}
           max={total - 1}
           style={styles.slider}
-          onChange={(v) => { setPlaying(false); setDebugStep(v); }}
+          // GitHub issue #350: in-flight drag ticks skip the floor auto-switch (`switchFloor:
+          // false`) — otherwise scrubbing across many floors in quick succession flickers the
+          // active floor on every tick. `onChangeEnd` applies the real switch once, at the settled
+          // value, when the drag actually stops.
+          onChange={(v) => { setPlaying(false); setDebugStep(v, false); }}
+          onChangeEnd={(v) => setDebugStep(v, true)}
         />
       </div>
 
@@ -240,6 +258,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: spacing.rowGap,
+    padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
+    borderBottom: `1px solid ${ui.border.default}`,
+    flexShrink: 0,
+  },
+  autoSwitchFloorRow: {
     padding: `${inset.panelInsetY}px ${inset.panelInsetX}px`,
     borderBottom: `1px solid ${ui.border.default}`,
     flexShrink: 0,

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { getCellCenter } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
@@ -807,5 +807,57 @@ describe("selectFloorChangeLosesGenerationData", () => {
 
   it("true when both are dirty", () => {
     expect(selectFloorChangeLosesGenerationData({ mazeDirty: true, postEditDirty: true })).toBe(true);
+  });
+});
+
+describe("selectFloorScopedMaze", () => {
+  const floors = [{ id: "floor_0" }, { id: "floor_1" }];
+  const n = (id: number, level: number, x = id, y = 0): NodeDto => ({ id, x, y, i: 0, level });
+  const e = (from: number, to: number, kind: EdgeDto["kind"] = "basic"): EdgeDto => ({ from, to, kind });
+
+  it("keeps only nodes on the active floor", () => {
+    const nodes = [n(1, 0), n(2, 0), n(3, 1)];
+    const result = selectFloorScopedMaze(nodes, [], floors, "floor_0");
+    expect(result.nodes.map((x) => x.id)).toEqual([1, 2]);
+  });
+
+  it("keeps a basic edge only when both endpoints are on the active floor", () => {
+    const nodes = [n(1, 0), n(2, 0), n(3, 1)];
+    const edges = [e(1, 2), e(2, 3)];
+    const result = selectFloorScopedMaze(nodes, edges, floors, "floor_0");
+    expect(result.edges).toEqual([{ from: 1, to: 2, kind: "basic" }]);
+  });
+
+  it("keeps a vertical_passage/elevator edge whose `from` is on the active floor even though `to` is on another", () => {
+    const nodes = [n(1, 0), n(2, 1)];
+    const edges = [e(1, 2, "vertical_passage"), e(1, 2, "elevator")];
+    const result = selectFloorScopedMaze(nodes, edges, floors, "floor_0");
+    expect(result.edges).toHaveLength(2);
+  });
+
+  it("drops a vertical_passage/elevator edge whose `from` is on another floor", () => {
+    const nodes = [n(1, 0), n(2, 1)];
+    const edges = [e(2, 1, "vertical_passage")];
+    const result = selectFloorScopedMaze(nodes, edges, floors, "floor_0");
+    expect(result.edges).toEqual([]);
+  });
+
+  it("nulls out start/finish when their node isn't on the active floor", () => {
+    const nodes = [n(1, 0), n(2, 1)];
+    const result = selectFloorScopedMaze(nodes, [], floors, "floor_0", 1, 2);
+    expect(result.start).toBe(1);
+    expect(result.finish).toBeNull();
+  });
+
+  it("treats a missing `level` as floor 0", () => {
+    const nodes: NodeDto[] = [{ id: 1, x: 0, y: 0, i: 0 }];
+    const result = selectFloorScopedMaze(nodes, [], floors, "floor_0");
+    expect(result.nodes.map((x) => x.id)).toEqual([1]);
+  });
+
+  it("falls back to floor 0 when activeFloorId doesn't match any floor", () => {
+    const nodes = [n(1, 0), n(2, 1)];
+    const result = selectFloorScopedMaze(nodes, [], floors, "unknown_floor_id");
+    expect(result.nodes.map((x) => x.id)).toEqual([1]);
   });
 });
