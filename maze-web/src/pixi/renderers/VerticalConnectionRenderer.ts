@@ -1,0 +1,111 @@
+import { Container, Graphics } from "pixi.js";
+import type { VerticalConnectionMarker, MarkerShape, TeleportCornerStyle } from "./types";
+import { drawMarkerShape } from "./markerShapes";
+import { drawDirectionArrow } from "./wallUtils";
+import { TILE_SIZE } from "../constants";
+
+/** Same field shape as `MarkerSettings` (`storeTypes.ts`) plus `gapColor`, by design — kept as its
+ *  own type since this lower-level renderer module must not depend on the store layer, same
+ *  rationale as `mazeSelectors.ts`'s own `MarkerStyle`. `gapColor` mirrors the caller's own floor
+ *  color, same convention every other marker's gap ring in this codebase uses (never the marker's
+ *  own `fillColor`). */
+export type VerticalMarkerStyle = {
+  shape: MarkerShape;
+  cornerStyle: TeleportCornerStyle;
+  fillColor: number;
+  borderColor: number;
+  borderWidth: number;
+  gapWidth: number;
+  gapColor: number;
+  size: number;
+};
+
+/** Style knobs for `VerticalConnectionRenderer.render` — see `VerticalSettingsFields`'s own doc
+ *  comment (`storeTypes.ts`, GitHub issue #347) for the settings this is built from. `Elevator`
+ *  always draws as `elevatorMarker` regardless of `displayStyle` — no decorative treatment of its
+ *  own, per the issue's own rationale (no natural "decorative elevator" illustration). */
+export type VerticalConnectionStyle = {
+  displayStyle: "marker" | "decorative";
+  verticalPassageMarker: VerticalMarkerStyle;
+  elevatorMarker: VerticalMarkerStyle;
+  arrowColor: number;
+};
+
+/** Draws a small flight-of-stairs pictogram centered at `(cx, cy)`, radius `r` — the "decorative"
+ *  treatment for a `VerticalPassage` (GitHub issue #347): four ascending step rectangles read as
+ *  actual stairs on a printed floor image the viewer mentally connects to the adjacent floor's own
+ *  print, as opposed to the plain "cut an opening here" marker meant for a physical single-sheet
+ *  build. Drawn as one filled path (a staircase silhouette), not four separate rectangles, so a
+ *  single fill color/gap ring treats it exactly like any other marker shape. */
+function drawStairsIcon(g: Graphics, cx: number, cy: number, r: number): void {
+  const steps = 4;
+  const w = (r * 2) / steps;
+  const h = (r * 2) / steps;
+  const left = cx - r;
+  const bottom = cy + r;
+  const points: number[] = [left, bottom];
+  for (let i = 0; i < steps; i++) {
+    const x = left + i * w;
+    const yTop = bottom - (i + 1) * h;
+    points.push(x, yTop, x + w, yTop);
+  }
+  points.push(left + steps * w, bottom);
+  g.poly(points);
+}
+
+/** Renders `VerticalPassage`/`Elevator` markers for one mode renderer (GitHub issue #347) — its own
+ *  low-level primitive, alongside `WaypointsRenderer`/`TeleportRenderer`, so a future floor-aware
+ *  `GenerationRenderer` can own its own instance the same way it already does for those (per
+ *  `maze-web/CLAUDE.md`'s feature-renderer ownership rule — never a shared instance across
+ *  renderers). Draws each marker's own gap ring / fill / border via the same
+ *  `radius + borderWidth + gapWidth` outer-alignment convention every other marker in this codebase
+ *  uses (`WaypointsRenderer`, teleport markers, one-way indicators), then an optional direction
+ *  arrow on top for a one-way `VerticalPassage` (`marker.direction`, screen-up/down — there's no
+ *  geometric "up/down" in a single 2D floor image, so the arrow always points straight up or down
+ *  on screen regardless of the marker's own shape/rotation). */
+export class VerticalConnectionRenderer {
+  private readonly g: Graphics;
+
+  constructor(container: Container) {
+    this.g = new Graphics();
+    container.addChild(this.g);
+  }
+
+  render(data: { markers: VerticalConnectionMarker[]; style: VerticalConnectionStyle }): void {
+    this.g.clear();
+    for (const marker of data.markers) {
+      const settings = marker.kind === "elevator" ? data.style.elevatorMarker : data.style.verticalPassageMarker;
+      const decorative = marker.kind === "vertical_passage" && data.style.displayStyle === "decorative";
+      const [cx, cy] = marker.pos;
+      const radius = settings.size * TILE_SIZE;
+      const rounded = settings.cornerStyle === "round";
+      const borderWidth = settings.borderWidth ?? 0;
+      const gapWidth = settings.gapWidth ?? 0;
+
+      const drawShape = (r: number) => {
+        if (decorative) drawStairsIcon(this.g, cx, cy, r);
+        else drawMarkerShape(this.g, settings.shape, cx, cy, r, rounded);
+      };
+
+      if (gapWidth > 0) {
+        drawShape(radius + borderWidth + gapWidth);
+        this.g.fill(settings.gapColor);
+      }
+      drawShape(radius);
+      this.g.fill(settings.fillColor);
+      if (borderWidth > 0) {
+        drawShape(radius);
+        this.g.stroke({ color: settings.borderColor ?? settings.fillColor, width: borderWidth, alignment: 0 });
+      }
+
+      if (marker.direction) {
+        const dy = marker.direction === "up" ? -1 : 1;
+        drawDirectionArrow(this.g, cx, cy, 0, dy, radius * 0.6, data.style.arrowColor);
+      }
+    }
+  }
+
+  destroy(): void {
+    this.g.destroy();
+  }
+}

@@ -4,7 +4,7 @@ import type { PostEditEdge, PostEditTeleportEntry, FeatureId, RenderModeId } fro
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import {
-  MAX_NESTED_STRATEGY_DEPTH, type MarkerSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type VectorByWallsSharedStyle, type VectorByCorridorsSharedStyle, type TeleportSettingsFields, type MarkerWidenShape, type PngExportSettings,
+  MAX_NESTED_STRATEGY_DEPTH, type MarkerSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type VectorByWallsSharedStyle, type VectorByCorridorsSharedStyle, type TeleportSettingsFields, type VerticalSettingsFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
@@ -622,6 +622,18 @@ function validateTeleportSettingsFields(obj: Record<string, unknown> | null, pat
   };
 }
 
+/** `VectorByWallsSettings`' own "Vertical connections" fields (GitHub issue #347) — same
+ * lenient-recovery convention as `validateTeleportSettingsFields`. */
+function validateVerticalSettingsFields(obj: Record<string, unknown> | null, path: string, d: VerticalSettingsFields): VerticalSettingsFields {
+  const displayStyle = obj?.["verticalPassageDisplayStyle"];
+  return {
+    verticalPassageDisplayStyle: displayStyle === "marker" || displayStyle === "decorative" ? displayStyle : d.verticalPassageDisplayStyle,
+    verticalPassageMarker: validateMarkerSettings(obj?.verticalPassageMarker, `${path}.verticalPassageMarker`, d.verticalPassageMarker),
+    elevatorMarker: validateMarkerSettings(obj?.elevatorMarker, `${path}.elevatorMarker`, d.elevatorMarker),
+    oneWayArrowColor: optNumber(obj, "oneWayArrowColor", d.oneWayArrowColor),
+  };
+}
+
 function validateTeleportGroupOverrides(v: unknown, path: string): Record<string, { fillColor?: number; borderColor?: number; shape?: MarkerShape }> {
   if (v == null) return {};
   let obj: Record<string, unknown>;
@@ -723,6 +735,7 @@ function validateVectorByWallsSettings(v: unknown, path: string): VectorByWallsS
     startMarker: validateMarkerSettings(obj.startMarker, `${path}.startMarker`, d.startMarker),
     finishMarker: validateMarkerSettings(obj.finishMarker, `${path}.finishMarker`, d.finishMarker),
     ...validateTeleportSettingsFields(obj, path, d),
+    ...validateVerticalSettingsFields(obj, path, d),
     splitNodeColors: Array.isArray(obj.splitNodeColors) ? obj.splitNodeColors.filter((n): n is number => typeof n === "number") : d.splitNodeColors,
     splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
     sharedStyle: validateVectorByWallsSharedStyle(obj.sharedStyle, d.sharedStyle),

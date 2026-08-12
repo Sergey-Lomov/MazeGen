@@ -7,13 +7,14 @@ import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer } from "../renderers/SplitJunctionRenderer";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, maxSplitNodeCount } from "../selectors/mazeSelectors";
+import { VerticalConnectionRenderer, type VerticalConnectionStyle, type VerticalMarkerStyle } from "../renderers/VerticalConnectionRenderer";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers } from "../selectors/mazeSelectors";
 import { computeVectorByWallsWarnings } from "../selectors/exportWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import { resolveEndpoint, buildSplitNodeResolver } from "../postEditEndpoint";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle } from "../renderers/types";
-import type { MarkerSettings, TeleportSettingsFields } from "../../store/storeTypes";
+import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, SplitStyleOverride, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle, VerticalConnectionMarker } from "../renderers/types";
+import type { MarkerSettings, TeleportSettingsFields, VerticalSettingsFields } from "../../store/storeTypes";
 import type { MarkerStyle } from "../selectors/mazeSelectors";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
@@ -259,6 +260,25 @@ export function buildTeleportLineStyle(settings: TeleportSettingsFields, floorCo
   };
 }
 
+/** Same `MarkerSettings` → renderer-facing-style conversion as `buildMarkerStyle`, for
+ *  `VerticalConnectionRenderer`'s own `VerticalMarkerStyle` shape (GitHub issue #347) — `gapColor`
+ *  mirrors `floorColor`, same convention as every other marker's gap ring in this codebase. */
+function buildVerticalMarkerStyle(settings: MarkerSettings, floorColor: number): VerticalMarkerStyle {
+  return { ...settings, gapColor: floorColor };
+}
+
+/** Builds `VerticalConnectionRenderer`'s style from `VectorByWallsSettings`' own vertical-connection
+ *  fields plus the panel's own floor color (GitHub issue #347) — same "takes floorColor as its own
+ *  param" rationale as `buildTeleportLineStyle`. */
+export function buildVerticalConnectionStyle(settings: VerticalSettingsFields, floorColor: number): VerticalConnectionStyle {
+  return {
+    displayStyle: settings.verticalPassageDisplayStyle,
+    verticalPassageMarker: buildVerticalMarkerStyle(settings.verticalPassageMarker, floorColor),
+    elevatorMarker: buildVerticalMarkerStyle(settings.elevatorMarker, floorColor),
+    arrowColor: settings.oneWayArrowColor,
+  };
+}
+
 /** Builds `buildMazeMarkers`'s `MarkerStyle` from a `MarkerSettings` (start or finish) plus the
  *  panel's own floor color — `gapColor` always mirrors `floorColor` (GitHub issue #302 follow-up,
  *  not independently settable, same convention as the one-way indicator's own border color). */
@@ -304,6 +324,7 @@ export class VectorByWallsRenderer {
   private readonly wallsContainer: Container;
   private readonly splitJunctionContainer: Container;
   private readonly teleportContainer: Container;
+  private readonly verticalContainer: Container;
   private readonly markersContainer: Container;
   private readonly warningHighlightContainer: Container;
 
@@ -313,6 +334,9 @@ export class VectorByWallsRenderer {
   private readonly walls: WallRenderer;
   private readonly splitJunctions: SplitJunctionRenderer;
   private readonly teleports: TeleportRenderer;
+  /** Own instance, per `maze-web/CLAUDE.md`'s feature-renderer ownership rule (GitHub issue #347)
+   *  — never shared with a future floor-aware `GenerationRenderer`'s own instance. */
+  private readonly verticalConnections: VerticalConnectionRenderer;
   private readonly markers: WaypointsRenderer;
   /** Own instance, not shared with `AnalyticsRenderer`'s issue-highlight overlay or
    *  `VectorByCorridorsRenderer`'s own — per `maze-web/CLAUDE.md`'s feature-renderer ownership
@@ -325,8 +349,13 @@ export class VectorByWallsRenderer {
   private unsubscribe: (() => void) | null = null;
 
   private geometryCache: {
-    nodes: NodeDto[];
-    edges: EdgeDto[];
+    // Tracks the *unscoped* `state.nodes`/`state.edges`/`activeFloorId` identities (GitHub issue
+    // #347), not the freshly-filtered floor-scoped arrays `selectFloorScopedMaze` returns each
+    // call — a `.filter()` result is a new array reference every time even when nothing changed,
+    // which would defeat this cache entirely if compared directly.
+    rawNodes: NodeDto[];
+    rawEdges: EdgeDto[];
+    activeFloorId: string;
     cfg: TessellationConfig;
     start: number | null;
     finish: number | null;
@@ -337,6 +366,7 @@ export class VectorByWallsRenderer {
     splitPassages: SplitPassage[];
     splitWallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
     splitSpecialShapes: SplitSpecialShape[];
+    verticalConnectionMarkers: VerticalConnectionMarker[];
   } | null = null;
 
   constructor(container: Container) {
@@ -347,6 +377,7 @@ export class VectorByWallsRenderer {
     this.wallsContainer = new Container();
     this.splitJunctionContainer = new Container();
     this.teleportContainer = new Container();
+    this.verticalContainer = new Container();
     this.markersContainer = new Container();
 
     container.addChild(this.floorContainer);
@@ -354,6 +385,7 @@ export class VectorByWallsRenderer {
     container.addChild(this.wallsContainer);
     container.addChild(this.splitJunctionContainer);
     container.addChild(this.teleportContainer);
+    container.addChild(this.verticalContainer);
     container.addChild(this.markersContainer);
     this.warningHighlightContainer = new Container();
     container.addChild(this.warningHighlightContainer);
@@ -363,6 +395,7 @@ export class VectorByWallsRenderer {
     this.walls = new WallRenderer(this.wallsContainer);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);
+    this.verticalConnections = new VerticalConnectionRenderer(this.verticalContainer);
     this.markers = new WaypointsRenderer(this.markersContainer);
     this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer, computeVectorByWallsWarnings);
 
@@ -383,7 +416,9 @@ export class VectorByWallsRenderer {
         state.finish !== prev.finish ||
         state.postEditMeta !== prev.postEditMeta ||
         state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
-        state.activeTessellationConfig !== prev.activeTessellationConfig;
+        state.activeTessellationConfig !== prev.activeTessellationConfig ||
+        state.activeFloorId !== prev.activeFloorId ||
+        state.floors !== prev.floors;
 
       const settingsChanged = state.vectorByWallsSettings !== prev.vectorByWallsSettings;
       // Teleports section's own expand/collapse flips `interactive` on group customization's
@@ -410,6 +445,7 @@ export class VectorByWallsRenderer {
     this.wallsContainer.visible = visible;
     this.splitJunctionContainer.visible = visible;
     this.teleportContainer.visible = visible;
+    this.verticalContainer.visible = visible;
     this.markersContainer.visible = visible;
     this.warningHighlightContainer.visible = visible;
     if (visible) this.renderAll(state);
@@ -451,9 +487,12 @@ export class VectorByWallsRenderer {
     if (state.nodes.length === 0) return { left: 0, right: 0, top: 0, bottom: 0 };
     this.renderAll(state);
 
-    const cellBounds = exactCellBounds(state.nodes, state.activeTessellationConfig);
+    // Floor-scoped (GitHub issue #347), same reason `renderAll` scopes its own `nodes` — the
+    // *drawn* content is only ever one floor's worth, so the bounds basis must match.
+    const floorNodes = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId).nodes;
+    const cellBounds = exactCellBounds(floorNodes, state.activeTessellationConfig);
     return measureContentMargin(
-      [this.floorContainer, this.closedCellsContainer, this.wallsContainer, this.splitJunctionContainer, this.teleportContainer, this.markersContainer],
+      [this.floorContainer, this.closedCellsContainer, this.wallsContainer, this.splitJunctionContainer, this.teleportContainer, this.verticalContainer, this.markersContainer],
       cellBounds,
     );
   }
@@ -467,8 +506,20 @@ export class VectorByWallsRenderer {
     const cfg = state.activeTessellationConfig;
     this.backgroundGrid.render(state.vectorByWallsSettings, cfg);
 
-    const { nodes, edges } = state;
-    const { start, finish } = resolveEffectiveEndpoints(state);
+    // Scoped to `activeFloorId` (GitHub issue #347) — `state.nodes`/`state.edges` can span every
+    // floor once generation is multi-level-aware (GitHub issue #337); every selector below assumes
+    // a single floor's worth of cells (two same-(x,y) nodes on different floors would otherwise be
+    // mistaken for a split point). `resolveEffectiveEndpoints` still reads the *unscoped* `state`
+    // (it resolves post-edit endpoints, which aren't floor-scoped themselves), so its result is
+    // re-scoped here too via `selectFloorScopedMaze`'s own start/finish narrowing.
+    const rawEndpoints = resolveEffectiveEndpoints(state);
+    const { nodes, edges, start, finish } = selectFloorScopedMaze(
+      state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
+    );
+    // Resolves a `vertical_passage`/`elevator` edge's `to` node's own floor (GitHub issue #347) —
+    // built from the *unscoped* node list, since `to` never survives the floor-scoping above.
+    const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+    const activeFloorIndex = Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: state.vectorByWallsSettings.floorColor, alpha: 1 }, cfg);
 
@@ -477,8 +528,9 @@ export class VectorByWallsRenderer {
     const splitNodeColors = state.vectorByWallsSettings.splitNodeColors;
     if (
       !this.geometryCache ||
-      this.geometryCache.nodes !== nodes ||
-      this.geometryCache.edges !== edges ||
+      this.geometryCache.rawNodes !== state.nodes ||
+      this.geometryCache.rawEdges !== state.edges ||
+      this.geometryCache.activeFloorId !== state.activeFloorId ||
       this.geometryCache.cfg !== cfg ||
       this.geometryCache.start !== start ||
       this.geometryCache.finish !== finish ||
@@ -495,8 +547,9 @@ export class VectorByWallsRenderer {
       const { passages: splitPassages, wallFaces: splitWallFaces, specialShapes: splitSpecialShapes } =
         buildSplitPassages(nodes, edges, cfg, specialNodeIds, {}, {}, effectiveNodeColors);
       this.geometryCache = {
-        nodes,
-        edges,
+        rawNodes: state.nodes,
+        rawEdges: state.edges,
+        activeFloorId: state.activeFloorId,
         cfg,
         start,
         finish,
@@ -507,6 +560,7 @@ export class VectorByWallsRenderer {
         splitPassages,
         splitWallFaces,
         splitSpecialShapes,
+        verticalConnectionMarkers: buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, activeFloorIndex),
       };
     }
     const wallStyle = buildWallStyle(state.vectorByWallsSettings);
@@ -540,6 +594,11 @@ export class VectorByWallsRenderer {
 
     this.markers.render({ markers: markerData });
 
+    this.verticalConnections.render({
+      markers: this.geometryCache.verticalConnectionMarkers,
+      style: buildVerticalConnectionStyle(state.vectorByWallsSettings, floorColor),
+    });
+
     this.renderWarningHighlight(state);
   }
 
@@ -548,8 +607,14 @@ export class VectorByWallsRenderer {
    *  `ExportWarningHighlight`'s own doc comment for the memoize-then-draw mechanics, shared with
    *  `VectorByCorridorsRenderer`'s own copy of this method. */
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
-    const { hoveredExportWarningKey, nodes, edges } = state;
-    const { start, finish } = resolveEffectiveEndpoints(state);
+    const { hoveredExportWarningKey } = state;
+    const rawEndpoints = resolveEffectiveEndpoints(state);
+    // Same floor-scoping as `renderAll` (GitHub issue #347) — the warning computation must see
+    // exactly the drawn floor's own nodes/edges, or a hovered warning's `nodes`/`edges` could
+    // reference an id that isn't actually rendered.
+    const { nodes, edges, start, finish } = selectFloorScopedMaze(
+      state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
+    );
     this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByWallsSettings, start, finish);
   }
 
@@ -561,6 +626,7 @@ export class VectorByWallsRenderer {
     this.walls.destroy();
     this.splitJunctions.destroy();
     this.teleports.destroy();
+    this.verticalConnections.destroy();
     this.markers.destroy();
     this.warningHighlight.destroy();
     this.floorContainer.destroy();
@@ -568,6 +634,7 @@ export class VectorByWallsRenderer {
     this.wallsContainer.destroy();
     this.splitJunctionContainer.destroy();
     this.teleportContainer.destroy();
+    this.verticalContainer.destroy();
     this.markersContainer.destroy();
     this.warningHighlightContainer.destroy();
   }

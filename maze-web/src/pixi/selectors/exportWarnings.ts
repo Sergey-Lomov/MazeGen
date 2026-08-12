@@ -20,6 +20,10 @@ export type ExportWarningId =
   | "teleport_waypoint_overlap"
   | "waypoint_on_split"
   | "teleport_on_special_split"
+  /** "Vector by walls" only (GitHub issue #347) — a `VerticalPassage`/`Elevator` marker's own
+   *  `from` node lands on a specially-rendered split point (bridge/diagonal), same rationale as
+   *  `waypoint_on_split`/`teleport_on_special_split`. */
+  | "vertical_on_special_split"
   /** "Vector by corridors" only (GitHub issue #312) — the one-way chevron row's own settings
    *  (count/length/gap/width) would overflow past a single cell's bounds along the corridor
    *  (`TILE_SIZE`) or across it (the corridor's own `thickness`). One warning total, covering every
@@ -286,6 +290,25 @@ export function computeVectorByWallsWarnings(
       warnings.push({
         id: "teleport_on_special_split",
         key: "teleport_on_special_split",
+        nodes: flaggedIds,
+        edges: [],
+      });
+    }
+  }
+
+  // --- vertical_on_special_split: a VerticalPassage/Elevator marker's own `from` node lands on a
+  // specially-rendered split point — same rationale as teleport_on_special_split. One warning
+  // total, covering every affected marker. ---
+  if (specialSplitPointKeys.size > 0) {
+    const verticalNodeIds = new Set<number>();
+    for (const e of edges) {
+      if (e.kind === "vertical_passage" || e.kind === "elevator") verticalNodeIds.add(e.from);
+    }
+    const flaggedIds = filterNodesOnSpecialSplit(verticalNodeIds, nodeById, specialSplitPointKeys);
+    if (flaggedIds.length > 0) {
+      warnings.push({
+        id: "vertical_on_special_split",
+        key: "vertical_on_special_split",
         nodes: flaggedIds,
         edges: [],
       });

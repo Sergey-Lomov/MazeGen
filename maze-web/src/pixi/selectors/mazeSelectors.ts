@@ -1,7 +1,7 @@
 ﻿import type { NodeDto, EdgeDto, IssueDto } from "../../wasm/types";
 import type { MazeState, PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import type { WallEdge, MarkerData, MarkerShape, PassageKind, TeleportEdge, SplitPassage, SplitSpecialShape, TeleportCornerStyle } from "../renderers/types";
+import type { WallEdge, MarkerData, MarkerShape, PassageKind, TeleportEdge, SplitPassage, SplitSpecialShape, TeleportCornerStyle, VerticalConnectionMarker } from "../renderers/types";
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
 import { getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment, buildNodePositions, SPLIT_HUB_RADIUS } from "../tessellationGeometry";
 import { computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, type SplitFaceKind } from "../splitFaceLayout";
@@ -17,6 +17,108 @@ import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "
  *  corridor's full width. */
 const BRIDGE_TAPER_FRAC = 0.2;
 const BRIDGE_DECK_WIDTH_FRAC = 0.6;
+
+/** Narrows a maze-wide `{ nodes, edges, start, finish }` view down to one floor, by `activeFloorId`
+ *  (GitHub issue #337/#347) — the single shared floor-scoping step every render-facing consumer of
+ *  a possibly-multi-floor node/edge set needs before handing them to the walls/teleports/split
+ *  selectors above, none of which are floor-aware themselves: two nodes sharing an (x, y) on
+ *  different floors would otherwise be mistaken for a split point by `buildSplitPointKeys`'s
+ *  per-point grouping. Was inlined once in `GenerationRenderer`'s own `debugView` (GitHub issue
+ *  #337); factored out here once `VectorByWallsRenderer`/`VectorByCorridorsRenderer` needed the
+ *  identical scoping (GitHub issue #347) rather than each renderer re-deriving `activeFloorIndex`
+ *  and re-filtering on its own. `activeFloorId` resolves to an index via `floors`' own array
+ *  position (`levels_ordered()` order — see `Specs/floors.md`), defaulting to `0` (floor 1) when
+ *  `activeFloorId` doesn't match any current floor (same defensive fallback `GenerationRenderer`
+ *  used). A `vertical_passage`/`elevator` edge survives the cut as soon as `from` is on the active
+ *  floor, even though `to` never is (it leads to another floor by construction) — every other kind
+ *  still requires both ends on the active floor, same as before this function existed, since an
+ *  intra-floor edge with a dangling `to` is not something any of these selectors expect to handle.
+ *  `start`/`finish` are only kept when they resolve to a node that survived the cut. */
+export function selectFloorScopedMaze(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  floors: { id: string }[],
+  activeFloorId: string,
+  start: number | null = null,
+  finish: number | null = null,
+): { nodes: NodeDto[]; edges: EdgeDto[]; start: number | null; finish: number | null } {
+  const activeFloorIndex = Math.max(floors.findIndex((f) => f.id === activeFloorId), 0);
+  const floorNodes = nodes.filter((n) => (n.level ?? 0) === activeFloorIndex);
+  const floorNodeIds = new Set(floorNodes.map((n) => n.id));
+  const isVertical = (e: EdgeDto) => e.kind === "vertical_passage" || e.kind === "elevator";
+  const floorEdges = edges.filter((e) =>
+    floorNodeIds.has(e.from) && (isVertical(e) || floorNodeIds.has(e.to)),
+  );
+  return {
+    nodes: floorNodes,
+    edges: floorEdges,
+    start: start !== null && floorNodeIds.has(start) ? start : null,
+    finish: finish !== null && floorNodeIds.has(finish) ? finish : null,
+  };
+}
+
+/** Narrow "ask, don't fetch" access to a node's own floor (GitHub issue #347) — built once from the
+ *  full, unscoped `nodes` list (before `selectFloorScopedMaze` narrows it to one floor), so a caller
+ *  that only has floor-scoped data in hand (e.g. `VectorByWallsRenderer`, after scoping its own
+ *  `nodes`/`edges`) can still resolve the *other* floor's node a `vertical_passage`/`elevator`
+ *  edge's `to` points at, without needing the whole unscoped node list passed around. Callers should
+ *  build this once per render (not per edge) and pass the resolver function down, not the raw list —
+ *  every renderer/selector wanting a node's level goes through this same narrow interface instead of
+ *  each hand-rolling its own `Map`. */
+export function selectNodeLevelResolver(nodes: NodeDto[]): (id: number) => number | undefined {
+  const levelById = new Map(nodes.map((n) => [n.id, n.level ?? 0]));
+  return (id: number) => levelById.get(id);
+}
+
+/** `VerticalPassage`/`Elevator` edges (GitHub issue #337/#347) as single point-anchored markers —
+ *  the "Vector by walls" render mode's own reading of these edge kinds, see
+ *  `VerticalConnectionMarker`'s own doc comment for why there's no connector line: `to` lives on
+ *  another floor, entirely absent from this image's `nodes`. `edges` is expected already
+ *  floor-scoped (`selectFloorScopedMaze`, which keeps a vertical/elevator edge whenever its `from`
+ *  is on the active floor); `resolveNodeLevel` (`selectNodeLevelResolver`, built from the *unscoped*
+ *  node list) resolves `to`'s own floor so a one-way `VerticalPassage`'s direction arrow can compare
+ *  it against `activeFloorIndex`. One marker per distinct `from` node per edge kind — an `Elevator`'s
+ *  fully-connected fan can produce several edges sharing the same `from` (one per other floor in the
+ *  fan), which would otherwise draw the same marker stacked on itself several times. */
+export function buildVerticalConnectionMarkers(
+  nodeById: Map<number, NodeDto>,
+  edges: EdgeDto[],
+  cfg: TessellationConfig,
+  resolveNodeLevel: (id: number) => number | undefined,
+  activeFloorIndex: number,
+): VerticalConnectionMarker[] {
+  const isVertical = (e: EdgeDto): e is EdgeDto & { kind: "vertical_passage" | "elevator" } =>
+    e.kind === "vertical_passage" || e.kind === "elevator";
+  const verticalEdges = edges.filter(isVertical);
+  if (verticalEdges.length === 0) return [];
+
+  const byPair = new Set(verticalEdges.filter((e) => e.kind === "vertical_passage").map((e) => `${e.from}->${e.to}`));
+  const allNodes = Array.from(nodeById.values());
+  const nodePos = buildNodePositions(allNodes, cfg, []);
+
+  const seenKey = new Set<string>();
+  const result: VerticalConnectionMarker[] = [];
+  for (const e of verticalEdges) {
+    const key = `${e.from}:${e.kind}`;
+    if (seenKey.has(key)) continue;
+    seenKey.add(key);
+
+    const pos = nodePos.get(e.from);
+    if (!pos) continue;
+
+    let direction: "up" | "down" | undefined;
+    if (e.kind === "vertical_passage" && !byPair.has(`${e.to}->${e.from}`)) {
+      const targetLevel = resolveNodeLevel(e.to);
+      if (targetLevel !== undefined && targetLevel !== activeFloorIndex) {
+        direction = targetLevel > activeFloorIndex ? "up" : "down";
+      }
+    }
+
+    result.push({ pos: [pos.x, pos.y], fromNode: e.from, kind: e.kind, direction });
+  }
+
+  return result;
+}
 
 // Teleport edges are never part of `postEditEdges` — they're tracked separately (see
 // `postEditDraftTeleportEdges`/`postEditTeleportEdges` in storeTypes.ts) since a Teleport and a

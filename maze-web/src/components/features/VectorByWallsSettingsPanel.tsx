@@ -7,7 +7,7 @@ import { SectionHeader } from "../SectionHeader";
 import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
-import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
+import { maxSplitNodeCount, selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { computeVectorByWallsWarnings } from "../../pixi/selectors/exportWarnings";
@@ -70,6 +70,21 @@ export function VectorByWallsSettingsPanel() {
   const setFinishMarkerBorderWidth = useMazeStore((s) => s.setVectorByWallsFinishMarkerBorderWidth);
   const setFinishMarkerGapWidth = useMazeStore((s) => s.setVectorByWallsFinishMarkerGapWidth);
   const setFinishMarkerSize = useMazeStore((s) => s.setVectorByWallsFinishMarkerSize);
+  const patchVerticalSettings = useMazeStore((s) => s.patchVectorByWallsVerticalSettings);
+  const setVerticalPassageMarkerShape = useMazeStore((s) => s.setVectorByWallsVerticalPassageMarkerShape);
+  const setVerticalPassageMarkerCornerStyle = useMazeStore((s) => s.setVectorByWallsVerticalPassageMarkerCornerStyle);
+  const setVerticalPassageMarkerFillColor = useMazeStore((s) => s.setVectorByWallsVerticalPassageMarkerFillColor);
+  const setVerticalPassageMarkerBorderColor = useMazeStore((s) => s.setVectorByWallsVerticalPassageMarkerBorderColor);
+  const setVerticalPassageMarkerBorderWidth = useMazeStore((s) => s.setVectorByWallsVerticalPassageMarkerBorderWidth);
+  const setVerticalPassageMarkerGapWidth = useMazeStore((s) => s.setVectorByWallsVerticalPassageMarkerGapWidth);
+  const setVerticalPassageMarkerSize = useMazeStore((s) => s.setVectorByWallsVerticalPassageMarkerSize);
+  const setElevatorMarkerShape = useMazeStore((s) => s.setVectorByWallsElevatorMarkerShape);
+  const setElevatorMarkerCornerStyle = useMazeStore((s) => s.setVectorByWallsElevatorMarkerCornerStyle);
+  const setElevatorMarkerFillColor = useMazeStore((s) => s.setVectorByWallsElevatorMarkerFillColor);
+  const setElevatorMarkerBorderColor = useMazeStore((s) => s.setVectorByWallsElevatorMarkerBorderColor);
+  const setElevatorMarkerBorderWidth = useMazeStore((s) => s.setVectorByWallsElevatorMarkerBorderWidth);
+  const setElevatorMarkerGapWidth = useMazeStore((s) => s.setVectorByWallsElevatorMarkerGapWidth);
+  const setElevatorMarkerSize = useMazeStore((s) => s.setVectorByWallsElevatorMarkerSize);
   const patchTeleportSettings = useMazeStore((s) => s.patchVectorByWallsTeleportSettings);
   const setTeleportGroupOverride = useMazeStore((s) => s.setVectorByWallsTeleportGroupOverride);
   const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
@@ -94,20 +109,29 @@ export function VectorByWallsSettingsPanel() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [setSelectedTeleportGroupKey]);
 
-  const nodes = useMazeStore((s) => s.nodes);
-  const edges = useMazeStore((s) => s.edges);
+  const rawNodes = useMazeStore((s) => s.nodes);
+  const rawEdges = useMazeStore((s) => s.edges);
   const rawStart = useMazeStore((s) => s.start);
   const rawFinish = useMazeStore((s) => s.finish);
   const postEditMeta = useMazeStore((s) => s.postEditMeta);
   const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
   const cfg = useMazeStore((s) => s.activeTessellationConfig);
+  const floors = useMazeStore((s) => s.floors);
+  const activeFloorId = useMazeStore((s) => s.activeFloorId);
 
   // Effective start/finish — `postEditMeta`'s confirmed endpoints once post-edit has confirmed,
   // else the as-generated `start`/`finish` (GitHub issue #303 — `confirmPostEdit` never updates
   // `state.start`/`state.finish`, only `postEditMeta` reflects a post-edit marker move).
-  const { start, finish } = useMemo(
-    () => resolveEffectiveEndpoints({ nodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
-    [nodes, rawStart, rawFinish, postEditMeta, postEditDraftSplitPoints],
+  const rawEffectiveEndpoints = useMemo(
+    () => resolveEffectiveEndpoints({ nodes: rawNodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
+    [rawNodes, rawStart, rawFinish, postEditMeta, postEditDraftSplitPoints],
+  );
+
+  // Scoped to `activeFloorId` (GitHub issue #347) — mirrors `VectorByWallsRenderer.renderAll`'s own
+  // scoping, so this panel's warnings/section-visibility checks see exactly what's drawn.
+  const { nodes, edges, start, finish } = useMemo(
+    () => selectFloorScopedMaze(rawNodes, rawEdges, floors, activeFloorId, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish),
+    [rawNodes, rawEdges, floors, activeFloorId, rawEffectiveEndpoints],
   );
 
   // Export-specific rendering caveats (GitHub issue #298) — maze-valid but this render mode can't
@@ -132,6 +156,10 @@ export function VectorByWallsSettingsPanel() {
     return basicEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
   }, [edges]);
   const hasTeleports = useMemo(() => edges.some((e) => e.kind === "teleport"), [edges]);
+  const hasVerticalConnections = useMemo(
+    () => edges.some((e) => e.kind === "vertical_passage" || e.kind === "elevator"),
+    [edges],
+  );
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);
@@ -362,6 +390,62 @@ export function VectorByWallsSettingsPanel() {
                 connectorGapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "teleportConnector", () => resetSharedStyleField("gapWidth", "teleportConnector")),
               }}
             />
+          )}
+        </>
+      )}
+
+      {hasVerticalConnections && (
+        <>
+          <div style={styles.divider} />
+
+          <SectionHeader
+            label={m["image_export.vector_by_walls.section_vertical"]()}
+            expanded={isExpanded("vertical")}
+            onToggle={() => toggleSection("vertical")}
+          />
+          {isExpanded("vertical") && (
+            <div style={styles.block}>
+              <SelectRow
+                label={m["image_export.vector_by_walls.vertical_display_style"]()}
+                value={settings.verticalPassageDisplayStyle}
+                options={[
+                  { value: "marker", label: m["image_export.vector_by_walls.vertical_display_style_marker"]() },
+                  { value: "decorative", label: m["image_export.vector_by_walls.vertical_display_style_decorative"]() },
+                ]}
+                onChange={(verticalPassageDisplayStyle) => patchVerticalSettings({ verticalPassageDisplayStyle })}
+              />
+              <ColorRow
+                label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
+                color={settings.oneWayArrowColor}
+                onChange={(oneWayArrowColor) => patchVerticalSettings({ oneWayArrowColor })}
+              />
+              <MarkerSettingsGroup
+                title={m["image_export.vector_by_walls.vertical_passage_marker"]()}
+                settings={settings.verticalPassageMarker}
+                onChange={(patch) => {
+                  if (patch.shape !== undefined) setVerticalPassageMarkerShape(patch.shape);
+                  if (patch.cornerStyle !== undefined) setVerticalPassageMarkerCornerStyle(patch.cornerStyle);
+                  if (patch.fillColor !== undefined) setVerticalPassageMarkerFillColor(patch.fillColor);
+                  if (patch.borderColor !== undefined) setVerticalPassageMarkerBorderColor(patch.borderColor);
+                  if (patch.borderWidth !== undefined) setVerticalPassageMarkerBorderWidth(patch.borderWidth);
+                  if (patch.gapWidth !== undefined) setVerticalPassageMarkerGapWidth(patch.gapWidth);
+                  if (patch.size !== undefined) setVerticalPassageMarkerSize(patch.size);
+                }}
+              />
+              <MarkerSettingsGroup
+                title={m["image_export.vector_by_walls.elevator_marker"]()}
+                settings={settings.elevatorMarker}
+                onChange={(patch) => {
+                  if (patch.shape !== undefined) setElevatorMarkerShape(patch.shape);
+                  if (patch.cornerStyle !== undefined) setElevatorMarkerCornerStyle(patch.cornerStyle);
+                  if (patch.fillColor !== undefined) setElevatorMarkerFillColor(patch.fillColor);
+                  if (patch.borderColor !== undefined) setElevatorMarkerBorderColor(patch.borderColor);
+                  if (patch.borderWidth !== undefined) setElevatorMarkerBorderWidth(patch.borderWidth);
+                  if (patch.gapWidth !== undefined) setElevatorMarkerGapWidth(patch.gapWidth);
+                  if (patch.size !== undefined) setElevatorMarkerSize(patch.size);
+                }}
+              />
+            </div>
           )}
         </>
       )}

@@ -945,6 +945,32 @@ export interface PostEditActions {
  *  the old standalone `"grouped"` pattern's look. `teleportGroupOverrides` holds those overrides,
  *  keyed by `TeleportGroup.key` (stable across renders, not across a maze regenerate/reload —
  *  entries for groups no longer present are simply never looked up again, not pruned). */
+/** "Vertical connections" section fields (GitHub issue #347) — `VerticalPassage`/`Elevator` edges
+ *  (`Specs/generation.md`'s "Vertical Connections", GitHub issue #337) both draw as a single
+ *  point-anchored marker on the edge's `from` node's own cell (never a connector line to another
+ *  drawn point — the `to` node lives on a different floor, off this image entirely, see
+ *  `selectFloorScopedMaze`). Two independent marker styles, `MarkerSettings`-shaped (same
+ *  shape/cornerStyle/fillColor/borderColor/borderWidth/gapWidth/size fields the start/finish
+ *  markers use) since both are always drawn as a plain marker shape here, never a connector:
+ *  `verticalPassageMarker` for `VerticalPassage` and `elevatorMarker` for `Elevator` — distinct
+ *  defaults (shape/color) so the two kinds read apart on the map without the user configuring
+ *  anything. `verticalPassageDisplayStyle` switches `VerticalPassage` between `"marker"` (a plain
+ *  opening marker — the only mode that reads correctly as "cut an opening here" for a physical
+ *  two-floor build, see the issue's own build-vs-print rationale) and `"decorative"` (a small
+ *  stairs illustration instead of the plain marker shape, meaningful only when the maze is printed
+ *  as a set of separate per-floor images the viewer mentally connects). `Elevator` has no
+ *  decorative treatment of its own (no natural "decorative elevator" illustration) and always
+ *  renders as `elevatorMarker`, regardless of `verticalPassageDisplayStyle`. `oneWayArrowColor`
+ *  colors the small direction arrow drawn on top of a one-way `VerticalPassage`'s own marker/stairs
+ *  (`vertical_up_down_balance`-rolled direction, `Specs/generation.md`) — a two-way `VerticalPassage`
+ *  and every `Elevator` draw no arrow at all. */
+export interface VerticalSettingsFields {
+  verticalPassageDisplayStyle: "marker" | "decorative";
+  verticalPassageMarker: MarkerSettings;
+  elevatorMarker: MarkerSettings;
+  oneWayArrowColor: number;
+}
+
 export interface TeleportSettingsFields {
   teleportLineCornerStyle: TeleportCornerStyle;
   teleportLineShape: MarkerShape;
@@ -1074,7 +1100,7 @@ export type SharedStyleField<O extends VectorByWallsSharedStyleOverrides | Vecto
  * view until the user changes something. Kept as its own type (not folded into a shared per-mode
  * settings shape) since each render mode's settings are expected to differ entirely — a future
  * mode adds its own sibling `xxxSettings` field, not a new case of this type. */
-export interface VectorByWallsSettings extends TeleportSettingsFields {
+export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalSettingsFields {
   background: number;
   showGrid: boolean;
   gridColor: number;
@@ -1375,6 +1401,23 @@ export interface ImageExportActions {
   setVectorByWallsFinishMarkerBorderWidth: (v: number) => void;
   setVectorByWallsFinishMarkerGapWidth: (v: number) => void;
   setVectorByWallsFinishMarkerSize: (v: number) => void;
+  /** `verticalPassageDisplayStyle`/`oneWayArrowColor` — see `VerticalSettingsFields`'s own doc
+   *  comment (GitHub issue #347). */
+  patchVectorByWallsVerticalSettings: (patch: Partial<Pick<VerticalSettingsFields, "verticalPassageDisplayStyle" | "oneWayArrowColor">>) => void;
+  setVectorByWallsVerticalPassageMarkerShape: (shape: MarkerShape) => void;
+  setVectorByWallsVerticalPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByWallsVerticalPassageMarkerFillColor: (color: number) => void;
+  setVectorByWallsVerticalPassageMarkerBorderColor: (color: number) => void;
+  setVectorByWallsVerticalPassageMarkerBorderWidth: (v: number) => void;
+  setVectorByWallsVerticalPassageMarkerGapWidth: (v: number) => void;
+  setVectorByWallsVerticalPassageMarkerSize: (v: number) => void;
+  setVectorByWallsElevatorMarkerShape: (shape: MarkerShape) => void;
+  setVectorByWallsElevatorMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByWallsElevatorMarkerFillColor: (color: number) => void;
+  setVectorByWallsElevatorMarkerBorderColor: (color: number) => void;
+  setVectorByWallsElevatorMarkerBorderWidth: (v: number) => void;
+  setVectorByWallsElevatorMarkerGapWidth: (v: number) => void;
+  setVectorByWallsElevatorMarkerSize: (v: number) => void;
   patchVectorByWallsTeleportSettings: (patch: Partial<TeleportSettingsFields>) => void;
   setVectorByWallsTeleportGroupOverride: (groupKey: string, patch: TeleportGroupOverride | null) => void;
   setSelectedTeleportGroupKey: (key: string | null) => void;

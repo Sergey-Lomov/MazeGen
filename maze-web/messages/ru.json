@@ -1365,6 +1365,13 @@
   "image_export.vector_by_walls.split_special_shapes": "Специальные формы",
   "image_export.vector_by_corridors.split_gap_width": "Зазор",
   "image_export.vector_by_corridors.split_diagonal_bow_amount": "Изгиб диагонали",
+  "image_export.vector_by_walls.section_vertical": "Вертикальные связи",
+  "image_export.vector_by_walls.vertical_display_style": "Стиль вертикального перехода",
+  "image_export.vector_by_walls.vertical_display_style_marker": "Маркер (простое отверстие)",
+  "image_export.vector_by_walls.vertical_display_style_decorative": "Декоративный (лестница)",
+  "image_export.vector_by_walls.vertical_arrow_color": "Цвет стрелки направления",
+  "image_export.vector_by_walls.vertical_passage_marker": "Вертикальный переход",
+  "image_export.vector_by_walls.elevator_marker": "Лифт",
   "image_export.vector_by_walls.section_warnings": "Предупреждения ({count})",
   "image_export.vector_by_walls.warning_teleport_marker_invisible": "Маркер выхода телепорта невидим",
   "image_export.vector_by_walls.warning_teleport_marker_invisible_description": "Точка выхода одностороннего телепорта рисуется заливкой цвета пола, а не цветом телепорта, поэтому при толщине рамки 0 её нечем отрисовать.",
@@ -1376,6 +1383,8 @@
   "image_export.vector_by_walls.warning_waypoint_on_split_description": "Маркер старта/финиша находится на точке разделения, такая ситуация может отображаться некорректно.",
   "image_export.vector_by_walls.warning_teleport_on_special_split": "Край телепорта находится на точке разделения",
   "image_export.vector_by_walls.warning_teleport_on_special_split_description": "Край телепорта находится на точке разделения, такая ситуация может отображаться некорректно.",
+  "image_export.vector_by_walls.warning_vertical_on_special_split": "Маркер вертикальной связи находится на точке разделения",
+  "image_export.vector_by_walls.warning_vertical_on_special_split_description": "Маркер VerticalPassage/Elevator находится на точке разделения, распознанной как специальная форма (мост/диагональ). Такая ситуация может отображаться некорректно.",
   "status.render_mode_not_selected": "Режим рендера не выбран",
   "status.render_mode_active": "Активен: {mode}"
 }

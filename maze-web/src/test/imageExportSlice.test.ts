@@ -4,7 +4,7 @@ import { baseStoreState } from "./storeTestHelpers";
 import { canvas } from "../pixi/colorTokens";
 import { WALL_THICKNESS } from "../pixi/renderConstants";
 import { splitSlotColor } from "../pixi/colorUtils";
-import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE } from "../store/slices/imageExportSlice";
+import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS } from "../store/slices/imageExportSlice";
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -55,6 +55,7 @@ beforeEach(() => {
       teleportConnectorGapWidth: 0,
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
+      ...DEFAULT_VERTICAL_SETTINGS,
       splitNodeColors: [],
       splitSpecialShapes: false,
       sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
@@ -130,6 +131,7 @@ describe("mazeStore vectorByWallsSettings", () => {
       teleportConnectorGapWidth: 0,
       teleportGroupCustomization: false,
       teleportGroupOverrides: {},
+      ...DEFAULT_VERTICAL_SETTINGS,
       splitNodeColors: [],
       splitSpecialShapes: false,
       sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,

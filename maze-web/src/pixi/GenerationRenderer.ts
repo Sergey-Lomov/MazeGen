@@ -9,7 +9,7 @@ import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
 import { DebugRefHighlightOverlay } from "./DebugRefHighlightOverlay";
 import { DebugValueHighlightOverlay } from "./DebugValueHighlightOverlay";
 import { KruskalDsuHighlightOverlay } from "./KruskalDsuHighlightOverlay";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, selectFloorScopedMaze } from "./selectors/mazeSelectors";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
@@ -187,27 +187,16 @@ export class GenerationRenderer {
   // node/edge set — without this, nodes from different floors sharing the same (x, y) would get
   // mistaken for a split point by `buildSplitPassages`'s per-point grouping.
   private debugView(state: ReturnType<typeof useMazeStore.getState>, debugMazeView: DebugMazeView | null) {
-    const activeFloorIndex = Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
     if (debugMazeView) {
-      const nodes = debugMazeView.nodes.filter((n) => (n.level ?? 0) === activeFloorIndex);
-      const visibleIds = new Set(nodes.map((n) => n.id));
-      const edges = debugMazeView.edges.filter((e) => visibleIds.has(e.from) && visibleIds.has(e.to));
-      return {
-        nodes,
-        edges,
-        start: debugMazeView.start !== null && visibleIds.has(debugMazeView.start) ? debugMazeView.start : null,
-        finish: debugMazeView.finish !== null && visibleIds.has(debugMazeView.finish) ? debugMazeView.finish : null,
-      };
+      return selectFloorScopedMaze(
+        debugMazeView.nodes, debugMazeView.edges, state.floors, state.activeFloorId,
+        debugMazeView.start, debugMazeView.finish,
+      );
     }
-    const nodes = state._generatedNodes.filter((n) => (n.level ?? 0) === activeFloorIndex);
-    const visibleIds = new Set(nodes.map((n) => n.id));
-    const edges = state._generatedEdges.filter((e) => visibleIds.has(e.from) && visibleIds.has(e.to));
-    return {
-      nodes,
-      edges,
-      start: state.start !== null && visibleIds.has(state.start) ? state.start : null,
-      finish: state.finish !== null && visibleIds.has(state.finish) ? state.finish : null,
-    };
+    return selectFloorScopedMaze(
+      state._generatedNodes, state._generatedEdges, state.floors, state.activeFloorId,
+      state.start, state.finish,
+    );
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {

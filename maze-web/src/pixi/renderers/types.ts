@@ -215,6 +215,21 @@ export type MarkerData = {
  * `PresetConnectionsRenderer`) omits them. */
 export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean; fromNode?: number; toNode?: number };
 
+/** One `VerticalPassage`/`Elevator` edge's own render point (GitHub issue #347) — always a single
+ *  point-anchored marker on the edge's `from` node's own cell, never a connector to another drawn
+ *  point (the `to` node lives on a different floor, off this image entirely — see
+ *  `selectFloorScopedMaze`). `direction` is only set for a one-way `VerticalPassage` whose target
+ *  floor's index (resolved via the renderer's own `resolveNodeLevel`, since the target node itself
+ *  isn't in the floor-scoped node set) could be compared against the active floor's — `"up"`/`"down"`
+ *  when the target sits above/below, `undefined` for a two-way passage or an `Elevator` (which is
+ *  always two-way by construction) or when the target's level can't be resolved. */
+export type VerticalConnectionMarker = {
+  pos: [number, number];
+  fromNode: number;
+  kind: "vertical_passage" | "elevator";
+  direction?: "up" | "down";
+};
+
 /** Sharp (plain polygon corners) vs. round (`Graphics.roundPoly`-rounded) corners — one shared
  *  setting for every teleport marker (GitHub issue #293 follow-up). Only affects the four
  *  regular-polygon `MarkerShape`s (`triangle`/`square`/`diamond`/`pentagon`/`hexagon` — see

@@ -40,6 +40,11 @@ vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildClosedCells: vi.fn(() => []),
   buildSplitPassages: vi.fn(() => ({ passages: [], wallFaces: [], specialShapes: [] })),
   maxSplitNodeCount: vi.fn(() => 0),
+  buildVerticalConnectionMarkers: vi.fn(() => []),
+  selectNodeLevelResolver: vi.fn(() => () => undefined),
+  selectFloorScopedMaze: vi.fn((nodes: unknown[], edges: unknown[], _floors: unknown, _activeFloorId: unknown, start: number | null = null, finish: number | null = null) => ({
+    nodes, edges, start, finish,
+  })),
 }));
 
 vi.mock("../pixi/renderers/WallRenderer", () => ({
@@ -171,6 +176,10 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportConnectorGapWidth: 0,
     teleportGroupCustomization: false,
     teleportGroupOverrides: {},
+    verticalPassageDisplayStyle: "marker",
+    verticalPassageMarker: { shape: "square", cornerStyle: "round", fillColor: 0x33bbff, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2 },
+    elevatorMarker: { shape: "hexagon", cornerStyle: "round", fillColor: 0x9955ff, borderColor: 0x9955ff, borderWidth: 0, gapWidth: 3, size: 0.2 },
+    oneWayArrowColor: 0x111111,
     splitNodeColors: [],
     splitSpecialShapes: false,
     sharedStyle: { cornerStyle: "round", markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3, overrides: {} },
@@ -195,6 +204,8 @@ function baseState(overrides: Record<string, unknown> = {}) {
     postEditMeta: null,
     postEditDraftSplitPoints: {},
     hoveredExportWarningKey: null,
+    floors: [{ id: "floor_1", title: "Floor 1" }],
+    activeFloorId: "floor_1",
     ...overrides,
   };
 }

@@ -12,6 +12,7 @@ import type {
   SharedStyleField,
   TeleportSettingsFields,
   OneWaySettingsFields,
+  VerticalSettingsFields,
   PngExportSettings,
 } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
@@ -75,6 +76,22 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
   teleportGroupOverrides: {},
 };
 
+/** Shared by `VectorByWallsSettings` and `projectExport/validate.ts`'s recovery defaults, same
+ * extraction rationale as `DEFAULT_TELEPORT_SETTINGS`/`DEFAULT_ONE_WAY_SETTINGS` (GitHub issue
+ * #347). `verticalPassageMarker`/`elevatorMarker` get distinct default shape/color so the two edge
+ * kinds read apart on the map with no configuration needed — square/blue for `VerticalPassage`,
+ * hexagon/purple for `Elevator` (an elevator's own fully-connected multi-floor fan reads as "more
+ * connected" than a single adjacent-floor passage, loosely mirroring a hexagon's extra sides).
+ * `verticalPassageDisplayStyle` defaults to `"marker"` (not `"decorative"`) — a plain opening
+ * marker is the one style that's also correct for a physical single-sheet two-floor build, per the
+ * issue's own rationale; `"decorative"` is an opt-in choice for a purely visual/print export. */
+export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
+  verticalPassageDisplayStyle: "marker",
+  verticalPassageMarker: { shape: "square", cornerStyle: "round", fillColor: 0x33bbff, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2 },
+  elevatorMarker: { shape: "hexagon", cornerStyle: "round", fillColor: 0x9955ff, borderColor: 0x9955ff, borderWidth: 0, gapWidth: 3, size: 0.2 },
+  oneWayArrowColor: canvas.stage.background,
+};
+
 /** Shared with `projectExport/validate.ts`'s recovery defaults for old/malformed project files
  * (GitHub issue #295) — kept as a single exported const so the two never drift apart.
  * `startMarker`/`finishMarker`/`wallJoin`/`oneWayJoin`/every `teleportLine*`/`teleportEdge*`/
@@ -99,6 +116,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = applyVect
     startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0 },
     finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0 },
     ...DEFAULT_TELEPORT_SETTINGS,
+    ...DEFAULT_VERTICAL_SETTINGS,
     splitNodeColors: [],
     splitSpecialShapes: true,
     sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
@@ -517,6 +535,36 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
         sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "markerSize", "finishMarker") },
       },
     })),
+  patchVectorByWallsVerticalSettings: (patch) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, ...patch } })),
+  setVectorByWallsVerticalPassageMarkerShape: (shape) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, verticalPassageMarker: { ...s.vectorByWallsSettings.verticalPassageMarker, shape } } })),
+  setVectorByWallsVerticalPassageMarkerCornerStyle: (style) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, verticalPassageMarker: { ...s.vectorByWallsSettings.verticalPassageMarker, cornerStyle: style } } })),
+  setVectorByWallsVerticalPassageMarkerFillColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, verticalPassageMarker: { ...s.vectorByWallsSettings.verticalPassageMarker, fillColor: color } } })),
+  setVectorByWallsVerticalPassageMarkerBorderColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, verticalPassageMarker: { ...s.vectorByWallsSettings.verticalPassageMarker, borderColor: color } } })),
+  setVectorByWallsVerticalPassageMarkerBorderWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, verticalPassageMarker: { ...s.vectorByWallsSettings.verticalPassageMarker, borderWidth: v } } })),
+  setVectorByWallsVerticalPassageMarkerGapWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, verticalPassageMarker: { ...s.vectorByWallsSettings.verticalPassageMarker, gapWidth: v } } })),
+  setVectorByWallsVerticalPassageMarkerSize: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, verticalPassageMarker: { ...s.vectorByWallsSettings.verticalPassageMarker, size: v } } })),
+  setVectorByWallsElevatorMarkerShape: (shape) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, shape } } })),
+  setVectorByWallsElevatorMarkerCornerStyle: (style) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, cornerStyle: style } } })),
+  setVectorByWallsElevatorMarkerFillColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, fillColor: color } } })),
+  setVectorByWallsElevatorMarkerBorderColor: (color) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, borderColor: color } } })),
+  setVectorByWallsElevatorMarkerBorderWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, borderWidth: v } } })),
+  setVectorByWallsElevatorMarkerGapWidth: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, gapWidth: v } } })),
+  setVectorByWallsElevatorMarkerSize: (v) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, elevatorMarker: { ...s.vectorByWallsSettings.elevatorMarker, size: v } } })),
   patchVectorByWallsTeleportSettings: (patch) =>
     set((s) => {
       // See `patchVectorByCorridorsTeleportSettings`'s own comment on this same pattern — the cast
