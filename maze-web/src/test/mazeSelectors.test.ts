@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { getCellCenter } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
@@ -152,6 +152,31 @@ describe("buildClosedCells", () => {
     const result = buildClosedCells(nodes, []);
     expect(result).toContainEqual([0, 0]);
     expect(result).toContainEqual([1, 0]);
+  });
+
+  // --- allEdges (GitHub issue #337 follow-up: one-way VerticalPassage arrival end) ---
+
+  it("without allEdges, a one-way VerticalPassage's arrival-only cell (edge absent from the floor-scoped edges list) is wrongly closed", () => {
+    // Mirrors what a floor-aware caller's own `edges` looks like on the arrival floor:
+    // `selectFloorScopedMaze` drops a vertical_passage edge whose `from` isn't on this floor, so
+    // `edges` here has nothing at all for node 0.
+    const nodes = [n(0, 0, 0)];
+    const result = buildClosedCells(nodes, []);
+    expect(result).toContainEqual([0, 0]);
+  });
+
+  it("allEdges recovers a one-way VerticalPassage's arrival-only cell as connected", () => {
+    const nodes = [n(0, 0, 0)];
+    const verticalEdge: EdgeDto = { from: 99, to: 0, kind: "vertical_passage" };
+    const result = buildClosedCells(nodes, [], [verticalEdge]);
+    expect(result).not.toContainEqual([0, 0]);
+  });
+
+  it("allEdges does not treat an unrelated edge kind as a vertical arrival", () => {
+    const nodes = [n(0, 0, 0)];
+    const teleportEdge: EdgeDto = { from: 99, to: 0, kind: "teleport" };
+    const result = buildClosedCells(nodes, [], [teleportEdge]);
+    expect(result).toContainEqual([0, 0]);
   });
 });
 
@@ -624,6 +649,73 @@ describe("buildTeleportEdges", () => {
     const center = { x: 20, y: -20 }; // cell (0,0) center, see squareCfg comment above
     const dist = Math.hypot(result[0].from[0] - center.x, result[0].from[1] - center.y);
     expect(dist).toBeCloseTo(10, 5); // TILE_SIZE / 4, not 0 (tile center)
+  });
+
+  // --- cross-floor (GitHub issue #337) ---
+
+  const nLevel = (id: number, x: number, y: number, level: number): NodeDto => ({ id, x, y, i: 0, level });
+
+  it("cross-floor one-way teleport: no reverse edge on either floor produces oneWay=true with a midpoint toFloor", () => {
+    // Node 0 (floor 0) -> node 1 (floor 1). `edges` (floor-scoped, as a real caller would pass) only
+    // has node 0's own teleport edge — node 1's reverse (if any) would have its own `from` on floor 1,
+    // never present here.
+    const floor0Nodes: NodeDto[] = [nLevel(0, 0, 0, 0)];
+    const unscopedNodes: NodeDto[] = [nLevel(0, 0, 0, 0), nLevel(1, 3, 3, 1)];
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1)];
+    const nodeById = new Map(floor0Nodes.map((n) => [n.id, n]));
+    const result = buildTeleportEdges(nodeById, unscopedEdges, squareCfg, {
+      resolveNodeLevel: selectNodeLevelResolver(unscopedNodes),
+      unscopedNodeById: new Map(unscopedNodes.map((n) => [n.id, n])),
+      unscopedEdges,
+      activeFloorIndex: 0,
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].oneWay).toBe(true);
+    expect(result[0].toFloor).toBe(1);
+  });
+
+  it("cross-floor two-way teleport: a reverse edge on the other floor produces oneWay=false", () => {
+    const floor0Nodes: NodeDto[] = [nLevel(0, 0, 0, 0)];
+    const unscopedNodes: NodeDto[] = [nLevel(0, 0, 0, 0), nLevel(1, 3, 3, 1)];
+    // The reverse edge's own `from` (node 1) lives on floor 1 — never in `edges` for a floor-0 render,
+    // only in `unscopedEdges`, same as a real floor-scoped caller would have it.
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1), teleport(1, 0)];
+    const floor0Edges: EdgeDto[] = [teleport(0, 1)];
+    const nodeById = new Map(floor0Nodes.map((n) => [n.id, n]));
+    const result = buildTeleportEdges(nodeById, floor0Edges, squareCfg, {
+      resolveNodeLevel: selectNodeLevelResolver(unscopedNodes),
+      unscopedNodeById: new Map(unscopedNodes.map((n) => [n.id, n])),
+      unscopedEdges,
+      activeFloorIndex: 0,
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].oneWay).toBe(false);
+    expect(result[0].toFloor).toBe(1);
+  });
+
+  it("cross-floor midpoint is the same world point whichever floor is active (GitHub issue #337 follow-up)", () => {
+    // Same pair (node 0 @ floor 0, node 1 @ floor 1) rendered once from each floor's own
+    // perspective — the badge's own world position must match exactly either way, or it visibly
+    // jumps when the user switches floors.
+    const unscopedNodes: NodeDto[] = [nLevel(0, 0, 0, 0), nLevel(1, 3, 3, 1)];
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1), teleport(1, 0)];
+    const resolveNodeLevel = selectNodeLevelResolver(unscopedNodes);
+    const unscopedNodeById = new Map(unscopedNodes.map((n) => [n.id, n]));
+
+    const fromFloor0 = buildTeleportEdges(
+      new Map([[0, nLevel(0, 0, 0, 0)]]), [teleport(0, 1)], squareCfg,
+      { resolveNodeLevel, unscopedNodeById, unscopedEdges, activeFloorIndex: 0 },
+    );
+    const fromFloor1 = buildTeleportEdges(
+      new Map([[1, nLevel(1, 3, 3, 1)]]), [teleport(1, 0)], squareCfg,
+      { resolveNodeLevel, unscopedNodeById, unscopedEdges, activeFloorIndex: 1 },
+    );
+
+    expect(fromFloor0).toHaveLength(1);
+    expect(fromFloor1).toHaveLength(1);
+    // Floor 0's own badge sits at its `to` (node 1 is off-floor there); floor 1's own badge sits at
+    // its `to` too (node 0 is off-floor there) — both must be the exact same world point.
+    expect(fromFloor0[0].to).toEqual(fromFloor1[0].to);
   });
 });
 

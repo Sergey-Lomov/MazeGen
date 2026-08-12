@@ -1,6 +1,6 @@
 import { squareCenter, squareVertices } from "./squareGeometry";
 import { hexCenter, hexVertices } from "./hexGeometry";
-import { triCenter, triVertices } from "./triGeometry";
+import { triCenter, triVertices, TRI_TILE_SIZE } from "./triGeometry";
 import type { TriOrientation } from "./triGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { TILE_SIZE } from "./constants";
@@ -307,6 +307,136 @@ export function getCellCenter(x: number, y: number, cfg: TessellationConfig): Po
     }
     default:
       return { x: 0, y: 0 };
+  }
+}
+
+/// Inverse rotation matrix of `hexGeometry.ts`'s `rotateDeg` — same isometry, negated angle.
+function rotateDegInverse(x: number, y: number, deg: number): Pos {
+  const a = (-deg * Math.PI) / 180;
+  return { x: x * Math.cos(a) - y * Math.sin(a), y: x * Math.sin(a) + y * Math.cos(a) };
+}
+
+/// Undoes `triGeometry.ts`'s `rotate` — every one of its four cases (r0/r90/r180/r270) happens to
+/// be its own inverse (each is a 180°-order isometry: applying it twice is the identity), so this
+/// is textually identical to that function, just spelled out here to keep the inverse direction
+/// explicit at the call site rather than relying on the reader noticing the self-inverse property.
+function triRotateInverse(x: number, y: number, orientation: TriOrientation): Pos {
+  switch (orientation) {
+    case "r0": return { x, y };
+    case "r90": return { x: -y, y: -x };
+    case "r180": return { x: -x, y: -y };
+    case "r270": return { x: y, y: x };
+  }
+}
+
+/// Nearest square grid coordinate to a world point (GitHub issue #337 follow-up: snapping a
+/// cross-floor teleport badge onto the grid, not a free-floating world point that could sit
+/// mid-wall) — exact inversion of `squareCenter`, `Tessellation::cartesian` being the identity for
+/// square (`maze-core/src/space/square.rs`), so this never needs rounding-candidate disambiguation
+/// the way hex/tri do below.
+function nearestSquareCoord(worldX: number, worldY: number): [number, number] {
+  return [Math.round(worldX / TILE_SIZE - 0.5), Math.round(-worldY / TILE_SIZE - 0.5)];
+}
+
+/// Nearest hex axial coordinate to a world point — undoes `hexCenter`'s own rotation/scale to
+/// recover the canonical (flat_top) unit-scale point, algebraically inverts
+/// `HexTessellation::cartesian` (`ux = q*1.5`, `uy = -(r*inradius*2 + q*inradius)`,
+/// `maze-core/src/space/hex.rs`) to get real-valued `(q, r)`, then rounds via the standard
+/// cube-coordinate rounding algorithm (round `(q, r, s=-q-r)` independently, then fix up whichever
+/// axis had the largest rounding error so `q+r+s` stays exactly 0) — a naive per-axis round can
+/// snap to the wrong hex near a cell boundary, which cube-rounding avoids.
+function nearestHexCoord(worldX: number, worldY: number, orientation: "flat_top" | "pointy_top"): [number, number] {
+  const { x: rx, y: ry } = rotateDegInverse(worldX, worldY, orientation === "pointy_top" ? 30 : 0);
+  const ux = rx / TILE_SIZE;
+  const uy = ry / TILE_SIZE;
+  const inradius = Math.sqrt(3) / 2;
+  const qf = ux / 1.5;
+  // uy = -(r*inradius*2 + q*inradius)  =>  r = (-uy/inradius - q) / 2
+  const rf = (-uy / inradius - qf) / 2;
+  const sf = -qf - rf;
+  let q = Math.round(qf);
+  let r = Math.round(rf);
+  const s = Math.round(sf);
+  const qDiff = Math.abs(q - qf);
+  const rDiff = Math.abs(r - rf);
+  const sDiff = Math.abs(s - sf);
+  if (qDiff > rDiff && qDiff > sDiff) q = -r - s;
+  else if (rDiff > sDiff) r = -q - s;
+  return [q, r];
+}
+
+/// Nearest triangle (col, row) grid coordinate to a world point — undoes `triCenter`'s own
+/// rotation/scale to recover the canonical (r0) unit-scale point, then inverts
+/// `TriTessellation::cartesian` (`maze-core/src/space/triangle.rs`). `col` inverts directly
+/// (`cx = col + 0.5` at canonical `S = 2`, no parity dependence). `row` does depend on parity
+/// (`pointing_up = (col+row) % 2 === 0` picks between two different `cy` formulas), which is
+/// itself derived from `row` — solved by computing both parity candidates' own `row`, then keeping
+/// whichever is *self-consistent* (its own rounded value actually produces the parity its formula
+/// assumed); on the rare tie/mismatch (both or neither self-consistent — can happen only very near
+/// a triangle's own base edge, at the boundary between the two formulas), the candidate whose
+/// fractional `row` is closer to an integer wins, since that's the one the world point actually sat
+/// nearest to before rounding.
+function nearestTriCoord(worldX: number, worldY: number, orientation: TriOrientation): [number, number] {
+  const { x: rx, y: ry } = triRotateInverse(worldX, worldY, orientation);
+  const scale = TRI_TILE_SIZE / 2;
+  const ux = rx / scale;
+  const uy = ry / scale;
+  const h = 2 * Math.sqrt(3) / 2; // canonical S = 2, H = S*sqrt(3)/2
+  const col = Math.round(ux - 0.5);
+
+  const rowUpF = -(uy + h / 3) / h;
+  const rowDownF = -(uy + 2 * h / 3) / h;
+  const rowUp = Math.round(rowUpF);
+  const rowDown = Math.round(rowDownF);
+  const upConsistent = (col + rowUp) % 2 === 0; // pointing_up formula requires even parity
+  const downConsistent = (col + rowDown) % 2 !== 0;
+
+  if (upConsistent && !downConsistent) return [col, rowUp];
+  if (downConsistent && !upConsistent) return [col, rowDown];
+  // Both/neither consistent — fall back to whichever real-valued row landed closer to its own
+  // rounded integer (closer to an exact grid line means the world point genuinely sat nearer it).
+  const upDist = Math.abs(rowUpF - rowUp);
+  const downDist = Math.abs(rowDownF - rowDown);
+  return upDist <= downDist ? [col, rowUp] : [col, rowDown];
+}
+
+/// Nearest grid coordinate (not necessarily an actual field cell — the math grid extends
+/// infinitely) to a world point, for whichever tessellation `cfg` names (GitHub issue #337
+/// follow-up: snapping a cross-floor teleport badge onto the grid so its connector never crosses a
+/// wall unpredictably). Deterministic and symmetric by construction — the same world point always
+/// resolves to the same grid coordinate regardless of caller/context, so a badge computed once from
+/// a world-space midpoint reads identically from either floor it's drawn on.
+export function nearestCellCoord(worldX: number, worldY: number, cfg: TessellationConfig): [number, number] {
+  const [x, y] = nearestCellCoordRaw(worldX, worldY, cfg);
+  // `Math.round` can produce a signed `-0` for a world point that lands exactly on a coordinate's
+  // own negative-side boundary — a real grid coordinate is never negative zero, and leaving it in
+  // would make `-0`/`0` compare unequal to a caller doing strict identity (e.g. a coordinate-key
+  // string, or `Object.is`-based dedup), so it's normalized away here rather than at every call
+  // site.
+  return [x === 0 ? 0 : x, y === 0 ? 0 : y];
+}
+
+function nearestCellCoordRaw(worldX: number, worldY: number, cfg: TessellationConfig): [number, number] {
+  switch (cfg.type) {
+    case "square":
+    case "square_custom":
+      return nearestSquareCoord(worldX, worldY);
+    case "hex_parallelogram":
+    case "hex_hexagon":
+    case "hex_custom": {
+      const ori = (cfg as { orientation?: "flat_top" | "pointy_top" }).orientation ?? "flat_top";
+      return nearestHexCoord(worldX, worldY, ori);
+    }
+    case "triangle_rect":
+    case "triangle_triangle":
+    case "triangle_hexagon":
+    case "tri_custom": {
+      const ori = (cfg as { orientation?: TriOrientation }).orientation ?? "r0";
+      return nearestTriCoord(worldX, worldY, ori);
+    }
+    default:
+      cfg satisfies never;
+      return [0, 0];
   }
 }
 

@@ -3,6 +3,7 @@ import type { VerticalConnectionMarker, MarkerShape, TeleportCornerStyle } from 
 import { drawMarkerShape } from "./markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
 import { TILE_SIZE } from "../constants";
+import { navigateToFloor } from "./floorNavigation";
 
 /** Same field shape as `MarkerSettings` (`storeTypes.ts`) plus `gapColor`, by design — kept as its
  *  own type since this lower-level renderer module must not depend on the store layer, same
@@ -93,13 +94,40 @@ export class VerticalConnectionRenderer {
     container.addChild(this.g);
   }
 
-  render(data: { markers: VerticalConnectionMarker[]; style: VerticalConnectionStyle }): void {
+  /** `interactive` (GitHub issue #337 follow-up) wires click-to-switch-floor on every marker whose
+   *  own `targetFloorIndex` resolved (a `VerticalPassage` always has exactly one target floor; an
+   *  `Elevator`'s fan does not, so its markers never get `targetFloorIndex` and stay non-interactive
+   *  regardless of this flag — see `VerticalConnectionMarker`'s own doc comment). One listener per
+   *  marker `Graphics`, not a shared hit-test the way `TeleportRenderer.wireGroupInteractivity`
+   *  needs (a handful of markers per floor at most — no bucket-search justified here). */
+  render(data: { markers: VerticalConnectionMarker[]; style: VerticalConnectionStyle; interactive?: boolean }): void {
     this.g.clear();
+    this.g.removeChildren().forEach((c) => c.destroy());
+
+    // Two markers can share the same cell (an Elevator + VerticalPassage from the same node, or a
+    // one-way VerticalPassage's departure end sharing a cell with another edge's arrival end) — GitHub
+    // issue #337 follow-up. Spread same-position markers left/right along X so their circles don't
+    // stack directly on top of each other; a lone marker at a position keeps its original center.
+    const groupByPos = new Map<string, VerticalConnectionMarker[]>();
+    for (const marker of data.markers) {
+      const key = `${marker.pos[0]},${marker.pos[1]}`;
+      const group = groupByPos.get(key);
+      if (group) group.push(marker);
+      else groupByPos.set(key, [marker]);
+    }
+
     for (const marker of data.markers) {
       const settings = marker.kind === "elevator" ? data.style.elevatorMarker : data.style.verticalPassageMarker;
       const decorative = marker.kind === "vertical_passage" && data.style.displayStyle === "decorative";
-      const [cx, cy] = marker.pos;
+      const group = groupByPos.get(`${marker.pos[0]},${marker.pos[1]}`)!;
       const radius = settings.size * TILE_SIZE;
+      let cx = marker.pos[0];
+      const cy = marker.pos[1];
+      if (group.length > 1) {
+        const slot = group.indexOf(marker);
+        const offset = radius + Math.max(settings.borderWidth ?? 0, 0) + Math.max(settings.gapWidth ?? 0, 0) * 0.5;
+        cx += (slot - (group.length - 1) / 2) * offset * 2;
+      }
       const rounded = settings.cornerStyle === "round";
       const borderWidth = settings.borderWidth ?? 0;
       const gapWidth = settings.gapWidth ?? 0;
@@ -134,13 +162,35 @@ export class VerticalConnectionRenderer {
         // `"both"` (Elevator fan reaching floors on both sides of the active one, GitHub issue
         // #337/#347 design follow-up) draws one arrow each way instead of picking a side.
         const dys = marker.direction === "both" ? [-1, 1] : [marker.direction === "up" ? -1 : 1];
-        for (const dy of dys) {
+        // "both" draws one up-arrow and one down-arrow (GitHub issue #337 follow-up) — each arrow's
+        // own base sits at the marker center by default (see `drawDirectionArrow`'s own tip/base
+        // geometry), so two opposite-facing arrows would straddle center and overlap. Shifting each
+        // arrow's own origin sideways (not along its own up/down axis, which would shorten how much
+        // of the circle each arrow visually spans) keeps both fully visible, side by side. `oy` also
+        // corrects for `drawDirectionArrow`'s own tip/base asymmetry (tip at `+size`, base at
+        // `-size*0.5`, so an arrow's own visual midpoint sits at `origin + dy*size*0.25`, not at its
+        // origin) — without this, the two arrows' own visual centers land on opposite sides of `cy`
+        // instead of both sitting level with it.
+        const arrowSize = radius * 0.6;
+        const originOffset = dys.length > 1 ? arrowSize * 0.55 : 0;
+        for (const [i, dy] of dys.entries()) {
+          const ox = cx + (i === 0 ? -1 : 1) * originOffset;
+          const oy = cy - dy * arrowSize * 0.25;
           if (marker.arrowFilled) {
-            drawDirectionArrow(this.g, cx, cy, 0, dy, radius * 0.6, arrowColor);
+            drawDirectionArrow(this.g, ox, oy, 0, dy, arrowSize, arrowColor);
           } else {
-            drawDirectionArrowOutline(this.g, cx, cy, 0, dy, radius * 0.6, arrowColor);
+            drawDirectionArrowOutline(this.g, ox, oy, 0, dy, arrowSize, arrowColor);
           }
         }
+      }
+
+      if (data.interactive && marker.targetFloorIndex !== undefined) {
+        const targetFloorIndex = marker.targetFloorIndex;
+        const hit = new Graphics().circle(cx, cy, radius + borderWidth + gapWidth).fill({ color: 0, alpha: 0 });
+        hit.eventMode = "static";
+        hit.cursor = "pointer";
+        hit.on("pointertap", () => navigateToFloor(targetFloorIndex));
+        this.g.addChild(hit);
       }
     }
   }

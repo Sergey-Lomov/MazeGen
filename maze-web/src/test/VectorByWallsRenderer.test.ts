@@ -120,7 +120,7 @@ vi.mock("pixi.js", () => ({
     // care about `getRequiredExportMargin`'s pixel-accurate path override this per-container.
     this.getLocalBounds = vi.fn(() => makeEmptyBounds());
   }),
-  Graphics: vi.fn().mockImplementation(function (this: { clear: () => void; moveTo: () => unknown; lineTo: () => unknown; arcTo: () => unknown; quadraticCurveTo: () => unknown; bezierCurveTo: () => unknown; closePath: () => unknown; stroke: () => unknown; circle: () => unknown; poly: () => unknown; rect: () => unknown; fill: () => unknown; setStrokeStyle: () => unknown; destroy: () => void }) {
+  Graphics: vi.fn().mockImplementation(function (this: { clear: () => void; moveTo: () => unknown; lineTo: () => unknown; arcTo: () => unknown; quadraticCurveTo: () => unknown; bezierCurveTo: () => unknown; closePath: () => unknown; stroke: () => unknown; circle: () => unknown; poly: () => unknown; rect: () => unknown; fill: () => unknown; setStrokeStyle: () => unknown; addChild: () => void; removeChildren: () => unknown[]; destroy: () => void }) {
     this.clear = vi.fn();
     this.moveTo = vi.fn(() => this);
     this.lineTo = vi.fn(() => this);
@@ -134,6 +134,8 @@ vi.mock("pixi.js", () => ({
     this.rect = vi.fn(() => this);
     this.fill = vi.fn(() => this);
     this.setStrokeStyle = vi.fn(() => this);
+    this.addChild = vi.fn();
+    this.removeChildren = vi.fn(() => []);
     this.destroy = vi.fn();
   }),
 }));

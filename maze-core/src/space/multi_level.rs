@@ -176,6 +176,36 @@ impl<T: Tessellation> MultiLevelField<T> {
         self.levels[&level].neighbors(node)
     }
 
+    /// `node`'s *potential* `VerticalPassage` partner nodes: whichever node(s) exist at `node`'s
+    /// own x-y point on the floor(s) directly above and/or below its own (never both if `node` is
+    /// on a boundary floor) — resolved purely from tessellation/level structure, regardless of
+    /// whether a `VerticalPassage`/`Elevator` edge between them has actually been added yet. Not
+    /// geometric in the `neighbors()` sense (no shared tessellation face — same x-y point on a
+    /// different level entirely), and deliberately not `Graph`-backed either: `CustomVertexBased`'s
+    /// reserve-populate step (GitHub issue #337 follow-up) needs to know a vertical partner is a
+    /// *reachable candidate* before any edge to it exists, not just recognize one that already
+    /// does — the whole point is giving an unlucky `vertical_chance` miss a second chance later,
+    /// the same way a geometric free neighbor already gets via plain `reserve`. Only adjacent
+    /// floors, not an `Elevator`'s full far-floor fan — same "one hop, not a long-distance bridge"
+    /// scope reserve-bridging already uses for its ordinary geometric candidates. Deliberately a
+    /// separate method rather than a parameter on `neighbors` itself — every other caller of
+    /// `neighbors` (geometric growth, `is_straight`, repair/QC) must keep seeing geometric-only
+    /// results unconditionally, and a boolean/enum parameter would require every one of those call
+    /// sites to opt out explicitly instead of never being touched at all.
+    pub fn vertical_neighbors(&self, node: NodeId) -> Vec<NodeId> {
+        let Some(point) = self.point_of(node) else { return Vec::new(); };
+        let Some(level) = self.level_of(node) else { return Vec::new(); };
+        let Some(idx) = self.level_order.iter().position(|&l| l == level) else { return Vec::new(); };
+        let mut result = Vec::new();
+        if idx > 0 {
+            result.extend(self.nodes_at(self.level_order[idx - 1], point));
+        }
+        if let Some(&above) = self.level_order.get(idx + 1) {
+            result.extend(self.nodes_at(above, point));
+        }
+        result
+    }
+
     /// `true` only if `from`/`via`/`to` all resolve to the same level and are geometrically
     /// straight on it. Cross-level triples are never straight — geometric straightness is
     /// undefined between levels (GitHub issue #337 will introduce a separate stairs/elevator
@@ -363,6 +393,80 @@ mod tests {
         let b = mf.node_at(level, SquarePoint { x: 1, y: 0 }).unwrap();
         assert!(mf.neighbors(a).contains(&b));
         assert_eq!(mf.neighbors(999_999), Vec::<NodeId>::new());
+    }
+
+    #[test]
+    fn vertical_neighbors_unknown_node_is_empty() {
+        let (mf, _ids) = single(2, 1);
+        assert_eq!(mf.vertical_neighbors(999_999), Vec::<NodeId>::new());
+    }
+
+    #[test]
+    fn vertical_neighbors_on_boundary_floors_only_has_the_one_adjacent_side() {
+        let mut ids = IdGenerator::new();
+        let mut mf = MultiLevelField::<SquareTessellation>::new([]);
+        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let middle = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let p = SquarePoint { x: 0, y: 0 };
+        let bottom_node = mf.node_at(bottom, p).unwrap();
+        let middle_node = mf.node_at(middle, p).unwrap();
+        let top_node = mf.node_at(top, p).unwrap();
+
+        assert_eq!(mf.vertical_neighbors(bottom_node), vec![middle_node]);
+        assert_eq!(mf.vertical_neighbors(top_node), vec![middle_node]);
+    }
+
+    #[test]
+    fn vertical_neighbors_on_an_interior_floor_has_both_sides() {
+        let mut ids = IdGenerator::new();
+        let mut mf = MultiLevelField::<SquareTessellation>::new([]);
+        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let middle = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let p = SquarePoint { x: 0, y: 0 };
+        let bottom_node = mf.node_at(bottom, p).unwrap();
+        let middle_node = mf.node_at(middle, p).unwrap();
+        let top_node = mf.node_at(top, p).unwrap();
+
+        let mut result = mf.vertical_neighbors(middle_node);
+        result.sort();
+        let mut expected = vec![bottom_node, top_node];
+        expected.sort();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn vertical_neighbors_ignores_points_with_no_node_on_the_adjacent_floor() {
+        // Two floors whose fields don't share the same shape at (1, 0) — the smaller field has no
+        // node there at all, so the larger field's own node at that point has no vertical partner.
+        let mut ids = IdGenerator::new();
+        let mut mf = MultiLevelField::<SquareTessellation>::new([]);
+        let small = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let wide = mf.add_level(Field::<SquareTessellation>::new(square_rect(2, 1), &mut ids).unwrap());
+        let far_node = mf.node_at(wide, SquarePoint { x: 1, y: 0 }).unwrap();
+        let _ = small;
+
+        assert_eq!(mf.vertical_neighbors(far_node), Vec::<NodeId>::new());
+    }
+
+    #[test]
+    fn vertical_neighbors_returns_every_split_node_at_the_adjacent_point_not_just_the_first() {
+        let mut ids = IdGenerator::new();
+        let mut mf = MultiLevelField::<SquareTessellation>::new([]);
+        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let p = SquarePoint { x: 0, y: 0 };
+        let bottom_node = mf.node_at(bottom, p).unwrap();
+        // A split point on `top` at the same (x, y) — a second node co-located with the original.
+        let extra_top_node = mf.add_node_at(top, p, &mut ids);
+        let original_top_node = mf.node_at(top, p).unwrap();
+
+        let mut result = mf.vertical_neighbors(bottom_node);
+        result.sort();
+        let mut expected = vec![original_top_node, extra_top_node];
+        expected.sort();
+        assert_eq!(result, expected);
     }
 
     #[test]

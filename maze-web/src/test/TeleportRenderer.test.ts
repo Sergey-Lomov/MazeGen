@@ -25,6 +25,7 @@ vi.mock("../wasm/wasmLoader", () => ({
 vi.mock("pixi.js", () => {
   class FakeGraphics {
     calls: { fn: string; args: unknown[] }[] = [];
+    children: unknown[] = [];
     circle(...args: unknown[]) { this.calls.push({ fn: "circle", args }); return this; }
     poly(...args: unknown[]) { this.calls.push({ fn: "poly", args }); return this; }
     roundPoly(...args: unknown[]) { this.calls.push({ fn: "roundPoly", args }); return this; }
@@ -33,15 +34,30 @@ vi.mock("pixi.js", () => {
     fill(...args: unknown[]) { this.calls.push({ fn: "fill", args }); return this; }
     stroke(...args: unknown[]) { this.calls.push({ fn: "stroke", args }); return this; }
     clear() { this.calls = []; return this; }
-    removeChildren() { return []; }
-    addChild() {}
+    removeChildren() { const c = this.children; this.children = []; return c; }
+    addChild(child: unknown) { this.children.push(child); }
     destroy() {}
+    eventMode = "auto";
+    cursor = "";
+    listeners: Record<string, (() => void)[]> = {};
+    on(event: string, cb: () => void) { (this.listeners[event] ??= []).push(cb); return this; }
   }
   class FakeContainer {
     addChild() {}
     destroy() {}
   }
-  return { Container: FakeContainer, Graphics: FakeGraphics };
+  // `drawFloorBadge` (GitHub issue #337) constructs a real pixi `Text` for the floor-number label —
+  // a minimal stand-in recording `anchor`/`x`/`y` writes is enough for tests to assert positioning
+  // without a real canvas/font measurement.
+  class FakeText {
+    anchor = { set: vi.fn() };
+    x = 0;
+    y = 0;
+    text: string;
+    constructor(opts: { text: string }) { this.text = opts.text; }
+    destroy() {}
+  }
+  return { Container: FakeContainer, Graphics: FakeGraphics, Text: FakeText };
 });
 
 const { TeleportRenderer } = await import("../pixi/renderers/TeleportRenderer");
@@ -316,5 +332,82 @@ describe("TeleportRenderer.render orthogonal connector routing", () => {
     expect(endpointStyle).toMatchObject({ markerBorderWidth: 2 + 5 });
     expect(maxEndpointOffset).toBe(8 + 2 + 5);
     routeSpy.mockRestore();
+  });
+});
+
+// GitHub issue #337 follow-up: a cross-floor teleport's `to` point draws a floor-number badge
+// (`drawFloorBadge`) instead of an ordinary marker, optionally wired to click-to-switch-floor
+// (`floorNavigable`). None of the draw-order/routing tests above ever set `TeleportEdge.toFloor`,
+// so this behavior has no coverage anywhere else.
+describe("TeleportRenderer.render cross-floor floor badge", () => {
+  it("a toFloor-tagged point draws no ordinary marker circle there — only the badge's own circle/text", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
+    renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
+    const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[]; children: unknown[] } }).view;
+
+    // The badge point draws its own unconditional gap ring (`drawGroupGaps`) plus its own bordered
+    // circle (`drawFloorBadge`'s fill + stroke pass), same as `from`'s ordinary marker circle-shape
+    // draw (fill + border pass) — not asserting an exact count (an implementation detail of how
+    // many passes each draws), just that the badge path actually drew at its own point and that
+    // `from`'s normal marker still drew at its own point too (neither point was skipped).
+    const circleCalls = g.calls.filter((c) => c.fn === "circle");
+    const atBadgePoint = circleCalls.filter((c) => c.args[0] === 10 && c.args[1] === 10);
+    const atFromPoint = circleCalls.filter((c) => c.args[0] === 0 && c.args[1] === 0);
+    expect(atBadgePoint.length).toBeGreaterThan(0);
+    expect(atFromPoint.length).toBeGreaterThan(0);
+    // The badge's own label (a `Text` child) is present at the badge point.
+    expect(g.children).toHaveLength(1);
+  });
+
+  it("badge display number is toFloor + 1 (1-based, matching FloorSwitcher's own convention)", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 2 }];
+    renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
+    const g = (renderer as unknown as { view: { children: { text: string }[] } }).view;
+    expect(g.children).toHaveLength(1);
+    expect(g.children[0].text).toBe("3");
+  });
+
+  it("floorNavigable adds a clickable hit-circle on the badge wired to navigateToFloor(toFloor)", async () => {
+    const navigateToFloorModule = await import("../pixi/renderers/floorNavigation");
+    const navigateSpy = vi.spyOn(navigateToFloorModule, "navigateToFloor").mockImplementation(() => {});
+
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
+    renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }), floorNavigable: true });
+    const g = (renderer as unknown as {
+      view: { children: { listeners?: Record<string, (() => void)[]> }[] };
+    }).view;
+
+    // The badge's own Text child has no `listeners`; a second child (the hit-circle Graphics) does.
+    const hit = g.children.find((c) => c.listeners !== undefined);
+    expect(hit).toBeDefined();
+    expect(navigateSpy).not.toHaveBeenCalled();
+
+    hit!.listeners!["pointertap"][0]();
+    // toFloor: 1 is the raw target floor index, not the 1-based display number — the click target
+    // is levels_ordered() position (see TeleportEdge.toFloor's own doc comment), unrelated to
+    // drawFloorBadge's own +1 display conversion asserted in the previous test.
+    expect(navigateSpy).toHaveBeenCalledWith(1);
+
+    navigateSpy.mockRestore();
+  });
+
+  it("without floorNavigable, no hit-circle is added even for a toFloor-tagged point", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
+    renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
+    const g = (renderer as unknown as { view: { children: { on?: (event: string, cb: () => void) => void }[] } }).view;
+    const hit = g.children.find((c) => typeof c.on === "function");
+    expect(hit).toBeUndefined();
+  });
+
+  it("a same-floor (toFloor undefined) point draws no badge at all", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: false }];
+    renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }), floorNavigable: true });
+    const g = (renderer as unknown as { view: { children: unknown[] } }).view;
+    expect(g.children).toHaveLength(0);
   });
 });

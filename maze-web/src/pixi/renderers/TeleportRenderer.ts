@@ -1,4 +1,4 @@
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, Text } from "pixi.js";
 import type { TeleportEdge, TeleportLineStyle, TeleportGroupOverride } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
@@ -9,6 +9,7 @@ import { routeStraightConnectors, arrowPlacements, type RoutedConnector } from "
 import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
 import { useMazeStore } from "../../store/mazeStore";
+import { navigateToFloor } from "./floorNavigation";
 
 const SQUARE_STROKE_WIDTH = 3;
 /** Extra radius (GitHub issue #293 follow-up) beyond the shape's own drawn radius for a group's
@@ -101,6 +102,21 @@ export function resolvePointFillState(edges: TeleportEdge[], cx: number, cy: num
   return filled ? "filled" : "outline";
 }
 
+/** A cross-floor edge's own `to` (GitHub issue #337 — see `TeleportEdge.toFloor`'s own doc comment)
+ *  isn't the real target cell, just the midpoint the connector routes toward — this point must draw
+ *  a floor-number badge instead of an ordinary teleport marker. Keyed by coordinate since that's how
+ *  `TeleportGroup.points` itself identifies a drawable point; 0-indexed `toFloor` values are resolved
+ *  to their 1-based display number (matching `FloorSwitcher`'s own convention) here so
+ *  `drawFloorBadge` only ever deals in display numbers. */
+function computeFloorBadges(edges: TeleportEdge[]): Map<string, number> {
+  const badges = new Map<string, number>();
+  for (const e of edges) {
+    if (e.toFloor === undefined) continue;
+    badges.set(coordKey(e.to[0], e.to[1]), e.toFloor + 1);
+  }
+  return badges;
+}
+
 type PlannedConnector = { edge: TeleportEdge; routed: RoutedConnector; color: number };
 
 /** Resolves the per-group draw order `renderGroups` walks: one entry per *visible* group (in
@@ -165,6 +181,14 @@ export class TeleportRenderer {
   private selectionGroupOverrides: Record<string, TeleportGroupOverride> = {};
   private selectionEdges: TeleportEdge[] = [];
   private selectionInteractive = false;
+  // Cross-floor points (GitHub issue #337) — a point present here draws a floor-number badge
+  // instead of an ordinary marker in `drawGroupPoints`. Keyed the same way `selectionEdges` drives
+  // `resolvePointFillState`, recomputed alongside it in `renderLine`.
+  private selectionFloorBadges: Map<string, number> = new Map();
+  // GitHub issue #337 follow-up: whether a badge point's hit-circle (added in `drawGroupPoints`)
+  // wires click-to-switch-floor — independent of `selectionInteractive` (the group-selection
+  // feature), see `render`'s own `floorNavigable` doc comment.
+  private selectionFloorNavigable = false;
   // One entry per drawn connector (edges with non-zero-length span only) — same rationale.
   private selectionConnectors: { edge: TeleportEdge; routed: RoutedConnector; color: number }[] = [];
   // Owns orthogonal-connector collision routing + its own result cache (GitHub issue #297
@@ -207,6 +231,12 @@ export class TeleportRenderer {
     /** The maze's own node cell coordinates, backing the `avoidFieldExit` check above — omitted or
      *  empty is the same as leaving `avoidFieldExit` off (nothing to be outside of). */
     fieldCells?: [number, number][];
+    /** Wires click-to-switch-floor (GitHub issue #337 follow-up) on every cross-floor badge point
+     *  (`selectionFloorBadges`) — independent of `groupCustomization`/`interactive` above (those
+     *  gate the unrelated group-selection feature): a badge is clickable whenever this is on,
+     *  regardless of group customization state. Defaults to `false` — only `GenerationRenderer`
+     *  (a read-only, always-interactive canvas) opts in today. */
+    floorNavigable?: boolean;
   }): void {
     this.view.clear();
     // `drawMarker`'s mixed-cell split adds throwaway mask/fill children (see its own comment) —
@@ -224,6 +254,7 @@ export class TeleportRenderer {
       data.waypoints ?? [],
       data.avoidFieldExit ?? false,
       data.fieldCells ?? [],
+      data.floorNavigable ?? false,
     );
   }
 
@@ -237,6 +268,7 @@ export class TeleportRenderer {
     waypoints: [number, number][],
     avoidFieldExit: boolean,
     fieldCells: [number, number][],
+    floorNavigable: boolean,
   ): void {
     // Grouping (`buildTeleportGroups`, merging teleport pairs wherever an endpoint coordinate
     // coincides) drives draw order regardless of whether group *customization* (per-group shape/
@@ -249,7 +281,9 @@ export class TeleportRenderer {
     this.selectionStyle = style;
     this.selectionGroupOverrides = groupCustomization ? groupOverrides : {};
     this.selectionEdges = edges;
+    this.selectionFloorBadges = computeFloorBadges(edges);
     this.selectionInteractive = groupCustomization && interactive;
+    this.selectionFloorNavigable = floorNavigable;
     this.selectionConnectors =
       style.connectorStyle !== "none"
         ? this.computeConnectors(edges, style, groupCustomization, groupOverrides, cfg, waypoints, avoidFieldExit, fieldCells)
@@ -324,13 +358,17 @@ export class TeleportRenderer {
   /** Draws every point of one group's floor-colored gap ring (`style.edgeGapWidth`, GitHub issue
    *  #302) into `g` — a separate pass from `drawGroupPoints` itself, called before any connector so
    *  that every connector (this point's own or another's) draws on top of it (see
-   *  `renderGroups`'s own 3-pass doc comment). No-op when `edgeGapWidth` is `0`. */
+   *  `renderGroups`'s own 3-pass doc comment). A point flagged in `selectionFloorBadges` (GitHub
+   *  issue #337) draws its own plain circular gap ring instead (`drawFloorBadge`'s own border is
+   *  always `SQUARE_STROKE_WIDTH`, not `style.borderWidth` — the badge isn't a `style.shape` marker,
+   *  see that method's own doc comment) — unconditional, unlike the ordinary marker's ring below,
+   *  since a badge with no gap at all reads as fused to whatever connector segment runs under it.
+   *  No-op for ordinary points when `edgeGapWidth` is `0`. */
   private drawGroupGaps(
     g: Graphics,
     group: TeleportGroup,
     style: TeleportLineStyle,
   ): void {
-    if (style.edgeGapWidth <= 0) return;
     // This marker's own border is drawn `alignment: 0` (pixi's outer alignment — grows entirely
     // outward from `r`, see `drawMarker`), so the marker's true outer edge is `r + borderWidth`, not
     // `r` itself — the gap ring must start there, not at `r` (which would let a large enough
@@ -339,13 +377,21 @@ export class TeleportRenderer {
     const r = style.size * TILE_SIZE + style.borderWidth + style.edgeGapWidth;
     const rounded = style.cornerStyle === "round";
     for (const [px, py] of group.points) {
+      if (this.selectionFloorBadges.has(coordKey(px, py))) {
+        const badgeR = style.size * TILE_SIZE + SQUARE_STROKE_WIDTH + Math.max(style.edgeGapWidth, 1);
+        g.circle(px, py, badgeR).fill(style.floorColor);
+        continue;
+      }
+      if (style.edgeGapWidth <= 0) continue;
       drawMarkerShape(g, style.shape, px, py, r, rounded);
       g.fill(style.floorColor);
     }
   }
 
   /** Draws every point of one group (its shape/fillColor/borderColor resolved from `override`, or
-   *  `style`'s own base fields when absent) into `g`. */
+   *  `style`'s own base fields when absent) into `g` — a point flagged in `selectionFloorBadges`
+   *  (GitHub issue #337, a cross-floor edge's midpoint) draws a floor-number badge instead, via
+   *  `drawFloorBadge`. */
   private drawGroupPoints(
     g: Graphics,
     group: TeleportGroup,
@@ -358,6 +404,19 @@ export class TeleportRenderer {
     const color = override?.fillColor ?? style.edgeColor;
     const borderColor = override?.borderColor ?? style.edgeBorderColor;
     for (const [px, py] of group.points) {
+      const floorNumber = this.selectionFloorBadges.get(coordKey(px, py));
+      if (floorNumber !== undefined) {
+        this.drawFloorBadge(g, r, px, py, color, borderColor, style.floorColor, floorNumber);
+        if (this.selectionFloorNavigable) {
+          const targetFloorIndex = floorNumber - 1;
+          const hit = new Graphics().circle(px, py, r).fill({ color: 0, alpha: 0 });
+          hit.eventMode = "static";
+          hit.cursor = "pointer";
+          hit.on("pointertap", () => navigateToFloor(targetFloorIndex));
+          g.addChild(hit);
+        }
+        continue;
+      }
       const fillState = resolvePointFillState(edges, px, py);
       this.drawMarker(
         g, shape, style.cornerStyle, r, px, py,
@@ -443,6 +502,41 @@ export class TeleportRenderer {
       draw(style.connectorWidth + style.connectorGapWidth * 2, style.floorColor, style.arrowSize + style.connectorGapWidth * 2);
     }
     draw(style.connectorWidth, color, style.arrowSize);
+  }
+
+  /** Draws a cross-floor teleport's own "leads to another floor" badge (GitHub issue #337) at a
+   *  connector's cut-off midpoint — a plain circle (always round, regardless of `style.shape`, so it
+   *  never reads as an ordinary teleport marker), filled in the group's own `color` with a
+   *  `borderColor` ring, and the target floor's 1-based display number cut out of the fill in
+   *  `floorColor` (a "knockout" look, readable against the filled circle the same way a stencil
+   *  digit reads against a solid background) — not `borderColor` text on a `floorColor` fill, which
+   *  would make the badge itself blend into the surrounding floor instead of reading as a solid
+   *  marker. Sized at `r * 1.6` (well past the ordinary marker-label convention) since a single
+   *  digit needs to be legible at a glance among other overlapping canvas markers. Radius matches
+   *  the ordinary marker's own `r` so the connector's routing/gap math (sized for a normal endpoint)
+   *  still clears it correctly. Plain `Text` for now (blurs past its own rasterized size on
+   *  zoom-in) — true distance-field text is tracked separately (GitHub issue #352); `resolution` is
+   *  set well above 1 so this stays acceptably sharp for typical zoom levels in the meantime. */
+  private drawFloorBadge(g: Graphics, r: number, cx: number, cy: number, color: number, borderColor: number, floorColor: number, floorNumber: number): void {
+    g.circle(cx, cy, r).fill(color).stroke({ width: SQUARE_STROKE_WIDTH, color: borderColor, alignment: 0 });
+    const label = new Text({
+      text: `${floorNumber}`,
+      // `trim: true` makes pixi measure the digit's own tight ink bounding box (`Text.updateBounds`
+      // switches from `CanvasTextMetrics.measureText`'s nominal line-height box to
+      // `getCanvasBoundingBox`'s actual rendered-pixel scan — see pixi's own `CanvasTextGenerator`)
+      // instead of the font's nominal line-height box — without it, `anchor.set(0.5)` centers on the
+      // line-height box, which sits a typical font's digits (no descenders to balance the ascent
+      // above the baseline) visibly above true center. No headless canvas is available in this repo
+      // to pixel-verify the resulting centering directly (and per `maze-web/CLAUDE.md`, a browser
+      // isn't used for visual checks either) — this relies on reading pixi's own measurement code,
+      // not a rendered comparison.
+      style: { fontSize: Math.max(r * 1.6, 12), fill: floorColor, fontWeight: "bold", trim: true },
+      resolution: 4,
+    });
+    label.anchor.set(0.5);
+    label.x = cx;
+    label.y = cy;
+    g.addChild(label);
   }
 
   /** Draws one marker — filled with `color` when `filled`, or with `floorColor` (empty look) when

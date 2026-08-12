@@ -21,7 +21,7 @@ vi.mock("../pixi/cartesianCache", () => ({
   },
 }));
 
-const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getNeighborData, getSplitCircleRotationDeg, splitHubPoint, specialSplitNodePoint, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb } = await import("../pixi/tessellationGeometry");
+const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getNeighborData, getSplitCircleRotationDeg, splitHubPoint, specialSplitNodePoint, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord } = await import("../pixi/tessellationGeometry");
 
 // `maze-core`'s own `Tessellation::faces()` order per space (`Specs/split-patterns.md`,
 // GitHub issue #273) — used here only to name expected indices by face, not to duplicate the
@@ -349,6 +349,47 @@ describe("splitFaceIndexToWeb / splitPatternsToWeb (round-trip with *ToCore)", (
     }
   });
 
+});
+
+describe("nearestCellCoord (GitHub issue #337 follow-up)", () => {
+  const cfgs: [string, TessellationConfig][] = [
+    ["square", { type: "square", width: 9, height: 9 }],
+    ["hex flat_top", { type: "hex_parallelogram", cols: 9, rows: 9, orientation: "flat_top" }],
+    ["hex pointy_top", { type: "hex_parallelogram", cols: 9, rows: 9, orientation: "pointy_top" }],
+    ["triangle r0", { type: "triangle_rect", cols: 9, rows: 9, orientation: "r0" }],
+    ["triangle r90", { type: "triangle_rect", cols: 9, rows: 9, orientation: "r90" }],
+    ["triangle r180", { type: "triangle_rect", cols: 9, rows: 9, orientation: "r180" }],
+    ["triangle r270", { type: "triangle_rect", cols: 9, rows: 9, orientation: "r270" }],
+  ];
+
+  it.each(cfgs)("round-trips every cell's own center back to itself for %s", (_label, cfg) => {
+    for (let x = -3; x <= 3; x++) {
+      for (let y = -3; y <= 3; y++) {
+        const center = getCellCenter(x, y, cfg);
+        expect(nearestCellCoord(center.x, center.y, cfg)).toEqual([x, y]);
+      }
+    }
+  });
+
+  it.each(cfgs)("snaps a point exactly midway between two cell centers to one of them, not a third cell, for %s", (_label, cfg) => {
+    const a = getCellCenter(0, 0, cfg);
+    const b = getCellCenter(1, 0, cfg);
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const [sx, sy] = nearestCellCoord(mid.x, mid.y, cfg);
+    const snapped = getCellCenter(sx, sy, cfg);
+    const distToA = Math.hypot(snapped.x - a.x, snapped.y - a.y);
+    const distToB = Math.hypot(snapped.x - b.x, snapped.y - b.y);
+    expect(Math.min(distToA, distToB)).toBeLessThan(1e-6);
+  });
+
+  it("resolves a coordinate outside any real field the same way regardless of caller (deterministic, not clamped to a field)", () => {
+    const cfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const farCenter = getCellCenter(50, 50, cfg);
+    expect(nearestCellCoord(farCenter.x, farCenter.y, cfg)).toEqual([50, 50]);
+  });
+});
+
+describe("splitPatternsToWeb round-trip", () => {
   it("splitPatternsToWeb undoes splitPatternsToCore for a full pattern", () => {
     const cfg: TessellationConfig = { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "flat_top" };
     const original: SplitPattern[] = [

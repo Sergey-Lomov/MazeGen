@@ -3,7 +3,7 @@ import type { MazeState, PostEditEdge } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, MarkerShape, PassageKind, TeleportEdge, SplitPassage, SplitSpecialShape, TeleportCornerStyle, VerticalConnectionMarker } from "../renderers/types";
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
-import { getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment, buildNodePositions, SPLIT_HUB_RADIUS } from "../tessellationGeometry";
+import { getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, getSharedEdgeSegment, buildNodePositions, nearestCellCoord, SPLIT_HUB_RADIUS } from "../tessellationGeometry";
 import { computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, type SplitFaceKind } from "../splitFaceLayout";
 import { buildCellSet } from "./sharedSelectors";
 import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
@@ -30,10 +30,14 @@ const BRIDGE_DECK_WIDTH_FRAC = 0.6;
  *  position (`levels_ordered()` order — see `Specs/floors.md`), defaulting to `0` (floor 1) when
  *  `activeFloorId` doesn't match any current floor (same defensive fallback `GenerationRenderer`
  *  used). A `vertical_passage`/`elevator` edge survives the cut as soon as `from` is on the active
- *  floor, even though `to` never is (it leads to another floor by construction) — every other kind
- *  still requires both ends on the active floor, same as before this function existed, since an
- *  intra-floor edge with a dangling `to` is not something any of these selectors expect to handle.
- *  `start`/`finish` are only kept when they resolve to a node that survived the cut. */
+ *  floor, even though `to` never is (it leads to another floor by construction). A `teleport` edge
+ *  survives the same way (GitHub issue #337 cross-floor teleport rendering) — `to` may land on
+ *  another floor once teleports themselves support cross-floor targets (#340); `buildTeleportEdges`
+ *  is the one that resolves such a `to`'s real (off-image) position via `resolveNodeLevel` and
+ *  substitutes a midpoint, not this function. Every other kind still requires both ends on the
+ *  active floor, same as before this function existed, since an intra-floor edge with a dangling
+ *  `to` is not something any of these selectors expect to handle. `start`/`finish` are only kept
+ *  when they resolve to a node that survived the cut. */
 export function selectFloorScopedMaze(
   nodes: NodeDto[],
   edges: EdgeDto[],
@@ -45,9 +49,10 @@ export function selectFloorScopedMaze(
   const activeFloorIndex = Math.max(floors.findIndex((f) => f.id === activeFloorId), 0);
   const floorNodes = nodes.filter((n) => (n.level ?? 0) === activeFloorIndex);
   const floorNodeIds = new Set(floorNodes.map((n) => n.id));
-  const isVertical = (e: EdgeDto) => e.kind === "vertical_passage" || e.kind === "elevator";
+  const crossesFloorFreely = (e: EdgeDto) =>
+    e.kind === "vertical_passage" || e.kind === "elevator" || e.kind === "teleport";
   const floorEdges = edges.filter((e) =>
-    floorNodeIds.has(e.from) && (isVertical(e) || floorNodeIds.has(e.to)),
+    floorNodeIds.has(e.from) && (crossesFloorFreely(e) || floorNodeIds.has(e.to)),
   );
   return {
     nodes: floorNodes,
@@ -183,8 +188,9 @@ export function buildVerticalConnectionMarkers(
     // arrow (`arrowFilled: true`) — only the arrow, not the circle fill, distinguishes it from its
     // own arrival-only marker below. Bidirectional/Elevator draw the ordinary solid marker.
     const isOneWay = kind === "vertical_passage" && !byPair.has(`${targets[0]}->${from}`);
+    const targetFloorIndex = kind === "vertical_passage" ? resolveNodeLevel(targets[0]) : undefined;
     result.push({
-      pos: [pos.x, pos.y], fromNode: from, kind, direction: directionAcross(targets),
+      pos: [pos.x, pos.y], fromNode: from, kind, direction: directionAcross(targets), targetFloorIndex,
       filled: !isOneWay, arrowFilled: true,
     });
   }
@@ -200,7 +206,7 @@ export function buildVerticalConnectionMarkers(
     if (!arrivalPos) continue;
     result.push({
       pos: [arrivalPos.x, arrivalPos.y], fromNode: e.to, kind: e.kind, direction: directionAcross([e.from]),
-      filled: false, arrowFilled: false,
+      targetFloorIndex: resolveNodeLevel(e.from), filled: false, arrowFilled: false,
     });
   }
 
@@ -244,9 +250,25 @@ export function postEditEdgesToDto(
 // closed whenever any single one of its nodes happens to have no edges (e.g. the original node's
 // direct passage was walled off, but a split node added at the same point has a passage of its
 // own) — the point as a whole is still open, so the cell must not render as a wall.
-export function buildClosedCells(nodes: NodeDto[], edges: EdgeDto[]): [number, number][] {
+// `allEdges` (GitHub issue #337 follow-up, optional — unscoped, same requirement as
+// `buildVerticalConnectionMarkers`'s own `allEdges` param) covers a one-way `VerticalPassage`
+// whose arrival-only end lands on this floor: `edges` is floor-scoped for every floor-aware
+// caller (`selectFloorScopedMaze` keeps a vertical/elevator edge only when its `from` is on the
+// active floor — see that function's own doc comment), so an arrival-only `to` node's edge is
+// structurally absent from `edges` and this cell would otherwise be mistaken for having no
+// connection at all and rendered as a wall. Omitted callers (every non-floor-aware one) see no
+// change in behavior — `edges` alone is exactly what `connected` was built from before this param
+// existed.
+export function buildClosedCells(nodes: NodeDto[], edges: EdgeDto[], allEdges?: EdgeDto[]): [number, number][] {
   const connected = new Set<number>();
   for (const e of edges) { connected.add(e.from); connected.add(e.to); }
+  if (allEdges) {
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    for (const e of allEdges) {
+      if (e.kind !== "vertical_passage") continue;
+      if (nodeIds.has(e.to)) connected.add(e.to);
+    }
+  }
   const anyConnectedByCell = new Map<string, boolean>();
   const cellCoords = new Map<string, [number, number]>();
   for (const n of nodes) {
@@ -918,6 +940,25 @@ export function selectAnalyticsIssues(s: Pick<MazeState, "issues" | "postEditAna
   ];
 }
 
+/** Cross-floor resolution inputs for `buildTeleportEdges` (GitHub issue #337) — omitted by every
+ *  non-floor-aware caller, which keeps the old behavior of silently dropping a teleport edge whose
+ *  `to` doesn't resolve in `nodeById` (not reachable there yet anyway: cross-floor teleports don't
+ *  exist until #340, and only floor-aware callers scope `edges` in a way that lets one through
+ *  `selectFloorScopedMaze` in the first place). `resolveNodeLevel`/`unscopedNodeById` must both come
+ *  from the *unscoped* node list, same requirement `buildVerticalConnectionMarkers` already has on
+ *  its own `resolveNodeLevel`/`allEdges` params, since `to` never survives floor-scoping itself.
+ *  `unscopedEdges` (same *unscoped* requirement) is what `byPair`'s bidirectional-detection needs
+ *  for a cross-floor pair — its reverse-direction edge has its own `from` on the *other* floor, so
+ *  it's never present in the already floor-scoped `edges` this function otherwise reads (same
+ *  bidirectional-detection gap `selectVerticalPassagePairSet`'s own doc comment describes for
+ *  `vertical_passage`). */
+export type TeleportFloorContext = {
+  resolveNodeLevel: (id: number) => number | undefined;
+  unscopedNodeById: Map<number, NodeDto>;
+  unscopedEdges: EdgeDto[];
+  activeFloorIndex: number;
+};
+
 // Collapses opposite-direction teleport-edge pairs into one entity so a two-way teleport never
 // renders as two overlapping lines/arrows. `oneWay: false` when both directions exist between
 // the pair; `oneWay: true` (with from/to = that edge's actual direction) when only one does.
@@ -929,10 +970,25 @@ export function selectAnalyticsIssues(s: Pick<MazeState, "issues" | "postEditAna
 // position map once (GitHub issue #318 follow-up) rather than calling `getSplitAwareNodePosition`
 // per endpoint — that would rebuild the whole map from scratch for every one of up to `2 ×
 // teleport pair count` lookups.
+//
+// `floorContext` (GitHub issue #337, optional — see its own doc comment) resolves a cross-floor
+// `to` (absent from `nodeById`, which is floor-scoped for every floor-aware caller) via its own
+// `unscopedNodeById`/`resolveNodeLevel`, then substitutes the midpoint between `from`'s and the
+// real (off-image) `to` position as this edge's own `to` — the routing/collision-avoidance layers
+// downstream (`TeleportConnectorRouter` et al.) never need to know the far end isn't really drawn
+// there; only `toFloor` being set tells `TeleportRenderer` to draw a floor-badge at that point
+// instead of an ordinary marker. That midpoint is built from each node's own plain cell center
+// (`getCellCenter`), not either node's own hub position (`nodePos`/`buildNodePositions`) — a hub
+// position is shaped by `directedPairs`, which differs depending on which floor is active (the
+// active floor's own nodes/edges feed it, the far floor's never do), so the same logical pair
+// viewed from either floor would otherwise resolve to two slightly different hub positions and the
+// badge would visibly shift between floors. Plain cell centers have no such context-dependence —
+// the same `(x, y)` always resolves to the same point regardless of which floor is asking.
 export function buildTeleportEdges(
   nodeById: Map<number, NodeDto>,
   edges: EdgeDto[],
   cfg: TessellationConfig,
+  floorContext?: TeleportFloorContext,
 ): TeleportEdge[] {
   const teleports = edges.filter((e) => e.kind === "teleport");
   const byPair = new Set(teleports.map((e) => `${e.from}->${e.to}`));
@@ -947,9 +1003,39 @@ export function buildTeleportEdges(
     if (seenPairKey.has(pairKey)) continue;
     seenPairKey.add(pairKey);
 
-    const reverseExists = byPair.has(`${e.to}->${e.from}`);
     const fromPos = nodePos.get(e.from);
-    const toPos = nodePos.get(e.to);
+    let toPos = nodePos.get(e.to);
+    let toFloor: number | undefined;
+    // A cross-floor pair's reverse edge is never in `byPair` (built from the floor-scoped
+    // `teleports` above, which structurally can't contain it — see `TeleportFloorContext`'s own
+    // doc comment) — re-checked against the unscoped edge list once this edge is confirmed
+    // cross-floor, below, so `reverseExists` isn't finalized until after that check.
+    let reverseExists = byPair.has(`${e.to}->${e.from}`);
+
+    if (!toPos && floorContext) {
+      const level = floorContext.resolveNodeLevel(e.to);
+      if (level !== undefined && level !== floorContext.activeFloorIndex) {
+        const fromNode = nodeById.get(e.from);
+        const realToNode = floorContext.unscopedNodeById.get(e.to);
+        if (fromNode && realToNode) {
+          const fromCenter = getCellCenter(fromNode.x, fromNode.y, cfg);
+          const realToCenter = getCellCenter(realToNode.x, realToNode.y, cfg);
+          const midX = (fromCenter.x + realToCenter.x) / 2;
+          const midY = (fromCenter.y + realToCenter.y) / 2;
+          // Snapped onto the grid (GitHub issue #337 follow-up), not left at the raw midpoint —
+          // an unsnapped point can land mid-wall, making the connector look like it cuts straight
+          // through a wall instead of ending at a real cell. `nearestCellCoord` is a pure function
+          // of `(midX, midY, cfg)` alone, so the snapped cell (and thus this badge's own world
+          // position) is identical whichever floor computed it — required for the from/to symmetry
+          // this whole midpoint scheme already depends on (see this function's own doc comment).
+          const [snapX, snapY] = nearestCellCoord(midX, midY, cfg);
+          const snapped = getCellCenter(snapX, snapY, cfg);
+          toPos = { x: snapped.x, y: snapped.y };
+          toFloor = level;
+          reverseExists = floorContext.unscopedEdges.some((ue) => ue.kind === "teleport" && ue.from === e.to && ue.to === e.from);
+        }
+      }
+    }
     if (!fromPos || !toPos) continue;
 
     result.push({
@@ -958,6 +1044,7 @@ export function buildTeleportEdges(
       oneWay: !reverseExists,
       fromNode: e.from,
       toNode: e.to,
+      ...(toFloor !== undefined ? { toFloor } : {}),
     });
   }
 

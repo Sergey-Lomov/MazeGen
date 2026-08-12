@@ -1,6 +1,6 @@
 // GitHub issue #337 — VerticalPassage/Elevator generation tests.
 use super::*;
-use super::tests::{default_params, empty_presets};
+use super::tests::{default_params, empty_presets, generate_default_split};
 use crate::generation::test_utils::default_elements;
 use crate::space::{square_rect, Field, SquarePoint};
 
@@ -537,5 +537,65 @@ fn cross_floor_teleport_prefers_matching_group_when_both_non_empty() {
     let elements_prefer_same = ElementsConfig { cross_floor_teleport_balance: 0.0, ..default_elements() };
     let result_b = filter_teleport_pool_by_floor(&field, &elements_prefer_same, &mut state, src, pool, None);
     assert_eq!(result_b, vec![same_floor]);
+}
+
+// --- Frontier-empty vertical reserve-bridge (GitHub issue #337 follow-up regression test) ---
+//
+// Before this fix, a floor that never won the ordinary per-step `vertical_chance` roll had no way
+// back into the frontier at all: `run_ordinary_step_body_for_node` only ever queued *geometric*
+// free neighbors into `reserve`, and `handle_empty_frontier`'s own `has_visited_neighbor` scan
+// only checked `field.neighbors(candidate)` (geometric), never `field.vertical_neighbors`. Once
+// floor 0's own growth finished, every node on floor 1 sat in `reserve` forever, rejected on every
+// scan pass since none of them had a *geometric* visited neighbor (their only visited neighbor, if
+// any, would be a vertical one) — the maze finished with one fully-generated floor and the rest
+// entirely disconnected/unvisited.
+
+#[test]
+fn frontier_empty_reserve_bridge_reconnects_a_second_floor_even_with_vertical_chance_zero() {
+    // `vertical_chance: 0.0` means the ordinary per-step growth roll never fires a vertical
+    // connection — the only way floor 1 can ever join the maze is via the frontier-empty
+    // reserve-bridge path now considering vertical neighbors too.
+    let (mut field, mut graph, mut ids) = multi_floor_field(3, 3, 2);
+    let start = node_at(&field, 0, 0, 0);
+    let elements = default_elements(); // vertical_chance defaults to 0.0
+    let params = default_params();
+
+    generate_default_split(&mut graph, &mut field, &mut ids, 1, start, &params, &elements, &empty_presets(), None);
+
+    let visited: std::collections::HashSet<NodeId> = graph.edges().flat_map(|e| [e.from, e.to]).chain([start]).collect();
+    for level_idx in 0..2 {
+        for x in 0..3 {
+            for y in 0..3 {
+                let node = node_at(&field, level_idx, x, y);
+                assert!(visited.contains(&node), "node at floor {level_idx} ({x},{y}) was never connected — floor left isolated");
+            }
+        }
+    }
+    assert!(
+        graph.edges().any(|e| e.kind == EdgeKind::VerticalPassage || e.kind == EdgeKind::Elevator),
+        "floor 1 only reconnects via a vertical edge somewhere — none was created",
+    );
+}
+
+#[test]
+fn frontier_empty_reserve_bridge_prefers_vertical_when_vertical_chance_is_one() {
+    // The reserve-bridge's own `vertical_chance` roll (independent of the ordinary per-step roll)
+    // must also be respected on a hit, not just as a last-resort fallback on a miss.
+    let (mut field, mut graph, mut ids) = multi_floor_field(2, 2, 2);
+    let start = node_at(&field, 0, 0, 0);
+    let elements = ElementsConfig { vertical_chance: 1.0, ..default_elements() };
+    let params = default_params();
+
+    generate_default_split(&mut graph, &mut field, &mut ids, 7, start, &params, &elements, &empty_presets(), None);
+
+    let visited: std::collections::HashSet<NodeId> = graph.edges().flat_map(|e| [e.from, e.to]).chain([start]).collect();
+    for level_idx in 0..2 {
+        for x in 0..2 {
+            for y in 0..2 {
+                let node = node_at(&field, level_idx, x, y);
+                assert!(visited.contains(&node), "node at floor {level_idx} ({x},{y}) was never connected");
+            }
+        }
+    }
 }
 

@@ -253,6 +253,7 @@ export class GenerationRenderer {
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
 
     const nodeById = new Map(view.nodes.map(n => [n.id, n]));
+    const unscopedNodeById = new Map(unscopedNodes.map(n => [n.id, n]));
 
     if (
       !this.geometryCache ||
@@ -280,9 +281,14 @@ export class GenerationRenderer {
         cfg,
         start: view.start,
         finish: view.finish,
-        closedCells: buildClosedCells(view.nodes, view.edges),
+        closedCells: buildClosedCells(view.nodes, view.edges, unscopedEdges),
         wallEdges: buildMazeWalls(view.nodes, view.edges, cfg),
-        teleportEdges: buildTeleportEdges(nodeById, view.edges, cfg),
+        teleportEdges: buildTeleportEdges(nodeById, view.edges, cfg, {
+          resolveNodeLevel: selectNodeLevelResolver(unscopedNodes),
+          unscopedNodeById,
+          unscopedEdges,
+          activeFloorIndex: Math.max(activeFloorIndex, 0),
+        }),
         splitPassages,
         splitWallFaces,
         splitSpecialShapes,
@@ -299,8 +305,8 @@ export class GenerationRenderer {
       wallFaces: this.geometryCache.splitWallFaces,
       specialShapes: this.geometryCache.splitSpecialShapes,
     });
-    this.teleports.render({ edges: this.geometryCache.teleportEdges, cfg });
-    this.verticalConnections.render({ markers: this.geometryCache.verticalConnectionMarkers, style: DEFAULT_VERTICAL_STYLE });
+    this.teleports.render({ edges: this.geometryCache.teleportEdges, cfg, floorNavigable: true });
+    this.verticalConnections.render({ markers: this.geometryCache.verticalConnectionMarkers, style: DEFAULT_VERTICAL_STYLE, interactive: true });
 
     const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg, undefined, undefined, view.edges);
     this.markers.render({ markers: markerData });

@@ -212,8 +212,13 @@ export type MarkerData = {
  * square there and some (other) edge wants an outline square there. `fromNode`/`toNode` (GitHub
  * issue #293) are the underlying node ids — optional since only `VectorByWallsRenderer` needs them
  * (for `buildTeleportGroups`' point-coincidence merging); every other caller (`GenerationRenderer`,
- * `PresetConnectionsRenderer`) omits them. */
-export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean; fromNode?: number; toNode?: number };
+ * `PresetConnectionsRenderer`) omits them. `toFloor` (GitHub issue #337, floor-aware callers only —
+ * see `buildTeleportEdges`' own `resolveNodeLevel` param) is set when `to` lands on a different
+ * floor than the one currently being drawn: `to` itself is then not the real target cell but the
+ * midpoint between `from` and the target's true (off-image) position, so `TeleportRenderer` draws a
+ * floor-number badge there instead of an ordinary teleport marker — the connector still runs the
+ * normal routing/collision-avoidance path toward that midpoint like any other endpoint. */
+export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean; fromNode?: number; toNode?: number; toFloor?: number };
 
 /** One `VerticalPassage`/`Elevator` edge's own render point (GitHub issue #347) — always a single
  *  point-anchored marker on the edge's `from` node's own cell, never a connector to another drawn
@@ -241,6 +246,12 @@ export type VerticalConnectionMarker = {
   fromNode: number;
   kind: "vertical_passage" | "elevator";
   direction?: "up" | "down" | "both";
+  /** The single floor this marker's own `VerticalPassage` leads to (GitHub issue #337 follow-up:
+   *  click-to-switch-floor) — `levels_ordered()` position, same convention as `NodeDto.level`.
+   *  `undefined` for `Elevator` (a fan can reach several floors at once, so there's no single
+   *  unambiguous click target — clicking an Elevator marker is intentionally not wired up) and for
+   *  any marker whose target floor couldn't be resolved. */
+  targetFloorIndex?: number;
   filled: boolean;
   arrowFilled: boolean;
 };

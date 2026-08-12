@@ -200,6 +200,7 @@ fn handle_empty_frontier<T: Tessellation>(
             seen.insert(candidate);
             let has_visited_neighbor = field.neighbors(candidate)
                 .into_iter()
+                .chain(field.vertical_neighbors(candidate))
                 .any(|n| state.visited.contains(&n) && can_connect(n, candidate, preset_state));
             if has_visited_neighbor {
                 if let Some(g) = search_scope.as_mut() {
@@ -221,26 +222,50 @@ fn handle_empty_frontier<T: Tessellation>(
         result
     };
     let Some(src) = src else { return false; };
-    let visited_neighbors: Vec<NodeId> = field.neighbors(src)
+    let geometric_neighbors: Vec<NodeId> = field.neighbors(src)
         .into_iter()
         .filter(|&n| state.visited.contains(&n) && can_connect(n, src, preset_state))
         .collect();
-    let bridge = visited_neighbors[state.rng.random_range(0..visited_neighbors.len())];
+    let vertical_neighbors: Vec<NodeId> = field.vertical_neighbors(src)
+        .into_iter()
+        .filter(|&n| state.visited.contains(&n) && can_connect(n, src, preset_state))
+        .collect();
 
-    let outcome = try_split_src(
-        graph, field, ids, params, elements, split_config, preset_state, state,
-        src, Some(bridge), None, start, start_reassignment, scope.as_deref_mut(), debug_state.as_deref_mut(),
-    );
-    if outcome == SplitOutcome::Handled {
-        return true;
-    }
+    let vertical_roll = state.rng.random::<f64>();
+    let vertical_hit = vertical_roll < elements.vertical_chance;
+    let use_vertical = if vertical_hit {
+        !vertical_neighbors.is_empty()
+    } else {
+        geometric_neighbors.is_empty() && !vertical_neighbors.is_empty()
+    };
 
-    let added = add_edge_and_detect_direction(graph, bridge, src, |g| try_add_edge(g, bridge, src, elements, preset_state, &mut state.rng));
-    if let Some((from, to, bidirectional)) = added {
-        if let Some(log) = scope.as_deref_mut() {
-            log.emit(VertexBasedEvent::BridgeAdded { src: from, dst: to, bidirectional });
+    let geometric_bridge = (!use_vertical)
+        .then(|| geometric_neighbors[state.rng.random_range(0..geometric_neighbors.len())]);
+
+    if let Some(geometric_bridge) = geometric_bridge {
+        let outcome = try_split_src(
+            graph, field, ids, params, elements, split_config, preset_state, state,
+            src, Some(geometric_bridge), None, start, start_reassignment, scope.as_deref_mut(), debug_state.as_deref_mut(),
+        );
+        if outcome == SplitOutcome::Handled {
+            return true;
         }
     }
+
+    let bridge = if use_vertical {
+        let bridge = vertical_neighbors[state.rng.random_range(0..vertical_neighbors.len())];
+        add_vertical_passage_edge(graph, elements, state, bridge, src, scope.as_deref_mut());
+        bridge
+    } else {
+        let bridge = geometric_bridge.expect("geometric bridge picked above when !use_vertical");
+        let added = add_edge_and_detect_direction(graph, bridge, src, |g| try_add_edge(g, bridge, src, elements, preset_state, &mut state.rng));
+        if let Some((from, to, bidirectional)) = added {
+            if let Some(log) = scope.as_deref_mut() {
+                log.emit(VertexBasedEvent::BridgeAdded { src: from, dst: to, bidirectional });
+            }
+        }
+        bridge
+    };
     state.visited.insert(src);
     add_to_frontier(src, Some(bridge), &mut state.frontier, &mut state.in_frontier);
     if let Some(log) = scope.as_deref_mut() {
@@ -472,6 +497,25 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
         // above) by this point, so `!visited.contains(&n)` alone already keeps it out of
         // reserve — it went to the frontier instead, as intended.
         if !connected_set.contains(&n) && !state.in_reserve.contains(&n) && !state.visited.contains(&n) {
+            state.reserve.push(n);
+            state.in_reserve.insert(n);
+            if let Some(log) = scope.as_deref_mut() {
+                log.emit(VertexBasedEvent::NodeQueuedToReserve { node: n });
+            }
+        }
+    }
+
+    // `src`'s own vertical-passage/elevator partners that weren't just connected by
+    // `try_vertical_growth_connect` above (GitHub issue #337 follow-up) — unlike a geometric free
+    // neighbor, a vertical partner never gets a second growth-step attempt on its own (the
+    // `vertical_chance` roll only ever fires once per `src`, here), so without queuing it into
+    // `reserve` too, missing that one roll loses it permanently instead of getting the same
+    // "picked up later" fallback every geometric neighbor already has. Deliberately *not* folded
+    // into `all_free`/`free_regular` above — those also drive `choose_connect_targets`'s ordinary
+    // geometric corridor/junction connect, which a vertical partner must never enter (no geometric
+    // adjacency exists between floors for `try_add_edge` to reason about).
+    for n in field.vertical_neighbors(src) {
+        if !state.in_reserve.contains(&n) && !state.visited.contains(&n) {
             state.reserve.push(n);
             state.in_reserve.insert(n);
             if let Some(log) = scope.as_deref_mut() {
