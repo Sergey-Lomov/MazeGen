@@ -263,14 +263,23 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       // latter are overwritten by every confirmPostEdit with the current (possibly manually
       // edited) graph, so once at least one edit has been confirmed they no longer reflect the
       // original generation and a reset built from them is a no-op (GitHub issue #323).
-      const splitPoints = deriveSplitPointsFromNodes(state._generatedNodes);
-      const pointNodeMap = buildPointNodeMap(state._generatedNodes);
+      //
+      // Post-edit isn't multi-floor-aware yet (GitHub issue #333 epic — same as QC/repair/
+      // analytics), but `_generatedNodes`/`_generatedEdges` can now span every floor (generation
+      // is the one multi-level-aware path, GitHub issue #337). Restricted to floor 0 here — every
+      // point-keyed grouping below (`deriveSplitPointsFromNodes`, `buildPointNodeMap`) would
+      // otherwise conflate same-(x,y) nodes on different floors into bogus split-point groups.
+      const floorZeroNodes = state._generatedNodes.filter((n) => (n.level ?? 0) === 0);
+      const floorZeroIds = new Set(floorZeroNodes.map((n) => n.id));
+      const floorZeroEdges = state._generatedEdges.filter((e) => floorZeroIds.has(e.from) && floorZeroIds.has(e.to));
+      const splitPoints = deriveSplitPointsFromNodes(floorZeroNodes);
+      const pointNodeMap = buildPointNodeMap(floorZeroNodes);
       const endpointFor = resolverForNodeId(pointNodeMap, splitPoints);
-      const { teleports, nextId } = extractPostEditTeleports(state._generatedEdges, endpointFor);
+      const { teleports, nextId } = extractPostEditTeleports(floorZeroEdges, endpointFor);
       return {
-        nodes: state._generatedNodes,
-        edges: state._generatedEdges,
-        postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(state._generatedEdges, endpointFor),
+        nodes: floorZeroNodes,
+        edges: floorZeroEdges,
+        postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(floorZeroEdges, endpointFor),
         postEditDraftTeleports: teleports,
         _nextPostEditTeleportId: nextId,
         postEditTeleportPendingFrom: null,
@@ -299,6 +308,13 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         start: state.start !== null ? nodeEndpoint(state.start) : null,
         finish: state.finish !== null ? nodeEndpoint(state.finish) : null,
       };
+      // Post-edit only ever addresses floor 0 (GitHub issue #333 epic — same caveat as
+      // `resetPostEdit`'s own comment): `_generatedNodes`/`_generatedEdges` can span every floor
+      // now that generation is multi-level-aware (GitHub issue #337), so a same-(x,y) node on
+      // another floor would otherwise be picked up as if it were at `point` on floor 0.
+      const floorZeroNodes = state._generatedNodes.filter((n) => (n.level ?? 0) === 0);
+      const floorZeroIds = new Set(floorZeroNodes.map((n) => n.id));
+      const floorZeroEdges = state._generatedEdges.filter((e) => floorZeroIds.has(e.from) && floorZeroIds.has(e.to));
       const result = resetPostEditPointCore(
         point,
         state.postEditDraftEdges,
@@ -306,8 +322,8 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         state.postEditDraftSplitPoints,
         state.postEditActiveSplitNode,
         meta,
-        state._generatedNodes,
-        state._generatedEdges,
+        floorZeroNodes,
+        floorZeroEdges,
         state._generatedStart,
         state._generatedFinish,
       );

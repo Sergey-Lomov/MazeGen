@@ -136,40 +136,55 @@ describe("presetConnectionsSubtitle", () => {
 
 describe("computeGenerationCard", () => {
   it("is unavailable before tessellation is confirmed, regardless of other params", () => {
-    const result = computeGenerationCard(false, "custom_vertex_based", true, 0.5, 0);
+    const result = computeGenerationCard(false, "custom_vertex_based", true, 0.5, 0, 1);
     expect(result.status).toBe("unavailable");
   });
 
   it("is set (ready) once confirmed, with no pattern-mode config in play", () => {
-    const result = computeGenerationCard(true, "custom_vertex_based", false, 0.0, 0);
+    const result = computeGenerationCard(true, "custom_vertex_based", false, 0.0, 0, 1);
     expect(result.status).toBe("set");
   });
 
   it("warns when pattern mode is on, split chance is positive, and no patterns are defined", () => {
-    const result = computeGenerationCard(true, "custom_vertex_based", true, 0.5, 0);
+    const result = computeGenerationCard(true, "custom_vertex_based", true, 0.5, 0, 1);
     expect(result.status).toBe("warning");
   });
 
   it("does not warn once at least one pattern is defined", () => {
-    const result = computeGenerationCard(true, "custom_vertex_based", true, 0.5, 1);
+    const result = computeGenerationCard(true, "custom_vertex_based", true, 0.5, 1, 1);
     expect(result.status).toBe("set");
   });
 
   it("does not warn when pattern mode is off, even with zero patterns and a positive split chance", () => {
-    const result = computeGenerationCard(true, "custom_vertex_based", false, 0.5, 0);
+    const result = computeGenerationCard(true, "custom_vertex_based", false, 0.5, 0, 1);
     expect(result.status).toBe("set");
   });
 
   it("does not warn when split chance is zero, even with pattern mode on and no patterns", () => {
-    const result = computeGenerationCard(true, "custom_vertex_based", true, 0.0, 0);
+    const result = computeGenerationCard(true, "custom_vertex_based", true, 0.0, 0, 1);
     expect(result.status).toBe("set");
   });
 
   it("does not warn for a non-vertex-based method, even with pattern mode/chance/empty patterns set", () => {
     // Pattern mode only exists for custom_vertex_based (see GenerationFeature.tsx's isVertexBased) —
     // this combination shouldn't occur in practice, but the check must still gate on method.
-    const result = computeGenerationCard(true, "custom_edge_based", true, 0.5, 0);
+    const result = computeGenerationCard(true, "custom_edge_based", true, 0.5, 0, 1);
     expect(result.status).toBe("set");
+  });
+
+  it("is critical when floor count > 1 and the method isn't custom_vertex_based (GitHub issue #337)", () => {
+    const result = computeGenerationCard(true, "custom_edge_based", false, 0.0, 0, 2);
+    expect(result.status).toBe("critical");
+  });
+
+  it("is not critical for custom_vertex_based even with multiple floors", () => {
+    const result = computeGenerationCard(true, "custom_vertex_based", false, 0.0, 0, 2);
+    expect(result.status).toBe("set");
+  });
+
+  it("floor-incompatibility takes priority over the split-patterns warning", () => {
+    const result = computeGenerationCard(true, "custom_edge_based", true, 0.5, 0, 2);
+    expect(result.status).toBe("critical");
   });
 });
 

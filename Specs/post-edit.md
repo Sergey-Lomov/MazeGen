@@ -256,6 +256,12 @@ hover uses):
   `_generatedStart`/`_generatedFinish`. This is the only way to reset a split connection — the edge
   branch refuses it. See `resetPostEditPoint` (postEditUtils.ts) and its `PostEditPointReset`
   result type.
+
+  Post-edit itself isn't multi-floor-aware (`Specs/floors.md`'s "Non-goals") even though generation
+  can be (GitHub issue #337): both this cell-reset path and the whole-graph `resetPostEdit` filter
+  `_generatedNodes`/`_generatedEdges` down to floor 0 before use, in the `postEditSlice.ts` store
+  actions that call into these functions — otherwise a floor-1 node sharing the reset point's
+  `(x, y)` would be picked up as if it were a second split slot at that point on floor 0.
 - Right/middle click has no reset-tool meaning beyond the shared middle-click pan.
 
 **Danger styling:** the Reset button uses the `toggle-danger`/`toggle-danger-active` `buttonStyle` variants (red border/text, red fill when selected — `ui.text.error`) instead of the ordinary `toggle`/`toggle-active` accent styling, and its canvas hover highlight (edge or cell) renders in `canvas.fieldEditor.danger` (red) instead of `canvas.fieldEditor.hover` — `PostEditRenderer.updateHover`/`.updateCellHover` take an optional `danger` flag for this, set whenever `postEditTool === "reset"`. Both cues exist so a destructive tool reads as destructive before the user commits to a click.

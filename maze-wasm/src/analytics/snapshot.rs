@@ -69,6 +69,13 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     // node/edge list, never from `PresetConnection`s) via `preset_edges_for_post_edit`/
     // `resolve_preset_nodes_for_post_edit`, resolved fresh against the rebuilt field each call.
     preset_state: &PresetState,
+    // Whether `nodes`/`edges` cover every floor or only the first (GitHub issue #337). Generation
+    // (`runner.rs`) passes `true` — it's the one path that actually builds a multi-level field.
+    // Every other caller (post-edit/analytics-recompute) passes `false`: those rebuild `maze.field`
+    // from the client's own node/edge list, which is still single-floor-only (no per-floor field
+    // editing UI exists yet — see the #333 epic), so restricting to the first floor here is a
+    // no-op for them today, not a behavior change.
+    all_levels: bool,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
     // Node's stable per-point index (GitHub issue #236, `NodeDto.i` doc comment) — `0` is always
     // the point's original node. A fresh maze (generation) has no removal history yet, so a node's
@@ -156,28 +163,43 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     // `nodes_at(p)` isn't flat-mapped once per repeat, which would emit a split point's node list
     // N times over (GitHub issue #223 surfaced this once split-junction rendering started reading
     // every node of a point instead of just one).
-    let level = maze.field.single_level_id();
-    let mut seen_points: std::collections::HashSet<T::Point> = std::collections::HashSet::new();
-    let nodes: Vec<NodeDto> = maze.field
-        .field_of(level)
-        .expect("single_level_id always resolves")
-        .all_points()
-        .filter(|p| seen_points.insert(*p))
-        .flat_map(|p| maze.field.nodes_at(level, p).iter().enumerate().map(move |(pos, &id)| (id, p, pos)))
-        .filter_map(|(id, p, pos)| {
-            let id32 = u32::try_from(id).ok()?;
-            let (x, y) = point_to_xy(p);
-            let i = index_of(id, p, pos);
-            Some(NodeDto { id: id32, x, y, i })
-        })
-        .collect();
+    let levels: Vec<maze_core::space::LevelId> = if all_levels {
+        maze.field.levels_ordered().collect()
+    } else {
+        vec![maze.field.single_level_id()]
+    };
+    let mut nodes: Vec<NodeDto> = Vec::new();
+    for (level_index, &level) in levels.iter().enumerate() {
+        let mut seen_points: std::collections::HashSet<T::Point> = std::collections::HashSet::new();
+        let points: Vec<T::Point> = maze.field
+            .field_of(level)
+            .expect("levels_ordered/single_level_id always resolve")
+            .all_points()
+            .filter(|p| seen_points.insert(*p))
+            .collect();
+        for p in points {
+            for (pos, &id) in maze.field.nodes_at(level, p).iter().enumerate() {
+                let Some(id32) = u32::try_from(id).ok() else { continue };
+                let (x, y) = point_to_xy(p);
+                let i = index_of(id, p, pos);
+                nodes.push(NodeDto { id: id32, x, y, i, level: level_index as u32 });
+            }
+        }
+    }
 
+    // When `all_levels` is false, edges are restricted to the single surfaced floor — `nodes`
+    // above only covers that floor (GitHub issue #333 epic: post-edit/analytics-recompute aren't
+    // multi-level-aware yet, see `single_level_id`'s doc comment), so an edge reaching another
+    // level would otherwise reference a node id the web client's `nodes` list never received.
     let edges: Vec<EdgeDto> = maze.graph
         .edges()
+        .filter(|e| all_levels || (maze.field.level_of(e.from) == Some(levels[0]) && maze.field.level_of(e.to) == Some(levels[0])))
         .filter_map(|e| {
             let kind = match e.kind {
                 maze_core::graph::EdgeKind::Basic => EdgeKindDto::Basic,
                 maze_core::graph::EdgeKind::Teleport => EdgeKindDto::Teleport,
+                maze_core::graph::EdgeKind::VerticalPassage => EdgeKindDto::VerticalPassage,
+                maze_core::graph::EdgeKind::Elevator => EdgeKindDto::Elevator,
             };
             Some(EdgeDto {
                 from: u32::try_from(e.from).ok()?,
@@ -356,7 +378,7 @@ mod tests {
         }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         assert!(snapshot.graph_analytics.cycle_analysis_overflowed);
         assert!(snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
@@ -374,7 +396,7 @@ mod tests {
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         assert!(!snapshot.graph_analytics.cycle_analysis_overflowed);
         assert!(!snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
@@ -396,7 +418,7 @@ mod tests {
         g.add_node(extra);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         let at_split_point: Vec<_> = snapshot.nodes.iter().filter(|n| n.x == 1 && n.y == 0).collect();
         assert_eq!(at_split_point.len(), 2, "split point's node list must appear exactly once, not once per its own node count");
@@ -419,7 +441,7 @@ mod tests {
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         // Neither start nor finish set.
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         assert!(snapshot.graph_analytics.region_classes.is_empty());
     }
@@ -440,7 +462,7 @@ mod tests {
         maze.meta.start = Some(a);
         maze.meta.finish = Some(c);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         // Fully bidirectional 3-node line collapses into a single SCC — start and finish share
         // a region, which is always "path" by definition.

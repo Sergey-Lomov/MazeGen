@@ -7,11 +7,11 @@ use crate::ids::NodeId;
 use crate::event_log::EventLog;
 
 fn no_split_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 }
+    ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() }
 }
 
 fn full_split_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 1.0 }
+    ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 1.0, ..Default::default() }
 }
 
 fn empty_presets() -> PresetState { PresetState::empty() }
@@ -527,7 +527,7 @@ fn non_pattern_split_teleport_is_rolled_once_per_event_not_per_node() {
         let field_level = field.single_level_id();
     let start = field.node_at(field_level, SquarePoint { x: 0, y: 0 }).unwrap();
     let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 4, patterns: vec![] };
-    let elements = ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 0.0, split_chance: 1.0 };
+    let elements = ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 0.0, split_chance: 1.0, ..Default::default() };
     let mut state = super::super::vertex_based::GenState::new(&graph, 9, start);
     let mut sr = None;
     let outcome = try_split_src(

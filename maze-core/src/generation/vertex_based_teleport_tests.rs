@@ -8,15 +8,15 @@ fn teleport_edges(graph: &Graph) -> Vec<(NodeId, NodeId)> {
 }
 
 fn no_teleport_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 }
+    ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() }
 }
 
 fn full_two_way_teleport_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 0.0, split_chance: 0.0 }
+    ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() }
 }
 
 fn full_one_way_teleport_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 1.0, split_chance: 0.0 }
+    ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 1.0, split_chance: 0.0, ..Default::default() }
 }
 
 #[test]
@@ -218,6 +218,7 @@ fn teleport_junction_reduces_geometric_count_by_one_when_teleport_added() {
         branching: 1.0,
         directionality: 0.0,
         cyclicity: 0.0,
+        ..Default::default()
     };
     let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
         let level = field.single_level_id();
@@ -253,6 +254,7 @@ fn teleport_corridor_adds_exactly_one_geometric_and_one_teleport() {
         branching: 0.0,
         directionality: 0.0,
         cyclicity: 0.0,
+        ..Default::default()
     };
     let (mut field, mut graph, mut ids) = make_field_graph_ids(5, 5);
         let level = field.single_level_id();
@@ -277,6 +279,7 @@ fn teleport_cyclic_roll_widens_pool_to_any_visited_node() {
         branching: 0.0,
         directionality: 0.0,
         cyclicity: 1.0,
+        ..Default::default()
     };
     let (mut field, mut graph, mut ids) = make_field_graph_ids(8, 8);
         let level = field.single_level_id();

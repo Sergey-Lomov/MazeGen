@@ -175,7 +175,7 @@ fn edge_based_event_log_preset_teleport_dst_emits_preset_skipped_not_edge_added(
 /// across many seeds, not just the algorithm's connection-attempt intent.
 #[test]
 fn edge_based_event_log_edge_added_direction_matches_graph_even_when_one_way_reverses_it() {
-    let one_way_elements = maze_core::generation::ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 };
+    let one_way_elements = maze_core::generation::ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() };
     let params = EdgeBasedParams::default();
     for seed in 0..20 {
         let (mut graph, field, start) = build(6, 6);
@@ -222,7 +222,7 @@ fn edge_based_event_kinds_agree_with_is_mutating() {
 }
 
 fn teleport_elements() -> maze_core::generation::ElementsConfig {
-    maze_core::generation::ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.3, teleport_one_way_chance: 0.0, split_chance: 0.0 }
+    maze_core::generation::ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.3, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() }
 }
 
 #[test]

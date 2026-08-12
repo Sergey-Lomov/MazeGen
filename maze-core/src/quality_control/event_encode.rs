@@ -31,6 +31,8 @@ pub(crate) fn write_split_nodes(out: &mut Vec<u8>, nodes: &[Vec<SplitNodeEdge>])
             out.push(match edge.kind {
                 EdgeKind::Basic => 0,
                 EdgeKind::Teleport => 1,
+                EdgeKind::VerticalPassage => 2,
+                EdgeKind::Elevator => 3,
             });
             write_node_id(out, edge.target);
         }

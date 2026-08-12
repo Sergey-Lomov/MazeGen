@@ -250,7 +250,7 @@ pub(crate) mod test_utils {
     use crate::space::{MultiLevelField, SquareTessellation, square_rect};
     use super::ElementsConfig;
 
-    pub fn default_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 } }
+    pub fn default_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() } }
 
     pub fn make_field_and_graph(w: usize, h: usize) -> (MultiLevelField<SquareTessellation>, Graph) {
         let mut ids = IdGenerator::new();

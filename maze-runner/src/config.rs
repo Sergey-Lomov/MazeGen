@@ -107,6 +107,15 @@ pub struct ElementsConfigDto {
     pub teleport_chance: Option<f64>,
     pub teleport_one_way_chance: Option<f64>,
     pub split_chance: Option<f64>,
+    pub cross_floor_teleport_balance: Option<f64>,
+    pub vertical_chance: Option<f64>,
+    pub vertical_passage_elevator_balance: Option<f64>,
+    pub one_way_vertical_passage_chance: Option<f64>,
+    pub vertical_up_down_balance: Option<f64>,
+    pub elevator_span_min: Option<usize>,
+    pub elevator_span_max: Option<usize>,
+    pub elevator_branching: Option<f64>,
+    pub allow_non_consecutive_elevator_floors: Option<bool>,
 }
 
 /// Wire shape for `maze_core::generation::SplitFaceRequirement` (GitHub issue #222).
@@ -222,6 +231,13 @@ impl Default for InitialGenerationConfig {
 pub struct GenerateConfig {
     #[serde(default)]
     pub tessellation: TessellationConfig,
+    /// Number of identical-geometry levels to generate across (GitHub issue #337) — every level
+    /// shares `tessellation`'s points, since per-level field editing does not exist yet (see the
+    /// #333 epic). Only `generate_maze`/the wasm dispatch consult this; everything downstream
+    /// (QC/repair/routing/analytics/post-edit) still only ever sees the first level, via
+    /// `MultiLevelField::single_level_id()` — see that method's doc comment.
+    #[serde(default = "default_level_count")]
+    pub level_count: usize,
     #[serde(default)]
     pub stages: Vec<StageConfig>,
     #[serde(default = "default_repair_max_iterations")]
@@ -262,6 +278,7 @@ impl Default for GenerateConfig {
     fn default() -> Self {
         Self {
             tessellation: TessellationConfig::default(),
+            level_count: default_level_count(),
             stages: vec![
                 StageConfig {
                     id: "stage_1".to_string(),
@@ -319,6 +336,10 @@ impl Default for GenerateConfig {
 /// `RepairLimits::default()`'s bound instead, matching `Default for GenerateConfig` below.
 fn default_repair_max_iterations() -> Option<usize> {
     RepairLimits::default().max_iterations()
+}
+
+fn default_level_count() -> usize {
+    1
 }
 
 /// See `default_repair_max_iterations` above — same rationale for the time-budget bound.
@@ -466,5 +487,15 @@ fn build_elements_config(dto: &ElementsConfigDto) -> ElementsConfig {
     if let Some(v) = dto.teleport_chance { e.teleport_chance = v.clamp(0.0, 1.0); }
     if let Some(v) = dto.teleport_one_way_chance { e.teleport_one_way_chance = v.clamp(0.0, 1.0); }
     if let Some(v) = dto.split_chance { e.split_chance = v.clamp(0.0, 1.0); }
+    if let Some(v) = dto.cross_floor_teleport_balance { e.cross_floor_teleport_balance = v.clamp(0.0, 1.0); }
+    if let Some(v) = dto.vertical_chance { e.vertical_chance = v.clamp(0.0, 1.0); }
+    if let Some(v) = dto.vertical_passage_elevator_balance { e.vertical_passage_elevator_balance = v.clamp(0.0, 1.0); }
+    if let Some(v) = dto.one_way_vertical_passage_chance { e.one_way_vertical_passage_chance = v.clamp(0.0, 1.0); }
+    if let Some(v) = dto.vertical_up_down_balance { e.vertical_up_down_balance = v.clamp(0.0, 1.0); }
+    if let Some(v) = dto.elevator_span_min { e.elevator_span_min = v.max(1); }
+    if let Some(v) = dto.elevator_span_max { e.elevator_span_max = v.max(1); }
+    if let Some(v) = dto.elevator_branching { e.elevator_branching = v.clamp(0.0, 1.0); }
+    if let Some(v) = dto.allow_non_consecutive_elevator_floors { e.allow_non_consecutive_elevator_floors = v; }
+    if e.elevator_span_max < e.elevator_span_min { e.elevator_span_max = e.elevator_span_min; }
     e
 }

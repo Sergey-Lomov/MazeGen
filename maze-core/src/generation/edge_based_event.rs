@@ -1,3 +1,6 @@
+#[path = "edge_based_wire.rs"]
+mod edge_based_wire;
+
 use crate::ids::NodeId;
 use crate::event_log::{DebugValueDelta, DebugValueKind, DebugValueOp};
 

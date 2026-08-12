@@ -1,3 +1,6 @@
+#[path = "vertex_based_wire.rs"]
+mod vertex_based_wire;
+
 use crate::ids::NodeId;
 use crate::event_log::{DebugValueDelta, DebugValueKind, DebugValueOp};
 
@@ -222,6 +225,62 @@ pub enum VertexBasedEvent {
     /// itself caught its own parent face).
     #[wire(tag = 33, mutating)]
     SplitParentEdgeRelocated { parent: NodeId, src: NodeId, taken_by: NodeId },
+    /// The vertical-connection roll for `src` against `params.vertical_chance`, taken after the
+    /// cyclic roll (`CyclicRolled`) — opposite order from `TeleportRolled` (GitHub issue #337).
+    /// Only rolled when the maze has more than one floor. `fired` is `roll < vertical_chance`.
+    #[wire(tag = 34)]
+    VerticalRolled { src: NodeId, roll: f64, vertical_chance: f64, fired: bool },
+    /// The passage-vs-elevator balance roll for `src`, taken once `VerticalRolled.fired` is true —
+    /// always consumed regardless of whether a valid target is later found. `is_elevator` is
+    /// `roll < vertical_passage_elevator_balance`.
+    #[wire(tag = 35)]
+    VerticalBalanceRolled { src: NodeId, roll: f64, balance: f64, is_elevator: bool },
+    /// The one-way-vs-two-way roll for a `VerticalPassage` edge against
+    /// `params.one_way_vertical_passage_chance`, taken once a passage target has been resolved.
+    /// `fired` is `roll < one_way_vertical_passage_chance`.
+    #[wire(tag = 43)]
+    VerticalPassageOneWayRolled { roll: f64, one_way_chance: f64, fired: bool },
+    /// The up/down direction roll for a one-way `VerticalPassage` edge, only rolled when
+    /// `VerticalPassageOneWayRolled.fired` is true. `upward` is `roll < vertical_up_down_balance`.
+    #[wire(tag = 44)]
+    VerticalPassageDirectionRolled { roll: f64, balance: f64, upward: bool },
+    /// A `VerticalPassage` edge was added from `src` to `dst` (the resolved target-floor node) —
+    /// direction detected the same way as `TeleportBridgeAdded`. `one_way`/`upward` describe the
+    /// roll outcome: `upward` is only meaningful when `one_way` is true.
+    #[wire(tag = 36, mutating)]
+    VerticalPassageAdded { src: NodeId, dst: NodeId, one_way: bool, upward: bool },
+    /// `VerticalPassage` construction failed for this attempt (no geometric neighbor in the needed
+    /// direction, `node_at` resolved to nothing on the neighbor floor, or the resolved neighbor
+    /// didn't satisfy the growth/cyclic context) — narrates the fallback decision point.
+    /// `elevator_fallback_allowed` reflects whether `vertical_passage_elevator_balance != 0`.
+    #[wire(tag = 37)]
+    VerticalPassageFailed { src: NodeId, elevator_fallback_allowed: bool },
+    /// The elevator floor-count algorithm's inputs, computed before any branching roll:
+    /// `unvisited_pool_size` (after the non-consecutive contiguous-run clamp, if applicable),
+    /// `has_cyclic_visited`, and the clamped `max_slots`/`elevator_span_min` bounds actually used.
+    #[wire(tag = 38)]
+    ElevatorSlotsComputed { src: NodeId, unvisited_pool_size: usize, has_cyclic_visited: bool, max_slots: usize, span_min: usize },
+    /// Elevator floor-count construction failed (`max_slots < elevator_span_min`) — narrates
+    /// which fallback path this attempt is eligible for. `fallback_allowed` reflects the balance
+    /// gate for the current context (cyclic: always geometric-cyclic; growth: VerticalPassage only
+    /// if `vertical_passage_elevator_balance != 1`).
+    #[wire(tag = 39)]
+    ElevatorSlotsFailed { src: NodeId, fallback_allowed: bool },
+    /// The elevator's floor-count branching roll settled on `floor_count` (see
+    /// `ElevatorSlotsComputed` for the range it was drawn from).
+    #[wire(tag = 40)]
+    ElevatorFloorCountChosen { src: NodeId, floor_count: usize },
+    /// The elevator fan was added: `nodes` is every resulting floor's node at this x-y (in
+    /// `levels_ordered()` order), `edges_added` is how many of the `nodes.len() * (nodes.len() - 1)`
+    /// directed edges were actually added (may be fewer if a preset conflict silently declined one
+    /// or more pairs — see `vertex_based.rs`'s transactionality note).
+    #[wire(tag = 41, mutating)]
+    ElevatorAdded { nodes: Vec<NodeId>, edges_added: usize },
+    /// The cross-floor-vs-same-floor balance roll for a teleport target, taken after
+    /// `TeleportRolled`/`TeleportBridgeRolled` already hit. `other_floor_preferred` is
+    /// `roll < cross_floor_teleport_balance`.
+    #[wire(tag = 42)]
+    CrossFloorTeleportRolled { roll: f64, balance: f64, other_floor_preferred: bool },
 }
 
 pub const VISITED: &str = "visited";

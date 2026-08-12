@@ -7,6 +7,11 @@ export interface NodeDto {
   x: number;
   y: number;
   i: number;
+  /** The node's floor, as a 0-based index into `floors` (GitHub issue #337) — matches `floors`
+   * array position, not any internal level id. Always `0` for a single-floor maze. Optional so
+   * the many hand-built `NodeDto` test fixtures across the codebase (predating multi-floor
+   * generation) don't all need updating — real snapshots from wasm always populate it. */
+  level?: number;
 }
 
 // Note: (from, to) is not unique across MazeSnapshot.edges — a Basic and a Teleport edge
@@ -14,7 +19,7 @@ export interface NodeDto {
 export interface EdgeDto {
   from: number;
   to: number;
-  kind: "basic" | "teleport";
+  kind: "basic" | "teleport" | "vertical_passage" | "elevator";
 }
 
 export interface NavNodeDto {
@@ -430,6 +435,25 @@ export interface ElementsConfig {
   /** CustomVertexBased-only (GitHub issue #222): probability, rolled at the start of every
    * step, that the step's tile is split into several graph nodes instead of merged into one. */
   split_chance?: number;
+  /** CustomVertexBased-only (GitHub issue #337), multi-floor mazes: balance between preferring a
+   * teleport target on another floor (1) vs. the same floor (0). */
+  cross_floor_teleport_balance?: number;
+  /** CustomVertexBased-only (GitHub issue #337): probability, rolled on every growth-opportunity
+   * on multi-floor mazes, of attempting a vertical connection (VerticalPassage or Elevator). */
+  vertical_chance?: number;
+  /** Balance between VerticalPassage (0) and Elevator (1) once a vertical connection fires. */
+  vertical_passage_elevator_balance?: number;
+  /** VerticalPassage-only: probability the edge is one-way instead of two-way. */
+  one_way_vertical_passage_chance?: number;
+  /** Direction balance (0=down, 1=up) for one-way VerticalPassage edges. */
+  vertical_up_down_balance?: number;
+  /** Elevator floor-count clamp (inclusive), counting the source floor itself. */
+  elevator_span_min?: number;
+  elevator_span_max?: number;
+  /** Elevator floor-count branching factor, from `elevator_span_min` toward `elevator_span_max`. */
+  elevator_branching?: number;
+  /** Allow an elevator to skip floors instead of only connecting a contiguous run. */
+  allow_non_consecutive_elevator_floors?: boolean;
 }
 
 /** Mirrors Rust's `SplitFaceRequirementDto` (GitHub issue #222). */
@@ -499,6 +523,10 @@ export interface LockedNodeDto {
 
 export interface GenerateConfig {
   tessellation: WasmTessellationConfig;
+  /** Number of identical-geometry levels to generate across (GitHub issue #337) — every level
+   * shares `tessellation`'s points, since per-level field editing does not exist yet (see the
+   * #333 epic). Defaults to 1. */
+  level_count?: number;
   stages: StageConfig[];
   repair_max_iterations?: number;
   repair_time_budget_secs?: number;

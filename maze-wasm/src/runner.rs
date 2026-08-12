@@ -214,7 +214,7 @@ pub fn run_generate<T: Tessellation + 'static>(
 
     // Fresh generation has no removal history yet — a node's position within `nodes_at(point)`
     // already equals its real `i` (GitHub issue #236, `NodeDto.i` doc comment).
-    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, &repair_preset_state, &point_to_xy, |_, _, pos| pos as u32)
+    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, &repair_preset_state, true, &point_to_xy, |_, _, pos| pos as u32)
         .map_err(|e| JsValue::from_str(&e))?;
     snapshot.timing = Some(timing_to_dto(timing));
 
@@ -222,13 +222,19 @@ pub fn run_generate<T: Tessellation + 'static>(
     // including ones removed/replaced by QC/repair. Built only when `debug_events` produced a
     // ledger; separate from `snapshot.nodes` (final survivors only), which stays untouched since
     // the live UI/canvas rendering depends on it only ever listing currently-live nodes.
+    // `level`: resolved against the still-live `maze.field` when possible (GitHub issue #337) —
+    // a node QC/repair already removed no longer has a level there, so it falls back to `0`. The
+    // ledger itself doesn't track level per node (it only ever recorded points), so a removed
+    // multi-floor node's debug-tree floor can't be recovered here; this only matters for nodes
+    // that existed briefly during generation and were pruned before the run ended.
     let debug_all_nodes: Vec<crate::dto::NodeDto> = debug_node_ledger
         .map(|ledger| {
             ledger.all_node_points()
                 .filter_map(|(id, point)| {
                     let id32 = u32::try_from(id).ok()?;
                     let (x, y) = point_to_xy(point);
-                    Some(crate::dto::NodeDto { id: id32, x, y, i: 0 })
+                    let level = maze.field.level_index_of(id).unwrap_or(0) as u32;
+                    Some(crate::dto::NodeDto { id: id32, x, y, i: 0, level })
                 })
                 .collect()
         })

@@ -135,7 +135,7 @@ where
     let mut preset_state = maze_core::generation::PresetState::empty();
     preset_state.preset_edges = preset_edges_for_post_edit(&cfg.preset_connections, &existing_by_index, &split_map);
     preset_state.preset_declared_nodes = resolve_preset_nodes_for_post_edit(&cfg.preset_split_points, &existing_by_index, &split_map);
-    let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, &preset_state, point_to_xy,
+    let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, &preset_state, false, point_to_xy,
         |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32))
         .map_err(|e| JsValue::from_str(&e))?;
 
@@ -218,8 +218,8 @@ mod tests {
 
             // Original nodes at (0,0) and (1,0), ids 1 and 2 -- mirrors NodeDto's real wire shape.
             let nodes = vec![
-                NodeDto { id: 1, x: 0, y: 0, i: 0 },
-                NodeDto { id: 2, x: 1, y: 0, i: 0 },
+                NodeDto { id: 1, x: 0, y: 0, i: 0, level: 0 },
+                NodeDto { id: 2, x: 1, y: 0, i: 0, level: 0 },
             ];
             // A split point declared at (0,0) slot 0 (not present in `nodes` yet -- freshly
             // declared by the preset snapshot, mirroring `state.presetSplitPoints`).
@@ -263,7 +263,7 @@ mod tests {
             );
             let qc = QualityControlEngine::new(vec![Stage::new("stage_1".to_string(), "Stage 1".to_string(), vec![Box::new(rule) as Box<dyn RuleTrait<SquareTessellation>>])]);
 
-            let snapshot = build_analytics_snapshot(&mut maze, Some(&qc), None, &HashMap::new(), &preset_state, point_to_xy,
+            let snapshot = build_analytics_snapshot(&mut maze, Some(&qc), None, &HashMap::new(), &preset_state, false, point_to_xy,
                 |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32)).unwrap();
 
             let issue_dto = snapshot.issues.iter().find(|i| i.kind == "invalid_split_node")

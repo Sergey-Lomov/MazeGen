@@ -128,12 +128,81 @@ The teleport roll interacts with two different situations in the main loop:
 
 In both situations, once a hit is confirmed and a candidate exists, `teleport_one_way_chance` decides one-way vs two-way, and (if one-way) a further 50/50 pick decides direction — added via `EdgeKind::Teleport`.
 
+### Teleport-cyclic geometric fallback (GitHub issue #337)
+
+When `cyclic_fired && teleport_hit`, the teleport-widened candidate pool ("any visited node in the graph") is tried first. If that pool is empty, the algorithm now falls back to the ordinary geometric-neighbor pool (visited geometric neighbors of `src`) instead of skipping the cyclic edge outright — `teleport_spent_on_cycle` is `false` in this fallback case, so the teleport roll remains available for the corridor/junction step. This fallback applies on every maze regardless of floor count (it is not part of the multi-floor RNG-parity gating below) — it was introduced for consistency with the vertical-cyclic model described next. Since the widened pool is always a superset of the geometric pool under identical `visited`/`can_connect`/edge-existence filters, the fallback path is only ever reached when the geometric pool is *also* empty, in which case the cyclic edge fails cleanly with no candidate and no roll wasted.
+
+## Vertical Connections (GitHub issue #337)
+
+`CustomVertexBased` is the only algorithm that can connect floors of a `MultiLevelField` — the same reason it (along with `CustomEdgeBased`) is the only one with a notion of `EdgeKind::Teleport`. Two new edge kinds exist for this: `EdgeKind::VerticalPassage` (a single edge between two adjacent floors, one-way or two-way) and `EdgeKind::Elevator` (a fully-connected fan across several — not necessarily adjacent — floors, always two-way).
+
+### RNG-parity policy
+
+`vertical_chance` and `cross_floor_teleport_balance` are only rolled when `field.level_count() > 1`. Floor count is a static property of the whole config, known before generation starts — unlike `teleport_chance`/`cyclicity`/`split_chance`, which are per-step runtime branches that must always be rolled ("always consumed regardless of value") to keep the RNG sequence identical across runs that take different branches. Skipping a statically-unreachable roll on a single-floor maze is not runtime branching, so it doesn't violate that principle — and it keeps every existing single-floor golden test byte-identical without regeneration.
+
+### New parameters
+
+All 8 new parameters live in `ElementsConfig` (not `GenerationParams`) alongside `cross_floor_teleport_balance` and the other cross-cutting connection-type params — `GenerationParams` is reserved for `CustomVertexBased`'s structural/growth-shape params (`depth_first`, `corridor_chance`, `branching`, `directionality`, `cyclicity`). All of them are consulted only by `CustomVertexBased` and only meaningful on a multi-floor field, but they're grouped with `ElementsConfig`'s other connection-type fields for consistency, same as `cross_floor_teleport_balance`.
+
+| Parameter | Range | Default | Effect |
+|---|---|---|---|
+| `vertical_chance` | 0.0–1.0 | 0.0 | Probability, rolled on every growth-opportunity on a multi-floor maze (after the cyclic roll, before the corridor/junction step), of attempting a vertical connection. |
+| `vertical_passage_elevator_balance` | 0.0–1.0 | 0.5 | Balance between `VerticalPassage` (0) and `Elevator` (1), rolled once `vertical_chance` hits. |
+| `one_way_vertical_passage_chance` | 0.0–1.0 | 0.0 | `VerticalPassage`-only: probability the edge is one-way instead of two-way. `Elevator` has no per-edge one-way roll — it is always fully two-way. |
+| `vertical_up_down_balance` | 0.0–1.0 | 0.5 | Direction balance (0 = down, 1 = up) for one-way `VerticalPassage` edges only. |
+| `elevator_span_min` / `elevator_span_max` | ≥1 | 2 / 2 | Inclusive clamp on an elevator's floor count, **including the source floor itself**. |
+| `elevator_branching` | 0.0–1.0 | 0.5 | Growth factor from `elevator_span_min` toward the run's actual `max_slots` (clamped by `elevator_span_max`) — same binomial shape as `junction_count`, but parameterized by `elevator_span_min` instead of a fixed `2`. |
+| `allow_non_consecutive_elevator_floors` | bool | false | When false, an elevator's unvisited floor pool is clamped to the longest contiguous run (by floor order) before the branching roll — `floor_count` is never drawn from an unreachable range. When true, any unvisited floor is eligible regardless of gaps. |
+
+`cross_floor_teleport_balance` (0.0–1.0, default 0.0) lives in `ElementsConfig` alongside `teleport_chance` — balance between preferring a teleport target on another floor (1) vs. the same floor (0), rolled once `teleport_chance` already hit and only when `field.level_count() > 1`.
+
+### Roll order in the main per-node step
+
+`cyclicity` now rolls **before** `teleport_chance` (the reverse of the pre-#337 order), immediately followed by `vertical_chance` (floor-count-gated) — the vertical roll needs to know `cyclic_fired` up front to decide whether its own hit is spent on the cyclic edge or used for a growth connection:
+
+- `cyclic_fired && vertical_hit`: vertical first tries to realize the *cyclic* edge (a passage to the sole visited neighbor, or an elevator whose floor set includes exactly one visited floor). Success spends both rolls entirely. Failure falls back to the ordinary geometric/teleport cyclic path (see above), with `vertical_hit` still available for teleport's own bookkeeping but not reused for a second vertical attempt this step.
+- `cyclic_fired && !vertical_hit`: unchanged geometric/teleport cyclic path.
+- `!cyclic_fired && vertical_hit`: vertical goes into growth-connect, added alongside whatever the corridor/junction step produces (mirrors how teleport is added alongside corridor/junction) — junction's `junction_count` roll is not widened for vertical the way it is for teleport.
+
+### `VerticalPassage`
+
+The target floor (which of the two adjacent floors, if either) is resolved **by position in `levels_ordered()`**, never by raw `LevelId` arithmetic (`LevelId` is a stable minted id, never reused or renumbered — see `Specs/space.md`). A boundary floor (first/last in order) has only one adjacent floor; there the target is that floor unconditionally, no choice to make. Target *node* resolution goes exclusively through `MultiLevelField::node_at(level, point)` (`point` from `field.point_of(src)`) — never a coordinate comparison of the generation code's own. If `node_at` returns `None` (floors don't share a cell shape at that point) or the resolved node fails the growth/cyclic context check (already visited in growth context; no visited neighbor in cyclic context), the `VerticalPassage` attempt fails.
+
+The one-way roll (`one_way_vertical_passage_chance`) and, if one-way, the direction roll (`vertical_up_down_balance`) apply *after* the target is already fixed — they decide which way the edge points between `src` and that already-resolved target, not which floor the target is on. This works identically on a boundary floor (single possible target) and an interior floor (two candidates) — no special-casing needed for the direction roll itself.
+
+### `Elevator`
+
+An elevator connects `floor_count` floors (including `src`'s own) as a fully-connected fan: every unordered pair among the chosen floors gets a two-way edge (`floor_count × (floor_count - 1)` directed edges total). Building the fan is transactional in floor-set selection — the set of floors is fully decided *before* any edge is added, so a single pair failing to connect (preset lock) never changes the reported `floor_count` or retroactively shrinks the chosen set; it just leaves that one pair without a connection, the same way a single corridor/junction candidate can be blocked by a preset without unwinding the whole step.
+
+Floor-count selection algorithm, run before any edge mutation:
+
+1. `unvisited_candidates` — every other floor where `node_at(level, point)` resolves to an unvisited node. Floors without a cell at that point are excluded from the pool, not treated as a failure by themselves.
+2. `has_cyclic_visited` — true only in cyclic context, when at least one other floor's `node_at` resolves to a *visited* node. When multiple qualify, the one earliest in `levels_ordered()` position is picked deterministically (no extra RNG roll).
+3. If `allow_non_consecutive_elevator_floors` is false, the unvisited pool is clamped to its longest contiguous run (by floor order) *before* the branching roll, so `floor_count` can never be chosen outside what's actually reachable.
+4. `max_slots = unvisited_pool.len() + (1 if has_cyclic_visited) + 1` (the final `+1` is `src`'s own floor), clamped to `elevator_span_max`.
+5. If `max_slots < elevator_span_min`, the elevator fails:
+   - Cyclic context → falls back to the ordinary geometric cyclic path.
+   - Growth context → falls back to `VerticalPassage` (see the symmetric fallback rule below), unless `vertical_passage_elevator_balance == 1.0` (fully committed to elevator), in which case the step ends with no vertical connection at all.
+   - Either way, the `vertical_passage_elevator_balance` roll that chose Elevator is not re-rolled — the fallback reuses the already-spent `vertical_hit`.
+6. `floor_count` — a `junction_count`-style branching roll from `elevator_span_min` up to `max_slots` (0 rolls if they're equal).
+7. The chosen floor set: if `has_cyclic_visited`, the guaranteed visited floor from step 2 fills one slot, the remaining `floor_count - 1` are unvisited (from the contiguous-run-clamped pool); otherwise all `floor_count - 1` are unvisited. The guaranteed cyclic floor is exempt from the consecutive-run constraint even when `allow_non_consecutive_elevator_floors` is false — the set can have a gap between the cyclic floor and the unvisited run.
+8. A 2-floor elevator (`elevator_span_min <= 2`) is a valid, unexceptional outcome at generation time — QC normalization of a 2-floor elevator down to a `VerticalPassage` is a quality-control concern (see the analytics/QC epic issues), not something generation itself does.
+
+### Symmetric `VerticalPassage` ↔ `Elevator` fallback
+
+A failed `VerticalPassage` growth attempt falls back to trying `Elevator`, and vice versa — but never more than one bounce: a `VerticalPassage` attempt reached via an `Elevator`-fail fallback does not itself fall back to `Elevator` again. Each direction is blocked when the balance is fully committed against it: `vertical_passage_elevator_balance == 0.0` blocks the passage→elevator fallback (user locked the balance to pure-passage), and `== 1.0` blocks the elevator→passage fallback. In cyclic context, `VerticalPassage` failure falls back to the ordinary geometric cyclic path (not to `Elevator`) since a cyclic `Elevator` attempt would already have been tried first if a visited floor existed for it.
+
+### Cross-floor teleport balance
+
+Applied to both of `CustomVertexBased`'s teleport roll points (the `handle_empty_frontier` reserve-bridge and the ordinary per-step connect), only when `field.level_count() > 1`. After `teleport_chance` hits, `cross_floor_teleport_balance` is rolled and the unvisited-node candidate pool is partitioned by floor (relative to the connection's fixed endpoint — `bridge` in the reserve-bridge case, `src` in the ordinary case). The roll prefers the other-floor group (`< balance`) or the same-floor group; if the preferred group is empty, it falls back to the other group — this fallback applies even at the extreme balance values (`0.0`/`1.0`): an extreme value expresses a strong preference, not a hard ban on the alternative.
+
 ## WASM Interface
 
-Algorithm parameters are passed via the `initial` field of `GenerateConfig`:
+Algorithm parameters are passed via the `initial` field of `GenerateConfig`. `GenerateConfig.level_count` (optional, default `1`) is the number of identical-geometry floors `dispatch_generate` builds the `MultiLevelField` from before generation runs (`maze-wasm/src/tessellation_dispatch.rs`'s `build_multi_level_field`) — every floor shares the same `tessellation` points, since per-floor field editing doesn't exist yet (`Specs/floors.md`). This is the only wire-level knob for multi-floor generation; presets, locked nodes, and split points (`preset_connections`/`locked_nodes`/`split_points`) still only ever resolve against floor 0 (`MultiLevelField::single_level_id()`, `Specs/space.md`) even when `level_count > 1` — a floor beyond the first starts with no preset constraints at all:
 
 ```json
 {
+  "level_count": 2,
   "initial": {
     "method": "custom_vertex_based",
     "depth_first": 0.9,
@@ -142,9 +211,24 @@ Algorithm parameters are passed via the `initial` field of `GenerateConfig`:
     "directionality": 0.0,
     "cyclicity": 0.0
   },
-  "elements": { "one_way_chance": 0.04, "teleport_chance": 0.0, "teleport_one_way_chance": 0.0 }
+  "elements": {
+    "one_way_chance": 0.04,
+    "teleport_chance": 0.0,
+    "teleport_one_way_chance": 0.0,
+    "cross_floor_teleport_balance": 0.0,
+    "vertical_chance": 0.0,
+    "vertical_passage_elevator_balance": 0.5,
+    "one_way_vertical_passage_chance": 0.0,
+    "vertical_up_down_balance": 0.5,
+    "elevator_span_min": 2,
+    "elevator_span_max": 2,
+    "elevator_branching": 0.5,
+    "allow_non_consecutive_elevator_floors": false
+  }
 }
 ```
+
+The 8 `vertical_*`/`elevator_*` fields and `cross_floor_teleport_balance` are optional `ElementsConfig` fields (defaulted as shown above if omitted) and only meaningful for `custom_vertex_based` on a multi-floor field — see "Vertical Connections" above.
 
 All numeric values are clamped to `[0.0, 1.0]` in the WASM layer before use.
 

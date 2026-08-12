@@ -76,7 +76,7 @@ pub fn build_with_one_way_preset_teleport_bridge() -> (Graph, MultiLevelField<Sq
     (graph, field, start, preset_state, node_count, ids)
 }
 
-pub fn no_one_way_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 } }
+pub fn no_one_way_elements() -> ElementsConfig { ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() } }
 
 /// A 3x1 field where `(1,0)` is a split point with two nodes — the original and one extra slot —
 /// and a preset `Passage` wires the *original* node to `(0,0)` specifically. Regression fixture
@@ -204,7 +204,7 @@ pub fn default_config() -> GenerationConfig {
 pub fn config_with_params(params: GenerationParams) -> GenerationConfig {
     GenerationConfig {
         algorithm: GenerationAlgorithm::CustomVertexBased(params),
-        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
+        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() },
         ..GenerationConfig::default()
     }
 }
@@ -220,7 +220,7 @@ pub fn config_with_elements(elements: ElementsConfig) -> GenerationConfig {
 pub fn edge_based_config(params: EdgeBasedParams) -> GenerationConfig {
     GenerationConfig {
         algorithm: GenerationAlgorithm::CustomEdgeBased(params),
-        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
+        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() },
         ..GenerationConfig::default()
     }
 }
@@ -228,7 +228,7 @@ pub fn edge_based_config(params: EdgeBasedParams) -> GenerationConfig {
 pub fn kruskal_config() -> GenerationConfig {
     GenerationConfig {
         algorithm: GenerationAlgorithm::KruskalAlgorithm,
-        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
+        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() },
         ..GenerationConfig::default()
     }
 }

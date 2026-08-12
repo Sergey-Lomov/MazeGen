@@ -552,6 +552,11 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     debugStale: debugStaleOf(state),
   })),
 
+  setElementsBoolParam: (key, value) => set((state) => ({
+    elementsConfig: { ...state.elementsConfig, [key]: value },
+    debugStale: debugStaleOf(state),
+  })),
+
   setError: (msg) => set({ error: msg }),
 
   setRepairMaxIterations: (v) => set({ repairMaxIterations: v }),

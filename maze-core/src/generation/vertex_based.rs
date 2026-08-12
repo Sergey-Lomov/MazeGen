@@ -1,5 +1,3 @@
-#[path = "vertex_based_wire.rs"]
-mod vertex_based_wire;
 #[path = "vertex_based_event.rs"]
 mod vertex_based_event;
 
@@ -8,7 +6,7 @@ use rand::{Rng, SeedableRng};
 use crate::random::MazeRng;
 use crate::ids::{NodeId, IdGenerator};
 use crate::graph::{Graph, EdgeKind};
-use crate::space::{MultiLevelField, Tessellation};
+use crate::space::{LevelId, MultiLevelField, Tessellation};
 use crate::event_log::{EventLog, ScopeGuard};
 use super::{ElementsConfig, GenerationParams, PresetState, try_add_edge, try_add_edge_kind, can_connect, gaussian_weighted_index};
 pub(super) use super::add_edge_and_detect_direction;
@@ -137,11 +135,26 @@ fn handle_empty_frontier<T: Tessellation>(
             }
             return false;
         }
-        let src = unvisited[state.rng.random_range(0..unvisited.len())];
         let visited_nodes: Vec<NodeId> = state.all_nodes.iter().copied()
             .filter(|n| state.visited.contains(n))
             .collect();
         let bridge = visited_nodes[state.rng.random_range(0..visited_nodes.len())];
+
+        // Cross-floor teleport balance (GitHub issue #337) — only rolled/applied when the maze
+        // has more than one floor (RNG-parity policy). `bridge`'s own floor is "same floor" for
+        // this roll, since `bridge` is the connection's already-fixed visited endpoint.
+        let unvisited = if field.level_count() > 1 {
+            filter_teleport_pool_by_floor(field, elements, state, bridge, unvisited, scope.as_deref_mut())
+        } else {
+            unvisited
+        };
+        if unvisited.is_empty() {
+            if let Some(log) = scope.as_deref_mut() {
+                log.emit(VertexBasedEvent::ReserveExhausted);
+            }
+            return false;
+        }
+        let src = unvisited[state.rng.random_range(0..unvisited.len())];
 
         let outcome = try_split_src(
             graph, field, ids, params, elements, split_config, preset_state, state,
@@ -295,14 +308,39 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
     allowed_neighbors: Option<&HashSet<NodeId>>,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) {
-    // Teleport roll happens immediately after src is fixed, before any geometric-neighbor
-    // pool is built — a hit affects the cyclic-roll's candidate pool (below) and adds one
-    // extra teleport connection alongside whatever the corridor/junction roll produces.
+    // Cyclic roll happens first (GitHub issue #337 — opposite order from teleport, by explicit
+    // decision), before teleport/vertical rolls that may need to know cyclic_fired to decide
+    // whether their own hit gets "spent" on the cyclic edge instead of a growth connection.
+    let cyclic_roll = state.rng.random::<f64>();
+    let cyclic_fired = cyclic_roll < params.cyclicity;
+    if let Some(log) = scope.as_deref_mut() {
+        log.emit(VertexBasedEvent::CyclicRolled { src, roll: cyclic_roll, cyclicity: params.cyclicity, fired: cyclic_fired });
+    }
+
+    // Teleport roll happens immediately after cyclic, before any geometric-neighbor pool is
+    // built — a hit affects the cyclic candidate pool (below) and adds one extra teleport
+    // connection alongside whatever the corridor/junction roll produces.
     let teleport_hit = if roll_teleport {
         let teleport_roll = state.rng.random::<f64>();
         let hit = teleport_roll < elements.teleport_chance;
         if let Some(log) = scope.as_deref_mut() {
             log.emit(VertexBasedEvent::TeleportRolled { src, roll: teleport_roll, teleport_chance: elements.teleport_chance, fired: hit });
+        }
+        hit
+    } else {
+        false
+    };
+
+    // Vertical-connection roll — RNG-parity policy (GitHub issue #337): only rolled when the
+    // maze has more than one floor, so a single-floor maze's RNG sequence/golden tests stay
+    // byte-identical to before this feature existed (floor_count is a static config property,
+    // not per-step branching, so skipping it here doesn't violate the "always consumed" rule
+    // that governs `teleport_chance`/`cyclicity`/`split_chance`).
+    let vertical_hit = if roll_teleport && field.level_count() > 1 {
+        let vertical_roll = state.rng.random::<f64>();
+        let hit = vertical_roll < elements.vertical_chance;
+        if let Some(log) = scope.as_deref_mut() {
+            log.emit(VertexBasedEvent::VerticalRolled { src, roll: vertical_roll, vertical_chance: elements.vertical_chance, fired: hit });
         }
         hit
     } else {
@@ -324,11 +362,28 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
     let (free_preset, free_regular): (Vec<NodeId>, Vec<NodeId>) =
         all_free.into_iter().partition(|n| preset_connected.contains(n) || teleport_dsts.contains(n));
 
-    let (cyclic_dst, teleport_spent_on_cycle) =
-        roll_cyclic_edge(graph, field, params, preset_state, state, src, teleport_hit, scope.as_deref_mut());
+    // Vertical cyclic attempt: if both cyclic and vertical fired this step, vertical first tries
+    // to realize the cyclic edge (visited target). Success spends both rolls entirely; failure
+    // falls back to the ordinary geometric/teleport cyclic path below with vertical_hit untouched
+    // for the growth-connect step (vertical_for_connect below already accounts for this).
+    let vertical_cyclic_added = if cyclic_fired && vertical_hit {
+        try_vertical_cyclic_edge(graph, field, elements, preset_state, state, src, scope.as_deref_mut())
+    } else {
+        false
+    };
+
+    let (cyclic_dst, teleport_spent_on_cycle) = if vertical_cyclic_added {
+        (None, false)
+    } else {
+        roll_cyclic_edge(graph, field, preset_state, state, src, cyclic_fired, teleport_hit, scope.as_deref_mut())
+    };
     // Teleport still available for the corridor/junction step below unless the cyclic
     // roll already consumed it (it fired and found a candidate).
     let teleport_for_connect = teleport_hit && !teleport_spent_on_cycle;
+    // Vertical still available for the corridor/junction step below unless it was already spent
+    // on the cyclic edge (vertical_cyclic_added) or wasn't hit / cyclic didn't fire in the first
+    // place (in which case it's an ordinary growth-connect candidate, handled below).
+    let vertical_for_connect = vertical_hit && !cyclic_fired;
 
     let connected = choose_connect_targets(field, params, state, &free_regular, parent, src, teleport_for_connect, scope.as_deref_mut());
 
@@ -345,6 +400,10 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
                 log.emit(VertexBasedEvent::CyclicEdgeAdded { src: from, dst: to, teleport: teleport_spent_on_cycle, bidirectional });
             }
         }
+    }
+
+    if vertical_for_connect {
+        try_vertical_growth_connect(graph, field, elements, preset_state, state, src, scope.as_deref_mut());
     }
 
     // Preset neighbors: already connected by preset edges, so skip try_add_edge.
@@ -384,6 +443,11 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
         let unvisited: Vec<NodeId> = state.all_nodes.iter().copied()
             .filter(|n| !state.visited.contains(n))
             .collect();
+        let unvisited = if field.level_count() > 1 {
+            filter_teleport_pool_by_floor(field, elements, state, src, unvisited, scope.as_deref_mut())
+        } else {
+            unvisited
+        };
         if !unvisited.is_empty() {
             let dst = unvisited[state.rng.random_range(0..unvisited.len())];
             let added = add_edge_and_detect_direction(graph, src, dst, |g| {
@@ -417,26 +481,39 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
     }
 }
 
-/// Cyclic roll: if triggered, picks one visited neighbor and returns it as a cycle-edge target.
-/// This happens regardless of free_neighbors availability. If a teleport was rolled for this src,
-/// the candidate pool widens from "visited geometric neighbors" to "any visited node in the
-/// graph" and the second return value is `true` (the teleport roll is considered "spent" on this
-/// cyclic edge in that case, and must not also apply to the corridor/junction step).
+fn geometric_cyclic_candidates<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+    preset_state: &PresetState,
+    state: &GenState,
+    src: NodeId,
+) -> Vec<NodeId> {
+    field.neighbors(src)
+        .into_iter()
+        .filter(|&n| state.visited.contains(&n) && can_connect(src, n, preset_state)
+            && graph.edge_between(src, n).is_none() && graph.edge_between(n, src).is_none())
+        .collect()
+}
+
+/// Cyclic edge target selection, given `cyclic_fired` already rolled by the caller (GitHub issue
+/// #337 — cyclic now rolls before teleport/vertical, so this function no longer rolls it itself).
+/// If a teleport was rolled for this src, the candidate pool widens from "visited geometric
+/// neighbors" to "any visited node in the graph" and the second return value is `true` (the
+/// teleport roll is considered "spent" on this cyclic edge in that case, and must not also apply
+/// to the corridor/junction step). If that widened pool is empty, falls back to the ordinary
+/// geometric-neighbor pool instead of skipping the cyclic edge entirely (GitHub issue #337 —
+/// intentional behavior change from the prior no-fallback semantics, for consistency with the new
+/// vertical-cyclic model; applies independently of floor_count).
 fn roll_cyclic_edge<T: Tessellation>(
     graph: &Graph,
     field: &MultiLevelField<T>,
-    params: &GenerationParams,
     preset_state: &PresetState,
     state: &mut GenState,
     src: NodeId,
+    cyclic_fired: bool,
     teleport_hit: bool,
     mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
 ) -> (Option<NodeId>, bool) {
-    let cyclic_roll = state.rng.random::<f64>();
-    let cyclic_fired = cyclic_roll < params.cyclicity;
-    if let Some(log) = scope.as_deref_mut() {
-        log.emit(VertexBasedEvent::CyclicRolled { src, roll: cyclic_roll, cyclicity: params.cyclicity, fired: cyclic_fired });
-    }
     if !cyclic_fired {
         return (None, false);
     }
@@ -448,17 +525,21 @@ fn roll_cyclic_edge<T: Tessellation>(
         if let Some(log) = scope.as_deref_mut() {
             log.emit(VertexBasedEvent::CyclicCandidatesComputed { src, geometric: false, candidates: candidates.clone() });
         }
-        if candidates.is_empty() {
+        if !candidates.is_empty() {
+            return (Some(candidates[state.rng.random_range(0..candidates.len())]), true);
+        }
+        // Teleport-widened pool empty — fall back to the ordinary geometric pool below.
+        let geometric = geometric_cyclic_candidates(graph, field, preset_state, state, src);
+        if let Some(log) = scope.as_deref_mut() {
+            log.emit(VertexBasedEvent::CyclicCandidatesComputed { src, geometric: true, candidates: geometric.clone() });
+        }
+        if geometric.is_empty() {
             (None, false)
         } else {
-            (Some(candidates[state.rng.random_range(0..candidates.len())]), true)
+            (Some(geometric[state.rng.random_range(0..geometric.len())]), false)
         }
     } else {
-        let visited_neighbors: Vec<NodeId> = field.neighbors(src)
-            .into_iter()
-            .filter(|&n| state.visited.contains(&n) && can_connect(src, n, preset_state)
-                && graph.edge_between(src, n).is_none() && graph.edge_between(n, src).is_none())
-            .collect();
+        let visited_neighbors = geometric_cyclic_candidates(graph, field, preset_state, state, src);
         if let Some(log) = scope.as_deref_mut() {
             log.emit(VertexBasedEvent::CyclicCandidatesComputed { src, geometric: true, candidates: visited_neighbors.clone() });
         }
@@ -647,6 +728,404 @@ fn choose_junction_candidates<T: Tessellation>(
     chosen
 }
 
+// --- Vertical connections (GitHub issue #337) ---
+
+/// Whether a vertical-connection attempt landed on a `VerticalPassage` or `Elevator` outcome —
+/// mirrors the roll described by `GenerationParams::vertical_passage_elevator_balance`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VerticalKind {
+    Passage,
+    Elevator,
+}
+
+/// Rolls the passage-vs-elevator balance — always consumed once `vertical_chance` hit, regardless
+/// of whether a valid target is later found (RNG-always-consumed discipline, same as the rest of
+/// this model).
+fn roll_vertical_balance(
+    elements: &ElementsConfig,
+    state: &mut GenState,
+    src: NodeId,
+    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+) -> VerticalKind {
+    let roll = state.rng.random::<f64>();
+    let is_elevator = roll < elements.vertical_passage_elevator_balance;
+    if let Some(log) = scope.as_deref_mut() {
+        log.emit(VertexBasedEvent::VerticalBalanceRolled { src, roll, balance: elements.vertical_passage_elevator_balance, is_elevator });
+    }
+    if is_elevator { VerticalKind::Elevator } else { VerticalKind::Passage }
+}
+
+/// The adjacent-floor neighbor (by position in `levels_ordered()`, never by raw `LevelId` — see
+/// `Specs/space.md`) `src`'s level has in the given direction. `None` at a boundary (first/last
+/// floor) where that direction doesn't exist.
+fn adjacent_level<T: Tessellation>(field: &MultiLevelField<T>, src: NodeId, upward: bool) -> Option<LevelId> {
+    let levels: Vec<LevelId> = field.levels_ordered().collect();
+    let src_level = field.level_of(src)?;
+    let idx = levels.iter().position(|&l| l == src_level)?;
+    if upward {
+        levels.get(idx + 1).copied()
+    } else {
+        idx.checked_sub(1).and_then(|i| levels.get(i).copied())
+    }
+}
+
+/// Resolves `VerticalPassage`'s single target node: the node at `src`'s own x-y point on the
+/// unique adjacent floor available (boundary floors have only one direction; interior floors
+/// still resolve to exactly one target here since a passage always targets one specific
+/// neighbor — the caller decides which direction via context, see `try_vertical_growth_connect`/
+/// `try_vertical_cyclic_edge`). Returns `None` if that direction has no floor, or `node_at`
+/// doesn't resolve a node there (different shape/custom cells between floors) — both are
+/// `VerticalPassage` failure per the plan, never a coordinate lookup of our own.
+fn resolve_vertical_passage_target<T: Tessellation>(field: &MultiLevelField<T>, src: NodeId, upward: bool) -> Option<NodeId> {
+    let point = field.point_of(src)?;
+    let level = adjacent_level(field, src, upward)?;
+    field.node_at(level, point)
+}
+
+/// Rolls one-way-vs-two-way and, if one-way, the up/down direction for a `VerticalPassage` edge
+/// between `src` and the already-resolved `dst`. Adds the edge and emits `VerticalPassageAdded`.
+/// `dst` is fixed by the caller (growth: unvisited target; cyclic: the sole visited neighbor) —
+/// this function only decides directionality of the edge, never which floor `dst` is on (see the
+/// plan's "Direction roll" note: boundary floors need no special-casing here, they simply already
+/// have only one possible `dst`).
+fn add_vertical_passage_edge(
+    graph: &mut Graph,
+    elements: &ElementsConfig,
+    state: &mut GenState,
+    src: NodeId,
+    dst: NodeId,
+    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+) {
+    let one_way_roll = state.rng.random::<f64>();
+    let one_way = one_way_roll < elements.one_way_vertical_passage_chance;
+    if let Some(log) = scope.as_deref_mut() {
+        log.emit(VertexBasedEvent::VerticalPassageOneWayRolled { roll: one_way_roll, one_way_chance: elements.one_way_vertical_passage_chance, fired: one_way });
+    }
+    let mut upward = true;
+    if one_way {
+        let dir_roll = state.rng.random::<f64>();
+        upward = dir_roll < elements.vertical_up_down_balance;
+        if let Some(log) = scope.as_deref_mut() {
+            log.emit(VertexBasedEvent::VerticalPassageDirectionRolled { roll: dir_roll, balance: elements.vertical_up_down_balance, upward });
+        }
+        let (from, to) = if upward { (src, dst) } else { (dst, src) };
+        graph.add_edge(from, to, EdgeKind::VerticalPassage);
+    } else {
+        graph.add_bidirectional_edge(src, dst, EdgeKind::VerticalPassage);
+    }
+    if let Some(log) = scope.as_deref_mut() {
+        log.emit(VertexBasedEvent::VerticalPassageAdded { src, dst, one_way, upward });
+    }
+}
+
+/// Growth-context vertical-connect attempt: `vertical_hit` fired, cyclic did not (or vertical
+/// wasn't spent on it). Balance decides passage vs. elevator; on failure, falls back to the other
+/// kind exactly once (never both ways in the same attempt — see the plan's "not more than one
+/// jump" rule), gated by the balance not being fully committed to the failed kind.
+#[allow(clippy::too_many_arguments)]
+fn try_vertical_growth_connect<T: Tessellation>(
+    graph: &mut Graph,
+    field: &MultiLevelField<T>,
+    elements: &ElementsConfig,
+    preset_state: &PresetState,
+    state: &mut GenState,
+    src: NodeId,
+    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+) {
+    let kind = roll_vertical_balance(elements, state, src, scope.as_deref_mut());
+    match kind {
+        VerticalKind::Passage => {
+            if try_growth_vertical_passage(graph, field, elements, preset_state, state, src, scope.as_deref_mut()) {
+                return;
+            }
+            if let Some(log) = scope.as_deref_mut() {
+                log.emit(VertexBasedEvent::VerticalPassageFailed { src, elevator_fallback_allowed: elements.vertical_passage_elevator_balance != 0.0 });
+            }
+            if elements.vertical_passage_elevator_balance != 0.0 {
+                try_growth_elevator(graph, field, elements, preset_state, state, src, scope);
+            }
+        }
+        VerticalKind::Elevator => {
+            if try_growth_elevator(graph, field, elements, preset_state, state, src, scope.as_deref_mut()) {
+                return;
+            }
+            if elements.vertical_passage_elevator_balance != 1.0 {
+                try_growth_vertical_passage(graph, field, elements, preset_state, state, src, scope);
+            }
+        }
+    }
+}
+
+/// Attempts a growth-context `VerticalPassage`: target must be unvisited, on either adjacent
+/// floor (whichever resolves to an unvisited node; if both do, picks uniformly). Returns whether
+/// an edge was added.
+fn try_growth_vertical_passage<T: Tessellation>(
+    graph: &mut Graph,
+    field: &MultiLevelField<T>,
+    elements: &ElementsConfig,
+    preset_state: &PresetState,
+    state: &mut GenState,
+    src: NodeId,
+    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+) -> bool {
+    let candidates: Vec<(bool, NodeId)> = [true, false].into_iter()
+        .filter_map(|upward| resolve_vertical_passage_target(field, src, upward).map(|n| (upward, n)))
+        .filter(|&(_, n)| !state.visited.contains(&n) && can_connect(src, n, preset_state))
+        .collect();
+    let Some(&(_, dst)) = (if candidates.len() <= 1 {
+        candidates.first()
+    } else {
+        Some(&candidates[state.rng.random_range(0..candidates.len())])
+    }) else {
+        return false;
+    };
+    add_vertical_passage_edge(graph, elements, state, src, dst, scope.as_deref_mut());
+    state.visited.insert(dst);
+    state.in_reserve.remove(&dst);
+    add_to_frontier(dst, Some(src), &mut state.frontier, &mut state.in_frontier);
+    if let Some(log) = scope.as_deref_mut() {
+        log.emit(VertexBasedEvent::NodeVisited { node: dst, parent: src });
+    }
+    true
+}
+
+/// Vertical-cyclic attempt: cyclic and vertical both fired this step. Balance decides passage vs.
+/// elevator (cyclic candidate pool: 1 visited neighbor for passage, or an elevator whose floor set
+/// includes exactly one visited floor for elevator). On failure, falls back to the ordinary
+/// geometric cyclic path (handled by the caller when this returns `false`) — never to the other
+/// vertical kind (only growth-context vertical failures bounce between passage/elevator).
+fn try_vertical_cyclic_edge<T: Tessellation>(
+    graph: &mut Graph,
+    field: &MultiLevelField<T>,
+    elements: &ElementsConfig,
+    preset_state: &PresetState,
+    state: &mut GenState,
+    src: NodeId,
+    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+) -> bool {
+    let kind = roll_vertical_balance(elements, state, src, scope.as_deref_mut());
+    match kind {
+        VerticalKind::Passage => {
+            let candidates: Vec<(bool, NodeId)> = [true, false].into_iter()
+                .filter_map(|upward| resolve_vertical_passage_target(field, src, upward).map(|n| (upward, n)))
+                .filter(|&(_, n)| state.visited.contains(&n) && can_connect(src, n, preset_state)
+                    && graph.edge_between(src, n).is_none() && graph.edge_between(n, src).is_none())
+                .collect();
+            let Some(&(_, dst)) = (if candidates.len() <= 1 {
+                candidates.first()
+            } else {
+                Some(&candidates[state.rng.random_range(0..candidates.len())])
+            }) else {
+                return false;
+            };
+            add_vertical_passage_edge(graph, elements, state, src, dst, scope);
+            true
+        }
+        VerticalKind::Elevator => {
+            try_elevator(graph, field, elements, preset_state, state, src, true, scope)
+        }
+    }
+}
+
+/// Every other floor (besides `src`'s own) that resolves a node at `src`'s x-y via `node_at`,
+/// paired with whether that node is unvisited. Ordered by position in `levels_ordered()`.
+fn elevator_floor_candidates<T: Tessellation>(field: &MultiLevelField<T>, src: NodeId) -> Vec<(LevelId, NodeId)> {
+    let Some(point) = field.point_of(src) else { return Vec::new(); };
+    let Some(src_level) = field.level_of(src) else { return Vec::new(); };
+    field.levels_ordered()
+        .filter(|&l| l != src_level)
+        .filter_map(|l| field.node_at(l, point).map(|n| (l, n)))
+        .collect()
+}
+
+/// Longest run of consecutive-by-position floors within `candidates` (already ordered by
+/// `levels_ordered()` position) — used to clamp the unvisited pool when
+/// `allow_non_consecutive_elevator_floors` is false, computed *before* the branching roll so
+/// `floor_count` is never drawn from an unreachable range.
+fn longest_consecutive_run<T: Tessellation>(field: &MultiLevelField<T>, candidates: &[NodeId]) -> Vec<NodeId> {
+    let levels: Vec<LevelId> = field.levels_ordered().collect();
+    let mut positions: Vec<(usize, NodeId)> = candidates.iter()
+        .filter_map(|&n| field.level_of(n).and_then(|l| levels.iter().position(|&x| x == l)).map(|p| (p, n)))
+        .collect();
+    positions.sort_by_key(|&(p, _)| p);
+    let mut best: Vec<NodeId> = Vec::new();
+    let mut current: Vec<NodeId> = Vec::new();
+    let mut prev: Option<usize> = None;
+    for (pos, node) in positions {
+        if prev.map(|p| pos == p + 1).unwrap_or(true) {
+            current.push(node);
+        } else {
+            if current.len() > best.len() { best = current.clone(); }
+            current = vec![node];
+        }
+        prev = Some(pos);
+    }
+    if current.len() > best.len() { best = current; }
+    best
+}
+
+/// Full elevator construction attempt for `src`: growth-context (`from_cyclic == false`, floor
+/// set entirely unvisited) or cyclic-context (`from_cyclic == true`, exactly one guaranteed
+/// visited floor plus unvisited fill). Returns whether the elevator was actually built.
+#[allow(clippy::too_many_arguments)]
+fn try_elevator<T: Tessellation>(
+    graph: &mut Graph,
+    field: &MultiLevelField<T>,
+    elements: &ElementsConfig,
+    preset_state: &PresetState,
+    state: &mut GenState,
+    src: NodeId,
+    from_cyclic: bool,
+    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+) -> bool {
+    let all_candidates = elevator_floor_candidates(field, src);
+    let unvisited_all: Vec<NodeId> = all_candidates.iter()
+        .filter(|&&(_, n)| !state.visited.contains(&n) && can_connect(src, n, preset_state))
+        .map(|&(_, n)| n)
+        .collect();
+    let visited_all: Vec<NodeId> = all_candidates.iter()
+        .filter(|&&(_, n)| state.visited.contains(&n) && can_connect(src, n, preset_state)
+            && graph.edge_between(src, n).is_none() && graph.edge_between(n, src).is_none())
+        .map(|&(_, n)| n)
+        .collect();
+
+    let has_cyclic_visited = from_cyclic && !visited_all.is_empty();
+    let cyclic_visited_node = if has_cyclic_visited { Some(visited_all[0]) } else { None };
+    if from_cyclic && !has_cyclic_visited {
+        // Cyclic elevator attempt with no visited floor available at all — nothing to realize.
+        return false;
+    }
+
+    let unvisited_pool: Vec<NodeId> = if elements.allow_non_consecutive_elevator_floors {
+        unvisited_all.clone()
+    } else {
+        longest_consecutive_run(field, &unvisited_all)
+    };
+
+    // `max_slots`/`floor_count` count *total* floors the elevator connects, including `src`
+    // itself (per the plan's terminology) — the candidate pool only ever supplies the floors
+    // *besides* src, so it caps out at `pool.len() + 1` (the "+1" is src's own floor).
+    let max_slots = unvisited_pool.len() + if has_cyclic_visited { 1 } else { 0 } + 1;
+    let max_slots_clamped = max_slots.min(elements.elevator_span_max);
+    if let Some(log) = scope.as_deref_mut() {
+        log.emit(VertexBasedEvent::ElevatorSlotsComputed {
+            src, unvisited_pool_size: unvisited_pool.len(), has_cyclic_visited,
+            max_slots: max_slots_clamped, span_min: elements.elevator_span_min,
+        });
+    }
+    if max_slots_clamped < elements.elevator_span_min {
+        let fallback_allowed = if from_cyclic { true } else { elements.vertical_passage_elevator_balance != 1.0 };
+        if let Some(log) = scope.as_deref_mut() {
+            log.emit(VertexBasedEvent::ElevatorSlotsFailed { src, fallback_allowed });
+        }
+        return false;
+    }
+
+    let floor_count = if max_slots_clamped == elements.elevator_span_min {
+        elements.elevator_span_min
+    } else {
+        let mut count = elements.elevator_span_min;
+        for _slot in 1..=(max_slots_clamped - elements.elevator_span_min) {
+            let roll = state.rng.random::<f64>();
+            if roll < elements.elevator_branching {
+                count += 1;
+            }
+        }
+        count
+    };
+    if let Some(log) = scope.as_deref_mut() {
+        log.emit(VertexBasedEvent::ElevatorFloorCountChosen { src, floor_count });
+    }
+
+    // `chosen` holds the floors besides src — floor_count includes src, so it needs floor_count-1
+    // entries here (one of which is the guaranteed cyclic floor, when present).
+    let chosen_needed = floor_count.saturating_sub(1);
+    let mut chosen: Vec<NodeId> = Vec::with_capacity(chosen_needed);
+    let unvisited_needed = if has_cyclic_visited { chosen_needed.saturating_sub(1) } else { chosen_needed };
+    let mut pool = unvisited_pool.clone();
+    for _ in 0..unvisited_needed.min(pool.len()) {
+        let idx = state.rng.random_range(0..pool.len());
+        chosen.push(pool.swap_remove(idx));
+    }
+    if let Some(cyclic_node) = cyclic_visited_node {
+        chosen.push(cyclic_node);
+    }
+
+    let mut nodes: Vec<NodeId> = vec![src];
+    nodes.extend(chosen.iter().copied());
+    let mut edges_added = 0usize;
+    for i in 0..nodes.len() {
+        for j in (i + 1)..nodes.len() {
+            let (a, b) = (nodes[i], nodes[j]);
+            if !can_connect(a, b, preset_state) || !can_connect(b, a, preset_state) { continue; }
+            if graph.edge_between(a, b).is_none() {
+                graph.add_edge(a, b, EdgeKind::Elevator);
+                edges_added += 1;
+            }
+            if graph.edge_between(b, a).is_none() {
+                graph.add_edge(b, a, EdgeKind::Elevator);
+                edges_added += 1;
+            }
+        }
+    }
+    if let Some(log) = scope.as_deref_mut() {
+        log.emit(VertexBasedEvent::ElevatorAdded { nodes: nodes.clone(), edges_added });
+    }
+
+    for &n in &chosen {
+        if !state.visited.contains(&n) {
+            state.visited.insert(n);
+            state.in_reserve.remove(&n);
+            add_to_frontier(n, Some(src), &mut state.frontier, &mut state.in_frontier);
+            if let Some(log) = scope.as_deref_mut() {
+                log.emit(VertexBasedEvent::NodeVisited { node: n, parent: src });
+            }
+        }
+    }
+    true
+}
+
+fn try_growth_elevator<T: Tessellation>(
+    graph: &mut Graph,
+    field: &MultiLevelField<T>,
+    elements: &ElementsConfig,
+    preset_state: &PresetState,
+    state: &mut GenState,
+    src: NodeId,
+    scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+) -> bool {
+    try_elevator(graph, field, elements, preset_state, state, src, false, scope)
+}
+
+/// Cross-floor-vs-same-floor candidate filtering for a teleport target, applied after
+/// `teleport_chance` already hit — rolls `cross_floor_teleport_balance` and filters `pool` (every
+/// unvisited node in the field) by floor. Falls back to the other floor-group whenever the
+/// preferred group is empty — including extreme balance values (`0.0`/`1.0`): an extreme value
+/// describes a strong preference, not a hard ban on the alternative (see the plan's fallback
+/// rule). Only called when `field.level_count() > 1` (RNG-parity policy — see caller).
+fn filter_teleport_pool_by_floor<T: Tessellation>(
+    field: &MultiLevelField<T>,
+    elements: &ElementsConfig,
+    state: &mut GenState,
+    src: NodeId,
+    pool: Vec<NodeId>,
+    mut scope: Option<&mut ScopeGuard<VertexBasedEvent>>,
+) -> Vec<NodeId> {
+    let roll = state.rng.random::<f64>();
+    let other_floor_preferred = roll < elements.cross_floor_teleport_balance;
+    if let Some(log) = scope.as_deref_mut() {
+        log.emit(VertexBasedEvent::CrossFloorTeleportRolled { roll, balance: elements.cross_floor_teleport_balance, other_floor_preferred });
+    }
+    let src_level = field.level_of(src);
+    let (same_floor, other_floor): (Vec<NodeId>, Vec<NodeId>) = pool.into_iter()
+        .partition(|&n| field.level_of(n) == src_level);
+    if other_floor_preferred {
+        if !other_floor.is_empty() { other_floor } else { same_floor }
+    } else {
+        if !same_floor.is_empty() { same_floor } else { other_floor }
+    }
+}
+
 #[cfg(test)]
 #[path = "vertex_based_tests.rs"]
 mod tests;
@@ -658,3 +1137,7 @@ mod teleport_tests;
 #[cfg(test)]
 #[path = "vertex_based_golden_tests.rs"]
 mod golden_tests;
+
+#[cfg(test)]
+#[path = "vertex_based_vertical_tests.rs"]
+mod vertical_tests;

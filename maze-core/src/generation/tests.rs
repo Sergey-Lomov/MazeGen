@@ -214,7 +214,7 @@ fn try_add_edge_rng_parity_matches_add_edge_when_unconstrained() {
     let (_, mut graph_b) = make_field_and_graph(3, 3);
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
-    let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 };
+    let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() };
 
     let mut preset_state = PresetState::empty();
     preset_state.blocked.insert((b, a)); // force reverse_blocked branch
@@ -294,7 +294,7 @@ fn try_add_edge_delegates_to_try_add_edge_kind_with_basic_and_one_way_chance() {
     let (_, mut graph_b) = make_field_and_graph(3, 3);
     let a = node_at(&field, 0, 0);
     let b = node_at(&field, 1, 0);
-    let elements = ElementsConfig { one_way_chance: 0.5, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 };
+    let elements = ElementsConfig { one_way_chance: 0.5, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() };
     let preset_state = PresetState::empty();
 
     try_add_edge(&mut graph_a, a, b, &elements, &preset_state, &mut rng(3));

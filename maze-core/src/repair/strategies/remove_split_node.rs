@@ -120,10 +120,18 @@ impl<T: Tessellation> RepairStrategy<T, InvalidSplitNodeIssue> for RemoveSplitNo
                     for (from, to) in dirs {
                         let (from, to) = if from == node { (target, to) } else { (from, target) };
                         if from == to { continue; } // the sibling edge to/from the chosen target itself
-                        commands.push(match kind {
-                            EdgeKind::Basic => MutationCommand::AddDirectedEdge { from, to },
-                            EdgeKind::Teleport => MutationCommand::AddDirectedTeleport { from, to },
-                        });
+                        // VerticalPassage/Elevator redistribution isn't supported yet (GitHub
+                        // issue #337 scopes generation only — QC/repair for vertical connections
+                        // is #343/#344) — a split node's own edge of that kind is simply dropped
+                        // rather than relocated onto a sibling.
+                        let command = match kind {
+                            EdgeKind::Basic => Some(MutationCommand::AddDirectedEdge { from, to }),
+                            EdgeKind::Teleport => Some(MutationCommand::AddDirectedTeleport { from, to }),
+                            EdgeKind::VerticalPassage | EdgeKind::Elevator => None,
+                        };
+                        if let Some(command) = command {
+                            commands.push(command);
+                        }
                     }
                 }
             }

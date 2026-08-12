@@ -214,6 +214,7 @@ describe("mazeStore post-edit actions", () => {
 
   it("resetPostEdit repopulates postEditDraftTeleports from generated edges", () => {
     useMazeStore.setState({
+      _generatedNodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 2, x: 2, y: 0, i: 0 }, { id: 3, x: 3, y: 0, i: 0 }],
       _generatedEdges: [{ from: 0, to: 1, kind: "basic" }, { from: 2, to: 3, kind: "teleport" }],
       postEditDraftTeleports: [],
     });
@@ -237,6 +238,29 @@ describe("mazeStore post-edit actions", () => {
     expect(s.edges).toEqual(s._generatedEdges);
     expect(s.postEditDraftEdges).toEqual({ [key01]: { from: n(0), to: n(1), kind: "one_way_forward" } });
     expect(s.postEditDirty).toBe(false);
+  });
+
+  it("resetPostEdit excludes floor-1 nodes/edges sharing an (x,y) with a floor-0 node (GitHub issue #337)", () => {
+    // A floor-1 node at the same (x,y) as floor-0's node 1 must not be treated as a second split
+    // slot at that point, nor pulled into the floor-0 node/edge set post-edit still only handles.
+    useMazeStore.setState({
+      _generatedNodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 1, y: 0, i: 0, level: 0 },
+        { id: 2, x: 1, y: 0, i: 0, level: 1 },
+      ],
+      _generatedEdges: [
+        { from: 0, to: 1, kind: "basic" },
+        { from: 1, to: 2, kind: "vertical_passage" },
+      ],
+      postEditDraftEdges: {},
+      postEditDirty: true,
+    });
+    useMazeStore.getState().resetPostEdit();
+    const s = useMazeStore.getState();
+    expect(s.nodes.map((n) => n.id)).toEqual([0, 1]);
+    expect(s.edges).toEqual([{ from: 0, to: 1, kind: "basic" }]);
+    expect(s.postEditDraftSplitPoints).toEqual({});
   });
 
   it("resetPostEdit clears split-point draft state", () => {
@@ -381,6 +405,25 @@ describe("mazeStore post-edit actions", () => {
     const s = useMazeStore.getState();
     expect(s.postEditDraftEdges?.[key01]).toEqual({ from: n(0), to: n(1), kind: "one_way_forward" });
     expect(s.postEditDirty).toBe(true);
+  });
+
+  it("resetPostEditPoint excludes a floor-1 node sharing the reset point's (x,y) (GitHub issue #337)", () => {
+    // beforeEach's floor-0 nodes are (0,0)->id 0 and (1,0)->id 1. Add a floor-1 node also at (0,0)
+    // (id 2) — resetting point (0,0) must never pull that floor-1 node's edges/teleports in.
+    useMazeStore.setState({
+      _generatedNodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 1, y: 0, i: 0, level: 0 },
+        { id: 2, x: 0, y: 0, i: 0, level: 1 },
+      ],
+      _generatedEdges: [{ from: 0, to: 1, kind: "basic" }, { from: 2, to: 1, kind: "vertical_passage" }],
+      postEditDraftEdges: {},
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().resetPostEditPoint([0, 0]);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftEdges?.[key01]).toEqual({ from: n(0), to: n(1), kind: "one_way_forward" });
+    expect(Object.keys(s.postEditDraftEdges ?? {})).toHaveLength(1);
   });
 
   it("resetPostEditPoint bumps _nextPostEditTeleportId past a restored teleport's freshly minted id, so a later addPostEditTeleport can't collide (GitHub issue #327)", () => {

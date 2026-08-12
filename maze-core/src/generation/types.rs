@@ -12,6 +12,35 @@ pub struct ElementsConfig {
     /// graph nodes instead of merged into one. Always consumed regardless of value, same
     /// RNG-parity discipline as `teleport_chance`/`cyclicity` (see `vertex_based.rs`).
     pub split_chance: f64,
+    /// `CustomVertexBased`-only (GitHub issue #337): balance between a teleport targeting the
+    /// current floor vs. a different floor, consulted after `teleport_chance` already hit. `0.0` =
+    /// always current floor, `1.0` = always a different floor. Only rolled when the maze has more
+    /// than one floor — see `vertex_based.rs`'s RNG-parity policy for single-floor mazes.
+    pub cross_floor_teleport_balance: f64,
+    /// `CustomVertexBased`-only (GitHub issue #337): probability of a vertical connection
+    /// (`VerticalPassage`/`Elevator`) at each growth-opportunity, same inline-roll model as
+    /// `teleport_chance`. Only rolled when the maze has more than one floor — see
+    /// `vertex_based.rs`'s RNG-parity policy.
+    pub vertical_chance: f64,
+    /// Balance between a `VerticalPassage` (adjacent-floor) and an `Elevator` (multi-floor fan)
+    /// outcome once `vertical_chance` hits. `0.0` = always passage, `1.0` = always elevator.
+    pub vertical_passage_elevator_balance: f64,
+    /// Probability that a rolled `VerticalPassage` is one-way rather than two-way. Only consulted
+    /// for `VerticalPassage` — `Elevator` connections are always two-way.
+    pub one_way_vertical_passage_chance: f64,
+    /// Direction balance for a one-way `VerticalPassage`, relative to the already-resolved target
+    /// floor: `0.0` = always toward the src floor, `1.0` = always toward the target floor.
+    pub vertical_up_down_balance: f64,
+    /// Minimum number of floors a single `Elevator` connects (inclusive).
+    pub elevator_span_min: usize,
+    /// Maximum number of floors a single `Elevator` connects (inclusive).
+    pub elevator_span_max: usize,
+    /// Branching distribution for an elevator's floor count, same shape as `branching`/
+    /// `junction_count` but starting from `elevator_span_min` instead of a hardcoded `2`.
+    pub elevator_branching: f64,
+    /// Whether an elevator's floor set may skip floors (non-contiguous) rather than only span a
+    /// contiguous run.
+    pub allow_non_consecutive_elevator_floors: bool,
 }
 
 impl Default for ElementsConfig {
@@ -21,6 +50,15 @@ impl Default for ElementsConfig {
             teleport_chance: 0.0,
             teleport_one_way_chance: 0.0,
             split_chance: 0.0,
+            cross_floor_teleport_balance: 0.0,
+            vertical_chance: 0.0,
+            vertical_passage_elevator_balance: 0.5,
+            one_way_vertical_passage_chance: 0.0,
+            vertical_up_down_balance: 0.5,
+            elevator_span_min: 2,
+            elevator_span_max: 2,
+            elevator_branching: 0.5,
+            allow_non_consecutive_elevator_floors: false,
         }
     }
 }

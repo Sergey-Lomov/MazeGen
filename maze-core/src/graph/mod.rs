@@ -24,6 +24,13 @@ pub struct Node {
 pub enum EdgeKind {
     Basic,
     Teleport,
+    /// Connects the same x-y point on two adjacent floors (`MultiLevelField` levels). May be
+    /// one-way or two-way. See `Specs/generation.md`'s "Vertical Connections" section.
+    VerticalPassage,
+    /// Connects the same x-y point across multiple floors (not necessarily adjacent), fan-style
+    /// (every pair of the elevator's own floors gets a bidirectional edge). Always two-way — no
+    /// per-edge one-way roll exists for elevators.
+    Elevator,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

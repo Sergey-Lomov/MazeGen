@@ -766,6 +766,9 @@ export interface GenerationActions {
   setEdgeBasedParam: (key: keyof EdgeBasedParams, value: number) => void;
   setGenerationMethod: (method: string) => void;
   setElementsParam: (key: keyof ElementsConfig, value: number) => void;
+  /** Boolean-valued `ElementsConfig` fields (currently only `allow_non_consecutive_elevator_floors`,
+   * GitHub issue #337) — kept separate from `setElementsParam` since that one is typed to `number`. */
+  setElementsBoolParam: (key: "allow_non_consecutive_elevator_floors", value: boolean) => void;
   setRandomSeed: (v: boolean) => void;
   setOpenCard: (card: FeatureId) => void;
   setDebugMode: (v: boolean) => void;

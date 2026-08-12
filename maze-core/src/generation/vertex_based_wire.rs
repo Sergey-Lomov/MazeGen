@@ -39,6 +39,17 @@ mod wire_tags {
     pub const SPLIT_TELEPORT_ROLLED: u16 = 31;
     pub const SPLIT_START_REASSIGNED: u16 = 32;
     pub const SPLIT_PARENT_EDGE_RELOCATED: u16 = 33;
+    pub const VERTICAL_ROLLED: u16 = 34;
+    pub const VERTICAL_BALANCE_ROLLED: u16 = 35;
+    pub const VERTICAL_PASSAGE_ONE_WAY_ROLLED: u16 = 43;
+    pub const VERTICAL_PASSAGE_DIRECTION_ROLLED: u16 = 44;
+    pub const VERTICAL_PASSAGE_ADDED: u16 = 36;
+    pub const VERTICAL_PASSAGE_FAILED: u16 = 37;
+    pub const ELEVATOR_SLOTS_COMPUTED: u16 = 38;
+    pub const ELEVATOR_SLOTS_FAILED: u16 = 39;
+    pub const ELEVATOR_FLOOR_COUNT_CHOSEN: u16 = 40;
+    pub const ELEVATOR_ADDED: u16 = 41;
+    pub const CROSS_FLOOR_TELEPORT_ROLLED: u16 = 42;
 }
 
 impl EncodeEventPayload for VertexBasedEvent {
@@ -77,6 +88,17 @@ impl EncodeEventPayload for VertexBasedEvent {
             VertexBasedEvent::SplitTeleportRolled { .. } => wire_tags::SPLIT_TELEPORT_ROLLED,
             VertexBasedEvent::SplitStartReassigned { .. } => wire_tags::SPLIT_START_REASSIGNED,
             VertexBasedEvent::SplitParentEdgeRelocated { .. } => wire_tags::SPLIT_PARENT_EDGE_RELOCATED,
+            VertexBasedEvent::VerticalRolled { .. } => wire_tags::VERTICAL_ROLLED,
+            VertexBasedEvent::VerticalBalanceRolled { .. } => wire_tags::VERTICAL_BALANCE_ROLLED,
+            VertexBasedEvent::VerticalPassageOneWayRolled { .. } => wire_tags::VERTICAL_PASSAGE_ONE_WAY_ROLLED,
+            VertexBasedEvent::VerticalPassageDirectionRolled { .. } => wire_tags::VERTICAL_PASSAGE_DIRECTION_ROLLED,
+            VertexBasedEvent::VerticalPassageAdded { .. } => wire_tags::VERTICAL_PASSAGE_ADDED,
+            VertexBasedEvent::VerticalPassageFailed { .. } => wire_tags::VERTICAL_PASSAGE_FAILED,
+            VertexBasedEvent::ElevatorSlotsComputed { .. } => wire_tags::ELEVATOR_SLOTS_COMPUTED,
+            VertexBasedEvent::ElevatorSlotsFailed { .. } => wire_tags::ELEVATOR_SLOTS_FAILED,
+            VertexBasedEvent::ElevatorFloorCountChosen { .. } => wire_tags::ELEVATOR_FLOOR_COUNT_CHOSEN,
+            VertexBasedEvent::ElevatorAdded { .. } => wire_tags::ELEVATOR_ADDED,
+            VertexBasedEvent::CrossFloorTeleportRolled { .. } => wire_tags::CROSS_FLOOR_TELEPORT_ROLLED,
         }
     }
 
@@ -238,6 +260,62 @@ impl EncodeEventPayload for VertexBasedEvent {
                 write_node_id(out, *src);
                 write_node_id(out, *taken_by);
             }
+            VertexBasedEvent::VerticalRolled { src, roll, vertical_chance, fired } => {
+                write_node_id(out, *src);
+                write_f64(out, *roll);
+                write_f64(out, *vertical_chance);
+                write_bool(out, *fired);
+            }
+            VertexBasedEvent::VerticalBalanceRolled { src, roll, balance, is_elevator } => {
+                write_node_id(out, *src);
+                write_f64(out, *roll);
+                write_f64(out, *balance);
+                write_bool(out, *is_elevator);
+            }
+            VertexBasedEvent::VerticalPassageOneWayRolled { roll, one_way_chance, fired } => {
+                write_f64(out, *roll);
+                write_f64(out, *one_way_chance);
+                write_bool(out, *fired);
+            }
+            VertexBasedEvent::VerticalPassageDirectionRolled { roll, balance, upward } => {
+                write_f64(out, *roll);
+                write_f64(out, *balance);
+                write_bool(out, *upward);
+            }
+            VertexBasedEvent::VerticalPassageAdded { src, dst, one_way, upward } => {
+                write_node_id(out, *src);
+                write_node_id(out, *dst);
+                write_bool(out, *one_way);
+                write_bool(out, *upward);
+            }
+            VertexBasedEvent::VerticalPassageFailed { src, elevator_fallback_allowed } => {
+                write_node_id(out, *src);
+                write_bool(out, *elevator_fallback_allowed);
+            }
+            VertexBasedEvent::ElevatorSlotsComputed { src, unvisited_pool_size, has_cyclic_visited, max_slots, span_min } => {
+                write_node_id(out, *src);
+                write_usize_as_u32(out, *unvisited_pool_size);
+                write_bool(out, *has_cyclic_visited);
+                write_usize_as_u32(out, *max_slots);
+                write_usize_as_u32(out, *span_min);
+            }
+            VertexBasedEvent::ElevatorSlotsFailed { src, fallback_allowed } => {
+                write_node_id(out, *src);
+                write_bool(out, *fallback_allowed);
+            }
+            VertexBasedEvent::ElevatorFloorCountChosen { src, floor_count } => {
+                write_node_id(out, *src);
+                write_usize_as_u32(out, *floor_count);
+            }
+            VertexBasedEvent::ElevatorAdded { nodes, edges_added } => {
+                push_ids(out, nodes);
+                write_usize_as_u32(out, *edges_added);
+            }
+            VertexBasedEvent::CrossFloorTeleportRolled { roll, balance, other_floor_preferred } => {
+                write_f64(out, *roll);
+                write_f64(out, *balance);
+                write_bool(out, *other_floor_preferred);
+            }
         }
     }
 }
@@ -260,6 +338,8 @@ impl DebugEvent for VertexBasedEvent {
                 | VertexBasedEvent::SplitNodesCreated { .. }
                 | VertexBasedEvent::SplitStartReassigned { .. }
                 | VertexBasedEvent::SplitParentEdgeRelocated { .. }
+                | VertexBasedEvent::VerticalPassageAdded { .. }
+                | VertexBasedEvent::ElevatorAdded { .. }
         )
     }
 }
@@ -530,6 +610,94 @@ mod golden_tests {
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
         assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn golden_round_trip_vertical_rolled() {
+        let event = VertexBasedEvent::VerticalRolled { src: 7, roll: 1.5, vertical_chance: 1.5, fired: true };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 248, 63, 0, 0, 0, 0, 0, 0, 248, 63, 1]);
+    }
+
+    #[test]
+    fn golden_round_trip_vertical_balance_rolled() {
+        let event = VertexBasedEvent::VerticalBalanceRolled { src: 7, roll: 1.5, balance: 1.5, is_elevator: true };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 248, 63, 0, 0, 0, 0, 0, 0, 248, 63, 1]);
+    }
+
+    #[test]
+    fn golden_round_trip_vertical_passage_one_way_rolled() {
+        let event = VertexBasedEvent::VerticalPassageOneWayRolled { roll: 1.5, one_way_chance: 1.5, fired: true };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![0, 0, 0, 0, 0, 0, 248, 63, 0, 0, 0, 0, 0, 0, 248, 63, 1]);
+    }
+
+    #[test]
+    fn golden_round_trip_vertical_passage_direction_rolled() {
+        let event = VertexBasedEvent::VerticalPassageDirectionRolled { roll: 1.5, balance: 1.5, upward: true };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![0, 0, 0, 0, 0, 0, 248, 63, 0, 0, 0, 0, 0, 0, 248, 63, 1]);
+    }
+
+    #[test]
+    fn golden_round_trip_vertical_passage_added() {
+        let event = VertexBasedEvent::VerticalPassageAdded { src: 7, dst: 7, one_way: true, upward: true };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1, 1]);
+    }
+
+    #[test]
+    fn golden_round_trip_vertical_passage_failed() {
+        let event = VertexBasedEvent::VerticalPassageFailed { src: 7, elevator_fallback_allowed: true };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 1]);
+    }
+
+    #[test]
+    fn golden_round_trip_elevator_slots_computed() {
+        let event = VertexBasedEvent::ElevatorSlotsComputed { src: 7, unvisited_pool_size: 7, has_cyclic_visited: true, max_slots: 7, span_min: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 1, 7, 0, 0, 0, 7, 0, 0, 0]);
+    }
+
+    #[test]
+    fn golden_round_trip_elevator_slots_failed() {
+        let event = VertexBasedEvent::ElevatorSlotsFailed { src: 7, fallback_allowed: true };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 1]);
+    }
+
+    #[test]
+    fn golden_round_trip_elevator_floor_count_chosen() {
+        let event = VertexBasedEvent::ElevatorFloorCountChosen { src: 7, floor_count: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0]);
+    }
+
+    #[test]
+    fn golden_round_trip_elevator_added() {
+        let event = VertexBasedEvent::ElevatorAdded { nodes: vec![3, 5], edges_added: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0]);
+    }
+
+    #[test]
+    fn golden_round_trip_cross_floor_teleport_rolled() {
+        let event = VertexBasedEvent::CrossFloorTeleportRolled { roll: 1.5, balance: 1.5, other_floor_preferred: true };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![0, 0, 0, 0, 0, 0, 248, 63, 0, 0, 0, 0, 0, 0, 248, 63, 1]);
     }
 
 }

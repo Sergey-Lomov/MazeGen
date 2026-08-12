@@ -272,15 +272,15 @@ fn teleport_edges(graph: &Graph) -> Vec<(NodeId, NodeId)> {
 }
 
 fn no_teleport_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 }
+    ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() }
 }
 
 fn full_two_way_teleport_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 0.0, split_chance: 0.0 }
+    ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() }
 }
 
 fn full_one_way_teleport_elements() -> ElementsConfig {
-    ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 1.0, split_chance: 0.0 }
+    ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 1.0, split_chance: 0.0, ..Default::default() }
 }
 
 #[test]
@@ -540,7 +540,7 @@ fn teleport_rolled_at_most_once_per_node() {
     // since a one-way edge's direction is a separate coin flip unrelated to which node
     // rolled) can never exceed the total node count — this is a regression guard against the
     // bug this fix addresses, where density scaled with per-node degree instead of node count.
-    let one_way_only = ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 1.0, split_chance: 0.0 };
+    let one_way_only = ElementsConfig { one_way_chance: 0.0, teleport_chance: 1.0, teleport_one_way_chance: 1.0, split_chance: 0.0, ..Default::default() };
     let params = EdgeBasedParams {
         corridor_length: 0.0, // force src reselection every step, maximizing repeat-src chances
         branching: 1.0,

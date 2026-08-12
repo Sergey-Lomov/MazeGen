@@ -628,6 +628,71 @@ function narrationTokensForVertexBased(event: VertexBasedEvent): Token[] {
       return [{ kind: "text", text: m["debug.tree.split_start_reassigned"]() + " " }, { kind: "node", id: event.reassignedTo }];
     case "SplitParentEdgeRelocated":
       return [{ kind: "text", text: m["debug.tree.split_parent_edge_relocated"]() + " " }, { kind: "edge", from: event.parent, to: event.takenBy, bidirectional: false }];
+    case "VerticalRolled":
+      return [{
+        kind: "text",
+        text: event.fired
+          ? m["debug.tree.vertical_rolled_fired"]({ param: fmt(event.verticalChance), roll: fmt(event.roll) })
+          : m["debug.tree.vertical_rolled_not_fired"]({ param: fmt(event.verticalChance), roll: fmt(event.roll) }),
+      }];
+    case "VerticalBalanceRolled":
+      return [{
+        kind: "text",
+        text: event.isElevator
+          ? m["debug.tree.vertical_balance_rolled_elevator"]({ param: fmt(event.balance), roll: fmt(event.roll) })
+          : m["debug.tree.vertical_balance_rolled_passage"]({ param: fmt(event.balance), roll: fmt(event.roll) }),
+      }];
+    case "VerticalPassageOneWayRolled":
+      return [{
+        kind: "text",
+        text: event.fired
+          ? m["debug.tree.vertical_passage_one_way_rolled_fired"]({ param: fmt(event.oneWayChance), roll: fmt(event.roll) })
+          : m["debug.tree.vertical_passage_one_way_rolled_not_fired"]({ param: fmt(event.oneWayChance), roll: fmt(event.roll) }),
+      }];
+    case "VerticalPassageDirectionRolled":
+      return [{
+        kind: "text",
+        text: event.upward
+          ? m["debug.tree.vertical_passage_direction_rolled_upward"]({ param: fmt(event.balance), roll: fmt(event.roll) })
+          : m["debug.tree.vertical_passage_direction_rolled_downward"]({ param: fmt(event.balance), roll: fmt(event.roll) }),
+      }];
+    case "VerticalPassageAdded":
+      return [{ kind: "text", text: m["debug.tree.vertical_passage_added"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: !event.oneWay }];
+    case "VerticalPassageFailed":
+      return [{
+        kind: "text",
+        text: event.elevatorFallbackAllowed
+          ? m["debug.tree.vertical_passage_failed_fallback_allowed"]()
+          : m["debug.tree.vertical_passage_failed_fallback_not_allowed"](),
+      }];
+    case "ElevatorSlotsComputed":
+      return [{
+        kind: "text",
+        text: m["debug.tree.elevator_slots_computed"]({
+          unvisitedPoolSize: event.unvisitedPoolSize,
+          hasCyclicVisited: event.hasCyclicVisited ? "yes" : "no",
+          maxSlots: event.maxSlots,
+          spanMin: event.spanMin,
+        }),
+      }];
+    case "ElevatorSlotsFailed":
+      return [{
+        kind: "text",
+        text: event.fallbackAllowed
+          ? m["debug.tree.elevator_slots_failed_fallback_allowed"]()
+          : m["debug.tree.elevator_slots_failed_fallback_not_allowed"](),
+      }];
+    case "ElevatorFloorCountChosen":
+      return [{ kind: "text", text: m["debug.tree.elevator_floor_count_chosen"]({ floorCount: event.floorCount }) }];
+    case "ElevatorAdded":
+      return [{ kind: "text", text: m["debug.tree.elevator_added"]({ edgesAdded: event.edgesAdded }) + " " }, { kind: "region", nodes: event.nodes }];
+    case "CrossFloorTeleportRolled":
+      return [{
+        kind: "text",
+        text: event.otherFloorPreferred
+          ? m["debug.tree.cross_floor_teleport_rolled_other"]({ param: fmt(event.balance), roll: fmt(event.roll) })
+          : m["debug.tree.cross_floor_teleport_rolled_same"]({ param: fmt(event.balance), roll: fmt(event.roll) }),
+      }];
   }
 }
 

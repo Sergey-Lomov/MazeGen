@@ -127,6 +127,8 @@ export class GenerationRenderer {
         state._generatedEdges !== prev._generatedEdges ||
         state.start !== prev.start ||
         state.finish !== prev.finish ||
+        state.activeFloorId !== prev.activeFloorId ||
+        state.floors !== prev.floors ||
         state.tessellationConfig !== prev.tessellationConfig ||
         state.activeTessellationConfig !== prev.activeTessellationConfig ||
         state.debugMode !== prev.debugMode ||
@@ -175,12 +177,36 @@ export class GenerationRenderer {
   // other consumers (PostEditController/PostEditRenderer/ManageSplitNodesDialog/AnalyticsRenderer)
   // keep seeing confirmed post-edit state. The Generation feature must always show the generation
   // result itself, unaffected by post-edit, so it needs its own frozen snapshot (GitHub issue #323).
+  //
+  // GitHub issue #337: `_generatedNodes`/`_generatedEdges` (and, during a debug replay,
+  // `debugMazeView.nodes`/`.edges` — its underlying node ledger now resolves `level` too, see
+  // `runner.rs`'s `debug_all_nodes` comment) can span every floor — generation is the one path
+  // that's multi-level-aware (see `MultiLevelField::single_level_id`'s doc comment) — so they're
+  // filtered down to `activeFloorId` here, the only place that needs to know about floors at all.
+  // Everything downstream (walls/teleports/split-passages/markers) just sees a normal single-floor
+  // node/edge set — without this, nodes from different floors sharing the same (x, y) would get
+  // mistaken for a split point by `buildSplitPassages`'s per-point grouping.
   private debugView(state: ReturnType<typeof useMazeStore.getState>, debugMazeView: DebugMazeView | null) {
+    const activeFloorIndex = Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
+    if (debugMazeView) {
+      const nodes = debugMazeView.nodes.filter((n) => (n.level ?? 0) === activeFloorIndex);
+      const visibleIds = new Set(nodes.map((n) => n.id));
+      const edges = debugMazeView.edges.filter((e) => visibleIds.has(e.from) && visibleIds.has(e.to));
+      return {
+        nodes,
+        edges,
+        start: debugMazeView.start !== null && visibleIds.has(debugMazeView.start) ? debugMazeView.start : null,
+        finish: debugMazeView.finish !== null && visibleIds.has(debugMazeView.finish) ? debugMazeView.finish : null,
+      };
+    }
+    const nodes = state._generatedNodes.filter((n) => (n.level ?? 0) === activeFloorIndex);
+    const visibleIds = new Set(nodes.map((n) => n.id));
+    const edges = state._generatedEdges.filter((e) => visibleIds.has(e.from) && visibleIds.has(e.to));
     return {
-      nodes: debugMazeView ? debugMazeView.nodes : state._generatedNodes,
-      edges: debugMazeView ? debugMazeView.edges : state._generatedEdges,
-      start: debugMazeView ? debugMazeView.start : state.start,
-      finish: debugMazeView ? debugMazeView.finish : state.finish,
+      nodes,
+      edges,
+      start: state.start !== null && visibleIds.has(state.start) ? state.start : null,
+      finish: state.finish !== null && visibleIds.has(state.finish) ? state.finish : null,
     };
   }
 

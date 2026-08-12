@@ -361,7 +361,7 @@ mod tests {
     }
 
     fn node(id: u32, x: i32, y: i32, i: u32) -> NodeDto {
-        NodeDto { id, x, y, i }
+        NodeDto { id, x, y, i, level: 0 }
     }
 
     #[test]

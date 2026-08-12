@@ -119,11 +119,14 @@ impl<T: Tessellation> MultiLevelField<T> {
         self.level_order = new_order.to_vec();
     }
 
-    /// The aggregator's single level's id — panics if the level count isn't exactly one. Only
-    /// meaningful right after `single_level`, or on an aggregator otherwise known to hold exactly
-    /// one level; not a general-purpose accessor.
+    /// The aggregator's first level (by `levels_ordered()` position) — panics only if there are
+    /// no levels at all, which never happens for a live `MultiLevelField` (every constructor adds
+    /// at least one). Used by every not-yet-multi-floor-aware call site (QC/repair/routing/
+    /// analytics/post-edit — GitHub issue #333 epic) as a deliberate "always the ground floor"
+    /// stand-in until each of those is migrated to iterate `levels_ordered()` itself; generation
+    /// (GitHub issue #337) is the first caller that doesn't use this and instead handles every
+    /// level.
     pub fn single_level_id(&self) -> LevelId {
-        assert_eq!(self.levels.len(), 1, "single_level_id: aggregator does not hold exactly one level");
         self.level_order[0]
     }
 
@@ -147,6 +150,15 @@ impl<T: Tessellation> MultiLevelField<T> {
 
     pub fn level_of(&self, node: NodeId) -> Option<LevelId> {
         self.node_to_level.get(&node).copied()
+    }
+
+    /// `node`'s 0-based position in `levels_ordered()` (GitHub issue #337) — the web client's
+    /// `floors` array index, unlike the underlying `LevelId` (a stable minted id, never reused or
+    /// renumbered — see `Specs/space.md` — so not usable as a UI-facing array index). `None` if
+    /// `node` doesn't belong to any level.
+    pub fn level_index_of(&self, node: NodeId) -> Option<usize> {
+        let level = self.level_of(node)?;
+        self.level_order.iter().position(|&l| l == level)
     }
 
     /// Geometric point of `node`, resolved on `node`'s own level. `None` if `node` doesn't
@@ -407,10 +419,48 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "exactly one level")]
-    fn single_level_id_panics_when_not_exactly_one_level() {
+    #[should_panic]
+    fn single_level_id_panics_on_an_empty_aggregator() {
         let mf = MultiLevelField::<SquareTessellation>::new([]);
         mf.single_level_id();
+    }
+
+    #[test]
+    fn single_level_id_returns_the_first_level_when_several_exist() {
+        let mut ids = IdGenerator::new();
+        let mut mf = MultiLevelField::<SquareTessellation>::new([]);
+        let l0 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        assert_eq!(mf.single_level_id(), l0);
+    }
+
+    #[test]
+    fn level_index_of_matches_levels_ordered_position() {
+        let mut ids = IdGenerator::new();
+        let mut mf = MultiLevelField::<SquareTessellation>::new([]);
+        mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let l1 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let node_on_l1 = mf.node_at(l1, SquarePoint { x: 0, y: 0 }).unwrap();
+        assert_eq!(mf.level_index_of(node_on_l1), Some(1));
+    }
+
+    #[test]
+    fn level_index_of_none_for_unknown_node() {
+        let mf = MultiLevelField::<SquareTessellation>::new([]);
+        assert_eq!(mf.level_index_of(999), None);
+    }
+
+    #[test]
+    fn level_index_of_tracks_reordering_not_the_original_insertion_position() {
+        let mut ids = IdGenerator::new();
+        let mut mf = MultiLevelField::<SquareTessellation>::new([]);
+        let l0 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let l1 = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+        let node_on_l0 = mf.node_at(l0, SquarePoint { x: 0, y: 0 }).unwrap();
+        assert_eq!(mf.level_index_of(node_on_l0), Some(0));
+
+        mf.reorder_levels(&[l1, l0]);
+        assert_eq!(mf.level_index_of(node_on_l0), Some(1));
     }
 
     #[test]

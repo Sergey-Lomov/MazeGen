@@ -2,7 +2,7 @@
 
 GitHub issue #335, part of epic #333. Web-only floor-set configuration UI — add / remove / reorder / title floors. Implemented as the "Floors" card in `FeaturesPanel`, positioned immediately after the tessellation card.
 
-Purely client-side list management today: no field, preset, or generation data is attached per floor, and floor identity never reaches `maze-core`. `MultiLevelField<T>`/`LevelId` (`Specs/space.md`, issue #334) is the core-side foundation this UI is expected to eventually drive, but nothing here calls into it yet — see "Non-goals" below.
+Still no per-floor field, preset, or generation config today — every floor shares one tessellation/preset setup — but `floors.length` now reaches `maze-core` as `GenerateConfig.level_count` (GitHub issue #337): generation builds a `level_count`-level `MultiLevelField<T>` and can connect them with `VerticalPassage`/`Elevator` edges (see `Specs/generation.md`'s "Vertical Connections"). Everything downstream of generation — QC/repair/routing, post-edit, analytics/snapshot recompute — is still not multi-floor-aware and only ever operates on floor 0 (`MultiLevelField::single_level_id()`, `Specs/space.md`); the web store filters `_generatedNodes`/`_generatedEdges` down to the active floor before feeding them to post-edit or `GenerationRenderer` for exactly this reason — see "Non-goals" below.
 
 ## Concepts
 
@@ -87,7 +87,6 @@ Nothing yet reads `activeFloorId` besides the switcher itself — see "Non-goals
 
 ## Non-goals (deferred to later epic #333 issues)
 
-- No per-floor field shape, preset connections, or generation config — everything remains maze-wide. `activeFloorId` exists but nothing scopes displayed data by it yet.
-- No wiring into generation/QC/post-edit pipelines.
-- No stairs/elevators/cross-floor teleports (issue #337).
-- No connection between the web `floor.id` (UUID) and core's `LevelId` (`Specs/space.md`) — core is never called from this card. Synchronizing the two identity spaces is deferred to whichever future issue actually sends floor configuration to `maze-core`.
+- No per-floor field shape, preset connections, or generation config — every floor shares one tessellation/preset setup, and `level_count` (the only thing sent to core) is just a count.
+- Generation now consumes `level_count` (issue #337) and builds/renders across every floor; QC/repair/routing, post-edit, and analytics/snapshot recompute are not wired in yet — they still only ever see floor 0, regardless of `level_count`. `activeFloorId` now scopes `GenerationRenderer`'s displayed nodes/edges (and the web store's post-edit reset logic filters to floor 0 before use), but no other feature reads it.
+- No connection between the web `floor.id` (UUID) and core's `LevelId` (`Specs/space.md`) — the web client never sends or receives `LevelId`s, only a `level_count` number and, on `NodeDto`, a 0-based floor *index* (`levels_ordered()` position, not `LevelId`). Synchronizing the two identity spaces (e.g. so per-floor field/preset config could be sent) is deferred to whichever future issue actually needs it.

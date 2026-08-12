@@ -10,6 +10,8 @@ import { ui, radius, typography, muted, spacing, inset, indent } from "../../sty
 import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
 import { Switch } from "../Switch";
 import { SliderParam } from "../SliderParam";
+import { ToggleRow } from "../ToggleRow";
+import { ElevatorSpanRow } from "../ElevatorSpanRow";
 import { WarningBubble } from "../WarningBubble";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
@@ -29,6 +31,7 @@ export function GenerationFeature({ canGenerate }: Props) {
   const initialConfig = useMazeStore((s) => s.initialConfig);
   const elementsConfig = useMazeStore((s) => s.elementsConfig);
   const qcExperiment = useMazeStore((s) => s.qcExperiment);
+  const multiFloor = useMazeStore((s) => s.floors.length > 1);
 
   const setSeed = useMazeStore((s) => s.setSeed);
   const setRandomSeed = useMazeStore((s) => s.setRandomSeed);
@@ -36,6 +39,7 @@ export function GenerationFeature({ canGenerate }: Props) {
   const seedHistoryForward = useMazeStore((s) => s.seedHistoryForward);
   const setDebugMode = useMazeStore((s) => s.setDebugMode);
   const setGenerationParam = useMazeStore((s) => s.setGenerationParam);
+  const setElementsBoolParam = useMazeStore((s) => s.setElementsBoolParam);
   const setEdgeBasedParam = useMazeStore((s) => s.setEdgeBasedParam);
   const setElementsParam = useMazeStore((s) => s.setElementsParam);
   const setQcExperiment = useMazeStore((s) => s.setQcExperiment);
@@ -164,6 +168,18 @@ export function GenerationFeature({ canGenerate }: Props) {
               <SliderParam variant="primary" label={m["generation.one_way_chance"]()} value={elementsConfig.one_way_chance ?? 0.04} onChange={(v) => setElementsParam("one_way_chance", v)} />
               <SliderParam variant="primary" label={m["generation.teleport_chance"]()} value={elementsConfig.teleport_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_chance", v)} />
               <SliderParam variant="primary" label={m["generation.teleport_one_way_chance"]()} value={elementsConfig.teleport_one_way_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_one_way_chance", v)} />
+              {isVertexBased && multiFloor && (
+                <>
+                  <SliderParam variant="primary" label={m["generation.cross_floor_teleport_balance"]()} value={elementsConfig.cross_floor_teleport_balance ?? 0.0} onChange={(v) => setElementsParam("cross_floor_teleport_balance", v)} />
+                  <SliderParam variant="primary" label={m["generation.vertical_chance"]()} value={elementsConfig.vertical_chance ?? 0.0} onChange={(v) => setElementsParam("vertical_chance", v)} />
+                  <SliderParam variant="primary" label={m["generation.vertical_passage_elevator_balance"]()} value={elementsConfig.vertical_passage_elevator_balance ?? 0.5} onChange={(v) => setElementsParam("vertical_passage_elevator_balance", v)} />
+                  <SliderParam variant="primary" label={m["generation.one_way_vertical_passage_chance"]()} value={elementsConfig.one_way_vertical_passage_chance ?? 0.0} onChange={(v) => setElementsParam("one_way_vertical_passage_chance", v)} />
+                  <SliderParam variant="primary" label={m["generation.vertical_up_down_balance"]()} value={elementsConfig.vertical_up_down_balance ?? 0.5} onChange={(v) => setElementsParam("vertical_up_down_balance", v)} />
+                  <ElevatorSpanRow min={elementsConfig.elevator_span_min ?? 2} max={elementsConfig.elevator_span_max ?? 2} onMinChange={(v) => setElementsParam("elevator_span_min", v)} onMaxChange={(v) => setElementsParam("elevator_span_max", v)} />
+                  <SliderParam variant="primary" label={m["generation.elevator_branching"]()} value={elementsConfig.elevator_branching ?? 0.5} onChange={(v) => setElementsParam("elevator_branching", v)} />
+                  <ToggleRow label={m["generation.allow_non_consecutive_elevator_floors"]()} checked={elementsConfig.allow_non_consecutive_elevator_floors ?? false} onChange={(v) => setElementsBoolParam("allow_non_consecutive_elevator_floors", v)} />
+                </>
+              )}
               {isVertexBased && (
                 <div style={styles.row}>
                   <div style={{ flex: 1 }}>

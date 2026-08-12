@@ -15,6 +15,11 @@ pub struct NodeDto {
     pub x: i32,
     pub y: i32,
     pub i: u32,
+    /// The node's floor, as a 0-based index into `MultiLevelField::levels_ordered()` (GitHub issue
+    /// #337) — matches the web client's `floors` array index, not the internal `LevelId`, which
+    /// is never reused/renumbered and thus not stable across floor removal (`Specs/space.md`).
+    /// Always `0` for a maze that never had more than one floor.
+    pub level: u32,
 }
 
 #[derive(Serialize)]
@@ -22,6 +27,8 @@ pub struct NodeDto {
 pub enum EdgeKindDto {
     Basic,
     Teleport,
+    VerticalPassage,
+    Elevator,
 }
 
 /// One directed graph edge. Note: `(from, to)` is not unique in `MazeSnapshot.edges` — a

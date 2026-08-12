@@ -68,6 +68,7 @@ fn generate_maze_with_extreme_params_is_connected() {
         branching:       1.0,
         directionality:  1.0,
         cyclicity:       1.0,
+        ..Default::default()
     };
     let all_min = GenerationParams {
         depth_first:     0.0,
@@ -75,6 +76,7 @@ fn generate_maze_with_extreme_params_is_connected() {
         branching:       0.0,
         directionality:  0.0,
         cyclicity:       0.0,
+        ..Default::default()
     };
     let (mut g1, mut f1, start1, mut ids1) = build_with_ids(10, 10);
     let (mut g2, mut f2, start2, mut ids2) = build_with_ids(10, 10);
@@ -92,6 +94,7 @@ fn generate_maze_params_affect_structure() {
         branching:       1.0,
         directionality:  0.0,
         cyclicity:       0.0,
+        ..Default::default()
     };
     let low_branching = GenerationParams {
         depth_first:     0.0,
@@ -99,6 +102,7 @@ fn generate_maze_params_affect_structure() {
         branching:       0.0,
         directionality:  0.0,
         cyclicity:       0.0,
+        ..Default::default()
     };
     let (mut g1, mut f1, start1, mut ids1) = build_with_ids(10, 10);
     let (mut g2, mut f2, start2, mut ids2) = build_with_ids(10, 10);
@@ -109,7 +113,7 @@ fn generate_maze_params_affect_structure() {
 
 #[test]
 fn generated_maze_is_connected_with_all_one_way_edges() {
-    let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 };
+    let elements = ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() };
     for seed in [1, 42, 99, 1234, 9999] {
         let (mut graph, mut field, start, mut ids) = build_with_ids(8, 8);
         generate_maze(&mut graph, &mut field, &mut ids, seed, start, config_with_elements(elements.clone()), &empty_preset());

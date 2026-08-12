@@ -1,5 +1,3 @@
-#[path = "edge_based_wire.rs"]
-mod edge_based_wire;
 #[path = "edge_based_event.rs"]
 mod edge_based_event;
 

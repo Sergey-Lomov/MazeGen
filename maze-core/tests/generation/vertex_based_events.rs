@@ -5,7 +5,7 @@ use maze_core::space::{MultiLevelField, SquareTessellation};
 use super::helpers::*;
 
 fn no_randomness_params() -> GenerationParams {
-    GenerationParams { depth_first: 0.0, corridor_chance: 1.0, branching: 0.0, directionality: 0.0, cyclicity: 0.0 }
+    GenerationParams { depth_first: 0.0, corridor_chance: 1.0, branching: 0.0, directionality: 0.0, cyclicity: 0.0, ..Default::default() }
 }
 
 /// Calls `generate_vertex_based` with split-related params defaulted to "feature off" — every
@@ -76,11 +76,13 @@ fn vertex_based_single_step_emits_exact_event_sequence() {
         "event 1: {:?}", events1[1]
     );
     assert!(
-        matches!(events1[2], VertexBasedEvent::TeleportRolled { src, fired: false, .. } if src == start),
+        // GitHub issue #337: cyclic now rolls before teleport (was the reverse) — vertical
+        // connection needs to know cyclic_fired before deciding growth vs. cyclic vertical use.
+        matches!(events1[2], VertexBasedEvent::CyclicRolled { src, fired: false, .. } if src == start),
         "event 2: {:?}", events1[2]
     );
     assert!(
-        matches!(events1[3], VertexBasedEvent::CyclicRolled { src, fired: false, .. } if src == start),
+        matches!(events1[3], VertexBasedEvent::TeleportRolled { src, fired: false, .. } if src == start),
         "event 3: {:?}", events1[3]
     );
     assert!(
@@ -118,11 +120,11 @@ fn vertex_based_single_step_emits_exact_event_sequence() {
         "event 1: {:?}", events2[1]
     );
     assert!(
-        matches!(events2[2], VertexBasedEvent::TeleportRolled { src, fired: false, .. } if src == neighbor),
+        matches!(events2[2], VertexBasedEvent::CyclicRolled { src, fired: false, .. } if src == neighbor),
         "event 2: {:?}", events2[2]
     );
     assert!(
-        matches!(events2[3], VertexBasedEvent::CyclicRolled { src, fired: false, .. } if src == neighbor),
+        matches!(events2[3], VertexBasedEvent::TeleportRolled { src, fired: false, .. } if src == neighbor),
         "event 3: {:?}", events2[3]
     );
     assert!(
@@ -218,7 +220,7 @@ fn vertex_based_event_log_preset_teleport_dst_emits_preset_neighbor_visited_not_
 /// graph's actual direction, not the algorithm's connection-attempt intent, across many seeds.
 #[test]
 fn vertex_based_event_log_edge_added_direction_matches_graph_even_when_one_way_reverses_it() {
-    let one_way_elements = maze_core::generation::ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 };
+    let one_way_elements = maze_core::generation::ElementsConfig { one_way_chance: 1.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() };
     let params = GenerationParams::default();
     for seed in 0..20 {
         let (mut graph, mut field, start, mut ids) = build_with_ids(6, 6);
@@ -269,7 +271,7 @@ fn vertex_based_event_kinds_agree_with_is_mutating() {
 }
 
 fn teleport_elements() -> maze_core::generation::ElementsConfig {
-    maze_core::generation::ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.3, teleport_one_way_chance: 0.0, split_chance: 0.0 }
+    maze_core::generation::ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.3, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() }
 }
 
 #[test]
@@ -298,7 +300,7 @@ fn vertex_based_reserve_search_scopes_are_nonempty_and_nested_under_a_step_scope
     // reliably drives the frontier empty mid-run at least once, forcing a "reserve_search"
     // sub-scope to open.
     let (mut graph, mut field, start, mut ids) = build_with_ids(8, 8);
-    let params = GenerationParams { depth_first: 1.0, corridor_chance: 1.0, branching: 0.0, directionality: 0.0, cyclicity: 0.0 };
+    let params = GenerationParams { depth_first: 1.0, corridor_chance: 1.0, branching: 0.0, directionality: 0.0, cyclicity: 0.0, ..Default::default() };
     let elements = no_one_way_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
     generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 2, start, &params, &elements, &empty_preset(), Some(&mut log));
@@ -323,7 +325,7 @@ fn vertex_based_junction_count_scopes_open_with_setup_then_slot_rolls_matching_m
     // (0, 1) and a reasonably connected field guarantee virtual_max >= 2 on at least one step, so
     // junction_count's roll series actually runs.
     let (mut graph, mut field, start, mut ids) = build_with_ids(6, 6);
-    let params = GenerationParams { corridor_chance: 0.0, branching: 0.5, depth_first: 0.5, directionality: 0.0, cyclicity: 0.0 };
+    let params = GenerationParams { corridor_chance: 0.0, branching: 0.5, depth_first: 0.5, directionality: 0.0, cyclicity: 0.0, ..Default::default() };
     let elements = no_one_way_elements();
     let mut log: EventLog<VertexBasedEvent> = EventLog::new();
     generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 8, start, &params, &elements, &empty_preset(), Some(&mut log));

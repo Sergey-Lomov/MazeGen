@@ -119,14 +119,21 @@ export interface GenerationCardData {
 /// Pattern mode on + a positive split chance + no patterns defined is a dead-weight config —
 /// splitting is enabled but has nothing to draw from, so it silently never fires. Only
 /// `custom_vertex_based` even has pattern mode (see `GenerationFeature.tsx`'s `isVertexBased`).
+/// `floorCount > 1` with a non-`custom_vertex_based` method (GitHub issue #337) is a harder
+/// block than the split-patterns warning — only `custom_vertex_based` can connect floors at all,
+/// so it takes priority and is reported as `critical`, not just `warning`.
 export function computeGenerationCard(
   tessellationConfirmed: boolean,
   method: string,
   splitPatternMode: boolean,
   splitChance: number,
   patternCount: number,
+  floorCount: number,
 ): GenerationCardData {
   if (!tessellationConfirmed) return { status: "unavailable", comment: m["status.confirm_tessellation_first"]() };
+
+  const algorithmFloorIncompatible = floorCount > 1 && method !== "custom_vertex_based";
+  if (algorithmFloorIncompatible) return { status: "critical", comment: m["status.algorithm_floor_incompatible"]() };
 
   const splitPatternsMissing = method === "custom_vertex_based" && splitPatternMode && splitChance > 0 && patternCount === 0;
   if (splitPatternsMissing) return { status: "warning", comment: m["status.split_patterns_missing"]() };
@@ -317,8 +324,9 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     : m["status.quality_configured"]();
 
   const { status: generationStatus, comment: generationComment } = computeGenerationCard(
-    tessellationConfirmed, initialConfig.method, splitPatternMode, elementsConfig.split_chance ?? 0, splitPatterns.length,
+    tessellationConfirmed, initialConfig.method, splitPatternMode, elementsConfig.split_chance ?? 0, splitPatterns.length, floors.length,
   );
+  const algorithmFloorIncompatible = floors.length > 1 && initialConfig.method !== "custom_vertex_based";
 
   return (
     <div style={styles.panel}>
@@ -386,7 +394,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
         expanded={openCard === "generation"}
         onOpen={() => handleToggle("generation")}
       >
-        <GenerationFeature canGenerate={tessellationConfirmed} />
+        <GenerationFeature canGenerate={tessellationConfirmed && !algorithmFloorIncompatible} />
       </FeatureCard>
       <FeatureCard
         title={m["post_edit.title"]()}

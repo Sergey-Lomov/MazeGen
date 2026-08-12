@@ -87,6 +87,7 @@ describe("mazeStore.generate", () => {
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
       tessellation: fieldConfigToWasm({ type: "square", width: 3, height: 4 }),
+      level_count: 1,
       stages: [{ id: "stage_1", name: "Stage 1", rules: [] }],
       repair_max_iterations: 100,
       repair_time_budget_secs: 10,
@@ -124,6 +125,7 @@ describe("mazeStore.generate", () => {
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
       tessellation: fieldConfigToWasm({ type: "hex_parallelogram", cols: 5, rows: 6, orientation: "flat_top" }),
+      level_count: 1,
       stages: [{ id: "stage_1", name: "Stage 1", rules: [] }],
       repair_max_iterations: 100,
       repair_time_budget_secs: 10,
@@ -146,6 +148,7 @@ describe("mazeStore.generate", () => {
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(7, {
       tessellation: fieldConfigToWasm({ type: "hex_hexagon", radius: 3, orientation: "pointy_top" }),
+      level_count: 1,
       stages: [{ id: "stage_1", name: "Stage 1", rules: [] }],
       repair_max_iterations: 100,
       repair_time_budget_secs: 10,
@@ -250,6 +253,7 @@ describe("mazeStore.generate", () => {
     useMazeStore.getState().generate();
     expect(generateMaze).toHaveBeenCalledWith(42, {
       tessellation: fieldConfigToWasm({ type: "square", width: 10, height: 10 }),
+      level_count: 1,
       stages: [{
         id: "stage_1",
         name: "Stage 1",

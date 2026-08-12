@@ -179,6 +179,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     });
   return {
     tessellation: fieldConfigToWasm(activeTessellation),
+    level_count: state.floors.length,
     stages,
     ...(state.repairMaxIterations != null ? { repair_max_iterations: state.repairMaxIterations } : {}),
     ...(state.repairTimeBudgetSecs != null ? { repair_time_budget_secs: state.repairTimeBudgetSecs } : {}),
