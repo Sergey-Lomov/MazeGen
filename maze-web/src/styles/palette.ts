@@ -147,6 +147,7 @@ export const base = {
   canvasHover: "#44aaff",
   origin: "#ff6600",
   teleport: "#a366dd",
+  vertical: "#2ec4b6",
   debugActive: "#4488ff",
   debugCurrentSrc: "#cccc22",
   debugRefHighlight: "#44ccff",

@@ -53,7 +53,7 @@ export interface DebugMazeView {
  *  (generation) added — a plain `edges` list alone can only express "these edges exist", never "one
  *  fewer edge exists now than before". */
 interface DebugMazeViewContribution {
-  edges: { from: bigint; to: bigint; kind?: "basic" | "teleport" }[];
+  edges: { from: bigint; to: bigint; kind?: "basic" | "teleport" | "vertical_passage" | "elevator" }[];
   removedEdges: { from: bigint; to: bigint }[];
   start: bigint | null;
   finish: bigint | null;
@@ -181,7 +181,7 @@ function qcContribution(arena: DebugArenaHandle, source: DebugArenaHandle["sourc
  *  `debugVertices` pass through as-is — no `if (sources.length === 1)` special case needed
  *  anywhere, here or in any caller. */
 function mergeDebugMazeView(contributions: DebugMazeViewContribution[]): {
-  edges: { from: bigint; to: bigint; kind?: "basic" | "teleport" }[];
+  edges: { from: bigint; to: bigint; kind?: "basic" | "teleport" | "vertical_passage" | "elevator" }[];
   start: bigint | null;
   finish: bigint | null;
   debugValues: Map<string, bigint[]>;
@@ -191,7 +191,7 @@ function mergeDebugMazeView(contributions: DebugMazeViewContribution[]): {
   createdNodes: bigint[];
   removedNodes: bigint[];
 } {
-  let edges: { from: bigint; to: bigint; kind?: "basic" | "teleport" }[] = [];
+  let edges: { from: bigint; to: bigint; kind?: "basic" | "teleport" | "vertical_passage" | "elevator" }[] = [];
   let start: bigint | null = null;
   let finish: bigint | null = null;
   let debugValues: Map<string, bigint[]> = new Map();

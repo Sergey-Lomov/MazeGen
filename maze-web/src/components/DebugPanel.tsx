@@ -55,6 +55,7 @@ export function DebugPanel() {
   const debugValueToggles = useMazeStore((s) => s.debugValueToggles);
   const showKruskalDsuGroups = useMazeStore((s) => s.showKruskalDsuGroups);
   const setDebugStep = useMazeStore((s) => s.setDebugStep);
+  const focusDebugStep = useMazeStore((s) => s.focusDebugStep);
   const setDebugMode = useMazeStore((s) => s.setDebugMode);
   const setDelayMs   = useMazeStore((s) => s.setDebugAutoPlayDelay);
   const toggleDebugValue = useMazeStore((s) => s.toggleDebugValue);
@@ -164,7 +165,12 @@ export function DebugPanel() {
       </div>
 
       <div style={styles.stepRow}>
-        <span style={styles.stepLabel}>
+        <span
+          className="hoverable"
+          style={styles.stepLabel}
+          title={m["debug.focus_step"]()}
+          onClick={focusDebugStep}
+        >
           <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "right" as const }}>{total === 0 ? 0 : debugStep + 1}</span>
           {" / "}
           <span style={{ ...styles.stepLabelHalf, width: stepLabelHalfWidth, textAlign: "left" as const }}>{total}</span>
@@ -286,6 +292,7 @@ const styles: Record<string, React.CSSProperties> = {
     ...muted(typography.body),
     whiteSpace: "nowrap" as const,
     flexShrink: 0,
+    cursor: "pointer" as const,
   },
   stepLabelHalf: {
     display: "inline-block" as const,

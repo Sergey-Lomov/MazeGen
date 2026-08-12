@@ -160,6 +160,7 @@
   "debug.outdated_warning": "Debug snapshot is outdated — re-generate to update",
   "debug.prev_step": "Previous step",
   "debug.next_step": "Next step",
+  "debug.focus_step": "Scroll event tree to current step",
   "debug.stop": "Stop",
   "debug.play": "Play",
   "debug.exit": "Exit debug mode",

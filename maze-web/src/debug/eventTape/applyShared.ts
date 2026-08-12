@@ -10,13 +10,15 @@
 export interface Edge {
   from: bigint;
   to: bigint;
-  /** Whether this edge is a `Teleport` connection rather than a `Basic` one — optional and unset
-   *  for RB/Kruskal/Wilson (none of those algorithms produce teleport edges); set by
-   *  `applyEdgeBased`/`applyVertexBased` from their own `EdgeAdded`/`CyclicEdgeAdded.teleport`
-   *  (GitHub issue #144's teleport-rendering fix — `selectDebugMazeView` used to hardcode every
-   *  reconstructed edge's `EdgeDto.kind` to `"basic"`, so a teleport edge rendered as a plain
-   *  passage in debug mode even though the underlying graph edge was `EdgeKind::Teleport`). */
-  kind?: "basic" | "teleport";
+  /** This edge's `EdgeKind` when it isn't a plain `Basic` passage — optional and unset for
+   *  RB/Kruskal/Wilson (none of those algorithms produce anything but basic edges); set by
+   *  `applyEdgeBased`/`applyVertexBased` from their own mutating events (`EdgeAdded`/
+   *  `CyclicEdgeAdded.teleport` for `"teleport"`, GitHub issue #144's teleport-rendering fix —
+   *  `selectDebugMazeView` used to hardcode every reconstructed edge's `EdgeDto.kind` to `"basic"`,
+   *  so a teleport edge rendered as a plain passage in debug mode even though the underlying graph
+   *  edge was `EdgeKind::Teleport`; `VerticalPassageAdded`/`ElevatorAdded` for `"vertical_passage"`/
+   *  `"elevator"`, GitHub issue #337/#347's same class of bug for vertical connections). */
+  kind?: "basic" | "teleport" | "vertical_passage" | "elevator";
 }
 
 /** A named, session-specific set of node ids an algorithm evolves over the run (e.g. Recursive

@@ -8,7 +8,7 @@ import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer } from "../renderers/SplitJunctionRenderer";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer, type VerticalConnectionStyle, type VerticalMarkerStyle } from "../renderers/VerticalConnectionRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers } from "../selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet } from "../selectors/mazeSelectors";
 import { computeVectorByWallsWarnings } from "../selectors/exportWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import { resolveEndpoint, buildSplitNodeResolver } from "../postEditEndpoint";
@@ -519,6 +519,7 @@ export class VectorByWallsRenderer {
     // Resolves a `vertical_passage`/`elevator` edge's `to` node's own floor (GitHub issue #347) —
     // built from the *unscoped* node list, since `to` never survives the floor-scoping above.
     const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+    const verticalPairs = selectVerticalPassagePairSet(state.edges);
     const activeFloorIndex = Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: state.vectorByWallsSettings.floorColor, alpha: 1 }, cfg);
@@ -560,7 +561,7 @@ export class VectorByWallsRenderer {
         splitPassages,
         splitWallFaces,
         splitSpecialShapes,
-        verticalConnectionMarkers: buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, activeFloorIndex),
+        verticalConnectionMarkers: buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, activeFloorIndex, verticalPairs, state.edges),
       };
     }
     const wallStyle = buildWallStyle(state.vectorByWallsSettings);

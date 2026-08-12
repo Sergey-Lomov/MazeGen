@@ -42,6 +42,7 @@ vi.mock("../pixi/selectors/mazeSelectors", () => ({
   maxSplitNodeCount: vi.fn(() => 0),
   buildVerticalConnectionMarkers: vi.fn(() => []),
   selectNodeLevelResolver: vi.fn(() => () => undefined),
+  selectVerticalPassagePairSet: vi.fn(() => new Set()),
   selectFloorScopedMaze: vi.fn((nodes: unknown[], edges: unknown[], _floors: unknown, _activeFloorId: unknown, start: number | null = null, finish: number | null = null) => ({
     nodes, edges, start, finish,
   })),

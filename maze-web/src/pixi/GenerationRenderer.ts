@@ -6,18 +6,49 @@ import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
+import { VerticalConnectionRenderer, type VerticalConnectionStyle } from "./renderers/VerticalConnectionRenderer";
 import { DebugRefHighlightOverlay } from "./DebugRefHighlightOverlay";
 import { DebugValueHighlightOverlay } from "./DebugValueHighlightOverlay";
 import { KruskalDsuHighlightOverlay } from "./KruskalDsuHighlightOverlay";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, selectFloorScopedMaze } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet } from "./selectors/mazeSelectors";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape } from "./renderers/types";
+import type { Viewport, WallEdge, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "./renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { DebugValueDescriptor, DebugValueKind } from "../debug/eventTape";
 import { canvas } from "./colorTokens";
 import { resolveDebugValueColor } from "./debugValueColors";
+
+/** Fixed live-canvas style for `VerticalConnectionRenderer` (GitHub issue #337/#347) — unlike
+ *  `VectorByWallsRenderer`'s export-panel-configurable style (`buildVerticalConnectionStyle`), the
+ *  live Generation view has no settings panel of its own for this, so it always uses this one
+ *  look, same convention as `TeleportRenderer`'s own `DEFAULT_LINE_STYLE` fallback. `VerticalPassage`
+ *  and `Elevator` share `canvas.vertical.default` but are told apart by shape (circle vs. diamond). */
+const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = {
+  displayStyle: "marker",
+  verticalPassageMarker: {
+    shape: "circle",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 2,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  elevatorMarker: {
+    shape: "diamond",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 2,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  arrowColor: canvas.vertical.default,
+};
 
 export class GenerationRenderer {
   private readonly gridContainer: Container;
@@ -26,6 +57,7 @@ export class GenerationRenderer {
   private readonly wallsContainer: Container;
   private readonly splitJunctionContainer: Container;
   private readonly teleportContainer: Container;
+  private readonly verticalContainer: Container;
   private readonly markersContainer: Container;
   private readonly debugRefHighlightContainer: Container;
   private readonly debugValueHighlightContainer: Container;
@@ -37,6 +69,7 @@ export class GenerationRenderer {
   private readonly walls: WallRenderer;
   private readonly splitJunctions: SplitJunctionRenderer;
   private readonly teleports: TeleportRenderer;
+  private readonly verticalConnections: VerticalConnectionRenderer;
   private readonly markers: WaypointsRenderer;
   private readonly debugRefHighlight: DebugRefHighlightOverlay;
   private readonly debugValueHighlight: DebugValueHighlightOverlay;
@@ -61,6 +94,7 @@ export class GenerationRenderer {
     splitPassages: SplitPassage[];
     splitWallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
     splitSpecialShapes: SplitSpecialShape[];
+    verticalConnectionMarkers: VerticalConnectionMarker[];
   } | null = null;
 
   // Keyed on `debugArena.debugValueNames` array identity, which is stable for a whole debug
@@ -79,6 +113,7 @@ export class GenerationRenderer {
     this.wallsContainer = new Container();
     this.splitJunctionContainer = new Container();
     this.teleportContainer = new Container();
+    this.verticalContainer = new Container();
     this.markersContainer = new Container();
     this.debugRefHighlightContainer = new Container();
     this.debugValueHighlightContainer = new Container();
@@ -90,6 +125,7 @@ export class GenerationRenderer {
     viewport.addChild(this.wallsContainer);
     viewport.addChild(this.splitJunctionContainer);
     viewport.addChild(this.teleportContainer);
+    viewport.addChild(this.verticalContainer);
     viewport.addChild(this.markersContainer);
     viewport.addChild(this.debugRefHighlightContainer);
     viewport.addChild(this.debugValueHighlightContainer);
@@ -101,6 +137,7 @@ export class GenerationRenderer {
     this.walls = new WallRenderer(this.wallsContainer);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports = new TeleportRenderer(this.teleportContainer);
+    this.verticalConnections = new VerticalConnectionRenderer(this.verticalContainer);
     this.markers = new WaypointsRenderer(this.markersContainer);
     this.debugRefHighlight = new DebugRefHighlightOverlay(this.debugRefHighlightContainer);
     this.debugValueHighlight = new DebugValueHighlightOverlay(this.debugValueHighlightContainer);
@@ -154,6 +191,7 @@ export class GenerationRenderer {
     this.wallsContainer.visible = visible;
     this.splitJunctionContainer.visible = visible;
     this.teleportContainer.visible = visible;
+    this.verticalContainer.visible = visible;
     this.markersContainer.visible = visible;
     this.debugRefHighlightContainer.visible = visible;
     this.debugValueHighlightContainer.visible = visible;
@@ -207,6 +245,9 @@ export class GenerationRenderer {
     // redundant lookups/comparisons for no benefit now that the result is just a local variable.
     const debugMazeView = state.debugMode ? selectDebugMazeView(state.debugArena, state.debugStep) : null;
     const view = this.debugView(state, debugMazeView);
+    const unscopedNodes = debugMazeView ? debugMazeView.nodes : state._generatedNodes;
+    const unscopedEdges = debugMazeView ? debugMazeView.edges : state._generatedEdges;
+    const activeFloorIndex = state.floors.findIndex(f => f.id === state.activeFloorId);
 
     const cells: [number, number][] = view.nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
@@ -245,6 +286,10 @@ export class GenerationRenderer {
         splitPassages,
         splitWallFaces,
         splitSpecialShapes,
+        verticalConnectionMarkers: buildVerticalConnectionMarkers(
+          nodeById, view.edges, cfg, selectNodeLevelResolver(unscopedNodes), activeFloorIndex,
+          selectVerticalPassagePairSet(unscopedEdges), unscopedEdges,
+        ),
       };
     }
     this.closedCells.render({ cells: this.geometryCache.closedCells, color: canvas.wall.default, alpha: 1 }, cfg);
@@ -255,6 +300,7 @@ export class GenerationRenderer {
       specialShapes: this.geometryCache.splitSpecialShapes,
     });
     this.teleports.render({ edges: this.geometryCache.teleportEdges, cfg });
+    this.verticalConnections.render({ markers: this.geometryCache.verticalConnectionMarkers, style: DEFAULT_VERTICAL_STYLE });
 
     const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg, undefined, undefined, view.edges);
     this.markers.render({ markers: markerData });
@@ -316,6 +362,7 @@ export class GenerationRenderer {
     this.walls.destroy();
     this.splitJunctions.destroy();
     this.teleports.destroy();
+    this.verticalConnections.destroy();
     this.markers.destroy();
     this.debugRefHighlight.destroy();
     this.debugValueHighlight.destroy();
@@ -326,6 +373,7 @@ export class GenerationRenderer {
     this.wallsContainer.destroy();
     this.splitJunctionContainer.destroy();
     this.teleportContainer.destroy();
+    this.verticalContainer.destroy();
     this.markersContainer.destroy();
     this.debugRefHighlightContainer.destroy();
     this.debugValueHighlightContainer.destroy();

@@ -75,6 +75,10 @@ export const canvas = {
     default: hexToNumber(base.teleport),
   },
 
+  vertical: {
+    default: hexToNumber(base.vertical),
+  },
+
   // Region class overlay — fixed per-class colors (not the rotating component palette)
   region: {
     path: hexToNumber(base.nodeStart),

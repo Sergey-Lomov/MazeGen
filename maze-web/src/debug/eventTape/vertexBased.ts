@@ -133,6 +133,33 @@ export function applyVertexBased(tape: ParsedTape, targetStep: number, from?: Ve
         edges.push({ from: event.dst, to: event.src, kind });
       }
     }
+    if (event.kind === "VerticalPassageAdded") {
+      if (!event.oneWay) {
+        edges.push({ from: event.src, to: event.dst, kind: "vertical_passage" });
+        edges.push({ from: event.dst, to: event.src, kind: "vertical_passage" });
+      } else if (event.upward) {
+        edges.push({ from: event.src, to: event.dst, kind: "vertical_passage" });
+      } else {
+        // `upward: false` (`vertex_based.rs`'s `add_vertical_passage_edge`) swaps the real
+        // directed edge to `dst -> src` — `src`/`dst` here are only the resolved target-pair
+        // *values*, not the actual edge direction, so this must mirror that swap or a one-way
+        // downward passage replays backwards (GitHub issue #337/#347 regression).
+        edges.push({ from: event.dst, to: event.src, kind: "vertical_passage" });
+      }
+    }
+    if (event.kind === "ElevatorAdded") {
+      // Fan reconstruction (GitHub issue #337): `ElevatorAdded` carries the participating node set,
+      // not individual edges — `edgesAdded` (may be fewer than the full each-to-each fan on a
+      // preset conflict, see `vertex_based.rs`'s ElevatorAdded doc comment) can't tell us *which*
+      // pairs were skipped, so this reconstructs the full fan. Only over-renders on the rare preset-
+      // conflict case, same tradeoff already accepted elsewhere in this replay layer.
+      for (let i = 0; i < event.nodes.length; i++) {
+        for (let j = i + 1; j < event.nodes.length; j++) {
+          edges.push({ from: event.nodes[i], to: event.nodes[j], kind: "elevator" });
+          edges.push({ from: event.nodes[j], to: event.nodes[i], kind: "elevator" });
+        }
+      }
+    }
     if (event.kind === "SplitNodesCreated") {
       createdNodes.push(...event.nodes.slice(1)); // index 0 is `src`, already existed
     }

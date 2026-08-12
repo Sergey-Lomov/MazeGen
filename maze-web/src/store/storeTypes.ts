@@ -601,6 +601,12 @@ export interface GenerationState {
   debugArena: DebugArenaHandle | null;
   debugStep: number;
   debugStale: boolean;
+  /** Bumped every time the step-count label in `DebugPanel`'s top row is clicked — lets
+   *  `DebugEventTree` re-scroll to the current step's row even when `debugStep` itself hasn't
+   *  changed (e.g. the user scrolled the tree away from the highlighted row manually). A plain
+   *  counter rather than a boolean so two clicks in a row (no other state change between them)
+   *  each still produce a distinct value the tree's effect can react to. */
+  debugStepFocusToken: number;
   /** Node/edge/cycle/region ref currently hovered in the debug event tree (GitHub issue #130) —
    *  drives `DebugRefHighlightOverlay` canvas highlighting in `GenerationRenderer`. Not
    *  persisted/serialized (no `persist`/`devtools` middleware wraps this store) — `bigint` ids
@@ -773,6 +779,8 @@ export interface GenerationActions {
   setOpenCard: (card: FeatureId) => void;
   setDebugMode: (v: boolean) => void;
   setDebugStep: (step: number) => void;
+  /** Bumps `debugStepFocusToken` — see that field's doc comment. */
+  focusDebugStep: () => void;
   setDebugAutoPlayDelay: (ms: number) => void;
   setHoveredDebugRef: (ref: HoveredDebugRef | null) => void;
   /** Flips `name`'s membership in `debugValueToggles`. */

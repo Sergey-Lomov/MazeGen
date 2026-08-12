@@ -57,6 +57,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   debugAutoPlayDelay: 200,
   debugArena: null,
   debugStep: 0,
+  debugStepFocusToken: 0,
   debugStale: false,
   hoveredDebugRef: null,
   debugValueToggles: new Set<string>(),
@@ -184,6 +185,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
 
   setDebugMode: (v) => set(v ? { debugMode: true } : { debugMode: false, debugStale: false, hoveredDebugRef: null, debugValueToggles: new Set(), showKruskalDsuGroups: false }),
   setDebugStep: (step) => set({ debugStep: step }),
+  focusDebugStep: () => set((state) => ({ debugStepFocusToken: state.debugStepFocusToken + 1 })),
   setDebugAutoPlayDelay: (ms) => set({ debugAutoPlayDelay: ms }),
   setHoveredDebugRef: (ref) => set({ hoveredDebugRef: ref }),
   toggleDebugValue: (name) => set((state) => {

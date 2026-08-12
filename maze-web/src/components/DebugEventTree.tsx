@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
 import {
   buildStepIndex, flattenVisibleRows, resolveHighlightTarget, buildNodeCoordIndex,
-  displayStepForRow, type TreeRow,
+  displayStepForRow, nodeIndexForStep, type TreeRow,
 } from "../debug/debugTreeSelectors";
 import { nodeAt, nodeView, topLevelSourceScopes, type ParsedTape } from "../debug/eventTape";
 import { adapterForNode, type Token, type BaseAlgorithmAdapter, type ScopeTitleLookup } from "../debug/algorithmRegistry";
@@ -133,6 +133,7 @@ function rowTokens(
 export function DebugEventTree() {
   const debugArena = useMazeStore((s) => s.debugArena);
   const debugStep = useMazeStore((s) => s.debugStep);
+  const debugStepFocusToken = useMazeStore((s) => s.debugStepFocusToken);
   const setDebugStep = useMazeStore((s) => s.setDebugStep);
   const stages = useMazeStore((s) => s.stages);
   const rules = useMazeStore((s) => s.rules);
@@ -255,6 +256,28 @@ export function DebugEventTree() {
     overscan: 20,
   });
 
+  // Step-label click (`focusDebugStep`, bumps `debugStepFocusToken`) must force the current
+  // step's exact row into view, unlike ordinary playback sync — `resolveHighlightTarget` below
+  // deliberately walks up to the nearest *already-visible* ancestor and stops there without
+  // expanding anything (per its own doc comment), so if the target row's scope chain is
+  // collapsed, a plain re-scroll just re-centers on that same collapsed ancestor with no visible
+  // change. Set (not cleared) here on every `debugStepFocusToken` bump, cleared once the scroll
+  // effect below has actually scrolled for it — gates that effect's reaction to `expanded`
+  // changes so an ordinary manual expand/collapse (this flag false) never re-triggers a scroll.
+  const pendingFocusScrollRef = useRef(false);
+  const lastFocusTokenRef = useRef(debugStepFocusToken);
+  if (lastFocusTokenRef.current !== debugStepFocusToken) {
+    lastFocusTokenRef.current = debugStepFocusToken;
+    pendingFocusScrollRef.current = true;
+  }
+
+  // Distinguishes "this run was caused by debugStep/debugStepFocusToken changing" (always allowed
+  // to scroll) from "this run was caused only by `expanded` changing" (allowed to scroll only
+  // while a focus-scroll is pending — see below) — `expanded` is a dep of the effect below purely
+  // so it can re-check after its own `setExpanded` call, not to license scrolling on every manual
+  // toggle.
+  const lastScrollTriggerRef = useRef<{ debugStep: number; token: number }>({ debugStep, token: debugStepFocusToken });
+
   useLayoutEffect(() => {
     // `debugStep` changed for a reason other than a row click in this tree (playback controls,
     // scrubber, a fresh generate()) — the click-selected row no longer applies.
@@ -265,15 +288,45 @@ export function DebugEventTree() {
       skipNextScrollRef.current = false;
       return;
     }
+
+    const triggeredByStepOrToken =
+      lastScrollTriggerRef.current.debugStep !== debugStep || lastScrollTriggerRef.current.token !== debugStepFocusToken;
+    lastScrollTriggerRef.current = { debugStep, token: debugStepFocusToken };
+
+    if (!triggeredByStepOrToken && !pendingFocusScrollRef.current) return;
+
+    if (pendingFocusScrollRef.current && tape && stepIndex && debugStep < stepIndex.stepToNodeIndex.length) {
+      // Expand every collapsed ancestor of the step's own node before scrolling — otherwise
+      // `highlightedNodeIndex` below resolves (via `resolveHighlightTarget`) to the nearest
+      // already-visible ancestor instead of the real target row. Only done for an explicit
+      // step-label focus (`pendingFocusScrollRef`), never on ordinary playback/scrubber steps —
+      // those must not auto-expand. `setExpanded` triggers a new render/commit; this effect is
+      // also keyed on `expanded` (see deps below) so it re-runs once that commit lands, at which
+      // point `missing` is empty and this branch falls through to the scroll below.
+      const targetNodeIndex = nodeIndexForStep(stepIndex, debugStep);
+      const ancestors: number[] = [];
+      let current: number | null = nodeAt(tape, targetNodeIndex).parent;
+      while (current !== null) {
+        ancestors.push(current);
+        current = nodeAt(tape, current).parent;
+      }
+      const missing = ancestors.filter((idx) => !expanded.has(idx));
+      if (missing.length > 0) {
+        setExpanded((prev) => new Set([...prev, ...missing]));
+        return;
+      }
+    }
+    pendingFocusScrollRef.current = false;
+
     if (highlightedNodeIndex === null) return;
     const rowIdx = rowIndexByNodeIndex.get(highlightedNodeIndex);
     if (rowIdx === undefined) return;
     virtualizer.scrollToIndex(rowIdx, { align: "center" });
-    // Only debugStep should trigger the auto-scroll — expanding/collapsing a node changes
-    // rowIndexByNodeIndex too, which would otherwise re-run this and yank the scroll position
-    // away from the node the user just expanded.
+    // debugStep/debugStepFocusToken changing, or `expanded` catching up while a focus-scroll is
+    // pending (see the `pendingFocusScrollRef` guard above), are the only paths that reach this
+    // point — an ordinary manual expand/collapse returns earlier and never scrolls.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debugStep]);
+  }, [debugStep, debugStepFocusToken, expanded]);
 
   if (!tape || !stepIndex) return null;
 

@@ -218,16 +218,31 @@ export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWa
 /** One `VerticalPassage`/`Elevator` edge's own render point (GitHub issue #347) — always a single
  *  point-anchored marker on the edge's `from` node's own cell, never a connector to another drawn
  *  point (the `to` node lives on a different floor, off this image entirely — see
- *  `selectFloorScopedMaze`). `direction` is only set for a one-way `VerticalPassage` whose target
- *  floor's index (resolved via the renderer's own `resolveNodeLevel`, since the target node itself
- *  isn't in the floor-scoped node set) could be compared against the active floor's — `"up"`/`"down"`
- *  when the target sits above/below, `undefined` for a two-way passage or an `Elevator` (which is
- *  always two-way by construction) or when the target's level can't be resolved. */
+ *  `selectFloorScopedMaze`). `direction` points toward the other floor(s) this marker's own node
+ *  connects to, relative to the active floor — `"up"`/`"down"` when every reachable floor sits
+ *  strictly above/below, `"both"` when at least one sits above and at least one below (only
+ *  possible for an `Elevator`'s fan, which can reach several floors from one node at once — a
+ *  `VerticalPassage` only ever has one target floor), `undefined` only when no reachable floor's
+ *  level could be resolved. Set for every marker now (two-way included), not just one-way ones,
+ *  since a two-way connection still has a real "which floor(s)" to point at (GitHub issue #337/#347
+ *  design follow-up: a two-way passage/elevator with no arrow at all gave no visual cue where it
+ *  led). `filled` is the marker circle's own fill — `true` for a two-way `VerticalPassage` or an
+ *  `Elevator` (both traversable from either end, so there's nothing to distinguish), `false` for
+ *  *either* end of a one-way `VerticalPassage` (both its departure and arrival-only markers draw
+ *  empty/floor-colored — only the arrow tells them apart, see `arrowFilled`). `arrowFilled`
+ *  distinguishes a one-way `VerticalPassage`'s two ends — `true` (the traversable-from end, i.e.
+ *  this marker's own node is the edge's `from`) draws a solid arrow; `false` (the arrival-only end,
+ *  this marker's own node is the edge's `to`, rendered as an extra marker on the *other* floor's
+ *  own view) draws an outline-only arrow — visually distinguishing "you can enter here" from "you
+ *  only arrive here". Always `true` for a two-way `VerticalPassage` or an `Elevator` (matches
+ *  `filled`, since there's no empty variant to distinguish from). */
 export type VerticalConnectionMarker = {
   pos: [number, number];
   fromNode: number;
   kind: "vertical_passage" | "elevator";
-  direction?: "up" | "down";
+  direction?: "up" | "down" | "both";
+  filled: boolean;
+  arrowFilled: boolean;
 };
 
 /** Sharp (plain polygon corners) vs. round (`Graphics.roundPoly`-rounded) corners — one shared

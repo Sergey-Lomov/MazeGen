@@ -31,6 +31,25 @@ export type VerticalConnectionStyle = {
   arrowColor: number;
 };
 
+/** Draws an outline-only (stroked, unfilled) direction arrow — the arrival-end marker's own arrow
+ *  style (`marker.filled === false`, GitHub issue #337/#347 design follow-up), distinguishing "you
+ *  only arrive here" from the departure end's ordinary filled arrow (`drawDirectionArrow`). Same
+ *  triangle geometry as `drawDirectionArrow`, just closed and stroked instead of filled. */
+function drawDirectionArrowOutline(g: Graphics, cx: number, cy: number, dx: number, dy: number, size: number, color: number): void {
+  const px = -dy;
+  const py = dx;
+  const tipX = cx + dx * size;
+  const tipY = cy + dy * size;
+  const baseX = cx - dx * size * 0.5;
+  const baseY = cy - dy * size * 0.5;
+  g.poly([
+    tipX, tipY,
+    baseX + px * size * 0.6, baseY + py * size * 0.6,
+    baseX - px * size * 0.6, baseY - py * size * 0.6,
+  ]);
+  g.stroke({ color, width: 1.5 });
+}
+
 /** Draws a small flight-of-stairs pictogram centered at `(cx, cy)`, radius `r` — the "decorative"
  *  treatment for a `VerticalPassage` (GitHub issue #347): four ascending step rectangles read as
  *  actual stairs on a printed floor image the viewer mentally connects to the adjacent floor's own
@@ -60,9 +79,12 @@ function drawStairsIcon(g: Graphics, cx: number, cy: number, r: number): void {
  *  renderers). Draws each marker's own gap ring / fill / border via the same
  *  `radius + borderWidth + gapWidth` outer-alignment convention every other marker in this codebase
  *  uses (`WaypointsRenderer`, teleport markers, one-way indicators), then an optional direction
- *  arrow on top for a one-way `VerticalPassage` (`marker.direction`, screen-up/down — there's no
- *  geometric "up/down" in a single 2D floor image, so the arrow always points straight up or down
- *  on screen regardless of the marker's own shape/rotation). */
+ *  arrow on top pointing at the other floor this connection leads to (`marker.direction`,
+ *  screen-up/down — there's no geometric "up/down" in a single 2D floor image, so the arrow always
+ *  points straight up or down on screen regardless of the marker's own shape/rotation). `filled`
+ *  distinguishes a one-way `VerticalPassage`'s departure end (solid fill + solid arrow) from its
+ *  arrival-only end (empty/floor-colored fill + outline-only arrow) — see `VerticalConnectionMarker`'s
+ *  own doc comment. */
 export class VerticalConnectionRenderer {
   private readonly g: Graphics;
 
@@ -92,15 +114,33 @@ export class VerticalConnectionRenderer {
         this.g.fill(settings.gapColor);
       }
       drawShape(radius);
-      this.g.fill(settings.fillColor);
+      // A one-way VerticalPassage's markers (`filled: false`, both departure and arrival ends,
+      // GitHub issue #337/#347 design follow-up) draw an empty circle — its own gap color (mirrors
+      // the floor color, see `VerticalMarkerStyle`'s own doc comment) instead of the ordinary fill.
+      // Only the arrow (`arrowFilled`) tells the two ends apart; the circle fill itself doesn't.
+      this.g.fill(marker.filled ? settings.fillColor : settings.gapColor);
       if (borderWidth > 0) {
         drawShape(radius);
         this.g.stroke({ color: settings.borderColor ?? settings.fillColor, width: borderWidth, alignment: 0 });
       }
 
       if (marker.direction) {
-        const dy = marker.direction === "up" ? -1 : 1;
-        drawDirectionArrow(this.g, cx, cy, 0, dy, radius * 0.6, data.style.arrowColor);
+        // The arrow must contrast against *this marker's own* circle fill, not a single fixed
+        // color — a filled circle (two-way/Elevator) needs the gap/floor color, an empty circle
+        // (one-way VerticalPassage, either end) needs the marker's own fill color, or the arrow
+        // becomes invisible against a same-colored circle underneath it (GitHub issue #337/#347
+        // regression: `data.style.arrowColor` alone can only ever match one of the two cases).
+        const arrowColor = marker.filled ? settings.gapColor : settings.fillColor;
+        // `"both"` (Elevator fan reaching floors on both sides of the active one, GitHub issue
+        // #337/#347 design follow-up) draws one arrow each way instead of picking a side.
+        const dys = marker.direction === "both" ? [-1, 1] : [marker.direction === "up" ? -1 : 1];
+        for (const dy of dys) {
+          if (marker.arrowFilled) {
+            drawDirectionArrow(this.g, cx, cy, 0, dy, radius * 0.6, arrowColor);
+          } else {
+            drawDirectionArrowOutline(this.g, cx, cy, 0, dy, radius * 0.6, arrowColor);
+          }
+        }
       }
     }
   }
