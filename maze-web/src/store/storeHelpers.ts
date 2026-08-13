@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, GraphAnalyticsDto, SplitAnalyticsDto, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, IssueDto, RuleParamDescriptor } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
-import type { PresetConnectionEntry, PresetTeleportEntry, LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
+import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry, LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
 import { computeAutoLockedNodes, presetEdgeKey } from "../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../pixi/presetEndpoint";
 import { remapPresetEndpointLevel, remapLevelKey } from "../pixi/presetEndpoint";
@@ -48,6 +48,8 @@ export function remapPresetLevelsOnFloorSwap(state: MazeState, swap: [number, nu
   presetGenSource: PresetEndpoint | null;
   lockedNodes: Map<string, import("../wasm/types").NodeLockKind>;
   presetTeleports: PresetTeleportEntry[];
+  presetVerticalPassages: PresetVerticalPassageEntry[];
+  presetElevators: PresetElevatorEntry[];
   presetSplitPoints: Record<string, number[]>;
   presetActiveSplitNode: Record<string, PresetEndpoint>;
 } {
@@ -65,6 +67,8 @@ export function remapPresetLevelsOnFloorSwap(state: MazeState, swap: [number, nu
   for (const [key, kind] of state.lockedNodes) lockedNodes.set(remapLevelKey(key, swap), kind);
 
   const presetTeleports = state.presetTeleports.map((t) => ({ ...t, from: remapEp(t.from), to: remapEp(t.to) }));
+  const presetVerticalPassages = state.presetVerticalPassages.map((p) => ({ ...p, from: remapEp(p.from), to: remapEp(p.to) }));
+  const presetElevators = state.presetElevators.map((e) => ({ ...e, floors: e.floors.map(remapEp) }));
 
   const presetSplitPoints: Record<string, number[]> = {};
   for (const [key, slots] of Object.entries(state.presetSplitPoints)) presetSplitPoints[remapLevelKey(key, swap)] = slots;
@@ -79,6 +83,8 @@ export function remapPresetLevelsOnFloorSwap(state: MazeState, swap: [number, nu
     presetGenSource: remapEpOrNull(state.presetGenSource),
     lockedNodes,
     presetTeleports,
+    presetVerticalPassages,
+    presetElevators,
     presetSplitPoints,
     presetActiveSplitNode,
   };
@@ -96,6 +102,8 @@ export function dropPresetLevelOnFloorRemove(state: MazeState, removedLevel: num
   presetGenSource: PresetEndpoint | null;
   lockedNodes: Map<string, import("../wasm/types").NodeLockKind>;
   presetTeleports: PresetTeleportEntry[];
+  presetVerticalPassages: PresetVerticalPassageEntry[];
+  presetElevators: PresetElevatorEntry[];
   presetSplitPoints: Record<string, number[]>;
   presetActiveSplitNode: Record<string, PresetEndpoint>;
 } {
@@ -138,6 +146,17 @@ export function dropPresetLevelOnFloorRemove(state: MazeState, removedLevel: num
     .filter((t) => !touchesRemoved(t.from.level) && !touchesRemoved(t.to.level))
     .map((t) => ({ ...t, from: shiftEp(t.from), to: shiftEp(t.to) }));
 
+  const presetVerticalPassages = state.presetVerticalPassages
+    .filter((p) => !touchesRemoved(p.from.level) && !touchesRemoved(p.to.level))
+    .map((p) => ({ ...p, from: shiftEp(p.from), to: shiftEp(p.to) }));
+
+  // An elevator loses its entry entirely if the removed floor was one of its endpoints (the same
+  // "nowhere to go" rationale as the other collections above); a surviving elevator has every
+  // remaining endpoint's level shifted down.
+  const presetElevators = state.presetElevators
+    .filter((e) => !e.floors.some((f) => touchesRemoved(f.level)))
+    .map((e) => ({ ...e, floors: e.floors.map(shiftEp) }));
+
   const presetSplitPoints: Record<string, number[]> = {};
   for (const [key, slots] of Object.entries(state.presetSplitPoints)) {
     const nextKey = shiftKey(key);
@@ -157,6 +176,8 @@ export function dropPresetLevelOnFloorRemove(state: MazeState, removedLevel: num
     presetGenSource: shiftEpOrNull(state.presetGenSource),
     lockedNodes,
     presetTeleports,
+    presetVerticalPassages,
+    presetElevators,
     presetSplitPoints,
     presetActiveSplitNode,
   };

@@ -96,9 +96,9 @@ Only when nothing is hit does the tool-specific "create new" action apply — le
 
 ### Placement gesture
 
-1. First LMB click on a cell (with no existing endpoint under the cursor) sets `presetTeleportPendingFrom` to that cell. The renderer shows a semi-transparent marker there plus a line following the cursor (`updateTeleportPreview`).
-2. Second LMB click on a different cell completes the link: `addPresetTeleport(pendingFrom, cell, direction)` is called (`direction` is `"two_way"` for the two-way tool, `"forward"` for the one-way tool), a new entry is appended with a freshly incremented id, and `presetTeleportPendingFrom` resets to `null`.
-3. Clicking the same cell as the pending origin is a no-op (does not complete or cancel).
+1. First LMB click on a cell (with no existing endpoint under the cursor) sets `presetTeleportPendingFrom` to that cell's `PresetEndpoint`, stamped with the *active floor at click time* (GitHub issue #357 follow-up fix — an earlier version stored only a bare `[number, number]` cell with no floor of its own, so switching floors between the two clicks silently re-stamped `from` with whichever floor was active on the *second* click, collapsing what should have been a cross-floor teleport onto one floor entirely). The renderer shows a semi-transparent marker there plus a line following the cursor (`updateTeleportPreview`).
+2. Second LMB click on a different cell (on any floor, including a different one from the first click — cross-floor teleports are a deliberate multi-floor preset capability, see "Multi-floor presets" below) completes the link: `addPresetTeleport(pendingFrom, to, direction)` is called with both endpoints as `PresetEndpoint`s, each carrying its own click-time floor (`direction` is `"two_way"` for the two-way tool, `"forward"` for the one-way tool), a new entry is appended with a freshly incremented id, and `presetTeleportPendingFrom` resets to `null`.
+3. Clicking the same cell *and* the same floor as the pending origin is a no-op (does not complete or cancel) — the same `(x, y)` on a *different* floor is a legitimate second endpoint, not a same-point click.
 4. **Cancelling a pending placement**: ESC key, or RMB with no existing endpoint under the cursor, clears `presetTeleportPendingFrom` and the preview line — no entry is created.
 
 ### Editing existing teleports
@@ -132,10 +132,19 @@ Each teleport draws as a connecting line plus one marker square per endpoint:
 - **Two-way**: both endpoints filled solid.
 - **One-way**: origin (`from`, or `to` if `direction: "backward"`) filled solid; destination outlined only.
 - **Half-filled marker**: when a cell is the landing point for markers from *different* teleport entries that disagree — i.e. at least one entry wants a filled square there and at least one wants an outline square there — that cell draws as a diagonally-split square instead of a plain filled/outline one. Computed by the pure `computeMixedCells(edges): Set<string>` (coordKey-encoded), unit-tested in `TeleportRenderer.test.ts` independently of the Pixi drawing code.
-
 The connecting line stops at each endpoint marker's border rather than running to its center: the clip distance along the line's direction is the square's Chebyshev border distance (`half / max(|ux|, |uy|)`) plus half the line's stroke width, compensating for the round line cap extending past its geometric endpoint. Computed by the pure `clipDistance(ux, uy, half, strokeWidth)`, unit-tested in `TeleportRenderer.test.ts`.
 
 Preview line/marker for an in-progress placement is drawn separately by `PresetConnectionsRenderer.updateTeleportPreview`, at 50% alpha; it clips to the origin marker's border the same way.
+
+**Cross-floor teleports** (a placement started on one floor and completed after switching to another, `presetTeleportPendingFrom`'s own floor differing from the second click's active floor at completion time) render exactly like a generation-time cross-floor teleport (`mazeSelectors.ts`'s own `buildTeleportEdges`): the on-floor endpoint draws as a real, ordinary marker; the other (off-floor) endpoint draws as a **floor-number badge** at the grid-snapped midpoint between the two cells' centers, connected to the real marker by an ordinary connector line — not two independent, connector-less markers (an earlier, abandoned approach, see below).
+
+`buildPresetTeleportEdges` (`PresetConnectionsRenderer.ts`) checks `t.from`/`t.to` independently against the active floor. When both are on-floor, they map straight onto the `TeleportEdge`'s own `from`/`to` (matching click-order, or swapped when `direction === "backward"`, same as the same-floor case always worked) — no badge, ordinary two-marker rendering.
+
+When exactly one of `t.from`/`t.to` is on-floor, the departure end always maps to the returned edge's `from` and the arrival end always maps to `to` (matching the arrow's `from`→`to` = departure→arrival convention `TeleportRenderer` already relies on) — whichever of `from`/`to` is the *off-floor* end gets its screen position replaced with the grid-snapped midpoint between the on-floor cell's center and the real off-floor cell's center (`getCellCenter` + `nearestCellCoord`, same snapping `mazeSelectors.ts`'s own cross-floor branch uses, so the midpoint never lands mid-wall). `TeleportEdge.toFloor` is set (to the off-floor level) when the badge lands on `to`; `TeleportEdge.fromFloor` is set instead when the badge lands on `from` (i.e. the on-floor endpoint is the *arrival* end, so it must occupy `to`, pushing the badge onto `from`) — `TeleportRenderer.computeFloorBadges` reads both fields, keyed purely by coordinate, so a badge at either position renders identically. At most one of `toFloor`/`fromFloor` is ever set on a given edge.
+
+Two earlier, abandoned approaches (both replaced): (1) collapsing both `from`/`to` onto the single on-floor point (`{from: [x,y], to: [x,y]}`, no badge, no connector) — each floor showed only its own on-floor endpoint as an independent marker with nothing connecting it to the other, off-image end; visually wrong once compared side-by-side with how a generation-time cross-floor teleport already renders (a real marker *plus* a badge *plus* a connector). This needed a `TeleportEdge.forceFromFilled` field to state the departure/arrival fill reading directly (since `from`/`to` were identical coordinates, the ordinary "`from` = filled, `to` = outline" comparison couldn't distinguish them) — removed once the badge-based model made `from`/`to` distinct coordinates again, restoring the ordinary reading. (2) An even earlier attempt offset the point by a small epsilon to sidestep the same-coordinate "mixed" fill-state conflict — produced a spurious near-zero-length connector and a second, barely-offset drawable point instead of one clean marker.
+
+`redrawAll`'s own `presetTeleports` filter checks **both** `t.from.level` and `t.to.level` against the active floor (`(t.from.level ?? 0) === active || (t.to.level ?? 0) === active`), not just `t.from` — a cross-floor teleport is meant to be visible from *either* of its two floors (its own real endpoint on that floor, the other end as a badge), not only from the floor its first click happened to land on. `redrawInvalidTeleportHL`'s own invalid-teleport highlight loop follows the same "only highlight the endpoint actually on this floor" rule per-endpoint (checking each of `t.from`/`t.to` against the active level individually before drawing), for the same reason `buildPresetTeleportEdges` can't draw an off-floor endpoint's raw coordinate.
 
 ### WASM wire format
 
@@ -144,6 +153,92 @@ Sent as additional entries appended to `preset_connections` (not a separate fiel
 ### Persistence
 
 `presetTeleports` is saved/restored in the project file (`presets.teleports`), same as connections/markers. On load, `_nextPresetTeleportId` is recomputed as `max(existing ids) + 1` (or `1` if empty) so newly created entries can't collide with restored ones. `_nextPresetTeleportId` also resets to `1` on `resetPresetConnections()`, consistent with the rest of preset state being fully cleared there.
+
+`presetVerticalPassages`/`presetElevators` are saved/restored the same way (`presets.verticalPassages`/`presets.elevators`), with `_nextPresetVerticalPassageId`/`_nextPresetElevatorId` recomputed identically on load and reset to `1` on `resetPresetConnections()`. Both fields default to `[]` when absent from an older project file (GitHub issue #357 predates them).
+
+## Preset vertical passages and elevators (GitHub issue #357)
+
+Cross-floor structural connections, planted directly into the graph as `EdgeKind::VerticalPassage`/`EdgeKind::Elevator` — not a "may exist" shortcut like teleports. Stored as `presetVerticalPassages: PresetVerticalPassageEntry[]` and `presetElevators: PresetElevatorEntry[]`, flat maze-wide collections outside the `presetConnections` map, same pattern as `presetTeleports`.
+
+```ts
+interface PresetVerticalPassageEntry {
+  id: number;
+  from: PresetEndpoint;
+  to: PresetEndpoint;
+  direction: "forward" | "backward" | "two_way";
+}
+
+interface PresetElevatorEntry {
+  id: number;
+  floors: PresetEndpoint[];  // one endpoint per reachable floor, same (x, y), different level
+}
+```
+
+Semantically distinct from preset teleports: both endpoints of a planted vertical passage/elevator edge are added to `preset_connected`/`preset_edges` on the Rust side (a guaranteed structural connection), never to `preset_teleports` (optional extra-traversable shortcuts).
+
+### Tools
+
+| Tool | Section | Action |
+|---|---|---|
+| `vertical_passage_one_way` | Vertex | Two-click placement of a one-way vertical passage (`forward`) |
+| `vertical_passage_two_way` | Vertex | Two-click placement of a two-way vertical passage |
+| `elevator` | Vertex | Single click sets the point, then opens the floor-picker dialog to choose which floors it reaches |
+
+All three only appear when the maze has more than one floor (`floors.length > 1`).
+
+### Vertical passage placement
+
+Single click, not a two-click gesture like teleports (GitHub issue #357 follow-up — the original two-click-with-floor-switch flow visually and behaviorally read as a plain teleport, which confused what was actually a structural floor connection). Clicking a cell with `vertical_passage_one_way`/`vertical_passage_two_way` active calls `startPresetVerticalPassagePlacement(origin, tool)`:
+
+1. Resolves which directions are actually reachable from the clicked cell — `"up"` if `(origin.level + 1)`'s own field has a cell at the same `(x, y)`, `"down"` likewise for `(origin.level - 1)` (`cellExistsAt`, `pixi/fieldEditUtils.ts`).
+2. **Exactly one direction available** (the common case — e.g. the top or bottom floor) → the entry is created immediately, no dialog. `vertical_passage_two_way` creates `direction: "two_way"`; `vertical_passage_one_way` creates `direction: "forward"` (the clicked cell is always the departure end, `from`).
+3. **Both directions available** → `presetVerticalPassagePending: { origin, tool, availableDirections: ["up","down"] }` is set and `PresetVerticalDirectionDialog` opens — a small `Modal` with two plain buttons, "Up"/"Down", no separate Confirm/Cancel footer; picking one commits the entry via `choosePresetVerticalPassageDirection` and closes the dialog in the same click. ESC or closing the dialog calls `cancelPresetVerticalPassagePlacement()`, discarding the pending placement.
+4. **Neither direction available** (no floor above or below has a cell at that point) → no-op; the tools are hidden entirely below 2 floors, so this only guards a same-point edge case on a taller maze.
+
+Hit-testing, drag-to-move, right-click-to-delete, and click-to-cycle-direction on an *existing* endpoint (`pickVerticalPassageEndpointAt`) are unchanged — mirror the teleport tool's own mechanics, filtered to the active floor's own endpoints (`(ep.level ?? 0) === activeLevel`) before hit-testing. A plain click (no drag) on an existing endpoint still cycles `forward ↔ backward` the same way a teleport endpoint's own click-to-cycle works.
+
+### Elevator placement
+
+1. Clicking the `elevator` tool on an empty cell calls `startPresetElevatorPlacement(origin)`, seeding `presetElevatorPending: { origin, floors: Set([originLevel]) }` and opening `PresetElevatorFloorDialog`.
+2. The dialog lists every floor as a row, **bottom floor first** (`floors[0]` = "Floor 1" = bottom — same order `FloorSwitcher`/`CopyFloorDialog` display, achieved by iterating `floors` reversed while keeping each row's own 0-based array index for status/toggle logic). Each row shows the floor's `"{n}: {title}"` label (`n` = 1-based), a status line, and a toggle:
+   - **Current** — the origin floor's own row; switch on, disabled (can't be unchecked — `togglePresetElevatorFloor` no-ops for `floorIndex === originLevel`).
+   - **Available** — that floor has a cell at the elevator's own `(x, y)` point (`cellExistsAt`); switch off by default, enabled.
+   - **No cell** — that floor has no cell at that point; switch off, disabled (can't be selected — silently allowing it would create a client-invalid elevator, see "Validity" below).
+3. Confirm (`confirmPresetElevatorPlacement`) is disabled until at least 2 floors are selected. On confirm, one `PresetElevatorEntry` is created with one `PresetEndpoint` per selected floor — **the same `(x, y)` point on every floor**, only `level` differs.
+4. Cancel (ESC, or closing the dialog) calls `cancelPresetElevatorPlacement()`, discarding the pending placement without creating an entry.
+
+Editing an existing elevator: right-click any of its floor endpoints removes the entire entry (`removePresetElevator`). There is no drag-to-move or per-floor endpoint edit — an elevator's shape is only set at creation time.
+
+### Validity
+
+A vertical passage is **invalid** if either endpoint's cell is outside its own floor's field (`computeInvalidVerticalPassageIds`, same per-floor `ResolveFieldAt` resolution as teleports). An elevator is **invalid** if any of its floor endpoints is outside its own floor's field, **or** fewer than 2 of its endpoints remain resolvable (`computeInvalidElevatorIds`) — mirrors the Rust side's own "fewer than two resolved endpoints connects nothing" fallback in `build_preset_state`, so a client-invalid elevator would have been a no-op edge-wise anyway. Both count toward the combined invalid total, are excluded from `generate()`, are cleared by "Clear invalid", and get a dedicated highlight when `highlightInvalidPresets` is on.
+
+### Rendering
+
+Drawn by a `VerticalConnectionRenderer` instance (`PresetConnectionsRenderer.verticals`, its own `verticalContainer`, added above `teleportContainer`) — the same marker primitive `GenerationRenderer` uses for resolved `VerticalPassage`/`Elevator` edges after generation (circle marker for a vertical passage, diamond for an elevator, both in `canvas.vertical.default`, `DEFAULT_VERTICAL_STYLE`), so a preset reads identically to how the same connection looks once generated — not like a teleport. An earlier version reused `TeleportRenderer` (the same primitive preset teleports use) for this, which read as a plain teleport marker; that approach was replaced.
+
+`buildPresetVerticalMarkers` (`PresetConnectionsRenderer.ts`) converts both collections, filtered to the active floor, into `VerticalConnectionMarker[]`: for a vertical passage, whichever endpoint is on the active floor draws its own marker, pointing `"up"`/`"down"` toward the other endpoint's floor — a **two-way** passage's marker is always filled (both ends look identical); a **one-way** passage's marker is always empty at *both* ends (`filled: false`) — only the arrow tells them apart: solid on the departure end, outline on the arrival end (mirrors `mazeSelectors.ts`'s own `buildVerticalConnectionMarkers` for the resolved post-generation graph). For an elevator, the active floor's own endpoint draws one marker, filled, with the arrow direction aggregated across every other floor in the entry (`"both"` if it reaches floors on both sides of the active one).
+
+### WASM wire format
+
+Sent as two separate `GenerationConfig` fields, not folded into `preset_connections`:
+
+```ts
+preset_vertical_passages: Array<{ from: PresetEndpointDto, to: PresetEndpointDto, one_way?: "forward" | "backward" }>
+preset_elevators: Array<{ floors: PresetEndpointDto[] }>
+```
+
+`direction: "two_way"` maps to `one_way: undefined`; `"forward"`/`"backward"` pass through as-is (`presetVerticalPassageDirectionToDto`).
+
+On the Rust side: `PresetVerticalPassage { from: PresetEndpoint, to: PresetEndpoint, one_way: Option<VerticalPassageDirection> }` and `PresetElevator { floors: Vec<PresetEndpoint> }`, stored in `GenerationConfig.preset_vertical_passages`/`.preset_elevators` (default `vec![]`). `build_preset_state` resolves and plants them **before** the `locked_nodes` loop, after `preset_connections`:
+
+- Vertical passage, `one_way: None` (two-way) → both directions planted as `EdgeKind::VerticalPassage`, `PresetSetupEvent::VerticalPassageEstablished { from, to, two_way: true }` emitted.
+- Vertical passage, `one_way: Some(Forward)` → only `from → to` planted, `two_way: false`.
+- Vertical passage, `one_way: Some(Backward)` → only `to → from` planted (from/to swapped in the emitted event), `two_way: false`.
+- An endpoint that fails to resolve silently skips the whole entry (same convention as `preset_connections`).
+- Elevator → every pair among its resolvable floor endpoints gets a bidirectional `EdgeKind::Elevator` edge; fewer than 2 resolvable endpoints plants nothing. One `PresetSetupEvent::ElevatorEstablished { nodes }` is emitted per elevator, listing every resolved node.
+
+Every node touched by either loop is added to `preset_connected`/`preset_edges` — **not** `preset_teleports`.
 
 ## Default edge state
 
@@ -208,8 +303,14 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 | `highlightIsolatedNodes` | `boolean` | Whether to highlight nodes locked both-in-and-out with no passage |
 | `showPresetOrigin` | `boolean` | Whether to show the coordinate origin crosshair |
 | `presetTeleports` | `PresetTeleportEntry[]` | Preset teleport links — see "Preset teleports" |
-| `presetTeleportPendingFrom` | `[number, number] \| null` | First-click origin of an in-progress teleport placement |
+| `presetTeleportPendingFrom` | `PresetEndpoint \| null` | First-click origin of an in-progress teleport placement, own floor included |
 | `_nextPresetTeleportId` | `number` | Next id to assign to a newly created teleport entry |
+| `presetVerticalPassages` | `PresetVerticalPassageEntry[]` | Preset vertical passage links — see "Preset vertical passages and elevators" |
+| `presetVerticalPassagePending` | `{ origin: PresetEndpoint; tool; availableDirections: ("up"\|"down")[] } \| null` | In-progress vertical-passage placement awaiting direction-dialog confirmation (only set when both directions are available) |
+| `_nextPresetVerticalPassageId` | `number` | Next id to assign to a newly created vertical passage entry |
+| `presetElevators` | `PresetElevatorEntry[]` | Preset elevator links — see "Preset vertical passages and elevators" |
+| `presetElevatorPending` | `{ origin: PresetEndpoint; floors: Set<number> } \| null` | In-progress elevator placement awaiting floor-picker confirmation |
+| `_nextPresetElevatorId` | `number` | Next id to assign to a newly created elevator entry |
 | `presetSplitPoints` | `Record<string, number[]>` | Declared split-node slotIds per point — see "Split nodes" |
 | `presetActiveSplitNode` | `Record<string, PresetEndpoint>` | Which node of a point new preset entries currently target — see "Split nodes" |
 | `presetFocusedPoint` | `[number, number] \| null` | Point currently selected for "Manage split nodes" |
@@ -230,6 +331,9 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 | `set_finish` | Vertex | Sets `presetFinish` to clicked cell (when no vertex element is under the cursor). See "Shared vertex editing mode" above for drag/right-click, which apply to all vertex elements regardless of active vertex tool. |
 | `teleport_one_way` | Vertex | Two-click placement of a one-way teleport — see "Preset teleports" |
 | `teleport_two_way` | Vertex | Two-click placement of a two-way teleport — see "Preset teleports" |
+| `vertical_passage_one_way` | Vertex | Two-click placement of a one-way vertical passage — see "Preset vertical passages and elevators" |
+| `vertical_passage_two_way` | Vertex | Two-click placement of a two-way vertical passage — see "Preset vertical passages and elevators" |
+| `elevator` | Vertex | Click a point, then pick reachable floors in a dialog — see "Preset vertical passages and elevators" |
 | `lock_in` | Generation | Locks node to block incoming edges |
 | `lock_out` | Generation | Locks node to block outgoing edges |
 | `full_lock` | Generation | Locks node both in and out (`"both"`) |
@@ -261,7 +365,7 @@ Both sets are merged when rendering (`buildLocks`) and when checking for isolate
 
 `markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0)`. `presetGenSource` is not counted here.
 
-Subtitle: `"N preset(s)"` or `"N preset(s) · ⚠ M invalid"` where `N = presetConnections.size + markerCount + presetTeleports.length`. The invalid count `M` combines invalid edge presets, invalid teleports, and invalid start/finish markers (`computeInvalidKeys(...).size + computeInvalidTeleportIds(...).size + invalidMarkerCount`); "Clear invalid" removes all three kinds together.
+Subtitle: `"N preset(s)"` or `"N preset(s) · ⚠ M invalid"` where `N = presetConnections.size + markerCount + presetTeleports.length + presetVerticalPassages.length + presetElevators.length`. The invalid count `M` combines invalid edge presets, invalid teleports, invalid vertical passages/elevators, and invalid start/finish markers (`computeInvalidKeys(...).size + computeInvalidTeleportIds(...).size + computeInvalidVerticalPassageIds(...).size + computeInvalidElevatorIds(...).size + invalidMarkerCount`); "Clear invalid" removes all these kinds together.
 
 ## Rendering (`PresetConnectionsRenderer`)
 
@@ -402,6 +506,8 @@ preset_finish?: PresetEndpointDto
 preset_gen_source?: PresetEndpointDto  // generation algorithm seed (presetGenSource)
 locked_nodes: Array<{ point: PresetEndpointDto, kind: NodeLockKind }>
 split_points: Array<[[number, number], number, number]>  // declared (point, slotId, level) triples — see "Split nodes" above and "Multi-floor presets"
+preset_vertical_passages: Array<{ from: PresetEndpointDto, to: PresetEndpointDto, one_way?: "forward" | "backward" }>  // GitHub issue #357 — see "Preset vertical passages and elevators"
+preset_elevators: Array<{ floors: PresetEndpointDto[] }>  // GitHub issue #357
 
 interface PresetEndpointDto {
   point: [number, number];
@@ -421,7 +527,7 @@ On the Rust side: `PresetConnectionDto`/`PresetEndpointDto` with `#[derive(Deser
 | Event | Effect |
 |---|---|
 | Tessellation confirmed (kind changes) | `presetConnections` cleared, markers cleared, `defaultEdgeState` reset |
-| `resetPresetConnections()` | Same as above, plus `presetTeleports` cleared and `_nextPresetTeleportId` reset to `1` |
+| `resetPresetConnections()` | Same as above, plus `presetTeleports`/`presetVerticalPassages`/`presetElevators` cleared and their id counters reset to `1` |
 | Field cells added/removed | Connections stay; invalidity recomputed from field |
 | Card opens | Renderer subscribes, cell cache built |
 | Card closes | Renderer clears graphics; `highlightInvalidPresets` and `highlightIsolatedNodes` reset to `false` |

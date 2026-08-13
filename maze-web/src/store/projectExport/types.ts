@@ -1,6 +1,6 @@
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
-import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
+import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, FeatureId, RenderModeId } from "../mazeStore";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation } from "../storeTypes";
@@ -166,6 +166,10 @@ export interface ProjectFile {
     finish: PresetEndpoint | null;
     genSource: PresetEndpoint | null;
     teleports: PresetTeleportEntry[];
+    /** Preset `VerticalPassage`/`Elevator` links (GitHub issue #357) — absent in a project file
+     * saved before this issue, defaulting to empty on load (see `validate.ts`). */
+    verticalPassages: PresetVerticalPassageEntry[];
+    elevators: PresetElevatorEntry[];
     /** slotIds of each split point's extra nodes declared on the preset stage, keyed by "x,y"
      * (GitHub issue #231) — mirrors `postEdit.splitPoints` below. */
     splitPoints: Record<string, number[]>;

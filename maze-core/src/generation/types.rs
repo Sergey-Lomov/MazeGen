@@ -161,6 +161,53 @@ pub struct PresetConnection {
     pub state: PresetConnectionState,
 }
 
+/// Direction of a preset `VerticalPassage` — mirrors `TeleportDirection` but without `TwoWay`'s
+/// counterpart being a *third* variant: a two-way passage is simply `one_way: None` on
+/// `PresetVerticalPassage` (see that struct's own doc comment), so this enum only ever needs to
+/// distinguish which of the two adjacent floors is the arrival end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerticalPassageDirection {
+    /// Passage runs `from -> to`.
+    Forward,
+    /// Passage runs `to -> from`.
+    Backward,
+}
+
+/// A user-placed `VerticalPassage` preset (GitHub issue #357) — planted directly into the graph by
+/// `build_preset_state`, exactly like a preset `Passage`/`OneWay` connection, rather than treated
+/// as an extra traversable neighbor the way preset `Teleport` is (see `PresetState::preset_teleports`'s
+/// doc comment) — a vertical passage is a guaranteed structural connection between two floors, not
+/// an optional shortcut generation may or may not route through. Kept as its own top-level
+/// `GenerationConfig` field (not folded into `PresetConnectionState`) since its two endpoints
+/// aren't required to be geometrically adjacent (they live on different floors), the same reason
+/// preset teleports get their own field on the client side (`Specs/preset-connections.md`).
+///
+/// `from`/`to` must resolve to nodes on **adjacent** floors (by `levels_ordered()` position) — the
+/// same constraint `vertex_based.rs`'s own generation-time `VerticalPassage` growth enforces. The
+/// client is responsible for only ever sending adjacent-floor endpoints (mirrors every other
+/// preset endpoint's "client pre-filters invalid entries" contract, `Specs/preset-connections.md`);
+/// `build_preset_state` does not re-validate adjacency and simply plants whatever resolved edge it
+/// is given.
+#[derive(Debug, Clone)]
+pub struct PresetVerticalPassage {
+    pub from: PresetEndpoint,
+    pub to:   PresetEndpoint,
+    /// `None` = two-way (both directions planted). `Some(dir)` = one-way in that direction.
+    pub one_way: Option<VerticalPassageDirection>,
+}
+
+/// A user-placed `Elevator` preset (GitHub issue #357) — a fully-connected two-way fan across
+/// `floors.len()` nodes, planted directly into the graph the same way `PresetVerticalPassage` is
+/// (guaranteed structural connections, not extra-traversable-neighbor shortcuts). Unlike the
+/// generation-time `Elevator` (`vertex_based.rs`), a preset elevator's floors need not be
+/// contiguous or ordered — `build_preset_state` simply connects every pair.
+#[derive(Debug, Clone)]
+pub struct PresetElevator {
+    /// One endpoint per floor the elevator reaches — always resolved against the same (x, y)
+    /// point, differing only in `level` (client-side placement constraint, `Specs/preset-connections.md`).
+    pub floors: Vec<PresetEndpoint>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeLockKind {
     In,
@@ -179,6 +226,11 @@ pub struct GenerationConfig {
     pub algorithm:          GenerationAlgorithm,
     pub elements:           ElementsConfig,
     pub preset_connections: Vec<PresetConnection>,
+    /// User-placed `VerticalPassage` presets (GitHub issue #357) — see `PresetVerticalPassage`'s
+    /// own doc comment for why these live in their own field rather than `preset_connections`.
+    pub preset_vertical_passages: Vec<PresetVerticalPassage>,
+    /// User-placed `Elevator` presets (GitHub issue #357) — see `PresetElevator`'s own doc comment.
+    pub preset_elevators:   Vec<PresetElevator>,
     pub locked_nodes:       Vec<LockedNode>,
     /// Extra nodes to create at declared points before any preset above is resolved — one entry
     /// per `(point, slot, level)` triple (GitHub issue #231; `level` added by #340 — 0-based
@@ -198,6 +250,8 @@ impl Default for GenerationConfig {
             algorithm:          GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
             elements:           ElementsConfig::default(),
             preset_connections: vec![],
+            preset_vertical_passages: vec![],
+            preset_elevators:   vec![],
             locked_nodes:       vec![],
             split_points:       vec![],
             split_generation:   crate::generation::split_pattern::SplitGenerationConfig::default(),

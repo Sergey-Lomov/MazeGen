@@ -20,7 +20,7 @@ import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId, FloorState, PngExportSettings } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers } from "../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers } from "../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../store/storeHelpers";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { ui, spacing, inset } from "../styles/theme";
@@ -65,8 +65,10 @@ export function presetConnectionsSubtitle(
   invalidCount: number,
   markerCount: number,
   teleportCount: number = 0,
+  verticalPassageCount: number = 0,
+  elevatorCount: number = 0,
 ): string {
-  const n = presetConnections.size + markerCount + teleportCount;
+  const n = presetConnections.size + markerCount + teleportCount + verticalPassageCount + elevatorCount;
   if (n === 0) return m["preset.subtitle_none"]();
   const base = n === 1
     ? m["preset.subtitle_count"]({ count: n })
@@ -180,6 +182,8 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
   const presetTeleports = useMazeStore((s) => s.presetTeleports);
+  const presetVerticalPassages = useMazeStore((s) => s.presetVerticalPassages);
+  const presetElevators = useMazeStore((s) => s.presetElevators);
 
   const initialConfig = useMazeStore((s) => s.initialConfig);
   const elementsConfig = useMazeStore((s) => s.elementsConfig);
@@ -285,12 +289,20 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     () => computeInvalidTeleportIds(presetTeleports, resolveFieldAt),
     [presetTeleports, resolveFieldAt],
   );
+  const presetInvalidVerticalPassageIds = useMemo(
+    () => computeInvalidVerticalPassageIds(presetVerticalPassages, resolveFieldAt),
+    [presetVerticalPassages, resolveFieldAt],
+  );
+  const presetInvalidElevatorIds = useMemo(
+    () => computeInvalidElevatorIds(presetElevators, resolveFieldAt),
+    [presetElevators, resolveFieldAt],
+  );
   const presetInvalidMarkers = useMemo(
     () => computeInvalidMarkers(presetStart, presetFinish, resolveFieldAt),
     [presetStart, presetFinish, resolveFieldAt],
   );
   const presetInvalidMarkerCount = (presetInvalidMarkers.start ? 1 : 0) + (presetInvalidMarkers.finish ? 1 : 0);
-  const presetInvalidCount = presetInvalidKeys.size + presetInvalidTeleportIds.size + presetInvalidMarkerCount;
+  const presetInvalidCount = presetInvalidKeys.size + presetInvalidTeleportIds.size + presetInvalidVerticalPassageIds.size + presetInvalidElevatorIds.size + presetInvalidMarkerCount;
   const fieldBlocking = fieldStatus === "unavailable" || fieldStatus === "critical";
   const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);
   const presetStatus: FeatureStatus = fieldBlocking
@@ -373,7 +385,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
         status={presetStatus}
         comment={presetComment}
         subtitle={tessellationConfirmed
-          ? presetConnectionsSubtitle(presetConnections, presetInvalidCount, markerCount, presetTeleports.length)
+          ? presetConnectionsSubtitle(presetConnections, presetInvalidCount, markerCount, presetTeleports.length, presetVerticalPassages.length, presetElevators.length)
           : undefined}
         expanded={openCard === "preset_connections"}
         onOpen={() => handleToggle("preset_connections")}

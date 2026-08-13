@@ -86,6 +86,8 @@ fn run_generate_typed<T: Tessellation + 'static>(
     let preset_state = build_preset_state(
         &mut graph, &mut field, &mut ids,
         &gen_config.preset_connections,
+        &gen_config.preset_vertical_passages,
+        &gen_config.preset_elevators,
         &gen_config.locked_nodes,
         &gen_config.split_points,
         &point_from_xy,

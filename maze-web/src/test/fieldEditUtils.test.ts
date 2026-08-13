@@ -25,8 +25,14 @@ import {
   resolvePresetPartnerAt,
   allNodesAt,
   presetConnectionsOnLevel,
+  cellExistsAt,
+  computeInvalidVerticalPassageIds,
+  computeInvalidElevatorIds,
+  cycleVerticalPassageDirection,
+  moveVerticalPassageEndpoint,
+  presetVerticalPassageDirectionToDto,
 } from "../pixi/fieldEditUtils";
-import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry } from "../pixi/fieldEditUtils";
+import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { makeProjection } from "../pixi/tessellationProjection";
 import { TILE_SIZE } from "../pixi/constants";
@@ -385,6 +391,114 @@ describe("moveTeleportEndpoint", () => {
     const result = moveTeleportEndpoint([teleport(1, [0, 0], [1, 1])], { id: 1, end: "to" }, [5, 5]);
     expect(result[0].to).toEqual(presetEndpoint([5, 5]));
     expect(result[0].from).toEqual(presetEndpoint([0, 0]));
+  });
+});
+
+// --- vertical passages / elevators (GitHub issue #357) ---
+
+const resolveTwoFloors: ResolveFieldAt = (level) => ((level ?? 0) === 0 || level === 1 ? { cfg: squareCfg } : undefined);
+
+const verticalPassage = (
+  id: number, from: [number, number], to: [number, number], direction: PresetVerticalPassageEntry["direction"] = "forward",
+): PresetVerticalPassageEntry => ({ id, from: presetEndpoint(from), to: presetEndpoint(to, undefined, 1), direction });
+
+describe("cellExistsAt", () => {
+  it("true for an in-field point on the resolved floor", () => {
+    expect(cellExistsAt(resolveTwoFloors, [0, 0], undefined)).toBe(true);
+  });
+
+  it("false for an out-of-field point on the resolved floor", () => {
+    expect(cellExistsAt(resolveTwoFloors, [50, 50], undefined)).toBe(false);
+  });
+
+  it("false when the floor itself doesn't resolve", () => {
+    expect(cellExistsAt(resolveTwoFloors, [0, 0], 5)).toBe(false);
+  });
+});
+
+describe("computeInvalidVerticalPassageIds", () => {
+  it("both endpoints in field on their own floor — valid", () => {
+    const result = computeInvalidVerticalPassageIds([verticalPassage(1, [0, 0], [0, 0])], resolveTwoFloors);
+    expect(result.size).toBe(0);
+  });
+
+  it("'to' endpoint outside its own floor's field — invalid", () => {
+    const result = computeInvalidVerticalPassageIds([verticalPassage(1, [0, 0], [50, 50])], resolveTwoFloors);
+    expect(result.has(1)).toBe(true);
+  });
+
+  it("'from' endpoint outside its own floor's field — invalid", () => {
+    const result = computeInvalidVerticalPassageIds([verticalPassage(1, [50, 50], [0, 0])], resolveTwoFloors);
+    expect(result.has(1)).toBe(true);
+  });
+});
+
+describe("computeInvalidElevatorIds", () => {
+  it("every floor resolves and at least two remain — valid", () => {
+    const elevator: PresetElevatorEntry = { id: 1, floors: [presetEndpoint([0, 0]), presetEndpoint([0, 0], undefined, 1)] };
+    const result = computeInvalidElevatorIds([elevator], resolveTwoFloors);
+    expect(result.size).toBe(0);
+  });
+
+  it("one floor's point falls outside its own field — invalid", () => {
+    const elevator: PresetElevatorEntry = { id: 1, floors: [presetEndpoint([0, 0]), presetEndpoint([50, 50], undefined, 1)] };
+    const result = computeInvalidElevatorIds([elevator], resolveTwoFloors);
+    expect(result.has(1)).toBe(true);
+  });
+
+  it("fewer than two in-field floors remain — invalid even if every floor itself resolves", () => {
+    const elevator: PresetElevatorEntry = { id: 1, floors: [presetEndpoint([0, 0])] };
+    const result = computeInvalidElevatorIds([elevator], resolveTwoFloors);
+    expect(result.has(1)).toBe(true);
+  });
+});
+
+describe("cycleVerticalPassageDirection", () => {
+  it("forward becomes backward", () => {
+    const result = cycleVerticalPassageDirection([verticalPassage(1, [0, 0], [0, 0], "forward")], 1);
+    expect(result[0].direction).toBe("backward");
+  });
+
+  it("backward becomes forward", () => {
+    const result = cycleVerticalPassageDirection([verticalPassage(1, [0, 0], [0, 0], "backward")], 1);
+    expect(result[0].direction).toBe("forward");
+  });
+
+  it("two_way is unaffected", () => {
+    const result = cycleVerticalPassageDirection([verticalPassage(1, [0, 0], [0, 0], "two_way")], 1);
+    expect(result[0].direction).toBe("two_way");
+  });
+});
+
+describe("moveVerticalPassageEndpoint", () => {
+  it("moves the 'from' endpoint of the matching entry, keeping the given endpoint's own level", () => {
+    const result = moveVerticalPassageEndpoint(
+      [verticalPassage(1, [0, 0], [0, 0])], { id: 1, end: "from" }, presetEndpoint([5, 5]),
+    );
+    expect(result[0].from).toEqual(presetEndpoint([5, 5]));
+    expect(result[0].to).toEqual(presetEndpoint([0, 0], undefined, 1));
+  });
+
+  it("moves the 'to' endpoint of the matching entry", () => {
+    const result = moveVerticalPassageEndpoint(
+      [verticalPassage(1, [0, 0], [0, 0])], { id: 1, end: "to" }, presetEndpoint([5, 5], undefined, 1),
+    );
+    expect(result[0].to).toEqual(presetEndpoint([5, 5], undefined, 1));
+    expect(result[0].from).toEqual(presetEndpoint([0, 0]));
+  });
+});
+
+describe("presetVerticalPassageDirectionToDto", () => {
+  it("two_way maps to undefined (Rust's Option<VerticalPassageDirection>::None)", () => {
+    expect(presetVerticalPassageDirectionToDto("two_way")).toBeUndefined();
+  });
+
+  it("forward maps to \"forward\"", () => {
+    expect(presetVerticalPassageDirectionToDto("forward")).toBe("forward");
+  });
+
+  it("backward maps to \"backward\"", () => {
+    expect(presetVerticalPassageDirectionToDto("backward")).toBe("backward");
   });
 });
 

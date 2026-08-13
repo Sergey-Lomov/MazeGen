@@ -29,7 +29,7 @@ use crate::event_log::EventLog;
 /// event this source ever emits is mutating, since each one is a preset edge the graph already
 /// carries before generation starts, and every replay consumer's first reconstructed frame must
 /// show it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, maze_core_macros::WireEvent)]
+#[derive(Debug, Clone, PartialEq, maze_core_macros::WireEvent)]
 #[wire_event(always_mutating)]
 pub enum PresetSetupEvent {
     #[wire(tag = 1)]
@@ -38,6 +38,10 @@ pub enum PresetSetupEvent {
     OneWayEstablished { from: NodeId, to: NodeId },
     #[wire(tag = 3)]
     TeleportEstablished { from: NodeId, to: NodeId, two_way: bool },
+    #[wire(tag = 4)]
+    VerticalPassageEstablished { from: NodeId, to: NodeId, two_way: bool },
+    #[wire(tag = 5)]
+    ElevatorEstablished { nodes: Vec<NodeId> },
 }
 
 /// Scope name this source's top-level child scope is labeled with once merged via

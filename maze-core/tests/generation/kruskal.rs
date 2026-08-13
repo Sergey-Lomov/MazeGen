@@ -193,7 +193,7 @@ fn kruskal_preset_connection_emits_preset_unions_applied_before_the_main_loop() 
     let presets = vec![PresetConnection {
         from: PresetEndpoint::original((0, 0)), to: PresetEndpoint::original((1, 0)), state: PresetConnectionState::Passage,
     }];
-    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
+    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
     let a = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     let b = field.nodes_at(level, SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
 
@@ -237,7 +237,7 @@ fn kruskal_preset_teleport_emits_preset_unions_applied_with_teleport_kind() {
     let presets = vec![PresetConnection {
         from: PresetEndpoint::original((0, 0)), to: PresetEndpoint::original((2, 2)), state: PresetConnectionState::Teleport(TeleportDirection::TwoWay),
     }];
-    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
+    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
     let a = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     let b = field.nodes_at(level, SquarePoint { x: 2, y: 2 }).first().copied().unwrap();
 
@@ -268,7 +268,7 @@ fn kruskal_one_way_preset_teleport_emits_only_the_single_directed_edge() {
     let presets = vec![PresetConnection {
         from: PresetEndpoint::original((0, 0)), to: PresetEndpoint::original((2, 2)), state: PresetConnectionState::Teleport(TeleportDirection::Forward),
     }];
-    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
+    let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &presets, &[], &[], &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
     let a = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
     let b = field.nodes_at(level, SquarePoint { x: 2, y: 2 }).first().copied().unwrap();
 

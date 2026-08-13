@@ -533,4 +533,156 @@ describe("mazeStore preset connections", () => {
       expect(s.presetConnections.get("0,0:0-1,0")?.state).toBe("wall");
     });
   });
+
+  describe("preset vertical passages/elevators (GitHub issue #357)", () => {
+    const FLOOR_2_ID = "floor_2";
+
+    beforeEach(() => {
+      // The outer beforeEach's `baseStoreState()` shallow-merges (zustand `setState`, not a
+      // replace) and doesn't mention these fields, so a prior test's entries would otherwise leak
+      // into the next one.
+      useMazeStore.setState({
+        presetVerticalPassages: [], presetVerticalPassagePending: null,
+        presetElevators: [], presetElevatorPending: null,
+      });
+    });
+
+    // Two floors, both with a real cell at (0,0) (isEditingField: false -> every in-bounds point
+    // exists, same convention setActiveFieldConfig's own default relies on).
+    function setTwoFloors() {
+      const state = useMazeStore.getState();
+      useMazeStore.setState({
+        floors: [...state.floors, { id: FLOOR_2_ID, title: "Floor 2" }],
+        floorFields: {
+          ...state.floorFields,
+          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], tessellationConfig: { type: "square", width: 3, height: 3 } },
+        },
+      });
+    }
+
+    it("startPresetVerticalPassagePlacement commits immediately when only one direction is available (origin on floor 0)", () => {
+      setTwoFloors();
+      useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0]), "vertical_passage_two_way");
+      const s = useMazeStore.getState();
+      // Floor 0 has no floor below it, so "up" (to floor 1) is the only available direction —
+      // no dialog, the passage is created right away.
+      expect(s.presetVerticalPassagePending).toBeNull();
+      expect(s.presetVerticalPassages).toHaveLength(1);
+      expect(s.presetVerticalPassages[0].from).toEqual(presetEndpoint([0, 0]));
+      expect(s.presetVerticalPassages[0].to).toEqual(presetEndpoint([0, 0], undefined, 1));
+      expect(s.presetVerticalPassages[0].direction).toBe("two_way");
+    });
+
+    it("startPresetVerticalPassagePlacement opens the direction dialog when both up and down are available", () => {
+      setTwoFloors();
+      useMazeStore.setState({
+        floors: [...useMazeStore.getState().floors, { id: "floor_3", title: "Floor 3" }],
+        floorFields: {
+          ...useMazeStore.getState().floorFields,
+          floor_3: { ...useMazeStore.getState().floorFields[FLOOR_2_ID] },
+        },
+      });
+      // Origin on floor 1 (the middle floor) has both a floor below (0) and above (2).
+      useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0], undefined, 1), "vertical_passage_one_way");
+      const s = useMazeStore.getState();
+      expect(s.presetVerticalPassagePending).not.toBeNull();
+      expect(s.presetVerticalPassagePending?.availableDirections.sort()).toEqual(["down", "up"]);
+      expect(s.presetVerticalPassages).toHaveLength(0);
+    });
+
+    it("startPresetVerticalPassagePlacement is a no-op when neither direction has a cell", () => {
+      // Single floor -> no floor above, and origin is already floor 0 -> no floor below either.
+      useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0]), "vertical_passage_two_way");
+      const s = useMazeStore.getState();
+      expect(s.presetVerticalPassagePending).toBeNull();
+      expect(s.presetVerticalPassages).toHaveLength(0);
+    });
+
+    it("choosePresetVerticalPassageDirection('down') creates a passage to the floor below and clears the pending dialog", () => {
+      setTwoFloors();
+      useMazeStore.setState({
+        floors: [...useMazeStore.getState().floors, { id: "floor_3", title: "Floor 3" }],
+        floorFields: {
+          ...useMazeStore.getState().floorFields,
+          floor_3: { ...useMazeStore.getState().floorFields[FLOOR_2_ID] },
+        },
+      });
+      useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0], undefined, 1), "vertical_passage_two_way");
+      useMazeStore.getState().choosePresetVerticalPassageDirection("down");
+      const s = useMazeStore.getState();
+      expect(s.presetVerticalPassagePending).toBeNull();
+      expect(s.presetVerticalPassages).toHaveLength(1);
+      // toLevel === 0 must normalize to `undefined`, not an explicit level: 0 — every `(level ?? 0)`
+      // comparison downstream depends on this convention.
+      expect(s.presetVerticalPassages[0].to).toEqual(presetEndpoint([0, 0]));
+    });
+
+    it("cancelPresetVerticalPassagePlacement clears the pending dialog without creating a passage", () => {
+      setTwoFloors();
+      useMazeStore.setState({
+        floors: [...useMazeStore.getState().floors, { id: "floor_3", title: "Floor 3" }],
+        floorFields: {
+          ...useMazeStore.getState().floorFields,
+          floor_3: { ...useMazeStore.getState().floorFields[FLOOR_2_ID] },
+        },
+      });
+      useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0], undefined, 1), "vertical_passage_two_way");
+      useMazeStore.getState().cancelPresetVerticalPassagePlacement();
+      const s = useMazeStore.getState();
+      expect(s.presetVerticalPassagePending).toBeNull();
+      expect(s.presetVerticalPassages).toHaveLength(0);
+    });
+
+    it("startPresetElevatorPlacement seeds pending.floors with only the origin's own level", () => {
+      setTwoFloors();
+      useMazeStore.getState().startPresetElevatorPlacement(presetEndpoint([0, 0]));
+      expect(useMazeStore.getState().presetElevatorPending?.floors).toEqual(new Set([0]));
+    });
+
+    it("togglePresetElevatorFloor cannot remove the origin floor", () => {
+      setTwoFloors();
+      useMazeStore.getState().startPresetElevatorPlacement(presetEndpoint([0, 0]));
+      useMazeStore.getState().togglePresetElevatorFloor(0);
+      expect(useMazeStore.getState().presetElevatorPending?.floors).toEqual(new Set([0]));
+    });
+
+    it("confirmPresetElevatorPlacement is a no-op when fewer than two floors are selected", () => {
+      setTwoFloors();
+      useMazeStore.getState().startPresetElevatorPlacement(presetEndpoint([0, 0]));
+      useMazeStore.getState().confirmPresetElevatorPlacement();
+      const s = useMazeStore.getState();
+      // Still pending (only the origin floor selected) -- nothing was created.
+      expect(s.presetElevatorPending).not.toBeNull();
+      expect(s.presetElevators).toHaveLength(0);
+    });
+
+    it("confirmPresetElevatorPlacement creates one entry sorted by level, with level 0 normalized to undefined", () => {
+      setTwoFloors();
+      useMazeStore.getState().startPresetElevatorPlacement(presetEndpoint([0, 0], undefined, 1));
+      useMazeStore.getState().togglePresetElevatorFloor(0);
+      useMazeStore.getState().confirmPresetElevatorPlacement();
+      const s = useMazeStore.getState();
+      expect(s.presetElevatorPending).toBeNull();
+      expect(s.presetElevators).toHaveLength(1);
+      expect(s.presetElevators[0].floors).toEqual([presetEndpoint([0, 0]), presetEndpoint([0, 0], undefined, 1)]);
+    });
+
+    it("removePresetVerticalPassage removes the matching entry", () => {
+      setTwoFloors();
+      useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0]), "vertical_passage_two_way");
+      const id = useMazeStore.getState().presetVerticalPassages[0].id;
+      useMazeStore.getState().removePresetVerticalPassage(id);
+      expect(useMazeStore.getState().presetVerticalPassages).toHaveLength(0);
+    });
+
+    it("removePresetElevator removes the matching entry", () => {
+      setTwoFloors();
+      useMazeStore.getState().startPresetElevatorPlacement(presetEndpoint([0, 0]));
+      useMazeStore.getState().togglePresetElevatorFloor(1);
+      useMazeStore.getState().confirmPresetElevatorPlacement();
+      const id = useMazeStore.getState().presetElevators[0].id;
+      useMazeStore.getState().removePresetElevator(id);
+      expect(useMazeStore.getState().presetElevators).toHaveLength(0);
+    });
+  });
 });

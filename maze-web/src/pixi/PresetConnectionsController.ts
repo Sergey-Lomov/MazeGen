@@ -1,7 +1,8 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { NodeLockKind } from "../wasm/types";
 import type { Container } from "pixi.js";
-import { pickEdgeAtPosition, pickTeleportEndpointAt, isInEdgeVertexDeadZone, type PresetTeleportEndpointHit } from "./fieldEditUtils";
+import { pickEdgeAtPosition, pickTeleportEndpointAt, pickVerticalPassageEndpointAt, isInEdgeVertexDeadZone, type PresetTeleportEndpointHit, type PresetVerticalPassageEndpointHit } from "./fieldEditUtils";
+import { presetEndpoint } from "./presetEndpoint";
 import { makeProjection, encodePoint } from "./tessellationProjection";
 import type { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { BaseController } from "./BaseController";
@@ -10,7 +11,8 @@ import type { PresetTeleportEntry } from "./fieldEditUtils";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
-const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "teleport_two_way"]);
+const VERTICAL_PASSAGE_TOOLS = new Set(["vertical_passage_one_way", "vertical_passage_two_way"]);
+const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "teleport_two_way", "vertical_passage_one_way", "vertical_passage_two_way", "elevator"]);
 
 /** Teleports whose `from` sits on `level` — hit-testing/editing only ever targets the active
  * floor's own teleport endpoints (GitHub issue #340); a teleport landing on another floor is
@@ -24,10 +26,16 @@ export class PresetConnectionsController extends BaseController {
   private renderer: PresetConnectionsRenderer;
   private draggingTeleportEndpoint: PresetTeleportEndpointHit | null = null;
   private teleportDragMoved = false;
+  private draggingVerticalPassageEndpoint: PresetVerticalPassageEndpointHit | null = null;
+  private verticalPassageDragMoved = false;
   private lastViewportPos = { x: 0, y: 0 };
 
   private onKeyDown = (e: KeyboardEvent) => {
-    if (e.code === "Escape") this.cancelPendingTeleport();
+    if (e.code === "Escape") {
+      this.cancelPendingTeleport();
+      useMazeStore.getState().cancelPresetVerticalPassagePlacement();
+      useMazeStore.getState().cancelPresetElevatorPlacement();
+    }
   };
 
   constructor(
@@ -79,9 +87,28 @@ export class PresetConnectionsController extends BaseController {
       return;
     }
 
+    if (this.draggingVerticalPassageEndpoint) {
+      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
+      const passage = state.presetVerticalPassages.find(p => p.id === this.draggingVerticalPassageEndpoint!.id);
+      if (!passage) return;
+      const hit = this.draggingVerticalPassageEndpoint;
+      const current = hit.end === "from" ? passage.from : passage.to;
+      const other = hit.end === "from" ? passage.to : passage.from;
+      const movedToOther = other.point[0] === cell.x && other.point[1] === cell.y && (other.level ?? 0) === (current.level ?? 0);
+      if (current.point[0] !== cell.x || current.point[1] !== cell.y) {
+        this.verticalPassageDragMoved = true;
+        if (!movedToOther) {
+          useMazeStore.getState().movePresetVerticalPassageEndpoint(hit.id, hit.end, presetEndpoint([cell.x, cell.y], undefined, current.level));
+        }
+      }
+      return;
+    }
+
     if (TELEPORT_TOOLS.has(state.presetConnectionsTool)) {
       if (state.presetTeleportPendingFrom) {
-        this.renderer.updateTeleportPreview(state.presetTeleportPendingFrom, vpX, vpY);
+        this.renderer.updateTeleportPreview(state.presetTeleportPendingFrom.point, vpX, vpY);
       } else {
         this.renderer.updateTeleportPreview(null, 0, 0);
       }
@@ -172,11 +199,15 @@ export class PresetConnectionsController extends BaseController {
       const onFinish =
         store.presetFinish !== null && (store.presetFinish.level ?? 0) === (level ?? 0) && store.presetFinish.point[0] === coords[0] && store.presetFinish.point[1] === coords[1];
       const teleportHit = pickTeleportEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, teleportsOnLevel(store.presetTeleports, level));
+      const verticalPassageHit = pickVerticalPassageEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, store.presetVerticalPassages, level);
+      const elevatorHit = store.presetElevators.find((e) => e.floors.some((f) => (f.level ?? 0) === (level ?? 0) && f.point[0] === coords[0] && f.point[1] === coords[1]));
 
       if (button === 2) {
         if (onStart) store.setPresetStart(null);
         else if (onFinish) store.setPresetFinish(null);
         else if (teleportHit) store.removePresetTeleport(teleportHit.id);
+        else if (verticalPassageHit) store.removePresetVerticalPassage(verticalPassageHit.id);
+        else if (elevatorHit) store.removePresetElevator(elevatorHit.id);
         else if (store.presetTeleportPendingFrom) this.cancelPendingTeleport();
         return;
       }
@@ -198,9 +229,16 @@ export class PresetConnectionsController extends BaseController {
         this.teleportDragMoved = false;
         return;
       }
+      if (verticalPassageHit) {
+        this.draggingVerticalPassageEndpoint = verticalPassageHit;
+        this.verticalPassageDragMoved = false;
+        return;
+      }
 
       if (tool === "set_start") store.setPresetStart(coords);
       else if (tool === "set_finish") store.setPresetFinish(coords);
+      else if (tool === "elevator") store.startPresetElevatorPlacement(presetEndpoint(coords, undefined, level));
+      else if (VERTICAL_PASSAGE_TOOLS.has(tool)) store.startPresetVerticalPassagePlacement(presetEndpoint(coords, undefined, level), tool as "vertical_passage_one_way" | "vertical_passage_two_way");
       else this.tryTeleportClick(vpX, vpY, tool, state);
       return;
     }
@@ -311,6 +349,17 @@ export class PresetConnectionsController extends BaseController {
         this.draggingTeleportEndpoint = null;
         this.teleportDragMoved = false;
       }
+
+      if (this.draggingVerticalPassageEndpoint) {
+        if (!this.verticalPassageDragMoved) {
+          const state = useMazeStore.getState();
+          if (VERTICAL_PASSAGE_TOOLS.has(state.presetConnectionsTool)) {
+            state.cyclePresetVerticalPassageDirection(this.draggingVerticalPassageEndpoint.id);
+          }
+        }
+        this.draggingVerticalPassageEndpoint = null;
+        this.verticalPassageDragMoved = false;
+      }
     }
   }
 
@@ -323,14 +372,15 @@ export class PresetConnectionsController extends BaseController {
 
     const coords: [number, number] = [cell.x, cell.y];
     const store = useMazeStore.getState();
+    const level = activeFloorLevel(store);
     const pendingFrom = store.presetTeleportPendingFrom;
     if (pendingFrom) {
-      if (pendingFrom[0] === coords[0] && pendingFrom[1] === coords[1]) return;
+      if (pendingFrom.point[0] === coords[0] && pendingFrom.point[1] === coords[1] && (pendingFrom.level ?? 0) === (level ?? 0)) return;
       const direction = tool === "teleport_two_way" ? "two_way" : "forward";
-      store.addPresetTeleport(pendingFrom, coords, direction);
+      store.addPresetTeleport(pendingFrom, presetEndpoint(coords, undefined, level), direction);
       this.renderer.updateTeleportPreview(null, 0, 0);
     } else {
-      store.setPresetTeleportPendingFrom(coords);
+      store.setPresetTeleportPendingFrom(presetEndpoint(coords, undefined, level));
     }
   }
 

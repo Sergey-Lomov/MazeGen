@@ -793,7 +793,6 @@ fn roll_vertical_balance(
 ) -> VerticalKind {
     let roll = state.rng.random::<f64>();
     let is_elevator = roll < elements.vertical_passage_elevator_balance;
-    crate::diag_log!("[vroll] balance src={src:?} roll={roll} is_elevator={is_elevator}"); // DIAG
     if let Some(log) = scope.as_deref_mut() {
         log.emit(VertexBasedEvent::VerticalBalanceRolled { src, roll, balance: elements.vertical_passage_elevator_balance, is_elevator });
     }
@@ -843,7 +842,6 @@ fn add_vertical_passage_edge(
 ) {
     let one_way_roll = state.rng.random::<f64>();
     let one_way = one_way_roll < elements.one_way_vertical_passage_chance;
-    crate::diag_log!("[vroll] one_way src={src:?} dst={dst:?} roll={one_way_roll} one_way={one_way}"); // DIAG
     if let Some(log) = scope.as_deref_mut() {
         log.emit(VertexBasedEvent::VerticalPassageOneWayRolled { roll: one_way_roll, one_way_chance: elements.one_way_vertical_passage_chance, fired: one_way });
     }
@@ -851,7 +849,6 @@ fn add_vertical_passage_edge(
     if one_way {
         let dir_roll = state.rng.random::<f64>();
         upward = dir_roll < elements.vertical_up_down_balance;
-        crate::diag_log!("[vroll] direction src={src:?} dst={dst:?} roll={dir_roll} upward={upward}"); // DIAG
         if let Some(log) = scope.as_deref_mut() {
             log.emit(VertexBasedEvent::VerticalPassageDirectionRolled { roll: dir_roll, balance: elements.vertical_up_down_balance, upward });
         }
@@ -919,12 +916,10 @@ fn try_growth_vertical_passage<T: Tessellation>(
         .filter_map(|upward| resolve_vertical_passage_target(field, src, upward).map(|n| (upward, n)))
         .filter(|&(_, n)| !state.visited.contains(&n) && can_connect(src, n, preset_state))
         .collect();
-    crate::diag_log!("[vroll] passage_candidates src={src:?} candidates={candidates:?}"); // DIAG
     let Some(&(_, dst)) = (if candidates.len() <= 1 {
         candidates.first()
     } else {
         let idx = state.rng.random_range(0..candidates.len());
-        crate::diag_log!("[vroll] passage_pick src={src:?} idx={idx}"); // DIAG
         Some(&candidates[idx])
     }) else {
         return false;
@@ -1077,7 +1072,6 @@ fn try_elevator<T: Tessellation>(
         let mut count = elements.elevator_span_min;
         for _slot in 1..=(max_slots_clamped - elements.elevator_span_min) {
             let roll = state.rng.random::<f64>();
-            crate::diag_log!("[vroll] elevator_branching src={src:?} roll={roll}"); // DIAG
             if roll < elements.elevator_branching {
                 count += 1;
             }
@@ -1096,7 +1090,6 @@ fn try_elevator<T: Tessellation>(
     let mut pool = unvisited_pool.clone();
     for _ in 0..unvisited_needed.min(pool.len()) {
         let idx = state.rng.random_range(0..pool.len());
-        crate::diag_log!("[vroll] elevator_pool_pick src={src:?} pool_len={} idx={idx}", pool.len()); // DIAG
         chosen.push(pool.swap_remove(idx));
     }
     if let Some(cyclic_node) = cyclic_visited_node {

@@ -217,8 +217,13 @@ export type MarkerData = {
  * floor than the one currently being drawn: `to` itself is then not the real target cell but the
  * midpoint between `from` and the target's true (off-image) position, so `TeleportRenderer` draws a
  * floor-number badge there instead of an ordinary teleport marker — the connector still runs the
- * normal routing/collision-avoidance path toward that midpoint like any other endpoint. */
-export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean; fromNode?: number; toNode?: number; toFloor?: number };
+ * normal routing/collision-avoidance path toward that midpoint like any other endpoint. `fromFloor`
+ * (GitHub issue #357 follow-up) is the same thing for `from` instead — needed on a cross-floor
+ * preset teleport's own *arrival* floor, where the real (on-floor) marker is the arrival end sitting
+ * in `to` (so the arrow, which always points `from`→`to`, still reads departure→arrival) while the
+ * departure end's badge occupies `from`. At most one of `toFloor`/`fromFloor` is ever set on a given
+ * edge. */
+export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWay: boolean; fromNode?: number; toNode?: number; toFloor?: number; fromFloor?: number };
 
 /** One `VerticalPassage`/`Elevator` edge's own render point (GitHub issue #347) — always a single
  *  point-anchored marker on the edge's `from` node's own cell, never a connector to another drawn

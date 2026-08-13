@@ -131,6 +131,16 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       _nextPresetTeleportId: file.presets.teleports.length === 0
         ? 1
         : Math.max(...file.presets.teleports.map((t) => t.id)) + 1,
+      presetVerticalPassages: file.presets.verticalPassages,
+      presetVerticalPassagePending: null,
+      _nextPresetVerticalPassageId: file.presets.verticalPassages.length === 0
+        ? 1
+        : Math.max(...file.presets.verticalPassages.map((p) => p.id)) + 1,
+      presetElevators: file.presets.elevators,
+      presetElevatorPending: null,
+      _nextPresetElevatorId: file.presets.elevators.length === 0
+        ? 1
+        : Math.max(...file.presets.elevators.map((e) => e.id)) + 1,
       presetSplitPoints: file.presets.splitPoints,
       presetActiveSplitNode: {},
       presetFocusedPoint: null,

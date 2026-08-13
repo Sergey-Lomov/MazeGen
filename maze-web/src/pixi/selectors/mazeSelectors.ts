@@ -250,12 +250,12 @@ export function postEditEdgesToDto(
 // closed whenever any single one of its nodes happens to have no edges (e.g. the original node's
 // direct passage was walled off, but a split node added at the same point has a passage of its
 // own) — the point as a whole is still open, so the cell must not render as a wall.
-// `allEdges` (GitHub issue #337 follow-up, optional — unscoped, same requirement as
-// `buildVerticalConnectionMarkers`'s own `allEdges` param) covers a one-way `VerticalPassage`
-// whose arrival-only end lands on this floor: `edges` is floor-scoped for every floor-aware
-// caller (`selectFloorScopedMaze` keeps a vertical/elevator edge only when its `from` is on the
-// active floor — see that function's own doc comment), so an arrival-only `to` node's edge is
-// structurally absent from `edges` and this cell would otherwise be mistaken for having no
+// `allEdges` (GitHub issue #337/#359 follow-up, optional — unscoped, same requirement as
+// `buildVerticalConnectionMarkers`'s own `allEdges` param) covers a one-way `VerticalPassage`/
+// `Elevator` whose arrival-only end lands on this floor: `edges` is floor-scoped for every
+// floor-aware caller (`selectFloorScopedMaze` keeps a vertical/elevator edge only when its `from`
+// is on the active floor — see that function's own doc comment), so an arrival-only `to` node's
+// edge is structurally absent from `edges` and this cell would otherwise be mistaken for having no
 // connection at all and rendered as a wall. Omitted callers (every non-floor-aware one) see no
 // change in behavior — `edges` alone is exactly what `connected` was built from before this param
 // existed.
@@ -265,7 +265,12 @@ export function buildClosedCells(nodes: NodeDto[], edges: EdgeDto[], allEdges?: 
   if (allEdges) {
     const nodeIds = new Set(nodes.map((n) => n.id));
     for (const e of allEdges) {
-      if (e.kind !== "vertical_passage") continue;
+      if (e.kind !== "vertical_passage" && e.kind !== "elevator") continue;
+      // Vertical passage/elevator edges are never post-edit-editable (see `PostEditRenderer`'s own
+      // call site), so neither end is in `edges`/`activeEdges` above — both `from` (the departure
+      // end, on this floor for an edge whose own `from` is here) and `to` (the arrival-only end
+      // covered before this fix) must be checked, not just `to`.
+      if (nodeIds.has(e.from)) connected.add(e.from);
       if (nodeIds.has(e.to)) connected.add(e.to);
     }
   }
@@ -1049,6 +1054,51 @@ export function buildTeleportEdges(
       toNode: e.to,
       ...(toFloor !== undefined ? { toFloor } : {}),
     });
+  }
+
+  // Arrival-only cross-floor one-way teleports (GitHub issue #357 follow-up): a pure one-way
+  // teleport whose `from` lives on another floor never survives `edges`' own floor-scoping (which
+  // only keeps an edge when `from` is on the active floor), so the loop above never sees it — the
+  // active floor would otherwise show nothing at all for it, unlike a same-floor one-way teleport,
+  // whose arrival end still draws (as an outline point on its own `edges` entry). Every such pair is
+  // already `seenPairKey`-excluded here when it has a same-direction *or* reverse entry the loop
+  // above already produced (a same-floor pair a `resolveNodeLevel`-thin `unscopedEdges` scan would
+  // otherwise re-detect as "arrival-only" a second time). Scanned from `unscopedEdges` (never just
+  // `edges`, which is this function's own floor-scoped param and structurally excludes exactly the
+  // edges this pass needs) — a no-op when `floorContext` is absent, same as the main loop's own
+  // cross-floor branch.
+  if (floorContext) {
+    for (const e of floorContext.unscopedEdges) {
+      if (e.kind !== "teleport") continue;
+      const pairKey = e.from < e.to ? `${e.from},${e.to}` : `${e.to},${e.from}`;
+      if (seenPairKey.has(pairKey)) continue;
+      const toLevel = floorContext.resolveNodeLevel(e.to);
+      if (toLevel !== floorContext.activeFloorIndex) continue;
+      const fromLevel = floorContext.resolveNodeLevel(e.from);
+      if (fromLevel === undefined || fromLevel === floorContext.activeFloorIndex) continue;
+      seenPairKey.add(pairKey);
+
+      const realToNode = floorContext.unscopedNodeById.get(e.to);
+      const realFromNode = floorContext.unscopedNodeById.get(e.from);
+      if (!realToNode || !realFromNode) continue;
+      const toPos = nodePos.get(e.to) ?? getCellCenter(realToNode.x, realToNode.y, cfg);
+
+      const fromCenter = getCellCenter(realFromNode.x, realFromNode.y, cfg);
+      const toCenter = getCellCenter(realToNode.x, realToNode.y, cfg);
+      const midX = (fromCenter.x + toCenter.x) / 2;
+      const midY = (fromCenter.y + toCenter.y) / 2;
+      const [snapX, snapY] = nearestCellCoord(midX, midY, cfg);
+      const snapped = getCellCenter(snapX, snapY, cfg);
+
+      result.push({
+        from: [snapped.x, snapped.y],
+        to: [toPos.x, toPos.y],
+        oneWay: true,
+        fromNode: e.from,
+        toNode: e.to,
+        fromFloor: fromLevel,
+      });
+    }
   }
 
   return result;

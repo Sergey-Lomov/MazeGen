@@ -164,6 +164,15 @@ describe("resolvePointFillState", () => {
     ];
     expect(resolvePointFillState(edges, 5, 5)).toBe("mixed");
   });
+
+  // A single-point edge (`from`/`to` at the same coordinate) must resolve to a plain "filled"
+  // state, not "mixed" — the ordinary `to` = outline reading would otherwise fight `from`'s own
+  // "filled" reading at that same point.
+  it("a single-point edge (from === to) resolves filled, not mixed", () => {
+    const edges: TeleportEdge[] = [{ from: [3, 4], to: [3, 4], oneWay: true }];
+    expect(resolvePointFillState(edges, 3, 4)).toBe("filled");
+    expect(computeMixedCells(edges).size).toBe(0);
+  });
 });
 
 describe("clipDistance", () => {

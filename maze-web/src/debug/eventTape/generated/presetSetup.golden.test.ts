@@ -19,4 +19,14 @@ describe("PresetSetupEvent golden round trip", () => {
     const decoded = decodePresetSetupEvent(PRESET_SETUP_EVENT_TAG.TELEPORT_ESTABLISHED, bytes);
     expect(decoded).toEqual({ kind: "TeleportEstablished", from: 7n, to: 7n, twoWay: true });
   });
+  it("VerticalPassageEstablished", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1]);
+    const decoded = decodePresetSetupEvent(PRESET_SETUP_EVENT_TAG.VERTICAL_PASSAGE_ESTABLISHED, bytes);
+    expect(decoded).toEqual({ kind: "VerticalPassageEstablished", from: 7n, to: 7n, twoWay: true });
+  });
+  it("ElevatorEstablished", () => {
+    const bytes = new Uint8Array([2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0]);
+    const decoded = decodePresetSetupEvent(PRESET_SETUP_EVENT_TAG.ELEVATOR_ESTABLISHED, bytes);
+    expect(decoded).toEqual({ kind: "ElevatorEstablished", nodes: [3n, 5n] });
+  });
 });

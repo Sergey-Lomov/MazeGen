@@ -1,8 +1,9 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidMarkers, presetConnectionsOnLevel, recordOnLevel, mapOnLevel, setOnLevel } from "./fieldEditUtils";
-import type { FieldEdge, PresetTeleportEntry } from "./fieldEditUtils";
+import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, presetConnectionsOnLevel, recordOnLevel, mapOnLevel, setOnLevel } from "./fieldEditUtils";
+import type { FieldEdge, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "./fieldEditUtils";
 import { makeProjection } from "./tessellationProjection";
+import { getCellCenter, nearestCellCoord } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
@@ -15,7 +16,8 @@ import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
 import { TeleportRenderer, clipDistance } from "./renderers/TeleportRenderer";
 import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
-import type { TeleportEdge } from "./renderers/types";
+import { VerticalConnectionRenderer, type VerticalConnectionStyle } from "./renderers/VerticalConnectionRenderer";
+import type { TeleportEdge, VerticalConnectionMarker } from "./renderers/types";
 import {
   buildPresetWallGroups,
   buildPresetMarkers,
@@ -35,6 +37,35 @@ type MazeState = ReturnType<typeof useMazeStore.getState>;
 
 const ISOLATED_HL_ALPHA = 0.35;
 
+/** Same fixed look `GenerationRenderer`'s own `DEFAULT_VERTICAL_STYLE` uses for resolved
+ *  `VerticalPassage`/`Elevator` edges — presets must read identically to how the same connection
+ *  looks after generation, not like a teleport (GitHub issue #357 follow-up: the preset stage
+ *  originally reused `TeleportRenderer`'s diamond/badge look, which read as a plain teleport). */
+const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = {
+  displayStyle: "marker",
+  verticalPassageMarker: {
+    shape: "circle",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 2,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  elevatorMarker: {
+    shape: "diamond",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 2,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  arrowColor: canvas.vertical.default,
+};
+
 export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly root: Container;
 
@@ -45,6 +76,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly presetWallsContainer: Container;
   private readonly splitJunctionContainer: Container;
   private readonly teleportContainer: Container;
+  private readonly verticalContainer: Container;
   private readonly locksContainer: Container;
   private readonly markersContainer: Container;
   private readonly originContainer: Container;
@@ -64,6 +96,12 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly presetWalls: WallRenderer;
   private readonly splitJunctions: SplitJunctionRenderer;
   private readonly teleports: TeleportRenderer;
+  /** Own `VerticalConnectionRenderer` instance for preset `VerticalPassage`/`Elevator` links
+   *  (GitHub issue #357) — same marker-based primitive `GenerationRenderer` uses for the resolved
+   *  edges after generation, so a preset reads identically to its own generated result instead of
+   *  looking like a teleport. Own instance per `maze-web/CLAUDE.md`'s feature-renderer ownership
+   *  rule (never a shared instance across features/layers). */
+  private readonly verticals: VerticalConnectionRenderer;
   private readonly locks: LockRenderer;
   private readonly markers: WaypointsRenderer;
   private readonly origin: OriginRenderer;
@@ -91,6 +129,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.presetWallsContainer    = new Container();
     this.splitJunctionContainer  = new Container();
     this.teleportContainer       = new Container();
+    this.verticalContainer       = new Container();
     this.locksContainer          = new Container();
     this.markersContainer        = new Container();
     this.originContainer         = new Container();
@@ -111,6 +150,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.locksContainer);
     this.root.addChild(this.splitJunctionContainer);
     this.root.addChild(this.teleportContainer);
+    this.root.addChild(this.verticalContainer);
     this.root.addChild(this.markersContainer);
     this.root.addChild(this.originContainer);
     this.root.addChild(this.genSourceContainer);
@@ -129,6 +169,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.presetWalls    = new WallRenderer(this.presetWallsContainer);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports      = new TeleportRenderer(this.teleportContainer);
+    this.verticals      = new VerticalConnectionRenderer(this.verticalContainer);
     this.locks          = new LockRenderer(this.locksContainer);
     this.markers        = new WaypointsRenderer(this.markersContainer);
     this.origin         = new OriginRenderer(this.originContainer);
@@ -239,6 +280,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       state.lockedNodes !== prev.lockedNodes ||
       state.autoLockedNodes !== prev.autoLockedNodes ||
       state.presetTeleports !== prev.presetTeleports ||
+      state.presetVerticalPassages !== prev.presetVerticalPassages ||
+      state.presetElevators !== prev.presetElevators ||
       state.presetSplitPoints !== prev.presetSplitPoints ||
       state.presetActiveSplitNode !== prev.presetActiveSplitNode
     ) {
@@ -262,7 +305,10 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       this.redrawLinkHover(state);
     }
 
-    if (state.presetConnectionsTool !== prev.presetConnectionsTool || state.presetTeleportPendingFrom !== prev.presetTeleportPendingFrom) {
+    if (
+      state.presetConnectionsTool !== prev.presetConnectionsTool
+      || state.presetTeleportPendingFrom !== prev.presetTeleportPendingFrom
+    ) {
       if (!state.presetTeleportPendingFrom) this.teleportPreview.clear();
       // Leaving manage_split_nodes (or switching to it) invalidates whatever cell-hover state
       // was left over from the other tool's own hover handling — the controller recomputes it
@@ -281,7 +327,9 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const presetActiveSplitNode = recordOnLevel(state.presetActiveSplitNode, level);
     const lockedNodes = mapOnLevel(state.lockedNodes, level);
     const autoLockedNodes = setOnLevel(state.autoLockedNodes, level);
-    const presetTeleports = state.presetTeleports.filter((t) => (t.from.level ?? 0) === (level ?? 0));
+    const presetTeleports = state.presetTeleports.filter((t) => (t.from.level ?? 0) === (level ?? 0) || (t.to.level ?? 0) === (level ?? 0));
+    const presetVerticalPassages = state.presetVerticalPassages.filter((p) => (p.from.level ?? 0) === (level ?? 0) || (p.to.level ?? 0) === (level ?? 0));
+    const presetElevators = state.presetElevators.filter((e) => e.floors.some((f) => (f.level ?? 0) === (level ?? 0)));
     const presetStart = (state.presetStart && (state.presetStart.level ?? 0) === (level ?? 0)) ? state.presetStart : null;
     const presetFinish = (state.presetFinish && (state.presetFinish.level ?? 0) === (level ?? 0)) ? state.presetFinish : null;
     const presetGenSource = (state.presetGenSource && (state.presetGenSource.level ?? 0) === (level ?? 0)) ? state.presetGenSource : null;
@@ -303,7 +351,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const markerData = buildPresetMarkers(presetStart?.point ?? null, presetFinish?.point ?? null, cfg);
     this.markers.render({ markers: markerData });
 
-    this.teleports.render({ edges: buildPresetTeleportEdges(presetTeleports, cfg), cfg });
+    this.teleports.render({ edges: buildPresetTeleportEdges(presetTeleports, cfg, level), cfg });
+    this.verticals.render({ markers: buildPresetVerticalMarkers(presetVerticalPassages, presetElevators, cfg, level), style: DEFAULT_VERTICAL_STYLE });
 
     this.redrawOrigin(state.showPresetOrigin);
     this.redrawGenSource(presetGenSource?.point ?? null);
@@ -377,16 +426,46 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const proj = makeProjection(this.cfg);
     const markerSize = 20;
 
-    const presetTeleports = state.presetTeleports.filter((t) => (t.from.level ?? 0) === (level ?? 0));
+    const presetTeleports = state.presetTeleports.filter((t) => (t.from.level ?? 0) === (level ?? 0) || (t.to.level ?? 0) === (level ?? 0));
     const invalidIds = computeInvalidTeleportIds(presetTeleports, resolveFieldAt);
     for (const t of presetTeleports) {
       if (!invalidIds.has(t.id)) continue;
-      for (const { point: [cx, cy] } of [t.from, t.to]) {
-        const { x: px, y: py } = proj.gridToScreen(cx, cy);
+      // Only highlight whichever endpoint is actually on this floor — the other end (a
+      // cross-floor teleport, GitHub issue #357/#340) isn't drawn as a real point on this image at
+      // all, so its own raw (x, y) would land on the wrong cell if highlighted unconditionally.
+      for (const ep of [t.from, t.to]) {
+        if ((ep.level ?? 0) !== (level ?? 0)) continue;
+        const { x: px, y: py } = proj.gridToScreen(ep.point[0], ep.point[1]);
         this.invalidTeleportHL
           .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
           .stroke({ width: 4, color: canvas.preset.invalid, alpha: 0.9 });
       }
+    }
+
+    // Invalid preset vertical passages/elevators (GitHub issue #357) — only the active floor's own
+    // endpoint of each invalid entry is drawn (the other end, on a different floor, isn't visible
+    // from here), same "highlight what's actually on screen" rule the teleport pass above follows.
+    const presetVerticalPassages = state.presetVerticalPassages.filter((p) => (p.from.level ?? 0) === (level ?? 0) || (p.to.level ?? 0) === (level ?? 0));
+    const invalidVerticalPassageIds = computeInvalidVerticalPassageIds(presetVerticalPassages, resolveFieldAt);
+    for (const p of presetVerticalPassages) {
+      if (!invalidVerticalPassageIds.has(p.id)) continue;
+      const own = (p.from.level ?? 0) === (level ?? 0) ? p.from : p.to;
+      const { x: px, y: py } = proj.gridToScreen(own.point[0], own.point[1]);
+      this.invalidTeleportHL
+        .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
+        .stroke({ width: 4, color: canvas.preset.invalid, alpha: 0.9 });
+    }
+
+    const presetElevators = state.presetElevators.filter((e) => e.floors.some((f) => (f.level ?? 0) === (level ?? 0)));
+    const invalidElevatorIds = computeInvalidElevatorIds(presetElevators, resolveFieldAt);
+    for (const e of presetElevators) {
+      if (!invalidElevatorIds.has(e.id)) continue;
+      const ownEndpoint = e.floors.find((f) => (f.level ?? 0) === (level ?? 0));
+      if (!ownEndpoint) continue;
+      const { x: px, y: py } = proj.gridToScreen(ownEndpoint.point[0], ownEndpoint.point[1]);
+      this.invalidTeleportHL
+        .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
+        .stroke({ width: 4, color: canvas.preset.invalid, alpha: 0.9 });
     }
 
     const presetStart = (state.presetStart && (state.presetStart.level ?? 0) === (level ?? 0)) ? state.presetStart : null;
@@ -414,6 +493,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.locks.render({ locks: [] }, cfg);
     this.markers.render({ markers: [] });
     this.teleports.render({ edges: [], cfg });
+    this.verticals.render({ markers: [], style: DEFAULT_VERTICAL_STYLE });
     this.origin.render({ show: false, vpScale: this.viewport.scale }, cfg);
     this.genSource.render({ source: null, vpScale: this.viewport.scale }, cfg);
     this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, cfg);
@@ -433,6 +513,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.presetWalls.destroy();
     this.splitJunctions.destroy();
     this.teleports.destroy();
+    this.verticals.destroy();
     this.locks.destroy();
     this.markers.destroy();
     this.origin.destroy();
@@ -451,6 +532,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.presetWallsContainer.destroy();
     this.splitJunctionContainer.destroy();
     this.teleportContainer.destroy();
+    this.verticalContainer.destroy();
     this.locksContainer.destroy();
     this.markersContainer.destroy();
     this.originContainer.destroy();
@@ -465,15 +547,128 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   }
 }
 
-function buildPresetTeleportEdges(teleports: PresetTeleportEntry[], cfg: TessellationConfig): TeleportEdge[] {
+/** `teleports` is expected already filtered to entries with at least one endpoint on `activeLevel`
+ *  (either `t.from` or `t.to`). Mirrors `mazeSelectors.ts`'s own `buildTeleportEdges` cross-floor
+ *  handling exactly (GitHub issue #337/#357 follow-up) — a preset teleport must read identically to
+ *  a generation-time one: when exactly one endpoint is on-floor, `to` is replaced with the grid-
+ *  snapped midpoint between the on-floor cell and the real (off-image) off-floor cell, and `toFloor`
+ *  is set so `TeleportRenderer` draws a floor-number badge there instead of an ordinary marker — the
+ *  on-floor endpoint itself still draws as a real marker, connected to that badge by an ordinary
+ *  connector, exactly like the generation view. */
+export function buildPresetTeleportEdges(teleports: PresetTeleportEntry[], cfg: TessellationConfig, activeLevel: number | undefined): TeleportEdge[] {
   const proj = makeProjection(cfg);
+  const active = activeLevel ?? 0;
+
   return teleports.map((t) => {
     // `t.from`/`t.to` are the two click points in placement order — the actual passage direction
     // for "backward" runs the other way (mirrors PresetConnectionState::TeleportBackward on the
-    // Rust side, which builds the edge to→from), so entry/exit must swap for the renderer too.
-    const [entryCell, exitCell] = t.direction === "backward" ? [t.to, t.from] : [t.from, t.to];
-    const entry = proj.gridToScreen(entryCell.point[0], entryCell.point[1]);
-    const exit = proj.gridToScreen(exitCell.point[0], exitCell.point[1]);
-    return { from: [entry.x, entry.y], to: [exit.x, exit.y], oneWay: t.direction !== "two_way" };
+    // Rust side, which builds the edge to→from): `fromIsDeparture` says whether `t.from` (not
+    // `t.to`) is the filled/departure end.
+    const fromIsDeparture = t.direction !== "backward";
+    const fromOnActive = (t.from.level ?? 0) === active;
+    const toOnActive = (t.to.level ?? 0) === active;
+    const oneWay = t.direction !== "two_way";
+
+    if (fromOnActive && toOnActive) {
+      const fromPos = proj.gridToScreen(t.from.point[0], t.from.point[1]);
+      const toPos = proj.gridToScreen(t.to.point[0], t.to.point[1]);
+      return fromIsDeparture
+        ? { from: [fromPos.x, fromPos.y], to: [toPos.x, toPos.y], oneWay }
+        : { from: [toPos.x, toPos.y], to: [fromPos.x, fromPos.y], oneWay };
+    }
+
+    // Exactly one of `t.from`/`t.to` is on-floor (the filter above guarantees at least one is; the
+    // both-on-floor case is handled above).
+    const onFloorEndpoint = fromOnActive ? t.from : t.to;
+    const offFloorEndpoint = fromOnActive ? t.to : t.from;
+    const onFloorIsDeparture = fromOnActive ? fromIsDeparture : !fromIsDeparture;
+    const onPos = proj.gridToScreen(onFloorEndpoint.point[0], onFloorEndpoint.point[1]);
+
+    const onCenter = getCellCenter(onFloorEndpoint.point[0], onFloorEndpoint.point[1], cfg);
+    const offCenter = getCellCenter(offFloorEndpoint.point[0], offFloorEndpoint.point[1], cfg);
+    const midX = (onCenter.x + offCenter.x) / 2;
+    const midY = (onCenter.y + offCenter.y) / 2;
+    const [snapX, snapY] = nearestCellCoord(midX, midY, cfg);
+    const snapped = getCellCenter(snapX, snapY, cfg);
+
+    const onFinal: [number, number] = [onPos.x, onPos.y];
+    const badgeFinal: [number, number] = [snapped.x, snapped.y];
+    // Departure is always `from`, arrival always `to` (matches the both-on-floor branch above and
+    // makes the arrow, which always points `from`→`to`, read correctly either way) — the badge sits
+    // wherever the off-floor endpoint's role puts it: `toFloor` when it's the arrival end (the
+    // on-floor marker is `from`/departure), `fromFloor` when it's the departure end (the on-floor
+    // marker is `to`/arrival) — see `TeleportEdge.fromFloor`'s own doc comment.
+    return onFloorIsDeparture
+      ? { from: onFinal, to: badgeFinal, oneWay, toFloor: offFloorEndpoint.level ?? 0 }
+      : { from: badgeFinal, to: onFinal, oneWay, fromFloor: offFloorEndpoint.level ?? 0 };
   });
+}
+
+/** Preset `VerticalPassage`/`Elevator` links (GitHub issue #357), on the active floor, converted to
+ *  `VerticalConnectionMarker`s for `VerticalConnectionRenderer` reuse — the same marker primitive
+ *  `GenerationRenderer` uses for the resolved edges after generation, so a preset reads identically
+ *  to its own generated result (not like a teleport, which `TeleportRenderer` — the earlier,
+ *  replaced approach — visually resembles). One marker per endpoint that lands on the active floor;
+ *  `direction`/`targetFloorIndex` only need to resolve against this call's own known endpoints, not
+ *  aggregate across several unrelated edges the way `mazeSelectors.ts`'s own
+ *  `buildVerticalConnectionMarkers` must (a resolved graph's `Elevator` fan is several separate
+ *  edges sharing a `from`; here one `PresetElevatorEntry` already holds every floor directly). */
+export function buildPresetVerticalMarkers(
+  passages: PresetVerticalPassageEntry[],
+  elevators: PresetElevatorEntry[],
+  cfg: TessellationConfig,
+  activeLevel: number | undefined,
+): VerticalConnectionMarker[] {
+  const proj = makeProjection(cfg);
+  const result: VerticalConnectionMarker[] = [];
+  const active = activeLevel ?? 0;
+
+  for (const p of passages) {
+    // `from`/`to` are the two click points in placement order; the actual passage direction for
+    // "backward" runs the other way (mirrors the preset teleport convention above) — entry is the
+    // departure end (filled, solid arrow), exit is the arrival end (empty, outline arrow) for a
+    // one-way passage. A two-way passage's active-floor endpoint always draws filled regardless of
+    // which click-order end it is.
+    const [entryCell, exitCell] = p.direction === "backward" ? [p.to, p.from] : [p.from, p.to];
+    const onEntry = (entryCell.level ?? 0) === active;
+    const onExit = (exitCell.level ?? 0) === active;
+    if (!onEntry && !onExit) continue;
+    const own = onEntry ? entryCell : exitCell;
+    const other = onEntry ? exitCell : entryCell;
+    const pos = proj.gridToScreen(own.point[0], own.point[1]);
+    const isOneWay = p.direction !== "two_way";
+    // A one-way passage's marker is always empty (`filled: false`) at *both* ends — only the
+    // arrow tells departure and arrival apart (solid on entry, outline on exit), same as
+    // `mazeSelectors.ts`'s own `buildVerticalConnectionMarkers` for the resolved graph. A two-way
+    // passage's marker is always filled, regardless of click-order end.
+    result.push({
+      pos: [pos.x, pos.y],
+      fromNode: 0,
+      kind: "vertical_passage",
+      direction: (other.level ?? 0) > active ? "up" : "down",
+      targetFloorIndex: other.level ?? 0,
+      filled: !isOneWay,
+      arrowFilled: !isOneWay || onEntry,
+    });
+  }
+
+  for (const e of elevators) {
+    const onFloor = e.floors.filter((f) => (f.level ?? 0) === active);
+    if (onFloor.length === 0) continue;
+    const ownEndpoint = onFloor[0];
+    const pos = proj.gridToScreen(ownEndpoint.point[0], ownEndpoint.point[1]);
+    const others = e.floors.filter((f) => (f.level ?? 0) !== active);
+    const sawUp = others.some((f) => (f.level ?? 0) > active);
+    const sawDown = others.some((f) => (f.level ?? 0) < active);
+    result.push({
+      pos: [pos.x, pos.y],
+      fromNode: 0,
+      kind: "elevator",
+      direction: sawUp && sawDown ? "both" : sawUp ? "up" : "down",
+      filled: true,
+      arrowFilled: true,
+    });
+  }
+
+  return result;
 }

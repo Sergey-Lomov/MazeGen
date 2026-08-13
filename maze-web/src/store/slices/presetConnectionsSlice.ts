@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
-import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
-import { applyTool, materializeReset, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint } from "../../pixi/fieldEditUtils";
+import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
+import { applyTool, materializeReset, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint, cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
 import { presetEndpoint, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { SplitRef } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
@@ -27,13 +27,24 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetTeleports: [] as PresetTeleportEntry[],
   presetTeleportPendingFrom: null,
   _nextPresetTeleportId: 1,
+  presetVerticalPassages: [] as PresetVerticalPassageEntry[],
+  presetVerticalPassagePending: null,
+  _nextPresetVerticalPassageId: 1,
+  presetElevators: [] as PresetElevatorEntry[],
+  presetElevatorPending: null,
+  _nextPresetElevatorId: 1,
   presetSplitPoints: {},
   presetActiveSplitNode: {},
   presetFocusedPoint: null,
   presetHoveredLink: null,
   presetSectionsExpanded: { problems: true },
 
-  setPresetConnectionsTool: (tool) => set({ presetConnectionsTool: tool, presetTeleportPendingFrom: null }),
+  setPresetConnectionsTool: (tool) => set({
+    presetConnectionsTool: tool,
+    presetTeleportPendingFrom: null,
+    presetVerticalPassagePending: null,
+    presetElevatorPending: null,
+  }),
 
   setPresetSectionExpanded: (id, expanded) =>
     set((s) => ({ presetSectionsExpanded: { ...s.presetSectionsExpanded, [id]: expanded } })),
@@ -61,13 +72,17 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     for (const key of invalidKeys) presetConnections.delete(key);
     const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, resolveFieldAt);
     const presetTeleports = state.presetTeleports.filter(t => !invalidTeleportIds.has(t.id));
+    const invalidVerticalPassageIds = computeInvalidVerticalPassageIds(state.presetVerticalPassages, resolveFieldAt);
+    const presetVerticalPassages = state.presetVerticalPassages.filter(p => !invalidVerticalPassageIds.has(p.id));
+    const invalidElevatorIds = computeInvalidElevatorIds(state.presetElevators, resolveFieldAt);
+    const presetElevators = state.presetElevators.filter(e => !invalidElevatorIds.has(e.id));
     const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, resolveFieldAt);
     const presetStart = invalidMarkers.start ? null : state.presetStart;
     const presetFinish = invalidMarkers.finish ? null : state.presetFinish;
     const invalidSplitKeys = computeInvalidSplitPoints(state.presetSplitPoints, resolveFieldAt);
     const presetSplitPoints = { ...state.presetSplitPoints };
     for (const key of invalidSplitKeys) delete presetSplitPoints[key];
-    return withRecomputedAutoLock(state, { presetConnections, presetTeleports, presetStart, presetFinish, presetSplitPoints });
+    return withRecomputedAutoLock(state, { presetConnections, presetTeleports, presetVerticalPassages, presetElevators, presetStart, presetFinish, presetSplitPoints });
   }),
 
   resetPresetConnections: () => set((state) => ({
@@ -81,6 +96,12 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     presetTeleports: [] as PresetTeleportEntry[],
     presetTeleportPendingFrom: null,
     _nextPresetTeleportId: 1,
+    presetVerticalPassages: [] as PresetVerticalPassageEntry[],
+    presetVerticalPassagePending: null,
+    _nextPresetVerticalPassageId: 1,
+    presetElevators: [] as PresetElevatorEntry[],
+    presetElevatorPending: null,
+    _nextPresetElevatorId: 1,
     presetSplitPoints: {},
     presetActiveSplitNode: {},
     presetFocusedPoint: null,
@@ -142,11 +163,10 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
 
   clearLockedNodes: () => set((state) => ({ lockedNodes: new Map<string, NodeLockKind>(), autoLockedNodes: new Set<string>(), debugStale: debugStaleOf(state) })),
 
-  setPresetTeleportPendingFrom: (cell) => set({ presetTeleportPendingFrom: cell }),
+  setPresetTeleportPendingFrom: (endpoint) => set({ presetTeleportPendingFrom: endpoint }),
 
   addPresetTeleport: (from, to, direction) => set((state) => {
-    const level = activeFloorLevel(state);
-    const entry: PresetTeleportEntry = { id: state._nextPresetTeleportId, from: presetEndpoint(from, undefined, level), to: presetEndpoint(to, undefined, level), direction };
+    const entry: PresetTeleportEntry = { id: state._nextPresetTeleportId, from, to, direction };
     return {
       presetTeleports: [...state.presetTeleports, entry],
       _nextPresetTeleportId: state._nextPresetTeleportId + 1,
@@ -170,6 +190,84 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
 
   movePresetTeleportEndpoint: (id, end, cell) => set((state) => ({
     presetTeleports: moveTeleportEndpoint(state.presetTeleports, { id, end }, cell),
+    presetsDirty: true,
+    debugStale: debugStaleOf(state),
+  })),
+
+  startPresetVerticalPassagePlacement: (origin, tool) => set((state) => {
+    const resolveFieldAt = resolveFieldAtOf(state);
+    const originLevel = origin.level ?? 0;
+    const availableDirections: ("up" | "down")[] = [];
+    if (cellExistsAt(resolveFieldAt, origin.point, originLevel + 1)) availableDirections.push("up");
+    if (originLevel > 0 && cellExistsAt(resolveFieldAt, origin.point, originLevel - 1)) availableDirections.push("down");
+    if (availableDirections.length === 0) return {};
+    if (availableDirections.length === 1) {
+      return commitPresetVerticalPassage(state, origin, tool, availableDirections[0]);
+    }
+    return { presetVerticalPassagePending: { origin, tool, availableDirections } };
+  }),
+
+  choosePresetVerticalPassageDirection: (direction) => set((state) => {
+    const pending = state.presetVerticalPassagePending;
+    if (!pending) return {};
+    return commitPresetVerticalPassage(state, pending.origin, pending.tool, direction);
+  }),
+
+  cancelPresetVerticalPassagePlacement: () => set({ presetVerticalPassagePending: null }),
+
+  cyclePresetVerticalPassageDirection: (id) => set((state) => ({
+    presetVerticalPassages: cycleVerticalPassageDirection(state.presetVerticalPassages, id),
+    presetsDirty: true,
+    debugStale: debugStaleOf(state),
+  })),
+
+  removePresetVerticalPassage: (id) => set((state) => ({
+    presetVerticalPassages: removeVerticalPassage(state.presetVerticalPassages, id),
+    presetsDirty: true,
+    debugStale: debugStaleOf(state),
+  })),
+
+  movePresetVerticalPassageEndpoint: (id, end, endpoint) => set((state) => ({
+    presetVerticalPassages: moveVerticalPassageEndpoint(state.presetVerticalPassages, { id, end }, endpoint),
+    presetsDirty: true,
+    debugStale: debugStaleOf(state),
+  })),
+
+  startPresetElevatorPlacement: (origin) => set(() => ({
+    presetElevatorPending: { origin, floors: new Set([origin.level ?? 0]) },
+  })),
+
+  togglePresetElevatorFloor: (floorIndex) => set((state) => {
+    const pending = state.presetElevatorPending;
+    if (!pending) return {};
+    const originLevel = pending.origin.level ?? 0;
+    if (floorIndex === originLevel) return {};
+    const floors = new Set(pending.floors);
+    if (floors.has(floorIndex)) floors.delete(floorIndex);
+    else floors.add(floorIndex);
+    return { presetElevatorPending: { ...pending, floors } };
+  }),
+
+  confirmPresetElevatorPlacement: () => set((state) => {
+    const pending = state.presetElevatorPending;
+    if (!pending || pending.floors.size < 2) return {};
+    const point = pending.origin.point;
+    const floors = Array.from(pending.floors).sort((a, b) => a - b)
+      .map((level) => presetEndpoint(point, undefined, level === 0 ? undefined : level));
+    const entry: PresetElevatorEntry = { id: state._nextPresetElevatorId, floors };
+    return {
+      presetElevators: [...state.presetElevators, entry],
+      _nextPresetElevatorId: state._nextPresetElevatorId + 1,
+      presetElevatorPending: null,
+      presetsDirty: true,
+      debugStale: debugStaleOf(state),
+    };
+  }),
+
+  cancelPresetElevatorPlacement: () => set({ presetElevatorPending: null }),
+
+  removePresetElevator: (id) => set((state) => ({
+    presetElevators: removeElevator(state.presetElevators, id),
     presetsDirty: true,
     debugStale: debugStaleOf(state),
   })),
@@ -354,6 +452,8 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       if (touchesPoint(entry.from) || touchesPoint(entry.to)) presetConnections.delete(k);
     }
     const presetTeleports = state.presetTeleports.filter((t) => !touchesPoint(t.from) && !touchesPoint(t.to));
+    const presetVerticalPassages = state.presetVerticalPassages.filter((p) => !touchesPoint(p.from) && !touchesPoint(p.to));
+    const presetElevators = state.presetElevators.filter((e) => !e.floors.some(touchesPoint));
 
     const presetSplitPoints = { ...state.presetSplitPoints };
     delete presetSplitPoints[key];
@@ -368,7 +468,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     lockedNodes.delete(key);
 
     return withRecomputedAutoLock(state, {
-      presetConnections, presetTeleports,
+      presetConnections, presetTeleports, presetVerticalPassages, presetElevators,
       presetSplitPoints, presetActiveSplitNode,
       presetStart, presetFinish, presetGenSource,
       lockedNodes,
@@ -376,6 +476,36 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     });
   }),
 });
+
+/** Builds the new `PresetVerticalPassageEntry` for a single-click placement (GitHub issue #357
+ * follow-up) — `origin` is always `from`; `direction` ("up"/"down", already resolved as available
+ * by `startPresetVerticalPassagePlacement`/the dialog) picks `to`'s floor. `vertical_passage_two_way`
+ * always creates `direction: "two_way"`; `vertical_passage_one_way` always creates `"forward"` (`from`
+ * is the departure end) — mirrors the old two-click tool's own click-order convention, just without
+ * a second click. */
+function commitPresetVerticalPassage(
+  state: MazeState,
+  origin: PresetEndpoint,
+  tool: "vertical_passage_one_way" | "vertical_passage_two_way",
+  direction: "up" | "down",
+): Partial<MazeState> {
+  const originLevel = origin.level ?? 0;
+  const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
+  const to = presetEndpoint(origin.point, undefined, toLevel === 0 ? undefined : toLevel);
+  const entry: PresetVerticalPassageEntry = {
+    id: state._nextPresetVerticalPassageId,
+    from: origin,
+    to,
+    direction: tool === "vertical_passage_two_way" ? "two_way" : "forward",
+  };
+  return {
+    presetVerticalPassages: [...state.presetVerticalPassages, entry],
+    _nextPresetVerticalPassageId: state._nextPresetVerticalPassageId + 1,
+    presetVerticalPassagePending: null,
+    presetsDirty: true,
+    debugStale: debugStaleOf(state),
+  };
+}
 
 export function applyDefaultEdgeState(
   state: MazeState,

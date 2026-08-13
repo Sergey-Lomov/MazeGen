@@ -517,6 +517,23 @@ export interface PresetConnection {
   state: PresetConnectionState;
 }
 
+export type VerticalPassageDirectionDto = "forward" | "backward";
+
+/** Wire shape for a preset `VerticalPassage` (GitHub issue #357) — sent as its own
+ * `GenerateConfig.preset_vertical_passages` entry, not folded into `preset_connections`, since its
+ * endpoints live on different (adjacent) floors rather than a geometrically-adjacent cell pair.
+ * Mirrors Rust's `PresetVerticalPassageDto`. */
+export interface PresetVerticalPassageDto {
+  from: PresetEndpointDto;
+  to: PresetEndpointDto;
+  one_way?: VerticalPassageDirectionDto;
+}
+
+/** Wire shape for a preset `Elevator` (GitHub issue #357) — mirrors Rust's `PresetElevatorDto`. */
+export interface PresetElevatorDto {
+  floors: PresetEndpointDto[];
+}
+
 export type NodeLockKind = "in" | "out" | "both";
 
 export interface LockedNodeDto {
@@ -538,6 +555,8 @@ export interface GenerateConfig {
   initial: InitialGenerationConfig;
   elements: ElementsConfig;
   preset_connections?: PresetConnection[];
+  preset_vertical_passages?: PresetVerticalPassageDto[];
+  preset_elevators?: PresetElevatorDto[];
   locked_nodes?: LockedNodeDto[];
   preset_start?: PresetEndpointDto;
   preset_finish?: PresetEndpointDto;

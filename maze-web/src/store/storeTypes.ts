@@ -2,7 +2,7 @@ import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, Strateg
 import type { ParsedTape, Snapshot, DebugValueDescriptor } from "../debug/eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry } from "../pixi/fieldEditUtils";
+import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
 import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../pixi/presetEndpoint";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
@@ -390,8 +390,33 @@ export interface PresetConnectionsState {
    * `presetConnections` above; a teleport's `from`/`to` can already carry independent `level`s. */
   presetTeleports: PresetTeleportEntry[];
   /** First-click endpoint of an in-progress teleport placement (teleport_one_way/teleport_two_way tools). */
-  presetTeleportPendingFrom: [number, number] | null;
+  /** First-click endpoint of an in-progress teleport placement (teleport_one_way/teleport_two_way
+   * tools) — carries its own `level` (GitHub issue #340's cross-floor teleport support), so a
+   * placement started on one floor and completed after switching to another produces a genuine
+   * cross-floor teleport instead of both ends silently collapsing onto whichever floor happens to
+   * be active when the second click lands. */
+  presetTeleportPendingFrom: PresetEndpoint | null;
   _nextPresetTeleportId: number;
+  /** Every preset `VerticalPassage` across every floor, flat (GitHub issue #357) — same rationale
+   * as `presetTeleports`; a passage's `from`/`to` live on adjacent floors by construction. */
+  presetVerticalPassages: PresetVerticalPassageEntry[];
+  /** In-progress vertical-passage placement (GitHub issue #357 follow-up: single-click placement) —
+   * the click's own endpoint plus which of the two directions ("up"/"down", relative to the
+   * clicked floor) are actually available (a floor with no neighbor above/below only has one). When
+   * exactly one direction is available, the entry is created immediately and this is never set; when
+   * both are available, this stays set until `choosePresetVerticalPassageDirection` (driven by
+   * `PresetVerticalDirectionDialog`) or `cancelPresetVerticalPassagePlacement` resolves it. `null`
+   * when no placement is pending. */
+  presetVerticalPassagePending: { origin: PresetEndpoint; tool: "vertical_passage_one_way" | "vertical_passage_two_way"; availableDirections: ("up" | "down")[] } | null;
+  _nextPresetVerticalPassageId: number;
+  /** Every preset `Elevator` across every floor, flat (GitHub issue #357). */
+  presetElevators: PresetElevatorEntry[];
+  /** In-progress elevator placement: the first click's endpoint plus which floors (by 0-based
+   * index) have been picked so far in the floor-picker dialog, always including the active floor
+   * (the first click's own floor) which can't be unchecked. `null` when no elevator placement is
+   * pending. */
+  presetElevatorPending: { origin: PresetEndpoint; floors: Set<number> } | null;
+  _nextPresetElevatorId: number;
   /** slotIds of each split point's extra nodes declared on the preset stage, keyed by "x,y[:level]"
    * (GitHub issue #231) — mirrors post-edit's `postEditDraftSplitPoints`. */
   presetSplitPoints: Record<string, number[]>;
@@ -448,11 +473,35 @@ export interface PresetConnectionsActions {
   removeLockedNode: (x: number, y: number) => void;
   clearLockedNodes: () => void;
   setAutoLock: (v: boolean) => void;
-  setPresetTeleportPendingFrom: (cell: [number, number] | null) => void;
-  addPresetTeleport: (from: [number, number], to: [number, number], direction: "forward" | "two_way") => void;
+  setPresetTeleportPendingFrom: (endpoint: PresetEndpoint | null) => void;
+  addPresetTeleport: (from: PresetEndpoint, to: PresetEndpoint, direction: "forward" | "two_way") => void;
   cyclePresetTeleportDirection: (id: number) => void;
   removePresetTeleport: (id: number) => void;
   movePresetTeleportEndpoint: (id: number, end: "from" | "to", cell: [number, number]) => void;
+  /** Click on a cell with `vertical_passage_one_way`/`vertical_passage_two_way` active — resolves
+   * available directions itself (via `cellExistsAt`) and either creates the entry immediately (one
+   * direction available) or opens `presetVerticalPassagePending` for `PresetVerticalDirectionDialog`
+   * (both available). A no-op if neither direction has a cell (shouldn't happen — the tools are
+   * hidden below 2 floors — but guarded defensively). */
+  startPresetVerticalPassagePlacement: (origin: PresetEndpoint, tool: "vertical_passage_one_way" | "vertical_passage_two_way") => void;
+  /** Resolves a pending vertical-passage placement with the chosen direction, creating the entry.
+   * No-op if nothing is pending. */
+  choosePresetVerticalPassageDirection: (direction: "up" | "down") => void;
+  cancelPresetVerticalPassagePlacement: () => void;
+  cyclePresetVerticalPassageDirection: (id: number) => void;
+  removePresetVerticalPassage: (id: number) => void;
+  movePresetVerticalPassageEndpoint: (id: number, end: "from" | "to", endpoint: PresetEndpoint) => void;
+  /** Starts a pending elevator placement at `origin` (the first click) — the active floor is
+   * always included in `floors` from the start and can't be removed. */
+  startPresetElevatorPlacement: (origin: PresetEndpoint) => void;
+  /** Toggles whether `floorIndex` is included in the in-progress elevator placement — a no-op if
+   * `floorIndex` is the origin's own floor (can't be unchecked) or no placement is pending. */
+  togglePresetElevatorFloor: (floorIndex: number) => void;
+  /** Commits the pending elevator placement (2+ floors selected) as a new `PresetElevatorEntry` and
+   * clears the pending state; a no-op (does not clear pending) if fewer than 2 floors are selected. */
+  confirmPresetElevatorPlacement: () => void;
+  cancelPresetElevatorPlacement: () => void;
+  removePresetElevator: (id: number) => void;
   addPresetSplitNode: (point: [number, number]) => void;
   removePresetSplitNode: (point: [number, number], slotId: number) => void;
   cyclePresetActiveSplitNode: (point: [number, number]) => void;

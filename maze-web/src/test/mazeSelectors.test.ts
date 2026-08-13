@@ -178,6 +178,26 @@ describe("buildClosedCells", () => {
     const result = buildClosedCells(nodes, [], [teleportEdge]);
     expect(result).toContainEqual([0, 0]);
   });
+
+  // GitHub issue #359 follow-up: an Elevator arrival-only cell was still wrongly closed even with
+  // allEdges — the allEdges pass only ever checked `kind === "vertical_passage"`, never "elevator".
+  it("allEdges recovers an Elevator's arrival-only cell as connected", () => {
+    const nodes = [n(0, 0, 0)];
+    const elevatorEdge: EdgeDto = { from: 99, to: 0, kind: "elevator" };
+    const result = buildClosedCells(nodes, [], [elevatorEdge]);
+    expect(result).not.toContainEqual([0, 0]);
+  });
+
+  // GitHub issue #359 follow-up: a one-way VerticalPassage's own *departure* cell (its `from`, on
+  // this floor) was still wrongly closed on PostEdit — vertical passage/elevator edges are never
+  // post-edit-editable, so neither end is in `edges`/`activeEdges`, but the allEdges pass only ever
+  // checked `e.to`, never `e.from`.
+  it("allEdges recovers a one-way VerticalPassage's own departure cell as connected", () => {
+    const nodes = [n(0, 0, 0)];
+    const verticalEdge: EdgeDto = { from: 0, to: 99, kind: "vertical_passage" };
+    const result = buildClosedCells(nodes, [], [verticalEdge]);
+    expect(result).not.toContainEqual([0, 0]);
+  });
 });
 
 // --- buildMazeWalls ---
@@ -716,6 +736,30 @@ describe("buildTeleportEdges", () => {
     // Floor 0's own badge sits at its `to` (node 1 is off-floor there); floor 1's own badge sits at
     // its `to` too (node 0 is off-floor there) — both must be the exact same world point.
     expect(fromFloor0[0].to).toEqual(fromFloor1[0].to);
+  });
+
+  it("cross-floor one-way teleport's arrival floor shows a badge->marker entity too (GitHub issue #357 follow-up)", () => {
+    // Node 0 (floor 0) -> node 1 (floor 1), pure one-way, no reverse edge anywhere. Rendered from
+    // floor 1's own perspective: `edges` (floor-scoped) is empty for this pair (its only edge's
+    // `from` is node 0, on floor 0), so the ordinary loop produces nothing — the arrival-only scan
+    // must pick it up from `unscopedEdges` instead.
+    const floor1Nodes: NodeDto[] = [nLevel(1, 3, 3, 1)];
+    const unscopedNodes: NodeDto[] = [nLevel(0, 0, 0, 0), nLevel(1, 3, 3, 1)];
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1)];
+    const nodeById = new Map(floor1Nodes.map((n) => [n.id, n]));
+    const result = buildTeleportEdges(nodeById, [], squareCfg, {
+      resolveNodeLevel: selectNodeLevelResolver(unscopedNodes),
+      unscopedNodeById: new Map(unscopedNodes.map((n) => [n.id, n])),
+      unscopedEdges,
+      activeFloorIndex: 1,
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].oneWay).toBe(true);
+    expect(result[0].fromFloor).toBe(0);
+    expect(result[0].toFloor).toBeUndefined();
+    // The real, on-floor marker (node 1) is `to` — the badge (standing in for the off-floor
+    // departure end) is `from`.
+    expect(result[0].to).toEqual([getCellCenter(3, 3, squareCfg).x, getCellCenter(3, 3, squareCfg).y]);
   });
 });
 

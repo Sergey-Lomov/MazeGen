@@ -30,6 +30,7 @@ pub use vertex_based::{generate as generate_vertex_based, VertexBasedEvent, debu
 pub use types::{
     ElementsConfig, GenerationParams, EdgeBasedParams, GenerationAlgorithm,
     PresetConnectionState, TeleportDirection, PresetConnection, PresetEndpoint, NodeLockKind, LockedNode,
+    VerticalPassageDirection, PresetVerticalPassage, PresetElevator,
     GenerationConfig,
 };
 pub use split_pattern::{

@@ -22,7 +22,7 @@ export interface PresetConnectionEntry {
   source: "user" | "default";
 }
 
-export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source" | "teleport_one_way" | "teleport_two_way" | "manage_split_nodes" | "clear";
+export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source" | "teleport_one_way" | "teleport_two_way" | "vertical_passage_one_way" | "vertical_passage_two_way" | "elevator" | "manage_split_nodes" | "clear";
 
 export interface FieldEdge {
   key: string;
@@ -46,8 +46,38 @@ export function presetTeleportEntryToState(direction: PresetTeleportDirection): 
   return "teleport_two_way";
 }
 
+export type PresetVerticalPassageDirection = "forward" | "backward" | "two_way";
+
+/** A user-placed `VerticalPassage` preset (GitHub issue #357) — stored the same way
+ * `PresetTeleportEntry` is (its own flat array, not folded into `presetConnections`), since its two
+ * endpoints live on different (adjacent) floors, not a geometrically-adjacent cell pair. `from`/`to`
+ * are the two click points in placement order; `"backward"` runs `to -> from`, mirroring
+ * `PresetTeleportEntry.direction`'s own convention — `from`/`to` are never swapped after creation,
+ * only interpretation of direction changes. */
+export interface PresetVerticalPassageEntry {
+  id: number;
+  from: PresetEndpoint;
+  to: PresetEndpoint;
+  direction: PresetVerticalPassageDirection;
+}
+
+/** A user-placed `Elevator` preset (GitHub issue #357) — a fan across `floors.length` endpoints,
+ * always sharing the same `(x, y)` point (only `level` differs per entry — see
+ * `Specs/preset-connections.md`'s "Preset vertical connections"). Two-way by construction, no
+ * direction concept (mirrors the core-side `PresetElevator`). */
+export interface PresetElevatorEntry {
+  id: number;
+  floors: PresetEndpoint[];
+}
+
 /** Endpoint of a preset teleport, identified for hit-testing/drag by the owning entry's id and which end it is. */
 export interface PresetTeleportEndpointHit {
+  id: number;
+  end: "from" | "to";
+}
+
+/** Endpoint of a preset vertical passage — mirrors `PresetTeleportEndpointHit`. */
+export interface PresetVerticalPassageEndpointHit {
   id: number;
   end: "from" | "to";
 }
@@ -153,6 +183,37 @@ export function pickTeleportEndpointAt(
   return best;
 }
 
+/** Same hit-test as `pickTeleportEndpointAt`, for vertical passages — only ever tests the endpoint
+ * on the *active* floor (the caller pre-filters `passages` to the active level's own `from`, same
+ * as `teleportsOnLevel`), so only that one endpoint's screen position is ever checked per entry. */
+export function pickVerticalPassageEndpointAt(
+  viewportX: number,
+  viewportY: number,
+  cfg: TessellationConfig,
+  passages: PresetVerticalPassageEntry[],
+  activeLevel: number | undefined,
+): PresetVerticalPassageEndpointHit | null {
+  const proj = makeProjection(cfg);
+  const thresholdSq = TELEPORT_ENDPOINT_HIT_RADIUS * TELEPORT_ENDPOINT_HIT_RADIUS;
+  let best: PresetVerticalPassageEndpointHit | null = null;
+  let bestDistSq = Infinity;
+  for (const p of passages) {
+    for (const end of ["from", "to"] as const) {
+      const ep = end === "from" ? p.from : p.to;
+      if ((ep.level ?? 0) !== (activeLevel ?? 0)) continue;
+      const { x: px, y: py } = proj.gridToScreen(ep.point[0], ep.point[1]);
+      const dx = px - viewportX;
+      const dy = py - viewportY;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < thresholdSq && distSq < bestDistSq) {
+        bestDistSq = distSq;
+        best = { id: p.id, end };
+      }
+    }
+  }
+  return best;
+}
+
 export function cycleTeleportDirection(
   teleports: PresetTeleportEntry[],
   id: number,
@@ -178,6 +239,46 @@ export function moveTeleportEndpoint(
     // belonged to the old point, not the new one.
     return { ...t, [hit.end]: presetEndpoint(cell) };
   });
+}
+
+/** Only meaningful for the `vertical_passage_one_way` tool — `vertical_passage_two_way` entries
+ * ignore this, same rationale as `cycleTeleportDirection`. */
+export function cycleVerticalPassageDirection(
+  passages: PresetVerticalPassageEntry[],
+  id: number,
+): PresetVerticalPassageEntry[] {
+  return passages.map(p => {
+    if (p.id !== id || p.direction === "two_way") return p;
+    return { ...p, direction: p.direction === "forward" ? "backward" : "forward" };
+  });
+}
+
+export function removeVerticalPassage(passages: PresetVerticalPassageEntry[], id: number): PresetVerticalPassageEntry[] {
+  return passages.filter(p => p.id !== id);
+}
+
+export function moveVerticalPassageEndpoint(
+  passages: PresetVerticalPassageEntry[],
+  hit: PresetVerticalPassageEndpointHit,
+  endpoint: PresetEndpoint,
+): PresetVerticalPassageEntry[] {
+  return passages.map(p => {
+    if (p.id !== hit.id) return p;
+    return { ...p, [hit.end]: endpoint };
+  });
+}
+
+export function removeElevator(elevators: PresetElevatorEntry[], id: number): PresetElevatorEntry[] {
+  return elevators.filter(e => e.id !== id);
+}
+
+/** `PresetVerticalPassageEntry.direction` → the wire `PresetVerticalPassageDto.one_way` field
+ * (`undefined` = two-way, mirrors `PresetVerticalPassage.one_way: Option<...>` on the Rust side). */
+export function presetVerticalPassageDirectionToDto(
+  direction: PresetVerticalPassageDirection,
+): import("../wasm/types").VerticalPassageDirectionDto | undefined {
+  if (direction === "two_way") return undefined;
+  return direction;
 }
 
 export function canonicalize(
@@ -230,6 +331,18 @@ function fieldSetCache(resolveFieldAt: ResolveFieldAt): (level: number | undefin
 function pointInField(getFieldSet: (level: number | undefined) => Set<number> | undefined, point: [number, number], level: number | undefined): boolean {
   const set = getFieldSet(level);
   return set !== undefined && set.has(encodePoint(point[0], point[1]));
+}
+
+/** Whether `point` has a cell on floor `level` — the single-lookup form of `pointInField`, for
+ * callers checking one point on one floor (elevator floor-picker rows, vertical-passage direction
+ * availability) rather than scanning a whole preset collection. Not cached across calls; fine for
+ * the handful of lookups a dialog/click handler needs. */
+export function cellExistsAt(resolveFieldAt: ResolveFieldAt, point: [number, number], level: number | undefined): boolean {
+  const field = resolveFieldAt(level);
+  if (!field) return false;
+  const set = new Set<number>();
+  for (const [x, y] of resolveCells(field.cfg, field.customPoints)) set.add(encodePoint(x, y));
+  return set.has(encodePoint(point[0], point[1]));
 }
 
 export function computeInvalidKeys(
@@ -292,6 +405,40 @@ export function computeInvalidTeleportIds(
     const aIn = pointInField(getFieldSet, t.from.point, t.from.level);
     const bIn = pointInField(getFieldSet, t.to.point, t.to.level);
     if (!aIn || !bIn) invalid.add(t.id);
+  }
+  return invalid;
+}
+
+/** Same "either endpoint outside its own floor's field" criterion as `computeInvalidTeleportIds`,
+ * for preset vertical passages (GitHub issue #357). */
+export function computeInvalidVerticalPassageIds(
+  passages: PresetVerticalPassageEntry[],
+  resolveFieldAt: ResolveFieldAt,
+): Set<number> {
+  const getFieldSet = fieldSetCache(resolveFieldAt);
+  const invalid = new Set<number>();
+  for (const p of passages) {
+    const aIn = pointInField(getFieldSet, p.from.point, p.from.level);
+    const bIn = pointInField(getFieldSet, p.to.point, p.to.level);
+    if (!aIn || !bIn) invalid.add(p.id);
+  }
+  return invalid;
+}
+
+/** An elevator is invalid if any of its `floors` endpoints is outside its own floor's field, or if
+ * fewer than two endpoints remain resolvable (an elevator with a single floor connects nothing) —
+ * mirrors `PresetElevator`'s own core-side "fewer than two resolved endpoints connects nothing"
+ * fallback (`preset_state.rs`), surfaced here as invalidity instead of a silent no-op so the user
+ * sees it flagged rather than a preset that quietly does nothing at generation time. */
+export function computeInvalidElevatorIds(
+  elevators: PresetElevatorEntry[],
+  resolveFieldAt: ResolveFieldAt,
+): Set<number> {
+  const getFieldSet = fieldSetCache(resolveFieldAt);
+  const invalid = new Set<number>();
+  for (const e of elevators) {
+    const inField = e.floors.filter((f) => pointInField(getFieldSet, f.point, f.level));
+    if (inField.length !== e.floors.length || inField.length < 2) invalid.add(e.id);
   }
   return invalid;
 }

@@ -3,7 +3,7 @@ use crate::ids::{IdGenerator, NodeId};
 use crate::graph::{Graph, EdgeKind};
 use crate::space::{MultiLevelField, Tessellation};
 use crate::event_log::EventLog;
-use super::{PresetConnection, PresetConnectionState, PresetEndpoint, TeleportDirection, LockedNode, NodeLockKind};
+use super::{PresetConnection, PresetConnectionState, PresetEndpoint, TeleportDirection, LockedNode, NodeLockKind, PresetVerticalPassage, PresetElevator, VerticalPassageDirection};
 use super::preset_setup_event::{emit, PresetSetupEvent};
 
 /// Resolved preset constraints in NodeId space, ready for use by generation algorithms.
@@ -221,6 +221,8 @@ pub fn build_preset_state<T: Tessellation>(
     field: &mut MultiLevelField<T>,
     ids: &mut IdGenerator,
     preset_connections: &[PresetConnection],
+    preset_vertical_passages: &[PresetVerticalPassage],
+    preset_elevators: &[PresetElevator],
     locked_nodes: &[LockedNode],
     split_points: &[((i32, i32), u32, u32)],
     xy_to_point: impl Fn(i32, i32) -> T::Point,
@@ -311,6 +313,70 @@ pub fn build_preset_state<T: Tessellation>(
                 // endpoints must still go through normal generation for their regular
                 // connectivity.
             }
+        }
+    }
+
+    // Preset `VerticalPassage`/`Elevator` (GitHub issue #357) — planted directly into the graph
+    // exactly like preset `Passage`/`OneWay` (guaranteed structural connections, added to
+    // `preset_connected`/`preset_edges` so repair must not remove them), never added to
+    // `preset_teleports` — unlike a preset teleport, these aren't an *optional* extra-traversable
+    // shortcut; every generation algorithm already discovers a planted edge through the graph
+    // itself, the same way it discovers any other pre-existing edge at start.
+    for passage in preset_vertical_passages {
+        let (Some(from_id), Some(to_id)) = (resolve(passage.from), resolve(passage.to)) else { continue };
+        match passage.one_way {
+            None => {
+                graph.build_initial_edge(from_id, to_id, EdgeKind::VerticalPassage);
+                graph.build_initial_edge(to_id, from_id, EdgeKind::VerticalPassage);
+                preset_connected.insert(from_id);
+                preset_connected.insert(to_id);
+                preset_edges.insert((from_id, to_id));
+                preset_edges.insert((to_id, from_id));
+                if let Some(log) = log.as_deref_mut() {
+                    emit(log, PresetSetupEvent::VerticalPassageEstablished { from: from_id, to: to_id, two_way: true });
+                }
+            }
+            Some(VerticalPassageDirection::Forward) => {
+                graph.build_initial_edge(from_id, to_id, EdgeKind::VerticalPassage);
+                preset_connected.insert(from_id);
+                preset_connected.insert(to_id);
+                preset_edges.insert((from_id, to_id));
+                if let Some(log) = log.as_deref_mut() {
+                    emit(log, PresetSetupEvent::VerticalPassageEstablished { from: from_id, to: to_id, two_way: false });
+                }
+            }
+            Some(VerticalPassageDirection::Backward) => {
+                graph.build_initial_edge(to_id, from_id, EdgeKind::VerticalPassage);
+                preset_connected.insert(from_id);
+                preset_connected.insert(to_id);
+                preset_edges.insert((to_id, from_id));
+                if let Some(log) = log.as_deref_mut() {
+                    emit(log, PresetSetupEvent::VerticalPassageEstablished { from: to_id, to: from_id, two_way: false });
+                }
+            }
+        }
+    }
+
+    for elevator in preset_elevators {
+        let node_ids: Vec<NodeId> = elevator.floors.iter().filter_map(|&ep| resolve(ep)).collect();
+        // Fewer than 2 resolved endpoints (invalid/unresolvable entries filtered by the client,
+        // but not assumed — same defensive-skip contract every other preset endpoint uses) means
+        // no fan to connect.
+        if node_ids.len() < 2 {
+            continue;
+        }
+        for i in 0..node_ids.len() {
+            for j in (i + 1)..node_ids.len() {
+                let (a, b) = (node_ids[i], node_ids[j]);
+                graph.build_initial_bidirectional_edge(a, b, EdgeKind::Elevator);
+                preset_connected.insert(a);
+                preset_connected.insert(b);
+                preset_edges.insert((a, b));
+                preset_edges.insert((b, a));
+            }
+        }
+        if let Some(log) = log.as_deref_mut() {
+            emit(log, PresetSetupEvent::ElevatorEstablished { nodes: node_ids });
         }
     }
 

@@ -1,5 +1,5 @@
 import type { NodeLockKind } from "../../wasm/types";
-import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
+import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PostEditEdge, PostEditTeleportEntry, FeatureId, RenderModeId } from "../mazeStore";
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
@@ -268,6 +268,10 @@ function validateTeleportDirection(v: unknown, path: string): "forward" | "backw
   if (direction !== "forward" && direction !== "backward" && direction !== "two_way")
     throw new Error(`Invalid teleport direction at ${path}: ${direction}`);
   return direction;
+}
+
+function validateVerticalPassageDirection(v: unknown, path: string): "forward" | "backward" | "two_way" {
+  return validateTeleportDirection(v, path);
 }
 
 // ─── Section validators ──────────────────────────────────────────────────────
@@ -554,6 +558,24 @@ function validatePresetTeleportEntry(v: unknown, path: string): PresetTeleportEn
     from: validatePresetEndpoint(obj.from, `${path}.from`),
     to: validatePresetEndpoint(obj.to, `${path}.to`),
     direction: validateTeleportDirection(obj.direction, `${path}.direction`),
+  };
+}
+
+function validatePresetVerticalPassageEntry(v: unknown, path: string): PresetVerticalPassageEntry {
+  const obj = assertObject(v, path);
+  return {
+    id: assertNumber(obj.id, `${path}.id`),
+    from: validatePresetEndpoint(obj.from, `${path}.from`),
+    to: validatePresetEndpoint(obj.to, `${path}.to`),
+    direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
+  };
+}
+
+function validatePresetElevatorEntry(v: unknown, path: string): PresetElevatorEntry {
+  const obj = assertObject(v, path);
+  return {
+    id: assertNumber(obj.id, `${path}.id`),
+    floors: assertArray(obj.floors, `${path}.floors`).map((f, i) => validatePresetEndpoint(f, `${path}.floors[${i}]`)),
   };
 }
 
@@ -1035,6 +1057,16 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     ? assertArray(presetsObj.teleports, "presets.teleports").map((v, i) => validatePresetTeleportEntry(v, `presets.teleports[${i}]`))
     : [];
   assertUniqueIds(teleports, (t) => t.id, "teleport id", "presets.teleports");
+  // Optional — absent in project files saved before preset vertical passages/elevators existed
+  // (GitHub issue #357).
+  const verticalPassages = presetsObj.verticalPassages != null
+    ? assertArray(presetsObj.verticalPassages, "presets.verticalPassages").map((v, i) => validatePresetVerticalPassageEntry(v, `presets.verticalPassages[${i}]`))
+    : [];
+  assertUniqueIds(verticalPassages, (p) => p.id, "vertical passage id", "presets.verticalPassages");
+  const elevators = presetsObj.elevators != null
+    ? assertArray(presetsObj.elevators, "presets.elevators").map((v, i) => validatePresetElevatorEntry(v, `presets.elevators[${i}]`))
+    : [];
+  assertUniqueIds(elevators, (e) => e.id, "elevator id", "presets.elevators");
   // Optional — absent in project files saved before preset split points existed (GitHub issue #231).
   const presetSplitPoints = presetsObj.splitPoints != null ? validateSplitPoints(presetsObj.splitPoints, "presets.splitPoints") : {};
 
@@ -1117,6 +1149,8 @@ export function parseAndValidate(raw: unknown): ProjectFile {
       finish: presetFinish,
       genSource,
       teleports,
+      verticalPassages,
+      elevators,
       splitPoints: presetSplitPoints,
     },
     postEdit,

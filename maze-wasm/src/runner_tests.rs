@@ -53,7 +53,7 @@ mod run_initial_generation_tests {
         let mut field = MultiLevelField::<SquareTessellation>::single_level(points, &mut ids).unwrap();
         let mut graph = Graph::new();
         for node in field.all_node_ids() { graph.add_node(node); }
-        let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
+        let preset_state = build_preset_state(&mut graph, &mut field, &mut ids, &[], &[], &[], &[], &[], |x, y| SquarePoint { x, y }, None, None).unwrap();
         (graph, field, preset_state, ids)
     }
 
@@ -850,7 +850,7 @@ mod preset_locked_end_to_end_tests {
             },
         ];
         let preset_state = build_preset_state(
-            &mut graph, &mut field, &mut ids, &preset_connections, &[], &split_points, xy_to_point, None, None,
+            &mut graph, &mut field, &mut ids, &preset_connections, &[], &[], &[], &split_points, xy_to_point, None, None,
         ).unwrap();
 
         let check = SplitNodeConnectionPerNeighborCheck { instance_id: "split_node_connection_per_neighbor".to_string(), max: 1 };

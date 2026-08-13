@@ -65,9 +65,13 @@ export function computeMixedCells(edges: TeleportEdge[]): Set<string> {
     cellWants.set(key, entry);
   };
   for (const e of edges) {
+    const samePoint = coordKey(e.from[0], e.from[1]) === coordKey(e.to[0], e.to[1]);
     if (e.oneWay) {
       want(e.from[0], e.from[1], true);
-      want(e.to[0], e.to[1], false);
+      // A single-point edge (`from`/`to` at the same coordinate) is one marker, not two ends; the
+      // ordinary "`to` = outline" contribution below would otherwise fight `from`'s own "filled"
+      // reading at the exact same point, registering it as `"mixed"`.
+      if (!samePoint) want(e.to[0], e.to[1], false);
     } else {
       want(e.from[0], e.from[1], true);
       want(e.to[0], e.to[1], true);
@@ -91,9 +95,12 @@ export function resolvePointFillState(edges: TeleportEdge[], cx: number, cy: num
   let filled = false;
   let outline = false;
   for (const e of edges) {
+    const samePoint = coordKey(e.from[0], e.from[1]) === coordKey(e.to[0], e.to[1]);
     if (e.oneWay) {
       if (coordKey(e.from[0], e.from[1]) === key) filled = true;
-      if (coordKey(e.to[0], e.to[1]) === key) outline = true;
+      // See `computeMixedCells`'s own comment: a single-point edge's `to` doesn't contribute a
+      // separate "outline" reading — `from`'s own "filled" reading above already fully describes it.
+      if (!samePoint && coordKey(e.to[0], e.to[1]) === key) outline = true;
     } else {
       if (coordKey(e.from[0], e.from[1]) === key || coordKey(e.to[0], e.to[1]) === key) filled = true;
     }
@@ -104,15 +111,17 @@ export function resolvePointFillState(edges: TeleportEdge[], cx: number, cy: num
 
 /** A cross-floor edge's own `to` (GitHub issue #337 — see `TeleportEdge.toFloor`'s own doc comment)
  *  isn't the real target cell, just the midpoint the connector routes toward — this point must draw
- *  a floor-number badge instead of an ordinary teleport marker. Keyed by coordinate since that's how
- *  `TeleportGroup.points` itself identifies a drawable point; 0-indexed `toFloor` values are resolved
- *  to their 1-based display number (matching `FloorSwitcher`'s own convention) here so
- *  `drawFloorBadge` only ever deals in display numbers. */
+ *  a floor-number badge instead of an ordinary teleport marker. `from` can carry the same role via
+ *  `fromFloor` (GitHub issue #357 follow-up — see that field's own doc comment): at most one of the
+ *  two is ever set on a given edge, so both are checked independently here. Keyed by coordinate
+ *  since that's how `TeleportGroup.points` itself identifies a drawable point; 0-indexed
+ *  `toFloor`/`fromFloor` values are resolved to their 1-based display number (matching
+ *  `FloorSwitcher`'s own convention) here so `drawFloorBadge` only ever deals in display numbers. */
 function computeFloorBadges(edges: TeleportEdge[]): Map<string, number> {
   const badges = new Map<string, number>();
   for (const e of edges) {
-    if (e.toFloor === undefined) continue;
-    badges.set(coordKey(e.to[0], e.to[1]), e.toFloor + 1);
+    if (e.toFloor !== undefined) badges.set(coordKey(e.to[0], e.to[1]), e.toFloor + 1);
+    if (e.fromFloor !== undefined) badges.set(coordKey(e.from[0], e.from[1]), e.fromFloor + 1);
   }
   return badges;
 }

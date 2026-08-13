@@ -35,9 +35,12 @@ export interface PresetSetupApplyResult {
   nodeIndex: number;
 }
 
-/** A `PassageEstablished`/two-way `TeleportEstablished` is one logical connection but two directed
- *  graph edges (mirrors `applyRecursiveBacktracker`'s bidirectional `EdgeAdded` handling) —
- *  `OneWayEstablished` and a one-way `TeleportEstablished` contribute only their own direction. */
+/** A `PassageEstablished`/two-way `TeleportEstablished`/two-way `VerticalPassageEstablished` is one
+ *  logical connection but two directed graph edges (mirrors `applyRecursiveBacktracker`'s
+ *  bidirectional `EdgeAdded` handling) — `OneWayEstablished` and a one-way
+ *  `TeleportEstablished`/`VerticalPassageEstablished` contribute only their own direction.
+ *  `ElevatorEstablished` (GitHub issue #357) is always two-way and connects every pair of its own
+ *  `nodes` — mirrors `preset_state.rs`'s own all-pairs planting loop. */
 function edgesFor(event: PresetSetupEvent): Edge[] {
   switch (event.kind) {
     case "PassageEstablished":
@@ -48,6 +51,20 @@ function edgesFor(event: PresetSetupEvent): Edge[] {
       return event.twoWay
         ? [{ from: event.from, to: event.to, kind: "teleport" }, { from: event.to, to: event.from, kind: "teleport" }]
         : [{ from: event.from, to: event.to, kind: "teleport" }];
+    case "VerticalPassageEstablished":
+      return event.twoWay
+        ? [{ from: event.from, to: event.to, kind: "vertical_passage" }, { from: event.to, to: event.from, kind: "vertical_passage" }]
+        : [{ from: event.from, to: event.to, kind: "vertical_passage" }];
+    case "ElevatorEstablished": {
+      const edges: Edge[] = [];
+      for (let i = 0; i < event.nodes.length; i++) {
+        for (let j = i + 1; j < event.nodes.length; j++) {
+          edges.push({ from: event.nodes[i], to: event.nodes[j], kind: "elevator" });
+          edges.push({ from: event.nodes[j], to: event.nodes[i], kind: "elevator" });
+        }
+      }
+      return edges;
+    }
   }
 }
 

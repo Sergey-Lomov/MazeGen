@@ -9,6 +9,8 @@ mod wire_tags {
     pub const PASSAGE_ESTABLISHED: u16 = 1;
     pub const ONE_WAY_ESTABLISHED: u16 = 2;
     pub const TELEPORT_ESTABLISHED: u16 = 3;
+    pub const VERTICAL_PASSAGE_ESTABLISHED: u16 = 4;
+    pub const ELEVATOR_ESTABLISHED: u16 = 5;
 }
 
 impl EncodeEventPayload for PresetSetupEvent {
@@ -17,6 +19,8 @@ impl EncodeEventPayload for PresetSetupEvent {
             PresetSetupEvent::PassageEstablished { .. } => wire_tags::PASSAGE_ESTABLISHED,
             PresetSetupEvent::OneWayEstablished { .. } => wire_tags::ONE_WAY_ESTABLISHED,
             PresetSetupEvent::TeleportEstablished { .. } => wire_tags::TELEPORT_ESTABLISHED,
+            PresetSetupEvent::VerticalPassageEstablished { .. } => wire_tags::VERTICAL_PASSAGE_ESTABLISHED,
+            PresetSetupEvent::ElevatorEstablished { .. } => wire_tags::ELEVATOR_ESTABLISHED,
         }
     }
 
@@ -34,6 +38,14 @@ impl EncodeEventPayload for PresetSetupEvent {
                 write_node_id(out, *from);
                 write_node_id(out, *to);
                 write_bool(out, *two_way);
+            }
+            PresetSetupEvent::VerticalPassageEstablished { from, to, two_way } => {
+                write_node_id(out, *from);
+                write_node_id(out, *to);
+                write_bool(out, *two_way);
+            }
+            PresetSetupEvent::ElevatorEstablished { nodes } => {
+                push_ids(out, nodes);
             }
         }
     }
@@ -71,6 +83,22 @@ mod golden_tests {
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
         assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1]);
+    }
+
+    #[test]
+    fn golden_round_trip_vertical_passage_established() {
+        let event = PresetSetupEvent::VerticalPassageEstablished { from: 7, to: 7, two_way: true };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1]);
+    }
+
+    #[test]
+    fn golden_round_trip_elevator_established() {
+        let event = PresetSetupEvent::ElevatorEstablished { nodes: vec![3, 5] };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0]);
     }
 
 }

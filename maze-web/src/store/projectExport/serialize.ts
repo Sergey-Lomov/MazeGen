@@ -69,6 +69,8 @@ export function serializeProject(state: MazeState): ProjectFile {
       finish: state.presetFinish,
       genSource: state.presetGenSource,
       teleports: state.presetTeleports,
+      verticalPassages: state.presetVerticalPassages,
+      elevators: state.presetElevators,
       splitPoints: state.presetSplitPoints,
     },
     postEdit,

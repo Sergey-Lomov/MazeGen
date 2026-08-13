@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidSplitPoints, presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../pixi/fieldEditUtils";
 import { presetEndpointIsSplit, presetEndpointLevelLabel } from "../../pixi/presetEndpoint";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { buttonStyle } from "../../styles/shared";
@@ -13,6 +13,8 @@ import { Stack, Grid } from "../Layout";
 import { StatusTag } from "../StatusTag";
 import { WarningBubble } from "../WarningBubble";
 import { PresetSplitNodesDialog } from "./PresetSplitNodesDialog";
+import { PresetElevatorFloorDialog } from "../dialogs/PresetElevatorFloorDialog";
+import { PresetVerticalDirectionDialog } from "../dialogs/PresetVerticalDirectionDialog";
 import * as m from "~/paraglide/messages";
 
 function getEdgeTools(): [PresetConnectionTool, string][] {
@@ -28,6 +30,14 @@ function getVertexTools(): [PresetConnectionTool, string][] {
   return [
     ["teleport_two_way", m["preset.teleport_two_way"]()],
     ["teleport_one_way", m["preset.teleport_one_way"]()],
+  ];
+}
+
+function getVerticalTools(): [PresetConnectionTool, string][] {
+  return [
+    ["vertical_passage_two_way", m["preset.vertical_passage_two_way"]()],
+    ["vertical_passage_one_way", m["preset.vertical_passage_one_way"]()],
+    ["elevator", m["preset.elevator"]()],
   ];
 }
 
@@ -71,6 +81,12 @@ export function PresetConnectionsFeature() {
   const presetTeleports = useMazeStore((s) => s.presetTeleports);
   const presetTeleportPendingFrom = useMazeStore((s) => s.presetTeleportPendingFrom);
   const setPresetTeleportPendingFrom = useMazeStore((s) => s.setPresetTeleportPendingFrom);
+  const presetVerticalPassages = useMazeStore((s) => s.presetVerticalPassages);
+  const presetVerticalPassagePending = useMazeStore((s) => s.presetVerticalPassagePending);
+  const cancelPresetVerticalPassagePlacement = useMazeStore((s) => s.cancelPresetVerticalPassagePlacement);
+  const presetElevators = useMazeStore((s) => s.presetElevators);
+  const presetElevatorPending = useMazeStore((s) => s.presetElevatorPending);
+  const cancelPresetElevatorPlacement = useMazeStore((s) => s.cancelPresetElevatorPlacement);
   const presetSplitPoints = useMazeStore((s) => s.presetSplitPoints);
   const presetFocusedPoint = useMazeStore((s) => s.presetFocusedPoint);
   const setPresetFocusedPoint = useMazeStore((s) => s.setPresetFocusedPoint);
@@ -151,6 +167,14 @@ export function PresetConnectionsFeature() {
     () => computeInvalidTeleportIds(presetTeleports, resolveFieldAt),
     [presetTeleports, resolveFieldAt],
   );
+  const invalidVerticalPassageIds = useMemo(
+    () => computeInvalidVerticalPassageIds(presetVerticalPassages, resolveFieldAt),
+    [presetVerticalPassages, resolveFieldAt],
+  );
+  const invalidElevatorIds = useMemo(
+    () => computeInvalidElevatorIds(presetElevators, resolveFieldAt),
+    [presetElevators, resolveFieldAt],
+  );
   const invalidMarkers = useMemo(
     () => computeInvalidMarkers(presetStart, presetFinish, resolveFieldAt),
     [presetStart, presetFinish, resolveFieldAt],
@@ -160,7 +184,7 @@ export function PresetConnectionsFeature() {
     [presetSplitPoints, resolveFieldAt],
   );
   const invalidMarkerCount = (invalidMarkers.start ? 1 : 0) + (invalidMarkers.finish ? 1 : 0);
-  const invalidCount = invalidKeys.size + invalidTeleportIds.size + invalidMarkerCount + invalidSplitKeys.size;
+  const invalidCount = invalidKeys.size + invalidTeleportIds.size + invalidVerticalPassageIds.size + invalidElevatorIds.size + invalidMarkerCount + invalidSplitKeys.size;
   const hasInvalid = invalidCount > 0;
 
   return (
@@ -241,6 +265,16 @@ export function PresetConnectionsFeature() {
         >
           {m["post_edit.manage_split_nodes_tool"]()}
         </button>
+        {floors.length > 1 && getVerticalTools().map(([t, label]) => (
+          <button
+            key={t}
+            className={tool === t ? "hoverable-accent" : "hoverable"}
+            style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+            onClick={() => setTool(t)}
+          >
+            {label}
+          </button>
+        ))}
       </Stack>
 
       <span style={styles.sectionLabel}>{m["preset.generation_tools"]()}</span>
@@ -275,7 +309,7 @@ export function PresetConnectionsFeature() {
         <Stack gap="itemGap">
           {presetTeleportPendingFrom && (
             <StatusTag onClear={() => setPresetTeleportPendingFrom(null)}>
-              {m["preset.teleport_pending"]()}: {presetTeleportPendingFrom[0]},{presetTeleportPendingFrom[1]}
+              {m["preset.teleport_pending"]()}: {presetEndpointLevelLabel(presetTeleportPendingFrom, floors.length > 1)}{presetTeleportPendingFrom.point[0]},{presetTeleportPendingFrom.point[1]}
             </StatusTag>
           )}
           {presetGenSource && (
@@ -284,6 +318,14 @@ export function PresetConnectionsFeature() {
             </StatusTag>
           )}
         </Stack>
+      )}
+
+      {presetElevatorPending && (
+        <PresetElevatorFloorDialog onClose={cancelPresetElevatorPlacement} />
+      )}
+
+      {presetVerticalPassagePending && (
+        <PresetVerticalDirectionDialog onClose={cancelPresetVerticalPassagePlacement} />
       )}
 
       <span style={styles.sectionLabel}>{m["preset.control"]()}</span>

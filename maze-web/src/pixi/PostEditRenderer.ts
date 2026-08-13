@@ -342,7 +342,13 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // `postEditActiveSplitNode` still governs which endpoint edge-tool clicks target, but no
     // longer what's drawn; ordinary `buildMazeWalls` skips a split point's own geometric edges
     // entirely, since those are rendered here instead.
-    const closed = buildClosedCells(nodes, activeEdges);
+    // `allEdges` (GitHub issue #359 follow-up) is required so a cell whose only connection is a
+    // vertical passage/elevator (never part of `activeEdges` — see below, these kinds aren't
+    // post-edit-editable) isn't mistaken for having no connection at all and rendered as a wall;
+    // must be the *unscoped* `state.edges`, not the floor-scoped `edges` above, for the same reason
+    // `buildVerticalConnectionMarkers`'s own call below needs `state.edges` — an arrival-only edge's
+    // `from` lives on another floor and is missing from any floor-scoped list.
+    const closed = buildClosedCells(nodes, activeEdges, state.edges);
     this.closedCells.render({ cells: closed, color: canvas.wall.default, alpha: 1 }, cfg);
 
     const wallEdges = buildMazeWalls(nodes, activeEdges, cfg);

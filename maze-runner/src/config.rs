@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use serde::Deserialize;
 use maze_core::{
-    generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, PresetEndpoint, TeleportDirection, LockedNode, NodeLockKind},
+    generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, PresetEndpoint, TeleportDirection, LockedNode, NodeLockKind, PresetVerticalPassage, PresetElevator, VerticalPassageDirection},
     quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
     RepairLimits,
 };
@@ -206,6 +206,32 @@ pub struct PresetConnectionDto {
     pub state: PresetConnectionStateDto,
 }
 
+/// Wire shape for `maze_core::generation::VerticalPassageDirection`.
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerticalPassageDirectionDto {
+    Forward,
+    Backward,
+}
+
+/// Wire shape for a preset `VerticalPassage` (GitHub issue #357) — see
+/// `maze_core::generation::PresetVerticalPassage`'s own doc comment for why this is a separate
+/// top-level config field rather than a `PresetConnectionStateDto` variant.
+#[derive(Deserialize)]
+pub struct PresetVerticalPassageDto {
+    pub from: PresetEndpointDto,
+    pub to:   PresetEndpointDto,
+    #[serde(default)]
+    pub one_way: Option<VerticalPassageDirectionDto>,
+}
+
+/// Wire shape for a preset `Elevator` (GitHub issue #357) — see
+/// `maze_core::generation::PresetElevator`'s own doc comment.
+#[derive(Deserialize)]
+pub struct PresetElevatorDto {
+    pub floors: Vec<PresetEndpointDto>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeLockKindDto {
@@ -263,6 +289,14 @@ pub struct GenerateConfig {
     pub elements: ElementsConfigDto,
     #[serde(default)]
     pub preset_connections: Vec<PresetConnectionDto>,
+    /// Preset `VerticalPassage` links (GitHub issue #357). `#[serde(default)]` so configs
+    /// predating this field still deserialize.
+    #[serde(default)]
+    pub preset_vertical_passages: Vec<PresetVerticalPassageDto>,
+    /// Preset `Elevator` links (GitHub issue #357). `#[serde(default)]` so configs predating this
+    /// field still deserialize.
+    #[serde(default)]
+    pub preset_elevators: Vec<PresetElevatorDto>,
     #[serde(default)]
     pub locked_nodes: Vec<LockedNodeDto>,
     pub preset_start: Option<PresetEndpointDto>,
@@ -334,6 +368,8 @@ impl Default for GenerateConfig {
             initial: InitialGenerationConfig::default(),
             elements: ElementsConfigDto::default(),
             preset_connections: vec![],
+            preset_vertical_passages: vec![],
+            preset_elevators: vec![],
             locked_nodes: vec![],
             preset_start: None,
             preset_finish: None,
@@ -391,6 +427,17 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
             PresetConnectionStateDto::TeleportTwoWay    => PresetConnectionState::Teleport(TeleportDirection::TwoWay),
         },
     }).collect();
+    let preset_vertical_passages = config.preset_vertical_passages.iter().map(|dto| PresetVerticalPassage {
+        from: build_preset_endpoint(&dto.from),
+        to:   build_preset_endpoint(&dto.to),
+        one_way: dto.one_way.as_ref().map(|d| match d {
+            VerticalPassageDirectionDto::Forward  => VerticalPassageDirection::Forward,
+            VerticalPassageDirectionDto::Backward => VerticalPassageDirection::Backward,
+        }),
+    }).collect();
+    let preset_elevators = config.preset_elevators.iter().map(|dto| PresetElevator {
+        floors: dto.floors.iter().map(build_preset_endpoint).collect(),
+    }).collect();
     let locked_nodes = config.locked_nodes.iter().map(|dto| LockedNode {
         point: build_preset_endpoint(&dto.point),
         kind: match dto.kind {
@@ -401,7 +448,7 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
     }).collect();
     let split_points = config.split_points.clone();
     let split_generation = build_split_generation_config(&config.split_generation);
-    GenerationConfig { algorithm, elements, preset_connections, locked_nodes, split_points, split_generation }
+    GenerationConfig { algorithm, elements, preset_connections, preset_vertical_passages, preset_elevators, locked_nodes, split_points, split_generation }
 }
 
 /// Builds `SplitGenerationConfig` from the wire DTO. `max_split_nodes` is clamped to `.max(1)` —

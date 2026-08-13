@@ -1,7 +1,7 @@
 import { generateMaze } from "../../wasm/mazeService";
 import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, presetTeleportEntryToState } from "../../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
 import { presetEndpoint, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto } from "../../pixi/postEditUtils";
@@ -131,6 +131,29 @@ export function buildValidPresetConnections(state: MazeStore, floorZeroOnly = fa
   return [...validPresets, ...validTeleportPresets];
 }
 
+/** The project's currently-valid preset `VerticalPassage` links, converted to wire DTOs (GitHub
+ *  issue #357) — kept as their own top-level `GenerateConfig.preset_vertical_passages` field (not
+ *  folded into `preset_connections`), mirroring `PresetVerticalPassage`'s own Rust-side rationale. */
+export function buildValidPresetVerticalPassages(state: MazeStore): import("../../wasm/types").PresetVerticalPassageDto[] {
+  const resolveFieldAt = resolveFieldAtOf(state);
+  const invalidIds = computeInvalidVerticalPassageIds(state.presetVerticalPassages, resolveFieldAt);
+  return state.presetVerticalPassages
+    .filter((p) => !invalidIds.has(p.id))
+    .map((p) => ({
+      from: presetEndpointToDto(p.from), to: presetEndpointToDto(p.to),
+      one_way: presetVerticalPassageDirectionToDto(p.direction),
+    }));
+}
+
+/** The project's currently-valid preset `Elevator` links, converted to wire DTOs (GitHub issue #357). */
+export function buildValidPresetElevators(state: MazeStore): import("../../wasm/types").PresetElevatorDto[] {
+  const resolveFieldAt = resolveFieldAtOf(state);
+  const invalidIds = computeInvalidElevatorIds(state.presetElevators, resolveFieldAt);
+  return state.presetElevators
+    .filter((e) => !invalidIds.has(e.id))
+    .map((e) => ({ floors: e.floors.map(presetEndpointToDto) }));
+}
+
 export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
   const activeField = activeFloorField(state);
   if (activeField.isEditingField && activeField.fieldPoints.size < 2) return null;
@@ -195,6 +218,8 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     initial: state.initialConfig,
     elements: state.elementsConfig,
     preset_connections: buildValidPresetConnections(state),
+    preset_vertical_passages: buildValidPresetVerticalPassages(state),
+    preset_elevators: buildValidPresetElevators(state),
     locked_nodes,
     split_points,
     split_generation: {

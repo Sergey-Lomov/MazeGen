@@ -244,6 +244,10 @@ function narrationTokensForPresetSetup(event: PresetSetupEvent): Token[] {
       return [{ kind: "text", text: m["debug.tree.one_way_established"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "TeleportEstablished":
       return [{ kind: "text", text: m["debug.tree.teleport_established"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: event.twoWay }];
+    case "VerticalPassageEstablished":
+      return [{ kind: "text", text: m["debug.tree.vertical_passage_established"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: event.twoWay }];
+    case "ElevatorEstablished":
+      return [{ kind: "text", text: m["debug.tree.elevator_established"]() + " " }, { kind: "region", nodes: event.nodes }];
   }
 }
 
