@@ -8,7 +8,7 @@ use serde::Serialize;
 use maze_core::{space::Tessellation, space::{SquarePoint, HexPoint, TriPoint}, Maze, graph::Graph};
 use crate::dto::ComputeAnalyticsConfig;
 use crate::generation_config::{self, GenerateConfig, TessellationType};
-use post_edit::{apply_split_points, build_graph_from_post_edit_edges, build_field_from_nodes, preset_edges_for_post_edit, resolve_preset_nodes_for_post_edit};
+use post_edit::{apply_split_points, build_graph_from_post_edit_edges, build_field_from_nodes, preset_edges_for_post_edit, resolve_preset_nodes_for_post_edit, restore_vertical_edges};
 
 #[wasm_bindgen]
 pub fn compute_analytics(config: JsValue) -> Result<JsValue, JsValue> {
@@ -102,6 +102,7 @@ where
 
     build_graph_from_post_edit_edges(&mut maze.graph, &cfg.edges, &split_map)
         .map_err(|e| JsValue::from_str(&e))?;
+    restore_vertical_edges(&mut maze.graph, &cfg.vertical_edges);
 
     maze.meta.start  = cfg.start.map(|id| id as u64);
     maze.meta.finish = cfg.finish.map(|id| id as u64);
@@ -280,6 +281,48 @@ mod tests {
             assert!(!all_elements.is_empty(), "payload must carry at least the flagged split node");
             assert!(all_elements.iter().any(|g| g.preset_locked && g.tiles.iter().any(|t| t.nodes == vec![split_node as u32])),
                 "the preset-declared split node with a fully preset-protected edge must reach the DTO marked preset_locked");
+        }
+    }
+
+    // GitHub issue #358 follow-up: full-chain integration test proving `restore_vertical_edges`'s
+    // output actually survives into the DTO snapshot `run_compute_analytics` returns — not just
+    // that `restore_vertical_edges` builds correct `Graph` edges in isolation (already covered by
+    // `post_edit.rs`'s own unit tests) or that `build_analytics_snapshot`'s edge-kind match arm is
+    // correct in isolation, but that the two links actually connect end to end.
+    mod restore_vertical_edges_reaches_the_snapshot_tests {
+        use super::*;
+        use maze_core::space::{SquarePoint, SquareTessellation};
+        use crate::dto::{NodeDto, VerticalEdgeDto};
+
+        #[test]
+        fn vertical_passage_and_elevator_edges_survive_into_the_snapshot_as_their_own_dto_kind() {
+            let xy_to_point = |[x, y]: [i32; 2]| Some(SquarePoint { x, y });
+            let point_to_xy = |p: SquarePoint| (p.x, p.y);
+
+            let nodes = vec![
+                NodeDto { id: 1, x: 0, y: 0, i: 0, level: 0 },
+                NodeDto { id: 2, x: 1, y: 0, i: 0, level: 0 },
+                NodeDto { id: 3, x: 2, y: 0, i: 0, level: 0 },
+            ];
+            let (field, existing_by_index, index_by_node, level_ids) = build_field_from_nodes::<SquareTessellation>(&nodes, 1, &xy_to_point).unwrap();
+            let mut graph = Graph::new();
+            for node in field.all_node_ids() { graph.add_node(node); }
+            let mut maze = Maze::<SquareTessellation>::new(field, graph);
+            apply_split_points(&mut maze, xy_to_point, &[], &existing_by_index, &level_ids).unwrap();
+
+            restore_vertical_edges(&mut maze.graph, &[
+                VerticalEdgeDto { from: 1, to: 2, kind: "vertical_passage".to_string() },
+                VerticalEdgeDto { from: 2, to: 3, kind: "elevator".to_string() },
+            ]);
+
+            let preset_state = maze_core::generation::PresetState::empty();
+            let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &preset_state, true, point_to_xy,
+                |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32)).unwrap();
+
+            assert!(snapshot.edges.iter().any(|e| e.from == 1 && e.to == 2 && matches!(e.kind, crate::dto::EdgeKindDto::VerticalPassage)),
+                "vertical_passage edge must reach the snapshot as EdgeKindDto::VerticalPassage");
+            assert!(snapshot.edges.iter().any(|e| e.from == 2 && e.to == 3 && matches!(e.kind, crate::dto::EdgeKindDto::Elevator)),
+                "elevator edge must reach the snapshot as EdgeKindDto::Elevator");
         }
     }
 }

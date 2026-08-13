@@ -124,6 +124,29 @@ describe("buildSplitNodeResolver", () => {
     const resolve = buildSplitNodeResolver(new Map(), { "1,2": [0] });
     expect(resolve([1, 2], 0)).toBeUndefined();
   });
+
+  it("resolves a leveled slot against its own floor's entry, not floor 0's", () => {
+    // Same (x, y) declared on both floor 0 (bare key) and floor 2 ("@2") — each floor's own
+    // node set must resolve independently.
+    const nodeMap = new Map([
+      ["1,2", [10, 11]],
+      ["1,2@2", [20, 21]],
+    ]);
+    const splitPoints = { "1,2": [0], "1,2@2": [0] };
+    const resolve = buildSplitNodeResolver(nodeMap, splitPoints);
+    expect(resolve([1, 2], 0, 2)).toBe(21);
+    expect(resolve([1, 2], 0)).toBe(11);
+  });
+
+  it("does not fall back to floor 0's node when the leveled key is missing (GitHub issue #358 cross-floor collision)", () => {
+    // Floor 0 has a confirmed slot at (1, 2); floor 2 declares the same point/slot but has no
+    // confirmed node for it yet (e.g. not yet confirmed, or genuinely absent on that floor) — the
+    // lookup must return undefined, never silently resolve against floor 0's own node.
+    const nodeMap = new Map([["1,2", [10, 11]]]);
+    const splitPoints = { "1,2": [0], "1,2@2": [0] };
+    const resolve = buildSplitNodeResolver(nodeMap, splitPoints);
+    expect(resolve([1, 2], 0, 2)).toBeUndefined();
+  });
 });
 
 describe("resolvePostEditPartnerAt (GitHub issue #243)", () => {

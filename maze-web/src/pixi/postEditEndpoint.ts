@@ -175,10 +175,14 @@ export function resolveEndpoint(
  * isn't in the draft list, or hasn't been confirmed into the snapshot yet.
  *
  * `nodeMap`/`splitPoints` may either be already scoped to one floor (bare `"x,y"` keys — the
- * returned resolver's own `level` argument is then ignored) or span every floor at once (GitHub
- * issue #358, `"x,y"`/`"x,y@level"` keys, matching `postEditDraftSplitPoints`'s own convention) —
- * the lookup key is built the same way either caller shape expects, since a bare-keyed map simply
- * never has an `"@level"` entry to match against a non-`undefined` `level`. */
+ * returned resolver's own `level` argument is then ignored, since a bare-keyed map has no
+ * `"@level"` entry to look up in the first place) or span every floor at once (GitHub issue #358,
+ * `"x,y"`/`"x,y@level"` keys, matching `postEditDraftSplitPoints`'s own convention). When `level`
+ * is non-`undefined` (a genuinely multi-floor call), the lookup is strictly `"x,y@level"` — no
+ * silent fallback to the bare `"x,y"` key, which would otherwise resolve a floor-2 slot against
+ * floor 0's own node whenever the two happen to share a coordinate (the exact cross-floor
+ * collision this whole level-tagging scheme exists to prevent). The bare key is only ever tried
+ * when `level` itself is `undefined` (floor 0, or an already-scoped caller). */
 export function buildSplitNodeResolver(
   nodeMap: ReadonlyMap<string, number[]>,
   splitPoints: Readonly<Record<string, number[]>>,
@@ -186,8 +190,8 @@ export function buildSplitNodeResolver(
   return (point, slotId, level) => {
     const bareKey = `${point[0]},${point[1]}`;
     const key = level === undefined ? bareKey : `${bareKey}@${level}`;
-    const ids = nodeMap.get(key) ?? nodeMap.get(bareKey);
-    const slots = splitPoints[key] ?? splitPoints[bareKey];
+    const ids = nodeMap.get(key);
+    const slots = splitPoints[key];
     if (ids === undefined || slots === undefined) return undefined;
     const sortedSlots = [...slots].sort((a, b) => a - b);
     const slotIndex = sortedSlots.indexOf(slotId);

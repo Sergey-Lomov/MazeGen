@@ -5,7 +5,7 @@ use maze_core::{
     space::{Field, MultiLevelField},
     Maze,
 };
-use crate::dto::{PostEditEdgeDto, PostEditEndpointDto};
+use crate::dto::{PostEditEdgeDto, PostEditEndpointDto, VerticalEdgeDto};
 use crate::generation_config::PresetConnectionDto;
 
 /// Resolves one `PostEditEndpointDto` to a real `NodeId` (as `u64`). `Node` passes through as-is;
@@ -60,6 +60,27 @@ pub(crate) fn build_graph_from_post_edit_edges(
         }
     }
     Ok(())
+}
+
+/// Re-adds `VerticalPassage`/`Elevator` edges into `graph` verbatim (GitHub issue #358 follow-up)
+/// — see `VerticalEdgeDto`'s own doc comment for why these need a separate pass-through instead of
+/// going through `build_graph_from_post_edit_edges`: post-edit never edits either kind, so there is
+/// no tool-driven draft, only the previous snapshot's own edges resent unchanged. Endpoints are
+/// plain `NodeId`s already (no `Split` resolution needed — neither kind is ever wired to a split
+/// slot); a `from`/`to` that no longer exists in `graph` (e.g. its node was pruned by a removed
+/// split slot) is silently skipped rather than erroring, since that is a stale edge referencing a
+/// node the client itself already dropped, not a caller bug.
+pub(crate) fn restore_vertical_edges(graph: &mut Graph, edges: &[VerticalEdgeDto]) {
+    let node_ids: HashSet<u64> = graph.nodes().map(|n| n.id).collect();
+    for e in edges {
+        let (from, to) = (e.from as u64, e.to as u64);
+        if !node_ids.contains(&from) || !node_ids.contains(&to) { continue; }
+        match e.kind.as_str() {
+            "vertical_passage" => { graph.build_initial_edge(from, to, EdgeKind::VerticalPassage); }
+            "elevator" => { graph.build_initial_edge(from, to, EdgeKind::Elevator); }
+            _ => continue,
+        }
+    }
 }
 
 /// Resolves `split_points` (GitHub issue #221) against a `Maze` already built from the client's
@@ -351,6 +372,30 @@ mod tests {
         assert!(graph.edges().any(|e| e.from == 1 && e.to == 2 && e.kind == EdgeKind::Basic));
         assert!(graph.edges().any(|e| e.from == 1 && e.to == 2 && e.kind == EdgeKind::Teleport));
         assert_eq!(graph.edges().count(), 3, "basic(2 directions) + teleport(1 direction) = 3 edges");
+    }
+
+    fn vertical_edge(from: u32, to: u32, kind: &str) -> VerticalEdgeDto {
+        VerticalEdgeDto { from, to, kind: kind.to_string() }
+    }
+
+    #[test]
+    fn restore_vertical_edges_adds_vertical_passage_and_elevator_edges() {
+        let mut graph = graph_with_nodes(&[1, 2, 3]);
+        restore_vertical_edges(&mut graph, &[vertical_edge(1, 2, "vertical_passage"), vertical_edge(2, 3, "elevator")]);
+        let e1 = graph.edges().find(|e| e.from == 1 && e.to == 2).expect("vertical_passage edge must exist");
+        assert_eq!(e1.kind, EdgeKind::VerticalPassage);
+        let e2 = graph.edges().find(|e| e.from == 2 && e.to == 3).expect("elevator edge must exist");
+        assert_eq!(e2.kind, EdgeKind::Elevator);
+        assert_eq!(graph.edges().count(), 2);
+    }
+
+    #[test]
+    fn restore_vertical_edges_skips_edges_referencing_a_pruned_node() {
+        // Node 2 no longer exists in the rebuilt graph (e.g. it was a split slot removed by the
+        // user) — a stale vertical edge referencing it must be dropped silently, not panic.
+        let mut graph = graph_with_nodes(&[1]);
+        restore_vertical_edges(&mut graph, &[vertical_edge(1, 2, "vertical_passage")]);
+        assert_eq!(graph.edges().count(), 0);
     }
 
     #[test]

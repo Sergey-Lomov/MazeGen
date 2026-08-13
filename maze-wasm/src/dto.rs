@@ -369,6 +369,22 @@ pub struct PostEditEdgeDto {
     pub kind: String,
 }
 
+/// A `VerticalPassage`/`Elevator` edge, passed through verbatim across a post-edit confirm
+/// (GitHub issue #358 follow-up) — post-edit never lets the user create, remove, or redirect
+/// either kind (only generation/vertical-connection tooling does), so unlike `PostEditEdgeDto`
+/// there is no tool-driven draft for these: the client simply resends what the previous confirmed
+/// snapshot already returned (`state._generatedEdges`/`state.edges`, filtered to these two kinds),
+/// by plain resolved `NodeId` — never a `Split` endpoint, since neither kind is ever wired to a
+/// split slot. Without this, `run_compute_analytics` rebuilds the graph purely from `edges` (basic/
+/// one_way/teleport) and these edges vanish on the very first post-edit confirm.
+#[derive(Deserialize)]
+pub struct VerticalEdgeDto {
+    pub from: u32,
+    pub to: u32,
+    /// "vertical_passage" | "elevator".
+    pub kind: String,
+}
+
 /// One `QcRuleState`'s worth of active checks plus that rule's rule-level params (GitHub issue
 /// #245) — `compute_analytics`'s analytics-only path has no strategy and never dispatches repair,
 /// so this carries only what `resolve_rule_params`/the checks themselves actually consume, unlike
@@ -398,6 +414,11 @@ pub struct ComputeAnalyticsConfig {
     pub nodes: Vec<NodeDto>,
     /// Actual edges (passages only — walls are absence of edge).
     pub edges: Vec<PostEditEdgeDto>,
+    /// `VerticalPassage`/`Elevator` edges, passed through unchanged (GitHub issue #358 follow-up)
+    /// — see `VerticalEdgeDto`'s own doc comment. `#[serde(default)]` so a pre-existing
+    /// caller/fixture omitting this field still deserializes (as "no vertical connections").
+    #[serde(default)]
+    pub vertical_edges: Vec<VerticalEdgeDto>,
     /// Extra nodes to add to split points before resolving edges — each entry is one
     /// `(point, slot_id)` pair. `slot_id` is the client's own numbering of a point's *extra* nodes
     /// only (`0, 1, 2, ...`, never the original) — it maps onto `NodeDto.i` as `slot_id + 1` (`i`

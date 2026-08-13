@@ -138,7 +138,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const state = get();
     const {
       postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints,
-      activeTessellationConfig, nodes, start, finish, stages,
+      activeTessellationConfig, nodes, edges, start, finish, stages,
     } = state;
     if (postEditDraftEdges === null) return;
     const edgesSnapshot = postEditDraftEdges;
@@ -191,6 +191,16 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       ...teleportEdgesSnapshot.map(e => ({ from: { kind: "node" as const, id: e.from }, to: { kind: "node" as const, id: e.to }, kind: "teleport" as const })),
     ];
 
+    // `VerticalPassage`/`Elevator` edges (GitHub issue #358 follow-up) are never post-edit-
+    // editable, so they're just resent unchanged from the last confirmed graph (`state.edges`,
+    // populated at generation time and kept in sync by every confirm's own snapshot write) rather
+    // than routed through `postEditDraftEdges` — see `ComputeAnalyticsConfig.vertical_edges`'s own
+    // doc comment for why this round trip exists at all.
+    const verticalEdges = edges
+      .filter((e): e is typeof e & { kind: "vertical_passage" | "elevator" } =>
+        e.kind === "vertical_passage" || e.kind === "elevator")
+      .map(e => ({ from: e.from, to: e.to, kind: e.kind }));
+
     // `ComputeAnalyticsConfig.split_points` is `[[x,y], slotId, level][]` (GitHub issue #359,
     // `compute_analytics` is now genuinely multi-level) — the `"@level"` suffix is parsed into its
     // own `level` entry instead of being stripped, so two floors' split points at the same `(x, y)`
@@ -240,6 +250,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       level_fields,
       nodes: prunedNodes,
       edges: wasmEdges,
+      vertical_edges: verticalEdges,
       split_points: splitPointsPayload,
       start: resolvedStart ?? null,
       finish: resolvedFinish ?? null,

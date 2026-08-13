@@ -10,8 +10,9 @@ import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
 import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
+import { VerticalConnectionRenderer, type VerticalConnectionStyle } from "./renderers/VerticalConnectionRenderer";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight, selectFloorScopedMaze } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers } from "./selectors/mazeSelectors";
 import { postEditTeleportsToDto } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
@@ -24,6 +25,36 @@ import { activeFloorLevel } from "../store/storeHelpers";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
+/** Fixed style for `VerticalConnectionRenderer` (GitHub issue #359 follow-up to #337/#347) — post-
+ *  edit has no settings panel of its own for this, so it always uses this one look, mirroring
+ *  `GenerationRenderer`'s own `DEFAULT_VERTICAL_STYLE` — kept as a separate copy per
+ *  `maze-web/CLAUDE.md`'s feature-renderer ownership rule (no shared renderer instances/constants
+ *  across features). */
+const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = {
+  displayStyle: "marker",
+  verticalPassageMarker: {
+    shape: "circle",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 2,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  elevatorMarker: {
+    shape: "diamond",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 2,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  arrowColor: canvas.vertical.default,
+};
+
 export class PostEditRenderer extends BaseFieldRenderer {
   private readonly root: Container;
 
@@ -32,6 +63,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly closedCellsContainer: Container;
   private readonly wallsContainer: Container;
   private readonly teleportContainer: Container;
+  private readonly verticalContainer: Container;
   private readonly markersContainer: Container;
   private readonly hoverContainer: Container;
   private readonly cellHoverContainer: Container;
@@ -45,6 +77,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private readonly closedCells: CellFillRenderer;
   private readonly walls: WallRenderer;
   private readonly teleports: TeleportRenderer;
+  private readonly verticalConnections: VerticalConnectionRenderer;
   private readonly markers: WaypointsRenderer;
   private readonly hover: EdgeHighlightRenderer;
   private readonly cellHover: CellFillRenderer;
@@ -74,6 +107,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.closedCellsContainer = new Container();
     this.wallsContainer       = new Container();
     this.teleportContainer    = new Container();
+    this.verticalContainer    = new Container();
     this.markersContainer     = new Container();
     this.hoverContainer       = new Container();
 
@@ -84,6 +118,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.splitJunctionContainer = new Container();
     this.root.addChild(this.splitJunctionContainer);
     this.root.addChild(this.teleportContainer);
+    this.root.addChild(this.verticalContainer);
     this.root.addChild(this.markersContainer);
     this.root.addChild(this.hoverContainer);
     this.cellHoverContainer = new Container();
@@ -101,6 +136,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.walls       = new WallRenderer(this.wallsContainer);
     this.splitJunctions = new SplitJunctionRenderer(this.splitJunctionContainer);
     this.teleports   = new TeleportRenderer(this.teleportContainer);
+    this.verticalConnections = new VerticalConnectionRenderer(this.verticalContainer);
     this.markers     = new WaypointsRenderer(this.markersContainer);
     this.hover       = new EdgeHighlightRenderer(this.hoverContainer);
     this.cellHover   = new CellFillRenderer(this.cellHoverContainer);
@@ -186,6 +222,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.postEditDraftEdges !== prev.postEditDraftEdges ||
       state.postEditDraftTeleports !== prev.postEditDraftTeleports ||
       state.nodes !== prev.nodes ||
+      state.edges !== prev.edges ||
       state.postEditDraftMeta !== prev.postEditDraftMeta ||
       state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
       state.postEditActiveSplitNode !== prev.postEditActiveSplitNode ||
@@ -267,7 +304,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.grid.render({ viewport: this.viewport }, cfg);
 
-    const { nodes, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints, postEditActiveSplitNode } = this.floorScoped(state);
+    const { nodes, edges, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints, postEditActiveSplitNode } = this.floorScoped(state);
 
     // Resolves `split` endpoints from the latest confirmed node snapshot — a draft reference to
     // a split node not yet confirmed simply doesn't resolve, and is dropped from what's drawn
@@ -318,6 +355,23 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg);
     this.teleports.render({ edges: teleportEdges, cfg });
 
+    // Vertical passages/elevators (GitHub issue #359 follow-up to #337/#347) — these edge kinds
+    // are never post-edit-editable (only generation/vertical-connection tools create them), so
+    // they're read from the confirmed `state.nodes`/`state.edges` graph directly, not from
+    // `activeEdges` (post-edit's own draft edges/teleports). `edges`/`nodeById` here are already
+    // floor-scoped (`floorScoped`'s `selectFloorScopedMaze`, which keeps a vertical/elevator edge
+    // whenever its `from` is on the active floor); `resolveNodeLevel`/`verticalPairs` must come
+    // from the *unscoped* `state.nodes`/`state.edges` instead, same reason
+    // `selectVerticalPassagePairSet`'s own doc comment gives (a floor-scoped edge list is missing
+    // the reverse-direction edge of a bidirectional passage, whose own `from` lives on the other
+    // floor).
+    const activeFloorIndex = state.floors.findIndex((f) => f.id === state.activeFloorId);
+    const verticalConnectionMarkers = buildVerticalConnectionMarkers(
+      nodeById, edges, cfg, selectNodeLevelResolver(state.nodes), Math.max(activeFloorIndex, 0),
+      selectVerticalPassagePairSet(state.edges), state.edges,
+    );
+    this.verticalConnections.render({ markers: verticalConnectionMarkers, style: DEFAULT_VERTICAL_STYLE });
+
     const markerData = buildMazeMarkers(nodeById, start, finish, cfg, undefined, undefined, activeEdges);
     this.markers.render({ markers: markerData });
 
@@ -336,6 +390,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.walls.render({ edges: [] }, cfg);
     this.splitJunctions.render({ passages: [], wallFaces: [] });
     this.teleports.render({ edges: [], cfg });
+    this.verticalConnections.render({ markers: [], style: DEFAULT_VERTICAL_STYLE });
     this.markers.render({ markers: [] });
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
@@ -351,6 +406,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.walls.destroy();
     this.splitJunctions.destroy();
     this.teleports.destroy();
+    this.verticalConnections.destroy();
     this.markers.destroy();
     this.hover.destroy();
     this.cellHover.destroy();
@@ -363,6 +419,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.wallsContainer.destroy();
     this.splitJunctionContainer.destroy();
     this.teleportContainer.destroy();
+    this.verticalContainer.destroy();
     this.markersContainer.destroy();
     this.hoverContainer.destroy();
     this.cellHoverContainer.destroy();

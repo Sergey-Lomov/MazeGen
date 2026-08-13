@@ -593,6 +593,15 @@ export interface ComputeAnalyticsConfig {
   nodes: NodeDto[];
   /** Passage edges only (walls = absence of edge). */
   edges: PostEditEdgeWasmDto[];
+  /** `VerticalPassage`/`Elevator` edges, passed through unchanged (GitHub issue #358 follow-up) —
+   * post-edit never lets the user create/remove/redirect either kind, so there is no tool-driven
+   * draft for them: the client resends whatever the previous confirmed snapshot already returned
+   * (`state._generatedEdges`/`state.edges`, filtered to these two kinds), by plain resolved node
+   * id (never a split endpoint — neither kind is ever wired to a split slot). Without this,
+   * `compute_analytics` rebuilds the graph purely from `edges` above and these edges are dropped
+   * on the very first post-edit confirm. `#[serde(default)]` on the Rust side, so omitting this
+   * (empty array) just means "no vertical connections". */
+  vertical_edges?: { from: number; to: number; kind: "vertical_passage" | "elevator" }[];
   /** Extra nodes to add to split points before edges are resolved — each entry is one
    * `(point, slotId, level)` triple (GitHub issues #221, #359). `slotId` maps onto `NodeDto.i` as
    * `slotId + 1` (`i = 0` is always the point's original node) — a slot whose `i` already exists in

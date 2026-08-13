@@ -488,6 +488,27 @@ describe("mazeStore post-edit actions", () => {
     expect(call?.nodes).toEqual(expect.arrayContaining([{ id: 2, x: 0, y: 0, i: 1 }]));
   });
 
+  it("confirmPostEdit passes vertical_passage/elevator edges through unchanged from state.edges", async () => {
+    // VerticalPassage/Elevator edges are never post-edit-editable (only generation/vertical-
+    // connection tools create them) — confirmPostEdit must resend them verbatim from state.edges
+    // so compute_analytics doesn't silently drop them from the rebuilt graph.
+    useMazeStore.setState({
+      edges: [
+        { from: 0, to: 1, kind: "basic" },
+        { from: 1, to: 2, kind: "vertical_passage" },
+        { from: 2, to: 0, kind: "elevator" },
+      ],
+    });
+    await useMazeStore.getState().confirmPostEdit();
+    const calls = vi.mocked(computeAnalytics).mock.calls;
+    const call = calls[calls.length - 1]?.[0];
+    expect(call?.vertical_edges).toEqual(expect.arrayContaining([
+      { from: 1, to: 2, kind: "vertical_passage" },
+      { from: 2, to: 0, kind: "elevator" },
+    ]));
+    expect(call?.vertical_edges).toHaveLength(2);
+  });
+
   it("resetPostEditPoint resets one point's draft edges to generation-time state and marks dirty", () => {
     useMazeStore.setState({
       postEditDraftEdges: {},
