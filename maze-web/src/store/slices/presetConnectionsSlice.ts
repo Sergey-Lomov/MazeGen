@@ -8,7 +8,7 @@ import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { NodeLockKind } from "../../wasm/types";
 import type { MazeState, MazeStore, PresetConnectionsState, PresetConnectionsActions } from "../storeTypes";
-import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock } from "../storeHelpers";
+import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock, activeFloorField } from "../storeHelpers";
 
 export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], PresetConnectionsState & PresetConnectionsActions> = (set, get) => ({
   presetConnections: new Map<string, PresetConnectionEntry>(),
@@ -51,16 +51,17 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   }),
 
   clearInvalidPresetConnections: () => set((state) => {
-    const customPts = state.isEditingField ? state.fieldPoints : undefined;
-    const invalidKeys = computeInvalidKeys(state.presetConnections, state.tessellationConfig, customPts);
+    const field = activeFloorField(state);
+    const customPts = field.isEditingField ? field.fieldPoints : undefined;
+    const invalidKeys = computeInvalidKeys(state.presetConnections, field.tessellationConfig, customPts);
     const presetConnections = new Map(state.presetConnections);
     for (const key of invalidKeys) presetConnections.delete(key);
-    const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, state.tessellationConfig, customPts);
+    const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, field.tessellationConfig, customPts);
     const presetTeleports = state.presetTeleports.filter(t => !invalidTeleportIds.has(t.id));
-    const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, state.tessellationConfig, customPts);
+    const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, field.tessellationConfig, customPts);
     const presetStart = invalidMarkers.start ? null : state.presetStart;
     const presetFinish = invalidMarkers.finish ? null : state.presetFinish;
-    const invalidSplitKeys = computeInvalidSplitPoints(state.presetSplitPoints, state.tessellationConfig, customPts);
+    const invalidSplitKeys = computeInvalidSplitPoints(state.presetSplitPoints, field.tessellationConfig, customPts);
     const presetSplitPoints = { ...state.presetSplitPoints };
     for (const key of invalidSplitKeys) delete presetSplitPoints[key];
     return withRecomputedAutoLock(state, { presetConnections, presetTeleports, presetStart, presetFinish, presetSplitPoints });
@@ -229,13 +230,14 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   setPresetHoveredLink: (link) => set({ presetHoveredLink: link }),
 
   rotatePresetSplitPoint: (point, direction) => set((state) => {
+    const field = activeFloorField(state);
     const key = `${point[0]},${point[1]}`;
     const slotIds = state.presetSplitPoints[key] ?? [];
-    const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0 ? state.fieldPoints : undefined;
-    const cells = resolveCells(state.tessellationConfig, customPts);
+    const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0 ? field.fieldPoints : undefined;
+    const cells = resolveCells(field.tessellationConfig, customPts);
     const cellSet = buildCellSet(cells);
     const presetConnections = rotatePresetSplitPoint(
-      state.presetConnections, point, slotIds, direction, state.tessellationConfig, cellSet,
+      state.presetConnections, point, slotIds, direction, field.tessellationConfig, cellSet,
     );
     if (presetConnections === state.presetConnections) return {};
     return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
@@ -268,9 +270,10 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
 
       const nodeEndpoints: PresetEndpoint[] = blueprint.nodeFaces.map((_, i) => (i === 0 ? presetEndpoint(point) : presetEndpoint(point, i - 1)));
 
-      const { offsets } = getNeighborData(state.tessellationConfig, point[0], point[1]);
-      const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0 ? state.fieldPoints : undefined;
-      const cells = resolveCells(state.tessellationConfig, customPts);
+      const field = activeFloorField(state);
+      const { offsets } = getNeighborData(field.tessellationConfig, point[0], point[1]);
+      const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0 ? field.fieldPoints : undefined;
+      const cells = resolveCells(field.tessellationConfig, customPts);
       const inFieldCells = buildCellSet(cells);
       // Every one of the blueprint's declared faces gets a `passage`; every other in-field face
       // of the tile gets an explicit `wall` — presets default to `undefined` (optional), which
@@ -329,8 +332,9 @@ export function applyDefaultEdgeState(
   state: MazeState,
   newDefault: "undefined" | "wall" | "passage",
 ): Map<string, PresetConnectionEntry> {
-  const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0 ? state.fieldPoints : undefined;
-  const cells = resolveCells(state.tessellationConfig, customPts);
+  const field = activeFloorField(state);
+  const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0 ? field.fieldPoints : undefined;
+  const cells = resolveCells(field.tessellationConfig, customPts);
   const cellSet = buildCellSet(cells);
 
   // Remove all existing default entries, then add new ones if needed
@@ -342,7 +346,7 @@ export function applyDefaultEdgeState(
   if (newDefault === "undefined") return presetConnections;
 
   for (const [x, y] of cells) {
-    const { offsets } = getNeighborData(state.tessellationConfig, x, y);
+    const { offsets } = getNeighborData(field.tessellationConfig, x, y);
     for (const [dx, dy] of offsets) {
       const nx = x + dx;
       const ny = y + dy;

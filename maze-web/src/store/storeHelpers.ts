@@ -4,9 +4,25 @@ import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
 import { computeAutoLockedNodes } from "../pixi/fieldEditUtils";
 import type {
-  MazeState, TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation, DebugArenaHandle,
+  MazeState, TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation, DebugArenaHandle, FloorFieldConfig,
 } from "./storeTypes";
 import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "./storeTypes";
+
+/** The active floor's own field-shape state — the per-floor scoping point every field-editing
+ * helper below reads/writes through (GitHub issue #338). */
+export function activeFloorField(state: MazeState): FloorFieldConfig {
+  return state.floorFields[state.activeFloorId];
+}
+
+/** Replaces the active floor's FloorFieldConfig, keyed by `state.activeFloorId`. */
+export function withActiveFloorField(state: MazeState, patch: Partial<FloorFieldConfig>): { floorFields: Record<string, FloorFieldConfig> } {
+  return {
+    floorFields: {
+      ...state.floorFields,
+      [state.activeFloorId]: { ...activeFloorField(state), ...patch },
+    },
+  };
+}
 
 export function kindAndShapeFromConfig(cfg: TessellationConfig): { kind: TessellationKind; squareShape: SquareShape; hexShape: HexShape; triangleShape: TriangleShape } {
   switch (cfg.type) {
@@ -107,6 +123,27 @@ export const emptyFreePoints = (): Record<TessellationKind, Set<number>> => ({
   triangle: new Set<number>(),
 });
 
+/** A fresh FloorFieldConfig for the given (maze-wide) tessellation kind/orientation — the kind's
+ * "full" predefined shape (see Specs/field-editor.md's "Default shape per kind" table), no custom
+ * points, default mode. Used by floorsSlice's addFloor for a floor with no field config yet. */
+export function defaultFloorFieldConfig(kind: TessellationKind, hexOrientation: HexOrientation, triOrientation: TriOrientation): FloorFieldConfig {
+  const squareShape: SquareShape = "rect";
+  const hexShape: HexShape = kind === "hex" ? "hexagon" : "parallelogram";
+  const triangleShape: TriangleShape = kind === "triangle" ? "triangle" : "rect";
+  const cfg = buildPredefinedConfig(kind, hexShape, triangleShape, hexOrientation, triOrientation);
+  return {
+    squareShape, hexShape, triangleShape,
+    savedConfigs: { [cfg.type]: cfg },
+    tessellationConfig: cfg,
+    freeFieldPoints: emptyFreePoints(),
+    isEditingField: false,
+    fieldPoints: new Set<number>(),
+    fieldEditMode: "default",
+    fieldPrimitive: "point",
+    fieldDirty: false,
+  };
+}
+
 export function deriveEditState(
   kind: TessellationKind,
   squareShape: SquareShape,
@@ -124,30 +161,42 @@ export function debugStaleOf(state: { debugArena: DebugArenaHandle | null }): bo
   return state.debugArena !== null;
 }
 
-/** Apply an edit to the active tessellation kind's free-field point set and rebuild its config. */
+/** Apply an edit to the active floor's active tessellation kind's free-field point set and
+ * rebuild its config. */
 export function withFieldPointsEdit(
   state: MazeState,
   editFn: (pts: Set<number>) => boolean,
 ): Partial<MazeState> {
-  const fieldPoints = new Set(state.fieldPoints);
+  const field = activeFloorField(state);
+  const fieldPoints = new Set(field.fieldPoints);
   const changed = editFn(fieldPoints);
   if (!changed) return {};
-  const freeFieldPoints = { ...state.freeFieldPoints, [state.tessellationKind]: fieldPoints };
+  const freeFieldPoints = { ...field.freeFieldPoints, [state.tessellationKind]: fieldPoints };
   const tessellationConfig = buildFreeConfig(state.tessellationKind, fieldPoints, state.hexOrientation, state.triOrientation);
-  return { fieldPoints, freeFieldPoints, tessellationConfig, fieldDirty: true, debugStale: debugStaleOf(state) };
+  return {
+    ...withActiveFloorField(state, { fieldPoints, freeFieldPoints, tessellationConfig, fieldDirty: true }),
+    debugStale: debugStaleOf(state),
+  };
 }
 
-/** Derive the active tessellation TessellationConfig, accounting for free-field editing. */
-export function activeTessellationOf(state: { isEditingField: boolean; tessellationKind: TessellationKind; fieldPoints: Set<number>; hexOrientation: HexOrientation; triOrientation: TriOrientation; tessellationConfig: TessellationConfig }): TessellationConfig {
-  return state.isEditingField
-    ? buildFreeConfig(state.tessellationKind, state.fieldPoints, state.hexOrientation, state.triOrientation)
-    : state.tessellationConfig;
+/** Derive any floor's active TessellationConfig, accounting for free-field editing. */
+export function floorTessellationOf(state: { tessellationKind: TessellationKind; hexOrientation: HexOrientation; triOrientation: TriOrientation } & MazeState, floorId: string): TessellationConfig {
+  const field = state.floorFields[floorId];
+  return field.isEditingField
+    ? buildFreeConfig(state.tessellationKind, field.fieldPoints, state.hexOrientation, state.triOrientation)
+    : field.tessellationConfig;
+}
+
+/** Derive the active floor's active TessellationConfig, accounting for free-field editing. */
+export function activeFloorTessellationOf(state: { tessellationKind: TessellationKind; hexOrientation: HexOrientation; triOrientation: TriOrientation } & MazeState): TessellationConfig {
+  return floorTessellationOf(state, state.activeFloorId);
 }
 
 export function recomputeAutoLock(state: MazeState): Set<string> {
   if (!state.autoLock) return new Set<string>();
-  const activeTessellation = activeTessellationOf(state);
-  const customPts = state.isEditingField ? state.fieldPoints : undefined;
+  const field = activeFloorField(state);
+  const activeTessellation = activeFloorTessellationOf(state);
+  const customPts = field.isEditingField ? field.fieldPoints : undefined;
   return computeAutoLockedNodes(state.presetConnections, activeTessellation, customPts, state.presetSplitPoints);
 }
 
@@ -181,7 +230,8 @@ export function buildResetMazeState() {
   };
 }
 
-/** Derive kind/shape/orientation/freeFieldPoints/savedConfigs from a TessellationConfig — shared by setTessellationConfig and loadProject. */
+/** Derive kind/shape/orientation/freeFieldPoints/savedConfigs from a TessellationConfig for the
+ * active floor — shared by setTessellationConfig and loadProject. */
 export function deriveTessellationFromConfig(
   cfg: TessellationConfig,
   currentHexOrientation: HexOrientation,
@@ -208,37 +258,48 @@ export function deriveTessellationFromConfig(
   return { kind, squareShape, hexShape, triangleShape, hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints, savedConfigs, isCustom };
 }
 
-/** Shape-setter factory — setSquareShape/setHexShape/setTriangleShape differ only by which shape field changes. */
+/** Shape-setter factory — setSquareShape/setHexShape/setTriangleShape differ only by which shape field changes. Operates on the active floor's own FloorFieldConfig. */
 export function makeShapeSetter<K extends "squareShape" | "hexShape" | "triangleShape">(
-  field: K,
+  fieldKey: K,
   kind: TessellationKind,
 ) {
   return (shape: SquareShape | HexShape | TriangleShape) => (state: MazeState): Partial<MazeState> => {
-    if (shape === state[field]) return {};
-    const squareShape = field === "squareShape" ? (shape as SquareShape) : state.squareShape;
-    const hexShape = field === "hexShape" ? (shape as HexShape) : state.hexShape;
-    const triangleShape = field === "triangleShape" ? (shape as TriangleShape) : state.triangleShape;
-    const { isEditingField, fieldPoints } = deriveEditState(state.tessellationKind, squareShape, hexShape, triangleShape, state.freeFieldPoints);
+    const field = activeFloorField(state);
+    if (shape === field[fieldKey]) return {};
+    const squareShape = fieldKey === "squareShape" ? (shape as SquareShape) : field.squareShape;
+    const hexShape = fieldKey === "hexShape" ? (shape as HexShape) : field.hexShape;
+    const triangleShape = fieldKey === "triangleShape" ? (shape as TriangleShape) : field.triangleShape;
+    const { isEditingField, fieldPoints } = deriveEditState(state.tessellationKind, squareShape, hexShape, triangleShape, field.freeFieldPoints);
     const cfg = isEditingField
       ? buildFreeConfig(kind, fieldPoints, state.hexOrientation, state.triOrientation)
-      : buildPredefinedConfig(kind, hexShape, triangleShape, state.hexOrientation, state.triOrientation, state.savedConfigs);
-    return { [field]: shape, tessellationConfig: cfg, isEditingField, fieldPoints, fieldDirty: true, error: null, debugStale: debugStaleOf(state) } as Partial<MazeState>;
+      : buildPredefinedConfig(kind, hexShape, triangleShape, state.hexOrientation, state.triOrientation, field.savedConfigs);
+    return {
+      ...withActiveFloorField(state, { [fieldKey]: shape, tessellationConfig: cfg, isEditingField, fieldPoints, fieldDirty: true } as Partial<FloorFieldConfig>),
+      error: null,
+      debugStale: debugStaleOf(state),
+    };
   };
 }
 
-/** Orientation-setter factory — setHexOrientation/setTriOrientation differ only by axis kind and field name. */
+/** Orientation-setter factory — setHexOrientation/setTriOrientation differ only by axis kind and
+ * field name. Kind/orientation are maze-wide (Specs/field-editor.md), so a rotation rewrites
+ * every floor's own tessellationConfig/savedConfigs for the affected kind, not just the active floor's. */
 export function makeOrientationSetter(axisKind: "hex" | "triangle", field: "hexOrientation" | "triOrientation") {
   return (orientation: HexOrientation | TriOrientation) => (state: MazeState): Partial<MazeState> => {
     if (orientation === state[field]) return {};
     if (state.tessellationKind !== axisKind) return { [field]: orientation } as Partial<MazeState>;
-    const tessellationConfig = mergeOrientation(state.tessellationConfig, orientation);
-    const { isEditingField } = deriveEditState(state.tessellationKind, state.squareShape, state.hexShape, state.triangleShape, state.freeFieldPoints);
-    const savedConfigs = isEditingField ? state.savedConfigs : { ...state.savedConfigs, [tessellationConfig.type]: tessellationConfig };
+    const floorFields: Record<string, FloorFieldConfig> = {};
+    for (const [floorId, f] of Object.entries(state.floorFields)) {
+      const tessellationConfig = mergeOrientation(f.tessellationConfig, orientation);
+      const { isEditingField } = deriveEditState(state.tessellationKind, f.squareShape, f.hexShape, f.triangleShape, f.freeFieldPoints);
+      const savedConfigs = isEditingField ? f.savedConfigs : { ...f.savedConfigs, [tessellationConfig.type]: tessellationConfig };
+      floorFields[floorId] = { ...f, tessellationConfig, savedConfigs, fieldDirty: true };
+    }
     const activeTessellationConfig = state.nodes.length > 0
       ? mergeOrientation(state.activeTessellationConfig, orientation)
       : state.activeTessellationConfig;
     return {
-      [field]: orientation, tessellationConfig, savedConfigs, activeTessellationConfig, fieldDirty: true, error: null, debugStale: debugStaleOf(state),
+      [field]: orientation, floorFields, activeTessellationConfig, error: null, debugStale: debugStaleOf(state),
       // A rotation changes which geometric face each offset index means (GitHub issue #235
       // follow-up) — a split-node panel left open across the flip would keep addressing faces
       // that no longer mean what its tile diagram was drawn for. Closing it is the same

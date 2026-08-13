@@ -405,6 +405,8 @@
   "field.confirm_clear": "Очистить все ячейки поля?",
   "field.cell": "{count} ячейка",
   "field.cells": "{count} ячеек",
+  "field.copy_floor": "Скопировать этаж",
+  "field.copy_floor_title": "Скопировать этаж",
   "check.add": "Добавить",
   "check.add_continue": "Добавить и продолжить",
   "check.details_title": "Детали проверки",

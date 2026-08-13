@@ -1,12 +1,14 @@
 {
   "tessellation": {
-    "tessellation_type": "square",
-    "points": [
-      [0, 0],
-      [1, 0],
-      [2, 0]
-    ]
+    "tessellation_type": "square"
   },
+  "level_fields": [
+    [
+    [0, 0],
+    [1, 0],
+    [2, 0]
+    ]
+  ],
   "stages": [
     {
       "id": "stage_1",

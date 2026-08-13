@@ -4,7 +4,7 @@ import { presetEndpoint } from "../pixi/presetEndpoint";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { serializeProject } from "../store/projectExport";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
-import { baseStoreState, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, encodeEdgeAddedTape, makeRule } from "./storeTestHelpers";
+import { baseStoreState, mockSnapshot, mockGenerateMazeResult, resetGenerationMocks, encodeEdgeAddedTape, makeRule, TEST_FLOOR_ID, baseFloorFieldConfig } from "./storeTestHelpers";
 import { parseTape } from "../debug/eventTape";
 import type { DebugArenaHandle } from "../store/storeTypes";
 
@@ -39,7 +39,7 @@ describe("buildGenerateConfig — preset_start/preset_finish", () => {
   it("includes preset_start and preset_finish when set inside the field", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
-      tessellationConfig: { type: "square", width: 3, height: 3 },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }) },
       presetStart: presetEndpoint([0, 0]),
       presetFinish: presetEndpoint([1, 1]),
     });
@@ -52,7 +52,7 @@ describe("buildGenerateConfig — preset_start/preset_finish", () => {
   it("omits preset_start and preset_finish when unset", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
-      tessellationConfig: { type: "square", width: 3, height: 3 },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 } }) },
       presetStart: null,
       presetFinish: null,
     });
@@ -65,7 +65,7 @@ describe("buildGenerateConfig — preset_start/preset_finish", () => {
   it("omits preset_start and preset_finish when they fall outside the field", () => {
     vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
     useMazeStore.setState({
-      tessellationConfig: { type: "square", width: 1, height: 1 },
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } }) },
       presetStart: presetEndpoint([5, 5]),
       presetFinish: presetEndpoint([9, 9]),
     });
@@ -411,6 +411,7 @@ describe("mazeStore generation misc actions", () => {
     useMazeStore.setState({
       seed: 7, randomSeed: false, rules: [], debugMode: true,
       floors: [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }],
+      floorFields: { floor_0: baseFloorFieldConfig(), floor_1: baseFloorFieldConfig() },
       activeFloorId: "floor_0",
     });
     useMazeStore.getState().generate();
@@ -436,6 +437,7 @@ describe("mazeStore generation misc actions", () => {
     useMazeStore.setState({
       seed: 7, randomSeed: false, rules: [], debugMode: true,
       floors: [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }],
+      floorFields: { floor_0: baseFloorFieldConfig(), floor_1: baseFloorFieldConfig() },
       activeFloorId: "floor_0",
       debugAutoSwitchFloor: false,
     });

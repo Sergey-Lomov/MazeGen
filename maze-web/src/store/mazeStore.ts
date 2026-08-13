@@ -1,14 +1,16 @@
 import { create } from "zustand";
-import { decodePoint } from "../pixi/tessellationProjection";
+import { decodePoint, encodePoint } from "../pixi/tessellationProjection";
 import type { MazeStore, MazeState } from "./storeTypes";
 import { createTessellationSlice } from "./slices/tessellationSlice";
+import { createFloorFieldSlice } from "./slices/floorFieldSlice";
 import { createPresetConnectionsSlice } from "./slices/presetConnectionsSlice";
 import { createGenerationSlice, generateWithSeed } from "./slices/generationSlice";
 import { createAnalyticsOverlaySlice } from "./slices/analyticsOverlaySlice";
 import { createPostEditSlice } from "./slices/postEditSlice";
 import { createImageExportSlice } from "./slices/imageExportSlice";
 import { createFloorsSlice } from "./slices/floorsSlice";
-import { buildPreviewState, buildResetMazeState, deriveTessellationFromConfig, recomputeAutoLock } from "./storeHelpers";
+import { buildPreviewState, buildResetMazeState, deriveEditState, kindAndShapeFromConfig, recomputeAutoLock } from "./storeHelpers";
+import type { FloorFieldConfig } from "./storeTypes";
 import { warmCartesianCache } from "../pixi/cartesianCache";
 
 export type {
@@ -24,6 +26,7 @@ export { decodePoint };
 
 export const useMazeStore = create<MazeStore>()((...a) => ({
   ...createTessellationSlice(...a),
+  ...createFloorFieldSlice(...a),
   ...createPresetConnectionsSlice(...a),
   ...createGenerationSlice(...a),
   ...createAnalyticsOverlaySlice(...a),
@@ -33,25 +36,43 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
 
   loadProject: (file) => {
     const [set, get] = a;
-    const cfg = file.tessellation.config;
-
-    // Derive all tessellation fields (same logic as setTessellationConfig)
-    const restoredSavedConfigs: Partial<Record<import("../fieldConfig").FieldConfig["type"], import("../fieldConfig").FieldConfig>> =
-      Object.fromEntries(file.tessellation.savedConfigs.map(c => [c.type, c]));
-    const { kind, squareShape, hexShape, triangleShape, hexOrientation, triOrientation, freeFieldPoints, isEditingField, fieldPoints, savedConfigs, isCustom: isCustomConfig } =
-      deriveTessellationFromConfig(cfg, get().hexOrientation, get().triOrientation, get().freeFieldPoints, restoredSavedConfigs);
+    const { kind, hexOrientation, triOrientation } = file.tessellation;
     const previewState = buildPreviewState(kind, hexOrientation, triOrientation);
 
-    // Recompute auto-locked nodes
+    // Build each floor's own FloorFieldConfig (GitHub issue #338) — mirrors deriveTessellationFromConfig's
+    // per-config derivation, applied per floor instead of once maze-wide.
+    const floorFields: Record<string, FloorFieldConfig> = {};
+    for (const floor of file.floors.floors) {
+      const ff = file.floorFields[floor.id];
+      const { squareShape, hexShape, triangleShape } = kindAndShapeFromConfig(ff.config);
+      const freeFieldPoints = {
+        square: new Set(ff.freeFieldPoints.square.map(([x, y]) => encodePoint(x, y))),
+        hex: new Set(ff.freeFieldPoints.hex.map(([x, y]) => encodePoint(x, y))),
+        triangle: new Set(ff.freeFieldPoints.triangle.map(([x, y]) => encodePoint(x, y))),
+      };
+      const { isEditingField, fieldPoints } = deriveEditState(kind, squareShape, hexShape, triangleShape, freeFieldPoints);
+      floorFields[floor.id] = {
+        squareShape, hexShape, triangleShape,
+        savedConfigs: Object.fromEntries(ff.savedConfigs.map((c) => [c.type, c])),
+        tessellationConfig: ff.config,
+        freeFieldPoints,
+        isEditingField,
+        fieldPoints,
+        fieldEditMode: ff.fieldEditMode,
+        fieldPrimitive: "point",
+        fieldDirty: file.dirtyFlags.field,
+      };
+    }
+    const activeFloorId = file.floors.floors[0].id;
+    const activeField = floorFields[activeFloorId];
+    const cfg = activeField.tessellationConfig;
+
+    // Recompute auto-locked nodes against the active floor's own field.
     const restoredPresetConnections = new Map(file.presets.connections);
     const autoLockedNodes = recomputeAutoLock({
       autoLock: file.presets.autoLock,
-      isEditingField,
-      tessellationKind: kind,
-      fieldPoints,
-      hexOrientation,
-      triOrientation,
-      tessellationConfig: cfg,
+      activeFloorId,
+      floorFields,
       presetConnections: restoredPresetConnections,
       presetSplitPoints: file.presets.splitPoints,
     } as MazeState);
@@ -60,21 +81,12 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     warmCartesianCache(cfg);
     set({
       // tessellation
-      tessellationConfig: cfg,
       tessellationKind: kind,
-      squareShape,
-      hexShape,
-      triangleShape,
       hexOrientation,
       triOrientation,
-      freeFieldPoints,
-      isEditingField,
-      fieldPoints,
-      savedConfigs,
+      floorFields,
       activeTessellationConfig: cfg,
       tessellationConfirmed: true,
-      fieldEditMode: isCustomConfig ? "custom" : "default",
-      fieldPrimitive: "point",
       ...previewState,
       // generation settings (seed used below for generate call)
       seed: file.generation.seed,
@@ -136,7 +148,6 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       postEditAnalytics: null,
       postEditTool: "wall" as const,
       postEditDirty: file.dirtyFlags.postEdit,
-      fieldDirty: file.dirtyFlags.field,
       presetsDirty: file.dirtyFlags.presets,
       mazeDirty: file.dirtyFlags.maze,
       _generatedStart: null,
@@ -213,12 +224,14 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     }
 
     // Restore dirty flags — generateWithSeed resets them, but saved values take precedence
-    set({
+    set((state) => ({
       postEditDirty: file.dirtyFlags.postEdit,
-      fieldDirty: file.dirtyFlags.field,
+      floorFields: Object.fromEntries(
+        Object.entries(state.floorFields).map(([id, f]) => [id, { ...f, fieldDirty: file.dirtyFlags.field }]),
+      ),
       presetsDirty: file.dirtyFlags.presets,
       mazeDirty: file.dirtyFlags.maze,
-    });
+    }));
 
     // confirmPostEdit to compute analytics over restored state
     void get().confirmPostEdit();

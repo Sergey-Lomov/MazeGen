@@ -24,7 +24,9 @@ import {
   type ProjectFileNestedStrategy,
   type ProjectFileImageExport,
   type ProjectFileFloors,
+  type ProjectFileFloorField,
 } from "./types";
+import { buildPredefinedConfig } from "../storeHelpers";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
@@ -314,6 +316,32 @@ function validateTessellationConfig(v: unknown, path = "tessellation.config"): T
     default:
       throw new Error(`Unknown tessellation config type: ${type}`);
   }
+}
+
+/** Validates one floor's own field-shape state (GitHub issue #338) — `config`/`savedConfigs` reuse
+ * `validateTessellationConfig`; `freeFieldPoints` are plain coordinate arrays on disk (`fieldPoints`
+ * itself is re-derived on load, same as the pre-#338 shape always did). */
+function validateFloorFieldConfig(v: unknown, path: string): { config: TessellationConfig; savedConfigs: TessellationConfig[]; freeFieldPoints: Record<"square" | "hex" | "triangle", [number, number][]>; fieldEditMode: "default" | "custom" } {
+  const obj = assertObject(v, path);
+  const config = validateTessellationConfig(obj.config, `${path}.config`);
+  const savedConfigs: TessellationConfig[] = obj.savedConfigs != null
+    ? assertArray(obj.savedConfigs, `${path}.savedConfigs`).map((sv, i) => validateTessellationConfig(sv, `${path}.savedConfigs[${i}]`))
+    : [];
+  const validatePoints = (raw: unknown, kindPath: string): [number, number][] => {
+    if (raw == null) return [];
+    return assertArray(raw, kindPath).map((pt, i) => {
+      const pair = assertArray(pt, `${kindPath}[${i}]`);
+      return [assertNumber(pair[0], `${kindPath}[${i}][0]`), assertNumber(pair[1], `${kindPath}[${i}][1]`)] as [number, number];
+    });
+  };
+  const freeObj = obj.freeFieldPoints != null ? assertObject(obj.freeFieldPoints, `${path}.freeFieldPoints`) : {};
+  const freeFieldPoints = {
+    square: validatePoints(freeObj.square, `${path}.freeFieldPoints.square`),
+    hex: validatePoints(freeObj.hex, `${path}.freeFieldPoints.hex`),
+    triangle: validatePoints(freeObj.triangle, `${path}.freeFieldPoints.triangle`),
+  };
+  const fieldEditMode = optEnum(obj, "fieldEditMode", ["default", "custom"] as const, "default");
+  return { config, savedConfigs, freeFieldPoints, fieldEditMode };
 }
 
 /** Validates a `PostEditEndpoint` tagged union (GitHub issue #221) — `kind: "node"` (a plain
@@ -900,12 +928,11 @@ export function parseAndValidate(raw: unknown): ProjectFile {
 
   const migrated = assertObject(migrateToLatest(obj, version), "root (migrated)");
 
-  // tessellation
+  // tessellation (kind/orientation only — per-floor field shape is `floorFields`, GitHub issue #338)
   const tessObj = assertObject(migrated.tessellation, "tessellation");
-  const config = validateTessellationConfig(tessObj.config);
-  const savedConfigs: TessellationConfig[] = tessObj.savedConfigs != null
-    ? assertArray(tessObj.savedConfigs, "tessellation.savedConfigs").map((v, i) => validateTessellationConfig(v, `tessellation.savedConfigs[${i}]`))
-    : [];
+  const kind = optEnum(tessObj, "kind", ["square", "hex", "triangle"] as const, "square");
+  const hexOrientation = optEnum(tessObj, "hexOrientation", ["flat_top", "pointy_top"] as const, "flat_top");
+  const triOrientation = optEnum(tessObj, "triOrientation", ["r0", "r90", "r180", "r270"] as const, "r0");
 
   // generation
   const genObj = assertObject(migrated.generation, "generation");
@@ -1053,9 +1080,23 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // floors (optional section — defaults to a single floor for old files)
   const floors: ProjectFileFloors = validateFloors(migrated.floors, "floors");
 
+  // floorFields (GitHub issue #338) — one entry per floor id in `floors`. A floor missing its own
+  // entry (file saved before this issue, or hand-edited) falls back to the kind's bare default
+  // shape, same convention `defaultFloorFieldConfig` (storeHelpers.ts) uses for a brand-new floor.
+  const floorFieldsObj = migrated.floorFields != null ? assertObject(migrated.floorFields, "floorFields") : {};
+  const defaultConfig = buildPredefinedConfig(kind, kind === "hex" ? "hexagon" : "parallelogram", kind === "triangle" ? "triangle" : "rect", hexOrientation, triOrientation);
+  const floorFields: Record<string, ProjectFileFloorField> = {};
+  for (const floor of floors.floors) {
+    const raw = floorFieldsObj[floor.id];
+    floorFields[floor.id] = raw != null
+      ? validateFloorFieldConfig(raw, `floorFields.${floor.id}`)
+      : { config: defaultConfig, savedConfigs: [defaultConfig], freeFieldPoints: { square: [], hex: [], triangle: [] }, fieldEditMode: "default" };
+  }
+
   return {
     version: CURRENT_VERSION,
-    tessellation: { config, savedConfigs },
+    tessellation: { kind, hexOrientation, triOrientation },
+    floorFields,
     generation: { seed, randomSeed, initial, elements, splitGeneration, qcExperiment, seedHistory, seedHistoryIndex },
     quality: { rules, stages, strategyParams, repairMaxIterations, repairTimeBudgetSecs },
     presets: {

@@ -3,7 +3,7 @@ import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPatter
 import type { PresetConnectionEntry, PresetTeleportEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, FeatureId, RenderModeId } from "../mazeStore";
-import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings } from "../storeTypes";
+import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation } from "../storeTypes";
 
 export interface ProjectFilePostEdit {
   edges: [string, PostEditEdge][];
@@ -62,6 +62,17 @@ export interface ProjectFileFloors {
   nextFloorNumber: number;
 }
 
+/** One floor's own field-shape state — GitHub issue #338. Mirrors `FloorFieldConfig`
+ * (storeTypes.ts), minus `fieldPoints`/`isEditingField` (both re-derived on load from
+ * `freeFieldPoints`/shape, same as the pre-#338 maze-wide `tessellation` section always did). */
+export interface ProjectFileFloorField {
+  config: TessellationConfig;
+  savedConfigs: TessellationConfig[];
+  /** Per-kind free-field points, as flat coordinate arrays keyed by kind. */
+  freeFieldPoints: Record<"square" | "hex" | "triangle", [number, number][]>;
+  fieldEditMode: "default" | "custom";
+}
+
 export interface ProjectFileDirtyFlags {
   postEdit: boolean;
   field: boolean;
@@ -116,7 +127,13 @@ export interface ProjectFileStage {
 
 export interface ProjectFile {
   version: number;
-  tessellation: { config: TessellationConfig; savedConfigs: TessellationConfig[] };
+  /** Maze-wide kind/orientation confirmation only (Specs/field-editor.md) — per-floor field shape
+   * moved to `floorFields` (GitHub issue #338). `hexOrientation`/`triOrientation` are always
+   * present (unlike the pre-#338 shape) since they're no longer derivable from a single shared
+   * `config`. */
+  tessellation: { kind: "square" | "hex" | "triangle"; hexOrientation: HexOrientation; triOrientation: TriOrientation };
+  /** One entry per floor id in `floors.floors`, its own field-shape state (GitHub issue #338). */
+  floorFields: Record<string, ProjectFileFloorField>;
   generation: {
     seed: number;
     randomSeed: boolean;
@@ -162,4 +179,4 @@ export interface ProjectFile {
   floors: ProjectFileFloors;
 }
 
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;

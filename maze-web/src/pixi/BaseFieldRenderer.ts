@@ -93,8 +93,9 @@ export abstract class BaseFieldRenderer {
 
   protected rebuildCellCache(state: MazeState): void {
     if (!this.cfg) return;
-    const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0
-      ? state.fieldPoints : undefined;
+    const field = state.floorFields[state.activeFloorId];
+    const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0
+      ? field.fieldPoints : undefined;
     this.cachedCells = resolveCells(this.cfg, customPts);
     this.cachedCellSet = new Set(this.cachedCells.map(([x, y]) => encodePoint(x, y)));
   }

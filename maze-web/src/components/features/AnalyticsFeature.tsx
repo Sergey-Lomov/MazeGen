@@ -1,7 +1,7 @@
 import React from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useMazeStore } from "../../store/mazeStore";
-import { activeTessellationOf } from "../../store/storeHelpers";
+import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import { ui, typography, muted, disabled, spacing, indent, dialogSpacing } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
@@ -36,7 +36,7 @@ function messageFor(key: string): string {
 /** Compact, non-interactive tile preview for one split group's card in the "pattern statistics"
  *  modal — reuses `TileFaceEditor` itself, same rationale as `SplitPatternListEditor`'s own
  *  `PatternPreviewTile` (no separate rendering path to keep in sync). */
-function SplitGroupPreviewTile({ topology, cfg }: { topology: SplitGroupDto["topology"]; cfg: ReturnType<typeof activeTessellationOf> }) {
+function SplitGroupPreviewTile({ topology, cfg }: { topology: SplitGroupDto["topology"]; cfg: ReturnType<typeof activeFloorTessellationOf> }) {
   return (
     <div style={styles.previewTile}>
       <TileFaceEditor
@@ -51,7 +51,7 @@ function SplitPatternStatsModal({ groups, tileCount, nodes, cfg, onClose }: {
   groups: SplitGroupDto[];
   tileCount: number;
   nodes: { x: number; y: number }[];
-  cfg: ReturnType<typeof activeTessellationOf>;
+  cfg: ReturnType<typeof activeFloorTessellationOf>;
   onClose: () => void;
 }) {
   const sorted = [...groups].sort((a, b) => b.count - a.count);
@@ -228,7 +228,7 @@ export function AnalyticsFeature() {
   const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
   const issues = useMazeStore(useShallow(selectAnalyticsIssues));
   const nodes = useMazeStore((s) => s.nodes);
-  const tessellationConfig = useMazeStore((s) => activeTessellationOf(s));
+  const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
 
   const nodeStats = postEditAnalytics?.nodeStats ?? generatedNodeStats;
   const edgeStats = postEditAnalytics?.edgeStats ?? generatedEdgeStats;

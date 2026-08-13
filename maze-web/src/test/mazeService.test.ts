@@ -11,7 +11,7 @@ const mockGenerate = vi.fn();
 
 const defaultInitial = { method: "custom_vertex_based" as const };
 const defaultElements = { one_way_chance: 0.04 };
-const defaultConfig = { tessellation: { tessellation_type: "square" as const, points: [[0, 0]] as [number, number][] }, stages: [], initial: defaultInitial, elements: defaultElements };
+const defaultConfig = { tessellation: { tessellation_type: "square" as const }, level_fields: [[[0, 0]]] as [number, number][][], stages: [], initial: defaultInitial, elements: defaultElements };
 
 /** Wraps a raw snapshot value in a fake `GenerateResult` (see `maze-wasm/src/result.rs`) — no
  *  debug tape, matching the non-`debug_events` path. */
@@ -51,7 +51,7 @@ const validSnapshot = {
 describe("generateMaze / validateSnapshot", () => {
   it("returns valid snapshot", () => {
     mockGenerate.mockReturnValue(fakeGenerateResult(validSnapshot));
-    const cfg = { tessellation: { tessellation_type: "square" as const, points: [[0, 0], [1, 0]] as [number, number][] }, stages: [], initial: defaultInitial, elements: defaultElements };
+    const cfg = { tessellation: { tessellation_type: "square" as const }, level_fields: [[[0, 0], [1, 0]]] as [number, number][][], stages: [], initial: defaultInitial, elements: defaultElements };
     const result = generateMaze(42, cfg);
     expect(result.snapshot).toEqual(validSnapshot);
     expect(result.debugTape).toBeUndefined();

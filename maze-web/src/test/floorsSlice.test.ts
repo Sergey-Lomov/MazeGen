@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
+import { baseFloorFieldConfig } from "./storeTestHelpers";
 
 beforeEach(() => {
   useMazeStore.setState({
     floors: [{ id: "floor_1", title: "Floor 1" }],
     nextFloorNumber: 2,
     activeFloorId: "floor_1",
+    floorFields: { floor_1: baseFloorFieldConfig() },
   });
 });
 
@@ -31,6 +33,44 @@ describe("floorsSlice", () => {
       useMazeStore.getState().removeFloor(secondId);
       useMazeStore.getState().addFloor();
       expect(useMazeStore.getState().floors.at(-1)?.title).toBe("Floor 3");
+    });
+
+    it("copies the topmost floor's own FloorFieldConfig, not the active floor's", () => {
+      // floor_1 (topmost so far) gets a distinctive config before adding floor 2, then floor_1
+      // is made active again before adding floor 3 — floor 3 must copy floor 2 (the current
+      // topmost floor), not floor_1 (the active one), proving addFloor's copy source is
+      // floors[floors.length - 1], not activeFloorId.
+      useMazeStore.setState({
+        floorFields: { floor_1: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }) },
+      });
+      useMazeStore.getState().addFloor(); // Floor 2, copies floor_1's 3x4 config
+      const floor2Id = useMazeStore.getState().floors[1].id;
+      useMazeStore.setState({
+        floorFields: {
+          ...useMazeStore.getState().floorFields,
+          [floor2Id]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 7, height: 8 } }),
+        },
+      });
+      useMazeStore.getState().setActiveFloorId("floor_1");
+
+      useMazeStore.getState().addFloor(); // Floor 3 — active floor is floor_1, topmost is floor 2
+
+      const { floors, floorFields } = useMazeStore.getState();
+      const floor3Id = floors[2].id;
+      expect(floorFields[floor3Id].tessellationConfig).toEqual({ type: "square", width: 7, height: 8 });
+    });
+
+    it("copies into an independent object, not a shared reference", () => {
+      useMazeStore.getState().addFloor();
+      const floor2Id = useMazeStore.getState().floors[1].id;
+      useMazeStore.getState().setActiveFloorId(floor2Id);
+      useMazeStore.getState().setFieldEditMode("custom");
+      useMazeStore.getState().addFieldPoint(5, 5);
+      const floor1Config = useMazeStore.getState().floorFields.floor_1;
+      const floor2Config = useMazeStore.getState().floorFields[floor2Id];
+      expect(floor1Config).not.toBe(floor2Config);
+      expect(floor1Config.isEditingField).toBe(false);
+      expect(floor2Config.isEditingField).toBe(true);
     });
   });
 

@@ -394,6 +394,8 @@
   "field.confirm_clear": "Clear all field cells?",
   "field.cell": "{count} cell",
   "field.cells": "{count} cells",
+  "field.copy_floor": "Copy floor",
+  "field.copy_floor_title": "Copy floor",
   "check.add": "Add",
   "check.add_continue": "Add and continue",
   "check.details_title": "Check details",

@@ -1,5 +1,7 @@
 import type { StateCreator } from "zustand";
-import type { MazeStore, FloorsState, FloorsActions, FloorState } from "../storeTypes";
+import type { MazeStore, FloorsState, FloorsActions, FloorState, FloorFieldConfig } from "../storeTypes";
+import { DEFAULT_HEX_ORI, DEFAULT_TRI_ORI } from "../storeTypes";
+import { defaultFloorFieldConfig } from "../storeHelpers";
 
 export function newFloor(number: number): FloorState {
   return { id: `floor_${crypto.randomUUID()}`, title: `Floor ${number}` };
@@ -11,18 +13,34 @@ export const createFloorsSlice: StateCreator<MazeStore, [], [], FloorsState & Fl
   floors: [initialFloor],
   nextFloorNumber: 2,
   activeFloorId: initialFloor.id,
+  // Seeded directly (not via get(), unavailable this early) — mirrors tessellationSlice's own
+  // initial kind/orientation defaults (square, DEFAULT_HEX_ORI/DEFAULT_TRI_ORI).
+  floorFields: { [initialFloor.id]: defaultFloorFieldConfig("square", DEFAULT_HEX_ORI, DEFAULT_TRI_ORI) },
 
-  addFloor: () => set((state) => ({
-    floors: [...state.floors, newFloor(state.nextFloorNumber)],
-    nextFloorNumber: state.nextFloorNumber + 1,
-  })),
+  addFloor: () => set((state) => {
+    const floor = newFloor(state.nextFloorNumber);
+    // New floor starts as a copy of the floor it's stacked on top of — the current topmost floor
+    // (GitHub issue #338), not the kind's bare default shape, so a maze mid-way through
+    // customizing floor shapes doesn't regress the new floor to something unrelated to what the
+    // user's been drawing.
+    const belowFloor = state.floors[state.floors.length - 1];
+    const belowField = state.floorFields[belowFloor.id];
+    return {
+      floors: [...state.floors, floor],
+      nextFloorNumber: state.nextFloorNumber + 1,
+      floorFields: { ...state.floorFields, [floor.id]: { ...belowField } },
+    };
+  }),
 
   removeFloor: (id) => {
-    const { floors, activeFloorId } = get();
+    const { floors, activeFloorId, floorFields } = get();
     if (floors.length <= 1) return;
     const next = floors.filter((f) => f.id !== id);
+    const nextFloorFields: Record<string, FloorFieldConfig> = { ...floorFields };
+    delete nextFloorFields[id];
     set({
       floors: next,
+      floorFields: nextFloorFields,
       // The active floor may be the one just removed — fall back to the bottom floor rather than
       // leaving `activeFloorId` pointing at a floor that no longer exists.
       activeFloorId: activeFloorId === id ? next[0].id : activeFloorId,

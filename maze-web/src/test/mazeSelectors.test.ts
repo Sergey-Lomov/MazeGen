@@ -878,9 +878,18 @@ describe("buildLinkHoverHighlight", () => {
 });
 
 describe("selectFloorRemovalLosesFieldData", () => {
-  it("always returns false — field/preset state isn't per-floor yet", () => {
-    expect(selectFloorRemovalLosesFieldData("floor_1")).toBe(false);
-    expect(selectFloorRemovalLosesFieldData("anything")).toBe(false);
+  it("false when the floor has no fieldDirty entry", () => {
+    expect(selectFloorRemovalLosesFieldData({ floorFields: {} }, "floor_1")).toBe(false);
+  });
+
+  it("false when the floor's field is not dirty", () => {
+    const state = { floorFields: { floor_1: { fieldDirty: false } } } as never;
+    expect(selectFloorRemovalLosesFieldData(state, "floor_1")).toBe(false);
+  });
+
+  it("true when the floor's field is dirty", () => {
+    const state = { floorFields: { floor_1: { fieldDirty: true } } } as never;
+    expect(selectFloorRemovalLosesFieldData(state, "floor_1")).toBe(true);
   });
 });
 

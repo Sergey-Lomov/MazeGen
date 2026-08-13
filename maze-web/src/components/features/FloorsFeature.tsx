@@ -14,6 +14,7 @@ type PendingAction =
 
 export function FloorsFeature() {
   const floors = useMazeStore((s) => s.floors);
+  const floorFields = useMazeStore((s) => s.floorFields);
   const mazeDirty = useMazeStore((s) => s.mazeDirty);
   const postEditDirty = useMazeStore((s) => s.postEditDirty);
   const addFloor = useMazeStore((s) => s.addFloor);
@@ -39,7 +40,7 @@ export function FloorsFeature() {
   }
 
   function handleRemoveClick(floorId: string) {
-    const lossField = selectFloorRemovalLosesFieldData(floorId);
+    const lossField = selectFloorRemovalLosesFieldData({ floorFields }, floorId);
     const message =
       lossField && lossGen ? m["floors.confirm_remove_both"]() :
       lossField ? m["floors.confirm_remove_field"]() :

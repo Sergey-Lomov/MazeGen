@@ -168,12 +168,12 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
   const hexOrientation = useMazeStore((s) => s.hexOrientation);
   const triOrientation = useMazeStore((s) => s.triOrientation);
-  const squareShape = useMazeStore((s) => s.squareShape);
-  const hexShape = useMazeStore((s) => s.hexShape);
-  const triangleShape = useMazeStore((s) => s.triangleShape);
-  const tessellationConfig = useMazeStore((s) => s.tessellationConfig);
-  const fieldPoints = useMazeStore((s) => s.fieldPoints);
-  const fieldEditMode = useMazeStore((s) => s.fieldEditMode);
+  const squareShape = useMazeStore((s) => s.floorFields[s.activeFloorId].squareShape);
+  const hexShape = useMazeStore((s) => s.floorFields[s.activeFloorId].hexShape);
+  const triangleShape = useMazeStore((s) => s.floorFields[s.activeFloorId].triangleShape);
+  const tessellationConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
+  const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
+  const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const syncPreviewToConfirmed = useMazeStore((s) => s.syncPreviewToConfirmed);
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetStart = useMazeStore((s) => s.presetStart);

@@ -2,7 +2,7 @@
 
 GitHub issue #335, part of epic #333. Web-only floor-set configuration UI — add / remove / reorder / title floors. Implemented as the "Floors" card in `FeaturesPanel`, positioned immediately after the tessellation card.
 
-Still no per-floor field, preset, or generation config today — every floor shares one tessellation/preset setup — but `floors.length` now reaches `maze-core` as `GenerateConfig.level_count` (GitHub issue #337): generation builds a `level_count`-level `MultiLevelField<T>` and can connect them with `VerticalPassage`/`Elevator` edges (see `Specs/generation.md`'s "Vertical Connections"). Everything downstream of generation — QC/repair/routing, post-edit, analytics/snapshot recompute — is still not multi-floor-aware and only ever operates on floor 0 (`MultiLevelField::single_level_id()`, `Specs/space.md`); the web store filters `_generatedNodes`/`_generatedEdges` down to the active floor before feeding them to post-edit or `GenerationRenderer` for exactly this reason — see "Non-goals" below.
+Field shape is per-floor (GitHub issue #338, see `Specs/field-editor.md`); preset connections and generation/QC config are still maze-wide — every floor shares one preset setup. Each floor's own field points reach `maze-core` as one entry of `GenerateConfig.level_fields` (GitHub issue #338): generation builds a `level_fields.len()`-level `MultiLevelField<T>` and can connect them with `VerticalPassage`/`Elevator` edges (see `Specs/generation.md`'s "Vertical Connections"). Everything downstream of the initial field build — QC/repair/routing, post-edit, analytics/snapshot recompute — is still not multi-floor-aware and only ever operates on floor 0 (`MultiLevelField::single_level_id()`, `Specs/space.md`); the web store filters `_generatedNodes`/`_generatedEdges` down to the active floor before feeding them to post-edit or `GenerationRenderer` for exactly this reason — see "Non-goals" below.
 
 ## Concepts
 
@@ -25,7 +25,7 @@ Still no per-floor field, preset, or generation config today — every floor sha
 
 ## Actions
 
-**`addFloor()`** — appends a new floor at the end (`floors.length + 1`-th visually, "on top"), title `"Floor {nextFloorNumber}"`, increments `nextFloorNumber`.
+**`addFloor()`** — appends a new floor at the end (`floors.length + 1`-th visually, "on top"), title `"Floor {nextFloorNumber}"`, increments `nextFloorNumber`. Its `FloorFieldConfig` (`floorFieldSlice.ts`) starts as a copy of the floor it's stacked on top of — the current topmost floor (`floors[floors.length - 1]`), not the active floor and not the kind's bare default shape (GitHub issue #338, see `Specs/field-editor.md`).
 
 **`removeFloor(id)`** — no-op if `id` is the only remaining floor or unknown. No confirmation inside the action itself — `FloorsFeature` gates destructive removal behind `ConfirmModal` before calling this, and additionally calls `reset()` first when the removal would discard a generation/post-edit result (see "Loss detection" below).
 
@@ -33,11 +33,13 @@ Still no per-floor field, preset, or generation config today — every floor sha
 
 **`moveFloor(id, direction)`** — adjacent swap within `floors` in array-index terms (`"up"` = toward index 0 = toward Floor 1, `"down"` = toward the end = toward the newest floor). No-op at either array end or for an unknown id. The UI's own up/down buttons invert this mapping to match the reversed on-screen order — see "Concepts" above.
 
+**`copyFloorField(sourceFloorId)`** (`floorFieldSlice.ts`) — replaces the active floor's `FloorFieldConfig` with a copy of `sourceFloorId`'s. Not floors-card UI: exposed as a "Copy floor" button at the bottom of the Field Setup card (`FieldSetupFeature.tsx`, shown only when more than one floor exists), which opens `CopyFloorDialog` — a narrow list of every floor (current floor disabled) plus a Confirm button. Lets a user re-sync a floor's shape to match another floor's at any time, not just at `addFloor` time (see `Specs/field-editor.md`).
+
 ## Loss detection and confirmation
 
 Three distinct warnings, per the issue's own contract — removing a floor can lose two independent things, and reordering only ever risks one of them:
 
-- **Field/preset data loss** (`selectFloorRemovalLosesFieldData`, `mazeSelectors.ts`) — always `false` today. Field-shape and preset-connection state is currently maze-wide, not per-floor (see `Specs/space.md`'s "Not yet built on top of this layer" note), so there is nothing per-floor to lose yet. Stubbed with a `floorId` parameter (not a bare constant) so the call site and signature don't need to change once real per-floor data exists — only the body does.
+- **Field data loss** (`selectFloorRemovalLosesFieldData`, `mazeSelectors.ts`) — `true` when the removed floor's own `FloorFieldConfig.fieldDirty` is set (GitHub issue #338: field shape is per-floor, see `Specs/field-editor.md`). Preset-connection state is still maze-wide (see `Specs/space.md`'s "Not yet built on top of this layer" note), so nothing preset-related can be lost by removing a single floor.
 - **Generation/post-edit result loss** (`selectFloorChangeLosesGenerationData`, `mazeSelectors.ts`) — `mazeDirty || postEditDirty`. True whenever a generation result currently exists. Applies to **both** remove and reorder — floor identity shift affects underlying node/graph state, so even a pure reorder (no removal) must warn and reset.
 
 Confirmation message selection (`FloorsFeature.tsx`, on remove):
@@ -99,6 +101,6 @@ All three are wired only in `GenerationRenderer` and `VectorByWallsRenderer` (im
 
 ## Non-goals (deferred to later epic #333 issues)
 
-- No per-floor field shape, preset connections, or generation config — every floor shares one tessellation/preset setup, and `level_count` (the only thing sent to core) is just a count.
-- Generation now consumes `level_count` (issue #337) and builds/renders across every floor; QC/repair/routing, post-edit, and analytics/snapshot recompute are not wired in yet — they still only ever see floor 0, regardless of `level_count`. `activeFloorId` now scopes `GenerationRenderer`'s displayed nodes/edges (and the web store's post-edit reset logic filters to floor 0 before use) and the debug panel's multi-floor awareness (issue #350), but no other feature reads it.
-- No connection between the web `floor.id` (UUID) and core's `LevelId` (`Specs/space.md`) — the web client never sends or receives `LevelId`s, only a `level_count` number and, on `NodeDto`, a 0-based floor *index* (`levels_ordered()` position, not `LevelId`). Synchronizing the two identity spaces (e.g. so per-floor field/preset config could be sent) is deferred to whichever future issue actually needs it.
+- No per-floor preset connections or generation/QC config — every floor shares one preset setup. Field shape is per-floor as of GitHub issue #338 (see `Specs/field-editor.md`) — kind/orientation stay maze-wide, but each floor's own shape/size/custom points are independent and each reaches core as its own entry of `GenerateConfig.level_fields` (no shared/replicated shape on the wire anymore).
+- Generation now consumes `level_fields` (issues #337/#338) and builds/renders across every floor; QC/repair/routing, post-edit, and analytics/snapshot recompute are not wired in yet — they still only ever see floor 0, regardless of level count. `activeFloorId` now scopes `GenerationRenderer`'s displayed nodes/edges (and the web store's post-edit reset logic filters to floor 0 before use) and the debug panel's multi-floor awareness (issue #350), but no other feature reads it. GitHub issue #355 tracks migrating these floor-0-only paths (including `activeTessellationConfig` staying a single maze-wide snapshot rather than per-floor) once the epic's other pieces land.
+- No connection between the web `floor.id` (UUID) and core's `LevelId` (`Specs/space.md`) — the web client never sends or receives `LevelId`s, only `level_fields` (one entry per floor, in `floors` order) and, on `NodeDto`, a 0-based floor *index* (`levels_ordered()` position, not `LevelId`). Synchronizing the two identity spaces (e.g. so per-floor preset config could be sent) is deferred to whichever future issue actually needs it.

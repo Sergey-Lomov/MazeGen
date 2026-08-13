@@ -107,9 +107,9 @@ mod nested_strategy_tests {
     }
 
     fn config_with_points(points: Vec<[i32; 2]>) -> GenerateConfig {
-        use crate::config::TessellationConfig;
         let mut config = GenerateConfig::default();
-        config.tessellation = TessellationConfig { tessellation_type: TessellationType::Square, points };
+        config.tessellation = crate::config::TessellationConfig { tessellation_type: TessellationType::Square };
+        config.level_fields = vec![points];
         config
     }
 
@@ -611,5 +611,59 @@ mod rule_level_params_tests {
         // additionally confirms the whole rule (multiple checks + strategy, same kind) builds as
         // one unit against a single resolved RuleParams, not per-member resolution.
         assert!(build(rule).is_ok(), "rule-level protect_route=false must build successfully for a rule combining a protect_route-consuming check and strategy");
+    }
+}
+
+/// Coverage for `run_from_config`'s `level_fields` handling (GitHub issue #338 — per-floor field
+/// shape): the multi-level assembly loop (`level_fields[1..]` each becoming its own `add_level`'d
+/// `Field`, independent of `level_fields[0]`'s shape/size) and the three empty-input guards, none
+/// of which were exercised by any existing fixture/test (every prior config used exactly one
+/// `level_fields` entry).
+mod level_fields_tests {
+    use crate::config::{GenerateConfig, TessellationConfig, TessellationType};
+    use crate::runner::run_from_config;
+
+    fn config_with_level_fields(level_fields: Vec<Vec<[i32; 2]>>) -> GenerateConfig {
+        let mut config = GenerateConfig::default();
+        config.tessellation = TessellationConfig { tessellation_type: TessellationType::Square };
+        config.level_fields = level_fields;
+        config
+    }
+
+    #[test]
+    fn two_differently_sized_levels_both_contribute_their_own_node_count() {
+        // Floor 0: a 2-cell field. Floor 1: an independently-shaped 3-cell field, disjoint in
+        // coordinate space from floor 0 (would collide with floor 0's own points otherwise, since
+        // per-level Field construction doesn't offset coordinates). Total graph nodes must be the
+        // sum of both levels' own point counts (2 + 3 = 5) — proving level_fields[1] is actually
+        // built as its own independent Field and added, not skipped or merged into level 0.
+        let level0 = vec![[0, 0], [1, 0]];
+        let level1 = vec![[10, 10], [11, 10], [12, 10]];
+        let config = config_with_level_fields(vec![level0, level1]);
+
+        let result = run_from_config(1, &config).expect("multi-level config must generate successfully");
+
+        assert_eq!(result.graph.nodes().count(), 5, "graph must contain every node from both levels");
+    }
+
+    #[test]
+    fn empty_level_fields_is_rejected() {
+        let config = config_with_level_fields(vec![]);
+        let err = match run_from_config(1, &config) { Err(e) => e, Ok(_) => panic!("empty level_fields must be rejected") };
+        assert!(err.contains("level_fields must not be empty"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn empty_first_level_is_rejected() {
+        let config = config_with_level_fields(vec![vec![], vec![[0, 0]]]);
+        let err = match run_from_config(1, &config) { Err(e) => e, Ok(_) => panic!("empty level_fields[0] must be rejected") };
+        assert!(err.contains("level_fields[0] must not be empty"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn empty_later_level_is_rejected() {
+        let config = config_with_level_fields(vec![vec![[0, 0], [1, 0]], vec![]]);
+        let err = match run_from_config(1, &config) { Err(e) => e, Ok(_) => panic!("an empty later level_fields entry must be rejected") };
+        assert!(err.contains("level_fields entry must not be empty"), "unexpected error: {err}");
     }
 }

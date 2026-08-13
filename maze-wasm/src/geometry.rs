@@ -1,6 +1,17 @@
 use wasm_bindgen::prelude::*;
+use serde::Deserialize;
 use maze_core::space::{SquareTessellation, SquarePoint, HexPoint, TriPoint, Tessellation};
-use crate::generation_config::{TessellationConfig, TessellationType};
+use crate::generation_config::TessellationType;
+
+/// Wire shape for `cartesian_coords` — a standalone point list plus its tessellation kind,
+/// independent of `GenerateConfig`'s own `TessellationConfig`/`level_fields` (which carry no
+/// `points` themselves — see GitHub issue #338). This endpoint answers a single geometry query,
+/// not a multi-level generation config.
+#[derive(Deserialize)]
+struct CartesianCoordsConfig {
+    tessellation_type: TessellationType,
+    points: Vec<[i32; 2]>,
+}
 
 /// Canonical (unrotated, unit-tile-scale) Cartesian projection of each point in `points`, via
 /// `Tessellation::cartesian` — see `maze-core::space`'s doc comment for why this carries no
@@ -10,7 +21,7 @@ use crate::generation_config::{TessellationConfig, TessellationType};
 /// coordinates, rather than duplicating the projection formulas in TypeScript.
 #[wasm_bindgen]
 pub fn cartesian_coords(config: JsValue) -> Result<JsValue, JsValue> {
-    let cfg: TessellationConfig = serde_wasm_bindgen::from_value(config)
+    let cfg: CartesianCoordsConfig = serde_wasm_bindgen::from_value(config)
         .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
     let coords: Vec<[f64; 2]> = match cfg.tessellation_type {
         TessellationType::Square => cfg.points.iter()

@@ -49,6 +49,8 @@ export class FieldEditorOverlay {
     this.root.visible = false;
 
     this.unsubscribe = useMazeStore.subscribe((state, prev) => {
+      const field = state.floorFields[state.activeFloorId];
+      const prevField = prev.floorFields[prev.activeFloorId];
       const isOpen = state.openCard === "field_setup";
       const wasOpen = prev.openCard === "field_setup";
       if (isOpen !== wasOpen) {
@@ -59,21 +61,21 @@ export class FieldEditorOverlay {
         this.redrawAll(state);
       }
 
-      if (isOpen && state.fieldPoints !== prev.fieldPoints) {
-        this.redrawFloor(state.fieldPoints, state.fieldEditMode, state.tessellationConfig);
+      if (isOpen && field.fieldPoints !== prevField.fieldPoints) {
+        this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
       }
 
-      if (isOpen && state.tessellationConfig !== prev.tessellationConfig) {
+      if (isOpen && field.tessellationConfig !== prevField.tessellationConfig) {
         this.redrawAll(state);
       }
 
-      if (isOpen && state.fieldEditMode !== prev.fieldEditMode) {
-        this.redrawFloor(state.fieldPoints, state.fieldEditMode, state.tessellationConfig);
-        this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin, state.tessellationConfig);
+      if (isOpen && field.fieldEditMode !== prevField.fieldEditMode) {
+        this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
+        this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
       }
 
       if (isOpen && state.showFieldOrigin !== prev.showFieldOrigin) {
-        this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin, state.tessellationConfig);
+        this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
       }
     });
   }
@@ -90,15 +92,17 @@ export class FieldEditorOverlay {
     this.viewport = { x, y, w, h, scale };
     if (this.root.visible) {
       const state = useMazeStore.getState();
-      this.grid.render({ viewport: this.viewport }, state.tessellationConfig);
-      this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin, state.tessellationConfig);
+      const field = state.floorFields[state.activeFloorId];
+      this.grid.render({ viewport: this.viewport }, field.tessellationConfig);
+      this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
     }
   }
 
   private redrawAll(state: ReturnType<typeof useMazeStore.getState>): void {
-    this.grid.render({ viewport: this.viewport }, state.tessellationConfig);
-    this.redrawFloor(state.fieldPoints, state.fieldEditMode, state.tessellationConfig);
-    this.redrawOrigin(state.fieldEditMode === "custom" && state.showFieldOrigin, state.tessellationConfig);
+    const field = state.floorFields[state.activeFloorId];
+    this.grid.render({ viewport: this.viewport }, field.tessellationConfig);
+    this.redrawFloor(field.fieldPoints, field.fieldEditMode, field.tessellationConfig);
+    this.redrawOrigin(field.fieldEditMode === "custom" && state.showFieldOrigin, field.tessellationConfig);
   }
 
   private redrawFloor(fieldPoints: Set<number>, fieldEditMode: "default" | "custom", cfg: TessellationConfig): void {

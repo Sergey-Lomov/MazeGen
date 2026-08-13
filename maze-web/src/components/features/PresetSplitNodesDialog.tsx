@@ -41,9 +41,9 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   const presetTeleports = useMazeStore((s) => s.presetTeleports);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
-  const cfg = useMazeStore((s) => s.tessellationConfig);
-  const fieldPoints = useMazeStore((s) => s.fieldPoints);
-  const fieldEditMode = useMazeStore((s) => s.fieldEditMode);
+  const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
+  const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
+  const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const applyPresetConnectionsToolAt = useMazeStore((s) => s.applyPresetConnectionsToolAt);
   const setPresetConnectionUndefined = useMazeStore((s) => s.setPresetConnectionUndefined);
   const setPresetStartEndpoint = useMazeStore((s) => s.setPresetStartEndpoint);

@@ -8,9 +8,10 @@ const activeTessellationConfig = { type: "square", width: 2, height: 2 } as Tess
 const previewTessellationConfig = { type: "square", width: 3, height: 3 } as TessellationConfig;
 
 function fakeState(openCard: FeatureId) {
-  return { openCard, tessellationConfig, activeTessellationConfig, previewTessellationConfig } as unknown as Parameters<
-    (typeof TESSELLATION_CONFIG_BY_CARD)[FeatureId]
-  >[0];
+  return {
+    openCard, activeTessellationConfig, previewTessellationConfig,
+    activeFloorId: "floor_1", floorFields: { floor_1: { tessellationConfig } },
+  } as unknown as Parameters<(typeof TESSELLATION_CONFIG_BY_CARD)[FeatureId]>[0];
 }
 
 describe("TESSELLATION_CONFIG_BY_CARD", () => {

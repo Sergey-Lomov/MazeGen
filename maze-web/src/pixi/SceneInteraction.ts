@@ -64,11 +64,11 @@ export class SceneInteraction {
     stage.on("pointermove", (e) => {
       const st = useMazeStore.getState();
       onHoverChanged(getHoverProvider(st).getHoverInfo(e.globalX, e.globalY));
-      if (st.openCard === "field_setup" && st.fieldEditMode === "custom") {
+      if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") {
         const fieldEditController = getFieldEditController();
         fieldEditController.onPointerMove(e.globalX, e.globalY, e.buttons);
         const hoverCell = fieldEditController.getHoverCell(e.globalX, e.globalY);
-        fieldEditorOverlay.updateHover(hoverCell, st.tessellationConfig);
+        fieldEditorOverlay.updateHover(hoverCell, st.floorFields[st.activeFloorId].tessellationConfig);
         return;
       }
       const controller = getController(st);
@@ -95,7 +95,7 @@ export class SceneInteraction {
       controller?.clearHover?.();
       onHoverChanged(null);
       if (st.openCard === "field_setup") {
-        fieldEditorOverlay.updateHover(null, st.tessellationConfig);
+        fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].tessellationConfig);
       }
       this.defaultPan.end();
     });
@@ -104,7 +104,7 @@ export class SceneInteraction {
       const st = useMazeStore.getState();
       onHoverChanged(null);
       if (st.openCard === "field_setup") {
-        fieldEditorOverlay.updateHover(null, st.tessellationConfig);
+        fieldEditorOverlay.updateHover(null, st.floorFields[st.activeFloorId].tessellationConfig);
       }
     });
 

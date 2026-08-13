@@ -202,11 +202,14 @@ Applied to both of `CustomVertexBased`'s teleport roll points (the `handle_empty
 
 ## WASM Interface
 
-Algorithm parameters are passed via the `initial` field of `GenerateConfig`. `GenerateConfig.level_count` (optional, default `1`) is the number of identical-geometry floors `dispatch_generate` builds the `MultiLevelField` from before generation runs (`maze-wasm/src/tessellation_dispatch.rs`'s `build_multi_level_field`) — every floor shares the same `tessellation` points, since per-floor field editing doesn't exist yet (`Specs/floors.md`). This is the only wire-level knob for multi-floor generation; presets, locked nodes, and split points (`preset_connections`/`locked_nodes`/`split_points`) still only ever resolve against floor 0 (`MultiLevelField::single_level_id()`, `Specs/space.md`) even when `level_count > 1` — a floor beyond the first starts with no preset constraints at all:
+Algorithm parameters are passed via the `initial` field of `GenerateConfig`. `GenerateConfig.level_fields: Vec<Vec<[i32, i32]>>` (GitHub issue #338; optional, defaults to a single 10×10 square level) is each floor's own field points, one entry per floor — `dispatch_generate` builds the `MultiLevelField` from it directly before generation runs (`maze-wasm/src/tessellation_dispatch.rs`'s `build_multi_level_field`). The number of floors generated is `level_fields.len()`; there is no separate count field on the wire. `tessellation` (kind/orientation) is still a single maze-wide value shared by every floor (`Specs/floors.md`). Presets, locked nodes, and split points (`preset_connections`/`locked_nodes`/`split_points`) still only ever resolve against floor 0 (`MultiLevelField::single_level_id()`, `Specs/space.md`) regardless of floor count — a floor beyond the first starts with no preset constraints at all:
 
 ```json
 {
-  "level_count": 2,
+  "level_fields": [
+    [[-5, -5], [-5, -4]],
+    [[-3, -3], [-3, -2]]
+  ],
   "initial": {
     "method": "custom_vertex_based",
     "depth_first": 0.9,

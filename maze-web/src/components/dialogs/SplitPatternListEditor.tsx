@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
-import { activeTessellationOf } from "../../store/storeHelpers";
+import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import { useMazeStore } from "../../store/mazeStore";
 import { TileFaceEditor } from "../features/TileFaceEditor";
 import { sharedStyles } from "../../styles/shared";
@@ -27,7 +27,7 @@ const NOOP = () => {};
  *  `TileFaceEditor` itself (no separate rendering path to keep in sync with the abstract editor)
  *  with a fixed small size and no-op click handlers; `TileFaceEditor`'s own cursor is already
  *  `default` (not a pointer), so it doesn't visually suggest interactivity. */
-function PatternPreviewTile({ pattern, degree, cfg }: { pattern: SplitPattern; degree: number; cfg: ReturnType<typeof activeTessellationOf> }) {
+function PatternPreviewTile({ pattern, degree, cfg }: { pattern: SplitPattern; degree: number; cfg: ReturnType<typeof activeFloorTessellationOf> }) {
   return (
     <div style={styles.previewTile}>
       <TileFaceEditor
@@ -48,7 +48,7 @@ function PatternPreviewTile({ pattern, degree, cfg }: { pattern: SplitPattern; d
  *  back it with whatever storage its own value lives in (generation's own store slice, or a
  *  JSON-string param round-tripped by the caller). */
 export function SplitPatternListEditor({ patterns, onChange, withWeights }: Props) {
-  const tessellationConfig = useMazeStore((s) => activeTessellationOf(s));
+  const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const degree = degreeFor(tessellationConfig);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 

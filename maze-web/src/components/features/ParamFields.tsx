@@ -10,7 +10,7 @@ import { SplitPatternListEditor } from "../dialogs/SplitPatternListEditor";
 import { SplitGenerationSettingsBody, type SplitGenerationSettingsValue } from "../dialogs/SplitGenerationSettingsBody";
 import { splitPatternsToCore, splitPatternsToWeb } from "../../pixi/tessellationGeometry";
 import { useMazeStore } from "../../store/mazeStore";
-import { activeTessellationOf } from "../../store/storeHelpers";
+import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import * as m from "~/paraglide/messages";
 
 const OPTION_WIDTH_BUFFER = 10;
@@ -82,7 +82,7 @@ function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | u
 }
 
 export function ParamFields({ params, values, getValue, onChange, getDescription, disabled, contextId }: Props) {
-  const tessellationConfig = useMazeStore((s) => activeTessellationOf(s));
+  const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [openPatternListParam, setOpenPatternListParam] = useState<string | null>(null);

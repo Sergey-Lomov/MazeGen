@@ -28,10 +28,10 @@ type ConfigResolver = (st: ReturnType<typeof useMazeStore.getState>) => Tessella
 
 export const TESSELLATION_CONFIG_BY_CARD: Record<FeatureId, ConfigResolver> = {
   basic_config: (st) => st.previewTessellationConfig,
-  floors: (st) => st.tessellationConfig,
-  field_setup: (st) => st.tessellationConfig,
-  preset_connections: (st) => st.tessellationConfig,
-  quality: (st) => st.tessellationConfig,
+  floors: (st) => st.floorFields[st.activeFloorId].tessellationConfig,
+  field_setup: (st) => st.floorFields[st.activeFloorId].tessellationConfig,
+  preset_connections: (st) => st.floorFields[st.activeFloorId].tessellationConfig,
+  quality: (st) => st.floorFields[st.activeFloorId].tessellationConfig,
   generation: (st) => st.activeTessellationConfig,
   post_edit: (st) => st.activeTessellationConfig,
   analytics: (st) => st.activeTessellationConfig,
@@ -176,7 +176,8 @@ export class MazeScene {
     this.fieldEditController = new FieldEditController(
       app.canvas,
       () => {
-        const cfg = useMazeStore.getState().tessellationConfig;
+        const state = useMazeStore.getState();
+        const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
         return makeProjection(cfg);
       },
       () => this.viewport,
@@ -209,7 +210,7 @@ export class MazeScene {
 
   /** Resolves the controller that owns pointer interaction for the current card, or null for default pan. */
   private getController(st: ReturnType<typeof useMazeStore.getState>): PointerHandler | null {
-    if (st.openCard === "field_setup" && st.fieldEditMode === "custom") return this.fieldEditController;
+    if (st.openCard === "field_setup" && st.floorFields[st.activeFloorId].fieldEditMode === "custom") return this.fieldEditController;
     if (st.openCard === "preset_connections") return this.presetConnectionsController;
     if (st.openCard === "post_edit") return this.postEditController;
     return null;
@@ -324,22 +325,24 @@ export class MazeScene {
   }
 
   private subscribeToEditField(): void {
-    let prevCard = useMazeStore.getState().openCard;
-    let prevMode = useMazeStore.getState().fieldEditMode;
+    const initial = useMazeStore.getState();
+    let prevCard = initial.openCard;
+    let prevMode = initial.floorFields[initial.activeFloorId].fieldEditMode;
     this.unsubscribeEditField = useMazeStore.subscribe((state) => {
+      const field = state.floorFields[state.activeFloorId];
       const isFieldSetup = state.openCard === "field_setup";
       const openChanged = state.openCard !== prevCard;
-      const modeChanged = state.fieldEditMode !== prevMode;
+      const modeChanged = field.fieldEditMode !== prevMode;
       prevCard = state.openCard;
-      prevMode = state.fieldEditMode;
+      prevMode = field.fieldEditMode;
       if (!isFieldSetup) {
         if (openChanged) this.primitivePreviewOverlay.clear();
         return;
       }
       if (openChanged) return;
-      if (modeChanged && state.fieldEditMode === "default") {
+      if (modeChanged && field.fieldEditMode === "default") {
         this.primitivePreviewOverlay.clear();
-        this.fieldEditorOverlay.updateHover(null, state.tessellationConfig);
+        this.fieldEditorOverlay.updateHover(null, field.tessellationConfig);
       }
     });
   }
@@ -398,9 +401,9 @@ export class MazeScene {
 
   refit(): void {
     this.app.resize();
-    const { nodes, activeTessellationConfig, tessellationConfig, previewTessellationConfig, openCard } = useMazeStore.getState();
+    const { nodes, activeTessellationConfig, previewTessellationConfig, openCard, floorFields, activeFloorId } = useMazeStore.getState();
     const showsMaze = (openCard === "generation" || openCard === "post_edit" || openCard === "analytics" || openCard === "image_export") && nodes.length > 0;
-    const fieldCfg = openCard === "basic_config" ? previewTessellationConfig : tessellationConfig;
+    const fieldCfg = openCard === "basic_config" ? previewTessellationConfig : floorFields[activeFloorId].tessellationConfig;
     const { x, y, scale } = showsMaze
       ? fitMazeViewport(activeTessellationConfig, nodes, this.app.screen.width, this.app.screen.height)
       : fitFieldViewport(fieldCfg, this.app.screen.width, this.app.screen.height);

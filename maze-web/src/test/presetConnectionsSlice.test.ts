@@ -2,6 +2,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
 import { presetEndpoint, presetEndpointsEqual } from "../pixi/presetEndpoint";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+
+/** Patches the active floor's own field config — presetConnectionsSlice reads tessellationConfig/
+ * fieldPoints/isEditingField through floorFields[activeFloorId] (GitHub issue #338). */
+function setActiveFieldConfig(patch: { tessellationConfig?: TessellationConfig; isEditingField?: boolean; fieldPoints?: Set<number> }) {
+  const state = useMazeStore.getState();
+  useMazeStore.setState({
+    floorFields: {
+      ...state.floorFields,
+      [state.activeFloorId]: { ...state.floorFields[state.activeFloorId], ...patch },
+    },
+  });
+}
 
 vi.mock("../wasm/mazeService", () => ({
   generateMaze: vi.fn(),
@@ -17,14 +30,12 @@ beforeEach(() => {
   useMazeStore.setState(baseStoreState());
   useMazeStore.setState({
     tessellationKind: "square",
-    tessellationConfig: { type: "square", width: 3, height: 3 },
-    isEditingField: false,
-    fieldPoints: new Set<number>(),
     presetConnections: new Map(),
     lockedNodes: new Map(),
     autoLockedNodes: new Set(),
     autoLock: true,
   });
+  setActiveFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 }, isEditingField: false, fieldPoints: new Set<number>() });
 });
 
 describe("mazeStore preset connections", () => {
@@ -49,10 +60,8 @@ describe("mazeStore preset connections", () => {
 
   it("applyPresetConnectionsTool recomputes autoLockedNodes when fully surrounding a cell", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
-    useMazeStore.setState({
-      tessellationConfig: { type: "square", width: 2, height: 1 },
-      presetConnectionsTool: "wall",
-    });
+    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    useMazeStore.setState({ presetConnectionsTool: "wall" });
     useMazeStore.getState().applyPresetConnectionsTool("-1,0-0,0", [-1, 0], [0, 0]);
     const s = useMazeStore.getState();
     expect(s.autoLockedNodes.has("-1,0")).toBe(true);
@@ -78,8 +87,8 @@ describe("mazeStore preset connections", () => {
 
   it("applyPresetConnectionsReset recomputes autoLockedNodes when the materialized default fully surrounds a cell", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
+    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
     useMazeStore.setState({
-      tessellationConfig: { type: "square", width: 2, height: 1 },
       defaultEdgeState: "wall",
       presetConnections: new Map([["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "undefined", source: "user" }]]),
     });
@@ -95,8 +104,8 @@ describe("mazeStore preset connections", () => {
   });
 
   it("clearInvalidPresetConnections removes entries outside the field", () => {
+    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
     useMazeStore.setState({
-      tessellationConfig: { type: "square", width: 1, height: 1 },
       presetConnections: new Map([["5,5-6,5", { from: presetEndpoint([5, 5]), to: presetEndpoint([6, 5]), state: "wall", source: "user" }]]),
     });
     useMazeStore.getState().clearInvalidPresetConnections();
@@ -104,8 +113,8 @@ describe("mazeStore preset connections", () => {
   });
 
   it("clearInvalidPresetConnections clears start/finish markers that fall outside the field", () => {
+    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
     useMazeStore.setState({
-      tessellationConfig: { type: "square", width: 1, height: 1 },
       presetStart: presetEndpoint([5, 5]),
       presetFinish: presetEndpoint([0, 0]),
     });
@@ -148,7 +157,7 @@ describe("mazeStore preset connections", () => {
 
   it("setDefaultEdgeState('wall') fills all interior edges as walls", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
-    useMazeStore.setState({ tessellationConfig: { type: "square", width: 2, height: 1 } });
+    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
     useMazeStore.getState().setDefaultEdgeState("wall");
     const s = useMazeStore.getState();
     expect(s.defaultEdgeState).toBe("wall");
@@ -157,8 +166,8 @@ describe("mazeStore preset connections", () => {
   });
 
   it("setDefaultEdgeState('undefined') removes default-sourced entries", () => {
+    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
     useMazeStore.setState({
-      tessellationConfig: { type: "square", width: 2, height: 1 },
       presetConnections: new Map([["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "wall", source: "default" }]]),
     });
     useMazeStore.getState().setDefaultEdgeState("undefined");
@@ -212,8 +221,8 @@ describe("mazeStore preset connections", () => {
 
   it("setAutoLock(true) recomputes autoLockedNodes", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
+    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
     useMazeStore.setState({
-      tessellationConfig: { type: "square", width: 2, height: 1 },
       presetConnections: new Map([["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "wall", source: "user" }]]),
       autoLock: false,
       autoLockedNodes: new Set(),
@@ -334,7 +343,8 @@ describe("mazeStore preset connections", () => {
     const square = { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]] };
 
     it("mints one slot per extra blueprint node and wires passage connections to in-field neighbors", () => {
-      useMazeStore.setState({ tessellationConfig: wideField, presetSplitPoints: {}, presetActiveSplitNode: {} });
+      setActiveFieldConfig({ tessellationConfig: wideField });
+      useMazeStore.setState({ presetSplitPoints: {}, presetActiveSplitNode: {} });
       useMazeStore.getState().applyPresetSplitBlueprint([0, 0], square);
       const s = useMazeStore.getState();
       expect(s.presetSplitPoints["0,0"]).toEqual([0]);
@@ -357,8 +367,8 @@ describe("mazeStore preset connections", () => {
 
     it("replaces an existing split point entirely, dropping stale slots/connections", () => {
       const staleTarget = presetEndpoint([0, 0], 5);
+      setActiveFieldConfig({ tessellationConfig: wideField });
       useMazeStore.setState({
-        tessellationConfig: wideField,
         presetSplitPoints: { "0,0": [5] },
         presetConnections: new Map([["0,0:5-5,5", { from: staleTarget, to: presetEndpoint([5, 5]), state: "passage" as const, source: "user" as const }]]),
       });
@@ -369,8 +379,8 @@ describe("mazeStore preset connections", () => {
     });
 
     it("rejects applying a blueprint while an existing slot is assigned as presetStart", () => {
+      setActiveFieldConfig({ tessellationConfig: wideField });
       useMazeStore.setState({
-        tessellationConfig: wideField,
         presetSplitPoints: { "0,0": [0] },
         presetStart: presetEndpoint([0, 0], 0),
       });
@@ -384,7 +394,8 @@ describe("mazeStore preset connections", () => {
       // Square tiles have 4 faces (offsets.length === 4) — a hex blueprint's face index 5 has
       // nothing to destructure from `offsets[5]` on a square tile.
       const oversized = { id: 0, degree: 6, nodeFaces: [[0, 5]] };
-      useMazeStore.setState({ tessellationConfig: wideField, presetSplitPoints: {}, presetActiveSplitNode: {} });
+      setActiveFieldConfig({ tessellationConfig: wideField });
+      useMazeStore.setState({ presetSplitPoints: {}, presetActiveSplitNode: {} });
       expect(() => useMazeStore.getState().applyPresetSplitBlueprint([0, 0], oversized)).not.toThrow();
       // Face 0 (in range) still wires normally; face 5 (out of range) is silently skipped.
       expect(useMazeStore.getState().presetConnections.get("0,0-1,0")?.state).toBe("passage");
@@ -394,7 +405,8 @@ describe("mazeStore preset connections", () => {
       // width=3 centers cells at x,y in [-1, 1] — the origin's east neighbor (1,0) is in-field,
       // but its own east neighbor (2,0) (face 0 of a shifted point) would be out of field.
       const narrowField = { type: "square" as const, width: 1, height: 1 };
-      useMazeStore.setState({ tessellationConfig: narrowField, presetSplitPoints: {}, presetActiveSplitNode: {} });
+      setActiveFieldConfig({ tessellationConfig: narrowField });
+      useMazeStore.setState({ presetSplitPoints: {}, presetActiveSplitNode: {} });
       useMazeStore.getState().applyPresetSplitBlueprint([0, 0], square);
       const s = useMazeStore.getState();
       // Every face of (0,0) points outside a 1x1 field — no connection should be written at all.
@@ -403,8 +415,8 @@ describe("mazeStore preset connections", () => {
 
     it("clears presetSplitPoints for a single-node blueprint (no extra slots to mint)", () => {
       const singleNode = { id: 0, degree: 4, nodeFaces: [[0, 2]] };
+      setActiveFieldConfig({ tessellationConfig: wideField });
       useMazeStore.setState({
-        tessellationConfig: wideField,
         presetSplitPoints: { "0,0": [0, 1] },
         presetActiveSplitNode: {},
         presetStart: null,
@@ -420,7 +432,8 @@ describe("mazeStore preset connections", () => {
       // node0(original): S,N faces. node1(slot0): E,W faces — slot0 is the node that actually
       // faces the neighboring cell on either side.
       const eastWestBlueprint = { id: 0, degree: 4, nodeFaces: [[1, 3], [0, 2]] };
-      useMazeStore.setState({ tessellationConfig: wideField, presetSplitPoints: {}, presetActiveSplitNode: {} });
+      setActiveFieldConfig({ tessellationConfig: wideField });
+      useMazeStore.setState({ presetSplitPoints: {}, presetActiveSplitNode: {} });
 
       useMazeStore.getState().applyPresetSplitBlueprint([0, 0], eastWestBlueprint);
       useMazeStore.getState().applyPresetSplitBlueprint([1, 0], eastWestBlueprint);

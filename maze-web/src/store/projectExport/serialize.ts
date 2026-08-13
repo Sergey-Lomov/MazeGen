@@ -1,7 +1,8 @@
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { PostEditEdge, MazeState } from "../mazeStore";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
-import { CURRENT_VERSION, type ProjectFile, type ProjectFilePostEdit } from "./types";
+import { CURRENT_VERSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField } from "./types";
+import { decodePoint } from "../../pixi/tessellationProjection";
 
 export function serializeProject(state: MazeState): ProjectFile {
   const postEdit: ProjectFilePostEdit | null = selectPostEditDirty(state)
@@ -13,12 +14,29 @@ export function serializeProject(state: MazeState): ProjectFile {
       }
     : null;
 
+  const floorFields: Record<string, ProjectFileFloorField> = {};
+  for (const [floorId, f] of Object.entries(state.floorFields)) {
+    const freeFieldPoints: ProjectFileFloorField["freeFieldPoints"] = {
+      square: Array.from(f.freeFieldPoints.square).map((k) => decodePoint(k) as [number, number]),
+      hex: Array.from(f.freeFieldPoints.hex).map((k) => decodePoint(k) as [number, number]),
+      triangle: Array.from(f.freeFieldPoints.triangle).map((k) => decodePoint(k) as [number, number]),
+    };
+    floorFields[floorId] = {
+      config: f.tessellationConfig,
+      savedConfigs: Object.values(f.savedConfigs) as TessellationConfig[],
+      freeFieldPoints,
+      fieldEditMode: f.fieldEditMode,
+    };
+  }
+
   return {
     version: CURRENT_VERSION,
     tessellation: {
-      config: state.tessellationConfig,
-      savedConfigs: Object.values(state.savedConfigs) as TessellationConfig[],
+      kind: state.tessellationKind,
+      hexOrientation: state.hexOrientation,
+      triOrientation: state.triOrientation,
     },
+    floorFields,
     generation: {
       seed: state.seed,
       randomSeed: state.randomSeed,
@@ -56,7 +74,7 @@ export function serializeProject(state: MazeState): ProjectFile {
     postEdit,
     dirtyFlags: {
       postEdit: state.postEditDirty,
-      field: state.fieldDirty,
+      field: Object.values(state.floorFields).some((f) => f.fieldDirty),
       presets: state.presetsDirty,
       maze: state.mazeDirty,
     },

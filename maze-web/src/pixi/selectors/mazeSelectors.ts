@@ -895,22 +895,25 @@ export function selectPostEditDirty(s: Pick<MazeState, "postEditDirty">): boolea
   return s.postEditDirty;
 }
 
-/** True when confirming tessellation would destroy data the user has entered. */
+/** True when confirming tessellation would destroy data the user has entered. Kind change resets
+ * every floor's own field config (Specs/field-editor.md), so any floor being dirty counts. */
 export function selectTessellationWouldLoseData(s: Pick<MazeState,
-  "previewKind" | "tessellationKind" | "fieldDirty" | "presetsDirty" | "mazeDirty" | "postEditDirty"
+  "previewKind" | "tessellationKind" | "floorFields" | "presetsDirty" | "mazeDirty" | "postEditDirty"
 >): boolean {
   if (s.previewKind === s.tessellationKind) return false;
-  return s.fieldDirty || s.presetsDirty || s.mazeDirty || s.postEditDirty;
+  const anyFieldDirty = Object.values(s.floorFields).some((f) => f.fieldDirty);
+  return anyFieldDirty || s.presetsDirty || s.mazeDirty || s.postEditDirty;
 }
 
-/** True when removing `floorId` would discard field/preset data configured on that floor.
- * Field/preset state is currently maze-wide, not per-floor (see Specs/space.md's "Not yet built
- * on top of this layer" note) — always false until a future issue introduces per-floor
- * field/preset data. Takes `floorId` (would additionally take state once real per-floor data
- * exists) rather than being a bare constant, so the call site and signature don't need to change
- * when this stops being a stub — only the body does. */
-export function selectFloorRemovalLosesFieldData(_floorId: string): boolean {
-  return false;
+/** True when removing `floorId` would discard field data configured on that floor (GitHub issue
+ * #338) — its own field config differs from a fresh default for the current maze-wide kind, i.e.
+ * has custom points or a non-default predefined size. Preset connections are still maze-wide (see
+ * Specs/space.md's "Not yet built on top of this layer" note), so nothing preset-related can be
+ * lost by removing a single floor. */
+export function selectFloorRemovalLosesFieldData(s: Pick<MazeState, "floorFields">, floorId: string): boolean {
+  const field = s.floorFields[floorId];
+  if (!field) return false;
+  return field.fieldDirty;
 }
 
 /** True when removing or reordering floors would require resetting the current generation/

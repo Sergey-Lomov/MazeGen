@@ -154,32 +154,58 @@ pub fn run_from_config(seed: u64, config: &GenerateConfig) -> Result<MazeRunResu
 
     let gen_source_xy = config.preset_gen_source.as_ref().map(|dto| dto.point);
 
+    if config.level_fields.is_empty() { return Err("level_fields must not be empty".to_string()); }
+
     match config.tessellation.tessellation_type {
         TessellationType::Square => {
             use maze_core::space::{SquareTessellation, SquarePoint};
-            let pts: Vec<SquarePoint> = config.tessellation.points.iter()
-                .map(|&[x, y]| SquarePoint { x, y }).collect();
-            if pts.is_empty() { return Err("tessellation points must not be empty".to_string()); }
-            let start = resolve_start(&pts, gen_source_xy, |p| (p.x, p.y));
-            let field = MultiLevelField::<SquareTessellation>::single_level(pts, &mut ids).map_err(|e| e.to_string())?;
+            let to_pts = |raw: &[[i32; 2]]| -> Vec<SquarePoint> {
+                raw.iter().map(|&[x, y]| SquarePoint { x, y }).collect()
+            };
+            let first_pts = to_pts(&config.level_fields[0]);
+            if first_pts.is_empty() { return Err("level_fields[0] must not be empty".to_string()); }
+            let start = resolve_start(&first_pts, gen_source_xy, |p| (p.x, p.y));
+            let mut field = MultiLevelField::<SquareTessellation>::single_level(first_pts, &mut ids).map_err(|e| e.to_string())?;
+            for raw in &config.level_fields[1..] {
+                let pts = to_pts(raw);
+                if pts.is_empty() { return Err("level_fields entry must not be empty".to_string()); }
+                let level = maze_core::space::Field::<SquareTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
+                field.add_level(level);
+            }
             run_generate_typed(seed, field, ids, start, config, gen_config, |x, y| SquarePoint { x, y })
         }
         TessellationType::Hex => {
             use maze_core::space::{HexTessellation, HexPoint};
-            let pts: Vec<HexPoint> = config.tessellation.points.iter()
-                .map(|&[q, r]| HexPoint { q, r }).collect();
-            if pts.is_empty() { return Err("tessellation points must not be empty".to_string()); }
-            let start = resolve_start(&pts, gen_source_xy, |p| (p.q, p.r));
-            let field = MultiLevelField::<HexTessellation>::single_level(pts, &mut ids).map_err(|e| e.to_string())?;
+            let to_pts = |raw: &[[i32; 2]]| -> Vec<HexPoint> {
+                raw.iter().map(|&[q, r]| HexPoint { q, r }).collect()
+            };
+            let first_pts = to_pts(&config.level_fields[0]);
+            if first_pts.is_empty() { return Err("level_fields[0] must not be empty".to_string()); }
+            let start = resolve_start(&first_pts, gen_source_xy, |p| (p.q, p.r));
+            let mut field = MultiLevelField::<HexTessellation>::single_level(first_pts, &mut ids).map_err(|e| e.to_string())?;
+            for raw in &config.level_fields[1..] {
+                let pts = to_pts(raw);
+                if pts.is_empty() { return Err("level_fields entry must not be empty".to_string()); }
+                let level = maze_core::space::Field::<HexTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
+                field.add_level(level);
+            }
             run_generate_typed(seed, field, ids, start, config, gen_config, |q, r| HexPoint { q, r })
         }
         TessellationType::Tri => {
             use maze_core::space::{TriTessellation, TriPoint};
-            let pts: Vec<TriPoint> = config.tessellation.points.iter()
-                .map(|&[col, row]| TriPoint { col, row }).collect();
-            if pts.is_empty() { return Err("tessellation points must not be empty".to_string()); }
-            let start = resolve_start(&pts, gen_source_xy, |p| (p.col, p.row));
-            let field = MultiLevelField::<TriTessellation>::single_level(pts, &mut ids).map_err(|e| e.to_string())?;
+            let to_pts = |raw: &[[i32; 2]]| -> Vec<TriPoint> {
+                raw.iter().map(|&[col, row]| TriPoint { col, row }).collect()
+            };
+            let first_pts = to_pts(&config.level_fields[0]);
+            if first_pts.is_empty() { return Err("level_fields[0] must not be empty".to_string()); }
+            let start = resolve_start(&first_pts, gen_source_xy, |p| (p.col, p.row));
+            let mut field = MultiLevelField::<TriTessellation>::single_level(first_pts, &mut ids).map_err(|e| e.to_string())?;
+            for raw in &config.level_fields[1..] {
+                let pts = to_pts(raw);
+                if pts.is_empty() { return Err("level_fields entry must not be empty".to_string()); }
+                let level = maze_core::space::Field::<TriTessellation>::new(pts, &mut ids).map_err(|e| e.to_string())?;
+                field.add_level(level);
+            }
             run_generate_typed(seed, field, ids, start, config, gen_config, |col, row| TriPoint { col, row })
         }
     }

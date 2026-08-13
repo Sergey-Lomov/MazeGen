@@ -7,8 +7,24 @@ import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
 
 function makeState(overrides: Partial<MazeState> = {}): MazeState {
   const base = {
-    tessellationConfig: { type: "square", width: 5, height: 5 },
-    savedConfigs: {},
+    tessellationKind: "square",
+    hexOrientation: "flat_top",
+    triOrientation: "r0",
+    floorFields: {
+      floor_1: {
+        squareShape: "rect",
+        hexShape: "parallelogram",
+        triangleShape: "rect",
+        tessellationConfig: { type: "square", width: 5, height: 5 },
+        savedConfigs: {},
+        freeFieldPoints: { square: new Set<number>(), hex: new Set<number>(), triangle: new Set<number>() },
+        isEditingField: false,
+        fieldPoints: new Set<number>(),
+        fieldEditMode: "default",
+        fieldPrimitive: "point",
+        fieldDirty: false,
+      },
+    },
     seed: 42,
     randomSeed: false,
     seedHistory: [],
@@ -319,13 +335,13 @@ describe("parseAndValidate — malformed input", () => {
 
   it("throws on unknown tessellation type", () => {
     const data = valid();
-    data.tessellation.config.type = "not_a_real_type";
+    data.floorFields.floor_1.config.type = "not_a_real_type";
     expect(() => parseAndValidate(data)).toThrow(/Unknown tessellation config type/);
   });
 
   it("throws on invalid hex orientation", () => {
     const data = valid();
-    data.tessellation.config = { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "sideways" };
+    data.floorFields.floor_1.config = { type: "hex_parallelogram", cols: 3, rows: 3, orientation: "sideways" };
     expect(() => parseAndValidate(data)).toThrow(/Invalid hex orientation/);
   });
 
@@ -392,10 +408,10 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     });
   });
 
-  it("defaults tessellation.savedConfigs to empty array when absent", () => {
+  it("defaults floorFields.<floorId>.savedConfigs to empty array when absent", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);
-    expect(result.tessellation.savedConfigs).toEqual([]);
+    expect(result.floorFields.floor_1.savedConfigs).toEqual([]);
   });
 
   it("falls back to basic_config when ui.openCard is not a valid FeatureId", () => {
@@ -533,7 +549,7 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
     delete data.dirtyFlags;
     delete data.debug;
     delete data.ui;
-    delete data.tessellation.savedConfigs;
+    delete data.floorFields.floor_1.savedConfigs;
     return data;
   }
 });

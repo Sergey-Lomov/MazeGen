@@ -48,9 +48,9 @@ export function PresetConnectionsFeature() {
   const tool = useMazeStore((s) => s.presetConnectionsTool);
   const setTool = useMazeStore((s) => s.setPresetConnectionsTool);
   const presetConnections = useMazeStore((s) => s.presetConnections);
-  const tessellationConfig = useMazeStore((s) => s.tessellationConfig);
-  const fieldEditMode = useMazeStore((s) => s.fieldEditMode);
-  const fieldPoints = useMazeStore((s) => s.fieldPoints);
+  const tessellationConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
+  const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
+  const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
   const presetGenSource = useMazeStore((s) => s.presetGenSource);

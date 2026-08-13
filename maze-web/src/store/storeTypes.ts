@@ -273,7 +273,8 @@ export const DEFAULT_TRI_ORI: TriOrientation = "r0";
 
 export interface TessellationState {
   seed: number;
-  // Confirmed tessellation — set only on confirmTessellation()
+  // Confirmed tessellation — set only on confirmTessellation(). Maze-wide: kind/orientation are
+  // confirmed once in Basic configuration, not per floor (see Specs/field-editor.md).
   tessellationKind: TessellationKind;
   hexOrientation: HexOrientation;
   triOrientation: TriOrientation;
@@ -283,14 +284,41 @@ export interface TessellationState {
   previewHexOrientation: HexOrientation;
   previewTriOrientation: TriOrientation;
   previewTessellationConfig: TessellationConfig;
-  // Shape / field editing (operates on confirmed tessellation kind)
+  /** Snapshot of the (active floor's) field config taken at generate time — maze-wide, since
+   * generation/post-edit/analytics are not yet multi-floor-aware (GitHub issue #355 tracks
+   * migrating this once they are; see Specs/floors.md's Non-goals). */
+  activeTessellationConfig: TessellationConfig;
+  showFieldOverlay: boolean;
+  showFieldOrigin: boolean;
+}
+
+export interface TessellationActions {
+  setSeed: (seed: number) => void;
+  // Preview actions — only change preview, not confirmed
+  setPreviewKind: (kind: TessellationKind) => void;
+  setPreviewHexOrientation: (orientation: HexOrientation) => void;
+  setPreviewTriOrientation: (orientation: TriOrientation) => void;
+  // Confirm — copies preview -> confirmed, triggers confirmed-dependent state
+  confirmTessellation: () => void;
+  syncPreviewToConfirmed: () => void;
+  // Shape actions (operate on confirmed tessellation)
+  setTessellationKind: (kind: TessellationKind) => void;
+  setHexOrientation: (orientation: HexOrientation) => void;
+  setTriOrientation: (orientation: TriOrientation) => void;
+  setShowFieldOverlay: (show: boolean) => void;
+  setShowFieldOrigin: (show: boolean) => void;
+}
+
+/** Per-floor field-shape state — GitHub issue #338. Everything about "what cells make up this
+ * floor's field" lives here, keyed by floor id; kind/orientation stay maze-wide in
+ * TessellationState (see Specs/field-editor.md). */
+export interface FloorFieldConfig {
   squareShape: SquareShape;
   hexShape: HexShape;
   triangleShape: TriangleShape;
   /** Saved params per predefined config type, preserved across shape/mode switches. */
   savedConfigs: Partial<Record<TessellationConfig["type"], TessellationConfig>>;
   tessellationConfig: TessellationConfig;
-  activeTessellationConfig: TessellationConfig;
   /** Per-kind free-field points, preserved when switching shapes within same kind. */
   freeFieldPoints: Record<TessellationKind, Set<number>>;
   /**
@@ -306,40 +334,33 @@ export interface TessellationState {
    * set directly by setFieldEditMode for card-based custom editing.
    */
   fieldPoints: Set<number>;
-  showFieldOverlay: boolean;
   fieldEditMode: "default" | "custom";
   fieldPrimitive: FieldPrimitive;
-  showFieldOrigin: boolean;
   /** True after any field setup change since the last confirmTessellation. */
   fieldDirty: boolean;
 }
 
-export interface TessellationActions {
-  setSeed: (seed: number) => void;
-  // Preview actions — only change preview, not confirmed
-  setPreviewKind: (kind: TessellationKind) => void;
-  setPreviewHexOrientation: (orientation: HexOrientation) => void;
-  setPreviewTriOrientation: (orientation: TriOrientation) => void;
-  // Confirm — copies preview -> confirmed, triggers confirmed-dependent state
-  confirmTessellation: () => void;
-  syncPreviewToConfirmed: () => void;
-  // Shape actions (operate on confirmed tessellation)
-  setTessellationKind: (kind: TessellationKind) => void;
+export interface FloorFieldsState {
+  /** One FloorFieldConfig per floor id — always has an entry for every id in `floors` (see
+   * floorsSlice.ts's addFloor/removeFloor, which keep this map in sync). */
+  floorFields: Record<string, FloorFieldConfig>;
+}
+
+export interface FloorFieldsActions {
   setSquareShape: (shape: SquareShape) => void;
   setHexShape: (shape: HexShape) => void;
   setTriangleShape: (shape: TriangleShape) => void;
-  setHexOrientation: (orientation: HexOrientation) => void;
-  setTriOrientation: (orientation: TriOrientation) => void;
   setTessellationConfig: (cfg: TessellationConfig) => void;
   addFieldPoint: (x: number, y: number) => void;
   removeFieldPoint: (x: number, y: number) => void;
   addFieldPoints: (cells: [number, number][]) => void;
   removeFieldPoints: (cells: [number, number][]) => void;
   clearFieldPoints: () => void;
-  setShowFieldOverlay: (show: boolean) => void;
   setFieldEditMode: (mode: "default" | "custom") => void;
   setFieldPrimitive: (p: FieldPrimitive) => void;
-  setShowFieldOrigin: (show: boolean) => void;
+  /** Replaces the active floor's field config with a copy of `sourceFloorId`'s (GitHub issue
+   * #338's "Copy floor" dialog). */
+  copyFloorField: (sourceFloorId: string) => void;
 }
 
 export interface PresetConnectionsState {
@@ -1525,6 +1546,6 @@ export interface FloorsActions {
   setActiveFloorId: (id: string) => void;
 }
 
-export type MazeState = TessellationState & PresetConnectionsState & GenerationState & AnalyticsOverlayState & PostEditState & ImageExportState & FloorsState;
-export type MazeActions = RootActions & TessellationActions & PresetConnectionsActions & GenerationActions & AnalyticsOverlayActions & PostEditActions & ImageExportActions & FloorsActions;
+export type MazeState = TessellationState & FloorFieldsState & PresetConnectionsState & GenerationState & AnalyticsOverlayState & PostEditState & ImageExportState & FloorsState;
+export type MazeActions = RootActions & TessellationActions & FloorFieldsActions & PresetConnectionsActions & GenerationActions & AnalyticsOverlayActions & PostEditActions & ImageExportActions & FloorsActions;
 export type MazeStore = MazeState & MazeActions;

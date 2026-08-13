@@ -16,7 +16,7 @@ import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry } from "../storeTypes";
 import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
-import { relevantRuleParams } from "../storeHelpers";
+import { relevantRuleParams, activeFloorField } from "../storeHelpers";
 
 /** `PostEditEndpoint` → the WASM edge/teleport DTO's endpoint shape. Not a passthrough: the split
  * variant's field is `slotId` on the TS-side `PostEditEndpoint` but `slot_id` on the wire
@@ -501,7 +501,8 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       if (state.postEditDraftEdges === null) return {};
       const key = `${point[0]},${point[1]}`;
       const slotIds = state.postEditDraftSplitPoints[key] ?? [];
-      const cells = buildActiveCells(state.fieldPoints, state.fieldEditMode, state.activeTessellationConfig);
+      const field = activeFloorField(state);
+      const cells = buildActiveCells(field.fieldPoints, field.fieldEditMode, state.activeTessellationConfig);
       const cellSet = buildCellSet(cells);
       const rotated = rotatePostEditSplitPoint(
         state.postEditDraftEdges, point, slotIds, direction, state.activeTessellationConfig,
@@ -557,7 +558,8 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       const nodeEndpoints: PostEditEndpoint[] = [originalEndpoint, ...slotEndpoints].filter((e): e is PostEditEndpoint => e !== null);
 
       const { offsets } = getNeighborData(state.activeTessellationConfig, point[0], point[1]);
-      const cells = buildActiveCells(state.fieldPoints, state.fieldEditMode, state.activeTessellationConfig);
+      const field = activeFloorField(state);
+      const cells = buildActiveCells(field.fieldPoints, field.fieldEditMode, state.activeTessellationConfig);
       const inFieldCells = buildCellSet(cells);
 
       // Every one of the blueprint's declared faces gets a `passage` to its in-field neighbor;

@@ -80,13 +80,14 @@ export class FieldEditController {
 
   onPointerDown(canvasX: number, canvasY: number, button: number): void {
     const s = useMazeStore.getState();
-    if (!(s.openCard === "field_setup" && s.fieldEditMode === "custom")) return;
+    const field = s.floorFields[s.activeFloorId];
+    if (!(s.openCard === "field_setup" && field.fieldEditMode === "custom")) return;
 
     // RMB pointerup never fires on Windows/Chrome; commit stale RMB gesture here as fallback.
     if (this.gestureActive && this.gestureButton === 2) this.onPointerUp();
     this.gestureActive = true;
     this.gestureButton = button;
-    this.activePrimitive = s.fieldPrimitive;
+    this.activePrimitive = field.fieldPrimitive;
 
     if (this.spaceHeld || button === 1) {
       this.panCallbacks.startPan(canvasX, canvasY);
@@ -111,7 +112,8 @@ export class FieldEditController {
       this.lastEndGrid = null;
       this.lastPreviewCells = [];
       // show initial shape at radius=1 immediately on mousedown
-      const cfg = useMazeStore.getState().tessellationConfig;
+      const gs = useMazeStore.getState();
+      const cfg = gs.floorFields[gs.activeFloorId].tessellationConfig;
       const kind = cfgKind(cfg.type);
       this.lastPreviewCells = primitiveCells(this.activeShapePrimitive, { startGrid: grid, endGrid: grid, gridRadius: 1, kind });
       this.lastGridRadius = 1;
@@ -128,7 +130,7 @@ export class FieldEditController {
       return;
     }
     const s = useMazeStore.getState();
-    if (!(s.openCard === "field_setup" && s.fieldEditMode === "custom")) return;
+    if (!(s.openCard === "field_setup" && s.floorFields[s.activeFloorId].fieldEditMode === "custom")) return;
 
     if (this.spaceHeld || this.gestureButton === 1) {
       this.panCallbacks.movePan(canvasX, canvasY);
@@ -153,7 +155,8 @@ export class FieldEditController {
 
       if (gridRadius === this.lastGridRadius && currentGrid.x === this.lastEndGrid?.x && currentGrid.y === this.lastEndGrid?.y) return;
 
-      const cfg = useMazeStore.getState().tessellationConfig;
+      const ms = useMazeStore.getState();
+      const cfg = ms.floorFields[ms.activeFloorId].tessellationConfig;
       const kind = cfgKind(cfg.type);
       this.lastPreviewCells = primitiveCells(this.activeShapePrimitive, { startGrid: this.primitiveStartGrid, endGrid: currentGrid, gridRadius, kind });
       this.lastGridRadius = gridRadius;

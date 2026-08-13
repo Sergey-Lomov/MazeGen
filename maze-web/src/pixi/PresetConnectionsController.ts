@@ -40,7 +40,7 @@ export class PresetConnectionsController extends BaseController {
     this.lastViewportPos = { x: vpX, y: vpY };
 
     if (this.draggingMarker) {
-      const proj = makeProjection(state.tessellationConfig);
+      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
       const coords: [number, number] = [cell.x, cell.y];
@@ -50,7 +50,7 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (this.draggingTeleportEndpoint) {
-      const proj = makeProjection(state.tessellationConfig);
+      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
       const teleport = state.presetTeleports.find(t => t.id === this.draggingTeleportEndpoint!.id);
@@ -84,7 +84,7 @@ export class PresetConnectionsController extends BaseController {
       // point, not one of its faces — highlight the cell under the cursor, not an edge (mirrors
       // manage_split_nodes's original fix, GitHub issue #231; issue #326 extends this to every
       // vertex tool, replacing the wall-highlight reuse / missing highlight they had before).
-      const proj = makeProjection(state.tessellationConfig);
+      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
       this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null);
@@ -93,7 +93,7 @@ export class PresetConnectionsController extends BaseController {
     }
     this.renderer.updateCellHover(null);
 
-    const edge = pickEdgeAtPosition(vpX, vpY, state.tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
     this.renderer.updateHover(edge);
 
     this.continueEdgeDrag(edge, (e) => {
@@ -111,7 +111,7 @@ export class PresetConnectionsController extends BaseController {
     const tool = state.presetConnectionsTool;
 
     if (VERTEX_TOOLS.has(tool)) {
-      const proj = makeProjection(state.tessellationConfig);
+      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
@@ -122,7 +122,7 @@ export class PresetConnectionsController extends BaseController {
         store.presetStart !== null && store.presetStart.point[0] === coords[0] && store.presetStart.point[1] === coords[1];
       const onFinish =
         store.presetFinish !== null && store.presetFinish.point[0] === coords[0] && store.presetFinish.point[1] === coords[1];
-      const teleportHit = pickTeleportEndpointAt(vpX, vpY, state.tessellationConfig, store.presetTeleports);
+      const teleportHit = pickTeleportEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, store.presetTeleports);
 
       if (button === 2) {
         if (onStart) store.setPresetStart(null);
@@ -158,7 +158,7 @@ export class PresetConnectionsController extends BaseController {
 
     if (tool === "gen_source") {
       if (button !== 0) return;
-      const proj = makeProjection(state.tessellationConfig);
+      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
@@ -173,7 +173,7 @@ export class PresetConnectionsController extends BaseController {
 
     if (tool === "manage_split_nodes") {
       if (button !== 0) return;
-      const proj = makeProjection(state.tessellationConfig);
+      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const key = encodePoint(cell.x, cell.y);
       useMazeStore.getState().setPresetFocusedPoint(this.renderer.getCachedCellSet().has(key) ? [cell.x, cell.y] : null);
@@ -181,7 +181,7 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (tool === "lock_in" || tool === "lock_out" || tool === "full_lock") {
-      const proj = makeProjection(state.tessellationConfig);
+      const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const x = cell.x, y = cell.y;
       const key = `${x},${y}`;
@@ -200,7 +200,7 @@ export class PresetConnectionsController extends BaseController {
       return;
     }
 
-    const edge = pickEdgeAtPosition(vpX, vpY, state.tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
+    const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
     if (!edge) return;
 
     if (button === 2) {
@@ -241,7 +241,7 @@ export class PresetConnectionsController extends BaseController {
   /** Starts or completes a two-click teleport placement at the cell under (vpX, vpY). No-op if
    * the cell is outside the field, or (on completion) equal to the pending origin cell. */
   private tryTeleportClick(vpX: number, vpY: number, tool: string, state: ReturnType<typeof useMazeStore.getState>): void {
-    const proj = makeProjection(state.tessellationConfig);
+    const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
     const cell = proj.screenToGrid(vpX, vpY);
     if (!this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y))) return;
 

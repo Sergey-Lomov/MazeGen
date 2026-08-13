@@ -5,6 +5,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { sharedStyles, buttonStyle } from "../../styles/shared";
 import { typography, muted, spacing } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
+import { CopyFloorDialog } from "../dialogs/CopyFloorDialog";
 import { Switch } from "../Switch";
 import { Stack, Inline, Grid } from "../Layout";
 import * as m from "~/paraglide/messages";
@@ -49,24 +50,26 @@ type ConfirmPending = "switchToDefault" | "clearField" | null;
 
 export function FieldSetupFeature() {
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
-  const squareShape = useMazeStore((s) => s.squareShape);
-  const hexShape = useMazeStore((s) => s.hexShape);
-  const triangleShape = useMazeStore((s) => s.triangleShape);
-  const tessellationConfig = useMazeStore((s) => s.tessellationConfig);
-  const fieldEditMode = useMazeStore((s) => s.fieldEditMode);
-  const fieldPrimitive = useMazeStore((s) => s.fieldPrimitive);
+  const squareShape = useMazeStore((s) => s.floorFields[s.activeFloorId].squareShape);
+  const hexShape = useMazeStore((s) => s.floorFields[s.activeFloorId].hexShape);
+  const triangleShape = useMazeStore((s) => s.floorFields[s.activeFloorId].triangleShape);
+  const tessellationConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
+  const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
+  const fieldPrimitive = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPrimitive);
   const setSquareShape = useMazeStore((s) => s.setSquareShape);
   const setHexShape = useMazeStore((s) => s.setHexShape);
   const setTriangleShape = useMazeStore((s) => s.setTriangleShape);
   const setTessellationConfig = useMazeStore((s) => s.setTessellationConfig);
   const setFieldEditMode = useMazeStore((s) => s.setFieldEditMode);
   const setFieldPrimitive = useMazeStore((s) => s.setFieldPrimitive);
-  const fieldPoints = useMazeStore((s) => s.fieldPoints);
+  const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const clearFieldPoints = useMazeStore((s) => s.clearFieldPoints);
   const showFieldOrigin = useMazeStore((s) => s.showFieldOrigin);
   const setShowFieldOrigin = useMazeStore((s) => s.setShowFieldOrigin);
+  const floorCount = useMazeStore((s) => s.floors.length);
 
   const [confirmPending, setConfirmPending] = useState<ConfirmPending>(null);
+  const [copyFloorDialogOpen, setCopyFloorDialogOpen] = useState(false);
 
   const isHex = tessellationKind === "hex";
   const isCustom = fieldEditMode === "custom";
@@ -224,12 +227,24 @@ export function FieldSetupFeature() {
           </button>
         </>
       )}
+      {floorCount > 1 && (
+        <button
+          className="hoverable"
+          style={{ ...buttonStyle("toggle"), width: "100%", marginTop: spacing.itemGap }}
+          onClick={() => setCopyFloorDialogOpen(true)}
+        >
+          {m["field.copy_floor"]()}
+        </button>
+      )}
       {confirmPending !== null && (
         <ConfirmModal
           message={confirmMessages[confirmPending]}
           onConfirm={handleConfirm}
           onCancel={() => setConfirmPending(null)}
         />
+      )}
+      {copyFloorDialogOpen && (
+        <CopyFloorDialog onClose={() => setCopyFloorDialogOpen(false)} />
       )}
     </Stack>
   );

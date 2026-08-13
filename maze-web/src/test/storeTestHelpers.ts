@@ -2,9 +2,32 @@ import { emptyFreePoints } from "../store/storeHelpers";
 import { RECURSIVE_BACKTRACKER_EVENT_TAG, NO_NODE } from "../debug/eventTape";
 import type { DebugValueDescriptor } from "../debug/eventTape";
 import type { NodeDto } from "../wasm/types";
-import type { QcRuleState, CheckInstance } from "../store/storeTypes";
+import type { QcRuleState, CheckInstance, FloorFieldConfig } from "../store/storeTypes";
 
 export { emptyFreePoints };
+
+/** Floor id used by every test's base state (GitHub issue #338 per-floor field-shape split) —
+ *  matches the `"floor_1"` convention already used by floorsSlice.test.ts/generationSlice.config.test.ts. */
+export const TEST_FLOOR_ID = "floor_1";
+
+/** A fresh default `FloorFieldConfig` matching `baseStoreState()`'s tessellation defaults
+ *  (square/rect, 10x10) — used as the base entry for `floorFields[TEST_FLOOR_ID]`. */
+export function baseFloorFieldConfig(overrides: Partial<FloorFieldConfig> = {}): FloorFieldConfig {
+  return {
+    squareShape: "rect",
+    hexShape: "parallelogram",
+    triangleShape: "rect",
+    savedConfigs: {},
+    tessellationConfig: { type: "square", width: 10, height: 10 },
+    freeFieldPoints: emptyFreePoints(),
+    isEditingField: false,
+    fieldPoints: new Set<number>(),
+    fieldEditMode: "default",
+    fieldPrimitive: "point",
+    fieldDirty: false,
+    ...overrides,
+  };
+}
 
 /** Builds a `QcRuleState` with sensible defaults, overridable per-field — replaces the
  *  repeated full-shape rule object literal inlined across generationSlice tests. */
@@ -137,16 +160,13 @@ export function baseStoreState() {
     seedHistoryIndex: 0,
     seedAttachedToHistory: false,
     tessellationKind: "square" as const,
-    squareShape: "rect" as const,
-    hexShape: "parallelogram" as const,
-    triangleShape: "rect" as const,
     hexOrientation: "flat_top" as const,
     triOrientation: "r0" as const,
-    tessellationConfig: { type: "square" as const, width: 10, height: 10 },
+    floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }],
+    nextFloorNumber: 2,
+    activeFloorId: TEST_FLOOR_ID,
+    floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig() },
     activeTessellationConfig: { type: "square" as const, width: 10, height: 10 },
-    freeFieldPoints: emptyFreePoints(),
-    isEditingField: false,
-    fieldPoints: new Set<number>(),
     nodes: [],
     edges: [],
     start: null,
@@ -170,47 +190,69 @@ export function baseStoreState() {
   };
 }
 
-/** Free-field-editing state for a given kind, used by free field point mutation tests. */
+/** Free-field-editing state for a given kind, used by free field point mutation tests. Field-shape
+ *  fields land in `floorFields[TEST_FLOOR_ID]` (GitHub issue #338) — merge on top of `extra` when
+ *  a test also needs to override other floorFields entries. */
 export function freeFieldEditState(kind: "square" | "hex" | "triangle", pts: Set<number>) {
   const squareShape: "free" | "rect" = kind === "square" ? "free" : "rect";
   const hexShape: "free" | "parallelogram" = kind === "hex" ? "free" : "parallelogram";
   const triangleShape: "free" | "rect" = kind === "triangle" ? "free" : "rect";
   return {
     tessellationKind: kind,
-    squareShape,
-    hexShape,
-    triangleShape,
-    isEditingField: true,
-    fieldPoints: pts,
-    freeFieldPoints: { ...emptyFreePoints(), [kind]: pts },
     hexOrientation: "flat_top" as const,
     triOrientation: "r0" as const,
+    activeFloorId: TEST_FLOOR_ID,
+    floorFields: {
+      [TEST_FLOOR_ID]: baseFloorFieldConfig({
+        squareShape,
+        hexShape,
+        triangleShape,
+        isEditingField: true,
+        fieldPoints: pts,
+        freeFieldPoints: { ...emptyFreePoints(), [kind]: pts },
+      }),
+    },
   };
 }
 
-/** State for hex-predefined-mode orientation tests: hexShape=parallelogram, other shapes=rect. */
-export function hexPredefinedState(extra?: Record<string, unknown>) {
+/** State for hex-predefined-mode orientation tests: hexShape=parallelogram, other shapes=rect.
+ *  `extra` may contain top-level MazeState fields (e.g. `nodes`) and/or a `floorFieldOverrides`
+ *  patch merged into `floorFields[TEST_FLOOR_ID]` (e.g. `tessellationConfig`). */
+export function hexPredefinedState(extra?: Record<string, unknown> & { floorFieldOverrides?: Partial<FloorFieldConfig> }) {
+  const { floorFieldOverrides, ...rest } = extra ?? {};
   return {
     tessellationKind: "hex" as const,
-    hexShape: "parallelogram" as const,
-    squareShape: "rect" as const,
-    triangleShape: "rect" as const,
     hexOrientation: "flat_top" as const,
-    freeFieldPoints: emptyFreePoints(),
-    ...extra,
+    activeFloorId: TEST_FLOOR_ID,
+    floorFields: {
+      [TEST_FLOOR_ID]: baseFloorFieldConfig({
+        hexShape: "parallelogram",
+        squareShape: "rect",
+        triangleShape: "rect",
+        ...floorFieldOverrides,
+      }),
+    },
+    ...rest,
   };
 }
 
-/** State for triangle-predefined-mode orientation tests: triangleShape=rect, other shapes=rect/parallelogram. */
-export function trianglePredefinedState(extra?: Record<string, unknown>) {
+/** State for triangle-predefined-mode orientation tests: triangleShape=rect, other shapes=rect/parallelogram.
+ *  Same `floorFieldOverrides` convention as `hexPredefinedState`. */
+export function trianglePredefinedState(extra?: Record<string, unknown> & { floorFieldOverrides?: Partial<FloorFieldConfig> }) {
+  const { floorFieldOverrides, ...rest } = extra ?? {};
   return {
     tessellationKind: "triangle" as const,
-    triangleShape: "rect" as const,
-    hexShape: "parallelogram" as const,
-    squareShape: "rect" as const,
     triOrientation: "r0" as const,
-    freeFieldPoints: emptyFreePoints(),
-    ...extra,
+    activeFloorId: TEST_FLOOR_ID,
+    floorFields: {
+      [TEST_FLOOR_ID]: baseFloorFieldConfig({
+        triangleShape: "rect",
+        hexShape: "parallelogram",
+        squareShape: "rect",
+        ...floorFieldOverrides,
+      }),
+    },
+    ...rest,
   };
 }
 

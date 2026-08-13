@@ -32,18 +32,29 @@ When `setTessellationKind` or `confirmTessellation` runs without an explicit sha
 
 ## State fields (mazeStore)
 
+Tessellation kind and orientation (`tessellationKind`, `hexOrientation`, `triOrientation`) are
+maze-wide — confirmed once in Basic configuration, not per floor. Everything about a floor's own
+field — shape, size, custom-drawn cells — is per-floor (GitHub issue #338), keyed by floor id in
+`floorFields: Record<floorId, FloorFieldConfig>` (`floorFieldSlice.ts`). Camera-centering, hover
+highlight, and the shape-primitive gestures all operate on `floorFields[activeFloorId]` — switching
+floors via the floor switcher shows and edits that floor's own shape without touching others.
+
 | Field | Description |
 |---|---|
-| `fieldSetupOpen` | Whether the field setup card is open |
-| `fieldEditMode` | `"default"` or `"custom"` (card-based sub-mode) |
-| `fieldPrimitive` | Active brush: `"point"` \| `"square_rect"` \| `"hex_parallelogram"` \| `"hex_hexagon"` \| `"tri_rect"` \| `"tri_triangle"` \| `"tri_hexagon"` |
-| `isEditingField` | True when active field is custom. Authoritative source for `generate()` |
-| `fieldPoints` | Active custom cell set for current kind |
-| `freeFieldPoints` | Per-kind cell sets, preserved across shape/mode switches |
-| `tessellationConfig` | Current config; predefined in default mode, custom (`*_custom`) in free-draw mode |
-| `savedConfigs` | Saved size params per predefined config type, restored on shape/mode switch |
+| `fieldSetupOpen` | Whether the field setup card is open (maze-wide UI state) |
+| `floorFields[floorId].fieldEditMode` | `"default"` or `"custom"` (card-based sub-mode), per floor |
+| `floorFields[floorId].fieldPrimitive` | Active brush: `"point"` \| `"square_rect"` \| `"hex_parallelogram"` \| `"hex_hexagon"` \| `"tri_rect"` \| `"tri_triangle"` \| `"tri_hexagon"`, per floor |
+| `floorFields[floorId].isEditingField` | True when that floor's active field is custom. Authoritative source for `generate()` (reads the active floor's own value) |
+| `floorFields[floorId].fieldPoints` | Active custom cell set for that floor's current kind |
+| `floorFields[floorId].freeFieldPoints` | Per-kind cell sets for that floor, preserved across shape/mode switches |
+| `floorFields[floorId].tessellationConfig` | That floor's current config; predefined in default mode, custom (`*_custom`) in free-draw mode |
+| `floorFields[floorId].savedConfigs` | That floor's saved size params per predefined config type, restored on shape/mode switch |
 
-`fieldPrimitive` resets to `"point"` whenever `fieldEditMode` changes (both directions).
+`fieldPrimitive` resets to `"point"` whenever `fieldEditMode` changes (both directions), same as before, now scoped to the active floor.
+
+A new floor (`addFloor`) starts as a copy of the floor it's stacked on top of — the current topmost floor's own `FloorFieldConfig` at the moment the new floor is created (`floors[floors.length - 1]`, not the *active* floor), not the kind's bare default shape — see `Specs/floors.md`'s `addFloor`. The Field Setup card also offers a manual "Copy floor" action (`copyFloorField`, `CopyFloorDialog.tsx`) — shown only when more than one floor exists — that replaces the active floor's `FloorFieldConfig` with a copy of any other floor's, picked from a list (current floor disabled/unselectable). Removing a floor drops its `floorFields` entry; `selectFloorRemovalLosesFieldData` (`mazeSelectors.ts`) warns when the removed floor's `fieldDirty` is set (see `Specs/floors.md`'s "Loss detection and confirmation"). A `tessellationKind` change (or a kind-changing `confirmTessellation`) rebuilds **every** floor's `FloorFieldConfig` from scratch, since kind/orientation are maze-wide and a stale per-floor config for the old kind would be meaningless.
+
+Generation sends `GenerateConfig.level_fields: Vec<Vec<[i32,i32]>>` to core (GitHub issue #338) — one independent point-set per floor, built from every floor's own `FloorFieldConfig` in `floors` order (`buildGenerateConfig`'s `level_fields`, `generateConfigBuilder.ts`). There is no separate level-count field on the wire; the number of levels generated is `level_fields.length`. `tessellation` (kind/orientation) remains the single maze-wide value. Everything downstream of the initial field build (QC/repair/routing, post-edit, analytics) still only ever operates on floor 0 regardless — see `Specs/floors.md`'s Non-goals and GitHub issue #355.
 
 ## Camera behavior
 

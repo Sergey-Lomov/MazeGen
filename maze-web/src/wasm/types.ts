@@ -409,7 +409,6 @@ export type TessellationKindWasm = "square" | "hex" | "tri";
 
 export interface WasmTessellationConfig {
   tessellation_type: TessellationKindWasm;
-  points: [number, number][];
 }
 
 export interface GenerationParams {
@@ -522,11 +521,13 @@ export interface LockedNodeDto {
 }
 
 export interface GenerateConfig {
+  /** Tessellation kind/orientation — maze-wide, shared by every level (GitHub issue #338: kind is
+   * confirmed once, not per floor; see `Specs/field-editor.md`). */
   tessellation: WasmTessellationConfig;
-  /** Number of identical-geometry levels to generate across (GitHub issue #337) — every level
-   * shares `tessellation`'s points, since per-level field editing does not exist yet (see the
-   * #333 epic). Defaults to 1. */
-  level_count?: number;
+  /** Each level's own field points, in `floors` order (GitHub issue #338 — per-floor field shape).
+   * The number of levels to generate across (GitHub issue #337) is `level_fields.length` — there
+   * is no separate count field on the wire. */
+  level_fields: [number, number][][];
   stages: StageConfig[];
   repair_max_iterations?: number;
   repair_time_budget_secs?: number;

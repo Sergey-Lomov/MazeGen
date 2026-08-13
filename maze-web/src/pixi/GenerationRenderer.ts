@@ -166,7 +166,7 @@ export class GenerationRenderer {
         state.finish !== prev.finish ||
         state.activeFloorId !== prev.activeFloorId ||
         state.floors !== prev.floors ||
-        state.tessellationConfig !== prev.tessellationConfig ||
+        state.floorFields[state.activeFloorId].tessellationConfig !== prev.floorFields[prev.activeFloorId]?.tessellationConfig ||
         state.activeTessellationConfig !== prev.activeTessellationConfig ||
         state.debugMode !== prev.debugMode ||
         state.debugArena !== prev.debugArena ||
@@ -205,7 +205,7 @@ export class GenerationRenderer {
     this.viewport = { x, y, w, h, scale };
     const state = useMazeStore.getState();
     if (state.openCard === "generation" && state.showMaze) {
-      const cfg = state._generatedNodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
+      const cfg = state._generatedNodes.length > 0 ? state.activeTessellationConfig : state.floorFields[state.activeFloorId].tessellationConfig;
       this.grid.render({ viewport: this.viewport }, cfg);
     }
   }
@@ -238,7 +238,7 @@ export class GenerationRenderer {
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
-    const cfg = state._generatedNodes.length > 0 ? state.activeTessellationConfig : state.tessellationConfig;
+    const cfg = state._generatedNodes.length > 0 ? state.activeTessellationConfig : state.floorFields[state.activeFloorId].tessellationConfig;
     this.grid.render({ viewport: this.viewport }, cfg);
     // Single call, reused below for both highlight overlays — selectDebugMazeView is itself
     // memoized per (arena, debugStep), but calling it three times per render still meant three

@@ -41,8 +41,8 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   const draftMeta = useMazeStore((s) => s.postEditDraftMeta);
   const nodes = useMazeStore((s) => s.nodes);
   const cfg = useMazeStore((s) => s.activeTessellationConfig);
-  const fieldPoints = useMazeStore((s) => s.fieldPoints);
-  const fieldEditMode = useMazeStore((s) => s.fieldEditMode);
+  const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
+  const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
   const applyPostEditToolAt = useMazeStore((s) => s.applyPostEditToolAt);
   const setPostEditEndpoint = useMazeStore((s) => s.setPostEditEndpoint);
   const clearPostEditEndpoint = useMazeStore((s) => s.clearPostEditEndpoint);

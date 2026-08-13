@@ -152,7 +152,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   }
 
   protected getActiveConfig(state: MazeState) {
-    return state.tessellationConfig;
+    return state.floorFields[state.activeFloorId].tessellationConfig;
   }
 
   protected setRootVisible(visible: boolean): void {
@@ -215,7 +215,9 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   }
 
   protected onStoreChange(state: MazeState, prev: MazeState): void {
-    const fieldChanged = state.fieldPoints !== prev.fieldPoints || state.fieldEditMode !== prev.fieldEditMode;
+    const field = state.floorFields[state.activeFloorId];
+    const prevField = prev.floorFields[prev.activeFloorId];
+    const fieldChanged = field.fieldPoints !== prevField.fieldPoints || field.fieldEditMode !== prevField.fieldEditMode;
     if (fieldChanged) {
       this.rebuildCellCache(state);
     }
@@ -352,7 +354,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidTeleportHL.clear();
     if (!state.highlightInvalidPresets) return;
 
-    const customPts = state.fieldEditMode === "custom" && state.fieldPoints.size > 0 ? state.fieldPoints : undefined;
+    const field = state.floorFields[state.activeFloorId];
+    const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0 ? field.fieldPoints : undefined;
     const proj = makeProjection(this.cfg);
     const markerSize = 20;
 

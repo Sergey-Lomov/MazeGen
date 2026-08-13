@@ -69,18 +69,23 @@ pub enum TessellationType {
 #[derive(Deserialize)]
 pub struct TessellationConfig {
     pub tessellation_type: TessellationType,
-    pub points: Vec<[i32; 2]>,
 }
 
 impl Default for TessellationConfig {
     fn default() -> Self {
-        let w = 10i32;
-        let h = 10i32;
-        let ox = w / 2;
-        let oy = h / 2;
-        let points = (0..w).flat_map(|x| (0..h).map(move |y| [x - ox, y - oy])).collect();
-        TessellationConfig { tessellation_type: TessellationType::Square, points }
+        TessellationConfig { tessellation_type: TessellationType::Square }
     }
+}
+
+/// Default single-level field points (10x10 square, centered) — used by `default_level_fields`
+/// when `level_fields` is entirely absent, matching `TessellationConfig`'s old default shape.
+fn default_level_fields() -> Vec<Vec<[i32; 2]>> {
+    let w = 10i32;
+    let h = 10i32;
+    let ox = w / 2;
+    let oy = h / 2;
+    let points: Vec<[i32; 2]> = (0..w).flat_map(|x| (0..h).map(move |y| [x - ox, y - oy])).collect();
+    vec![points]
 }
 
 #[derive(Deserialize, Default)]
@@ -229,15 +234,19 @@ impl Default for InitialGenerationConfig {
 
 #[derive(Deserialize)]
 pub struct GenerateConfig {
+    /// Tessellation kind/orientation — maze-wide, shared by every level (GitHub issue #338:
+    /// kind is confirmed once, not per floor; see Specs/field-editor.md on the web side).
     #[serde(default)]
     pub tessellation: TessellationConfig,
-    /// Number of identical-geometry levels to generate across (GitHub issue #337) — every level
-    /// shares `tessellation`'s points, since per-level field editing does not exist yet (see the
-    /// #333 epic). Only `generate_maze`/the wasm dispatch consult this; everything downstream
-    /// (QC/repair/routing/analytics/post-edit) still only ever sees the first level, via
-    /// `MultiLevelField::single_level_id()` — see that method's doc comment.
-    #[serde(default = "default_level_count")]
-    pub level_count: usize,
+    /// Each level's own field points (GitHub issue #338 — per-floor field shape). The number of
+    /// levels to generate across (GitHub issue #337) is `level_fields.len()` — there is no
+    /// separate count field on the wire, so the two can never disagree. Only `generate_maze`/the
+    /// wasm dispatch consult this; everything downstream (QC/repair/routing/analytics/post-edit)
+    /// still only ever sees the first level, via `MultiLevelField::single_level_id()` — see that
+    /// method's doc comment. `#[serde(default)]` falls back to a single 10x10 square level so
+    /// configs/fixtures predating this field still deserialize.
+    #[serde(default = "default_level_fields")]
+    pub level_fields: Vec<Vec<[i32; 2]>>,
     #[serde(default)]
     pub stages: Vec<StageConfig>,
     #[serde(default = "default_repair_max_iterations")]
@@ -278,7 +287,7 @@ impl Default for GenerateConfig {
     fn default() -> Self {
         Self {
             tessellation: TessellationConfig::default(),
-            level_count: default_level_count(),
+            level_fields: default_level_fields(),
             stages: vec![
                 StageConfig {
                     id: "stage_1".to_string(),
@@ -336,10 +345,6 @@ impl Default for GenerateConfig {
 /// `RepairLimits::default()`'s bound instead, matching `Default for GenerateConfig` below.
 fn default_repair_max_iterations() -> Option<usize> {
     RepairLimits::default().max_iterations()
-}
-
-fn default_level_count() -> usize {
-    1
 }
 
 /// See `default_repair_max_iterations` above — same rationale for the time-budget bound.

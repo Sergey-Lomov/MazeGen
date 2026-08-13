@@ -9,7 +9,7 @@ import { deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
 import { resolverForNodeId } from "../../pixi/postEditEndpoint";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
-import { activeTessellationOf, relevantRuleParams } from "../storeHelpers";
+import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, relevantRuleParams } from "../storeHelpers";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
 import { parseTape, topLevelSourceScopes, sourceContentStart } from "../../debug/eventTape";
 import { adapterForKind } from "../../debug/algorithmRegistry";
@@ -36,8 +36,7 @@ export function fieldConfigToWasm(cfg: TessellationConfig): WasmTessellationConf
   const tessellation_type = t.startsWith("hex") ? "hex" as const
     : (t.startsWith("tri") || t.startsWith("triangle")) ? "tri" as const
     : "square" as const;
-  const points = configAllCells(cfg);
-  return { tessellation_type, points };
+  return { tessellation_type };
 }
 
 // Recursively builds one nested `StrategyConfig` from a `NestedStrategyState` — mirrors
@@ -114,8 +113,9 @@ function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: {
  *  "undefined"-state or geometrically-invalid entry (removed cell, shrunk tessellation) is
  *  excluded, same as `buildGenerateConfig` already excluded them before this was extracted. */
 export function buildValidPresetConnections(state: MazeStore): import("../../wasm/types").PresetConnection[] {
-  const activeTessellation = activeTessellationOf(state);
-  const customPts = state.isEditingField ? state.fieldPoints : undefined;
+  const activeTessellation = activeFloorTessellationOf(state);
+  const field = activeFloorField(state);
+  const customPts = field.isEditingField ? field.fieldPoints : undefined;
   const invalidKeys = computeInvalidKeys(state.presetConnections, activeTessellation, customPts);
   const validPresets = Array.from(state.presetConnections.entries())
     .filter(([key, e]) => e.state !== "undefined" && !invalidKeys.has(key))
@@ -131,7 +131,8 @@ export function buildValidPresetConnections(state: MazeStore): import("../../was
 }
 
 export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
-  if (state.isEditingField && state.fieldPoints.size < 2) return null;
+  const activeField = activeFloorField(state);
+  if (activeField.isEditingField && activeField.fieldPoints.size < 2) return null;
   const ruleById = new Map(state.rules.map((g) => [g.id, g]));
   // A `disabled` stage is omitted entirely — as if it didn't exist for this run, same as a
   // `ruleDisabled` rule being omitted from its stage's `rules` below (not sent with an empty
@@ -159,8 +160,8 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
         .filter((g): g is QcRuleState => g !== undefined && !g.ruleDisabled && g.checks.some((c) => !c.disabled))
         .map((g) => ruleToConfig(state, g)),
     }));
-  const activeTessellation = activeTessellationOf(state);
-  const customPts = state.isEditingField ? state.fieldPoints : undefined;
+  const activeTessellation = activeFloorTessellationOf(state);
+  const customPts = activeField.isEditingField ? activeField.fieldPoints : undefined;
   const lockedEntries = new Map(state.lockedNodes);
   for (const key of state.autoLockedNodes) {
     if (!lockedEntries.has(key)) lockedEntries.set(key, "both");
@@ -177,9 +178,10 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
       const [x, y] = key.split(",").map(Number) as [number, number];
       return slots.map((slotId): [[number, number], number] => [[x, y], slotId]);
     });
+  const level_fields = state.floors.map((floor) => configAllCells(floorTessellationOf(state, floor.id)));
   return {
     tessellation: fieldConfigToWasm(activeTessellation),
-    level_count: state.floors.length,
+    level_fields,
     stages,
     ...(state.repairMaxIterations != null ? { repair_max_iterations: state.repairMaxIterations } : {}),
     ...(state.repairTimeBudgetSecs != null ? { repair_time_budget_secs: state.repairTimeBudgetSecs } : {}),
@@ -210,11 +212,12 @@ function applyQcExperimentOverrides(config: GenerateConfig): void {
 
 export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcExperiment = false): void {
   const state = get();
-  if (state.isEditingField && state.fieldPoints.size < 2) {
+  const activeField = activeFloorField(state);
+  if (activeField.isEditingField && activeField.fieldPoints.size < 2) {
     set({ error: "Free field requires at least 2 cells", generationStatus: "error" });
     return;
   }
-  const activeTessellation = activeTessellationOf(state);
+  const activeTessellation = activeFloorTessellationOf(state);
   const debugMode = state.debugMode;
   const config = buildGenerateConfig(state);
   if (!config) return;
@@ -374,7 +377,8 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
  */
 export function buildExactGenerateCallPayload(get: StoreGet): { seed: number; config: GenerateConfig } | null {
   const state = get();
-  if (state.isEditingField && state.fieldPoints.size < 2) return null;
+  const field = activeFloorField(state);
+  if (field.isEditingField && field.fieldPoints.size < 2) return null;
   const seed = state.lastUsedSeed ?? state.seed;
   const config = buildGenerateConfig(state);
   if (!config) return null;
