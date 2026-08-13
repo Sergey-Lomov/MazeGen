@@ -502,9 +502,9 @@ export type PresetConnectionState = "wall" | "passage" | "one_way_forward" | "on
 /** Wire shape for a preset endpoint (GitHub issue #231) — a point plus an optional slot
  * addressing one of that point's declared extra ("split") nodes. `slot: undefined` means the
  * point's original node. `level` (GitHub issue #340) is the endpoint's 0-based `level_fields`
- * index; `undefined` means level 0 — only meaningful on `GenerateConfig` (level 0 is the only
- * level `ComputeAnalyticsConfig`'s post-edit path ever resolves against, see `Specs/floors.md`).
- * Mirrors Rust's `PresetEndpointDto`/`PresetEndpoint`. */
+ * index; `undefined` means level 0 — meaningful on both `GenerateConfig` and
+ * `ComputeAnalyticsConfig` (the post-edit path is genuinely multi-level as of GitHub issue #359,
+ * see `Specs/floors.md`). Mirrors Rust's `PresetEndpointDto`/`PresetEndpoint`. */
 export interface PresetEndpointDto {
   point: [number, number];
   slot?: number;
@@ -556,10 +556,12 @@ export type PostEditEdgeKind = "basic" | "one_way" | "teleport";
 
 /** Mirrors Rust's `PostEditEndpointDto` — either a plain existing node id, or a reference to one
  * of a split point's extra nodes by its stable `slotId` (GitHub issue #221). WASM resolves `split`
- * endpoints itself via `split_points`, applied before edges in the same call. */
+ * endpoints itself via `split_points`, applied before edges in the same call. `Split.level`
+ * (GitHub issue #359, 0-based `level_fields` index, omitted meaning level 0) disambiguates a slot
+ * when two floors share the same `(point, slotId)`. */
 export type PostEditEndpointWasmDto =
   | { kind: "node"; id: number }
-  | { kind: "split"; point: [number, number]; slot_id: number };
+  | { kind: "split"; point: [number, number]; slot_id: number; level?: number };
 
 export interface PostEditEdgeWasmDto {
   from: PostEditEndpointWasmDto;
@@ -579,22 +581,28 @@ export interface AnalyticsRuleGroupConfig {
 
 export interface ComputeAnalyticsConfig {
   tessellation: WasmTessellationConfig;
+  /** Each level's own field points, in `floors` order (GitHub issue #359) — mirrors
+   * `GenerateConfig.level_fields`. The number of levels this call resolves against is
+   * `level_fields.length`; every `NodeDto.level`/split-point level indexes into this. */
+  level_fields: [number, number][][];
   /** The client's authoritative node list (real ids from the previous generation/confirm) —
    * `Field`/`Graph` are rebuilt directly from these ids on the Rust side (GitHub issue #236)
    * instead of re-minting them from `tessellation.points` order, so a rebuild always reproduces
-   * exactly the ids the client already holds, including auto-split nodes (#222). */
+   * exactly the ids the client already holds, including auto-split nodes (#222). Each node's own
+   * `level` (GitHub issue #359) says which of `level_fields`' entries it resolves against. */
   nodes: NodeDto[];
   /** Passage edges only (walls = absence of edge). */
   edges: PostEditEdgeWasmDto[];
   /** Extra nodes to add to split points before edges are resolved — each entry is one
-   * `(point, slotId)` pair (GitHub issue #221). `slotId` maps onto `NodeDto.i` as `slotId + 1`
-   * (`i = 0` is always the point's original node) — a slot whose `i` already exists in `nodes`
-   * (confirmed by an earlier call) resolves to that same existing id, matched by `i` directly, not
-   * by array position; only a genuinely new slot (just `addSplitNode`'d, not yet confirmed) gets a
-   * freshly minted one — see `apply_split_points` in `maze-wasm/src/analytics.rs`. This array's own
-   * order doesn't matter (unlike an earlier version of this fix, matching was position-based and
-   * did require the client's creation order — no longer the case). */
-  split_points?: [[number, number], number][];
+   * `(point, slotId, level)` triple (GitHub issues #221, #359). `slotId` maps onto `NodeDto.i` as
+   * `slotId + 1` (`i = 0` is always the point's original node) — a slot whose `i` already exists in
+   * `nodes` for that level (confirmed by an earlier call) resolves to that same existing id, matched
+   * by `i` directly, not by array position; only a genuinely new slot (just `addSplitNode`'d, not
+   * yet confirmed) gets a freshly minted one — see `apply_split_points` in
+   * `maze-wasm/src/analytics/post_edit.rs`. This array's own order doesn't matter (unlike an
+   * earlier version of this fix, matching was position-based and did require the client's creation
+   * order — no longer the case). */
+  split_points?: [[number, number], number, number][];
   /** Plain resolved node id — NOT a `PostEditEndpointWasmDto`. `Maze::meta.start`/`.finish` in
    * `maze-core` are always `Option<NodeId>`; the frontend resolves `PostEditEndpoint` to a
    * concrete id (or `null` if it doesn't resolve yet) before building this config — see
@@ -614,9 +622,9 @@ export interface ComputeAnalyticsConfig {
    * elements `preset_locked` accordingly. */
   preset_connections?: PresetConnection[];
   /** The project's current preset-declared split points (GitHub issue #245's split-node/route
-   * extension) — same `(point, slotId)` shape as `split_points`, but sourced from the preset
+   * extension) — same `(point, slotId, level)` shape as `split_points`, but sourced from the preset
    * snapshot (`state.presetSplitPoints`) rather than every current split point. Sent alongside so
    * the Rust side can resolve each into a `NodeId` fresh against the rebuilt field and mark
    * node/route-based split issue elements `preset_locked` accordingly. */
-  preset_split_points?: [[number, number], number][];
+  preset_split_points?: [[number, number], number, number][];
 }

@@ -269,6 +269,15 @@ impl<T: Tessellation> Maze<T> {
     /// level-aware caller exists (GitHub issue #334/#337).
     pub fn add_node_at(&mut self, point: T::Point) -> NodeId {
         let level = self.field.single_level_id();
+        self.add_node_at_on_level(level, point)
+    }
+
+    /// Level-aware counterpart of `add_node_at` (GitHub issue #359) — same atomic field+graph
+    /// registration, but against a caller-chosen `level` instead of always `single_level_id()`.
+    /// The only correct way to add a node to a specific level of an already-built multi-level
+    /// maze; `field.add_node_at` alone would leave `Graph` unaware of the new node, same reasoning
+    /// as `add_node_at`.
+    pub fn add_node_at_on_level(&mut self, level: crate::space::LevelId, point: T::Point) -> NodeId {
         let node = self.field.add_node_at(level, point, &mut self.ids);
         self.graph.add_node(node);
         node

@@ -83,8 +83,11 @@ where
     if cfg.nodes.is_empty() {
         return Err(JsValue::from_str("nodes must not be empty"));
     }
+    if cfg.level_fields.is_empty() {
+        return Err(JsValue::from_str("level_fields must not be empty"));
+    }
 
-    let (field, existing_by_index, index_by_node) = build_field_from_nodes::<T>(&cfg.nodes, &xy_to_point)
+    let (field, existing_by_index, index_by_node, level_ids) = build_field_from_nodes::<T>(&cfg.nodes, cfg.level_fields.len(), &xy_to_point)
         .map_err(|e| JsValue::from_str(&e))?;
 
     let mut graph = Graph::new();
@@ -93,8 +96,8 @@ where
     let mut maze = Maze::<T>::new(field, graph);
 
     // Split points must exist before edges are resolved — some edges may address a split node
-    // by (point, slot_id) that only comes into being here (GitHub issue #221).
-    let split_map = apply_split_points(&mut maze, xy_to_point, &cfg.split_points, &existing_by_index)
+    // by (point, slot_id, level) that only comes into being here (GitHub issue #221/#359).
+    let split_map = apply_split_points(&mut maze, xy_to_point, &cfg.split_points, &existing_by_index, &level_ids)
         .map_err(|e| JsValue::from_str(&e))?;
 
     build_graph_from_post_edit_edges(&mut maze.graph, &cfg.edges, &split_map)
@@ -135,7 +138,9 @@ where
     let mut preset_state = maze_core::generation::PresetState::empty();
     preset_state.preset_edges = preset_edges_for_post_edit(&cfg.preset_connections, &existing_by_index, &split_map);
     preset_state.preset_declared_nodes = resolve_preset_nodes_for_post_edit(&cfg.preset_split_points, &existing_by_index, &split_map);
-    let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, &preset_state, false, point_to_xy,
+    // `compute_analytics` is genuinely multi-level as of GitHub issue #359 — every floor's own
+    // nodes/edges are surfaced, not just floor 0's.
+    let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, &preset_state, true, point_to_xy,
         |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32))
         .map_err(|e| JsValue::from_str(&e))?;
 
@@ -223,18 +228,18 @@ mod tests {
             ];
             // A split point declared at (0,0) slot 0 (not present in `nodes` yet -- freshly
             // declared by the preset snapshot, mirroring `state.presetSplitPoints`).
-            let split_points = vec![(([0, 0]), 0u32)];
+            let split_points = vec![(([0, 0]), 0u32, 0u32)];
 
-            let (field, existing_by_index, index_by_node) = build_field_from_nodes::<SquareTessellation>(&nodes, &xy_to_point).unwrap();
+            let (field, existing_by_index, index_by_node, level_ids) = build_field_from_nodes::<SquareTessellation>(&nodes, 1, &xy_to_point).unwrap();
             let mut graph = Graph::new();
             for node in field.all_node_ids() { graph.add_node(node); }
             let mut maze = Maze::<SquareTessellation>::new(field, graph);
-            let split_map = apply_split_points(&mut maze, xy_to_point, &split_points, &existing_by_index).unwrap();
-            let split_node = split_map[&([0, 0], 0)];
+            let split_map = apply_split_points(&mut maze, xy_to_point, &split_points, &existing_by_index, &level_ids).unwrap();
+            let split_node = split_map[&([0, 0], 0, 0)];
 
             // The split node's only edge is a preset Passage to the original neighbor at (1,0).
             let edges = vec![PostEditEdgeDto {
-                from: PostEditEndpointDto::Split { point: [0, 0], slot_id: 0 },
+                from: PostEditEndpointDto::Split { point: [0, 0], slot_id: 0, level: 0 },
                 to: PostEditEndpointDto::Node { id: 2 },
                 kind: "basic".to_string(),
             }];
@@ -263,7 +268,7 @@ mod tests {
             );
             let qc = QualityControlEngine::new(vec![Stage::new("stage_1".to_string(), "Stage 1".to_string(), vec![Box::new(rule) as Box<dyn RuleTrait<SquareTessellation>>])]);
 
-            let snapshot = build_analytics_snapshot(&mut maze, Some(&qc), None, &HashMap::new(), &preset_state, false, point_to_xy,
+            let snapshot = build_analytics_snapshot(&mut maze, Some(&qc), None, &HashMap::new(), &preset_state, true, point_to_xy,
                 |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32)).unwrap();
 
             let issue_dto = snapshot.issues.iter().find(|i| i.kind == "invalid_split_node")

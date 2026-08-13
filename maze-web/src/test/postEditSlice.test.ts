@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { baseStoreState, mockSnapshot, TEST_FLOOR_ID } from "./storeTestHelpers";
+import { baseStoreState, baseFloorFieldConfig, mockSnapshot, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { nodeEndpoint, splitEndpoint, edgeKey } from "../pixi/postEditEndpoint";
+import { configAllCells } from "../pixi/tessellationCells";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 
 vi.mock("../wasm/mazeService", () => ({
@@ -182,27 +183,52 @@ describe("mazeStore post-edit actions", () => {
     await useMazeStore.getState().confirmPostEdit();
     const calls = vi.mocked(computeAnalytics).mock.calls;
     const call = calls[calls.length - 1]?.[0];
-    expect(call?.split_points).toEqual(expect.arrayContaining([[[3, 4], 0], [[3, 4], 1]]));
+    expect(call?.split_points).toEqual(expect.arrayContaining([[[3, 4], 0, 0], [[3, 4], 1, 0]]));
   });
 
-  it("confirmPostEdit strips the \"@level\" suffix from postEditDraftSplitPoints keys before building split_points (GitHub issue #358)", async () => {
+  it("confirmPostEdit parses the \"@level\" suffix from postEditDraftSplitPoints keys into split_points' own level entry (GitHub issue #359)", async () => {
     useMazeStore.setState({
       postEditDraftSplitPoints: { "3,4": [0], "3,4@1": [2] },
     });
     await useMazeStore.getState().confirmPostEdit();
     const calls = vi.mocked(computeAnalytics).mock.calls;
     const call = calls[calls.length - 1]?.[0];
-    expect(call?.split_points).toEqual(expect.arrayContaining([[[3, 4], 0], [[3, 4], 2]]));
+    expect(call?.split_points).toEqual(expect.arrayContaining([[[3, 4], 0, 0], [[3, 4], 2, 1]]));
   });
 
-  it("confirmPostEdit sends every floor's preset connections/split points, not just floor 0's (GitHub issue #358)", async () => {
+  it("confirmPostEdit sends level_fields derived from state.floors (GitHub issue #359)", async () => {
+    await useMazeStore.getState().confirmPostEdit();
+    const calls = vi.mocked(computeAnalytics).mock.calls;
+    const call = calls[calls.length - 1]?.[0];
+    expect(call?.level_fields).toEqual([configAllCells({ type: "square", width: 10, height: 10 })]);
+  });
+
+  it("confirmPostEdit sends one level_fields entry per floor, in floors order (GitHub issue #359)", async () => {
+    const SECOND_FLOOR_ID = "floor-2";
+    useMazeStore.setState({
+      floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: SECOND_FLOOR_ID, title: "Floor 2" }],
+      floorFields: {
+        [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } }),
+        [SECOND_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 4 } }),
+      },
+    });
+    await useMazeStore.getState().confirmPostEdit();
+    const calls = vi.mocked(computeAnalytics).mock.calls;
+    const call = calls[calls.length - 1]?.[0];
+    expect(call?.level_fields).toEqual([
+      configAllCells({ type: "square", width: 2, height: 1 }),
+      configAllCells({ type: "square", width: 3, height: 4 }),
+    ]);
+  });
+
+  it("confirmPostEdit sends every floor's preset connections/split points with their own level (GitHub issue #359)", async () => {
     useMazeStore.setState({
       presetSplitPoints: { "5,6": [0], "5,6@1": [0] },
     });
     await useMazeStore.getState().confirmPostEdit();
     const calls = vi.mocked(computeAnalytics).mock.calls;
     const call = calls[calls.length - 1]?.[0];
-    expect(call?.preset_split_points).toEqual(expect.arrayContaining([[[5, 6], 0], [[5, 6], 0]]));
+    expect(call?.preset_split_points).toEqual(expect.arrayContaining([[[5, 6], 0, 0], [[5, 6], 0, 1]]));
     expect(call?.preset_split_points).toHaveLength(2);
   });
 
@@ -245,7 +271,7 @@ describe("mazeStore post-edit actions", () => {
     // TS-side `PostEditEndpoint`'s `slotId` — this mismatch was the actual bug (serde rejected
     // the whole config with "missing field `slot_id`"), so pin the wire shape explicitly here.
     const sentEdge = call?.edges.find((e: { to: unknown }) =>
-      JSON.stringify(e.to) === JSON.stringify({ kind: "split", point: [0, 0], slot_id: 0 }));
+      JSON.stringify(e.to) === JSON.stringify({ kind: "split", point: [0, 0], slot_id: 0, level: 0 }));
     expect(sentEdge).toBeDefined();
   });
 

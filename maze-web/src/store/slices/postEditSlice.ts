@@ -16,7 +16,8 @@ import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry } from "../storeTypes";
 import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
-import { relevantRuleParams, activeFloorField, activeFloorLevel } from "../storeHelpers";
+import { relevantRuleParams, activeFloorField, activeFloorLevel, floorTessellationOf } from "../storeHelpers";
+import { configAllCells } from "../../pixi/tessellationCells";
 
 /** Groups a multi-floor `NodeDto[]` (GitHub issue #337) by `level` (`undefined` → `0`, same
  * convention `PresetEndpoint.level`/`activeFloorLevel` use) — the per-floor unit every point-keyed
@@ -40,7 +41,7 @@ function groupNodesByLevel(nodes: NodeDto[]): Map<number, NodeDto[]> {
  * literal Rust field name). */
 function toWasmEndpoint(ep: PostEditEndpoint): PostEditEndpointWasmDto {
   if (ep.kind === "split") {
-    return { kind: "split", point: ep.point, slot_id: ep.slotId };
+    return { kind: "split", point: ep.point, slot_id: ep.slotId, level: ep.level ?? 0 };
   }
   return ep;
 }
@@ -190,16 +191,16 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       ...teleportEdgesSnapshot.map(e => ({ from: { kind: "node" as const, id: e.from }, to: { kind: "node" as const, id: e.to }, kind: "teleport" as const })),
     ];
 
-    // The wire DTO carries no `level` (`ComputeAnalyticsConfig.split_points` is `[[x,y], slotId][]`
-    // — Rust resolves against a single-level `Field`, GitHub issue #358's accepted scope), so the
-    // `"@level"` suffix is stripped before parsing `[x, y]` — a raw `key.split(",")` on
-    // `"3,5@2"` would otherwise leave `y` as the unparseable string `"5@2"`. Two floors' split
-    // points at the same `(x, y)` collapse onto the same wire entry when both are sent together —
-    // an accepted limitation of not making `compute_analytics` itself multi-floor-aware.
-    const splitPointsPayload: [[number, number], number][] = Object.entries(postEditDraftSplitPoints)
+    // `ComputeAnalyticsConfig.split_points` is `[[x,y], slotId, level][]` (GitHub issue #359,
+    // `compute_analytics` is now genuinely multi-level) — the `"@level"` suffix is parsed into its
+    // own `level` entry instead of being stripped, so two floors' split points at the same `(x, y)`
+    // resolve against their own floor's node, not collide on the wire.
+    const splitPointsPayload: [[number, number], number, number][] = Object.entries(postEditDraftSplitPoints)
       .flatMap(([key, slots]) => {
-        const [x, y] = key.split("@")[0].split(",").map(Number) as [number, number];
-        return slots.map((slotId): [[number, number], number] => [[x, y], slotId]);
+        const [pointPart, levelPart] = key.split("@");
+        const [x, y] = pointPart.split(",").map(Number) as [number, number];
+        const level = levelPart === undefined ? 0 : Number(levelPart);
+        return slots.map((slotId): [[number, number], number, number] => [[x, y], slotId, level]);
       });
 
     // ruleDisabled rules, rules belonging to a disabled stage, and individually disabled checks
@@ -230,8 +231,13 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       })
       .filter((g) => g.checks.length > 0);
 
+    // Each floor's own field points, in `floors` order (GitHub issue #359) — mirrors
+    // `buildGenerateConfig`'s own `level_fields` derivation.
+    const level_fields = state.floors.map((floor) => configAllCells(floorTessellationOf(state, floor.id)));
+
     const config = {
       tessellation: fieldConfigToWasm(activeTessellationConfig),
+      level_fields,
       nodes: prunedNodes,
       edges: wasmEdges,
       split_points: splitPointsPayload,
@@ -240,24 +246,22 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       rule_groups: ruleGroups,
       // GitHub issue #245: lets the Rust side flag cycle/group issue elements composed entirely
       // of preset Passage/OneWay edges as `preset_locked`, even on this post-edit rebuild path.
-      // Post-edit is floor-aware as of GitHub issue #358, so every floor's presets are sent (not
-      // just floor 0's) — `compute_analytics` itself still resolves against a single-level `Field`
-      // (accepted scope, see the issue), so a preset whose endpoint lands on another floor's
-      // point may resolve against the wrong node when two floors share an (x, y); this mirrors
-      // `nodes`/`edges`/`split_points` above already sending every floor into that same
-      // single-level rebuild.
+      // `compute_analytics` is genuinely multi-level as of GitHub issue #359, so every floor's
+      // presets resolve against their own floor's node.
       preset_connections: buildValidPresetConnections(state, false),
       // GitHub issue #245's split-node/route extension: same idea as `preset_connections`, but for
       // which split nodes the preset snapshot declares — lets the Rust side flag node/route-based
       // split issue elements as `preset_locked` too. No invalid-key filtering here (unlike
       // `generateConfigBuilder.ts`'s `split_points`) — the Rust side already silently skips a
       // point/slot it can't resolve, same contract as `preset_connections`. Every floor's declared
-      // split points are sent (GitHub issue #358) — the `"@level"` suffix is stripped the same way
-      // `splitPointsPayload` above strips it, for the same single-level-wire reason.
+      // split points are sent, with their own `level` parsed out of the `"@level"` suffix the same
+      // way `splitPointsPayload` above does (GitHub issue #359).
       preset_split_points: Object.entries(state.presetSplitPoints)
         .flatMap(([key, slots]) => {
-          const [x, y] = key.split("@")[0].split(",").map(Number) as [number, number];
-          return slots.map((slotId): [[number, number], number] => [[x, y], slotId]);
+          const [pointPart, levelPart] = key.split("@");
+          const [x, y] = pointPart.split(",").map(Number) as [number, number];
+          const level = levelPart === undefined ? 0 : Number(levelPart);
+          return slots.map((slotId): [[number, number], number, number] => [[x, y], slotId, level]);
         }),
     };
     try {

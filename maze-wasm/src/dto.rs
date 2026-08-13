@@ -347,12 +347,16 @@ pub struct SplitAnalyticsDto {
 /// a split point's extra nodes by its stable `slot_id` (GitHub issue #221). The web side never
 /// predicts a split node's `NodeId` (it doesn't exist yet until this same call creates it via
 /// `apply_split_points`), so it addresses it by `(point, slot_id)` instead — resolved to a real
-/// id in `resolve_post_edit_endpoint`.
+/// id in `resolve_post_edit_endpoint`. `Split`'s `level` (GitHub issue #359, 0-based `level_fields`
+/// index, `#[serde(default)]` so a pre-#359 caller omitting it still deserializes as level `0`)
+/// disambiguates a slot when two floors share the same `(point, slot_id)` — a `Node` endpoint
+/// carries no `level` of its own, since its resolved `NodeId` already pins it to a real node
+/// wherever that node happens to be (mirrors `PostEditEndpoint`'s own web-side shape).
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PostEditEndpointDto {
     Node { id: u32 },
-    Split { point: [i32; 2], slot_id: u32 },
+    Split { point: [i32; 2], slot_id: u32, #[serde(default)] level: u32 },
 }
 
 #[derive(Deserialize)]
@@ -379,11 +383,18 @@ pub struct AnalyticsRuleGroupConfig {
 #[derive(Deserialize)]
 pub struct ComputeAnalyticsConfig {
     pub tessellation: TessellationConfig,
+    /// Each level's own field points, in `floors` order (GitHub issue #359) — mirrors
+    /// `GenerateConfig.level_fields`. The number of levels this call resolves against is
+    /// `level_fields.len()`; every `NodeDto.level`/split-point `level` indexes into this. Required
+    /// (no `#[serde(default)]`) — every caller as of this issue sends it, one entry per floor.
+    pub level_fields: Vec<Vec<[i32; 2]>>,
     /// The client's authoritative node list (real ids from the previous generation/confirm) —
     /// `Field`/`Graph` are rebuilt directly from these ids (`Field::from_id_points`) instead of
     /// re-minting them from `tessellation.points` order (GitHub issue #236). This is what makes a
     /// rebuild reproduce the exact same ids the client already holds, including auto-split nodes
-    /// created by the generator (whose ids come from traversal order, not coordinate order).
+    /// created by the generator (whose ids come from traversal order, not coordinate order). Each
+    /// node's own `level` (GitHub issue #359) says which of `level_fields`' entries it resolves
+    /// against.
     pub nodes: Vec<NodeDto>,
     /// Actual edges (passages only — walls are absence of edge).
     pub edges: Vec<PostEditEdgeDto>,
@@ -394,9 +405,13 @@ pub struct ComputeAnalyticsConfig {
     /// `i = slot_id + 1` already exists for that point) resolves to that exact existing `NodeId`;
     /// only a genuinely new slot gets minted via `Maze::add_node_at` (GitHub issue #221/#236, see
     /// `apply_split_points`). `#[serde(default)]` so calls/fixtures predating this field still
-    /// deserialize.
+    /// deserialize. `level` (GitHub issue #359, 0-based `level_fields` index, defaulting to `0` on
+    /// each triple via `#[serde(default)]` at the tuple level is not possible in serde for a plain
+    /// tuple — callers predating #359 instead fail to deserialize this field's *shape* entirely if
+    /// they still send the old `[[i32;2], u32]` pair; `#[serde(default)]` on the whole `Vec` only
+    /// covers the field being entirely absent, which remains true).
     #[serde(default)]
-    pub split_points: Vec<([i32; 2], u32)>,
+    pub split_points: Vec<([i32; 2], u32, u32)>,
     pub start: Option<u32>,
     pub finish: Option<u32>,
     /// Active checks for this analytics-only pass (no repair, no strategies), grouped by their
@@ -427,9 +442,10 @@ pub struct ComputeAnalyticsConfig {
     /// `resolve_preset_nodes_for_post_edit` into `PresetState.preset_declared_nodes`, mirroring how
     /// `preset_connections` feeds `preset_edges`. An entry referencing a point/slot the rebuilt
     /// field/split map doesn't resolve is silently skipped, same contract as `preset_connections`.
-    /// `#[serde(default)]` so calls/fixtures predating this field still deserialize.
+    /// `#[serde(default)]` so calls/fixtures predating this field still deserialize. `level`
+    /// (GitHub issue #359, 0-based `level_fields` index) added alongside `split_points`'s own.
     #[serde(default)]
-    pub preset_split_points: Vec<([i32; 2], u32)>,
+    pub preset_split_points: Vec<([i32; 2], u32, u32)>,
 }
 
 #[derive(Serialize)]
