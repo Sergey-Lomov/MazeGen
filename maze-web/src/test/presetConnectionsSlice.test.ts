@@ -336,6 +336,85 @@ describe("mazeStore preset connections", () => {
     });
   });
 
+  describe("resetPresetPoint (GitHub issue #340's \"clear\" tool)", () => {
+    it("removes every connection with an endpoint at the point", () => {
+      useMazeStore.setState({
+        presetConnections: new Map([
+          ["0,0-1,0", { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "wall", source: "user" }],
+          ["0,0-0,1", { from: presetEndpoint([0, 0]), to: presetEndpoint([0, 1]), state: "passage", source: "user" }],
+          ["2,2-3,2", { from: presetEndpoint([2, 2]), to: presetEndpoint([3, 2]), state: "wall", source: "user" }],
+        ]),
+      });
+      useMazeStore.getState().resetPresetPoint([0, 0]);
+      const s = useMazeStore.getState();
+      expect(s.presetConnections.has("0,0-1,0")).toBe(false);
+      expect(s.presetConnections.has("0,0-0,1")).toBe(false);
+      expect(s.presetConnections.get("2,2-3,2")).toBeDefined();
+      expect(s.presetsDirty).toBe(true);
+    });
+
+    it("removes every teleport with an endpoint at the point", () => {
+      useMazeStore.setState({
+        presetTeleports: [
+          { id: 1, from: presetEndpoint([0, 0]), to: presetEndpoint([5, 5]), direction: "forward" },
+          { id: 2, from: presetEndpoint([1, 1]), to: presetEndpoint([2, 2]), direction: "forward" },
+        ],
+      });
+      useMazeStore.getState().resetPresetPoint([0, 0]);
+      const s = useMazeStore.getState();
+      expect(s.presetTeleports.map((t) => t.id)).toEqual([2]);
+    });
+
+    it("removes the point's declared split slots and active-slot selection", () => {
+      useMazeStore.setState({
+        presetSplitPoints: { "0,0": [0, 1], "2,2": [0] },
+        presetActiveSplitNode: { "0,0": presetEndpoint([0, 0], 0) },
+      });
+      useMazeStore.getState().resetPresetPoint([0, 0]);
+      const s = useMazeStore.getState();
+      expect(s.presetSplitPoints["0,0"]).toBeUndefined();
+      expect(s.presetSplitPoints["2,2"]).toEqual([0]);
+      expect(s.presetActiveSplitNode["0,0"]).toBeUndefined();
+    });
+
+    it("clears presetStart/presetFinish/presetGenSource when they address the point", () => {
+      useMazeStore.setState({
+        presetStart: presetEndpoint([0, 0]),
+        presetFinish: presetEndpoint([1, 1]),
+        presetGenSource: presetEndpoint([0, 0]),
+      });
+      useMazeStore.getState().resetPresetPoint([0, 0]);
+      const s = useMazeStore.getState();
+      expect(s.presetStart).toBeNull();
+      expect(s.presetFinish).toEqual(presetEndpoint([1, 1]));
+      expect(s.presetGenSource).toBeNull();
+    });
+
+    it("removes the point's own locked-node entry", () => {
+      useMazeStore.setState({ lockedNodes: new Map([["0,0", "both"], ["1,1", "in"]]) });
+      useMazeStore.getState().resetPresetPoint([0, 0]);
+      const s = useMazeStore.getState();
+      expect(s.lockedNodes.has("0,0")).toBe(false);
+      expect(s.lockedNodes.get("1,1")).toBe("in");
+    });
+
+    it("also removes a slot's endpoints — a connection addressing a declared slot at the point is cleared too", () => {
+      useMazeStore.setState({
+        presetSplitPoints: { "0,0": [0] },
+        presetConnections: new Map([
+          ["0,0:0-1,0", { from: presetEndpoint([0, 0], 0), to: presetEndpoint([1, 0]), state: "passage", source: "user" }],
+        ]),
+      });
+      useMazeStore.getState().resetPresetPoint([0, 0]);
+      expect(useMazeStore.getState().presetConnections.size).toBe(0);
+    });
+
+    it("is a no-op (still recomputes, no error) when nothing at the point", () => {
+      useMazeStore.getState().resetPresetPoint([9, 9]);
+      expect(useMazeStore.getState().error).toBeNull();
+    });
+  });
+
   describe("applyPresetSplitBlueprint (GitHub issue #235)", () => {
     // Square field is centered on the origin (`ox = floor(width/2)`, see `configAllCells`) —
     // width 9 covers x,y in [-4, 4], wide enough for the origin plus every one of its neighbors.

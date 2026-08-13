@@ -1,14 +1,17 @@
 import React, { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints } from "../../pixi/fieldEditUtils";
-import { presetEndpointIsSplit } from "../../pixi/presetEndpoint";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../pixi/fieldEditUtils";
+import { presetEndpointIsSplit, presetEndpointLevelLabel } from "../../pixi/presetEndpoint";
+import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { buttonStyle } from "../../styles/shared";
 import { ui, typography, muted, spacing } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
+import { SectionHeader } from "../SectionHeader";
 import { Switch } from "../Switch";
 import { Stack, Grid } from "../Layout";
 import { StatusTag } from "../StatusTag";
+import { WarningBubble } from "../WarningBubble";
 import { PresetSplitNodesDialog } from "./PresetSplitNodesDialog";
 import * as m from "~/paraglide/messages";
 
@@ -48,14 +51,9 @@ export function PresetConnectionsFeature() {
   const tool = useMazeStore((s) => s.presetConnectionsTool);
   const setTool = useMazeStore((s) => s.setPresetConnectionsTool);
   const presetConnections = useMazeStore((s) => s.presetConnections);
-  const tessellationConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
-  const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
-  const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
   const presetGenSource = useMazeStore((s) => s.presetGenSource);
-  const setPresetStart = useMazeStore((s) => s.setPresetStart);
-  const setPresetFinish = useMazeStore((s) => s.setPresetFinish);
   const setPresetGenSource = useMazeStore((s) => s.setPresetGenSource);
   const clearInvalidPresetConnections = useMazeStore((s) => s.clearInvalidPresetConnections);
   const resetPresetConnections = useMazeStore((s) => s.resetPresetConnections);
@@ -76,37 +74,57 @@ export function PresetConnectionsFeature() {
   const presetSplitPoints = useMazeStore((s) => s.presetSplitPoints);
   const presetFocusedPoint = useMazeStore((s) => s.presetFocusedPoint);
   const setPresetFocusedPoint = useMazeStore((s) => s.setPresetFocusedPoint);
+  const floors = useMazeStore((s) => s.floors);
+  const activeFloorId = useMazeStore((s) => s.activeFloorId);
+  const floorFields = useMazeStore((s) => s.floorFields);
+  const tessellationKind = useMazeStore((s) => s.tessellationKind);
+  const hexOrientation = useMazeStore((s) => s.hexOrientation);
+  const triOrientation = useMazeStore((s) => s.triOrientation);
+  const presetSectionsExpanded = useMazeStore((s) => s.presetSectionsExpanded);
+  const setPresetSectionExpanded = useMazeStore((s) => s.setPresetSectionExpanded);
 
   const [confirmReset, setConfirmReset] = useState(false);
 
-  // Nodes locked both in and out AND with no explicit passage preset are fully isolated
+  // Nodes locked both in and out AND with no explicit passage preset are fully isolated. Scoped
+  // to the active floor (GitHub issue #340 follow-up) — mixing keys across floors here previously
+  // parsed a level-suffixed key ("x,y@2") as garbage coordinates via a bare `key.split(",")`, so
+  // this warning (and its hover highlight) only ever worked correctly on floor 0.
   const isolatedNodes = useMemo(() => {
+    const level = activeFloorLevel({ floors, activeFloorId });
+    const lockedNodesOnLevel = mapOnLevel(lockedNodes, level);
+    const autoLockedNodesOnLevel = setOnLevel(autoLockedNodes, level);
+    const presetConnectionsOnActiveLevel = presetConnectionsOnLevel(presetConnections, level);
     const allBothLocked = new Set<string>();
-    for (const [key, kind] of lockedNodes) {
+    for (const [key, kind] of lockedNodesOnLevel) {
       if (kind === "both") allBothLocked.add(key);
     }
-    for (const key of autoLockedNodes) {
+    for (const key of autoLockedNodesOnLevel) {
       allBothLocked.add(key);
     }
     const result: string[] = [];
     for (const key of allBothLocked) {
       const [x, y] = key.split(",").map(Number);
-      const hasPassage = Array.from(presetConnections.values()).some(e => {
+      const hasPassage = Array.from(presetConnectionsOnActiveLevel.values()).some(e => {
         if (e.state === "wall" || e.state === "undefined") return false;
         return (e.from.point[0] === x && e.from.point[1] === y) || (e.to.point[0] === x && e.to.point[1] === y);
       });
       if (!hasPassage) result.push(key);
     }
     return result;
-  }, [lockedNodes, autoLockedNodes, presetConnections]);
+  }, [lockedNodes, autoLockedNodes, presetConnections, floors, activeFloorId]);
 
   // Orphan split nodes: declared in presetSplitPoints but referenced by nothing (GitHub issue
   // #231) — created regardless, but likely forgotten by the user, so surfaced as a warning
-  // (same style as isolatedNodes above), not blocking generation.
+  // (same style as isolatedNodes above), not blocking generation. Counted across every floor
+  // (not just the active one) — `presetEndpointIsSplit` is deliberately level-agnostic (point+slot
+  // only, see its own doc comment), so a point's orphan status doesn't depend on which floor is
+  // active. Keys are `"x,y"` (floor 0) or `"x,y@level"` (GitHub issue #340) — the `@level` suffix
+  // must be stripped before parsing coordinates, or `Number("y@2")` silently yields `NaN` and every
+  // split point on a non-floor-0 floor is misreported as orphaned.
   const orphanSplitCount = useMemo(() => {
     let count = 0;
     for (const [key, slots] of Object.entries(presetSplitPoints)) {
-      const [x, y] = key.split(",").map(Number);
+      const [x, y] = key.split("@")[0].split(",").map(Number);
       for (const slotId of slots) {
         const target = { point: [x, y] as [number, number], slotId };
         const referenced =
@@ -121,22 +139,25 @@ export function PresetConnectionsFeature() {
     return count;
   }, [presetSplitPoints, presetConnections, presetTeleports, presetStart, presetFinish, presetGenSource]);
 
-  const customPts = fieldEditMode === "custom" && fieldPoints.size > 0 ? fieldPoints : undefined;
+  const resolveFieldAt = useMemo(
+    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation }),
+    [floors, floorFields, tessellationKind, hexOrientation, triOrientation],
+  );
   const invalidKeys = useMemo(
-    () => computeInvalidKeys(presetConnections, tessellationConfig, customPts),
-    [presetConnections, tessellationConfig, customPts],
+    () => computeInvalidKeys(presetConnections, resolveFieldAt),
+    [presetConnections, resolveFieldAt],
   );
   const invalidTeleportIds = useMemo(
-    () => computeInvalidTeleportIds(presetTeleports, tessellationConfig, customPts),
-    [presetTeleports, tessellationConfig, customPts],
+    () => computeInvalidTeleportIds(presetTeleports, resolveFieldAt),
+    [presetTeleports, resolveFieldAt],
   );
   const invalidMarkers = useMemo(
-    () => computeInvalidMarkers(presetStart, presetFinish, tessellationConfig, customPts),
-    [presetStart, presetFinish, tessellationConfig, customPts],
+    () => computeInvalidMarkers(presetStart, presetFinish, resolveFieldAt),
+    [presetStart, presetFinish, resolveFieldAt],
   );
   const invalidSplitKeys = useMemo(
-    () => computeInvalidSplitPoints(presetSplitPoints, tessellationConfig, customPts),
-    [presetSplitPoints, tessellationConfig, customPts],
+    () => computeInvalidSplitPoints(presetSplitPoints, resolveFieldAt),
+    [presetSplitPoints, resolveFieldAt],
   );
   const invalidMarkerCount = (invalidMarkers.start ? 1 : 0) + (invalidMarkers.finish ? 1 : 0);
   const invalidCount = invalidKeys.size + invalidTeleportIds.size + invalidMarkerCount + invalidSplitKeys.size;
@@ -144,6 +165,37 @@ export function PresetConnectionsFeature() {
 
   return (
     <Stack gap="groupGap">
+      {(isolatedNodes.length > 0 || orphanSplitCount > 0) && (
+        <>
+          <SectionHeader
+            label={m["preset.problems"]()}
+            expanded={presetSectionsExpanded["problems"] ?? true}
+            onToggle={() => setPresetSectionExpanded("problems", !(presetSectionsExpanded["problems"] ?? true))}
+          />
+          {(presetSectionsExpanded["problems"] ?? true) && (
+            <Stack gap="itemGap">
+              {isolatedNodes.length > 0 && (
+                <WarningBubble
+                  message={isolatedNodes.length === 1
+                    ? m["preset.nodes_isolated"]({ count: isolatedNodes.length })
+                    : m["preset.nodes_isolated_plural"]({ count: isolatedNodes.length })}
+                  onMouseEnter={() => setHighlightIsolatedNodes(true)}
+                  onMouseLeave={() => setHighlightIsolatedNodes(false)}
+                />
+              )}
+              {orphanSplitCount > 0 && (
+                <WarningBubble
+                  message={orphanSplitCount === 1
+                    ? m["preset.split_orphan"]({ count: orphanSplitCount })
+                    : m["preset.split_orphan_plural"]({ count: orphanSplitCount })}
+                />
+              )}
+            </Stack>
+          )}
+          <div style={styles.divider} />
+        </>
+      )}
+
       <span style={styles.sectionLabel}>{m["preset.edges_tools"]()}</span>
       <Grid templateColumns="1fr 1fr" gap="itemGap">
         {getEdgeTools().map(([t, label]) => (
@@ -219,96 +271,69 @@ export function PresetConnectionsFeature() {
         ))}
       </Grid>
 
-      <div style={styles.autoLockRow}>
-        <div style={styles.autoLockLeft}>
-          <span style={styles.autoLockLabel}>{m["preset.auto_lock"]()}</span>
-          {autoLock && autoLockedNodes.size > 0 && (
-            <span style={styles.autoLockCount}>{autoLockedNodes.size}</span>
-          )}
-        </div>
-        <Switch checked={autoLock} onChange={setAutoLock} />
-      </div>
-      <div style={styles.originRow}>
-        <span style={styles.originLabel}>{m["preset.show_origin"]()}</span>
-        <Switch checked={showPresetOrigin} onChange={setShowPresetOrigin} />
-      </div>
-
-      {(lockedNodes.size > 0 || isolatedNodes.length > 0 || presetStart || presetFinish || presetGenSource || presetTeleports.length > 0 || presetTeleportPendingFrom || orphanSplitCount > 0) && (
+      {(presetGenSource || presetTeleportPendingFrom) && (
         <Stack gap="itemGap">
           {presetTeleportPendingFrom && (
             <StatusTag onClear={() => setPresetTeleportPendingFrom(null)}>
               {m["preset.teleport_pending"]()}: {presetTeleportPendingFrom[0]},{presetTeleportPendingFrom[1]}
             </StatusTag>
           )}
-          {presetTeleports.length > 0 && (
-            <StatusTag>
-              {presetTeleports.length === 1
-                ? m["preset.teleports_count"]({ count: presetTeleports.length })
-                : m["preset.teleports_count_plural"]({ count: presetTeleports.length })}
-            </StatusTag>
-          )}
-          {lockedNodes.size > 0 && (
-            <StatusTag onClear={clearLockedNodes} clearLabel={m["common.clear_all"]()}>
-              {lockedNodes.size === 1
-                ? m["preset.nodes_locked"]({ count: lockedNodes.size })
-                : m["preset.nodes_locked_plural"]({ count: lockedNodes.size })}
-            </StatusTag>
-          )}
-          {presetStart && (
-            <StatusTag onClear={() => setPresetStart(null)}>
-              {m["preset.start"]()}: {presetStart.point[0]},{presetStart.point[1]}
-            </StatusTag>
-          )}
-          {presetFinish && (
-            <StatusTag onClear={() => setPresetFinish(null)}>
-              {m["preset.finish"]()}: {presetFinish.point[0]},{presetFinish.point[1]}
-            </StatusTag>
-          )}
           {presetGenSource && (
             <StatusTag onClear={() => setPresetGenSource(null)}>
-              {m["preset.gen_source"]()}: {presetGenSource.point[0]},{presetGenSource.point[1]}
+              {m["preset.gen_source"]()}: {presetEndpointLevelLabel(presetGenSource, floors.length > 1)}{presetGenSource.point[0]},{presetGenSource.point[1]}
             </StatusTag>
-          )}
-          {isolatedNodes.length > 0 && (
-            <div
-              style={styles.warningBubble}
-              title={`Nodes locked both in and out will be fully isolated (unreachable): ${isolatedNodes.join(", ")}`}
-              onMouseEnter={() => setHighlightIsolatedNodes(true)}
-              onMouseLeave={() => setHighlightIsolatedNodes(false)}
-            >
-              ⚠ {isolatedNodes.length === 1
-                ? m["preset.nodes_isolated"]({ count: isolatedNodes.length })
-                : m["preset.nodes_isolated_plural"]({ count: isolatedNodes.length })}
-            </div>
-          )}
-          {orphanSplitCount > 0 && (
-            <div style={styles.warningBubble} title="Split node declared but not referenced by any preset, teleport, or marker">
-              ⚠ {orphanSplitCount === 1
-                ? m["preset.split_orphan"]({ count: orphanSplitCount })
-                : m["preset.split_orphan_plural"]({ count: orphanSplitCount })}
-            </div>
           )}
         </Stack>
       )}
 
-      {hasInvalid && (
+      <span style={styles.sectionLabel}>{m["preset.control"]()}</span>
+      <Stack gap="itemGap">
         <button
-          className="hoverable-danger"
-          style={{ ...buttonStyle("destructive"), width: "100%" }}
+          className={tool === "clear" ? "hoverable-danger" : "hoverable"}
+          style={buttonStyle(tool === "clear" ? "toggle-danger-active" : "toggle-danger")}
+          onClick={() => setTool("clear")}
+        >
+          {m["preset.clear_tool"]()}
+        </button>
+        <button
+          className={lockedNodes.size === 0 ? undefined : "hoverable-danger"}
+          style={{ ...buttonStyle("destructive"), width: "100%", ...(lockedNodes.size === 0 ? styles.controlBtnDisabled : {}) }}
+          disabled={lockedNodes.size === 0}
+          onClick={clearLockedNodes}
+        >
+          {m["preset.reset_locks"]()}
+        </button>
+        <button
+          className={hasInvalid ? "hoverable-danger" : undefined}
+          style={{ ...buttonStyle("destructive"), width: "100%", ...(hasInvalid ? {} : styles.controlBtnDisabled) }}
+          disabled={!hasInvalid}
           onClick={() => clearInvalidPresetConnections()}
           onMouseEnter={() => setHighlightInvalidPresets(true)}
           onMouseLeave={() => setHighlightInvalidPresets(false)}
         >
           {m["preset.clear_invalid"]({ count: invalidCount })}
         </button>
-      )}
-      <button
-        className="hoverable-danger"
-        style={{ ...buttonStyle("destructive"), width: "100%" }}
-        onClick={() => setConfirmReset(true)}
-      >
-        {m["common.reset_all"]()}
-      </button>
+        <button
+          className="hoverable-danger"
+          style={{ ...buttonStyle("destructive"), width: "100%" }}
+          onClick={() => setConfirmReset(true)}
+        >
+          {m["common.reset_all"]()}
+        </button>
+        <div style={styles.autoLockRow}>
+          <div style={styles.autoLockLeft}>
+            <span style={styles.autoLockLabel}>{m["preset.auto_lock"]()}</span>
+            {autoLock && autoLockedNodes.size > 0 && (
+              <span style={styles.autoLockCount}>{autoLockedNodes.size}</span>
+            )}
+          </div>
+          <Switch checked={autoLock} onChange={setAutoLock} />
+        </div>
+        <div style={styles.originRow}>
+          <span style={styles.originLabel}>{m["preset.show_origin"]()}</span>
+          <Switch checked={showPresetOrigin} onChange={setShowPresetOrigin} />
+        </div>
+      </Stack>
       {confirmReset && (
         <ConfirmModal
           message={m["common.reset_all"]() + "?"}
@@ -332,14 +357,6 @@ const styles: Record<string, React.CSSProperties> = {
   sectionLabel: {
     ...typography.body,
     marginTop: spacing.groupGap,
-  },
-  warningBubble: {
-    ...typography.body,
-    color: ui.text.warning,
-    cursor: "default",
-    background: ui.bg.input,
-    borderRadius: 4,
-    padding: "4px 6px",
   },
   autoLockRow: {
     display: "flex",
@@ -367,7 +384,16 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     ...typography.caption,
   },
+  controlBtnDisabled: {
+    opacity: 0.25,
+    cursor: "default",
+  },
   originLabel: {
     ...muted(typography.body),
+  },
+  divider: {
+    borderTop: `1px solid`,
+    borderColor: ui.border.default,
+    margin: `${spacing.itemGap}px 0`,
   },
 };

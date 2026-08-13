@@ -435,13 +435,22 @@ function validateCoordPair(v: unknown, path: string): [number, number] {
 // GitHub issue #231 — a preset endpoint is a point plus an optional slot. `slotId` is optional in
 // the loaded JSON (omitted entirely for a plain, non-split endpoint) rather than `null`, matching
 // how `presetEndpoint()` constructs entries client-side (`{ point }`, no `slotId` key at all).
+// GitHub issue #340 — `level` is likewise optional (absent means floor 0), matching
+// `presetEndpoint()`'s own optional-key convention.
 function validatePresetEndpoint(v: unknown, path: string): PresetEndpoint {
   const obj = assertObject(v, path);
   const point = validateCoordPair(obj.point, `${path}.point`);
-  if (obj.slotId === undefined) return { point };
-  const slotId = assertNumber(obj.slotId, `${path}.slotId`);
-  if (!Number.isInteger(slotId) || slotId < 0) throw new Error(`Expected non-negative integer slotId at ${path}.slotId, got ${slotId}`);
-  return { point, slotId };
+  let slotId: number | undefined;
+  if (obj.slotId !== undefined) {
+    slotId = assertNumber(obj.slotId, `${path}.slotId`);
+    if (!Number.isInteger(slotId) || slotId < 0) throw new Error(`Expected non-negative integer slotId at ${path}.slotId, got ${slotId}`);
+  }
+  let level: number | undefined;
+  if (obj.level !== undefined) {
+    level = assertNumber(obj.level, `${path}.level`);
+    if (!Number.isInteger(level) || level < 0) throw new Error(`Expected non-negative integer level at ${path}.level, got ${level}`);
+  }
+  return { point, ...(slotId !== undefined ? { slotId } : {}), ...(level !== undefined ? { level } : {}) };
 }
 
 function validatePresetConnectionEntry(v: unknown, path: string): PresetConnectionEntry {

@@ -1,14 +1,24 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { NodeLockKind } from "../wasm/types";
 import type { Container } from "pixi.js";
-import { pickEdgeAtPosition, pickTeleportEndpointAt, type PresetTeleportEndpointHit } from "./fieldEditUtils";
+import { pickEdgeAtPosition, pickTeleportEndpointAt, isInEdgeVertexDeadZone, type PresetTeleportEndpointHit } from "./fieldEditUtils";
 import { makeProjection, encodePoint } from "./tessellationProjection";
 import type { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { BaseController } from "./BaseController";
+import { activeFloorLevel } from "../store/storeHelpers";
+import type { PresetTeleportEntry } from "./fieldEditUtils";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
 const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "teleport_two_way"]);
+
+/** Teleports whose `from` sits on `level` — hit-testing/editing only ever targets the active
+ * floor's own teleport endpoints (GitHub issue #340); a teleport landing on another floor is
+ * edited from that floor instead. `from` (not `to`) decides ownership, mirroring
+ * `GenerationRenderer`'s own cross-floor teleport handling (`Specs/floors.md`). */
+function teleportsOnLevel(teleports: PresetTeleportEntry[], level: number | undefined): PresetTeleportEntry[] {
+  return teleports.filter((t) => (t.from.level ?? 0) === (level ?? 0));
+}
 
 export class PresetConnectionsController extends BaseController {
   private renderer: PresetConnectionsRenderer;
@@ -91,6 +101,42 @@ export class PresetConnectionsController extends BaseController {
       this.renderer.updateHover(null);
       return;
     }
+
+    if (state.presetConnectionsTool === "clear") {
+      // Same dual targeting as post-edit's own "reset" tool: near an edge → highlight that edge
+      // (grain-level clear), otherwise → highlight the whole cell under the cursor (point-level
+      // clear). Split cells are excluded from the edge branch — a split point's own faces are
+      // rendered by SplitJunctionRenderer, not the plain wall layer, so there is no single "this
+      // edge" to point-hover there; the point branch (delete everything at the point) covers it.
+      const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+      const edge = pickEdgeAtPosition(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+      const level = activeFloorLevel(state);
+      const isSplit = (p: [number, number]) => {
+        const key = level === undefined ? `${p[0]},${p[1]}` : `${p[0]},${p[1]}@${level}`;
+        return (state.presetSplitPoints[key]?.length ?? 0) > 0;
+      };
+      if (edge && !isSplit(edge.from) && !isSplit(edge.to)) {
+        this.renderer.updateCellHover(null);
+        this.renderer.updateHover(edge, true);
+        this.continueEdgeDrag(edge, (e) => {
+          useMazeStore.getState().applyPresetConnectionsReset(e.key);
+        });
+        return;
+      }
+      // Near a shared vertex (edge dead zone, #188) — withhold the cell fallback too, or the
+      // vertex dead zone silently becomes "picks the cell instead" (GitHub issue #340 follow-up).
+      if (isInEdgeVertexDeadZone(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) {
+        this.renderer.updateHover(null);
+        this.renderer.updateCellHover(null);
+        return;
+      }
+      const proj = makeProjection(cfg);
+      const cell = proj.screenToGrid(vpX, vpY);
+      const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
+      this.renderer.updateHover(null);
+      this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null, true);
+      return;
+    }
     this.renderer.updateCellHover(null);
 
     const edge = pickEdgeAtPosition(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
@@ -115,14 +161,17 @@ export class PresetConnectionsController extends BaseController {
       const cell = proj.screenToGrid(vpX, vpY);
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
+      const level = activeFloorLevel(store);
 
       // All four vertex elements (start, finish, every teleport endpoint) share one editing
-      // mode: whichever vertex tool is active, drag/RMB-delete applies to any of them.
+      // mode: whichever vertex tool is active, drag/RMB-delete applies to any of them — but only
+      // among elements on the active floor (GitHub issue #340); a marker on another floor is
+      // edited from that floor instead.
       const onStart =
-        store.presetStart !== null && store.presetStart.point[0] === coords[0] && store.presetStart.point[1] === coords[1];
+        store.presetStart !== null && (store.presetStart.level ?? 0) === (level ?? 0) && store.presetStart.point[0] === coords[0] && store.presetStart.point[1] === coords[1];
       const onFinish =
-        store.presetFinish !== null && store.presetFinish.point[0] === coords[0] && store.presetFinish.point[1] === coords[1];
-      const teleportHit = pickTeleportEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, store.presetTeleports);
+        store.presetFinish !== null && (store.presetFinish.level ?? 0) === (level ?? 0) && store.presetFinish.point[0] === coords[0] && store.presetFinish.point[1] === coords[1];
+      const teleportHit = pickTeleportEndpointAt(vpX, vpY, state.floorFields[state.activeFloorId].tessellationConfig, teleportsOnLevel(store.presetTeleports, level));
 
       if (button === 2) {
         if (onStart) store.setPresetStart(null);
@@ -162,8 +211,9 @@ export class PresetConnectionsController extends BaseController {
       const cell = proj.screenToGrid(vpX, vpY);
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
+      const level = activeFloorLevel(store);
       const cur = store.presetGenSource;
-      if (cur && cur.point[0] === coords[0] && cur.point[1] === coords[1]) {
+      if (cur && (cur.level ?? 0) === (level ?? 0) && cur.point[0] === coords[0] && cur.point[1] === coords[1]) {
         store.setPresetGenSource(null);
       } else {
         store.setPresetGenSource(coords);
@@ -180,12 +230,38 @@ export class PresetConnectionsController extends BaseController {
       return;
     }
 
+    if (tool === "clear") {
+      if (button !== 0) return;
+      const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
+      const edge = pickEdgeAtPosition(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
+      const level = activeFloorLevel(state);
+      const isSplit = (p: [number, number]) => {
+        const k = level === undefined ? `${p[0]},${p[1]}` : `${p[0]},${p[1]}@${level}`;
+        return (state.presetSplitPoints[k]?.length ?? 0) > 0;
+      };
+      if (edge && !isSplit(edge.from) && !isSplit(edge.to)) {
+        useMazeStore.getState().applyPresetConnectionsReset(edge.key);
+        this.beginEdgeDrag(edge.key);
+        this.renderer.updateHover(edge, true);
+        return;
+      }
+      if (isInEdgeVertexDeadZone(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) return;
+      const proj = makeProjection(cfg);
+      const cell = proj.screenToGrid(vpX, vpY);
+      const key = encodePoint(cell.x, cell.y);
+      if (this.renderer.getCachedCellSet().has(key)) {
+        useMazeStore.getState().resetPresetPoint([cell.x, cell.y]);
+      }
+      return;
+    }
+
     if (tool === "lock_in" || tool === "lock_out" || tool === "full_lock") {
       const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const x = cell.x, y = cell.y;
-      const key = `${x},${y}`;
       const store = useMazeStore.getState();
+      const level = activeFloorLevel(store);
+      const key = level === undefined ? `${x},${y}` : `${x},${y}@${level}`;
       if (button === 2) {
         store.removeLockedNode(x, y);
       } else if (button === 0) {

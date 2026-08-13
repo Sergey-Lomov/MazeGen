@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
 import { baseFloorFieldConfig } from "./storeTestHelpers";
+import { presetEndpoint } from "../pixi/presetEndpoint";
+import { presetEdgeKey } from "../pixi/fieldEditUtils";
 
 beforeEach(() => {
   useMazeStore.setState({
@@ -94,6 +96,38 @@ describe("floorsSlice", () => {
       useMazeStore.getState().removeFloor("not_a_real_id");
       expect(useMazeStore.getState().floors).toEqual(before);
     });
+
+    it("drops presets on the removed floor and shifts presets on floors above it down by one", () => {
+      useMazeStore.getState().addFloor(); // Floor 2
+      useMazeStore.getState().addFloor(); // Floor 3
+      const [, f2, f3] = useMazeStore.getState().floors;
+      const epF2 = presetEndpoint([0, 0], undefined, 1); // on the floor about to be removed
+      const epF3 = presetEndpoint([1, 1], undefined, 2); // on the floor above it
+      useMazeStore.setState({
+        presetStart: epF2,
+        presetFinish: epF3,
+        lockedNodes: new Map([["0,0@1", "both"], ["1,1@2", "in"]]),
+        presetSplitPoints: { "1,1@2": [0] },
+      });
+
+      useMazeStore.getState().removeFloor(f2.id);
+
+      expect(useMazeStore.getState().presetStart).toBeNull(); // orphaned along with its floor
+      expect(useMazeStore.getState().presetFinish).toEqual(presetEndpoint([1, 1], undefined, 1)); // level 2 -> 1
+      expect(useMazeStore.getState().lockedNodes.has("0,0@1")).toBe(false);
+      expect(useMazeStore.getState().lockedNodes.has("1,1@1")).toBe(true);
+      expect(useMazeStore.getState().presetSplitPoints).toEqual({ "1,1@1": [0] });
+      expect(f3).toBeDefined();
+    });
+
+    it("leaves floor-0 presets untouched when a higher floor is removed", () => {
+      useMazeStore.getState().addFloor();
+      const [, f2] = useMazeStore.getState().floors;
+      const epFloor0 = presetEndpoint([3, 3]);
+      useMazeStore.setState({ presetStart: epFloor0 });
+      useMazeStore.getState().removeFloor(f2.id);
+      expect(useMazeStore.getState().presetStart).toEqual(epFloor0);
+    });
   });
 
   describe("renameFloor", () => {
@@ -158,6 +192,60 @@ describe("floorsSlice", () => {
       const before = useMazeStore.getState().floors;
       useMazeStore.getState().moveFloor("not_a_real_id", "down");
       expect(useMazeStore.getState().floors).toEqual(before);
+    });
+
+    it("remaps preset levels to keep pointing at the same floor after a swap", () => {
+      // floor 0 = f1, floor 1 = f2, floor 2 = f3 — a preset on f2 (level 1) and one on f3 (level 2).
+      const [f1, f2, f3] = useMazeStore.getState().floors;
+      const epF2 = presetEndpoint([0, 0], undefined, 1);
+      const epF3 = presetEndpoint([1, 1], undefined, 2);
+      useMazeStore.setState({
+        presetStart: epF2,
+        presetFinish: epF3,
+        lockedNodes: new Map([["0,0@1", "both"]]),
+        presetSplitPoints: { "1,1@2": [0] },
+      });
+
+      useMazeStore.getState().moveFloor(f2.id, "down"); // f2 <-> f3: f2 now at index 2, f3 now at index 1
+
+      const floors = useMazeStore.getState().floors;
+      expect(floors[1].id).toBe(f3.id);
+      expect(floors[2].id).toBe(f2.id);
+      // presetStart was on f2, which is now at level 2.
+      expect(useMazeStore.getState().presetStart).toEqual(presetEndpoint([0, 0], undefined, 2));
+      // presetFinish was on f3, which is now at level 1.
+      expect(useMazeStore.getState().presetFinish).toEqual(presetEndpoint([1, 1], undefined, 1));
+      expect(useMazeStore.getState().lockedNodes.has("0,0@2")).toBe(true);
+      expect(useMazeStore.getState().presetSplitPoints).toEqual({ "1,1@1": [0] });
+      expect(f1).toBeDefined(); // f1 (level 0) untouched by the swap, sanity check on fixture setup
+    });
+
+    it("leaves floor-0 presets untouched when swapping two floors above it", () => {
+      const [, f2, f3] = useMazeStore.getState().floors;
+      const epFloor0 = presetEndpoint([2, 2]);
+      useMazeStore.setState({ presetStart: epFloor0 });
+      useMazeStore.getState().moveFloor(f2.id, "down");
+      expect(useMazeStore.getState().presetStart).toEqual(epFloor0);
+      expect(f3).toBeDefined();
+    });
+
+    it("remaps preset connection entries and rebuilds their map key", () => {
+      const [, f2, f3] = useMazeStore.getState().floors;
+      const from = presetEndpoint([0, 0], undefined, 1);
+      const to = presetEndpoint([1, 0], undefined, 1);
+      const oldKey = presetEdgeKey(from, to);
+      useMazeStore.setState({
+        presetConnections: new Map([[oldKey, { from, to, state: "passage", source: "user" }]]),
+      });
+
+      useMazeStore.getState().moveFloor(f2.id, "down");
+
+      const newFrom = presetEndpoint([0, 0], undefined, 2);
+      const newTo = presetEndpoint([1, 0], undefined, 2);
+      const newKey = presetEdgeKey(newFrom, newTo);
+      expect(useMazeStore.getState().presetConnections.has(oldKey)).toBe(false);
+      expect(useMazeStore.getState().presetConnections.get(newKey)).toMatchObject({ state: "passage" });
+      expect(f3).toBeDefined();
     });
   });
 

@@ -44,7 +44,7 @@ function drawLockIcon(g: Graphics, cx: number, cy: number, type: "in" | "out" | 
   if (type !== "both") {
     const s = bw * 0.28;
     const h = s * Math.sqrt(3) / 2;
-    const offset = bw * 0.22;
+    const offset = bw * 0.11;
 
     if (type === "out") {
       g.poly([cx - offset, bodyCy - s / 2, cx - offset, bodyCy + s / 2, cx - offset - h, bodyCy]).fill(canvas.floor.default);

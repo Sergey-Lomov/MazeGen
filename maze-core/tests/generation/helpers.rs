@@ -88,7 +88,7 @@ pub fn no_one_way_elements() -> ElementsConfig { ElementsConfig { one_way_chance
 /// `original`) and `right` is `(2,0)` (still free for either split node).
 pub fn build_with_split_point_preset_claim() -> (Graph, MultiLevelField<SquareTessellation>, PresetState, NodeId, NodeId, NodeId, NodeId) {
     let (mut graph, mut field, _start, mut ids) = build_with_ids(3, 1);
-    let split_points = vec![((1, 0), 0)];
+    let split_points = vec![((1, 0), 0, 0)];
     let presets = vec![PresetConnection {
         from: PresetEndpoint::original((1, 0)), to: PresetEndpoint::original((0, 0)), state: PresetConnectionState::Passage,
     }];
@@ -119,11 +119,11 @@ pub fn build_with_split_point_preset_claim() -> (Graph, MultiLevelField<SquareTe
 /// false-positive specifically. Returns `(graph, field, preset_state, original, slot, left, right)`.
 pub fn build_with_split_point_preset_connected_false_positive() -> (Graph, MultiLevelField<SquareTessellation>, PresetState, NodeId, NodeId, NodeId, NodeId) {
     let (mut graph, mut field, _start, mut ids) = build_with_ids(3, 2);
-    let split_points = vec![((1, 0), 0)];
+    let split_points = vec![((1, 0), 0, 0)];
     let presets = vec![
         PresetConnection { from: PresetEndpoint::original((1, 0)), to: PresetEndpoint::original((1, 1)), state: PresetConnectionState::Passage },
-        PresetConnection { from: PresetEndpoint { point: (1, 0), slot: Some(0) }, to: PresetEndpoint::original((2, 0)), state: PresetConnectionState::Passage },
-        PresetConnection { from: PresetEndpoint { point: (1, 0), slot: Some(0) }, to: PresetEndpoint::original((0, 0)), state: PresetConnectionState::Wall },
+        PresetConnection { from: PresetEndpoint { point: (1, 0), slot: Some(0), level: None }, to: PresetEndpoint::original((2, 0)), state: PresetConnectionState::Passage },
+        PresetConnection { from: PresetEndpoint { point: (1, 0), slot: Some(0), level: None }, to: PresetEndpoint::original((0, 0)), state: PresetConnectionState::Wall },
         // `left` (`(0,0)`) needs its own, unrelated Passage so it's `preset_connected` too — the
         // flat-set false positive only fires when *both* sides of the checked pair are somewhere
         // in `preset_connected`, regardless of whether they're connected to *each other*.

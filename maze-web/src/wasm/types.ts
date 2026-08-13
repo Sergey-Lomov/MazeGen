@@ -501,10 +501,14 @@ export type PresetConnectionState = "wall" | "passage" | "one_way_forward" | "on
 
 /** Wire shape for a preset endpoint (GitHub issue #231) — a point plus an optional slot
  * addressing one of that point's declared extra ("split") nodes. `slot: undefined` means the
- * point's original node. Mirrors Rust's `PresetEndpointDto`/`PresetEndpoint`. */
+ * point's original node. `level` (GitHub issue #340) is the endpoint's 0-based `level_fields`
+ * index; `undefined` means level 0 — only meaningful on `GenerateConfig` (level 0 is the only
+ * level `ComputeAnalyticsConfig`'s post-edit path ever resolves against, see `Specs/floors.md`).
+ * Mirrors Rust's `PresetEndpointDto`/`PresetEndpoint`. */
 export interface PresetEndpointDto {
   point: [number, number];
   slot?: number;
+  level?: number;
 }
 
 export interface PresetConnection {
@@ -539,8 +543,9 @@ export interface GenerateConfig {
   preset_finish?: PresetEndpointDto;
   preset_gen_source?: PresetEndpointDto;
   /** Extra nodes to create at declared points before any preset above is resolved (GitHub issue
-   * #231) — `[[x, y], slotId]` pairs. Mirrors Rust's `GenerateConfig.split_points`. */
-  split_points?: [[number, number], number][];
+   * #231) — `[[x, y], slotId, level]` triples; `level` added by GitHub issue #340 (0-based
+   * `level_fields` index). Mirrors Rust's `GenerateConfig.split_points`. */
+  split_points?: [[number, number], number, number][];
   /** CustomVertexBased-only automatic split-point assignment settings (GitHub issue #222). */
   split_generation?: SplitGenerationConfig;
   debug_events?: boolean;

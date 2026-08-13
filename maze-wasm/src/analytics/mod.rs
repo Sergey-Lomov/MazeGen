@@ -241,8 +241,8 @@ mod tests {
             build_graph_from_post_edit_edges(&mut maze.graph, &edges, &split_map).unwrap();
 
             let preset_connections = vec![PresetConnectionDto {
-                from: PresetEndpointDto { point: [0, 0], slot: Some(0) },
-                to: PresetEndpointDto { point: [1, 0], slot: None },
+                from: PresetEndpointDto { point: [0, 0], slot: Some(0), level: None },
+                to: PresetEndpointDto { point: [1, 0], slot: None, level: None },
                 state: PresetConnectionStateDto::Passage,
             }];
 

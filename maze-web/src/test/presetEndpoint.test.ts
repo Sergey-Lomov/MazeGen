@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   presetEndpoint, presetEndpointsEqual, presetEndpointIsSplit, presetEndpointKey, presetEndpointToDto,
+  presetEndpointLevelLabel,
 } from "../pixi/presetEndpoint";
 
 describe("presetEndpoint", () => {
@@ -62,5 +63,20 @@ describe("presetEndpointToDto", () => {
 
   it("split node — slot field present, renamed from slotId", () => {
     expect(presetEndpointToDto(presetEndpoint([1, 2], 3))).toEqual({ point: [1, 2], slot: 3 });
+  });
+});
+
+describe("presetEndpointLevelLabel", () => {
+  it("single-floor maze — empty, regardless of level", () => {
+    expect(presetEndpointLevelLabel(presetEndpoint([1, 2]), false)).toBe("");
+    expect(presetEndpointLevelLabel(presetEndpoint([1, 2], undefined, 2), false)).toBe("");
+  });
+
+  it("multi-floor maze, floor 0 (level undefined) — L1 prefix", () => {
+    expect(presetEndpointLevelLabel(presetEndpoint([1, 2]), true)).toBe("L1: ");
+  });
+
+  it("multi-floor maze, non-zero level — 1-based L{n} prefix", () => {
+    expect(presetEndpointLevelLabel(presetEndpoint([1, 2], undefined, 2), true)).toBe("L3: ");
   });
 });

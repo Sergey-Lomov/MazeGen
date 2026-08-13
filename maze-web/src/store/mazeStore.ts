@@ -72,7 +72,11 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     const autoLockedNodes = recomputeAutoLock({
       autoLock: file.presets.autoLock,
       activeFloorId,
+      floors: file.floors.floors,
       floorFields,
+      tessellationKind: kind,
+      hexOrientation,
+      triOrientation,
       presetConnections: restoredPresetConnections,
       presetSplitPoints: file.presets.splitPoints,
     } as MazeState);

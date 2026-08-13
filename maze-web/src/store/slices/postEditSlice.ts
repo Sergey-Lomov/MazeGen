@@ -194,13 +194,19 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       rule_groups: ruleGroups,
       // GitHub issue #245: lets the Rust side flag cycle/group issue elements composed entirely
       // of preset Passage/OneWay edges as `preset_locked`, even on this post-edit rebuild path.
-      preset_connections: buildValidPresetConnections(state),
+      // `floorZeroOnly: true` — post-edit only ever resolves against floor 0 regardless of floor
+      // count (`Specs/floors.md`'s "Non-goals"), so a preset on another floor must not leak in
+      // here (GitHub issue #340).
+      preset_connections: buildValidPresetConnections(state, true),
       // GitHub issue #245's split-node/route extension: same idea as `preset_connections`, but for
       // which split nodes the preset snapshot declares — lets the Rust side flag node/route-based
       // split issue elements as `preset_locked` too. No invalid-key filtering here (unlike
       // `generateConfigBuilder.ts`'s `split_points`) — the Rust side already silently skips a
-      // point/slot it can't resolve, same contract as `preset_connections`.
+      // point/slot it can't resolve, same contract as `preset_connections`. Filtered to floor 0's
+      // own declared split points (GitHub issue #340 key suffix `"@level"`) — same floor-0-only
+      // rationale as `preset_connections` above.
       preset_split_points: Object.entries(state.presetSplitPoints)
+        .filter(([key]) => !key.includes("@"))
         .flatMap(([key, slots]) => {
           const [x, y] = key.split(",").map(Number) as [number, number];
           return slots.map((slotId): [[number, number], number] => [[x, y], slotId]);

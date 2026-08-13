@@ -1,8 +1,10 @@
 import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, GraphAnalyticsDto, SplitAnalyticsDto, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, IssueDto, RuleParamDescriptor } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
-import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
-import { computeAutoLockedNodes } from "../pixi/fieldEditUtils";
+import type { PresetConnectionEntry, PresetTeleportEntry, LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
+import { computeAutoLockedNodes, presetEdgeKey } from "../pixi/fieldEditUtils";
+import type { PresetEndpoint } from "../pixi/presetEndpoint";
+import { remapPresetEndpointLevel, remapLevelKey } from "../pixi/presetEndpoint";
 import type {
   MazeState, TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation, DebugArenaHandle, FloorFieldConfig,
 } from "./storeTypes";
@@ -21,6 +23,142 @@ export function withActiveFloorField(state: MazeState, patch: Partial<FloorField
       ...state.floorFields,
       [state.activeFloorId]: { ...activeFloorField(state), ...patch },
     },
+  };
+}
+
+/** The active floor's 0-based `levels_ordered()`/`level_fields` index (GitHub issue #340) — the
+ * value stamped onto a `PresetEndpoint.level` for anything the user places while this floor is
+ * active (edge presets, teleport endpoints, locks, split points, and the start/finish/gen-source
+ * markers). `undefined` for floor 0 so the wire stays byte-identical to pre-#340 single-floor
+ * projects (`PresetEndpoint.level === undefined` already means floor 0 everywhere). */
+export function activeFloorLevel(state: { floors: MazeState["floors"]; activeFloorId: MazeState["activeFloorId"] }): number | undefined {
+  const index = state.floors.findIndex((f) => f.id === state.activeFloorId);
+  return index <= 0 ? undefined : index;
+}
+
+/** Rewrites every `PresetEndpoint.level`-bearing piece of preset state to keep pointing at the
+ * same floor after `moveFloor` swaps two floors' array positions (GitHub issue #340) — `level` is
+ * a positional index into `floors`, so without this remap a preset would silently jump to
+ * whichever floor now occupies its old array slot. `swap` is the pair of 0-based indices that
+ * traded places. */
+export function remapPresetLevelsOnFloorSwap(state: MazeState, swap: [number, number]): {
+  presetConnections: Map<string, PresetConnectionEntry>;
+  presetStart: PresetEndpoint | null;
+  presetFinish: PresetEndpoint | null;
+  presetGenSource: PresetEndpoint | null;
+  lockedNodes: Map<string, import("../wasm/types").NodeLockKind>;
+  presetTeleports: PresetTeleportEntry[];
+  presetSplitPoints: Record<string, number[]>;
+  presetActiveSplitNode: Record<string, PresetEndpoint>;
+} {
+  const remapEp = (ep: PresetEndpoint) => remapPresetEndpointLevel(ep, swap);
+  const remapEpOrNull = (ep: PresetEndpoint | null) => (ep === null ? null : remapEp(ep));
+
+  const presetConnections = new Map<string, PresetConnectionEntry>();
+  for (const entry of state.presetConnections.values()) {
+    const from = remapEp(entry.from);
+    const to = remapEp(entry.to);
+    presetConnections.set(presetEdgeKey(from, to), { ...entry, from, to });
+  }
+
+  const lockedNodes = new Map<string, import("../wasm/types").NodeLockKind>();
+  for (const [key, kind] of state.lockedNodes) lockedNodes.set(remapLevelKey(key, swap), kind);
+
+  const presetTeleports = state.presetTeleports.map((t) => ({ ...t, from: remapEp(t.from), to: remapEp(t.to) }));
+
+  const presetSplitPoints: Record<string, number[]> = {};
+  for (const [key, slots] of Object.entries(state.presetSplitPoints)) presetSplitPoints[remapLevelKey(key, swap)] = slots;
+
+  const presetActiveSplitNode: Record<string, PresetEndpoint> = {};
+  for (const [key, ep] of Object.entries(state.presetActiveSplitNode)) presetActiveSplitNode[remapLevelKey(key, swap)] = remapEp(ep);
+
+  return {
+    presetConnections,
+    presetStart: remapEpOrNull(state.presetStart),
+    presetFinish: remapEpOrNull(state.presetFinish),
+    presetGenSource: remapEpOrNull(state.presetGenSource),
+    lockedNodes,
+    presetTeleports,
+    presetSplitPoints,
+    presetActiveSplitNode,
+  };
+}
+
+/** Level-index equivalent of `remapPresetLevelsOnFloorSwap`, for `removeFloor` (GitHub issue
+ * #340): every preset entry naming the removed floor (`removedLevel`, `undefined` = floor 0) is
+ * dropped entirely — its floor no longer exists — and every entry above it has its `level` shifted
+ * down by one to track the same floor's new array position, mirroring how `removeFloor` already
+ * deletes the removed id's own `floorFields` entry. */
+export function dropPresetLevelOnFloorRemove(state: MazeState, removedLevel: number): {
+  presetConnections: Map<string, PresetConnectionEntry>;
+  presetStart: PresetEndpoint | null;
+  presetFinish: PresetEndpoint | null;
+  presetGenSource: PresetEndpoint | null;
+  lockedNodes: Map<string, import("../wasm/types").NodeLockKind>;
+  presetTeleports: PresetTeleportEntry[];
+  presetSplitPoints: Record<string, number[]>;
+  presetActiveSplitNode: Record<string, PresetEndpoint>;
+} {
+  const shift = (level: number | undefined): number | undefined => {
+    const current = level ?? 0;
+    const next = current > removedLevel ? current - 1 : current;
+    return next === 0 ? undefined : next;
+  };
+  const touchesRemoved = (level: number | undefined) => (level ?? 0) === removedLevel;
+  const shiftEp = (ep: PresetEndpoint): PresetEndpoint => {
+    const level = shift(ep.level);
+    return level === ep.level ? ep : { ...ep, level };
+  };
+  const shiftEpOrNull = (ep: PresetEndpoint | null): PresetEndpoint | null =>
+    ep === null || touchesRemoved(ep.level) ? null : shiftEp(ep);
+
+  const presetConnections = new Map<string, PresetConnectionEntry>();
+  for (const entry of state.presetConnections.values()) {
+    if (touchesRemoved(entry.from.level) || touchesRemoved(entry.to.level)) continue;
+    const from = shiftEp(entry.from);
+    const to = shiftEp(entry.to);
+    presetConnections.set(presetEdgeKey(from, to), { ...entry, from, to });
+  }
+
+  const shiftKey = (key: string): string | null => {
+    const [pointPart, levelPart] = key.split("@");
+    const level = levelPart === undefined ? undefined : Number(levelPart);
+    if (touchesRemoved(level)) return null;
+    const next = shift(level);
+    return next === undefined ? pointPart : `${pointPart}@${next}`;
+  };
+
+  const lockedNodes = new Map<string, import("../wasm/types").NodeLockKind>();
+  for (const [key, kind] of state.lockedNodes) {
+    const nextKey = shiftKey(key);
+    if (nextKey !== null) lockedNodes.set(nextKey, kind);
+  }
+
+  const presetTeleports = state.presetTeleports
+    .filter((t) => !touchesRemoved(t.from.level) && !touchesRemoved(t.to.level))
+    .map((t) => ({ ...t, from: shiftEp(t.from), to: shiftEp(t.to) }));
+
+  const presetSplitPoints: Record<string, number[]> = {};
+  for (const [key, slots] of Object.entries(state.presetSplitPoints)) {
+    const nextKey = shiftKey(key);
+    if (nextKey !== null) presetSplitPoints[nextKey] = slots;
+  }
+
+  const presetActiveSplitNode: Record<string, PresetEndpoint> = {};
+  for (const [key, ep] of Object.entries(state.presetActiveSplitNode)) {
+    const nextKey = shiftKey(key);
+    if (nextKey !== null) presetActiveSplitNode[nextKey] = shiftEp(ep);
+  }
+
+  return {
+    presetConnections,
+    presetStart: shiftEpOrNull(state.presetStart),
+    presetFinish: shiftEpOrNull(state.presetFinish),
+    presetGenSource: shiftEpOrNull(state.presetGenSource),
+    lockedNodes,
+    presetTeleports,
+    presetSplitPoints,
+    presetActiveSplitNode,
   };
 }
 
@@ -180,7 +318,7 @@ export function withFieldPointsEdit(
 }
 
 /** Derive any floor's active TessellationConfig, accounting for free-field editing. */
-export function floorTessellationOf(state: { tessellationKind: TessellationKind; hexOrientation: HexOrientation; triOrientation: TriOrientation } & MazeState, floorId: string): TessellationConfig {
+export function floorTessellationOf(state: { tessellationKind: TessellationKind; hexOrientation: HexOrientation; triOrientation: TriOrientation; floorFields: MazeState["floorFields"] }, floorId: string): TessellationConfig {
   const field = state.floorFields[floorId];
   return field.isEditingField
     ? buildFreeConfig(state.tessellationKind, field.fieldPoints, state.hexOrientation, state.triOrientation)
@@ -192,12 +330,48 @@ export function activeFloorTessellationOf(state: { tessellationKind: Tessellatio
   return floorTessellationOf(state, state.activeFloorId);
 }
 
-export function recomputeAutoLock(state: MazeState): Set<string> {
+/** Minimal shape `levelFieldsOf`/`resolveFieldAtOf` need — a structural subset of `MazeState` so
+ * callers (e.g. React components subscribing to individual store slices via `useMazeStore`) can
+ * build this from a handful of selected fields without pulling in the whole state shape. */
+type FloorFieldsSource = { floors: MazeState["floors"]; floorFields: MazeState["floorFields"] }
+  & { tessellationKind: TessellationKind; hexOrientation: HexOrientation; triOrientation: TriOrientation };
+
+/** One `LevelField` per floor, in `floors` array order (index = `PresetEndpoint.level`, `undefined`
+ * for index 0) — feeds `computeAutoLockedNodes`'s multi-floor walk (GitHub issue #340). */
+export function levelFieldsOf(state: FloorFieldsSource): LevelField[] {
+  return state.floors.map((floor, index) => {
+    const field = state.floorFields[floor.id];
+    return {
+      level: index === 0 ? undefined : index,
+      cfg: floorTessellationOf(state, floor.id),
+      customPoints: field.isEditingField ? field.fieldPoints : undefined,
+    };
+  });
+}
+
+/** `ResolveFieldAt` backed by `state.floors`/`state.floorFields` (GitHub issue #340) — feeds
+ * `computeInvalidKeys`/`computeInvalidTeleportIds`/`computeInvalidMarkers`/
+ * `computeInvalidSplitPoints`, each of which needs to resolve an arbitrary entry's own `level`
+ * against that floor's own field, not just the active floor's. */
+export function resolveFieldAtOf(state: FloorFieldsSource): ResolveFieldAt {
+  const fields = levelFieldsOf(state);
+  return (level) => {
+    const index = level ?? 0;
+    const field = fields[index];
+    return field ? { cfg: field.cfg, customPoints: field.customPoints } : undefined;
+  };
+}
+
+/** `presetConnections`/`presetSplitPoints`, allowing an in-flight patch to override either before
+ * recomputation — mirrors the override pattern `withRecomputedAutoLock` needs when called with a
+ * not-yet-committed `presetConnections` change. Walks every floor (GitHub issue #340) — an entry
+ * on floor N only affects floor N's own auto-lock, but the combined result spans all floors since
+ * `autoLockedNodes` is one flat, maze-wide set. */
+export function recomputeAutoLock(state: MazeState, presetOverride?: { presetConnections?: Map<string, PresetConnectionEntry>; presetSplitPoints?: Record<string, number[]> }): Set<string> {
   if (!state.autoLock) return new Set<string>();
-  const field = activeFloorField(state);
-  const activeTessellation = activeFloorTessellationOf(state);
-  const customPts = field.isEditingField ? field.fieldPoints : undefined;
-  return computeAutoLockedNodes(state.presetConnections, activeTessellation, customPts, state.presetSplitPoints);
+  const presetConnections = presetOverride?.presetConnections ?? state.presetConnections;
+  const presetSplitPoints = presetOverride?.presetSplitPoints ?? state.presetSplitPoints;
+  return computeAutoLockedNodes(presetConnections, levelFieldsOf(state), presetSplitPoints);
 }
 
 /** Recompute autoLockedNodes after a change to presetConnections (or other auto-lock inputs). */
@@ -205,7 +379,7 @@ export function withRecomputedAutoLock<T extends { presetConnections: Map<string
   state: MazeState,
   patch: T,
 ): T & { autoLockedNodes: Set<string>; debugStale: boolean } {
-  return { ...patch, autoLockedNodes: recomputeAutoLock({ ...state, ...patch }), debugStale: debugStaleOf(state) };
+  return { ...patch, autoLockedNodes: recomputeAutoLock(state, patch), debugStale: debugStaleOf(state) };
 }
 
 /** Shared "wipe maze + derived analytics" fields, used by tessellation-kind switches, reset, and project load. */

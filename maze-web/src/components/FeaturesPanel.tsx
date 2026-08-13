@@ -21,6 +21,7 @@ import type { TessellationKind, FeatureId, FloorState, PngExportSettings } from 
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers } from "../pixi/fieldEditUtils";
+import { resolveFieldAtOf } from "../store/storeHelpers";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { ui, spacing, inset } from "../styles/theme";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -271,18 +272,22 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     ? m["status.field_no_nodes"]()
     : m["status.field_configured"]();
 
-  const customPts = fieldEditMode === "custom" && fieldPoints.size > 0 ? fieldPoints : undefined;
+  const floorFields = useMazeStore((s) => s.floorFields);
+  const resolveFieldAt = useMemo(
+    () => resolveFieldAtOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation }),
+    [floors, floorFields, tessellationKind, hexOrientation, triOrientation],
+  );
   const presetInvalidKeys = useMemo(
-    () => computeInvalidKeys(presetConnections, tessellationConfig, customPts),
-    [presetConnections, tessellationConfig, customPts],
+    () => computeInvalidKeys(presetConnections, resolveFieldAt),
+    [presetConnections, resolveFieldAt],
   );
   const presetInvalidTeleportIds = useMemo(
-    () => computeInvalidTeleportIds(presetTeleports, tessellationConfig, customPts),
-    [presetTeleports, tessellationConfig, customPts],
+    () => computeInvalidTeleportIds(presetTeleports, resolveFieldAt),
+    [presetTeleports, resolveFieldAt],
   );
   const presetInvalidMarkers = useMemo(
-    () => computeInvalidMarkers(presetStart, presetFinish, tessellationConfig, customPts),
-    [presetStart, presetFinish, tessellationConfig, customPts],
+    () => computeInvalidMarkers(presetStart, presetFinish, resolveFieldAt),
+    [presetStart, presetFinish, resolveFieldAt],
   );
   const presetInvalidMarkerCount = (presetInvalidMarkers.start ? 1 : 0) + (presetInvalidMarkers.finish ? 1 : 0);
   const presetInvalidCount = presetInvalidKeys.size + presetInvalidTeleportIds.size + presetInvalidMarkerCount;

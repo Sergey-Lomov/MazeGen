@@ -264,7 +264,7 @@ mod tests {
     }
 
     fn preset_endpoint(x: i32, y: i32) -> maze_runner::config::PresetEndpointDto {
-        maze_runner::config::PresetEndpointDto { point: [x, y], slot: None }
+        maze_runner::config::PresetEndpointDto { point: [x, y], slot: None, level: None }
     }
 
     fn preset(from: (i32, i32), to: (i32, i32), state: maze_runner::config::PresetConnectionStateDto) -> PresetConnectionDto {
@@ -671,7 +671,7 @@ mod tests {
             let split_map = existing(&[(([1, 0], 0), 42)]);
             let presets = vec![PresetConnectionDto {
                 from: preset_endpoint(0, 0),
-                to: maze_runner::config::PresetEndpointDto { point: [1, 0], slot: Some(0) },
+                to: maze_runner::config::PresetEndpointDto { point: [1, 0], slot: Some(0), level: None },
                 state: PresetConnectionStateDto::Passage,
             }];
 

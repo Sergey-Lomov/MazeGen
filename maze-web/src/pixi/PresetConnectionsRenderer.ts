@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidMarkers } from "./fieldEditUtils";
+import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidMarkers, presetConnectionsOnLevel, recordOnLevel, mapOnLevel, setOnLevel } from "./fieldEditUtils";
 import type { FieldEdge, PresetTeleportEntry } from "./fieldEditUtils";
 import { makeProjection } from "./tessellationProjection";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -29,6 +29,7 @@ import {
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
+import { activeFloorLevel, resolveFieldAtOf } from "../store/storeHelpers";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
@@ -163,24 +164,30 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.updateViewport(x, y, w, h, scale);
     if (this.root.visible && this.cfg) {
       const state = useMazeStore.getState();
+      const level = activeFloorLevel(state);
       this.grid.render({ viewport: this.viewport }, this.cfg);
       this.redrawOrigin(state.showPresetOrigin);
-      this.redrawGenSource(state.presetGenSource?.point ?? null);
+      this.redrawGenSource((state.presetGenSource && (state.presetGenSource.level ?? 0) === (level ?? 0)) ? state.presetGenSource.point : null);
     }
   }
 
-  updateHover(edge: FieldEdge | null): void {
+  /** `danger` (mirrors PostEditRenderer's own `updateHover`, GitHub issue #327) swaps the
+   * highlight to `canvas.fieldEditor.danger` (red) instead of the ordinary hover color — signals
+   * a destructive tool the same way the Control section's red buttons do; used by the `clear`
+   * tool (GitHub issue #340). */
+  updateHover(edge: FieldEdge | null, danger = false): void {
     if (!this.cfg) return;
-    const highlights = buildHoverEdgeHighlight(edge, this.cfg);
+    const highlights = buildHoverEdgeHighlight(edge, this.cfg, danger ? canvas.fieldEditor.danger : undefined);
     this.hover.render({ highlights });
   }
 
   /** Highlights a single cell (not a wall/edge) — used while the `manage_split_nodes` tool is
    * active, since that tool targets a whole point rather than one of its faces (mirrors
-   * PostEditRenderer's `updateCellHover` — GitHub issue #231). */
-  updateCellHover(cell: [number, number] | null): void {
+   * PostEditRenderer's `updateCellHover` — GitHub issue #231). `danger` — see `updateHover`'s doc
+   * comment. */
+  updateCellHover(cell: [number, number] | null, danger = false): void {
     if (!this.cfg) return;
-    this.cellHover.render({ cells: cell ? [cell] : [], color: canvas.fieldEditor.hover, alpha: 0.35 }, this.cfg);
+    this.cellHover.render({ cells: cell ? [cell] : [], color: danger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover, alpha: 0.35 }, this.cfg);
   }
 
   /** Renders the pending teleport's origin (semi-transparent marker) and a line stretching to the
@@ -224,6 +231,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
     if (
       fieldChanged ||
+      state.activeFloorId !== prev.activeFloorId ||
       state.presetConnections !== prev.presetConnections ||
       state.presetStart !== prev.presetStart ||
       state.presetFinish !== prev.presetFinish ||
@@ -246,13 +254,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       this.redrawInvalidHL(state);
     }
 
-    if (
-      state.highlightIsolatedNodes !== prev.highlightIsolatedNodes ||
-      (state.highlightIsolatedNodes && (
-        state.lockedNodes !== prev.lockedNodes ||
-        state.presetConnections !== prev.presetConnections
-      ))
-    ) {
+    if (state.highlightIsolatedNodes !== prev.highlightIsolatedNodes) {
       this.redrawIsolatedHL(state);
     }
 
@@ -273,32 +275,42 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     if (!this.cfg) return;
     const cfg = this.cfg;
     const cells = this.cachedCells;
+    const level = activeFloorLevel(state);
+    const presetConnections = presetConnectionsOnLevel(state.presetConnections, level);
+    const presetSplitPoints = recordOnLevel(state.presetSplitPoints, level);
+    const presetActiveSplitNode = recordOnLevel(state.presetActiveSplitNode, level);
+    const lockedNodes = mapOnLevel(state.lockedNodes, level);
+    const autoLockedNodes = setOnLevel(state.autoLockedNodes, level);
+    const presetTeleports = state.presetTeleports.filter((t) => (t.from.level ?? 0) === (level ?? 0));
+    const presetStart = (state.presetStart && (state.presetStart.level ?? 0) === (level ?? 0)) ? state.presetStart : null;
+    const presetFinish = (state.presetFinish && (state.presetFinish.level ?? 0) === (level ?? 0)) ? state.presetFinish : null;
+    const presetGenSource = (state.presetGenSource && (state.presetGenSource.level ?? 0) === (level ?? 0)) ? state.presetGenSource : null;
 
     this.grid.render({ viewport: this.viewport }, cfg);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
 
-    const { undecided, preset, invalidPassages, invalidKeys } = buildPresetWallGroups(cells, state.presetConnections, cfg, state.presetSplitPoints);
+    const { undecided, preset, invalidPassages, invalidKeys } = buildPresetWallGroups(cells, presetConnections, cfg, presetSplitPoints);
     this.invalidPassages.render({ edges: invalidPassages }, cfg);
     this.undecidedWalls.render({ edges: undecided }, cfg);
     this.presetWalls.render({ edges: preset }, cfg);
 
-    const { passages: splitPassages, wallFaces, specialShapes } = buildPresetSplitPassages(state.presetSplitPoints, state.presetConnections, cfg, state.presetActiveSplitNode, cells);
+    const { passages: splitPassages, wallFaces, specialShapes } = buildPresetSplitPassages(presetSplitPoints, presetConnections, cfg, presetActiveSplitNode, cells);
     this.splitJunctions.render({ passages: splitPassages, wallFaces, specialShapes });
 
-    const lockEntries = buildLocks(state.lockedNodes, state.autoLockedNodes);
+    const lockEntries = buildLocks(lockedNodes, autoLockedNodes);
     this.locks.render({ locks: lockEntries }, cfg);
 
-    const markerData = buildPresetMarkers(state.presetStart?.point ?? null, state.presetFinish?.point ?? null, cfg);
+    const markerData = buildPresetMarkers(presetStart?.point ?? null, presetFinish?.point ?? null, cfg);
     this.markers.render({ markers: markerData });
 
-    this.teleports.render({ edges: buildPresetTeleportEdges(state.presetTeleports, cfg), cfg });
+    this.teleports.render({ edges: buildPresetTeleportEdges(presetTeleports, cfg), cfg });
 
     this.redrawOrigin(state.showPresetOrigin);
-    this.redrawGenSource(state.presetGenSource?.point ?? null);
+    this.redrawGenSource(presetGenSource?.point ?? null);
     this.redrawIsolatedHL(state);
 
     if (state.highlightInvalidPresets) {
-      const edgeHighlights = buildInvalidEdgeHighlights(invalidKeys, state.presetConnections, cfg);
+      const edgeHighlights = buildInvalidEdgeHighlights(invalidKeys, presetConnections, cfg);
       this.invalidHL.render({ highlights: edgeHighlights });
       this.redrawInvalidTeleportHL(state);
     } else {
@@ -332,7 +344,12 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
       return;
     }
-    const cells = buildIsolatedCellHighlights(state.lockedNodes, state.autoLockedNodes, state.presetConnections);
+    const level = activeFloorLevel(state);
+    const cells = buildIsolatedCellHighlights(
+      mapOnLevel(state.lockedNodes, level),
+      setOnLevel(state.autoLockedNodes, level),
+      presetConnectionsOnLevel(state.presetConnections, level),
+    );
     this.isolatedHL.render({ cells, color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
   }
 
@@ -343,8 +360,9 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       this.invalidTeleportHL.clear();
       return;
     }
-    const invalidKeys = computeInvalidKeysFromCells(state.presetConnections, this.cachedCells);
-    const edgeHighlights = buildInvalidEdgeHighlights(invalidKeys, state.presetConnections, this.cfg);
+    const presetConnections = presetConnectionsOnLevel(state.presetConnections, activeFloorLevel(state));
+    const invalidKeys = computeInvalidKeysFromCells(presetConnections, this.cachedCells, activeFloorLevel(state));
+    const edgeHighlights = buildInvalidEdgeHighlights(invalidKeys, presetConnections, this.cfg);
     this.invalidHL.render({ highlights: edgeHighlights });
     this.redrawInvalidTeleportHL(state);
   }
@@ -354,13 +372,14 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.invalidTeleportHL.clear();
     if (!state.highlightInvalidPresets) return;
 
-    const field = state.floorFields[state.activeFloorId];
-    const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0 ? field.fieldPoints : undefined;
+    const level = activeFloorLevel(state);
+    const resolveFieldAt = resolveFieldAtOf(state);
     const proj = makeProjection(this.cfg);
     const markerSize = 20;
 
-    const invalidIds = computeInvalidTeleportIds(state.presetTeleports, this.cfg, customPts);
-    for (const t of state.presetTeleports) {
+    const presetTeleports = state.presetTeleports.filter((t) => (t.from.level ?? 0) === (level ?? 0));
+    const invalidIds = computeInvalidTeleportIds(presetTeleports, resolveFieldAt);
+    for (const t of presetTeleports) {
       if (!invalidIds.has(t.id)) continue;
       for (const { point: [cx, cy] } of [t.from, t.to]) {
         const { x: px, y: py } = proj.gridToScreen(cx, cy);
@@ -370,9 +389,11 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       }
     }
 
-    const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, this.cfg, customPts);
+    const presetStart = (state.presetStart && (state.presetStart.level ?? 0) === (level ?? 0)) ? state.presetStart : null;
+    const presetFinish = (state.presetFinish && (state.presetFinish.level ?? 0) === (level ?? 0)) ? state.presetFinish : null;
+    const invalidMarkers = computeInvalidMarkers(presetStart, presetFinish, resolveFieldAt);
     const markerRadius = NODE_RADIUS * 1.5;
-    for (const [invalid, endpoint] of [[invalidMarkers.start, state.presetStart], [invalidMarkers.finish, state.presetFinish]] as const) {
+    for (const [invalid, endpoint] of [[invalidMarkers.start, presetStart], [invalidMarkers.finish, presetFinish]] as const) {
       if (!invalid || !endpoint) continue;
       const { x: px, y: py } = proj.gridToScreen(endpoint.point[0], endpoint.point[1]);
       this.invalidTeleportHL

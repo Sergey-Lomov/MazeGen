@@ -24,11 +24,13 @@ import {
   rotatePresetSplitPoint,
   resolvePresetPartnerAt,
   allNodesAt,
+  presetConnectionsOnLevel,
 } from "../pixi/fieldEditUtils";
 import type { PresetConnectionEntry, FieldEdge, PresetTeleportEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { makeProjection } from "../pixi/tessellationProjection";
 import { TILE_SIZE } from "../pixi/constants";
+import type { LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
 
 // --- canonicalize ---
 
@@ -198,14 +200,51 @@ describe("applyTool — one_way", () => {
   });
 });
 
+// --- presetConnectionsOnLevel ---
+
+describe("presetConnectionsOnLevel", () => {
+  const levelEntry = (fx: number, fy: number, tx: number, ty: number, level: number): PresetConnectionEntry => ({
+    from: presetEndpoint([fx, fy], undefined, level),
+    to: presetEndpoint([tx, ty], undefined, level),
+    state: "passage",
+    source: "user",
+  });
+
+  it("re-keys a non-floor-0 entry to the plain, level-agnostic edgeKey, not presetEdgeKey", () => {
+    // Regression for a bug where a wall/passage set on a non-floor-0 floor applied correctly
+    // (generation picked it up) but rendered as permanently undecided -- the renderer's
+    // level filter kept the level-suffixed presetEdgeKey, which buildPresetWallGroups (looking
+    // entries up via plain edgeKey) could never match on any floor but 0.
+    const e = levelEntry(0, 0, 1, 0, 1);
+    const connections = new Map([[presetEdgeKey(e.from, e.to), e]]);
+    const onLevel = presetConnectionsOnLevel(connections, 1);
+    expect(onLevel.get(edgeKey([0, 0], [1, 0]))?.state).toBe("passage");
+  });
+
+  it("excludes entries from other floors", () => {
+    const e = levelEntry(0, 0, 1, 0, 1);
+    const connections = new Map([[presetEdgeKey(e.from, e.to), e]]);
+    expect(presetConnectionsOnLevel(connections, undefined).size).toBe(0);
+    expect(presetConnectionsOnLevel(connections, 2).size).toBe(0);
+  });
+
+  it("floor 0 entries keep their existing plain key unchanged", () => {
+    const connections = new Map([[edgeKey([0, 0], [1, 0]), entry(0, 0, 1, 0)]]);
+    const onLevel = presetConnectionsOnLevel(connections, undefined);
+    expect(onLevel.get(edgeKey([0, 0], [1, 0]))?.state).toBe("passage");
+  });
+});
+
 // --- computeAutoLockedNodes ---
 
 const squareCfg = { type: "square" as const, width: 3, height: 3 };
+const squareLevelFields: LevelField[] = [{ level: undefined, cfg: squareCfg }];
+const resolveSquare: ResolveFieldAt = (level) => (level === undefined || level === 0 ? { cfg: squareCfg } : undefined);
 
 // 3x3 square grid cells: (-1,-1) to (1,1). Corner (-1,-1) has interior neighbors (0,-1) and (-1,0).
 describe("computeAutoLockedNodes", () => {
   it("no connections — no locked nodes", () => {
-    const result = computeAutoLockedNodes(new Map(), squareCfg);
+    const result = computeAutoLockedNodes(new Map(), squareLevelFields);
     expect(result.size).toBe(0);
   });
 
@@ -215,7 +254,7 @@ describe("computeAutoLockedNodes", () => {
       [edgeKey([-1, -1], [0, -1]), entry(-1, -1, 0, -1)],
       [edgeKey([-1, -1], [-1, 0]), entry(-1, -1, -1, 0)],
     ]);
-    const result = computeAutoLockedNodes(connections, squareCfg);
+    const result = computeAutoLockedNodes(connections, squareLevelFields);
     expect(result.has("-1,-1")).toBe(true);
   });
 
@@ -223,7 +262,7 @@ describe("computeAutoLockedNodes", () => {
     const connections = new Map([
       [edgeKey([-1, -1], [0, -1]), entry(-1, -1, 0, -1)],
     ]);
-    const result = computeAutoLockedNodes(connections, squareCfg);
+    const result = computeAutoLockedNodes(connections, squareLevelFields);
     expect(result.has("-1,-1")).toBe(false);
   });
 
@@ -234,7 +273,7 @@ describe("computeAutoLockedNodes", () => {
       [edgeKey([0, 0], [0, 1]), entry(0, 0, 0, 1)],
       [edgeKey([0, 0], [0, -1]), entry(0, 0, 0, -1)],
     ]);
-    const result = computeAutoLockedNodes(connections, squareCfg);
+    const result = computeAutoLockedNodes(connections, squareLevelFields);
     expect(result.has("0,0")).toBe(true);
   });
 
@@ -248,7 +287,7 @@ describe("computeAutoLockedNodes", () => {
       [presetEdgeKey(presetEndpoint([-1, -1], 0), presetEndpoint([0, -1])), entry(-1, -1, 0, -1)],
       // slot 0's other face, toward (-1,0), has no entry at all -- still undecided.
     ]);
-    const result = computeAutoLockedNodes(connections, squareCfg, undefined, { "-1,-1": [0] });
+    const result = computeAutoLockedNodes(connections, squareLevelFields, { "-1,-1": [0] });
     expect(result.has("-1,-1")).toBe(false);
   });
 
@@ -259,7 +298,7 @@ describe("computeAutoLockedNodes", () => {
       [presetEdgeKey(presetEndpoint([-1, -1], 0), presetEndpoint([0, -1])), entry(-1, -1, 0, -1)],
       [presetEdgeKey(presetEndpoint([-1, -1], 0), presetEndpoint([-1, 0])), entry(-1, -1, -1, 0)],
     ]);
-    const result = computeAutoLockedNodes(connections, squareCfg, undefined, { "-1,-1": [0] });
+    const result = computeAutoLockedNodes(connections, squareLevelFields, { "-1,-1": [0] });
     expect(result.has("-1,-1")).toBe(true);
   });
 });
@@ -272,36 +311,36 @@ const teleport = (id: number, from: [number, number], to: [number, number], dire
 
 describe("computeInvalidTeleportIds", () => {
   it("both endpoints in field — valid", () => {
-    const result = computeInvalidTeleportIds([teleport(1, [-1, -1], [1, 1])], squareCfg);
+    const result = computeInvalidTeleportIds([teleport(1, [-1, -1], [1, 1])], resolveSquare);
     expect(result.size).toBe(0);
   });
 
   it("endpoint outside field — invalid", () => {
-    const result = computeInvalidTeleportIds([teleport(1, [-1, -1], [5, 5])], squareCfg);
+    const result = computeInvalidTeleportIds([teleport(1, [-1, -1], [5, 5])], resolveSquare);
     expect(result.has(1)).toBe(true);
   });
 });
 
 describe("computeInvalidMarkers", () => {
   it("both markers in field — valid", () => {
-    const result = computeInvalidMarkers(presetEndpoint([0, 0]), presetEndpoint([1, 1]), squareCfg);
+    const result = computeInvalidMarkers(presetEndpoint([0, 0]), presetEndpoint([1, 1]), resolveSquare);
     expect(result).toEqual({ start: false, finish: false });
   });
 
   it("start outside field — invalid", () => {
-    const result = computeInvalidMarkers(presetEndpoint([50, 50]), presetEndpoint([1, 1]), squareCfg);
+    const result = computeInvalidMarkers(presetEndpoint([50, 50]), presetEndpoint([1, 1]), resolveSquare);
     expect(result.start).toBe(true);
     expect(result.finish).toBe(false);
   });
 
   it("finish outside field — invalid", () => {
-    const result = computeInvalidMarkers(presetEndpoint([0, 0]), presetEndpoint([50, 50]), squareCfg);
+    const result = computeInvalidMarkers(presetEndpoint([0, 0]), presetEndpoint([50, 50]), resolveSquare);
     expect(result.start).toBe(false);
     expect(result.finish).toBe(true);
   });
 
   it("null markers — valid", () => {
-    const result = computeInvalidMarkers(null, null, squareCfg);
+    const result = computeInvalidMarkers(null, null, resolveSquare);
     expect(result).toEqual({ start: false, finish: false });
   });
 });

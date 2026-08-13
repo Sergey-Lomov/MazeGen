@@ -5,7 +5,7 @@ import { configAllCells } from "./tessellationCells";
 import { getCellNeighborOffsets, getSharedEdgeSegment, getNeighborData } from "./tessellationGeometry";
 import type { PresetConnectionState } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { presetEndpoint, presetEndpointsEqual, type PresetEndpoint } from "./presetEndpoint";
+import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
 
 export type PresetConnectionClientState = PresetConnectionState | "undefined";
 
@@ -22,7 +22,7 @@ export interface PresetConnectionEntry {
   source: "user" | "default";
 }
 
-export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source" | "teleport_one_way" | "teleport_two_way" | "manage_split_nodes";
+export type PresetConnectionTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "lock_in" | "lock_out" | "full_lock" | "gen_source" | "teleport_one_way" | "teleport_two_way" | "manage_split_nodes" | "clear";
 
 export interface FieldEdge {
   key: string;
@@ -53,6 +53,79 @@ export interface PresetTeleportEndpointHit {
 }
 
 const TELEPORT_ENDPOINT_HIT_RADIUS = TILE_SIZE * 0.3;
+
+/** Filters a flat, maze-wide `presetConnections` map (GitHub issue #340) down to the entries
+ * living entirely on `level` — both endpoints on the same floor. Used by the renderer, which only
+ * ever draws one floor's own edges/wall groups/split passages at a time; a future cross-floor
+ * entry (vertical passage/elevator) needs its own dedicated rendering path, not this generic
+ * "belongs to one floor" filter. Re-keys each surviving entry via the plain, level-agnostic
+ * `edgeKey` (dropping `presetConnections`' own `presetEdgeKey`, which folds `level` into the
+ * string) — `presetSelectors.ts`'s wall-group/split-passage builders look entries up by
+ * `edgeKey([x,y],[nx,ny])`, so a level-suffixed key here would silently never match on any floor
+ * but 0, reading every non-floor-0 preset as undecided despite the entry being present and correct. */
+export function presetConnectionsOnLevel(
+  presetConnections: Map<string, PresetConnectionEntry>,
+  level: number | undefined,
+): Map<string, PresetConnectionEntry> {
+  const result = new Map<string, PresetConnectionEntry>();
+  for (const entry of presetConnections.values()) {
+    if ((entry.from.level ?? 0) === (level ?? 0) && (entry.to.level ?? 0) === (level ?? 0)) {
+      result.set(edgeKey(entry.from.point, entry.to.point), entry);
+    }
+  }
+  return result;
+}
+
+/** Filters `presetSplitPoints`/a level-keyed `Record<string, T>` down to `level`'s own entries,
+ * stripping the `"@level"` key suffix back to plain `"x,y"` — the shape every selector consuming
+ * one floor's own split-point data already expects (GitHub issue #340). */
+export function recordOnLevel<T>(record: Record<string, T>, level: number | undefined): Record<string, T> {
+  const suffix = level === undefined ? undefined : `@${level}`;
+  const result: Record<string, T> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (suffix === undefined) {
+      if (key.includes("@")) continue;
+      result[key] = value;
+    } else {
+      if (!key.endsWith(suffix)) continue;
+      result[key.slice(0, -suffix.length)] = value;
+    }
+  }
+  return result;
+}
+
+/** Filters `lockedNodes`/`autoLockedNodes` (keyed `"x,y"`/`"x,y@level"`) down to `level`'s own
+ * entries, stripping the suffix — mirrors `recordOnLevel` for `Map`/`Set` instead of a plain
+ * record (GitHub issue #340). */
+export function mapOnLevel<T>(map: Map<string, T>, level: number | undefined): Map<string, T> {
+  const suffix = level === undefined ? undefined : `@${level}`;
+  const result = new Map<string, T>();
+  for (const [key, value] of map) {
+    if (suffix === undefined) {
+      if (key.includes("@")) continue;
+      result.set(key, value);
+    } else {
+      if (!key.endsWith(suffix)) continue;
+      result.set(key.slice(0, -suffix.length), value);
+    }
+  }
+  return result;
+}
+
+export function setOnLevel(set: Set<string>, level: number | undefined): Set<string> {
+  const suffix = level === undefined ? undefined : `@${level}`;
+  const result = new Set<string>();
+  for (const key of set) {
+    if (suffix === undefined) {
+      if (key.includes("@")) continue;
+      result.add(key);
+    } else {
+      if (!key.endsWith(suffix)) continue;
+      result.add(key.slice(0, -suffix.length));
+    }
+  }
+  return result;
+}
 
 export function pickTeleportEndpointAt(
   viewportX: number,
@@ -126,25 +199,70 @@ export function resolveCells(cfg: TessellationConfig, customPoints?: Set<number>
   return configAllCells(cfg);
 }
 
+/** Per-floor field cells (GitHub issue #340) — `level === undefined` (floor 0) or any other level
+ * index resolves to that floor's own `(cfg, customPoints)` pair via `resolveFieldAt`. Every
+ * multi-floor validity/auto-lock function below takes a `resolveFieldAt` callback instead of a
+ * single `cfg`, since a flat, maze-wide preset collection can hold entries for several floors at
+ * once, each with its own field shape (`FloorFieldConfig`, GitHub issue #338). */
+export type ResolveFieldAt = (level: number | undefined) => { cfg: TessellationConfig; customPoints?: Set<number> } | undefined;
+
+/** Builds a `level -> Set<encodePoint>` field-cell-set cache lazily, one entry per level actually
+ * queried — shared by every function below that needs repeated per-level field-membership checks
+ * without recomputing `resolveCells`/`encodePoint` per entry. */
+function fieldSetCache(resolveFieldAt: ResolveFieldAt): (level: number | undefined) => Set<number> | undefined {
+  const cache = new Map<number, Set<number> | undefined>();
+  return (level) => {
+    const key = level ?? 0;
+    if (!cache.has(key)) {
+      const field = resolveFieldAt(level);
+      if (!field) {
+        cache.set(key, undefined);
+      } else {
+        const set = new Set<number>();
+        for (const [x, y] of resolveCells(field.cfg, field.customPoints)) set.add(encodePoint(x, y));
+        cache.set(key, set);
+      }
+    }
+    return cache.get(key);
+  };
+}
+
+function pointInField(getFieldSet: (level: number | undefined) => Set<number> | undefined, point: [number, number], level: number | undefined): boolean {
+  const set = getFieldSet(level);
+  return set !== undefined && set.has(encodePoint(point[0], point[1]));
+}
 
 export function computeInvalidKeys(
   presetConnections: Map<string, PresetConnectionEntry>,
-  cfg: TessellationConfig,
-  customPoints?: Set<number>,
+  resolveFieldAt: ResolveFieldAt,
 ): Set<string> {
-  const cells = resolveCells(cfg, customPoints);
-  return computeInvalidKeysFromCells(presetConnections, cells);
+  const getFieldSet = fieldSetCache(resolveFieldAt);
+  const invalid = new Set<string>();
+  for (const [key, entry] of presetConnections) {
+    const aIn = pointInField(getFieldSet, entry.from.point, entry.from.level);
+    const bIn = pointInField(getFieldSet, entry.to.point, entry.to.level);
+    if (!aIn || !bIn) invalid.add(key);
+  }
+  return invalid;
 }
 
+/** Single-floor variant — used by the renderer, which caches one floor's own cells already
+ * (`getCachedCellSet`) and only ever redraws the active floor. `cells` implicitly means "the
+ * active floor's cells"; an entry addressing a *different* level is always treated as outside this
+ * floor's own field (its validity is judged elsewhere, against its own floor's cells) — so this
+ * variant is only correct for filtering/highlighting entries already known to belong to the floor
+ * `cells` came from, not for computing global invalidity across every floor. */
 export function computeInvalidKeysFromCells(
   presetConnections: Map<string, PresetConnectionEntry>,
   cells: [number, number][],
+  activeLevel?: number,
 ): Set<string> {
   const fieldSet = new Set<number>();
   for (const [x, y] of cells) fieldSet.add(encodePoint(x, y));
 
   const invalid = new Set<string>();
   for (const [key, entry] of presetConnections) {
+    if ((entry.from.level ?? 0) !== (activeLevel ?? 0) || (entry.to.level ?? 0) !== (activeLevel ?? 0)) continue;
     const aIn = fieldSet.has(encodePoint(entry.from.point[0], entry.from.point[1]));
     const bIn = fieldSet.has(encodePoint(entry.to.point[0], entry.to.point[1]));
     if (!aIn || !bIn) invalid.add(key);
@@ -155,32 +273,24 @@ export function computeInvalidKeysFromCells(
 export function computeInvalidMarkers(
   presetStart: PresetEndpoint | null,
   presetFinish: PresetEndpoint | null,
-  cfg: TessellationConfig,
-  customPoints?: Set<number>,
+  resolveFieldAt: ResolveFieldAt,
 ): { start: boolean; finish: boolean } {
-  const cells = resolveCells(cfg, customPoints);
-  const fieldSet = new Set<number>();
-  for (const [x, y] of cells) fieldSet.add(encodePoint(x, y));
-
+  const getFieldSet = fieldSetCache(resolveFieldAt);
   return {
-    start: presetStart != null && !fieldSet.has(encodePoint(presetStart.point[0], presetStart.point[1])),
-    finish: presetFinish != null && !fieldSet.has(encodePoint(presetFinish.point[0], presetFinish.point[1])),
+    start: presetStart != null && !pointInField(getFieldSet, presetStart.point, presetStart.level),
+    finish: presetFinish != null && !pointInField(getFieldSet, presetFinish.point, presetFinish.level),
   };
 }
 
 export function computeInvalidTeleportIds(
   teleports: PresetTeleportEntry[],
-  cfg: TessellationConfig,
-  customPoints?: Set<number>,
+  resolveFieldAt: ResolveFieldAt,
 ): Set<number> {
-  const cells = resolveCells(cfg, customPoints);
-  const fieldSet = new Set<number>();
-  for (const [x, y] of cells) fieldSet.add(encodePoint(x, y));
-
+  const getFieldSet = fieldSetCache(resolveFieldAt);
   const invalid = new Set<number>();
   for (const t of teleports) {
-    const aIn = fieldSet.has(encodePoint(t.from.point[0], t.from.point[1]));
-    const bIn = fieldSet.has(encodePoint(t.to.point[0], t.to.point[1]));
+    const aIn = pointInField(getFieldSet, t.from.point, t.from.level);
+    const bIn = pointInField(getFieldSet, t.to.point, t.to.level);
     if (!aIn || !bIn) invalid.add(t.id);
   }
   return invalid;
@@ -190,20 +300,20 @@ export function computeInvalidTeleportIds(
  * criterion as `computeInvalidKeys`/`computeInvalidTeleportIds`/`computeInvalidMarkers`, applied
  * to `presetSplitPoints`'s keys instead. Needed separately because a declared split point can be
  * an orphan (no preset/teleport/marker referencing it) — the only way an invalid point could reach
- * the WASM `split_points` payload without going through one of the other three checks first. */
+ * the WASM `split_points` payload without going through one of the other three checks first.
+ * Each key is `"x,y"` (floor 0) or `"x,y@level"` (GitHub issue #340, see `splitPointsCore.ts`'s
+ * `pointKey`) — parsed back into `(point, level)` before checking that level's own field. */
 export function computeInvalidSplitPoints(
   presetSplitPoints: Record<string, number[]>,
-  cfg: TessellationConfig,
-  customPoints?: Set<number>,
+  resolveFieldAt: ResolveFieldAt,
 ): Set<string> {
-  const cells = resolveCells(cfg, customPoints);
-  const fieldSet = new Set<number>();
-  for (const [x, y] of cells) fieldSet.add(encodePoint(x, y));
-
+  const getFieldSet = fieldSetCache(resolveFieldAt);
   const invalid = new Set<string>();
   for (const key of Object.keys(presetSplitPoints)) {
-    const [x, y] = key.split(",").map(Number);
-    if (!fieldSet.has(encodePoint(x, y))) invalid.add(key);
+    const [pointPart, levelPart] = key.split("@");
+    const [x, y] = pointPart.split(",").map(Number);
+    const level = levelPart === undefined ? undefined : Number(levelPart);
+    if (!pointInField(getFieldSet, [x, y], level)) invalid.add(key);
   }
   return invalid;
 }
@@ -255,7 +365,15 @@ export function pickEdgeAtPosition(
 
   const isTriangle = cfg.type === "triangle_rect" || cfg.type === "triangle_triangle"
     || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom";
-  const threshold = isTriangle ? TRI_TILE_SIZE * 0.4 : TILE_SIZE * 0.4;
+  const isHex = cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom";
+  // Cell-center-to-nearest-side distance, as a fraction of the tile's own edge-length scale, is
+  // much smaller for triangles/hexagons (incenter-to-side ≈ 0.29 * side for an equilateral
+  // triangle; hexagon center-to-side is the apothem, ≈ 0.87 * (side/2) ≈ 0.43 * side) than for a
+  // square (center-to-side = TILE_SIZE/2 = 0.5 * TILE_SIZE) — a single `side * 0.4`-style threshold
+  // tuned for one shape puts another shape's own cell center inside the edge-hit zone, so a
+  // dead-center click is misread as an edge click (GitHub issue #340 follow-up). Each shape's own
+  // threshold stays strictly under its own center-to-side ratio.
+  const threshold = isTriangle || isHex ? TRI_TILE_SIZE * 0.12 : TILE_SIZE * 0.08;
   const thresholdSq = threshold * threshold;
 
   let bestKey: string | null = null;
@@ -298,9 +416,72 @@ export function pickEdgeAtPosition(
   return null;
 }
 
+/** True if `(viewportX, viewportY)` falls in some edge's own dead zone (within
+ * `EDGE_ENDPOINT_DEAD_ZONE_FRACTION` of one of its endpoints, and within `pickEdgeAtPosition`'s own
+ * per-shape `threshold` of the segment) — i.e. `pickEdgeAtPosition(..., deadZone=true)` returned
+ * `null` specifically *because* the cursor is near a shared vertex, not because it's simply too far
+ * from every edge. Used by tools with a dual edge/point mode (preset's "clear", post-edit's
+ * "reset") to withhold the point/cell fallback there too — otherwise the vertex dead zone (meant to
+ * avoid hair-triggering a perpendicular edge, #188) silently becomes "picks the cell instead",
+ * which is not what the dead zone is for. */
+export function isInEdgeVertexDeadZone(
+  viewportX: number,
+  viewportY: number,
+  cfg: TessellationConfig,
+  cells: [number, number][],
+  cellSet?: Set<number>,
+): boolean {
+  const proj = makeProjection(cfg);
+  const cell = proj.screenToGrid(viewportX, viewportY);
+
+  if (!cellSet) {
+    cellSet = new Set<number>();
+    for (const [x, y] of cells) cellSet.add(encodePoint(x, y));
+  }
+
+  const isTriangle = cfg.type === "triangle_rect" || cfg.type === "triangle_triangle"
+    || cfg.type === "triangle_hexagon" || cfg.type === "tri_custom";
+  const isHex = cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom";
+  const threshold = isTriangle || isHex ? TRI_TILE_SIZE * 0.12 : TILE_SIZE * 0.08;
+  const thresholdSq = threshold * threshold;
+
+  const candidates: [number, number][] = [[cell.x, cell.y]];
+  for (const [dx, dy] of getCellNeighborOffsets(cfg, cell.x, cell.y))
+    candidates.push([cell.x + dx, cell.y + dy]);
+
+  const checked = new Set<string>();
+  for (const [cx, cy] of candidates) {
+    if (!cellSet.has(encodePoint(cx, cy))) continue;
+    for (const [dx, dy] of getCellNeighborOffsets(cfg, cx, cy)) {
+      const nx = cx + dx, ny = cy + dy;
+      if (!cellSet.has(encodePoint(nx, ny))) continue;
+      const key = edgeKey([cx, cy], [nx, ny]);
+      if (checked.has(key)) continue;
+      checked.add(key);
+
+      const seg = getSharedEdgeSegment([cx, cy], [nx, ny], cfg);
+      if (!seg) continue;
+      const hit = closestPointOnSegment(viewportX, viewportY, seg.v0.x, seg.v0.y, seg.v1.x, seg.v1.y);
+      if (hit.distSq >= thresholdSq) continue;
+      if (hit.t < EDGE_ENDPOINT_DEAD_ZONE_FRACTION || hit.t > 1 - EDGE_ENDPOINT_DEAD_ZONE_FRACTION) return true;
+    }
+  }
+  return false;
+}
+
+/** One floor's own field, for `computeAutoLockedNodes`'s multi-floor walk (GitHub issue #340) —
+ * `level` is that floor's 0-based index (matches `PresetEndpoint.level`; the first entry is
+ * implicitly floor 0). */
+export interface LevelField {
+  level: number | undefined;
+  cfg: TessellationConfig;
+  customPoints?: Set<number>;
+}
+
 /**
- * Returns set of "x,y" keys for cells where all interior edges are explicitly preset.
- * An interior edge is one shared with another cell in the field.
+ * Returns set of "x,y"/"x,y@level" keys (GitHub issue #340) for cells where all interior edges are
+ * explicitly preset, across every floor in `fields`. An interior edge is one shared with another
+ * cell in that same floor's own field.
  *
  * A declared split point (`presetSplitPoints`) auto-locks only if every one of its nodes
  * (original + every declared slot) has every interior face decided — one node with an
@@ -309,49 +490,55 @@ export function pickEdgeAtPosition(
  */
 export function computeAutoLockedNodes(
   presetConnections: Map<string, PresetConnectionEntry>,
-  cfg: TessellationConfig,
-  customPoints?: Set<number>,
+  fields: LevelField[],
   presetSplitPoints: Record<string, number[]> = {},
 ): Set<string> {
-  const cells = resolveCells(cfg, customPoints);
-  const cellSet = new Set<number>();
-  for (const [x, y] of cells) cellSet.add(encodePoint(x, y));
-
   const result = new Set<string>();
-  for (const [x, y] of cells) {
-    const offsets = getCellNeighborOffsets(cfg, x, y);
-    const pointKey = `${x},${y}`;
-    const slots = presetSplitPoints[pointKey] ?? [];
-    const endpoints = [presetEndpoint([x, y]), ...slots.map((slotId) => presetEndpoint([x, y], slotId))];
+  for (const { level, cfg, customPoints } of fields) {
+    const cells = resolveCells(cfg, customPoints);
+    const cellSet = new Set<number>();
+    for (const [x, y] of cells) cellSet.add(encodePoint(x, y));
 
-    let allDefined = true;
-    let hasInteriorEdge = false;
-    for (const [dx, dy] of offsets) {
-      const nx = x + dx, ny = y + dy;
-      if (!cellSet.has(encodePoint(nx, ny))) continue;
-      hasInteriorEdge = true;
-      const neighbor = presetEndpoint([nx, ny]);
-      for (const ep of endpoints) {
-        const key = presetEdgeKey(ep, neighbor);
-        const entry = presetConnections.get(key);
-        if (!entry || entry.state === "undefined") { allDefined = false; break; }
+    for (const [x, y] of cells) {
+      const offsets = getCellNeighborOffsets(cfg, x, y);
+      const pointKey = level === undefined ? `${x},${y}` : `${x},${y}@${level}`;
+      const slots = presetSplitPoints[pointKey] ?? [];
+      const endpoints = [presetEndpoint([x, y], undefined, level), ...slots.map((slotId) => presetEndpoint([x, y], slotId, level))];
+
+      let allDefined = true;
+      let hasInteriorEdge = false;
+      for (const [dx, dy] of offsets) {
+        const nx = x + dx, ny = y + dy;
+        if (!cellSet.has(encodePoint(nx, ny))) continue;
+        hasInteriorEdge = true;
+        const neighbor = presetEndpoint([nx, ny], undefined, level);
+        for (const ep of endpoints) {
+          const key = presetEdgeKey(ep, neighbor);
+          const entry = presetConnections.get(key);
+          if (!entry || entry.state === "undefined") { allDefined = false; break; }
+        }
+        if (!allDefined) break;
       }
-      if (!allDefined) break;
+      if (hasInteriorEdge && allDefined) result.add(pointKey);
     }
-    if (hasInteriorEdge && allDefined) result.add(pointKey);
   }
   return result;
 }
 
-/** Resolves which node of `point` a preset edge-tool click currently targets — the preset-stage
- * counterpart of post-edit's `resolveActiveEndpointAt` (GitHub issue #231). `activeMap[key]` if
- * set, else the point's original node (`presetEndpoint(point)`, no slot). */
+/** Resolves which node of `point` on `level` a preset edge-tool click currently targets — the
+ * preset-stage counterpart of post-edit's `resolveActiveEndpointAt` (GitHub issue #231).
+ * `activeMap[key]` if set, else the point's original node on `level`
+ * (`presetEndpoint(point, undefined, level)`, no slot). `activeMap` is keyed by
+ * `"x,y"`/`"x,y@level"` (GitHub issue #340, same convention `splitPointsCore.ts`'s `pointKey`
+ * uses) — a point's declared split slots and which one is active are independent per floor. */
 export function resolvePresetActiveEndpoint(
   point: [number, number],
   activeMap: Record<string, PresetEndpoint>,
+  level?: number,
 ): PresetEndpoint {
-  const key = `${point[0]},${point[1]}`;
-  return activeMap[key] ?? presetEndpoint(point);
+  const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
+  const active = activeMap[key];
+  return active ?? presetEndpoint(point, undefined, level);
 }
 
 /** Resolves which node of a split `neighborPoint` genuinely connects across the face toward
@@ -371,8 +558,9 @@ export function resolvePresetPartnerAt(
   presetConnections: Map<string, PresetConnectionEntry>,
   presetSplitPoints: Record<string, number[]>,
   activeMap: Record<string, PresetEndpoint>,
+  level?: number,
 ): PresetEndpoint {
-  const candidates = allNodesAt(neighborPoint, presetSplitPoints);
+  const candidates = allNodesAt(neighborPoint, presetSplitPoints, level);
 
   // A `passage`/one-way entry is a real connection and wins outright. A `wall` entry only counts
   // as a fallback match (recorded lower priority) — a blueprint explicitly writes `wall` on every
@@ -389,36 +577,42 @@ export function resolvePresetPartnerAt(
       return candidate;
     }
   }
-  return wallFallback ?? resolvePresetActiveEndpoint(neighborPoint, activeMap);
+  return wallFallback ?? resolvePresetActiveEndpoint(neighborPoint, activeMap, level);
 }
 
-/** Every node currently declared at `point` (original plus every declared slot, per
+/** Every node currently declared at `point` on `level` (original plus every declared slot, per
  * `presetSplitPoints`) — used both by `resolvePresetPartnerAt` (the neighbor's full candidate set)
  * and by `applyPresetSplitBlueprint` (to explicitly wall off every neighbor node the blueprint's
  * resolved partner didn't pick, so a face doesn't silently leave one of the neighbor's other nodes
  * undecided — GitHub issue #243 follow-up). */
-export function allNodesAt(point: [number, number], presetSplitPoints: Record<string, number[]>): PresetEndpoint[] {
-  const key = `${point[0]},${point[1]}`;
+export function allNodesAt(point: [number, number], presetSplitPoints: Record<string, number[]>, level?: number): PresetEndpoint[] {
+  const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
   const slots = presetSplitPoints[key] ?? [];
-  return [presetEndpoint(point), ...slots.map((slotId) => presetEndpoint(point, slotId))];
+  return [presetEndpoint(point, undefined, level), ...slots.map((slotId) => presetEndpoint(point, slotId, level))];
 }
 
 /** Orders two preset endpoints `[from, to]` by the same canonical rule `presetEdgeKey` uses for
- * its own key ordering (lower `x`, then lower `y`) — exported so callers that need to build a
- * `PresetConnectionEntry` (which stores `from`/`to` in this same canonical order, see
- * `applyTool`/`applyPresetSplitBlueprint`) don't have to re-derive the comparison themselves. */
+ * its own key ordering (lower `level`, then lower `x`, then lower `y` — GitHub issue #340 added
+ * the `level` tiebreak ahead of the pre-existing point comparison) — exported so callers that need
+ * to build a `PresetConnectionEntry` (which stores `from`/`to` in this same canonical order, see
+ * `applyTool`/`applyPresetSplitBlueprint`) don't have to re-derive the comparison themselves. A
+ * same-floor pair (the overwhelming majority — every entry until cross-floor edges exist) never
+ * consults `level` at all, so this is byte-identical to the pre-#340 point-only ordering there. */
 export function canonicalizePresetPair(a: PresetEndpoint, b: PresetEndpoint): [PresetEndpoint, PresetEndpoint] {
+  const al = a.level ?? 0, bl = b.level ?? 0;
+  if (al !== bl) return al < bl ? [a, b] : [b, a];
   return a.point[0] < b.point[0] || (a.point[0] === b.point[0] && a.point[1] < b.point[1]) ? [a, b] : [b, a];
 }
 
-/** Preset-side edge key, slot-aware (GitHub issue #231): for two endpoints with no active slot on
- * either side, identical to `edgeKey`'s plain geometric key — every existing preset entry (and
- * the default-edge-state mechanism, which only ever targets original nodes) keeps its exact key.
- * A slot-addressed endpoint on either side changes the key, so a split-targeted preset never
- * collides with the point's plain (original-node) preset. */
+/** Preset-side edge key, slot- and level-aware (GitHub issue #231/#340): for two endpoints with no
+ * active slot and floor-0 level on either side, identical to `edgeKey`'s plain geometric key —
+ * every existing preset entry (and the default-edge-state mechanism, which only ever targets
+ * original nodes on the active floor) keeps its exact key. A slot-addressed or non-floor-0
+ * endpoint on either side changes the key, so a split-targeted or other-floor preset never
+ * collides with the point's plain (original-node, floor-0) preset. */
 export function presetEdgeKey(a: PresetEndpoint, b: PresetEndpoint): string {
   const [fa, fb] = canonicalizePresetPair(a, b);
-  return `${fa.point[0]},${fa.point[1]}${fa.slotId !== undefined ? `:${fa.slotId}` : ""}-${fb.point[0]},${fb.point[1]}${fb.slotId !== undefined ? `:${fb.slotId}` : ""}`;
+  return `${presetEndpointKey(fa)}-${presetEndpointKey(fb)}`;
 }
 
 /** Rotates every geometric-face connection of a split point's nodes by one offset index
@@ -436,12 +630,13 @@ export function rotatePresetSplitPoint(
   direction: 1 | -1,
   cfg: TessellationConfig,
   cellSet: Set<string>,
+  level?: number,
 ): Map<string, PresetConnectionEntry> {
   const { offsets } = getNeighborData(cfg, point[0], point[1]);
   const n = offsets.length;
   if (n === 0) return presetConnections;
 
-  const endpoints: PresetEndpoint[] = [presetEndpoint(point), ...slotIds.map((slotId) => presetEndpoint(point, slotId))];
+  const endpoints: PresetEndpoint[] = [presetEndpoint(point, undefined, level), ...slotIds.map((slotId) => presetEndpoint(point, slotId, level))];
 
   type Move = { key: string; ep: PresetEndpoint; neighbor: [number, number]; entry: PresetConnectionEntry };
   const moves: Move[] = [];
@@ -449,7 +644,7 @@ export function rotatePresetSplitPoint(
   for (const ep of endpoints) {
     for (let i = 0; i < n; i++) {
       const neighbor: [number, number] = [point[0] + offsets[i][0], point[1] + offsets[i][1]];
-      const key = presetEdgeKey(ep, presetEndpoint(neighbor));
+      const key = presetEdgeKey(ep, presetEndpoint(neighbor, undefined, level));
       const entry = presetConnections.get(key);
       if (!entry) continue;
 
@@ -464,7 +659,7 @@ export function rotatePresetSplitPoint(
   const next = new Map(presetConnections);
   for (const { key } of moves) next.delete(key);
   for (const { ep, neighbor, entry } of moves) {
-    const neighborEp = presetEndpoint(neighbor);
+    const neighborEp = presetEndpoint(neighbor, undefined, level);
     const newKey = presetEdgeKey(ep, neighborEp);
     const epIsLower = ep.point[0] < neighbor[0] || (ep.point[0] === neighbor[0] && ep.point[1] < neighbor[1]);
     const [newFrom, newTo] = epIsLower ? [ep, neighborEp] : [neighborEp, ep];
@@ -512,9 +707,10 @@ export function applyTool(
   tool: PresetConnectionTool,
   defaultEdgeState: PresetConnectionClientState = "undefined",
   activeMap: Record<string, PresetEndpoint> = {},
+  level?: number,
 ): Map<string, PresetConnectionEntry> {
-  const from = resolvePresetActiveEndpoint(edge.from, activeMap);
-  const to = resolvePresetActiveEndpoint(edge.to, activeMap);
+  const from = resolvePresetActiveEndpoint(edge.from, activeMap, level);
+  const to = resolvePresetActiveEndpoint(edge.to, activeMap, level);
   const key = presetEdgeKey(from, to);
   if (tool === "reset") {
     return materializeReset(connections, { key, from: edge.from, to: edge.to }, defaultEdgeState, from, to);

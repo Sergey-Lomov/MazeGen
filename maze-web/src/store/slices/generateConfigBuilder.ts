@@ -9,7 +9,7 @@ import { deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
 import { resolverForNodeId } from "../../pixi/postEditEndpoint";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
-import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, relevantRuleParams } from "../storeHelpers";
+import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, resolveFieldAtOf, relevantRuleParams } from "../storeHelpers";
 import { warmCartesianCache } from "../../pixi/cartesianCache";
 import { parseTape, topLevelSourceScopes, sourceContentStart } from "../../debug/eventTape";
 import { adapterForKind } from "../../debug/algorithmRegistry";
@@ -108,24 +108,25 @@ function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: {
 }
 
 /** The project's currently-valid preset connections (regular + teleport), converted to wire DTOs
- *  — shared by `buildGenerateConfig` (generation) and `confirmPostEdit` (GitHub issue #245's
- *  `ComputeAnalyticsConfig.preset_connections`) so both send the exact same filtered set. An
- *  "undefined"-state or geometrically-invalid entry (removed cell, shrunk tessellation) is
- *  excluded, same as `buildGenerateConfig` already excluded them before this was extracted. */
-export function buildValidPresetConnections(state: MazeStore): import("../../wasm/types").PresetConnection[] {
-  const activeTessellation = activeFloorTessellationOf(state);
-  const field = activeFloorField(state);
-  const customPts = field.isEditingField ? field.fieldPoints : undefined;
-  const invalidKeys = computeInvalidKeys(state.presetConnections, activeTessellation, customPts);
+ *  — shared by `buildGenerateConfig` (generation, every floor at once — GitHub issue #340) and
+ *  `confirmPostEdit` (GitHub issue #245's `ComputeAnalyticsConfig.preset_connections`, which only
+ *  ever resolves against floor 0 — `Specs/floors.md`'s "Non-goals" — hence `floorZeroOnly`). An
+ *  "undefined"-state or geometrically-invalid entry (removed cell, shrunk tessellation, on any
+ *  floor) is excluded, same as `buildGenerateConfig` already excluded them before this was
+ *  extracted. */
+export function buildValidPresetConnections(state: MazeStore, floorZeroOnly = false): import("../../wasm/types").PresetConnection[] {
+  const resolveFieldAt = resolveFieldAtOf(state);
+  const invalidKeys = computeInvalidKeys(state.presetConnections, resolveFieldAt);
+  const onFloorZero = (level: number | undefined) => !floorZeroOnly || (level ?? 0) === 0;
   const validPresets = Array.from(state.presetConnections.entries())
-    .filter(([key, e]) => e.state !== "undefined" && !invalidKeys.has(key))
+    .filter(([key, e]) => e.state !== "undefined" && !invalidKeys.has(key) && onFloorZero(e.from.level) && onFloorZero(e.to.level))
     .map(([, e]) => ({
       from: presetEndpointToDto(e.from), to: presetEndpointToDto(e.to),
       state: e.state as import("../../wasm/types").PresetConnectionState,
     }));
-  const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, activeTessellation, customPts);
+  const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, resolveFieldAt);
   const validTeleportPresets = state.presetTeleports
-    .filter(t => !invalidTeleportIds.has(t.id))
+    .filter(t => !invalidTeleportIds.has(t.id) && onFloorZero(t.from.level) && onFloorZero(t.to.level))
     .map(t => ({ from: presetEndpointToDto(t.from), to: presetEndpointToDto(t.to), state: presetTeleportEntryToState(t.direction) }));
   return [...validPresets, ...validTeleportPresets];
 }
@@ -161,22 +162,28 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
         .map((g) => ruleToConfig(state, g)),
     }));
   const activeTessellation = activeFloorTessellationOf(state);
-  const customPts = activeField.isEditingField ? activeField.fieldPoints : undefined;
+  const resolveFieldAt = resolveFieldAtOf(state);
   const lockedEntries = new Map(state.lockedNodes);
   for (const key of state.autoLockedNodes) {
     if (!lockedEntries.has(key)) lockedEntries.set(key, "both");
   }
+  // Key is "x,y" (floor 0) or "x,y@level" (GitHub issue #340) — parsed back into (point, level)
+  // for the wire DTO, same convention `presetEndpointKey`/`splitPointsCore.ts`'s `pointKey` use.
   const locked_nodes = Array.from(lockedEntries.entries()).map(([key, kind]) => {
-    const [x, y] = key.split(",").map(Number) as [number, number];
-    return { point: presetEndpointToDto(presetEndpoint([x, y])), kind };
+    const [pointPart, levelPart] = key.split("@");
+    const [x, y] = pointPart.split(",").map(Number) as [number, number];
+    const level = levelPart === undefined ? undefined : Number(levelPart);
+    return { point: presetEndpointToDto(presetEndpoint([x, y], undefined, level)), kind };
   });
-  const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, activeTessellation, customPts);
-  const invalidSplitKeys = computeInvalidSplitPoints(state.presetSplitPoints, activeTessellation, customPts);
-  const split_points: [[number, number], number][] = Object.entries(state.presetSplitPoints)
+  const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, resolveFieldAt);
+  const invalidSplitKeys = computeInvalidSplitPoints(state.presetSplitPoints, resolveFieldAt);
+  const split_points: [[number, number], number, number][] = Object.entries(state.presetSplitPoints)
     .filter(([key]) => !invalidSplitKeys.has(key))
     .flatMap(([key, slots]) => {
-      const [x, y] = key.split(",").map(Number) as [number, number];
-      return slots.map((slotId): [[number, number], number] => [[x, y], slotId]);
+      const [pointPart, levelPart] = key.split("@");
+      const [x, y] = pointPart.split(",").map(Number) as [number, number];
+      const level = levelPart === undefined ? 0 : Number(levelPart);
+      return slots.map((slotId): [[number, number], number, number] => [[x, y], slotId, level]);
     });
   const level_fields = state.floors.map((floor) => configAllCells(floorTessellationOf(state, floor.id)));
   return {

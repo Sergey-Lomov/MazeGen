@@ -187,12 +187,16 @@ pub enum PresetConnectionStateDto {
 
 /// Wire shape for a preset endpoint (GitHub issue #231) — a point plus an optional slot
 /// addressing one of that point's declared extra ("split") nodes. `slot: None` means the point's
-/// original node. Mirrors `maze-core::generation::PresetEndpoint`.
+/// original node. `level` (GitHub issue #340) is the endpoint's 0-based `levels_ordered()` index;
+/// `None` means level 0, backward-compatible with every pre-#340 config. Mirrors
+/// `maze-core::generation::PresetEndpoint`.
 #[derive(Deserialize)]
 pub struct PresetEndpointDto {
     pub point: [i32; 2],
     #[serde(default)]
     pub slot: Option<u32>,
+    #[serde(default)]
+    pub level: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -265,10 +269,14 @@ pub struct GenerateConfig {
     pub preset_finish: Option<PresetEndpointDto>,
     pub preset_gen_source: Option<PresetEndpointDto>,
     /// Extra nodes to create at declared points before any preset above is resolved (GitHub
-    /// issue #231) — `((x, y), slot_id)` pairs. `#[serde(default)]` so configs predating this
-    /// field still deserialize.
+    /// issue #231) — `((x, y), slot_id, level)` triples; `level` added by GitHub issue #340
+    /// (0-based `levels_ordered()` index). `#[serde(default)]` so configs predating this field
+    /// still deserialize; a config predating the `level` element within each triple would fail to
+    /// deserialize on the tuple arity mismatch, but no such config exists on disk (this field
+    /// itself only shipped after #231, and every fixture using it is updated alongside this
+    /// change).
     #[serde(default)]
-    pub split_points: Vec<((i32, i32), u32)>,
+    pub split_points: Vec<((i32, i32), u32, u32)>,
     /// `CustomVertexBased`-only automatic split-point assignment settings (GitHub issue #222).
     #[serde(default)]
     pub split_generation: SplitGenerationConfigDto,
@@ -463,7 +471,7 @@ pub(crate) fn parse_split_config_param(param: Option<&String>) -> maze_core::gen
 }
 
 fn build_preset_endpoint(dto: &PresetEndpointDto) -> PresetEndpoint {
-    PresetEndpoint { point: (dto.point[0], dto.point[1]), slot: dto.slot }
+    PresetEndpoint { point: (dto.point[0], dto.point[1]), slot: dto.slot, level: dto.level }
 }
 
 fn build_gen_params(cfg: &GenerationParamsConfig) -> GenerationParams {

@@ -137,15 +137,20 @@ pub enum TeleportDirection {
 /// comment). Presets never hold a resolved `NodeId` up front — split nodes referenced here are
 /// created from `GenerationConfig.split_points` before any preset is resolved (see
 /// `build_preset_state`).
+///
+/// `level` (GitHub issue #340) is the endpoint's 0-based position in `levels_ordered()` — the same
+/// index space `level_fields`/`NodeDto.level` already use. `None` means level 0, so every
+/// pre-#340 caller (single-level mazes, all Rust-side unit tests) is unaffected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PresetEndpoint {
     pub point: (i32, i32),
     pub slot: Option<u32>,
+    pub level: Option<u32>,
 }
 
 impl PresetEndpoint {
     pub fn original(point: (i32, i32)) -> Self {
-        Self { point, slot: None }
+        Self { point, slot: None, level: None }
     }
 }
 
@@ -176,10 +181,12 @@ pub struct GenerationConfig {
     pub preset_connections: Vec<PresetConnection>,
     pub locked_nodes:       Vec<LockedNode>,
     /// Extra nodes to create at declared points before any preset above is resolved — one entry
-    /// per `(point, slot)` pair (GitHub issue #231). Applied via `Field::add_node_at` in
-    /// `(point, slot)`-sorted order by `build_preset_state`, mirroring `apply_split_points`
-    /// (`maze-wasm/src/analytics.rs`) for post-edit's split nodes.
-    pub split_points: Vec<((i32, i32), u32)>,
+    /// per `(point, slot, level)` triple (GitHub issue #231; `level` added by #340 — 0-based
+    /// `levels_ordered()` index, same space `PresetEndpoint.level` uses). Applied via
+    /// `MultiLevelField::add_node_at` in `(level, point, slot)`-sorted order by
+    /// `build_preset_state`, mirroring `apply_split_points` (`maze-wasm/src/analytics.rs`) for
+    /// post-edit's split nodes.
+    pub split_points: Vec<((i32, i32), u32, u32)>,
     /// `CustomVertexBased`-only (GitHub issue #222) automatic split-point assignment settings.
     /// Ignored by every other generation algorithm.
     pub split_generation: crate::generation::split_pattern::SplitGenerationConfig,

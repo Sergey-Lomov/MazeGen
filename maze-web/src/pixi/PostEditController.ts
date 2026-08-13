@@ -1,6 +1,6 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { Container } from "pixi.js";
-import { pickEdgeAtPosition } from "./fieldEditUtils";
+import { pickEdgeAtPosition, isInEdgeVertexDeadZone } from "./fieldEditUtils";
 import { pickPostEditTeleportEndpointAt } from "./postEditUtils";
 import type { PostEditTeleportEndpointHit } from "../store/mazeStore";
 import { makeProjection } from "./tessellationProjection";
@@ -171,6 +171,13 @@ export class PostEditController extends BaseController {
         });
         return;
       }
+      // Near a shared vertex (edge dead zone, #188) — withhold the cell fallback too, or the
+      // vertex dead zone silently becomes "picks the cell instead" (GitHub issue #340 follow-up).
+      if (isInEdgeVertexDeadZone(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) {
+        this.renderer.updateHover(null);
+        this.renderer.updateCellHover(null);
+        return;
+      }
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       this.renderer.updateHover(null);
@@ -273,6 +280,7 @@ export class PostEditController extends BaseController {
         this.renderer.updateHover(edge, true);
         return;
       }
+      if (isInEdgeVertexDeadZone(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet())) return;
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const key = `${cell.x},${cell.y}`;

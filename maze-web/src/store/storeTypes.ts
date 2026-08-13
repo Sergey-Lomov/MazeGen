@@ -364,6 +364,12 @@ export interface FloorFieldsActions {
 }
 
 export interface PresetConnectionsState {
+  /** Every preset connection across every floor, in one flat map (GitHub issue #340) — an entry's
+   * floor lives in its own `from.level`/`to.level` (`PresetEndpoint.level`, undefined = floor 0),
+   * not in which bucket it's stored under. `presetEdgeKey` folds `level` into the key alongside
+   * point/slot, so entries on different floors never collide. Flat (not per-floor buckets) so a
+   * future cross-floor edge (vertical passage/elevator) has one natural home instead of an
+   * ownership question about whose bucket it lives in. */
   presetConnections: Map<string, PresetConnectionEntry>;
   presetConnectionsTool: PresetConnectionTool;
   defaultEdgeState: "undefined" | "wall" | "passage";
@@ -373,22 +379,25 @@ export interface PresetConnectionsState {
   highlightInvalidPresets: boolean;
   highlightIsolatedNodes: boolean;
   showPresetOrigin: boolean;
-  /** Locked nodes: key = "x,y", value = lock kind */
+  /** Locked nodes: key = "x,y[:level]", value = lock kind */
   lockedNodes: Map<string, NodeLockKind>;
   autoLock: boolean;
-  /** Auto-locked nodes (fully-defined cells): key = "x,y". Always lock_both. */
+  /** Auto-locked nodes (fully-defined cells): key = "x,y[:level]". Always lock_both. */
   autoLockedNodes: Set<string>;
   /** True after any preset connection change since the last confirmTessellation. */
   presetsDirty: boolean;
+  /** Every preset teleport across every floor, flat (GitHub issue #340) — same rationale as
+   * `presetConnections` above; a teleport's `from`/`to` can already carry independent `level`s. */
   presetTeleports: PresetTeleportEntry[];
   /** First-click endpoint of an in-progress teleport placement (teleport_one_way/teleport_two_way tools). */
   presetTeleportPendingFrom: [number, number] | null;
   _nextPresetTeleportId: number;
-  /** slotIds of each split point's extra nodes declared on the preset stage, keyed by "x,y"
+  /** slotIds of each split point's extra nodes declared on the preset stage, keyed by "x,y[:level]"
    * (GitHub issue #231) — mirrors post-edit's `postEditDraftSplitPoints`. */
   presetSplitPoints: Record<string, number[]>;
-  /** Which of a split point's nodes preset edge-tool clicks currently target, keyed by "x,y". No
-   * entry means the point's original node. Mirrors post-edit's `postEditActiveSplitNode`. */
+  /** Which of a split point's nodes preset edge-tool clicks currently target, keyed by
+   * "x,y[:level]". No entry means the point's original node. Mirrors post-edit's
+   * `postEditActiveSplitNode`. */
   presetActiveSplitNode: Record<string, PresetEndpoint>;
   /** The point currently selected for the "Manage split nodes" dialog on the preset stage. */
   presetFocusedPoint: [number, number] | null;
@@ -397,6 +406,13 @@ export interface PresetConnectionsState {
    *  same way `EdgeHighlightRenderer`'s pointermove-driven hover does, but sourced from the panel
    *  instead of the cursor. */
   presetHoveredLink: { from: PresetEndpoint; to: PresetEndpoint } | null;
+  /** Expanded/collapsed state per Preset Connections card section, keyed by section id — mirrors
+   *  `AnalyticsOverlayState.analyticsSectionsExpanded` (GitHub issue #340's UI follow-up). Only the
+   *  "Problems" section (isolated-nodes/orphan-split warnings) is collapsible, via the same shared
+   *  `SectionHeader` Analytics/Image Export already use, no count in the label — every other
+   *  section on this card (Edges Tools, Vertex Tools, Control, etc.) is a plain, always-expanded
+   *  group, not tracked here. */
+  presetSectionsExpanded: Record<string, boolean>;
 }
 
 export interface PresetConnectionsActions {
@@ -452,6 +468,15 @@ export interface PresetConnectionsActions {
    * reference to it) is dropped first, then one fresh slot per blueprint node is minted and its
    * required faces get a `passage`. See `splitBlueprints.ts`. */
   applyPresetSplitBlueprint: (point: [number, number], blueprint: SplitNodeBlueprint) => void;
+  setPresetSectionExpanded: (id: string, expanded: boolean) => void;
+  /** Removes every preset touching `point` on the active floor: every `presetConnections` entry
+   *  with an endpoint there (original node or any declared slot), every `presetTeleports` entry
+   *  with an endpoint there, the point's own declared split slots (and their active-node
+   *  selection), its own `lockedNodes` entry, and `presetStart`/`presetFinish`/`presetGenSource`
+   *  if any of them addresses this point. Mirrors post-edit's `resetPostEditPoint` cell-click
+   *  behavior (GitHub issue #340's "clear" tool follow-up) — but presets have no prior generation
+   *  to roll back to, so this deletes outright rather than restoring a generated snapshot. */
+  resetPresetPoint: (point: [number, number]) => void;
 }
 
 /** Handle onto the last debug generation run's raw event tape (GitHub issue #124/#125) plus the

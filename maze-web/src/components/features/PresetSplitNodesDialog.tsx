@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import { presetEdgeKey, resolvePresetActiveEndpoint, resolvePresetPartnerAt } from "../../pixi/fieldEditUtils";
+import { activeFloorLevel } from "../../store/storeHelpers";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
@@ -54,9 +55,10 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
 
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
 
-  const key = `${point[0]},${point[1]}`;
+  const level = useMazeStore((s) => activeFloorLevel(s));
+  const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
   const slots = useMemo(() => [...(splitPoints[key] ?? [])].sort((a, b) => a - b), [splitPoints, key]);
-  const isActive = (ep: PresetEndpoint) => presetEndpointsEqual(activeSplitNode[key] ?? presetEndpoint(point), ep);
+  const isActive = (ep: PresetEndpoint) => presetEndpointsEqual(activeSplitNode[key] ?? presetEndpoint(point, undefined, level), ep);
 
   const inFieldCells = useMemo(
     () => buildCellSet(buildActiveCells(fieldPoints, fieldEditMode, cfg)),
@@ -120,7 +122,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     for (const [dx, dy] of offsets) {
       const neighbor: [number, number] = [ep.point[0] + dx, ep.point[1] + dy];
       if (!inFieldCells.has(`${neighbor[0]},${neighbor[1]}`)) continue;
-      const neighborEndpoint = resolvePresetActiveEndpoint(neighbor, activeSplitNode);
+      const neighborEndpoint = resolvePresetActiveEndpoint(neighbor, activeSplitNode, level);
       if (decidedPartners.has(presetEndpointKey(neighborEndpoint))) continue;
       undecided.push({ otherLabel: describeEndpoint(neighborEndpoint), otherEndpoint: neighborEndpoint, arrow: "->", category: "undefined" });
     }
@@ -134,7 +136,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   // fixed-then-generated palette the canvas uses for resolved split nodes (GitHub issue #223).
   const colorAt = (rowIndex: number) => colorToCss(splitSlotColor(rowIndex, canvas.node.splitSlots));
 
-  const originalEndpoint = presetEndpoint(point);
+  const originalEndpoint = presetEndpoint(point, undefined, level);
   const rows: SplitNodesRow<PresetEndpoint>[] = [
     {
       key: presetEndpointKey(originalEndpoint), endpoint: originalEndpoint, title: m["post_edit.split_original_node"](),
@@ -142,7 +144,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       isStart: isStart(originalEndpoint), isFinish: isFinish(originalEndpoint),
     },
     ...slots.map((slotId, i) => {
-      const ep = presetEndpoint(point, slotId);
+      const ep = presetEndpoint(point, slotId, level);
       return {
         key: presetEndpointKey(ep), endpoint: ep, title: m["post_edit.split_node_label"]({ slotId }),
         color: colorAt(1 + i), removable: true, active: isActive(ep), ownLabel: describeEndpoint(ep), links: links(ep),
@@ -204,7 +206,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
 
     if (activeKind === "undefined") {
-      const neighborActive = resolvePresetActiveEndpoint(neighbor, useMazeStore.getState().presetActiveSplitNode);
+      const neighborActive = resolvePresetActiveEndpoint(neighbor, useMazeStore.getState().presetActiveSplitNode, level);
       const edgeKeyStr = presetEdgeKey(activeEndpoint, neighborActive);
       setPresetConnectionUndefined(edgeKeyStr, activeEndpoint, neighborActive);
       return;

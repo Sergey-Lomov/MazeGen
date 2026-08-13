@@ -11,7 +11,7 @@ use crate::analytics::build_analytics_snapshot;
 use crate::result::GenerateResult;
 
 fn preset_endpoint_dto_to_core(dto: &maze_runner::config::PresetEndpointDto) -> PresetEndpoint {
-    PresetEndpoint { point: (dto.point[0], dto.point[1]), slot: dto.slot }
+    PresetEndpoint { point: (dto.point[0], dto.point[1]), slot: dto.slot, level: dto.level }
 }
 
 /// Runs the initial (pre-QC/repair) generation pass and returns the generation source's *unmerged*

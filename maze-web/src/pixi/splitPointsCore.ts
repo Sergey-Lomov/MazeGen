@@ -13,8 +13,13 @@
 
 export type SplitPoints = Record<string, number[]>;
 
-function pointKey(point: [number, number]): string {
-  return `${point[0]},${point[1]}`;
+/** `"x,y"` for floor 0, `"x,y@level"` otherwise (GitHub issue #340) — same suffix convention
+ * `presetEndpointKey` uses, so a declared split point's key never collides across floors sharing
+ * the same point coordinates. `level` is always `undefined` on the post-edit side (post-edit only
+ * ever resolves against floor 0 — `Specs/floors.md`'s "Non-goals"), so `postEditDraftSplitPoints`
+ * keys are unaffected by this change. */
+function pointKey(point: [number, number], level?: number): string {
+  return level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
 }
 
 /** Derives a fresh `SplitPoints` map straight from a node list (`state.nodes`, GitHub issue #236's
@@ -47,8 +52,9 @@ export function deriveSplitPointsFromNodes(nodes: { x: number; y: number; i: num
 export function addSlot(
   splitPoints: SplitPoints,
   point: [number, number],
+  level?: number,
 ): { splitPoints: SplitPoints; slotId: number } {
-  const key = pointKey(point);
+  const key = pointKey(point, level);
   const existing = splitPoints[key] ?? [];
   const slotId = existing.length === 0 ? 0 : Math.max(...existing) + 1;
   return { splitPoints: { ...splitPoints, [key]: [...existing, slotId] }, slotId };
@@ -64,8 +70,9 @@ export function removeSlot<E>(
   point: [number, number],
   slotId: number,
   isSlot: (entry: E, point: [number, number], slotId: number) => boolean,
+  level?: number,
 ): { splitPoints: SplitPoints; activeMap: Record<string, E> } {
-  const key = pointKey(point);
+  const key = pointKey(point, level);
   const existing = splitPoints[key] ?? [];
   const nextSlots = existing.filter((s) => s !== slotId);
   const nextSplitPoints = { ...splitPoints };
@@ -91,8 +98,9 @@ export function cycleActive<E>(
   point: [number, number],
   makeSplit: (point: [number, number], slotId: number) => E,
   slotOfActive: (entry: E | undefined) => number | undefined,
+  level?: number,
 ): Record<string, E> {
-  const key = pointKey(point);
+  const key = pointKey(point, level);
   const slots = splitPoints[key];
   if (!slots || slots.length === 0) return activeMap;
   const sorted = [...slots].sort((a, b) => a - b);
@@ -114,8 +122,9 @@ export function setActive<E>(
   point: [number, number],
   endpoint: E,
   isDefault: (entry: E) => boolean,
+  level?: number,
 ): Record<string, E> {
-  const key = pointKey(point);
+  const key = pointKey(point, level);
   const nextActive = { ...activeMap };
   if (isDefault(endpoint)) {
     delete nextActive[key];

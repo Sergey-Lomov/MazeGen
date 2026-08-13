@@ -201,7 +201,7 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 | `presetStart` | `PresetEndpoint \| null` | Start marker point (+ optional slot) |
 | `presetFinish` | `PresetEndpoint \| null` | Finish marker point (+ optional slot) |
 | `presetGenSource` | `PresetEndpoint \| null` | Generator start point (+ optional slot; overrides `presetStart` in WASM config) |
-| `lockedNodes` | `Map<string, NodeLockKind>` | Manually locked nodes (plain point key — always the original node) |
+| `lockedNodes` | `Map<string, NodeLockKind>` | Manually locked nodes, keyed `"x,y"`/`"x,y@level"` (always the original node — see "Multi-floor presets") |
 | `autoLock` | `boolean` | Whether auto-lock is enabled |
 | `autoLockedNodes` | `Set<string>` | Nodes auto-locked because all their interior edges are preset |
 | `highlightInvalidPresets` | `boolean` | Whether to draw the invalid highlight overlay |
@@ -303,7 +303,7 @@ Hit-test for click/hover:
 2. Check the cell and all its neighbors as candidates
 3. For each candidate pair both in field, compute distance from pointer to the actual polygon edge segment (`getSharedEdgeSegment`)
 4. If `deadZone` is passed and the closest point on a segment falls within `EDGE_ENDPOINT_DEAD_ZONE_FRACTION` (0.2) of either endpoint, skip that segment — this stops the cursor from hair-triggering a perpendicular edge while it passes near a shared grid vertex during a drag (#188)
-5. Accept the closest remaining edge within `threshold = TILE_SIZE * 0.4` (or `TRI_TILE_SIZE * 0.4` for triangles)
+5. Accept the closest remaining edge within `threshold = TILE_SIZE * 0.4` (squares/hexes) or `TRI_TILE_SIZE * 0.12` (triangles — kept well under the incenter-to-side distance `≈ 0.29 * side`, so a triangle cell's own centroid never falls inside the edge-hit zone; a wider ratio tuned for squares made every dead-center triangle click misread as an edge click, GitHub issue #340 follow-up)
 
 `deadZone` defaults to `false` and is passed `true` only from `onPointerMove` (hover + drag-continuation) in both `PresetConnectionsController` and `PostEditController`; `onPointerDown` (plain click) calls omit it, so a single click can still hit an edge whose nearest point is close to a vertex.
 
@@ -319,12 +319,39 @@ A tessellation point can resolve to more than one graph node ("split point" — 
 interface PresetEndpoint {
   point: [number, number];
   slotId?: number;   // absent = the point's original node
+  level?: number;    // absent = floor 0 — see "Multi-floor presets" below
 }
 ```
 
 Used everywhere a preset previously stored a bare cell tuple: `PresetConnectionEntry.from`/`.to`, `PresetTeleportEntry.from`/`.to`, `presetStart`/`presetFinish`/`presetGenSource`. **No slot means the original node only** — this is a deliberate narrowing from the pre-#231 behavior, where a preset with no split-node concept applied to *every* node at a point (see `maze-core`'s `build_preset_state`, GitHub issue #219/#220). A preset explicitly addressing a declared slot now resolves to exactly that node.
 
-`lockedNodes` (the `Map<"x,y", NodeLockKind>` powering the lock tools) is unaffected — locks stay plain-point-keyed and always address the original node only; there is no lock-tool UI for addressing a specific slot.
+`lockedNodes` (the `Map<string, NodeLockKind>` powering the lock tools) is keyed the same way every other preset collection now is (`"x,y"` or `"x,y@level"`, see "Multi-floor presets" below) — locks always address the original node only; there is no lock-tool UI for addressing a specific slot.
+
+## Multi-floor presets (GitHub issue #340)
+
+Every preset tool (walls/passages/one-way, teleports, start/finish/gen-source markers, locks, split points) works on any floor. There is **no per-floor preset storage** — `presetConnections`, `presetTeleports`, `lockedNodes`, `presetSplitPoints`, `presetActiveSplitNode` each remain one flat, maze-wide collection, exactly as before this issue. A preset's floor lives entirely inside its own `PresetEndpoint.level` (or, for the string-keyed collections below, an `"@level"` key suffix) — not in which per-floor bucket it's filed under.
+
+This is a deliberate choice over a per-floor bucket model: folding floor identity into the endpoint's own coordinate `(x, y, level)` means a single entry can in principle span two floors (a future vertical-passage/elevator edge) without an ownership question about which floor's bucket it would belong to.
+
+**`level` convention** — 0-based index into `floors`/`level_fields`/`levels_ordered()`, `undefined` meaning floor 0. This is the same "undefined = default" pattern `slotId` already uses. A pre-#340 single-floor project has every `level` absent, so its serialized shape and every derived key are byte-identical to before this issue.
+
+**Key suffix convention** for the string-keyed collections (`lockedNodes`, `presetSplitPoints`, `presetActiveSplitNode`): `"x,y"` for floor 0, `"x,y@level"` otherwise — built by `presetEndpointKey`/`pointKey` (`pixi/splitPointsCore.ts`) and parsed back by `computeInvalidSplitPoints`/`generateConfigBuilder.ts`. `presetEdgeKey(a, b)` (the `presetConnections` map key) sorts its canonical pair by `level` first, then by point — a same-floor pair (the overwhelming majority) produces the exact same key it always did.
+
+**Stamping on write** — every store action that creates a new `PresetEndpoint` (edge tools, teleport placement, lock tools, gen-source, split-node declaration) stamps `activeFloorLevel(state)` onto it — the array index of `state.activeFloorId` within `state.floors` (`storeHelpers.ts`), `undefined` for floor 0. A user editing floor 2 only ever creates/targets entries whose `level` resolves to floor 2.
+
+**Renderer/controller scoping** — `PresetConnectionsRenderer`/`PresetConnectionsController` filter the flat, maze-wide collections down to the active floor's own entries at the render/hit-test boundary (`presetConnectionsOnLevel`, `recordOnLevel`, `mapOnLevel`, `setOnLevel`, `teleportsOnLevel` in `fieldEditUtils.ts`/`PresetConnectionsController.ts`), stripping the `@level` key suffix before handing off to the underlying rendering functions (`presetSelectors.ts`), which remain level-agnostic and operate on single-floor-shaped data exactly as before.
+
+**"Manage split nodes" dialog** (`PresetSplitNodesDialog.tsx`) reads `activeFloorLevel(state)` once and stamps it onto every `PresetEndpoint`/split-point key it builds or resolves (the point key, `originalEndpoint`, each slot row's endpoint, and every `resolvePresetActiveEndpoint` call for a neighbor face) — opening the dialog on floor 2 only ever reads/writes floor 2's own split-point declarations, never floor 0's.
+
+**Validity checking** — every invalidity check (`computeInvalidKeys`, `computeInvalidTeleportIds`, `computeInvalidMarkers`, `computeInvalidSplitPoints`) resolves an entry's own field against its own floor, not the active floor, via `ResolveFieldAt = (level) => { cfg, customPoints? } | undefined` (each floor has an independent field shape per GitHub issue #338). `computeAutoLockedNodes` similarly takes `LevelField[]` (one `{ level, cfg, customPoints? }` per floor) and walks every floor's own edges when deciding which nodes auto-lock.
+
+**Generation** — `buildValidPresetConnections`/`buildGenerateConfig` (`generateConfigBuilder.ts`) send every floor's presets, level tags intact — the Rust side resolves each `PresetEndpoint.level` against the matching `levels_ordered()` entry (see "WASM wire format" below). **Post-edit stays floor-0-only** per `Specs/floors.md`'s "Non-goals" — `buildValidPresetConnections(state, floorZeroOnly = true)` restricts to floor-0 entries for that one call site, and `preset_split_points` is filtered to drop any key containing `"@"`.
+
+**Floor reorder/removal** (`floorsSlice.ts`) — `level` is a *positional* index into `floors`, not a stable id, so both mutating actions remap every preset's `level` to keep it pointing at the same floor:
+- `moveFloor` swaps two floors' array positions; `remapPresetLevelsOnFloorSwap` (`storeHelpers.ts`) rewrites every preset's `level` through that swap (floor 0 round-trips through `undefined`↔`0` correctly when it's one of the two swapped).
+- `removeFloor` deletes one floor and shifts every floor above it down by one index; `dropPresetLevelOnFloorRemove` (`storeHelpers.ts`) drops every preset entry that named the removed floor (it has nowhere to go) and shifts every remaining entry's `level` down by one to track its floor's new position — mirrors how `removeFloor` already deletes the removed floor id's own `FloorFieldConfig` entry.
+
+Both remaps rebuild `presetConnections`' map keys (via `presetEdgeKey`) and every `"@level"`-suffixed string key, then recompute `autoLockedNodes` against the mutated state — a stale key or a `level` still pointing at a since-shifted floor would otherwise silently misattribute a preset to the wrong floor without any invalidity signal (the entry would just look valid on the wrong floor, not invalid).
 
 ### Declaring split points
 
@@ -374,17 +401,18 @@ preset_start?: PresetEndpointDto       // explicit start endpoint (presetStart)
 preset_finish?: PresetEndpointDto
 preset_gen_source?: PresetEndpointDto  // generation algorithm seed (presetGenSource)
 locked_nodes: Array<{ point: PresetEndpointDto, kind: NodeLockKind }>
-split_points: Array<[[number, number], number]>  // declared (point, slotId) pairs — see "Split nodes" above
+split_points: Array<[[number, number], number, number]>  // declared (point, slotId, level) triples — see "Split nodes" above and "Multi-floor presets"
 
 interface PresetEndpointDto {
   point: [number, number];
   slot?: number;
+  level?: number;  // GitHub issue #340 — 0-based levels_ordered() index, absent = floor 0
 }
 ```
 
 Filtered by `computeInvalidKeys`/`computeInvalidTeleportIds`/`computeInvalidMarkers`/`computeInvalidSplitPoints` before building the payload. Invalid entries are silently dropped. `lockedNodes` and `autoLockedNodes` are merged before sending.
 
-On the Rust side: `PresetConnectionDto`/`PresetEndpointDto` with `#[derive(Deserialize)]`; `PresetConnectionState` enum; stored in `GenerationConfig.preset_connections: Vec<PresetConnection>` (each endpoint a `PresetEndpoint { point: (i32,i32), slot: Option<u32> }`). Default is `vec![]`.
+On the Rust side: `PresetConnectionDto`/`PresetEndpointDto` with `#[derive(Deserialize)]`; `PresetConnectionState` enum; stored in `GenerationConfig.preset_connections: Vec<PresetConnection>` (each endpoint a `PresetEndpoint { point: (i32,i32), slot: Option<u32>, level: Option<u32> }`). Default is `vec![]`. `PresetState::resolve_endpoint` (`maze-core/src/generation/preset_state.rs`) resolves `endpoint.level.unwrap_or(0)` against `MultiLevelField::levels_ordered()` to find the real `LevelId` before resolving the point/slot within that level — an unknown level index fails `apply_split_points`/`build_preset_state` with an error rather than silently resolving against the wrong floor.
 
 **Breaking wire-format change (GitHub issue #231):** `PresetConnection.from`/`.to`, `LockedNode.point`, and `preset_start`/`preset_finish`/`preset_gen_source` changed from a bare `(i32,i32)`/`[i32;2]` to the `{point, slot}` object above — an intentional, non-backward-compatible change, not a migration. Project files and `maze-runner` fixtures predating this issue that use the old flat-tuple shape in these fields no longer parse.
 

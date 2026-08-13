@@ -25,13 +25,14 @@ pub struct PresetState {
     /// neighbors of their source node (GitHub issue #226) so a preset teleport is followed into
     /// the algorithm's own visited/reachability tracking exactly like a dynamically-added one.
     pub preset_teleports: HashMap<NodeId, Vec<NodeId>>,
-    /// Per-point sorted slot list built while applying `split_points` (GitHub issue #231) — the
-    /// same map `build_preset_state`'s own endpoint resolution uses internally. Exposed via
-    /// `resolve_endpoint` so callers can resolve `preset_start`/`preset_finish`/
-    /// `preset_gen_source` (markers outside `GenerationConfig.preset_connections`/`.locked_nodes`)
-    /// against the exact same already-applied split nodes, without re-deriving the resolution
-    /// logic. Empty when `for_repair`'s `qc_experiment` branch clears everything else too.
-    pub(crate) slots_by_point: HashMap<(i32, i32), Vec<u32>>,
+    /// Per-(level, point) sorted slot list built while applying `split_points` (GitHub issue #231;
+    /// keyed by level too as of #340) — the same map `build_preset_state`'s own endpoint
+    /// resolution uses internally. Exposed via `resolve_endpoint` so callers can resolve
+    /// `preset_start`/`preset_finish`/`preset_gen_source` (markers outside
+    /// `GenerationConfig.preset_connections`/`.locked_nodes`) against the exact same
+    /// already-applied split nodes, without re-deriving the resolution logic. Empty when
+    /// `for_repair`'s `qc_experiment` branch clears everything else too.
+    pub(crate) slots_by_point: HashMap<(u32, i32, i32), Vec<u32>>,
     /// Nodes the preset snapshot currently declares as split nodes. On the generate path this is
     /// exactly the set `apply_split_points` minted in this call. On the post-edit path it's
     /// resolved fresh from the client's preset-split-points snapshot against the rebuilt field —
@@ -104,7 +105,7 @@ impl PresetState {
     /// Resolves a `PresetEndpoint` (e.g. `preset_start`/`preset_finish`/`preset_gen_source`) to a
     /// real `NodeId` on `field`, against the same split nodes `build_preset_state` already
     /// applied to it — must be called with the same `field`/`xy_to_point` used to build this
-    /// `PresetState`. Returns `None` for an unresolvable endpoint (unknown point, or an
+    /// `PresetState`. Returns `None` for an unresolvable endpoint (unknown point/level, or an
     /// undeclared slot), same "silently unresolved" contract `build_preset_state` uses internally.
     pub fn resolve_endpoint<T: Tessellation>(
         &self,
@@ -112,43 +113,56 @@ impl PresetState {
         xy_to_point: impl Fn(i32, i32) -> T::Point,
         endpoint: PresetEndpoint,
     ) -> Option<NodeId> {
-        let level = field.single_level_id();
-        resolve_preset_endpoint(field, level, &self.slots_by_point, &xy_to_point, endpoint)
+        resolve_preset_endpoint(field, &self.slots_by_point, &xy_to_point, endpoint)
     }
 }
 
-/// Applies `split_points` to `field` via `Field::add_node_at`, in `(point, slot)`-sorted order
-/// (mirrors `apply_split_points` in `maze-wasm/src/analytics.rs` for post-edit's split nodes —
-/// same rationale: a deterministic order so `(point, slot) -> NodeId` doesn't depend on input
-/// order). Returns a resolver mapping `PresetEndpoint` to a real `NodeId`: `slot: None` resolves
-/// to the point's original node (`nodes_at(point)[0]`); `slot: Some(s)` resolves to whichever node
-/// `add_node_at` created for `s` (`nodes_at(point)[1 + index]`, where `index` is `s`'s position in
-/// the sorted slot list for that point — see `Field::nodes_at`'s creation-order contract). Also
+/// Resolves a 0-based `levels_ordered()` index to a real `LevelId`, `None` for an out-of-range
+/// index. `field.levels_ordered()` yields levels in stable, deterministic order (level list is
+/// fixed for the duration of a generation run), so this is a pure lookup.
+fn level_id_at<T: Tessellation>(field: &MultiLevelField<T>, level_index: u32) -> Option<crate::space::LevelId> {
+    field.levels_ordered().nth(level_index as usize)
+}
+
+/// Applies `split_points` to `field` via `MultiLevelField::add_node_at`, in
+/// `(level, point, slot)`-sorted order (mirrors `apply_split_points` in
+/// `maze-wasm/src/analytics.rs` for post-edit's split nodes — same rationale: a deterministic
+/// order so `(level, point, slot) -> NodeId` doesn't depend on input order). Returns a resolver
+/// mapping `PresetEndpoint` to a real `NodeId`: `slot: None` resolves to the point's original node
+/// (`nodes_at(level, point)[0]`); `slot: Some(s)` resolves to whichever node `add_node_at` created
+/// for `s` (`nodes_at(level, point)[1 + index]`, where `index` is `s`'s position in the sorted
+/// slot list for that `(level, point)` — see `Field::nodes_at`'s creation-order contract). Also
 /// returns the set of `NodeId`s actually minted by `add_node_at` in this call — feeds
 /// `PresetState.preset_declared_nodes`.
 ///
-/// Returns `Err` (never panics) if `split_points` references a point outside `field` — the caller
-/// is expected to have already filtered these client-side (see `Specs/preset-connections.md`'s
-/// "Split nodes" section), but this is not assumed; `Field::add_node_at` panics on an unknown
-/// point, so this guards against it explicitly, same defense-in-depth `apply_split_points` uses.
+/// Returns `Err` (never panics) if `split_points` references a point outside `field` or a level
+/// index outside `levels_ordered()` — the caller is expected to have already filtered these
+/// client-side (see `Specs/preset-connections.md`'s "Split nodes" section), but this is not
+/// assumed; `MultiLevelField::add_node_at` panics on an unknown level/point, so this guards
+/// against it explicitly, same defense-in-depth `apply_split_points` uses.
 fn apply_split_points<T: Tessellation>(
     field: &mut MultiLevelField<T>,
     graph: &mut Graph,
     ids: &mut IdGenerator,
-    split_points: &[((i32, i32), u32)],
+    split_points: &[((i32, i32), u32, u32)],
     xy_to_point: &impl Fn(i32, i32) -> T::Point,
     mut debug_state: Option<&mut super::DebugGenerationState<T>>,
-) -> Result<(HashMap<(i32, i32), Vec<u32>>, HashSet<NodeId>), String> {
-    let level = field.single_level_id();
-    let mut sorted: Vec<((i32, i32), u32)> = split_points.to_vec();
+) -> Result<(HashMap<(u32, i32, i32), Vec<u32>>, HashSet<NodeId>), String> {
+    // Sort by (level, point, slot) — `((i32,i32), u32, u32)`'s natural tuple order sorts by point
+    // first, so re-key to (level_index, point, slot) before sorting.
+    let mut sorted: Vec<(u32, (i32, i32), u32)> = split_points.iter()
+        .map(|&(xy, slot_id, level_index)| (level_index, xy, slot_id))
+        .collect();
     sorted.sort_unstable();
 
-    let mut slots_by_point: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+    let mut slots_by_point: HashMap<(u32, i32, i32), Vec<u32>> = HashMap::new();
     let mut minted_nodes: HashSet<NodeId> = HashSet::new();
-    for (xy, slot_id) in sorted {
+    for (level_index, xy, slot_id) in sorted {
+        let level = level_id_at(field, level_index)
+            .ok_or_else(|| format!("split_points references unknown level {level_index}"))?;
         let point = xy_to_point(xy.0, xy.1);
         if field.field_of(level).is_none_or(|f| !f.contains(point)) {
-            return Err(format!("split_points references unknown point {xy:?}"));
+            return Err(format!("split_points references unknown point {xy:?} on level {level_index}"));
         }
         let node = field.add_node_at(level, point, ids);
         graph.add_node(node);
@@ -156,28 +170,29 @@ fn apply_split_points<T: Tessellation>(
         if let Some(state) = debug_state.as_deref_mut() {
             state.note(node, point);
         }
-        slots_by_point.entry(xy).or_default().push(slot_id);
+        slots_by_point.entry((level_index, xy.0, xy.1)).or_default().push(slot_id);
     }
     Ok((slots_by_point, minted_nodes))
 }
 
-/// Resolves one `PresetEndpoint` to a real `NodeId`. `slots_by_point` is the per-point sorted
-/// slot list `apply_split_points` just built (already sorted — insertion order there is the sort
-/// order). Returns `None` if the point isn't in the field, or if `slot: Some(s)` names a slot not
-/// present in `slots_by_point` for that point.
+/// Resolves one `PresetEndpoint` to a real `NodeId`. `slots_by_point` is the per-(level, point)
+/// sorted slot list `apply_split_points` just built (already sorted — insertion order there is
+/// the sort order). Returns `None` if the level index is out of range, the point isn't in the
+/// field, or `slot: Some(s)` names a slot not present in `slots_by_point` for that (level, point).
 fn resolve_preset_endpoint<T: Tessellation>(
     field: &MultiLevelField<T>,
-    level: crate::space::LevelId,
-    slots_by_point: &HashMap<(i32, i32), Vec<u32>>,
+    slots_by_point: &HashMap<(u32, i32, i32), Vec<u32>>,
     xy_to_point: &impl Fn(i32, i32) -> T::Point,
     endpoint: PresetEndpoint,
 ) -> Option<NodeId> {
+    let level_index = endpoint.level.unwrap_or(0);
+    let level = level_id_at(field, level_index)?;
     let point = xy_to_point(endpoint.point.0, endpoint.point.1);
     let nodes = field.nodes_at(level, point);
     match endpoint.slot {
         None => nodes.first().copied(),
         Some(slot) => {
-            let slots = slots_by_point.get(&endpoint.point)?;
+            let slots = slots_by_point.get(&(level_index, endpoint.point.0, endpoint.point.1))?;
             let index = slots.iter().position(|&s| s == slot)?;
             nodes.get(1 + index).copied()
         }
@@ -193,10 +208,11 @@ fn resolve_preset_endpoint<T: Tessellation>(
 ///
 /// Every `PresetConnection`/`LockedNode` endpoint resolves to exactly one `NodeId` (GitHub issue
 /// #231) — `slot: None` means the point's original node, `slot: Some(s)` means that specific split
-/// node. This replaced the earlier #219/#220 broadcast behavior (applying a preset to every node
-/// at a point, since presets couldn't address a specific one yet) — an unresolvable endpoint
-/// (unknown point, or a `slot` not declared in `split_points`) is silently skipped, same as the
-/// old "point out of bounds" skip.
+/// node; `level: None` means level 0 (GitHub issue #340), `level: Some(i)` means the level at
+/// position `i` in `levels_ordered()`. This replaced the earlier #219/#220 broadcast behavior
+/// (applying a preset to every node at a point, since presets couldn't address a specific one
+/// yet) — an unresolvable endpoint (unknown point/level, or a `slot` not declared in
+/// `split_points` for that level) is silently skipped, same as the old "point out of bounds" skip.
 ///
 /// `split_points` (declared extra nodes) is applied to `field` before any preset/lock is resolved
 /// — see `apply_split_points` above.
@@ -206,7 +222,7 @@ pub fn build_preset_state<T: Tessellation>(
     ids: &mut IdGenerator,
     preset_connections: &[PresetConnection],
     locked_nodes: &[LockedNode],
-    split_points: &[((i32, i32), u32)],
+    split_points: &[((i32, i32), u32, u32)],
     xy_to_point: impl Fn(i32, i32) -> T::Point,
     mut log: Option<&mut EventLog<PresetSetupEvent>>,
     debug_state: Option<&mut super::DebugGenerationState<T>>,
@@ -219,8 +235,7 @@ pub fn build_preset_state<T: Tessellation>(
     let mut preset_teleports: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 
     let (slots_by_point, preset_declared_nodes) = apply_split_points(field, graph, ids, split_points, &xy_to_point, debug_state)?;
-    let level = field.single_level_id();
-    let resolve = |ep: PresetEndpoint| resolve_preset_endpoint(field, level, &slots_by_point, &xy_to_point, ep);
+    let resolve = |ep: PresetEndpoint| resolve_preset_endpoint(field, &slots_by_point, &xy_to_point, ep);
 
     for preset in preset_connections {
         let (Some(from_id), Some(to_id)) = (resolve(preset.from), resolve(preset.to)) else { continue };

@@ -833,7 +833,7 @@ mod preset_locked_end_to_end_tests {
         for node in field.all_node_ids() { graph.add_node(node); }
 
         let xy_to_point = |x: i32, y: i32| SquarePoint { x, y };
-        let split_points = vec![((1, 0), 0u32)];
+        let split_points = vec![((1, 0), 0u32, 0u32)];
         // Both slot0's and the extra slot's connections to the neighbor are preset Passages --
         // the whole group must resolve preset_locked: true (all_preset_locked requires *every*
         // edge in the group to be protected, not just one).
@@ -844,7 +844,7 @@ mod preset_locked_end_to_end_tests {
                 state: PresetConnectionState::Passage,
             },
             PresetConnection {
-                from: PresetEndpoint { point: (1, 0), slot: Some(0) },
+                from: PresetEndpoint { point: (1, 0), slot: Some(0), level: None },
                 to: PresetEndpoint::original((0, 0)),
                 state: PresetConnectionState::Passage,
             },

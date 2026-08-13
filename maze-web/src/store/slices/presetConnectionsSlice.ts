@@ -8,7 +8,7 @@ import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { NodeLockKind } from "../../wasm/types";
 import type { MazeState, MazeStore, PresetConnectionsState, PresetConnectionsActions } from "../storeTypes";
-import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock, activeFloorField } from "../storeHelpers";
+import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock, activeFloorField, activeFloorLevel, resolveFieldAtOf } from "../storeHelpers";
 
 export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], PresetConnectionsState & PresetConnectionsActions> = (set, get) => ({
   presetConnections: new Map<string, PresetConnectionEntry>(),
@@ -31,16 +31,20 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetActiveSplitNode: {},
   presetFocusedPoint: null,
   presetHoveredLink: null,
+  presetSectionsExpanded: { problems: true },
 
   setPresetConnectionsTool: (tool) => set({ presetConnectionsTool: tool, presetTeleportPendingFrom: null }),
 
+  setPresetSectionExpanded: (id, expanded) =>
+    set((s) => ({ presetSectionsExpanded: { ...s.presetSectionsExpanded, [id]: expanded } })),
+
   applyPresetConnectionsTool: (key, from, to) => set((state) => {
-    const presetConnections = applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool, state.defaultEdgeState, state.presetActiveSplitNode);
+    const presetConnections = applyTool(state.presetConnections, { key, from, to }, state.presetConnectionsTool, state.defaultEdgeState, state.presetActiveSplitNode, activeFloorLevel(state));
     return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
   }),
 
   applyPresetConnectionsToolAt: (tool, key, from, to) => set((state) => {
-    const presetConnections = applyTool(state.presetConnections, { key, from, to }, tool, state.defaultEdgeState, state.presetActiveSplitNode);
+    const presetConnections = applyTool(state.presetConnections, { key, from, to }, tool, state.defaultEdgeState, state.presetActiveSplitNode, activeFloorLevel(state));
     return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
   }),
 
@@ -51,17 +55,16 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   }),
 
   clearInvalidPresetConnections: () => set((state) => {
-    const field = activeFloorField(state);
-    const customPts = field.isEditingField ? field.fieldPoints : undefined;
-    const invalidKeys = computeInvalidKeys(state.presetConnections, field.tessellationConfig, customPts);
+    const resolveFieldAt = resolveFieldAtOf(state);
+    const invalidKeys = computeInvalidKeys(state.presetConnections, resolveFieldAt);
     const presetConnections = new Map(state.presetConnections);
     for (const key of invalidKeys) presetConnections.delete(key);
-    const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, field.tessellationConfig, customPts);
+    const invalidTeleportIds = computeInvalidTeleportIds(state.presetTeleports, resolveFieldAt);
     const presetTeleports = state.presetTeleports.filter(t => !invalidTeleportIds.has(t.id));
-    const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, field.tessellationConfig, customPts);
+    const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, resolveFieldAt);
     const presetStart = invalidMarkers.start ? null : state.presetStart;
     const presetFinish = invalidMarkers.finish ? null : state.presetFinish;
-    const invalidSplitKeys = computeInvalidSplitPoints(state.presetSplitPoints, field.tessellationConfig, customPts);
+    const invalidSplitKeys = computeInvalidSplitPoints(state.presetSplitPoints, resolveFieldAt);
     const presetSplitPoints = { ...state.presetSplitPoints };
     for (const key of invalidSplitKeys) delete presetSplitPoints[key];
     return withRecomputedAutoLock(state, { presetConnections, presetTeleports, presetStart, presetFinish, presetSplitPoints });
@@ -88,7 +91,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   applyPresetConnectionsReset: (key) => set((state) => {
     const existing = state.presetConnections.get(key);
     if (!existing) return {};
-    const presetConnections = materializeReset(state.presetConnections, { key, from: existing.from.point, to: existing.to.point }, state.defaultEdgeState);
+    const presetConnections = materializeReset(state.presetConnections, { key, from: existing.from.point, to: existing.to.point }, state.defaultEdgeState, existing.from, existing.to);
     return withRecomputedAutoLock(state, { presetConnections });
   }),
 
@@ -99,17 +102,17 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   })),
 
   setPresetStart: (cell) => set((state) => ({
-    presetStart: cell === null ? null : resolvePresetActiveEndpoint(cell, state.presetActiveSplitNode),
+    presetStart: cell === null ? null : resolvePresetActiveEndpoint(cell, state.presetActiveSplitNode, activeFloorLevel(state)),
     debugStale: debugStaleOf(state),
   })),
   setPresetFinish: (cell) => set((state) => ({
-    presetFinish: cell === null ? null : resolvePresetActiveEndpoint(cell, state.presetActiveSplitNode),
+    presetFinish: cell === null ? null : resolvePresetActiveEndpoint(cell, state.presetActiveSplitNode, activeFloorLevel(state)),
     debugStale: debugStaleOf(state),
   })),
   setPresetStartEndpoint: (endpoint) => set((state) => ({ presetStart: endpoint, debugStale: debugStaleOf(state) })),
   setPresetFinishEndpoint: (endpoint) => set((state) => ({ presetFinish: endpoint, debugStale: debugStaleOf(state) })),
   setPresetGenSource: (cell) => set((state) => ({
-    presetGenSource: cell === null ? null : resolvePresetActiveEndpoint(cell, state.presetActiveSplitNode),
+    presetGenSource: cell === null ? null : resolvePresetActiveEndpoint(cell, state.presetActiveSplitNode, activeFloorLevel(state)),
     debugStale: debugStaleOf(state),
   })),
 
@@ -123,12 +126,14 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
 
   setLockedNode: (x, y, kind) => set((state) => {
     const next = new Map(state.lockedNodes);
-    next.set(`${x},${y}`, kind);
+    const level = activeFloorLevel(state);
+    next.set(level === undefined ? `${x},${y}` : `${x},${y}@${level}`, kind);
     return { lockedNodes: next, debugStale: debugStaleOf(state) };
   }),
 
   removeLockedNode: (x, y) => set((state) => {
-    const key = `${x},${y}`;
+    const level = activeFloorLevel(state);
+    const key = level === undefined ? `${x},${y}` : `${x},${y}@${level}`;
     if (!state.lockedNodes.has(key)) return {};
     const next = new Map(state.lockedNodes);
     next.delete(key);
@@ -140,7 +145,8 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   setPresetTeleportPendingFrom: (cell) => set({ presetTeleportPendingFrom: cell }),
 
   addPresetTeleport: (from, to, direction) => set((state) => {
-    const entry: PresetTeleportEntry = { id: state._nextPresetTeleportId, from: presetEndpoint(from), to: presetEndpoint(to), direction };
+    const level = activeFloorLevel(state);
+    const entry: PresetTeleportEntry = { id: state._nextPresetTeleportId, from: presetEndpoint(from, undefined, level), to: presetEndpoint(to, undefined, level), direction };
     return {
       presetTeleports: [...state.presetTeleports, entry],
       _nextPresetTeleportId: state._nextPresetTeleportId + 1,
@@ -169,10 +175,12 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   })),
 
   addPresetSplitNode: (point) => set((state) => {
-    const { splitPoints, slotId } = addSlot(state.presetSplitPoints, point);
+    const level = activeFloorLevel(state);
+    const { splitPoints, slotId } = addSlot(state.presetSplitPoints, point, level);
+    const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
     return {
       presetSplitPoints: splitPoints,
-      presetActiveSplitNode: { ...state.presetActiveSplitNode, [`${point[0]},${point[1]}`]: presetEndpoint(point, slotId) },
+      presetActiveSplitNode: { ...state.presetActiveSplitNode, [key]: presetEndpoint(point, slotId, level) },
       presetsDirty: true,
       debugStale: debugStaleOf(state),
     };
@@ -191,20 +199,22 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     }
 
     set((state) => {
-      const refsTarget = (ep: PresetEndpoint) => presetEndpointIsSplit(ep, target);
+      const level = activeFloorLevel(state);
+      const refsTarget = (ep: PresetEndpoint) => presetEndpointIsSplit(ep, target) && (ep.level ?? 0) === (level ?? 0);
 
       const presetConnections = new Map(state.presetConnections);
       for (const [key, entry] of presetConnections) {
         if (refsTarget(entry.from) || refsTarget(entry.to)) presetConnections.delete(key);
       }
       const presetTeleports = state.presetTeleports.filter(t => !refsTarget(t.from) && !refsTarget(t.to));
-      // Locked nodes are keyed by plain "x,y" (point only, no slot) — a lock addressing this
-      // exact split node isn't representable in that map today (locks are always original-node
-      // only), so nothing to clean up there.
+      // Locked nodes are keyed by plain "x,y[@level]" (point + level only, no slot) — a lock
+      // addressing this exact split node isn't representable in that map today (locks are always
+      // original-node only), so nothing to clean up there.
 
       const { splitPoints, activeMap } = removeSlot(
         state.presetSplitPoints, state.presetActiveSplitNode, point, slotId,
-        (entry, point, slotId) => entry.slotId !== undefined && presetEndpointIsSplit(entry, { point, slotId }),
+        (entry, point, slotId) => entry.slotId !== undefined && presetEndpointIsSplit(entry, { point, slotId }) && (entry.level ?? 0) === (level ?? 0),
+        level,
       );
 
       return withRecomputedAutoLock(state, {
@@ -215,15 +225,19 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     });
   },
 
-  cyclePresetActiveSplitNode: (point) => set((state) => ({
-    presetActiveSplitNode: cycleActive(
-      state.presetSplitPoints, state.presetActiveSplitNode, point,
-      presetEndpoint, (entry) => entry?.slotId,
-    ),
-  })),
+  cyclePresetActiveSplitNode: (point) => set((state) => {
+    const level = activeFloorLevel(state);
+    return {
+      presetActiveSplitNode: cycleActive(
+        state.presetSplitPoints, state.presetActiveSplitNode, point,
+        (point, slotId) => presetEndpoint(point, slotId, level), (entry) => entry?.slotId,
+        level,
+      ),
+    };
+  }),
 
   setPresetActiveSplitNode: (point, endpoint) => set((state) => ({
-    presetActiveSplitNode: setActive(state.presetActiveSplitNode, point, endpoint, (e) => e.slotId === undefined),
+    presetActiveSplitNode: setActive(state.presetActiveSplitNode, point, endpoint, (e) => e.slotId === undefined, activeFloorLevel(state)),
   })),
 
   setPresetFocusedPoint: (point) => set({ presetFocusedPoint: point }),
@@ -231,13 +245,14 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
 
   rotatePresetSplitPoint: (point, direction) => set((state) => {
     const field = activeFloorField(state);
-    const key = `${point[0]},${point[1]}`;
+    const level = activeFloorLevel(state);
+    const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
     const slotIds = state.presetSplitPoints[key] ?? [];
     const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0 ? field.fieldPoints : undefined;
     const cells = resolveCells(field.tessellationConfig, customPts);
     const cellSet = buildCellSet(cells);
     const presetConnections = rotatePresetSplitPoint(
-      state.presetConnections, point, slotIds, direction, field.tessellationConfig, cellSet,
+      state.presetConnections, point, slotIds, direction, field.tessellationConfig, cellSet, level,
     );
     if (presetConnections === state.presetConnections) return {};
     return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
@@ -245,11 +260,12 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
 
   applyPresetSplitBlueprint: (point, blueprint) => {
     const state = get();
-    const key = `${point[0]},${point[1]}`;
+    const level = activeFloorLevel(state);
+    const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
     const existingSlots = state.presetSplitPoints[key] ?? [];
     // Every node currently at this point — original plus every declared slot — is about to have
     // its faces fully rebuilt by the blueprint.
-    const existingNodeEndpoints: PresetEndpoint[] = [presetEndpoint(point), ...existingSlots.map((slotId) => presetEndpoint(point, slotId))];
+    const existingNodeEndpoints: PresetEndpoint[] = [presetEndpoint(point, undefined, level), ...existingSlots.map((slotId) => presetEndpoint(point, slotId, level))];
     const refsExistingNode = (ep: PresetEndpoint) => existingNodeEndpoints.some((t) => presetEndpointsEqual(ep, t));
 
     if ((state.presetStart && refsExistingNode(state.presetStart))
@@ -268,7 +284,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       const presetActiveSplitNode = { ...state.presetActiveSplitNode };
       delete presetActiveSplitNode[key];
 
-      const nodeEndpoints: PresetEndpoint[] = blueprint.nodeFaces.map((_, i) => (i === 0 ? presetEndpoint(point) : presetEndpoint(point, i - 1)));
+      const nodeEndpoints: PresetEndpoint[] = blueprint.nodeFaces.map((_, i) => (i === 0 ? presetEndpoint(point, undefined, level) : presetEndpoint(point, i - 1, level)));
 
       const field = activeFloorField(state);
       const { offsets } = getNeighborData(field.tessellationConfig, point[0], point[1]);
@@ -293,7 +309,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
           // Resolved against the pre-cleanup snapshot (`state.presetConnections`) and `point`'s
           // *old* (pre-blueprint) endpoints: any pre-existing neighbor entry was recorded against
           // one of those, never against `endpoint` (a fresh node this call is about to mint).
-          const neighborPartner = resolvePresetPartnerAt(existingNodeEndpoints, neighbor, state.presetConnections, state.presetSplitPoints, presetActiveSplitNode);
+          const neighborPartner = resolvePresetPartnerAt(existingNodeEndpoints, neighbor, state.presetConnections, state.presetSplitPoints, presetActiveSplitNode, level);
           const edgeK = presetEdgeKey(endpoint, neighborPartner);
           const [from, to] = canonicalizePresetPair(endpoint, neighborPartner);
           presetConnections.set(edgeK, { from, to, state: requiredFaces.has(faceIndex) ? "passage" : "wall", source: "user" });
@@ -303,7 +319,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
           // already has its own decided (non-`undefined`) entry here — otherwise that other node's
           // side of this face silently stays `undefined` instead of reading as forbidden (GitHub
           // issue #243 follow-up).
-          for (const other of allNodesAt(neighbor, state.presetSplitPoints)) {
+          for (const other of allNodesAt(neighbor, state.presetSplitPoints, level)) {
             if (presetEndpointsEqual(other, neighborPartner)) continue;
             const otherKey = presetEdgeKey(endpoint, other);
             const otherState = presetConnections.get(otherKey)?.state;
@@ -326,6 +342,39 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       });
     });
   },
+
+  resetPresetPoint: (point) => set((state) => {
+    const level = activeFloorLevel(state);
+    const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
+    const touchesPoint = (ep: PresetEndpoint) =>
+      ep.point[0] === point[0] && ep.point[1] === point[1] && (ep.level ?? 0) === (level ?? 0);
+
+    const presetConnections = new Map(state.presetConnections);
+    for (const [k, entry] of presetConnections) {
+      if (touchesPoint(entry.from) || touchesPoint(entry.to)) presetConnections.delete(k);
+    }
+    const presetTeleports = state.presetTeleports.filter((t) => !touchesPoint(t.from) && !touchesPoint(t.to));
+
+    const presetSplitPoints = { ...state.presetSplitPoints };
+    delete presetSplitPoints[key];
+    const presetActiveSplitNode = { ...state.presetActiveSplitNode };
+    delete presetActiveSplitNode[key];
+
+    const presetStart = state.presetStart !== null && touchesPoint(state.presetStart) ? null : state.presetStart;
+    const presetFinish = state.presetFinish !== null && touchesPoint(state.presetFinish) ? null : state.presetFinish;
+    const presetGenSource = state.presetGenSource !== null && touchesPoint(state.presetGenSource) ? null : state.presetGenSource;
+
+    const lockedNodes = new Map(state.lockedNodes);
+    lockedNodes.delete(key);
+
+    return withRecomputedAutoLock(state, {
+      presetConnections, presetTeleports,
+      presetSplitPoints, presetActiveSplitNode,
+      presetStart, presetFinish, presetGenSource,
+      lockedNodes,
+      presetsDirty: true,
+    });
+  }),
 });
 
 export function applyDefaultEdgeState(
@@ -333,14 +382,17 @@ export function applyDefaultEdgeState(
   newDefault: "undefined" | "wall" | "passage",
 ): Map<string, PresetConnectionEntry> {
   const field = activeFloorField(state);
+  const level = activeFloorLevel(state);
   const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0 ? field.fieldPoints : undefined;
   const cells = resolveCells(field.tessellationConfig, customPts);
   const cellSet = buildCellSet(cells);
 
-  // Remove all existing default entries, then add new ones if needed
+  // Remove all existing default entries on the active floor only — a default-state change made
+  // while floor N is active must not touch floor M's own default entries (each floor's
+  // `defaultEdgeState` toggle is independent, GitHub issue #340).
   const presetConnections = new Map(state.presetConnections);
   for (const [key, entry] of presetConnections) {
-    if (entry.source === "default") presetConnections.delete(key);
+    if (entry.source === "default" && (entry.from.level ?? 0) === (level ?? 0)) presetConnections.delete(key);
   }
 
   if (newDefault === "undefined") return presetConnections;
@@ -353,8 +405,8 @@ export function applyDefaultEdgeState(
       if (!cellSet.has(`${nx},${ny}`)) continue;
       const less = x < nx || (x === nx && y < ny);
       if (!less) continue; // only process edge once (owner = canonical-lesser cell)
-      const from = presetEndpoint([x, y]);
-      const to = presetEndpoint([nx, ny]);
+      const from = presetEndpoint([x, y], undefined, level);
+      const to = presetEndpoint([nx, ny], undefined, level);
       const key = presetEdgeKey(from, to);
       if (!presetConnections.has(key)) {
         presetConnections.set(key, { from, to, state: newDefault, source: "default" });

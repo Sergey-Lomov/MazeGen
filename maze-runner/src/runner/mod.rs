@@ -63,7 +63,7 @@ pub fn resolve_start<P: Copy>(pts: &[P], gen_source_xy: Option<[i32; 2]>, to_xy:
 }
 
 fn preset_endpoint_dto_to_core(dto: &PresetEndpointDto) -> PresetEndpoint {
-    PresetEndpoint { point: (dto.point[0], dto.point[1]), slot: dto.slot }
+    PresetEndpoint { point: (dto.point[0], dto.point[1]), slot: dto.slot, level: dto.level }
 }
 
 fn run_generate_typed<T: Tessellation + 'static>(

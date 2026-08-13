@@ -40,6 +40,6 @@
     }
   ],
   "locked_nodes": [],
-  "split_points": [[[-1, 0], 0]],
+  "split_points": [[[-1, 0], 0, 0]],
   "qc_experiment": true
 }
