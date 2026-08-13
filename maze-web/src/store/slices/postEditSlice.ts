@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import { computeAnalytics } from "../../wasm/mazeService";
-import type { PostEditEdgeWasmDto, PostEditEndpointWasmDto } from "../../wasm/types";
+import type { NodeDto, PostEditEdgeWasmDto, PostEditEndpointWasmDto } from "../../wasm/types";
 import {
   applyPostEditEdgeTool, buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports,
   postEditTeleportsToDto, cyclePostEditTeleportDirection, removePostEditTeleport, movePostEditTeleportEndpoint,
@@ -16,7 +16,23 @@ import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry } from "../storeTypes";
 import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
-import { relevantRuleParams, activeFloorField } from "../storeHelpers";
+import { relevantRuleParams, activeFloorField, activeFloorLevel } from "../storeHelpers";
+
+/** Groups a multi-floor `NodeDto[]` (GitHub issue #337) by `level` (`undefined` → `0`, same
+ * convention `PresetEndpoint.level`/`activeFloorLevel` use) — the per-floor unit every point-keyed
+ * grouping below (`deriveSplitPointsFromNodes`, `buildPointNodeMap`) must operate on one at a time,
+ * since two nodes sharing an (x, y) on different floors would otherwise be conflated into one bogus
+ * split-point group (GitHub issue #358). */
+function groupNodesByLevel(nodes: NodeDto[]): Map<number, NodeDto[]> {
+  const m = new Map<number, NodeDto[]>();
+  for (const n of nodes) {
+    const level = n.level ?? 0;
+    const list = m.get(level);
+    if (list) list.push(n);
+    else m.set(level, [n]);
+  }
+  return m;
+}
 
 /** `PostEditEndpoint` → the WASM edge/teleport DTO's endpoint shape. Not a passthrough: the split
  * variant's field is `slotId` on the TS-side `PostEditEndpoint` but `slot_id` on the wire
@@ -30,11 +46,29 @@ function toWasmEndpoint(ep: PostEditEndpoint): PostEditEndpointWasmDto {
 }
 
 /** Builds the `(x,y) -> NodeId[]` map (point → every real node at it, in snapshot order) that
- * `buildSplitNodeResolver` needs, from a confirmed `nodes` snapshot. */
+ * `buildSplitNodeResolver` needs, from a confirmed `nodes` snapshot already scoped to one floor —
+ * always bare `"x,y"` keys, matching `deriveSplitPointsFromNodes`'s own key convention (never
+ * suffixed, see `pointKey`'s doc comment) for the split-points map it's paired against here. */
 function buildPointNodeMap(nodes: { id: number; x: number; y: number }[]): Map<string, number[]> {
   const m = new Map<string, number[]>();
   for (const n of nodes) {
     const key = `${n.x},${n.y}`;
+    const list = m.get(key);
+    if (list) list.push(n.id);
+    else m.set(key, [n.id]);
+  }
+  return m;
+}
+
+/** Builds the same `(x,y) -> NodeId[]` map as `buildPointNodeMap`, but for a `nodes` list that can
+ * span every floor at once (GitHub issue #358) — keyed `"x,y"` for floor 0, `"x,y@level"`
+ * otherwise, matching `postEditDraftSplitPoints`'s own key convention so `buildSplitNodeResolver`'s
+ * level-aware lookup can tell same-(x,y) points on different floors apart. */
+function buildMultiFloorPointNodeMap(nodes: { id: number; x: number; y: number; level?: number }[]): Map<string, number[]> {
+  const m = new Map<string, number[]>();
+  for (const n of nodes) {
+    const level = n.level ?? 0;
+    const key = level === 0 ? `${n.x},${n.y}` : `${n.x},${n.y}@${level}`;
     const list = m.get(key);
     if (list) list.push(n.id);
     else m.set(key, [n.id]);
@@ -121,14 +155,20 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // cfg.nodes"). Without this filter a removed split node stays in the graph (and in the point's
     // node count) forever — the point keeps rendering as split even after its last extra slot is
     // gone. Kept node: the point's original (`i === 0`), or an extra node whose slotId (`i - 1`)
-    // is still declared in `postEditDraftSplitPoints`.
+    // is still declared in `postEditDraftSplitPoints` — looked up by the node's own `(x,y)@level`
+    // key (GitHub issue #358), since `postEditDraftSplitPoints` is now one flat, maze-wide
+    // collection keyed with an `"@level"` suffix (`undefined`/floor 0 has no suffix, same
+    // convention `presetSplitPoints` uses — see `Specs/preset-connections.md`'s "Multi-floor
+    // presets"), not always the bare `"x,y"` key.
     const prunedNodes = nodes.filter((n) => {
       if (n.i === 0) return true;
-      const slots = postEditDraftSplitPoints[`${n.x},${n.y}`];
+      const level = n.level ?? 0;
+      const key = level === 0 ? `${n.x},${n.y}` : `${n.x},${n.y}@${level}`;
+      const slots = postEditDraftSplitPoints[key];
       return slots !== undefined && slots.includes(n.i - 1);
     });
 
-    const pointNodeMap = buildPointNodeMap(prunedNodes);
+    const pointNodeMap = buildMultiFloorPointNodeMap(prunedNodes);
     const resolveSplit = buildSplitNodeResolver(pointNodeMap, postEditDraftSplitPoints);
 
     const teleportEdgesSnapshot = postEditTeleportsToDto(postEditDraftTeleports, resolveSplit);
@@ -150,9 +190,15 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       ...teleportEdgesSnapshot.map(e => ({ from: { kind: "node" as const, id: e.from }, to: { kind: "node" as const, id: e.to }, kind: "teleport" as const })),
     ];
 
+    // The wire DTO carries no `level` (`ComputeAnalyticsConfig.split_points` is `[[x,y], slotId][]`
+    // — Rust resolves against a single-level `Field`, GitHub issue #358's accepted scope), so the
+    // `"@level"` suffix is stripped before parsing `[x, y]` — a raw `key.split(",")` on
+    // `"3,5@2"` would otherwise leave `y` as the unparseable string `"5@2"`. Two floors' split
+    // points at the same `(x, y)` collapse onto the same wire entry when both are sent together —
+    // an accepted limitation of not making `compute_analytics` itself multi-floor-aware.
     const splitPointsPayload: [[number, number], number][] = Object.entries(postEditDraftSplitPoints)
       .flatMap(([key, slots]) => {
-        const [x, y] = key.split(",").map(Number) as [number, number];
+        const [x, y] = key.split("@")[0].split(",").map(Number) as [number, number];
         return slots.map((slotId): [[number, number], number] => [[x, y], slotId]);
       });
 
@@ -194,21 +240,23 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       rule_groups: ruleGroups,
       // GitHub issue #245: lets the Rust side flag cycle/group issue elements composed entirely
       // of preset Passage/OneWay edges as `preset_locked`, even on this post-edit rebuild path.
-      // `floorZeroOnly: true` — post-edit only ever resolves against floor 0 regardless of floor
-      // count (`Specs/floors.md`'s "Non-goals"), so a preset on another floor must not leak in
-      // here (GitHub issue #340).
-      preset_connections: buildValidPresetConnections(state, true),
+      // Post-edit is floor-aware as of GitHub issue #358, so every floor's presets are sent (not
+      // just floor 0's) — `compute_analytics` itself still resolves against a single-level `Field`
+      // (accepted scope, see the issue), so a preset whose endpoint lands on another floor's
+      // point may resolve against the wrong node when two floors share an (x, y); this mirrors
+      // `nodes`/`edges`/`split_points` above already sending every floor into that same
+      // single-level rebuild.
+      preset_connections: buildValidPresetConnections(state, false),
       // GitHub issue #245's split-node/route extension: same idea as `preset_connections`, but for
       // which split nodes the preset snapshot declares — lets the Rust side flag node/route-based
       // split issue elements as `preset_locked` too. No invalid-key filtering here (unlike
       // `generateConfigBuilder.ts`'s `split_points`) — the Rust side already silently skips a
-      // point/slot it can't resolve, same contract as `preset_connections`. Filtered to floor 0's
-      // own declared split points (GitHub issue #340 key suffix `"@level"`) — same floor-0-only
-      // rationale as `preset_connections` above.
+      // point/slot it can't resolve, same contract as `preset_connections`. Every floor's declared
+      // split points are sent (GitHub issue #358) — the `"@level"` suffix is stripped the same way
+      // `splitPointsPayload` above strips it, for the same single-level-wire reason.
       preset_split_points: Object.entries(state.presetSplitPoints)
-        .filter(([key]) => !key.includes("@"))
         .flatMap(([key, slots]) => {
-          const [x, y] = key.split(",").map(Number) as [number, number];
+          const [x, y] = key.split("@")[0].split(",").map(Number) as [number, number];
           return slots.map((slotId): [[number, number], number] => [[x, y], slotId]);
         }),
     };
@@ -270,24 +318,55 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       // edited) graph, so once at least one edit has been confirmed they no longer reflect the
       // original generation and a reset built from them is a no-op (GitHub issue #323).
       //
-      // Post-edit isn't multi-floor-aware yet (GitHub issue #333 epic — same as QC/repair/
-      // analytics), but `_generatedNodes`/`_generatedEdges` can now span every floor (generation
-      // is the one multi-level-aware path, GitHub issue #337). Restricted to floor 0 here — every
-      // point-keyed grouping below (`deriveSplitPointsFromNodes`, `buildPointNodeMap`) would
-      // otherwise conflate same-(x,y) nodes on different floors into bogus split-point groups.
-      const floorZeroNodes = state._generatedNodes.filter((n) => (n.level ?? 0) === 0);
-      const floorZeroIds = new Set(floorZeroNodes.map((n) => n.id));
-      const floorZeroEdges = state._generatedEdges.filter((e) => floorZeroIds.has(e.from) && floorZeroIds.has(e.to));
-      const splitPoints = deriveSplitPointsFromNodes(floorZeroNodes);
-      const pointNodeMap = buildPointNodeMap(floorZeroNodes);
-      const endpointFor = resolverForNodeId(pointNodeMap, splitPoints);
-      const { teleports, nextId } = extractPostEditTeleports(floorZeroEdges, endpointFor);
+      // Post-edit is now floor-aware (GitHub issue #358) — `postEditDraftEdges`/
+      // `postEditDraftTeleports`/`postEditDraftSplitPoints`/`postEditActiveSplitNode` are one
+      // flat, maze-wide collection covering every floor at once, mirroring how preset connections
+      // did this (GitHub issue #340, `Specs/preset-connections.md`'s "Multi-floor presets"). Every
+      // floor's own nodes/edges are processed separately (`groupNodesByLevel`) since two nodes
+      // sharing an (x, y) on different floors must not be conflated into one bogus split-point
+      // group by the point-keyed grouping below (`deriveSplitPointsFromNodes`, `buildPointNodeMap`)
+      // — each floor's own `splitEndpoint`s are stamped with that floor's `level`
+      // (`resolverForNodeId`'s output re-stamped via `withLevel`), then every floor's results are
+      // merged into the single flat collections.
+      const nodesByLevel = groupNodesByLevel(state._generatedNodes);
+
+      let draftEdges: Record<string, ReturnType<typeof buildPostEditDraftEdgesFromGenerated>[string]> = {};
+      let draftTeleports: PostEditTeleportEntry[] = [];
+      let nextTeleportId = 1;
+      let splitPoints: Record<string, number[]> = {};
+      const endpointForId = new Map<number, PostEditEndpoint>();
+
+      for (const [level, levelNodes] of nodesByLevel) {
+        const levelIds = new Set(levelNodes.map((n) => n.id));
+        const levelEdges = state._generatedEdges.filter((e) => levelIds.has(e.from) && levelIds.has(e.to));
+        const levelKey = level === 0 ? undefined : level;
+        const pointNodeMap = buildPointNodeMap(levelNodes);
+        const levelSplitPoints = deriveSplitPointsFromNodes(levelNodes);
+        const rawEndpointFor = resolverForNodeId(pointNodeMap, levelSplitPoints);
+        const endpointFor = (id: number): PostEditEndpoint => {
+          const ep = rawEndpointFor(id);
+          return ep.kind === "split" ? splitEndpoint(ep.point, ep.slotId, levelKey) : ep;
+        };
+        for (const id of levelIds) endpointForId.set(id, endpointFor(id));
+
+        for (const [key, slots] of Object.entries(levelSplitPoints)) {
+          splitPoints[levelKey === undefined ? key : `${key}@${levelKey}`] = slots;
+        }
+
+        draftEdges = { ...draftEdges, ...buildPostEditDraftEdgesFromGenerated(levelEdges, endpointFor) };
+        const { teleports, nextId } = extractPostEditTeleports(levelEdges, endpointFor);
+        draftTeleports = [...draftTeleports, ...teleports];
+        nextTeleportId = Math.max(nextTeleportId, nextId);
+      }
+
+      const endpointFor = (id: number): PostEditEndpoint => endpointForId.get(id) ?? nodeEndpoint(id);
+
       return {
-        nodes: floorZeroNodes,
-        edges: floorZeroEdges,
-        postEditDraftEdges: buildPostEditDraftEdgesFromGenerated(floorZeroEdges, endpointFor),
-        postEditDraftTeleports: teleports,
-        _nextPostEditTeleportId: nextId,
+        nodes: state._generatedNodes,
+        edges: state._generatedEdges,
+        postEditDraftEdges: draftEdges,
+        postEditDraftTeleports: draftTeleports,
+        _nextPostEditTeleportId: nextTeleportId,
         postEditTeleportPendingFrom: null,
         postEditDraftSplitPoints: splitPoints,
         postEditActiveSplitNode: {},
@@ -314,13 +393,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         start: state.start !== null ? nodeEndpoint(state.start) : null,
         finish: state.finish !== null ? nodeEndpoint(state.finish) : null,
       };
-      // Post-edit only ever addresses floor 0 (GitHub issue #333 epic — same caveat as
-      // `resetPostEdit`'s own comment): `_generatedNodes`/`_generatedEdges` can span every floor
-      // now that generation is multi-level-aware (GitHub issue #337), so a same-(x,y) node on
-      // another floor would otherwise be picked up as if it were at `point` on floor 0.
-      const floorZeroNodes = state._generatedNodes.filter((n) => (n.level ?? 0) === 0);
-      const floorZeroIds = new Set(floorZeroNodes.map((n) => n.id));
-      const floorZeroEdges = state._generatedEdges.filter((e) => floorZeroIds.has(e.from) && floorZeroIds.has(e.to));
+      // `point` addresses the active floor (GitHub issue #358) — `resetPostEditPointCore` scopes
+      // every lookup to that floor's own nodes/edges internally, so the full multi-floor
+      // `_generatedNodes`/`_generatedEdges` (GitHub issue #337) are passed through unfiltered here.
+      const level = activeFloorLevel(state);
       const result = resetPostEditPointCore(
         point,
         state.postEditDraftEdges,
@@ -328,10 +404,11 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         state.postEditDraftSplitPoints,
         state.postEditActiveSplitNode,
         meta,
-        floorZeroNodes,
-        floorZeroEdges,
+        state._generatedNodes,
+        state._generatedEdges,
         state._generatedStart,
         state._generatedFinish,
+        level,
       );
       // Restored teleports (from generation) get fresh ids minted locally by
       // `resetPostEditPointCore` (it has no access to the store's own counter) — bump
@@ -433,10 +510,12 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
   addSplitNode: (point) => {
     set((state) => {
-      const { splitPoints, slotId } = addSlot(state.postEditDraftSplitPoints, point);
+      const level = activeFloorLevel(state);
+      const { splitPoints, slotId } = addSlot(state.postEditDraftSplitPoints, point, level);
+      const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
       return {
         postEditDraftSplitPoints: splitPoints,
-        postEditActiveSplitNode: { ...state.postEditActiveSplitNode, [`${point[0]},${point[1]}`]: splitEndpoint(point, slotId) },
+        postEditActiveSplitNode: { ...state.postEditActiveSplitNode, [key]: splitEndpoint(point, slotId, level) },
         postEditDirty: true,
       };
     });
@@ -447,7 +526,8 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
   removeSplitNode: (point, slotId) => {
     const state = get();
-    const target = splitEndpoint(point, slotId);
+    const level = activeFloorLevel(state);
+    const target = splitEndpoint(point, slotId, level);
 
     // Structural comparison (not a resolved id) — rejects the removal the same way whether or
     // not this split node has been confirmed yet.
@@ -468,7 +548,8 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
       const { splitPoints, activeMap } = removeSlot(
         state.postEditDraftSplitPoints, state.postEditActiveSplitNode, point, slotId,
-        (entry, point, slotId) => entry.kind === "split" && endpointsEqual(entry, splitEndpoint(point, slotId)),
+        (entry, point, slotId) => entry.kind === "split" && endpointsEqual(entry, splitEndpoint(point, slotId, level)),
+        level,
       );
 
       return {
@@ -485,17 +566,21 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   },
 
   cycleActiveSplitNode: (point) => {
-    set((state) => ({
-      postEditActiveSplitNode: cycleActive(
-        state.postEditDraftSplitPoints, state.postEditActiveSplitNode, point,
-        splitEndpoint, (entry) => (entry && entry.kind === "split" ? entry.slotId : undefined),
-      ),
-    }));
+    set((state) => {
+      const level = activeFloorLevel(state);
+      return {
+        postEditActiveSplitNode: cycleActive(
+          state.postEditDraftSplitPoints, state.postEditActiveSplitNode, point,
+          (p, slotId) => splitEndpoint(p, slotId, level), (entry) => (entry && entry.kind === "split" ? entry.slotId : undefined),
+          level,
+        ),
+      };
+    });
   },
 
   setActiveSplitNode: (point, endpoint) => {
     set((state) => ({
-      postEditActiveSplitNode: setActive(state.postEditActiveSplitNode, point, endpoint, (e) => e.kind === "node"),
+      postEditActiveSplitNode: setActive(state.postEditActiveSplitNode, point, endpoint, (e) => e.kind === "node", activeFloorLevel(state)),
     }));
   },
 
@@ -505,14 +590,16 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   rotateSplitPoint: (point, direction) => {
     set((state) => {
       if (state.postEditDraftEdges === null) return {};
-      const key = `${point[0]},${point[1]}`;
+      const level = activeFloorLevel(state);
+      const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
       const slotIds = state.postEditDraftSplitPoints[key] ?? [];
       const field = activeFloorField(state);
       const cells = buildActiveCells(field.fieldPoints, field.fieldEditMode, state.activeTessellationConfig);
       const cellSet = buildCellSet(cells);
+      const floorNodes = state.nodes.filter((n) => (n.level ?? 0) === (level ?? 0));
       const rotated = rotatePostEditSplitPoint(
         state.postEditDraftEdges, point, slotIds, direction, state.activeTessellationConfig,
-        cellSet, state.nodes, state.postEditActiveSplitNode,
+        cellSet, floorNodes, state.postEditActiveSplitNode, level,
       );
       if (rotated === state.postEditDraftEdges) return {};
       return { postEditDraftEdges: rotated, postEditDirty: true };
@@ -524,9 +611,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
   applySplitBlueprint: (point, blueprint) => {
     const state = get();
-    const key = `${point[0]},${point[1]}`;
+    const level = activeFloorLevel(state);
+    const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
     const meta = state.postEditDraftMeta;
-    const originalId = state.nodes.find((n) => n.x === point[0] && n.y === point[1])?.id;
+    const originalId = state.nodes.find((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0))?.id;
     const originalEndpoint: PostEditEndpoint | null = originalId !== undefined ? nodeEndpoint(originalId) : null;
     // Every node currently at this point — original plus every declared slot — is about to have
     // its faces fully rebuilt by the blueprint; bail out if start/finish still addresses any of
@@ -534,7 +622,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const existingSlots = state.postEditDraftSplitPoints[key] ?? [];
     const existingNodeEndpoints: PostEditEndpoint[] = [
       ...(originalEndpoint ? [originalEndpoint] : []),
-      ...existingSlots.map((slotId) => splitEndpoint(point, slotId)),
+      ...existingSlots.map((slotId) => splitEndpoint(point, slotId, level)),
     ];
     if (meta && existingNodeEndpoints.some((t) =>
       (meta.start && endpointsEqual(meta.start, t)) || (meta.finish && endpointsEqual(meta.finish, t)))) {
@@ -560,7 +648,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
       // Original node (slot-less) stays addressable throughout — its own faces are governed by
       // the blueprint's node 0 like any other minted node.
-      const slotEndpoints: PostEditEndpoint[] = blueprint.nodeFaces.slice(1).map((_, i) => splitEndpoint(point, i));
+      const slotEndpoints: PostEditEndpoint[] = blueprint.nodeFaces.slice(1).map((_, i) => splitEndpoint(point, i, level));
       const nodeEndpoints: PostEditEndpoint[] = [originalEndpoint, ...slotEndpoints].filter((e): e is PostEditEndpoint => e !== null);
 
       const { offsets } = getNeighborData(state.activeTessellationConfig, point[0], point[1]);
@@ -584,14 +672,14 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
           const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
           if (!inFieldCells.has(`${neighbor[0]},${neighbor[1]}`)) continue;
           const neighborIds: number[] = [];
-          for (const n of state.nodes) if (n.x === neighbor[0] && n.y === neighbor[1]) neighborIds.push(n.id);
-          const neighborKey = `${neighbor[0]},${neighbor[1]}`;
+          for (const n of state.nodes) if (n.x === neighbor[0] && n.y === neighbor[1] && (n.level ?? 0) === (level ?? 0)) neighborIds.push(n.id);
+          const neighborKey = level === undefined ? `${neighbor[0]},${neighbor[1]}` : `${neighbor[0]},${neighbor[1]}@${level}`;
           // The neighbor's real connecting node — not just its active UI slot (GitHub issue #243).
           // Resolved against the pre-cleanup snapshot (`state.postEditDraftEdges`) and `point`'s
           // *old* (pre-blueprint) endpoints: any pre-existing neighbor edge was recorded against
           // one of those, never against `endpoint` (a fresh node this call is about to mint).
           const neighborPartner = resolvePostEditPartnerAt(
-            existingNodeEndpoints, neighbor, neighborIds, state.postEditDraftEdges ?? {}, state.postEditDraftSplitPoints[neighborKey] ?? [], nextActiveSplitNode,
+            existingNodeEndpoints, neighbor, neighborIds, state.postEditDraftEdges ?? {}, state.postEditDraftSplitPoints[neighborKey] ?? [], nextActiveSplitNode, level,
           );
           if (!neighborPartner) continue;
           nextDraftEdges[edgeKey(endpoint, neighborPartner)] = { from: endpoint, to: neighborPartner, kind: "basic" };

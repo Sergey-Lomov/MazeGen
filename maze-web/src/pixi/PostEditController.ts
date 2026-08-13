@@ -10,6 +10,9 @@ import { BaseController } from "./BaseController";
 import {
   type PostEditEndpoint, nodeEndpoint, edgeKey, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
 } from "./postEditEndpoint";
+import { selectFloorScopedMaze } from "./selectors/mazeSelectors";
+import { activeFloorLevel } from "../store/storeHelpers";
+import { recordOnLevel } from "./fieldEditUtils";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
@@ -22,6 +25,7 @@ function isSplitCell(point: [number, number], nodeMap: Map<string, number[]>): b
   const ids = nodeMap.get(`${point[0]},${point[1]}`);
   return ids !== undefined && ids.length > 1;
 }
+
 
 export class PostEditController extends BaseController {
   private renderer: PostEditRenderer;
@@ -52,6 +56,14 @@ export class PostEditController extends BaseController {
     window.addEventListener("keydown", this.onKeyDown);
   }
 
+  /** Floor-scoped node list (GitHub issue #358) — post-edit's own `state.nodes` can span every
+   * floor (generation is multi-level-aware, GitHub issue #337; post-edit's confirm no longer
+   * restricts to floor 0 either), so every hit-test/nodeMap below narrows to the active floor
+   * first via `selectFloorScopedMaze`, same helper `GenerationRenderer` uses. */
+  private getFloorNodes(state: ReturnType<typeof useMazeStore.getState>): NodeDto[] {
+    return selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId).nodes;
+  }
+
   private getNodeMap(nodes: NodeDto[]): Map<string, number[]> {
     if (nodes !== this.nodeMapNodes) {
       this.nodeMap = buildNodeMap(nodes);
@@ -63,16 +75,20 @@ export class PostEditController extends BaseController {
   /** Resolves the active endpoint for a point (which of its nodes edge-tool clicks currently
    * target) — `activeMap[key]` if the store has one, else the point's original node. `null` if
    * the point isn't in the field at all (shouldn't happen for a cell actually clicked, but a
-   * stale/desynced state is cheaper to guard against than to assume away). */
+   * stale/desynced state is cheaper to guard against than to assume away). `level` is the active
+   * floor's index (GitHub issue #358) — folded into the `activeMap` lookup key the same way every
+   * other `postEditActiveSplitNode` reader does. */
   private resolveActiveEndpointAt(
     point: [number, number],
     nodeMap: Map<string, number[]>,
     activeMap: Record<string, PostEditEndpoint>,
+    level?: number,
   ): PostEditEndpoint | null {
     const key = `${point[0]},${point[1]}`;
     const ids = nodeMap.get(key);
     if (ids === undefined || ids.length === 0) return null;
-    return activeMap[key] ?? nodeEndpoint(ids[0]);
+    const activeKey = level === undefined ? key : `${key}@${level}`;
+    return activeMap[activeKey] ?? nodeEndpoint(ids[0]);
   }
 
   private getNodeById(nodes: NodeDto[]): Map<number, NodeDto> {
@@ -87,12 +103,14 @@ export class PostEditController extends BaseController {
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     this.lastViewportPos = { x: vpX, y: vpY };
+    const floorNodes = this.getFloorNodes(state);
+    const level = activeFloorLevel(state);
 
     if (this.draggingMarker) {
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
-      const nodeMap = this.getNodeMap(state.nodes);
-      const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode);
+      const nodeMap = this.getNodeMap(floorNodes);
+      const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
       if (endpoint !== null) {
         useMazeStore.getState().setPostEditEndpoint(this.draggingMarker === "set_start" ? "start" : "finish", endpoint);
       }
@@ -102,14 +120,14 @@ export class PostEditController extends BaseController {
     if (this.draggingTeleportEndpoint) {
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
-      const nodeMap = this.getNodeMap(state.nodes);
-      const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode);
+      const nodeMap = this.getNodeMap(floorNodes);
+      const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
       if (endpoint === null) return;
       const teleport = state.postEditDraftTeleports.find(t => t.id === this.draggingTeleportEndpoint!.id);
       if (!teleport) return;
       const current = this.draggingTeleportEndpoint.end === "from" ? teleport.from : teleport.to;
       const other = this.draggingTeleportEndpoint.end === "from" ? teleport.to : teleport.from;
-      const resolveSplit = buildSplitNodeResolver(nodeMap, state.postEditDraftSplitPoints);
+      const resolveSplit = buildSplitNodeResolver(nodeMap, recordOnLevel(state.postEditDraftSplitPoints, level));
       const currentId = resolveEndpoint(current, resolveSplit);
       const otherId = resolveEndpoint(other, resolveSplit);
       const endpointId = resolveEndpoint(endpoint, resolveSplit);
@@ -127,7 +145,7 @@ export class PostEditController extends BaseController {
 
     if (TELEPORT_TOOLS.has(state.postEditTool)) {
       if (state.postEditTeleportPendingFrom !== null) {
-        const nodeById = this.getNodeById(state.nodes);
+        const nodeById = this.getNodeById(floorNodes);
         const fromNode = nodeById.get(state.postEditTeleportPendingFrom);
         if (fromNode) {
           const proj = makeProjection(state.activeTessellationConfig);
@@ -148,12 +166,12 @@ export class PostEditController extends BaseController {
       // vertex tool, replacing the wall-highlight reuse / missing highlight they had before).
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
-      const nodeMap = this.getNodeMap(state.nodes);
+      const nodeMap = this.getNodeMap(floorNodes);
       this.renderer.updateCellHover(nodeMap.has(`${cell.x},${cell.y}`) ? [cell.x, cell.y] : null);
       this.renderer.updateHover(null);
       return;
     }
-    const nodeMap = this.getNodeMap(state.nodes);
+    const nodeMap = this.getNodeMap(floorNodes);
 
     if (state.postEditTool === "reset") {
       const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
@@ -163,7 +181,7 @@ export class PostEditController extends BaseController {
         this.renderer.updateCellHover(null);
         this.renderer.updateHover(edge, true);
         this.continueEdgeDrag(edge, (e) => {
-          const nodeKey = this.cellEdgeToNodeKey(e.from, e.to, nodeMap, state.postEditActiveSplitNode);
+          const nodeKey = this.cellEdgeToNodeKey(e.from, e.to, nodeMap, state.postEditActiveSplitNode, level);
           if (nodeKey) {
             useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
             this.dragDidApply = true;
@@ -190,7 +208,7 @@ export class PostEditController extends BaseController {
     this.renderer.updateHover(edge);
 
     this.continueEdgeDrag(edge, (e) => {
-      const nodeKey = this.cellEdgeToNodeKey(e.from, e.to, nodeMap, state.postEditActiveSplitNode);
+      const nodeKey = this.cellEdgeToNodeKey(e.from, e.to, nodeMap, state.postEditActiveSplitNode, level);
       if (nodeKey) {
         useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
         this.dragDidApply = true;
@@ -206,7 +224,9 @@ export class PostEditController extends BaseController {
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     const tool = state.postEditTool;
-    const nodeMap = this.getNodeMap(state.nodes);
+    const floorNodes = this.getFloorNodes(state);
+    const level = activeFloorLevel(state);
+    const nodeMap = this.getNodeMap(floorNodes);
 
     if (tool === "manage_split_nodes") {
       if (button !== 0) return;
@@ -220,8 +240,8 @@ export class PostEditController extends BaseController {
     if (VERTEX_TOOLS.has(tool)) {
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
-      const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode);
-      const resolveSplit = buildSplitNodeResolver(nodeMap, state.postEditDraftSplitPoints);
+      const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
+      const resolveSplit = buildSplitNodeResolver(nodeMap, recordOnLevel(state.postEditDraftSplitPoints, level));
       const nodeId = endpoint !== null ? resolveEndpoint(endpoint, resolveSplit) : undefined;
       const meta = state.postEditDraftMeta ?? {
         start: state.start !== null ? nodeEndpoint(state.start) : null,
@@ -230,7 +250,7 @@ export class PostEditController extends BaseController {
       const markerUnderCursor: "start" | "finish" | null =
         endpoint !== null && meta.start !== null && endpointsEqual(meta.start, endpoint) ? "start" :
         endpoint !== null && meta.finish !== null && endpointsEqual(meta.finish, endpoint) ? "finish" : null;
-      const nodeById = this.getNodeById(state.nodes);
+      const nodeById = this.getNodeById(floorNodes);
       const teleportHit = pickPostEditTeleportEndpointAt(vpX, vpY, state.activeTessellationConfig, state.postEditDraftTeleports, nodeById, resolveSplit);
 
       if (button === 2) {
@@ -294,7 +314,7 @@ export class PostEditController extends BaseController {
     const edge = pickEdgeAtPosition(vpX, vpY, state.activeTessellationConfig, this.renderer.getCachedCells(), this.renderer.getCachedCellSet());
     if (!edge) return;
 
-    const nodeKey = this.cellEdgeToNodeKey(edge.from, edge.to, nodeMap, state.postEditActiveSplitNode);
+    const nodeKey = this.cellEdgeToNodeKey(edge.from, edge.to, nodeMap, state.postEditActiveSplitNode, level);
     if (nodeKey) {
       useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
       if (button === 0 && DRAG_EDGE_TOOLS.has(tool)) {
@@ -322,11 +342,12 @@ export class PostEditController extends BaseController {
         if (!this.teleportDragMoved) {
           const state = useMazeStore.getState();
           if (TELEPORT_TOOLS.has(state.postEditTool)) {
-            const nodeMap = this.getNodeMap(state.nodes);
+            const level = activeFloorLevel(state);
+            const nodeMap = this.getNodeMap(this.getFloorNodes(state));
             const proj = makeProjection(state.activeTessellationConfig);
             const cell = proj.screenToGrid(this.lastViewportPos.x, this.lastViewportPos.y);
-            const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode);
-            const resolveSplit = buildSplitNodeResolver(nodeMap, state.postEditDraftSplitPoints);
+            const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
+            const resolveSplit = buildSplitNodeResolver(nodeMap, recordOnLevel(state.postEditDraftSplitPoints, level));
             const nodeId = endpoint !== null ? resolveEndpoint(endpoint, resolveSplit) : undefined;
             if (state.postEditTeleportPendingFrom !== null) {
               // A placement is already in progress — clicking an existing endpoint's node
@@ -398,9 +419,10 @@ export class PostEditController extends BaseController {
     toCell: [number, number],
     nodeMap: Map<string, number[]>,
     activeMap: Record<string, PostEditEndpoint>,
+    level?: number,
   ): { key: string; from: PostEditEndpoint; to: PostEditEndpoint } | null {
-    const from = this.resolveActiveEndpointAt(fromCell, nodeMap, activeMap);
-    const to = this.resolveActiveEndpointAt(toCell, nodeMap, activeMap);
+    const from = this.resolveActiveEndpointAt(fromCell, nodeMap, activeMap, level);
+    const to = this.resolveActiveEndpointAt(toCell, nodeMap, activeMap, level);
     if (from === null || to === null) return null;
     return { key: edgeKey(from, to), from, to };
   }

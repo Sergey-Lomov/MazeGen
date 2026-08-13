@@ -10,6 +10,8 @@ import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { blueprintsForDegree } from "../../pixi/splitBlueprints";
+import { activeFloorLevel } from "../../store/storeHelpers";
+import { recordOnLevel } from "../../pixi/fieldEditUtils";
 import { SplitNodesDialogView, createRequiredLinksTracker, type SplitNodesRow, type LinkInfo, type SplitEdgeKind } from "./SplitNodesDialogView";
 import type { TileFace, TileFaceKind, TileFaceNode } from "./TileFaceEditor";
 import * as m from "~/paraglide/messages";
@@ -39,7 +41,12 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   const draftEdges = useMazeStore((s) => s.postEditDraftEdges);
   const draftTeleports = useMazeStore((s) => s.postEditDraftTeleports);
   const draftMeta = useMazeStore((s) => s.postEditDraftMeta);
-  const nodes = useMazeStore((s) => s.nodes);
+  const allNodes = useMazeStore((s) => s.nodes);
+  const level = useMazeStore(activeFloorLevel);
+  // Post-edit is floor-aware (GitHub issue #358) — `s.nodes` can span every floor, so this
+  // dialog's own point-keyed lookups (`pointNodeMap`, `originalNodeId`, `resolveActiveAt`) are
+  // scoped to the active floor's own nodes first, same as `PostEditController`'s `getFloorNodes`.
+  const nodes = useMemo(() => allNodes.filter((n) => (n.level ?? 0) === (level ?? 0)), [allNodes, level]);
   const cfg = useMazeStore((s) => s.activeTessellationConfig);
   const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
   const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
@@ -52,7 +59,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
 
   const [activeKind, setActiveKind] = useState<SplitEdgeKind>("passage");
 
-  const key = `${point[0]},${point[1]}`;
+  const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
   const slots = useMemo(() => [...(splitPoints[key] ?? [])].sort((a, b) => a - b), [splitPoints, key]);
   const isActive = (ep: PostEditEndpoint) => {
     const current = activeSplitNode[key];
@@ -74,7 +81,8 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     }
     return m;
   }, [nodes]);
-  const resolveSplit = useMemo(() => buildSplitNodeResolver(pointNodeMap, splitPoints), [pointNodeMap, splitPoints]);
+  const levelSplitPoints = useMemo(() => recordOnLevel(splitPoints, level), [splitPoints, level]);
+  const resolveSplit = useMemo(() => buildSplitNodeResolver(pointNodeMap, levelSplitPoints), [pointNodeMap, levelSplitPoints]);
   // Two endpoints are "the same link" if they resolve to the same real `NodeId` — a plain `node`
   // endpoint and a `split` endpoint can both resolve to the same id (GitHub issue #222: an
   // auto-split node already has a real id right after generation, but `draftEdges`/`draftMeta`
@@ -102,7 +110,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // rule for `key`'s point when it's the dialog's own point, or the point's active-map entry
   // (falling back to its original node) for any other point (e.g. a neighbor across a tile face).
   const resolveActiveAt = (p: [number, number]): PostEditEndpoint | null => {
-    const pKey = `${p[0]},${p[1]}`;
+    const pKey = level === undefined ? `${p[0]},${p[1]}` : `${p[0]},${p[1]}@${level}`;
     const ids: number[] = [];
     for (const n of nodes) if (n.x === p[0] && n.y === p[1]) ids.push(n.id);
     if (ids.length === 0) return null;
@@ -171,7 +179,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
       isStart: isStart(originalEndpoint), isFinish: isFinish(originalEndpoint),
     }] : []),
     ...slots.map((slotId, i) => {
-      const ep = splitEndpoint(point, slotId);
+      const ep = splitEndpoint(point, slotId, level);
       return {
         key: endpointKey(ep), endpoint: ep, title: m["post_edit.split_node_label"]({ slotId }),
         color: colorAt((originalEndpoint ? 1 : 0) + i), removable: true, active: isActive(ep), ownLabel: describeEndpoint(ep), links: links(ep),

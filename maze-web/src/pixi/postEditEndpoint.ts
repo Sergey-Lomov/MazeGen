@@ -32,14 +32,18 @@ export function splitRefKey(ref: SplitRef): string {
  * survives across confirms; only the resolved id, looked up fresh each time, doesn't need to. */
 export type PostEditEndpoint =
   | { kind: "node"; id: number }
-  | ({ kind: "split" } & SplitRef);
+  | ({ kind: "split"; level?: number } & SplitRef);
 
 export function nodeEndpoint(id: number): PostEditEndpoint {
   return { kind: "node", id };
 }
 
-export function splitEndpoint(point: [number, number], slotId: number): PostEditEndpoint {
-  return { kind: "split", point, slotId };
+/** `level` is the 0-based `floors` array index this slot lives on, `undefined` meaning floor 0
+ * (GitHub issue #358, same "undefined = default" convention `PresetEndpoint.level` uses — see
+ * `presetEndpoint.ts`). A `node` endpoint never carries a `level` — the resolved `NodeId` already
+ * pins it to a real node wherever that node happens to be, no separate floor tag is needed. */
+export function splitEndpoint(point: [number, number], slotId: number, level?: number): PostEditEndpoint {
+  return { kind: "split", point, slotId, ...(level !== undefined ? { level } : {}) };
 }
 
 /** Structural equality (no resolution) — true whether or not either endpoint currently resolves
@@ -48,13 +52,28 @@ export function splitEndpoint(point: [number, number], slotId: number): PostEdit
 export function endpointsEqual(a: PostEditEndpoint, b: PostEditEndpoint): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "node") return a.id === (b as { kind: "node"; id: number }).id;
-  return splitRefsEqual(a, b as SplitRef);
+  const bs = b as { kind: "split"; level?: number } & SplitRef;
+  return splitRefsEqual(a, bs) && a.level === bs.level;
+}
+
+/** True if `ep` belongs to `level` (GitHub issue #358) — a `split` endpoint is checked against its
+ * own `level` field directly; a `node` endpoint has no `level` of its own (see `splitEndpoint`'s
+ * doc comment), so it's checked against `floorNodeIds`, the resolved id set for that floor's own
+ * nodes (e.g. `selectFloorScopedMaze(...).nodes` mapped to ids) — an id outside that set belongs to
+ * another floor. Used to filter a maze-wide, `postEditDraftEdges`/`postEditDraftTeleports`-style
+ * collection down to one floor's own entries before handing it to a level-agnostic renderer
+ * selector, mirroring `presetConnectionsOnLevel` for the preset side. */
+export function endpointOnLevel(ep: PostEditEndpoint, level: number | undefined, floorNodeIds: ReadonlySet<number>): boolean {
+  return ep.kind === "node" ? floorNodeIds.has(ep.id) : (ep.level ?? 0) === (level ?? 0);
 }
 
 /** Stable string key for one endpoint: "n42" for a node, "s3,5:7" for a split (point "3,5",
- * slotId 7). The "n"/"s" prefix keeps the two variants' key spaces disjoint. */
+ * slotId 7), "s3,5:7@2" when that split lives on floor index 2. The "n"/"s" prefix keeps the two
+ * variants' key spaces disjoint. */
 export function endpointKey(ep: PostEditEndpoint): string {
-  return ep.kind === "node" ? `n${ep.id}` : `s${splitRefKey(ep)}`;
+  if (ep.kind === "node") return `n${ep.id}`;
+  const base = `s${splitRefKey(ep)}`;
+  return ep.level === undefined ? base : `${base}@${ep.level}`;
 }
 
 /** Builds a Record key for an edge between two endpoints — replaces every hand-built
@@ -76,7 +95,9 @@ export function edgeKey(from: PostEditEndpoint, to: PostEditEndpoint): string {
  * (`buildSplitPassagesCore`). `neighborNodeIds` is every real node currently at `neighborPoint`, in
  * snapshot order (index 0 = original); `neighborSplitSlots` is that point's declared slotId list
  * (sorted order lines up with `neighborNodeIds`' extra entries, same contract as
- * `buildSplitNodeResolver`). */
+ * `buildSplitNodeResolver`). `level` is the 0-based floor index `neighborPoint` lives on
+ * (`undefined` = floor 0, GitHub issue #358) — folded into the `activeMap` lookup key so a
+ * same-(x,y) point's active slot on a different floor isn't picked up by mistake. */
 export function resolvePostEditPartnerAt(
   pointOldEndpoints: PostEditEndpoint[],
   neighborPoint: [number, number],
@@ -84,6 +105,7 @@ export function resolvePostEditPartnerAt(
   draftEdges: Readonly<Record<string, { from: PostEditEndpoint; to: PostEditEndpoint }>>,
   neighborSplitSlots: number[],
   activeMap: Readonly<Record<string, PostEditEndpoint>>,
+  level?: number,
 ): PostEditEndpoint | null {
   if (neighborNodeIds.length === 0) return null;
   const sortedSlots = [...neighborSplitSlots].sort((a, b) => a - b);
@@ -99,7 +121,7 @@ export function resolvePostEditPartnerAt(
       if (draftEdges[edgeKey(from, candidate)] || draftEdges[edgeKey(candidate, from)]) return candidate;
     }
   }
-  const key = `${neighborPoint[0]},${neighborPoint[1]}`;
+  const key = level === undefined ? `${neighborPoint[0]},${neighborPoint[1]}` : `${neighborPoint[0]},${neighborPoint[1]}@${level}`;
   const active = activeMap[key];
   if (active) {
     // The active-slot fallback may itself be an unresolved `split` endpoint (a not-yet-confirmed
@@ -135,13 +157,13 @@ export function endpointIsNode(ep: PostEditEndpoint, id: number): boolean {
  *   of "current links" is empty until the first confirm — expected, not an error. */
 export function resolveEndpoint(
   ep: PostEditEndpoint,
-  resolveSplit: (point: [number, number], slotId: number) => number | undefined,
+  resolveSplit: (point: [number, number], slotId: number, level?: number) => number | undefined,
 ): number | undefined {
-  return ep.kind === "node" ? ep.id : resolveSplit(ep.point, ep.slotId);
+  return ep.kind === "node" ? ep.id : resolveSplit(ep.point, ep.slotId, ep.level);
 }
 
-/** Builds the `(point, slotId) -> NodeId` resolver `resolveEndpoint` needs for `split` endpoints,
- * from the latest confirmed snapshot's node list (grouped by point, `nodeMap`, e.g.
+/** Builds the `(point, slotId, level) -> NodeId` resolver `resolveEndpoint` needs for `split`
+ * endpoints, from the latest confirmed snapshot's node list (grouped by point, `nodeMap`, e.g.
  * `PostEditController`'s per-cell id list) and the current `postEditDraftSplitPoints` (slotId
  * list per point).
  *
@@ -150,15 +172,22 @@ export function resolveEndpoint(
  * `maze-wasm/src/analytics.rs`'s `nodes: Vec<NodeDto>` construction) — so slot `k` in
  * `postEditDraftSplitPoints`'s *sorted* slotId list lines up with `nodeMap`'s (k+1)-th entry for
  * that point (index 0 is always the original node). Returns `undefined` for a slotId that either
- * isn't in the draft list, or hasn't been confirmed into the snapshot yet. */
+ * isn't in the draft list, or hasn't been confirmed into the snapshot yet.
+ *
+ * `nodeMap`/`splitPoints` may either be already scoped to one floor (bare `"x,y"` keys — the
+ * returned resolver's own `level` argument is then ignored) or span every floor at once (GitHub
+ * issue #358, `"x,y"`/`"x,y@level"` keys, matching `postEditDraftSplitPoints`'s own convention) —
+ * the lookup key is built the same way either caller shape expects, since a bare-keyed map simply
+ * never has an `"@level"` entry to match against a non-`undefined` `level`. */
 export function buildSplitNodeResolver(
   nodeMap: ReadonlyMap<string, number[]>,
   splitPoints: Readonly<Record<string, number[]>>,
-): (point: [number, number], slotId: number) => number | undefined {
-  return (point, slotId) => {
-    const key = `${point[0]},${point[1]}`;
-    const ids = nodeMap.get(key);
-    const slots = splitPoints[key];
+): (point: [number, number], slotId: number, level?: number) => number | undefined {
+  return (point, slotId, level) => {
+    const bareKey = `${point[0]},${point[1]}`;
+    const key = level === undefined ? bareKey : `${bareKey}@${level}`;
+    const ids = nodeMap.get(key) ?? nodeMap.get(bareKey);
+    const slots = splitPoints[key] ?? splitPoints[bareKey];
     if (ids === undefined || slots === undefined) return undefined;
     const sortedSlots = [...slots].sort((a, b) => a - b);
     const slotIndex = sortedSlots.indexOf(slotId);

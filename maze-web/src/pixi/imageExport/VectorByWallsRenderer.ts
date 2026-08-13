@@ -295,9 +295,18 @@ export function buildMarkerStyle(settings: MarkerSettings, floorColor: number): 
 export function resolveEffectiveEndpoints(
   state: Pick<ReturnType<typeof useMazeStore.getState>, "nodes" | "start" | "finish" | "postEditMeta" | "postEditDraftSplitPoints">,
 ): { start: number | null; finish: number | null } {
+  // `state.nodes` can span every floor (GitHub issue #358) while `postEditDraftSplitPoints` is one
+  // flat, `"@level"`-suffixed collection covering every floor at once — `pointNodeMap`'s own keys
+  // are folded through the same suffix (per node's own `level`) so `buildSplitNodeResolver`'s
+  // level-aware lookup can tell a slot on floor 2 apart from an identically-`(x,y)` slot on floor 0
+  // (`resolveEndpoint` passes each `PostEditEndpoint`'s own `.level` through automatically).
+  // Deliberately still unscoped to one floor otherwise (matches `start`/`finish` staying maze-wide
+  // ids here — see the call sites' own "resolveEffectiveEndpoints still reads the unscoped state"
+  // comment).
   const pointNodeMap = new Map<string, number[]>();
   for (const n of state.nodes) {
-    const key = `${n.x},${n.y}`;
+    const level = n.level ?? 0;
+    const key = level === 0 ? `${n.x},${n.y}` : `${n.x},${n.y}@${level}`;
     const list = pointNodeMap.get(key);
     if (list) list.push(n.id);
     else pointNodeMap.set(key, [n.id]);

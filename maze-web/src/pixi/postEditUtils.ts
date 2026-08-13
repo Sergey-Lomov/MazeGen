@@ -224,7 +224,12 @@ export function applyPostEditEdgeTool(
  * "the same relative node" for a point that might itself be split.
  *
  * Refuses (returns the input unchanged) if any face that currently carries a connection would
- * land on a neighbor outside the field. */
+ * land on a neighbor outside the field.
+ *
+ * `level` is the 0-based floor index `point` addresses (`undefined` = floor 0, GitHub issue #358)
+ * — `nodes` is expected already scoped to that floor by the caller (a same-(x,y) node on another
+ * floor must not be picked up as this point's original/neighbor node), and `activeSplitNode`
+ * lookups are folded through the same `"@level"`-suffixed key `postEditDraftSplitPoints` uses. */
 export function rotatePostEditSplitPoint(
   edges: Record<string, PostEditEdge>,
   point: [number, number],
@@ -234,16 +239,19 @@ export function rotatePostEditSplitPoint(
   cellSet: Set<string>,
   nodes: NodeDto[],
   activeSplitNode: Record<string, PostEditEndpoint>,
+  level?: number,
 ): Record<string, PostEditEdge> {
   const { offsets } = getNeighborData(cfg, point[0], point[1]);
   const n = offsets.length;
   if (n === 0) return edges;
 
+  const pointKey = (p: [number, number]) => level === undefined ? `${p[0]},${p[1]}` : `${p[0]},${p[1]}@${level}`;
+
   const resolveActiveAt = (p: [number, number]): PostEditEndpoint | null => {
     const ids: number[] = [];
     for (const node of nodes) if (node.x === p[0] && node.y === p[1]) ids.push(node.id);
     if (ids.length === 0) return null;
-    const activeEntry = activeSplitNode[`${p[0]},${p[1]}`];
+    const activeEntry = activeSplitNode[pointKey(p)];
     return activeEntry ?? nodeEndpoint(ids[0]);
   };
 
@@ -258,7 +266,7 @@ export function rotatePostEditSplitPoint(
       const original = nodes.find((n) => n.x === point[0] && n.y === point[1]);
       return original ? [nodeEndpoint(original.id)] : [];
     })(),
-    ...slotIds.map((slotId) => splitEndpoint(point, slotId)),
+    ...slotIds.map((slotId) => splitEndpoint(point, slotId, level)),
   ];
 
   type Move = { oldKey: string; ep: PostEditEndpoint; otherIsFrom: boolean; newNeighbor: [number, number]; kind: PostEditEdge["kind"] };
@@ -320,7 +328,13 @@ export interface PostEditPointReset {
  *
  * `generatedNodes`/`generatedEdges` are `_generatedNodes`/`_generatedEdges` (not `state.nodes`/
  * `state.edges`, which `confirmPostEdit` overwrites — see `applyPostEditToolAt`'s same guard).
- * `generatedStart`/`generatedFinish` are `_generatedStart`/`_generatedFinish`. */
+ * `generatedStart`/`generatedFinish` are `_generatedStart`/`_generatedFinish`.
+ *
+ * `level` is the 0-based `floors` array index `point` addresses (`undefined` = floor 0, same
+ * convention `PostEditEndpoint.level`/`activeFloorLevel` use, GitHub issue #358) — `point` alone
+ * is not a unique address once `generatedNodes` spans every floor (GitHub issue #337): every
+ * node/edge/split-point lookup below is scoped to nodes actually on `level`, or a same-(x,y) node
+ * on another floor would be picked up as if it were at `point` on this one. */
 export function resetPostEditPoint(
   point: [number, number],
   draftEdges: Record<string, PostEditEdge>,
@@ -332,21 +346,23 @@ export function resetPostEditPoint(
   generatedEdges: EdgeDto[],
   generatedStart: number | null,
   generatedFinish: number | null,
+  level?: number,
 ): PostEditPointReset {
-  const key = `${point[0]},${point[1]}`;
+  const bareKey = `${point[0]},${point[1]}`;
+  const key = level === undefined ? bareKey : `${bareKey}@${level}`;
 
   // Every endpoint currently addressing this point in the draft — original node (if it still
   // exists, e.g. hasn't been removed) plus every declared draft slot — is a removal target, even
   // one added manually after generation and never confirmed.
   const currentIds = new Set<number>();
-  for (const n of generatedNodes) if (n.x === point[0] && n.y === point[1]) currentIds.add(n.id);
+  for (const n of generatedNodes) if (n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0)) currentIds.add(n.id);
   // A node id from generatedNodes is stable across confirms (see PostEditEndpoint's doc comment),
   // so it's safe to use directly as a removal target here even for one already dropped from the
   // draft by an earlier removeSplitNode — it simply won't match anything in refsTarget below, same
   // as any other id with no live reference. No separate "current nodes" snapshot is needed.
   const draftTargets: PostEditEndpoint[] = [
     ...[...currentIds].map((id) => nodeEndpoint(id)),
-    ...(draftSplitPoints[key] ?? []).map((slotId) => splitEndpoint(point, slotId)),
+    ...(draftSplitPoints[key] ?? []).map((slotId) => splitEndpoint(point, slotId, level)),
   ];
   const refsTarget = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
     draftTargets.some((t) => endpointsEqual(e.from, t) || endpointsEqual(e.to, t));
@@ -368,16 +384,19 @@ export function resetPostEditPoint(
   // Rebuild this point's generation-time state from the frozen snapshot — original node keeps its
   // (stable) id, generation-time extra nodes become fresh `split` endpoints via the same slotId
   // derivation `resetPostEdit` uses for the whole graph (GitHub issue #222's auto-split contract).
-  const generatedSplitPoints = deriveSplitPointsFromNodes(generatedNodes);
-  const pointSlots = generatedSplitPoints[key] ?? [];
+  // Scoped to `level`'s own nodes first (`deriveSplitPointsFromNodes` groups purely by (x, y), so
+  // an unscoped call would fold another floor's same-(x,y) point's slots into this one's).
+  const levelNodes = generatedNodes.filter((n) => (n.level ?? 0) === (level ?? 0));
+  const generatedSplitPoints = deriveSplitPointsFromNodes(levelNodes);
+  const pointSlots = generatedSplitPoints[bareKey] ?? [];
   if (pointSlots.length > 0) nextSplitPoints[key] = pointSlots;
 
   const endpointForGeneratedId = (id: number): PostEditEndpoint => {
-    const node = generatedNodes.find((n) => n.id === id);
+    const node = levelNodes.find((n) => n.id === id);
     if (!node || node.i === 0) return nodeEndpoint(id);
     const sortedSlots = [...pointSlots].sort((a, b) => a - b);
     const slotId = sortedSlots[node.i - 1];
-    return slotId !== undefined ? splitEndpoint([node.x, node.y], slotId) : nodeEndpoint(id);
+    return slotId !== undefined ? splitEndpoint([node.x, node.y], slotId, level) : nodeEndpoint(id);
   };
 
   const pointGeneratedIds = new Set([...currentIds]);

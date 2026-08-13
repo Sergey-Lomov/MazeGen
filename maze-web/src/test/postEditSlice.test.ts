@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { baseStoreState, mockSnapshot } from "./storeTestHelpers";
+import { baseStoreState, mockSnapshot, TEST_FLOOR_ID } from "./storeTestHelpers";
 import { nodeEndpoint, splitEndpoint, edgeKey } from "../pixi/postEditEndpoint";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 
@@ -185,6 +185,43 @@ describe("mazeStore post-edit actions", () => {
     expect(call?.split_points).toEqual(expect.arrayContaining([[[3, 4], 0], [[3, 4], 1]]));
   });
 
+  it("confirmPostEdit strips the \"@level\" suffix from postEditDraftSplitPoints keys before building split_points (GitHub issue #358)", async () => {
+    useMazeStore.setState({
+      postEditDraftSplitPoints: { "3,4": [0], "3,4@1": [2] },
+    });
+    await useMazeStore.getState().confirmPostEdit();
+    const calls = vi.mocked(computeAnalytics).mock.calls;
+    const call = calls[calls.length - 1]?.[0];
+    expect(call?.split_points).toEqual(expect.arrayContaining([[[3, 4], 0], [[3, 4], 2]]));
+  });
+
+  it("confirmPostEdit sends every floor's preset connections/split points, not just floor 0's (GitHub issue #358)", async () => {
+    useMazeStore.setState({
+      presetSplitPoints: { "5,6": [0], "5,6@1": [0] },
+    });
+    await useMazeStore.getState().confirmPostEdit();
+    const calls = vi.mocked(computeAnalytics).mock.calls;
+    const call = calls[calls.length - 1]?.[0];
+    expect(call?.preset_split_points).toEqual(expect.arrayContaining([[[5, 6], 0], [[5, 6], 0]]));
+    expect(call?.preset_split_points).toHaveLength(2);
+  });
+
+  it("confirmPostEdit prunes a non-floor-0 split node whose slot was removed client-side, keyed by its own \"@level\" point (GitHub issue #358)", async () => {
+    useMazeStore.setState({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 1, y: 0, i: 0, level: 0 },
+        { id: 3, x: 0, y: 0, i: 0, level: 1 },
+        { id: 6, x: 0, y: 0, i: 1, level: 1 }, // removed client-side: no "0,0@1" entry below
+      ],
+      postEditDraftSplitPoints: {},
+    });
+    await useMazeStore.getState().confirmPostEdit();
+    const calls = vi.mocked(computeAnalytics).mock.calls;
+    const call = calls[calls.length - 1]?.[0];
+    expect(call?.nodes.map((n: { id: number }) => n.id)).toEqual([0, 1, 3]);
+  });
+
   it("confirmPostEdit sends a passage edge drawn to a split node's own endpoint, not the original node's", () => {
     // Reproduces the reported flow: add a split node at (0,0) (auto-activates it — addSplitNode's
     // own behavior), then draw a passage from node 1 to whatever is "active" at (0,0) — exactly
@@ -240,9 +277,10 @@ describe("mazeStore post-edit actions", () => {
     expect(s.postEditDirty).toBe(false);
   });
 
-  it("resetPostEdit excludes floor-1 nodes/edges sharing an (x,y) with a floor-0 node (GitHub issue #337)", () => {
+  it("resetPostEdit keeps floor-1 nodes/edges and doesn't conflate a floor-1 node with a same-(x,y) floor-0 node into a split point (GitHub issue #358)", () => {
     // A floor-1 node at the same (x,y) as floor-0's node 1 must not be treated as a second split
-    // slot at that point, nor pulled into the floor-0 node/edge set post-edit still only handles.
+    // slot at that point (GitHub issue #337's original conflation risk) — post-edit is now
+    // floor-aware, so both floors' nodes/edges survive the reset, just grouped separately.
     useMazeStore.setState({
       _generatedNodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 0 },
@@ -251,16 +289,44 @@ describe("mazeStore post-edit actions", () => {
       ],
       _generatedEdges: [
         { from: 0, to: 1, kind: "basic" },
-        { from: 1, to: 2, kind: "vertical_passage" },
       ],
       postEditDraftEdges: {},
       postEditDirty: true,
     });
     useMazeStore.getState().resetPostEdit();
     const s = useMazeStore.getState();
-    expect(s.nodes.map((n) => n.id)).toEqual([0, 1]);
-    expect(s.edges).toEqual([{ from: 0, to: 1, kind: "basic" }]);
+    expect(s._generatedNodes.map((n) => n.id).sort()).toEqual([0, 1, 2]);
+    expect(s.postEditDraftEdges).toEqual({ [key01]: { from: n(0), to: n(1), kind: "one_way_forward" } });
     expect(s.postEditDraftSplitPoints).toEqual({});
+  });
+
+  it("resetPostEdit derives separate split points for same-(x,y) split nodes on different floors, each stamped with its own level (GitHub issue #358)", () => {
+    // Point (0,0) is split on both floor 0 (extra node id 2) and floor 1 (extra node id 5) —
+    // each floor's own slot must land in the flat postEditDraftSplitPoints under its own
+    // "@level"-suffixed key, and the draft edges referencing each slot must carry that same level.
+    useMazeStore.setState({
+      _generatedNodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 1, y: 0, i: 0, level: 0 },
+        { id: 2, x: 0, y: 0, i: 1, level: 0 },
+        { id: 3, x: 0, y: 0, i: 0, level: 1 },
+        { id: 4, x: 1, y: 0, i: 0, level: 1 },
+        { id: 5, x: 0, y: 0, i: 1, level: 1 },
+      ],
+      _generatedEdges: [
+        { from: 2, to: 1, kind: "basic" },
+        { from: 5, to: 4, kind: "basic" },
+      ],
+      postEditDraftEdges: {},
+      postEditDirty: true,
+    });
+    useMazeStore.getState().resetPostEdit();
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints).toEqual({ "0,0": [0], "0,0@1": [0] });
+    const floor0Key = edgeKey(splitEndpoint([0, 0], 0), n(1));
+    const floor1Key = edgeKey(splitEndpoint([0, 0], 0, 1), n(4));
+    expect(s.postEditDraftEdges?.[floor0Key]).toEqual({ from: splitEndpoint([0, 0], 0), to: n(1), kind: "one_way_forward" });
+    expect(s.postEditDraftEdges?.[floor1Key]).toEqual({ from: splitEndpoint([0, 0], 0, 1), to: n(4), kind: "one_way_forward" });
   });
 
   it("resetPostEdit clears split-point draft state", () => {
@@ -407,9 +473,10 @@ describe("mazeStore post-edit actions", () => {
     expect(s.postEditDirty).toBe(true);
   });
 
-  it("resetPostEditPoint excludes a floor-1 node sharing the reset point's (x,y) (GitHub issue #337)", () => {
+  it("resetPostEditPoint excludes a floor-1 node sharing the reset point's (x,y) when the active floor is floor 0 (GitHub issue #337, #358)", () => {
     // beforeEach's floor-0 nodes are (0,0)->id 0 and (1,0)->id 1. Add a floor-1 node also at (0,0)
-    // (id 2) — resetting point (0,0) must never pull that floor-1 node's edges/teleports in.
+    // (id 2) — resetting point (0,0) on the active floor (floor 0 here) must never pull that
+    // floor-1 node's edges/teleports in, even though post-edit tools now work on any floor.
     useMazeStore.setState({
       _generatedNodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 0 },
@@ -460,6 +527,18 @@ describe("mazeStore split-node actions", () => {
     expect(s.postEditDraftSplitPoints["2,2"]).toEqual([0]);
     expect(s.postEditActiveSplitNode["2,2"]).toEqual(splitEndpoint([2, 2], 0));
     expect(s.postEditDirty).toBe(true);
+  });
+
+  it("addSplitNode on a non-floor-0 active floor stamps the slot's level and keys it with an \"@level\" suffix (GitHub issue #358)", () => {
+    useMazeStore.setState({
+      floors: [{ id: TEST_FLOOR_ID, title: "Floor 1" }, { id: "floor_2", title: "Floor 2" }],
+      activeFloorId: "floor_2",
+    });
+    useMazeStore.getState().addSplitNode([2, 2]);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftSplitPoints["2,2@1"]).toEqual([0]);
+    expect(s.postEditDraftSplitPoints["2,2"]).toBeUndefined();
+    expect(s.postEditActiveSplitNode["2,2@1"]).toEqual(splitEndpoint([2, 2], 0, 1));
   });
 
   it("addSplitNode mints max(existing)+1 for a point that already has slots", () => {

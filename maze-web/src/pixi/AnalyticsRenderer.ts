@@ -9,8 +9,10 @@ import { NavGraphRenderer } from "./NavGraphRenderer";
 import { RouteOverlay } from "./RouteOverlay";
 import { PureCyclesOverlay } from "./PureCyclesOverlay";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
-import { postEditEdgesToDto } from "./selectors/mazeSelectors";
+import { postEditEdgesToDto, selectFloorScopedMaze } from "./selectors/mazeSelectors";
 import { resolveEndpoint, buildSplitNodeResolver } from "./postEditEndpoint";
+import { recordOnLevel } from "./fieldEditUtils";
+import { activeFloorLevel } from "../store/storeHelpers";
 import type { Viewport } from "./renderers/types";
 
 export class AnalyticsRenderer {
@@ -123,7 +125,8 @@ export class AnalyticsRenderer {
         state.postEditEdges !== prev.postEditEdges ||
         state.postEditTeleportEdges !== prev.postEditTeleportEdges ||
         state.postEditMeta !== prev.postEditMeta ||
-        state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints;
+        state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
+        state.activeFloorId !== prev.activeFloorId;
 
       if (visibilityChanged || dataChanged) {
         this.syncAll(state);
@@ -135,9 +138,15 @@ export class AnalyticsRenderer {
 
   private syncAll(state: ReturnType<typeof useMazeStore.getState>): void {
     const analyticsOpen = state.openCard === "analytics";
-    const { nodes, activeTessellationConfig: cfg,
+    const { activeTessellationConfig: cfg,
       showMazeOverlay, showComponentsOverlay, showGraphOverlay, showNavGraphOverlay,
       showPureCyclesOverlay, showRouteOverlay, showRegionClassesOverlay, postEditAnalytics, hoveredIssueLoopEdges, hoveredIssueRegionGroups } = state;
+
+    // Floor-scoped (GitHub issue #358) — `state.nodes` can span every floor (post-edit's confirm
+    // no longer restricts to floor 0), so a same-(x,y) node on another floor must not be drawn on
+    // top of the active floor's own.
+    const level = activeFloorLevel(state);
+    const { nodes } = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId);
 
     const graphAnalytics = postEditAnalytics?.graphAnalytics ?? state.graphAnalytics;
     const navNodes   = postEditAnalytics?.navNodes   ?? state.navNodes;
@@ -152,7 +161,7 @@ export class AnalyticsRenderer {
       const list = pointNodeMap.get(k);
       if (list) list.push(nd.id); else pointNodeMap.set(k, [nd.id]);
     }
-    const resolveSplit = buildSplitNodeResolver(pointNodeMap, state.postEditDraftSplitPoints);
+    const resolveSplit = buildSplitNodeResolver(pointNodeMap, recordOnLevel(state.postEditDraftSplitPoints, level));
 
     const edges  = [...postEditEdgesToDto(state.postEditEdges, resolveSplit), ...state.postEditTeleportEdges];
     const startEp  = state.postEditMeta != null ? state.postEditMeta.start : (state.start !== null ? { kind: "node" as const, id: state.start } : null);

@@ -11,13 +11,16 @@ import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
 import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight, selectFloorScopedMaze } from "./selectors/mazeSelectors";
 import { postEditTeleportsToDto } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
 import type { NodeDto } from "../wasm/types";
+import type { PostEditEdge, PostEditTeleportEntry } from "../store/mazeStore";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
-import { resolveEndpoint, buildSplitNodeResolver } from "./postEditEndpoint";
+import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, endpointOnLevel } from "./postEditEndpoint";
+import { recordOnLevel } from "./fieldEditUtils";
+import { activeFloorLevel } from "../store/storeHelpers";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
@@ -185,7 +188,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.nodes !== prev.nodes ||
       state.postEditDraftMeta !== prev.postEditDraftMeta ||
       state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
-      state.postEditActiveSplitNode !== prev.postEditActiveSplitNode
+      state.postEditActiveSplitNode !== prev.postEditActiveSplitNode ||
+      state.activeFloorId !== prev.activeFloorId
     ) {
       this.redrawAll(state);
     } else if (state.postEditHoveredLink !== prev.postEditHoveredLink) {
@@ -195,7 +199,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     if (
       state.hoveredIssueLoopEdges !== prev.hoveredIssueLoopEdges ||
       state.hoveredIssueRegionGroups !== prev.hoveredIssueRegionGroups ||
-      state.nodes !== prev.nodes
+      state.nodes !== prev.nodes ||
+      state.activeFloorId !== prev.activeFloorId
     ) {
       this.redrawIssueHighlight(state);
     }
@@ -205,12 +210,38 @@ export class PostEditRenderer extends BaseFieldRenderer {
     }
   }
 
+  /** Floor-scopes every post-edit piece of state (GitHub issue #358) — `state.nodes`/`state.edges`
+   * and `postEditDraftEdges`/`postEditDraftTeleports`/`postEditDraftSplitPoints`/
+   * `postEditActiveSplitNode` are all one flat, maze-wide collection now (mirroring preset
+   * connections, GitHub issue #340), but every selector below (`buildMazeWalls`,
+   * `buildSplitPassages`, etc.) is still level-agnostic and expects single-floor-shaped data — a
+   * same-(x,y) node/split point on another floor would otherwise be drawn on top of the active
+   * floor's own. */
+  private floorScoped(state: MazeState) {
+    const level = activeFloorLevel(state);
+    const { nodes, edges, start, finish } = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId, state.start, state.finish);
+    const floorNodeIds = new Set(nodes.map((n) => n.id));
+    const onLevel = (ep: PostEditEndpoint) => endpointOnLevel(ep, level, floorNodeIds);
+    const postEditDraftEdges: Record<string, PostEditEdge> | null = state.postEditDraftEdges === null ? null : Object.fromEntries(
+      Object.entries(state.postEditDraftEdges).filter(([, e]) => onLevel(e.from) && onLevel(e.to)),
+    );
+    const postEditDraftTeleports: PostEditTeleportEntry[] = state.postEditDraftTeleports.filter((t) => onLevel(t.from) && onLevel(t.to));
+    const postEditDraftSplitPoints = recordOnLevel(state.postEditDraftSplitPoints, level);
+    const postEditActiveSplitNode = recordOnLevel(state.postEditActiveSplitNode, level);
+    const postEditDraftMeta = state.postEditDraftMeta === null ? null : {
+      start: state.postEditDraftMeta.start !== null && onLevel(state.postEditDraftMeta.start) ? state.postEditDraftMeta.start : null,
+      finish: state.postEditDraftMeta.finish !== null && onLevel(state.postEditDraftMeta.finish) ? state.postEditDraftMeta.finish : null,
+    };
+    return { nodes, edges, start, finish, postEditDraftEdges, postEditDraftTeleports, postEditDraftSplitPoints, postEditActiveSplitNode, postEditDraftMeta };
+  }
+
   private redrawIssueHighlight(state: MazeState): void {
     if (!this.cfg) return;
+    const { nodes, edges } = this.floorScoped(state);
     this.issueHighlight.render({
-      nodes: state.nodes,
+      nodes,
       edges: state.hoveredIssueLoopEdges,
-      allEdges: state.edges,
+      allEdges: edges,
       regionGroups: state.hoveredIssueRegionGroups,
       cfg: this.cfg,
     });
@@ -218,14 +249,15 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
   private redrawLinkHover(state: MazeState): void {
     if (!this.cfg) return;
+    const { nodes, postEditDraftSplitPoints } = this.floorScoped(state);
     const pointNodeMap = new Map<string, number[]>();
-    for (const nd of state.nodes) {
+    for (const nd of nodes) {
       const k = `${nd.x},${nd.y}`;
       const list = pointNodeMap.get(k);
       if (list) list.push(nd.id); else pointNodeMap.set(k, [nd.id]);
     }
-    const resolveSplit = buildSplitNodeResolver(pointNodeMap, state.postEditDraftSplitPoints);
-    const highlights = buildLinkHoverHighlight(state.postEditHoveredLink, state.nodes, resolveSplit, this.cfg);
+    const resolveSplit = buildSplitNodeResolver(pointNodeMap, postEditDraftSplitPoints);
+    const highlights = buildLinkHoverHighlight(state.postEditHoveredLink, nodes, resolveSplit, this.cfg);
     this.linkHover.render(highlights);
   }
 
@@ -235,7 +267,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
 
     this.grid.render({ viewport: this.viewport }, cfg);
 
-    const { nodes, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints } = state;
+    const { nodes, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints, postEditActiveSplitNode } = this.floorScoped(state);
 
     // Resolves `split` endpoints from the latest confirmed node snapshot — a draft reference to
     // a split node not yet confirmed simply doesn't resolve, and is dropped from what's drawn
@@ -279,7 +311,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const wallEdges = buildMazeWalls(nodes, activeEdges, cfg);
     this.walls.render({ edges: wallEdges }, cfg);
 
-    const { passages: splitPassages, wallFaces, specialShapes } = buildSplitPassages(nodes, activeEdges, cfg, specialNodeIds, state.postEditActiveSplitNode, postEditDraftSplitPoints);
+    const { passages: splitPassages, wallFaces, specialShapes } = buildSplitPassages(nodes, activeEdges, cfg, specialNodeIds, postEditActiveSplitNode, postEditDraftSplitPoints);
     this.splitJunctions.render({ passages: splitPassages, wallFaces, specialShapes });
 
     const nodeById = new Map<number, NodeDto>(nodes.map(n => [n.id, n]));
