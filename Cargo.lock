@@ -154,6 +154,7 @@ dependencies = [
  "getrandom",
  "js-sys",
  "maze-core",
+ "maze-core-macros",
  "maze-runner",
  "rand",
  "serde",

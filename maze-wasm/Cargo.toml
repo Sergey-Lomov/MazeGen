@@ -11,6 +11,7 @@ wasm-opt = false
 
 [dependencies]
 maze-core = { path = "../maze-core" }
+maze-core-macros = { path = "../maze-core-macros" }
 maze-runner = { path = "../maze-runner" }
 wasm-bindgen = "0.2"
 js-sys = "0.3"

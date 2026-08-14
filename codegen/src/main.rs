@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use codegen::{check, golden, id_enum, naming::to_camel_case, parser, quality_i18n, rust_emitter, ts_emitter};
+use codegen::{check, dto_ts, golden, id_enum, naming::to_camel_case, parser, quality_i18n, rust_emitter, ts_emitter};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -44,21 +44,20 @@ fn main() -> ExitCode {
             warnings.extend(check::detect_breaking_changes(&old_text, source));
         }
 
-        // Every write for one source is all-or-nothing (`continue` on the first failure) — a
-        // half-written source (Rust wire file failed but TS/golden still landed, or vice versa)
+        // Every write for one source is all-or-nothing (`continue` on the first write failure) —
+        // a half-written source (Rust wire file failed but TS/golden still landed, or vice versa)
         // would leave Rust and TS silently disagreeing on disk despite `had_errors` correctly
         // failing the process; a caller that inspects the generated files directly (rather than
-        // the exit code) could act on that stale, inconsistent state.
-        if !check_only {
-            if let Some(parent) = rust_wire_path.parent() {
-                let _ = fs::create_dir_all(parent);
-            }
-            if let Err(e) = fs::write(&rust_wire_path, &new_rust_text) {
-                eprintln!("codegen: failed to write {}: {e}", rust_wire_path.display());
-                had_errors = true;
-                continue;
-            }
+        // the exit code) could act on that stale, inconsistent state. Under `--check` nothing is
+        // written at all, so this early-exit-on-failure concern doesn't apply there — every file
+        // is independently compared against disk regardless of an earlier mismatch.
+        let had_errors_before_writes = had_errors;
+        write_or_check(&rust_wire_path, &new_rust_text, check_only, &mut had_errors);
+        if !check_only && had_errors != had_errors_before_writes {
+            continue;
+        }
 
+        if !check_only {
             let source_file_path = repo_root.join("maze-core").join("src").join(&source.location.rust_file);
             if let Ok(existing) = fs::read_to_string(&source_file_path) {
                 if let Some(updated) = rust_emitter::ensure_mod_declared(&existing, &source.location.stem) {
@@ -69,37 +68,25 @@ fn main() -> ExitCode {
 
         let ts_text = ts_emitter::generate_ts_file(source);
         let ts_path = ts_out_dir.join(format!("{}.ts", to_camel_case(&source.location.stem)));
-        if !check_only {
-            let _ = fs::create_dir_all(&ts_out_dir);
-            if let Err(e) = fs::write(&ts_path, &ts_text) {
-                eprintln!("codegen: failed to write {}: {e}", ts_path.display());
-                had_errors = true;
-                continue;
-            }
+        let had_errors_before_ts = had_errors;
+        write_or_check(&ts_path, &ts_text, check_only, &mut had_errors);
+        if !check_only && had_errors != had_errors_before_ts {
+            continue;
         }
 
         let entries = golden::generate_golden(source);
         let golden_json = golden_to_json(&entries);
         let golden_path = golden_out_dir.join(format!("{}.json", source.location.stem));
-        if !check_only {
-            let _ = fs::create_dir_all(&golden_out_dir);
-            if let Err(e) = fs::write(&golden_path, &golden_json) {
-                eprintln!("codegen: failed to write {}: {e}", golden_path.display());
-                had_errors = true;
-                continue;
-            }
+        let had_errors_before_golden = had_errors;
+        write_or_check(&golden_path, &golden_json, check_only, &mut had_errors);
+        if !check_only && had_errors != had_errors_before_golden {
+            continue;
         }
 
         let stem_camel = to_camel_case(&source.location.stem);
         if let Some(golden_test_text) = ts_emitter::generate_golden_test_file(source, &format!("./{stem_camel}")) {
             let golden_test_path = ts_out_dir.join(format!("{stem_camel}.golden.test.ts"));
-            if !check_only {
-                if let Err(e) = fs::write(&golden_test_path, &golden_test_text) {
-                    eprintln!("codegen: failed to write {}: {e}", golden_test_path.display());
-                    had_errors = true;
-                    continue;
-                }
-            }
+            write_or_check(&golden_test_path, &golden_test_text, check_only, &mut had_errors);
         }
     }
 
@@ -114,16 +101,13 @@ fn main() -> ExitCode {
     for source in &id_enum_sources {
         let rust_ids_path = repo_root.join("maze-core").join("src").join(parent_dir_of(&source.rust_file)).join(format!("{}_ids.rs", to_snake_case_stem(&source.enum_name)));
         let rust_text = id_enum::generate_rust_ids_file(source);
-        if !check_only {
-            if let Some(parent) = rust_ids_path.parent() {
-                let _ = fs::create_dir_all(parent);
-            }
-            if let Err(e) = fs::write(&rust_ids_path, &rust_text) {
-                eprintln!("codegen: failed to write {}: {e}", rust_ids_path.display());
-                had_errors = true;
-                continue;
-            }
+        let had_errors_before_rust = had_errors;
+        write_or_check(&rust_ids_path, &rust_text, check_only, &mut had_errors);
+        if !check_only && had_errors != had_errors_before_rust {
+            continue;
+        }
 
+        if !check_only {
             let source_file_path = repo_root.join("maze-core").join("src").join(&source.rust_file);
             if let Ok(existing) = fs::read_to_string(&source_file_path) {
                 if let Some(updated) = id_enum::ensure_mod_declared(&existing, &to_snake_case_stem(&source.enum_name)) {
@@ -134,27 +118,32 @@ fn main() -> ExitCode {
 
         let ts_text = id_enum::generate_ts_ids_file(source);
         let ts_path = id_enum_ts_out_dir.join(format!("{}.ts", to_camel_case(&to_snake_case_stem(&source.enum_name))));
-        if !check_only {
-            let _ = fs::create_dir_all(&id_enum_ts_out_dir);
-            if let Err(e) = fs::write(&ts_path, &ts_text) {
-                eprintln!("codegen: failed to write {}: {e}", ts_path.display());
-                had_errors = true;
-                continue;
-            }
+        write_or_check(&ts_path, &ts_text, check_only, &mut had_errors);
+    }
+
+    let dto_rs_path = repo_root.join("maze-wasm").join("src").join("dto.rs");
+    match dto_ts::parse_dto_file(&dto_rs_path) {
+        Ok(dto_items) => {
+            let dto_ts_text = dto_ts::generate_ts_file(&dto_items, "maze-wasm/src/dto.rs", &[
+                ("IssueKindId", "./issueKind"),
+                ("RegionClass", "../types"),
+                ("CheckInstanceConfig", "../types"),
+                ("WasmTessellationConfig", "../types"),
+                ("PresetConnection", "../types"),
+            ]);
+            let dto_ts_path = repo_root.join("maze-web").join("src").join("wasm").join("generated").join("dto.ts");
+            write_or_check(&dto_ts_path, &dto_ts_text, check_only, &mut had_errors);
+        }
+        Err(e) => {
+            eprintln!("codegen: dto parse error: {}", e.message);
+            had_errors = true;
         }
     }
 
     let quality_ids = quality_i18n::discover();
     let quality_ts_text = quality_i18n::generate_ts_file(&quality_ids);
-    let quality_ts_dir = repo_root.join("maze-web").join("src").join("components").join("features").join("generated");
-    let quality_ts_path = quality_ts_dir.join("qualityIds.ts");
-    if !check_only {
-        let _ = fs::create_dir_all(&quality_ts_dir);
-        if let Err(e) = fs::write(&quality_ts_path, &quality_ts_text) {
-            eprintln!("codegen: failed to write {}: {e}", quality_ts_path.display());
-            had_errors = true;
-        }
-    }
+    let quality_ts_path = repo_root.join("maze-web").join("src").join("components").join("features").join("generated").join("qualityIds.ts");
+    write_or_check(&quality_ts_path, &quality_ts_text, check_only, &mut had_errors);
 
     let quality_i18n_path = repo_root.join("maze-web").join("src").join("components").join("features").join("qualityI18n.ts");
     if let Ok(existing) = fs::read_to_string(&quality_i18n_path) {
@@ -180,6 +169,42 @@ fn main() -> ExitCode {
         println!("codegen: generated {} wire source(s), {} id-enum source(s)", sources.len(), id_enum_sources.len());
         ExitCode::SUCCESS
     }
+}
+
+/// Writes `text` to `path` (creating parent dirs) when `check_only` is `false`; when `true`,
+/// never writes and instead compares `text` against whatever is already on disk, reporting a
+/// staleness error (and setting `*had_errors`) on any mismatch — including the file being absent.
+/// Without this, `--check` only re-validates that `text` *can* be derived from the source (parse/
+/// structural errors), never that the file on disk actually still matches it, so a source edit
+/// that was never followed by a plain (write) codegen run passes `--check` silently while the
+/// generated file quietly drifts out of sync.
+fn write_or_check(path: &Path, text: &str, check_only: bool, had_errors: &mut bool) {
+    if check_only {
+        let on_disk = fs::read_to_string(path).unwrap_or_default();
+        // Every generated file's text always uses `\n` (`fs::write` below never touches line
+        // endings), but `git checkout`/clone on a repo with `core.autocrlf=true` (the default on
+        // Windows, and this repo's setting) rewrites `\n` to `\r\n` on disk for every tracked
+        // text file. Comparing raw bytes would then flag every single generated file as "stale"
+        // right after a fresh checkout even though the content is identical — normalizing both
+        // sides to `\n` before comparing is what makes this a real content diff, not line-ending
+        // noise.
+        if normalize_line_endings(&on_disk) != normalize_line_endings(text) {
+            eprintln!("codegen: {} is stale — run codegen without --check to regenerate it", path.display());
+            *had_errors = true;
+        }
+    } else {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(e) = fs::write(path, text) {
+            eprintln!("codegen: failed to write {}: {e}", path.display());
+            *had_errors = true;
+        }
+    }
+}
+
+fn normalize_line_endings(s: &str) -> String {
+    s.replace("\r\n", "\n")
 }
 
 fn to_snake_case_stem(enum_name: &str) -> String {

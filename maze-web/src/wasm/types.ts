@@ -1,299 +1,40 @@
-import type { IssueKindId } from "./generated/issueKind";
+import type { SplitFaceRequirement } from "./generated/dto";
 
-/** `i` is a node's stable index among its point's nodes (GitHub issue #236) — `0` is always the
- * point's original node (never removable by post-edit), `1, 2, ...` are extra split-point slots in
- * creation order. Unlike a position in a rebuilt list, `i` never shifts or gets compacted when an
- * earlier-created sibling at the same point is removed. */
-export interface NodeDto {
-  id: number;
-  x: number;
-  y: number;
-  i: number;
-  /** The node's floor, as a 0-based index into `floors` (GitHub issue #337) — matches `floors`
-   * array position, not any internal level id. Always `0` for a single-floor maze. Optional so
-   * the many hand-built `NodeDto` test fixtures across the codebase (predating multi-floor
-   * generation) don't all need updating — real snapshots from wasm always populate it. */
-  level?: number;
-}
-
-// Note: (from, to) is not unique across MazeSnapshot.edges — a Basic and a Teleport edge
-// can coexist in the same direction between the same pair, each as its own entry.
-export interface EdgeDto {
-  from: number;
-  to: number;
-  kind: "basic" | "teleport" | "vertical_passage" | "elevator";
-}
-
-export interface NavNodeDto {
-  node_id: number;
-}
-
-export interface NavEdgeDto {
-  from: number;
-  to: number;
-  path: number[];
-}
-
-export interface JunctionBucket {
-  degree: number;
-  count: number;
-}
-
-export interface NodeStatsDto {
-  dead_ends: number;
-  straight: number;
-  turns: number;
-  junctions: JunctionBucket[];
-  teleport_entries: number;
-}
-
-export interface SpatialEdgeStatsDto {
-  bidirectional: number;
-  one_way_passages: number;
-  walls: number;
-}
-
-export interface TeleportEdgeStatsDto {
-  two_way: number;
-  one_way: number;
-}
-
-export interface RouteInfoDto {
-  path_length: number;
-  junction_count: number;
-  one_way_count: number;
-  split_count: number;
-  score: number | null;
-  path: number[];
-}
-
-export interface GraphAnalyticsDto {
-  node_count: number;
-  edge_count: number;
-  component_count: number;
-  /** Number of independent cycles (E - V + C on the pure-cycle core). */
-  cycle_count: number;
-  /** Number of connected cyclic regions. */
-  cycle_region_count: number;
-  /** Raw count of all simple cycles (composite-inclusive) — always >= cycle_count. */
-  simple_cycle_count: number;
-  /** maze node id (as string key) → component_id. Covers junctions and corridor nodes. */
-  node_component: Record<string, number>;
-  /** maze node ids in the pure-cycle core (real cycles only, no bridges). */
-  pure_cycle_node_ids: number[];
-  /** nav-edge pairs [from_maze_id, to_maze_id] in the pure-cycle core. */
-  pure_cycle_edge_pairs: [number, number][];
-  /** True if cycle enumeration aborted (graph has too many simple cycles to analyze) — when
-   *  true, cycle_count/cycle_region_count/pure_cycle_node_ids/pure_cycle_edge_pairs are empty
-   *  placeholders, not real results. */
-  cycle_analysis_overflowed: boolean;
-  /** SCC region class relative to start/finish — "path" | "alternative" | "unreachable" |
-   *  "trap" — keyed by component_id (string key). Empty when start or finish is unset. */
-  region_classes: Record<string, RegionClass>;
-}
+export type {
+  NodeDto,
+  EdgeKindDto,
+  EdgeDto,
+  NavNodeDto,
+  NavEdgeDto,
+  IssueEdgeGroupPayload,
+  IssueSplitTilePayload,
+  IssueSplitGroupPayload,
+  IssueRegionPayload,
+  IssueRouteEdge,
+  IssueRoutePayload,
+  IssuePayloadDto,
+  IssueDto,
+  TimingNodeDto,
+  GenerationTimingDto,
+  JunctionBucket,
+  NodeStatsDto,
+  SpatialEdgeStatsDto,
+  TeleportEdgeStatsDto,
+  RouteInfoDto,
+  GraphAnalyticsDto,
+  SplitFaceRequirement,
+  OneWayDirectionDto,
+  SplitGroupDto,
+  SplitAnalyticsDto,
+  PostEditEndpointWasmDto,
+  PostEditEdgeWasmDto,
+  VerticalEdgeDto,
+  AnalyticsRuleGroupConfig,
+  ComputeAnalyticsConfig,
+  MazeSnapshot,
+} from "./generated/dto";
 
 export type RegionClass = "path" | "alternative" | "unreachable" | "trap";
-
-/** One maze-wide group of split tiles sharing the same canonical topology (the same pattern
- *  applied at any rotation/mirror, node creation order ignored — see
- *  `maze_core::graph::split_topology`). `topology[i]` is one node's per-face-position requirement
- *  list (length = tessellation degree, `SplitFaceRequirement` — see below), reconstructed from the
- *  built graph rather than authored (`unspecified` never appears in practice, indistinguishable
- *  from a plain absent edge after the fact). The outer list is sorted (order-independent), so it
- *  also serves as a stable key for a client-side title registry (e.g. `JSON.stringify(topology)`).
- *  Declared here, ahead of `SplitFaceRequirement`'s own declaration further down this file, since
- *  both describe the same wire shape and belong together conceptually. */
-export interface SplitGroupDto {
-  topology: SplitFaceRequirement[][];
-  count: number;
-}
-
-/** Maze-wide split totals, independent of any route (contrast `RouteInfoDto.split_count`, which
- *  counts split occurrences along one specific route) — see GitHub issue #262. */
-export interface SplitAnalyticsDto {
-  /** Number of field points with 2+ nodes. */
-  tile_count: number;
-  /** Sum, over every split point, of its full node count (including the original node). */
-  node_count: number;
-  /** Every distinct canonical topology found on the field, with how many tiles share it. */
-  groups: SplitGroupDto[];
-}
-
-/** One flagged cycle/group's base-graph edges paired with whether every one of them is
- * preset-protected (GitHub issue #245) — mirrors Rust's `IssueEdgeGroupPayloadDto`.
- * `preset_locked: true` means repair can never fix this specific element (every edge in it is a
- * user-placed Passage/OneWay preset connection); `false` means it's at least partly unprotected
- * and repair could in principle fix it. */
-export interface IssueEdgeGroupPayload {
-  edges: [number, number][];
-  preset_locked: boolean;
-}
-
-/** One tile's own node list inside a flagged split-tile/split-node-group element — mirrors Rust's
- * `IssueSplitTilePayloadDto`. */
-export interface IssueSplitTilePayload {
-  nodes: number[];
-  preset_locked: boolean;
-}
-
-/** One flagged split-tile "instance" — a single tile or a genuine multi-tile group (proximity
- * pairs / max-count-or-density bundles) — mirrors Rust's `IssueSplitGroupPayloadDto`. */
-export interface IssueSplitGroupPayload {
-  tiles: IssueSplitTilePayload[];
-  preset_locked: boolean;
-}
-
-/** One edge of a flagged split route, in traversal order — mirrors Rust's `IssueRouteEdgeDto`. */
-export interface IssueRouteEdge {
-  from: number;
-  to: number;
-  is_split_edge: boolean;
-}
-
-/** One flagged split route paired with whether every edge on it is preset-locked — mirrors
- * Rust's `IssueRoutePayloadDto`. */
-export interface IssueRoutePayload {
-  edges: IssueRouteEdge[];
-  preset_locked: boolean;
-}
-
-export interface IssueRegionPayload {
-  region: number[];
-  preset_locked: boolean;
-}
-
-/** Tagged payload for `IssueDto` — a real discriminated union (narrow on `kind`) mirroring
- * Rust's `IssuePayloadDto`. `IssueDto.kind` remains the source of truth for UI filtering/labels;
- * `payload.kind` is only a narrowing discriminant for which payload fields are present. */
-export type IssuePayloadDto =
-  | { kind: "none" }
-  | {
-      kind: "invalid_loop";
-      /** Keyed by source check id — each entry is one invalid cycle, its base-graph edges as
-       * [from, to] maze node-id pairs plus its `preset_locked` status. Keyed per check (not one
-       * flat list) so hovering one check's bubble highlights only the cycles that check flagged,
-       * not every contributing check's cycles combined. */
-      edges: Record<string, IssueEdgeGroupPayload[]>;
-    }
-  | {
-      kind: "region_needs_expansion";
-      /** Keyed by source check id — each entry is one flagged SCC region, its member maze node
-       * ids paired with its own `preset_locked` status (GitHub issue #245's region extension)
-       * (not edges — the UI derives the region's perimeter client-side from this node set, the
-       * same way preset boundary walls are derived from a cell set). Keyed per check for the same
-       * reason as the `invalid_loop` variant's `edges`. */
-      nodes: Record<string, IssueRegionPayload[]>;
-    }
-  | {
-      kind: "region_needs_shrink";
-      /** Mirrors `region_needs_expansion`'s `nodes` shape, for an oversized region flagged for
-       * shrinking instead (`max_region_size`/`max_region_ratio`). */
-      nodes: Record<string, IssueRegionPayload[]>;
-    }
-  | {
-      kind: "invalid_teleport";
-      /** Keyed by source check id — each entry is one flagged teleport "group", its base-graph
-       * edges as [from, to] maze node-id pairs (one pair per teleport edge in the group) plus its
-       * `preset_locked` status. A single invalid teleport (`invalid_teleport`) is a group of size
-       * one; a proximity pair (`invalid_teleport_group`) is a group of size two — both share this
-       * payload shape. Keyed per check for the same reason as the `invalid_loop` variant's
-       * `edges`. */
-      groups: Record<string, IssueEdgeGroupPayload[]>;
-    }
-  | {
-      kind: "invalid_one_way";
-      /** Keyed by source check id — each entry is one flagged one-way "group", its base-graph
-       * edges as [from, to] maze node-id pairs (one pair per one-way edge in the group) plus its
-       * `preset_locked` status. A single invalid one-way (`invalid_one_way`) is a group of size
-       * one; a proximity/super-hub/count-excess group (`invalid_one_way_group`) can be any size —
-       * both share this payload shape. Also carries `invalid_split_node_connection_group`'s
-       * elements (a pre-existing wire reuse — narrow on `payload.kind`, not `IssueDto.kind`, to
-       * find them). Keyed per check for the same reason as the `invalid_loop` variant's `edges`. */
-      groups: Record<string, IssueEdgeGroupPayload[]>;
-    }
-  | {
-      kind: "invalid_split_tile";
-      /** Keyed by source check id — each entry is one flagged "instance" (a single tile, or a
-       * genuine multi-tile group for proximity/count/density checks), each paired with its own
-       * `preset_locked` status (GitHub issue #245's split extension). Shared wire variant for
-       * `invalid_split_tile`/`invalid_split_tile_group`/`invalid_split_node`/
-       * `invalid_split_node_group` — narrow on `payload.kind` plus the check's own type id
-       * (`source_check_types`) to tell which check produced a given element, and to pick the
-       * right "how many instances" counting granularity (see `issueRegistry.ts`'s
-       * `presetLockElementsFor`: most checks count `groups.length`, `max_split_count`/
-       * `max_split_density` count individual tiles across all groups instead, since those two
-       * checks fix by removing specific tiles, not whole groups). */
-      groups: Record<string, IssueSplitGroupPayload[]>;
-    }
-  | {
-      kind: "invalid_split_route";
-      /** Keyed by source check id — each entry is one flagged route, paired with its own
-       * `preset_locked` status — order carries meaning (a route is a path, not a set), unlike
-       * every other variant above. */
-      routes: Record<string, IssueRoutePayload[]>;
-    }
-  | {
-      kind: "excessive_scc_count";
-      /** Keyed by source check id — whether repair can never reduce the SCC count at all because
-       * every region on the field is preset-locked against expansion. No per-element highlight
-       * data (unlike every variant above): this issue never highlights specific regions on the
-       * canvas. */
-      preset_locked: Record<string, boolean>;
-    };
-
-export interface IssueDto {
-  kind: IssueKindId;
-  payload: IssuePayloadDto;
-  /** Opaque per-instance check id(s) that produced or contributed to this issue — lets the UI
-   * render one bubble per contributing check rather than one per `kind`. Not a check type id by
-   * itself (see GitHub issue #60) — resolve the type id via `source_check_types`. */
-  source_checks: string[];
-  /** `source_checks` entry -> check type id (`CheckDescriptor.id`) — needed because
-   * `source_checks` entries are opaque per-instance ids, not type ids, so per-check-type lookups
-   * (`DETAIL_LABELS` in `issueRegistry.ts`) can't key off them directly. */
-  source_check_types: Record<string, string>;
-  /** Raw display values keyed by source check id then by detail key, e.g.
-   * `{"max_loop_length": {"max_loop_length": "100"}}`. Never assembled messages — only used
-   * to fill in i18n templates keyed by check id (see `issueRegistry.ts`). */
-  details: Record<string, Record<string, string>>;
-}
-
-/** One node in the hierarchical timing tree — see GitHub issue #285. `id` is a stage id, rule id,
- *  check type id, or strategy id depending on nesting depth; `children` is empty for a leaf
- *  (check/strategy) node. */
-export interface TimingNodeDto {
-  id: string;
-  total_ms: number;
-  calls: number;
-  children: TimingNodeDto[];
-}
-
-/** Hierarchical timing breakdown for one generation run — only present on snapshots from
- *  `runGenerate` (the full generate→QC→repair pipeline). Post-edit/compute-analytics snapshots
- *  never run generation, so `MazeSnapshot.timing` is `null` there. */
-export interface GenerationTimingDto {
-  initial_build_ms: number;
-  /** One entry per stage that ran at least one rule — each stage node's `children` are its own
-   *  rules, each rule node's `children` are its checks and (if dispatched) its strategy. */
-  qc: TimingNodeDto[];
-}
-
-export interface MazeSnapshot {
-  nodes: NodeDto[];
-  edges: EdgeDto[];
-  start: number | null;
-  finish: number | null;
-  issues: IssueDto[];
-  nav_nodes: NavNodeDto[];
-  nav_edges: NavEdgeDto[];
-  node_stats: NodeStatsDto;
-  edge_stats: SpatialEdgeStatsDto;
-  teleport_edge_stats: TeleportEdgeStatsDto;
-  route_info: RouteInfoDto | null;
-  graph_analytics: GraphAnalyticsDto;
-  split_analytics: SplitAnalyticsDto;
-  timing: GenerationTimingDto | null;
-}
 
 export interface CheckDescriptor {
   id: string;
@@ -457,13 +198,6 @@ export interface ElementsConfig {
   allow_non_consecutive_elevator_floors?: boolean;
 }
 
-/** Mirrors Rust's `SplitFaceRequirementDto` (GitHub issue #222). */
-export type SplitFaceRequirement =
-  | { kind: "passage" }
-  | { kind: "one_way"; direction: "forward" | "backward" }
-  | { kind: "wall" }
-  | { kind: "unspecified" };
-
 /** Mirrors Rust's `SplitPatternFaceDto` in shape, but NOT in `face_index` ordering while held in
  * `MazeStore`/the project file: here it's a position into `tessellationGeometry.ts`'s
  * `getNeighborData` offsets (`TileFaceEditor`'s authoring order), not `Tessellation::faces()`'s
@@ -571,93 +305,4 @@ export interface GenerateConfig {
   split_generation?: SplitGenerationConfig;
   debug_events?: boolean;
   qc_experiment?: boolean;
-}
-
-export type PostEditEdgeKind = "basic" | "one_way" | "teleport";
-
-/** Mirrors Rust's `PostEditEndpointDto` — either a plain existing node id, or a reference to one
- * of a split point's extra nodes by its stable `slotId` (GitHub issue #221). WASM resolves `split`
- * endpoints itself via `split_points`, applied before edges in the same call. `Split.level`
- * (GitHub issue #359, 0-based `level_fields` index, omitted meaning level 0) disambiguates a slot
- * when two floors share the same `(point, slotId)`. */
-export type PostEditEndpointWasmDto =
-  | { kind: "node"; id: number }
-  | { kind: "split"; point: [number, number]; slot_id: number; level?: number };
-
-export interface PostEditEdgeWasmDto {
-  from: PostEditEndpointWasmDto;
-  to: PostEditEndpointWasmDto;
-  /** Direction already normalized: from→to is the actual passage/teleport direction. "teleport"
-   * adds only that one direction — a two-way teleport is sent as two separate entries. */
-  kind: PostEditEdgeKind;
-}
-
-/** One `QcRuleState`'s worth of active checks plus that rule's rule-level params (GitHub issue
- * #245) — mirrors Rust's `AnalyticsRuleGroupConfig`. No `id`/`strategy` (unlike `QcRuleConfig`):
- * `compute_analytics`'s analytics-only path has no strategy and never dispatches repair. */
-export interface AnalyticsRuleGroupConfig {
-  checks: CheckInstanceConfig[];
-  params?: Record<string, string>;
-}
-
-export interface ComputeAnalyticsConfig {
-  tessellation: WasmTessellationConfig;
-  /** Each level's own field points, in `floors` order (GitHub issue #359) — mirrors
-   * `GenerateConfig.level_fields`. The number of levels this call resolves against is
-   * `level_fields.length`; every `NodeDto.level`/split-point level indexes into this. */
-  level_fields: [number, number][][];
-  /** The client's authoritative node list (real ids from the previous generation/confirm) —
-   * `Field`/`Graph` are rebuilt directly from these ids on the Rust side (GitHub issue #236)
-   * instead of re-minting them from `tessellation.points` order, so a rebuild always reproduces
-   * exactly the ids the client already holds, including auto-split nodes (#222). Each node's own
-   * `level` (GitHub issue #359) says which of `level_fields`' entries it resolves against. */
-  nodes: NodeDto[];
-  /** Passage edges only (walls = absence of edge). */
-  edges: PostEditEdgeWasmDto[];
-  /** `VerticalPassage`/`Elevator` edges, plain resolved node id (never a split endpoint — neither
-   * kind is ever wired to a split slot). Combines two sources: generation-time ones are passed
-   * through unchanged (GitHub issue #358 follow-up — post-edit never redirects/removes a
-   * *generated* vertical connection, so the client just resends whatever generation originally
-   * produced, `state._generatedEdges` filtered to these two kinds — the frozen snapshot, not the
-   * live `state.edges` a later confirm overwrites, GitHub issue #341 follow-up) plus any new ones
-   * the user placed via post-edit's own vertical-passage/elevator tools (GitHub
-   * issue #341, converted from `postEditDraftVerticalPassages`/`postEditDraftElevators`). Without
-   * this, `compute_analytics` rebuilds the graph purely from `edges` above and these edges are
-   * dropped on the very first post-edit confirm. `#[serde(default)]` on the Rust side, so omitting
-   * this (empty array) just means "no vertical connections". */
-  vertical_edges?: { from: number; to: number; kind: "vertical_passage" | "elevator" }[];
-  /** Extra nodes to add to split points before edges are resolved — each entry is one
-   * `(point, slotId, level)` triple (GitHub issues #221, #359). `slotId` maps onto `NodeDto.i` as
-   * `slotId + 1` (`i = 0` is always the point's original node) — a slot whose `i` already exists in
-   * `nodes` for that level (confirmed by an earlier call) resolves to that same existing id, matched
-   * by `i` directly, not by array position; only a genuinely new slot (just `addSplitNode`'d, not
-   * yet confirmed) gets a freshly minted one — see `apply_split_points` in
-   * `maze-wasm/src/analytics/post_edit.rs`. This array's own order doesn't matter (unlike an
-   * earlier version of this fix, matching was position-based and did require the client's creation
-   * order — no longer the case). */
-  split_points?: [[number, number], number, number][];
-  /** Plain resolved node id — NOT a `PostEditEndpointWasmDto`. `Maze::meta.start`/`.finish` in
-   * `maze-core` are always `Option<NodeId>`; the frontend resolves `PostEditEndpoint` to a
-   * concrete id (or `null` if it doesn't resolve yet) before building this config — see
-   * `confirmPostEdit` in `postEditSlice.ts`. */
-  start: number | null;
-  finish: number | null;
-  /** Active checks grouped by their originating rule, each group carrying that rule's own
-   * rule-level params (e.g. `protect_route`, GitHub issue #253/#245) — grouped (not a flat check
-   * list) so a rule-level param actually reaches the Rust side's `resolve_rule_params` on this
-   * analytics-only path too, instead of always resolving to its default regardless of what the
-   * user configured. */
-  rule_groups: AnalyticsRuleGroupConfig[];
-  /** The project's current preset connections (GitHub issue #245) — post-edit rebuilds its graph
-   * from `nodes`/`edges` alone, but that rebuild loses which edges are user-placed preset
-   * Passage/OneWay connections vs. post-edit additions. Sent alongside so the Rust side can
-   * resolve each preset's endpoints fresh against the rebuilt field and mark cycle/group issue
-   * elements `preset_locked` accordingly. */
-  preset_connections?: PresetConnection[];
-  /** The project's current preset-declared split points (GitHub issue #245's split-node/route
-   * extension) — same `(point, slotId, level)` shape as `split_points`, but sourced from the preset
-   * snapshot (`state.presetSplitPoints`) rather than every current split point. Sent alongside so
-   * the Rust side can resolve each into a `NodeId` fresh against the rebuilt field and mark
-   * node/route-based split issue elements `preset_locked` accordingly. */
-  preset_split_points?: [[number, number], number, number][];
 }

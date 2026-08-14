@@ -22,3 +22,13 @@ pub fn derive_wire_event(_input: TokenStream) -> TokenStream {
 pub fn derive_id_enum(_input: TokenStream) -> TokenStream {
     TokenStream::new()
 }
+
+/// Inert marker macro for the DTO TS codegen (GitHub issue #366) — `#[derive(Dto)]` generates
+/// nothing itself; its only purpose is registering `#[dto]` as a known helper attribute so `rustc`
+/// accepts it on the annotated struct/enum. The `codegen` binary's `dto_ts` module parses the same
+/// source text independently via `syn` and emits the real TS interfaces/unions into a generated
+/// sibling file.
+#[proc_macro_derive(Dto, attributes(dto))]
+pub fn derive_dto(_input: TokenStream) -> TokenStream {
+    TokenStream::new()
+}

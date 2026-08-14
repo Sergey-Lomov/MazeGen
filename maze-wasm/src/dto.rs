@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
+use maze_core_macros::Dto;
 use crate::generation_config::TessellationConfig;
 
 /// `i` is a node's stable index among its point's nodes (GitHub issue #236) — `0` is always the
@@ -9,7 +10,7 @@ use crate::generation_config::TessellationConfig;
 /// sequence is expected and does not get compacted. This is what lets `apply_split_points` address
 /// a slot by its real `i` directly instead of reconstructing a mapping from array position, which
 /// silently desyncs once a non-last split node is removed.
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, Dto)]
 pub struct NodeDto {
     pub id: u32,
     pub x: i32,
@@ -19,6 +20,7 @@ pub struct NodeDto {
     /// #337) — matches the web client's `floors` array index, not the internal `LevelId`, which
     /// is never reused/renumbered and thus not stable across floor removal (`Specs/space.md`).
     /// Always `0` for a maze that never had more than one floor.
+    #[dto(optional)]
     pub level: u32,
 }
 
@@ -70,7 +72,8 @@ pub struct NavEdgeDto {
 /// Passage/OneWay connection on every edge in it); `false` means it's either partly or wholly
 /// unprotected and repair could in principle fix it. Named struct (not a positional tuple) so the
 /// wire shape carries field names through to TS.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Dto)]
+#[dto(rename_ts = "IssueEdgeGroupPayload")]
 pub struct IssueEdgeGroupPayloadDto {
     pub edges: Vec<[u32; 2]>,
     pub preset_locked: bool,
@@ -78,7 +81,8 @@ pub struct IssueEdgeGroupPayloadDto {
 
 /// One tile's own node list inside a flagged split-tile/split-node-group element — mirrors
 /// `maze_core`'s `IssueSplitTilePayload` (GitHub issue #245's split extension).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Dto)]
+#[dto(rename_ts = "IssueSplitTilePayload")]
 pub struct IssueSplitTilePayloadDto {
     pub nodes: Vec<u32>,
     pub preset_locked: bool,
@@ -86,7 +90,8 @@ pub struct IssueSplitTilePayloadDto {
 
 /// One flagged split-tile "instance" (a single tile or a genuine multi-tile group) — mirrors
 /// `maze_core`'s `IssueSplitGroupPayload`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Dto)]
+#[dto(rename_ts = "IssueSplitGroupPayload")]
 pub struct IssueSplitGroupPayloadDto {
     pub tiles: Vec<IssueSplitTilePayloadDto>,
     pub preset_locked: bool,
@@ -94,14 +99,16 @@ pub struct IssueSplitGroupPayloadDto {
 
 /// One flagged region paired with whether it's preset-locked — mirrors `maze_core`'s
 /// `IssueRegionPayload` (GitHub issue #245's region extension).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Dto)]
+#[dto(rename_ts = "IssueRegionPayload")]
 pub struct IssueRegionPayloadDto {
     pub region: Vec<u32>,
     pub preset_locked: bool,
 }
 
 /// One edge of a flagged split route, in traversal order — mirrors `maze_core`'s `IssueRouteEdge`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Dto)]
+#[dto(rename_ts = "IssueRouteEdge")]
 pub struct IssueRouteEdgeDto {
     pub from: u32,
     pub to: u32,
@@ -110,7 +117,8 @@ pub struct IssueRouteEdgeDto {
 
 /// One flagged split route paired with whether every edge on it is preset-locked — mirrors
 /// `maze_core`'s `IssueRoutePayload`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Dto)]
+#[dto(rename_ts = "IssueRoutePayload")]
 pub struct IssueRoutePayloadDto {
     pub edges: Vec<IssueRouteEdgeDto>,
     pub preset_locked: bool,
@@ -185,8 +193,9 @@ pub enum IssuePayloadDto {
     },
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Dto)]
 pub struct IssueDto {
+    #[dto(ts_type = "IssueKindId")]
     pub kind: String,
     pub payload: IssuePayloadDto,
     /// Opaque per-instance check id(s) that produced or contributed to this issue
@@ -269,7 +278,7 @@ pub struct RouteInfoDto {
     pub path: Vec<u32>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Dto)]
 pub struct GraphAnalyticsDto {
     pub node_count: usize,
     pub edge_count: usize,
@@ -298,13 +307,15 @@ pub struct GraphAnalyticsDto {
     /// "trap" — keyed by `component_id` (as string, same `json_compatible()` requirement as
     /// `node_component`). Empty when `start` or `finish` is unset (region classes are
     /// unavailable without both).
+    #[dto(ts_type = "Record<string, RegionClass>")]
     pub region_classes: HashMap<String, String>,
 }
 
 /// Mirrors `maze_core::generation::SplitFaceRequirement` — one node's per-face-position
 /// requirement, as reconstructed from the built graph (see `SplitGroupDto`'s doc comment).
-#[derive(Serialize)]
+#[derive(Serialize, Dto)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[dto(rename_ts = "SplitFaceRequirement")]
 pub enum SplitFaceRequirementDto {
     Passage,
     OneWay { direction: OneWayDirectionDto },
@@ -352,20 +363,23 @@ pub struct SplitAnalyticsDto {
 /// disambiguates a slot when two floors share the same `(point, slot_id)` — a `Node` endpoint
 /// carries no `level` of its own, since its resolved `NodeId` already pins it to a real node
 /// wherever that node happens to be (mirrors `PostEditEndpoint`'s own web-side shape).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Dto)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[dto(rename_ts = "PostEditEndpointWasmDto")]
 pub enum PostEditEndpointDto {
     Node { id: u32 },
     Split { point: [i32; 2], slot_id: u32, #[serde(default)] level: u32 },
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Dto)]
+#[dto(rename_ts = "PostEditEdgeWasmDto")]
 pub struct PostEditEdgeDto {
     pub from: PostEditEndpointDto,
     pub to: PostEditEndpointDto,
     /// "basic" | "one_way" | "teleport" — direction already normalized: from→to is the actual
     /// passage/teleport direction. See `build_graph_from_post_edit_edges` (lib.rs) for exactly
     /// how each kind is applied.
+    #[dto(ts_type = "\"basic\" | \"one_way\" | \"teleport\"")]
     pub kind: String,
 }
 
@@ -377,11 +391,12 @@ pub struct PostEditEdgeDto {
 /// by plain resolved `NodeId` — never a `Split` endpoint, since neither kind is ever wired to a
 /// split slot. Without this, `run_compute_analytics` rebuilds the graph purely from `edges` (basic/
 /// one_way/teleport) and these edges vanish on the very first post-edit confirm.
-#[derive(Deserialize)]
+#[derive(Deserialize, Dto)]
 pub struct VerticalEdgeDto {
     pub from: u32,
     pub to: u32,
     /// "vertical_passage" | "elevator".
+    #[dto(ts_type = "\"vertical_passage\" | \"elevator\"")]
     pub kind: String,
 }
 
@@ -396,8 +411,9 @@ pub struct AnalyticsRuleGroupConfig {
     pub params: HashMap<String, String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Dto)]
 pub struct ComputeAnalyticsConfig {
+    #[dto(ts_type = "WasmTessellationConfig")]
     pub tessellation: TessellationConfig,
     /// Each level's own field points, in `floors` order (GitHub issue #359) — mirrors
     /// `GenerateConfig.level_fields`. The number of levels this call resolves against is
@@ -455,6 +471,7 @@ pub struct ComputeAnalyticsConfig {
     /// resolved fresh here since post-edit's `Field`/ids don't share generation's `PresetState`.
     /// `#[serde(default)]` so calls/fixtures predating this field still deserialize.
     #[serde(default)]
+    #[dto(ts_type = "PresetConnection[]")]
     pub preset_connections: Vec<crate::generation_config::PresetConnectionDto>,
     /// The project's current preset-declared split points (GitHub issue #245's split-node/route
     /// extension) — same shape as `split_points`, but sourced from the preset snapshot
