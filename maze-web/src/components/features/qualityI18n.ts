@@ -267,6 +267,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_split_node.label"] as MessageFn,
     description: m["issue.invalid_split_node.description"] as MessageFn,
   },
+  invalid_split_node_connection: {
+    label: m["issue.invalid_split_node_connection.label"] as MessageFn,
+    description: m["issue.invalid_split_node_connection.description"] as MessageFn,
+  },
   invalid_split_node_connection_group: {
     label: m["issue.invalid_split_node_connection_group.label"] as MessageFn,
     description: m["issue.invalid_split_node_connection_group.description"] as MessageFn,

@@ -1645,3 +1645,7 @@ Checks without params are auto-selected on `loadRegistry`. Checks with params ar
 Only code that owns the `Maze` may call `&mut self` accessors on `maze.analysis`. QC checks and repair strategies may read `maze.analysis` via shared reference but must not write to it.
 
 `MazeAnalysis` caches derived data lazily. See `analysis.md` for the full contract.
+
+## Adding a New Check / Strategy / Rule Param
+
+See `quality-control-checklist.md` for the step-by-step procedure and the `codegen --check` verification gate.

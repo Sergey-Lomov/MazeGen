@@ -1,3 +1,5 @@
+import type { IssueKindId } from "./generated/issueKind";
+
 /** `i` is a node's stable index among its point's nodes (GitHub issue #236) — `0` is always the
  * point's original node (never removable by post-edit), `1, 2, ...` are extra split-point slots in
  * creation order. Unlike a position in a rebuilt list, `i` never shifts or gets compacted when an
@@ -240,7 +242,7 @@ export type IssuePayloadDto =
     };
 
 export interface IssueDto {
-  kind: string;
+  kind: IssueKindId;
   payload: IssuePayloadDto;
   /** Opaque per-instance check id(s) that produced or contributed to this issue — lets the UI
    * render one bubble per contributing check rather than one per `kind`. Not a check type id by

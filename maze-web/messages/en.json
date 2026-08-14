@@ -775,6 +775,8 @@
   "issue.invalid_split_node.label": "Split node validation",
   "issue.invalid_split_node.description": "Validates a single split node - one of a split tile's individual nodes, not the whole cell at once.",
   "issue.invalid_split_node.split_node_connection_count_label": "Split node connection count against threshold {count}",
+  "issue.invalid_split_node_connection.label": "Split node connection validation",
+  "issue.invalid_split_node_connection.description": "Validates a single connection from one split tile node out to an outside neighbor - not the whole tile's collective connectivity at once.",
   "issue.invalid_split_node_connection_group.label": "Split node connection group validation",
   "issue.invalid_split_node_connection_group.description": "Checks a split tile's nodes' collective connectivity to the outside world.",
   "issue.invalid_split_node_connection_group.split_node_connection_per_neighbor_label": "More than {max} connection(s) from the same split converge on one outside neighbor",

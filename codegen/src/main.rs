@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use codegen::{check, golden, naming::to_camel_case, parser, rust_emitter, ts_emitter};
+use codegen::{check, golden, id_enum, naming::to_camel_case, parser, quality_i18n, rust_emitter, ts_emitter};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -13,6 +13,7 @@ fn main() -> ExitCode {
     let maze_core_src = repo_root.join("maze-core").join("src");
     let ts_out_dir = repo_root.join("maze-web").join("src").join("debug").join("eventTape").join("generated");
     let golden_out_dir = repo_root.join("codegen").join("golden");
+    let id_enum_ts_out_dir = repo_root.join("maze-web").join("src").join("wasm").join("generated");
 
     let sources = match parser::discover_sources(&maze_core_src) {
         Ok(s) => s,
@@ -21,11 +22,6 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-
-    if sources.is_empty() {
-        eprintln!("codegen: no #[derive(WireEvent)] enums found under {}", maze_core_src.display());
-        return ExitCode::FAILURE;
-    }
 
     let mut had_errors = false;
     let mut warnings = Vec::new();
@@ -107,6 +103,73 @@ fn main() -> ExitCode {
         }
     }
 
+    let id_enum_sources = match id_enum::discover_sources(&maze_core_src) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("codegen: parse error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    for source in &id_enum_sources {
+        let rust_ids_path = repo_root.join("maze-core").join("src").join(parent_dir_of(&source.rust_file)).join(format!("{}_ids.rs", to_snake_case_stem(&source.enum_name)));
+        let rust_text = id_enum::generate_rust_ids_file(source);
+        if !check_only {
+            if let Some(parent) = rust_ids_path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            if let Err(e) = fs::write(&rust_ids_path, &rust_text) {
+                eprintln!("codegen: failed to write {}: {e}", rust_ids_path.display());
+                had_errors = true;
+                continue;
+            }
+
+            let source_file_path = repo_root.join("maze-core").join("src").join(&source.rust_file);
+            if let Ok(existing) = fs::read_to_string(&source_file_path) {
+                if let Some(updated) = id_enum::ensure_mod_declared(&existing, &to_snake_case_stem(&source.enum_name)) {
+                    let _ = fs::write(&source_file_path, updated);
+                }
+            }
+        }
+
+        let ts_text = id_enum::generate_ts_ids_file(source);
+        let ts_path = id_enum_ts_out_dir.join(format!("{}.ts", to_camel_case(&to_snake_case_stem(&source.enum_name))));
+        if !check_only {
+            let _ = fs::create_dir_all(&id_enum_ts_out_dir);
+            if let Err(e) = fs::write(&ts_path, &ts_text) {
+                eprintln!("codegen: failed to write {}: {e}", ts_path.display());
+                had_errors = true;
+                continue;
+            }
+        }
+    }
+
+    let quality_ids = quality_i18n::discover();
+    let quality_ts_text = quality_i18n::generate_ts_file(&quality_ids);
+    let quality_ts_dir = repo_root.join("maze-web").join("src").join("components").join("features").join("generated");
+    let quality_ts_path = quality_ts_dir.join("qualityIds.ts");
+    if !check_only {
+        let _ = fs::create_dir_all(&quality_ts_dir);
+        if let Err(e) = fs::write(&quality_ts_path, &quality_ts_text) {
+            eprintln!("codegen: failed to write {}: {e}", quality_ts_path.display());
+            had_errors = true;
+        }
+    }
+
+    let quality_i18n_path = repo_root.join("maze-web").join("src").join("components").join("features").join("qualityI18n.ts");
+    if let Ok(existing) = fs::read_to_string(&quality_i18n_path) {
+        let missing = quality_i18n::find_missing(&quality_ids, &existing);
+        for m in &missing {
+            let msg = format!("qualityI18n.ts: {} has no entry for id \"{}\" (see generated/qualityIds.ts)", m.registry, m.id);
+            if check_only {
+                eprintln!("codegen: {msg}");
+                had_errors = true;
+            } else {
+                eprintln!("codegen: WARNING: {msg}");
+            }
+        }
+    }
+
     for w in &warnings {
         eprintln!("codegen: WARNING: {w}");
     }
@@ -114,9 +177,13 @@ fn main() -> ExitCode {
     if had_errors {
         ExitCode::FAILURE
     } else {
-        println!("codegen: generated {} source(s)", sources.len());
+        println!("codegen: generated {} wire source(s), {} id-enum source(s)", sources.len(), id_enum_sources.len());
         ExitCode::SUCCESS
     }
+}
+
+fn to_snake_case_stem(enum_name: &str) -> String {
+    codegen::naming::to_snake_case(enum_name)
 }
 
 fn parent_dir_of(rel_file: &str) -> PathBuf {

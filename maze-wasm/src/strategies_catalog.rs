@@ -82,7 +82,15 @@ fn strategy_params_dto(params: &[maze_core::repair::StrategyParam]) -> Vec<Param
 
 #[wasm_bindgen]
 pub fn available_strategies() -> JsValue {
-    let strategies: Vec<StrategyDescriptor> = vec![
+    available_strategies_list().serialize(&serde_wasm_bindgen::Serializer::json_compatible()).unwrap()
+}
+
+/// The plain-Rust list `available_strategies` serializes — split out so native (non-wasm) code,
+/// e.g. `codegen`'s `quality_i18n` module (GitHub issue #361), can enumerate every strategy id
+/// without a JS runtime. Mirrors `checks_catalog::available_checks_list`'s split from
+/// `available_checks`.
+pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
+    vec![
         StrategyDescriptor {
             id: "random_endpoints",
             handles: MISSING_ENDPOINTS.as_str(),
@@ -334,6 +342,5 @@ pub fn available_strategies() -> JsValue {
             experimental: <SplitRouteCutStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitRouteIssue>>::is_experimental(&SplitRouteCutStrategy),
             nested_slots: nested_slots_dto(<SplitRouteCutStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitRouteIssue>>::expected_nested(&SplitRouteCutStrategy)),
         },
-    ];
-    strategies.serialize(&serde_wasm_bindgen::Serializer::json_compatible()).unwrap()
+    ]
 }

@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[path = "issue_kind_ids.rs"]
+mod issue_kind_ids;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, maze_core_macros::IdEnum)]
 pub enum IssueKind {
     MissingEndpoints,
     UnreachableFinish,
@@ -216,82 +219,15 @@ pub const INVALID_SPLIT_NODE_GROUP: IssueKind = IssueKind::InvalidSplitNodeGroup
 /// other chosen edge itself.
 pub const INVALID_SPLIT_ROUTE: IssueKind = IssueKind::InvalidSplitRoute;
 
-impl IssueKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            IssueKind::MissingEndpoints => "missing_endpoints",
-            IssueKind::UnreachableFinish => "unreachable_finish",
-            IssueKind::InvalidLoop => "invalid_loop",
-            IssueKind::InvalidLoopGroup => "invalid_loop_group",
-            IssueKind::MissingLoops => "missing_loops",
-            IssueKind::CycleAnalysisOverflowed => "cycle_analysis_overflowed",
-            IssueKind::RepairLimitReached => "repair_limit_reached",
-            IssueKind::ExcessiveSccCount => "excessive_scc_count",
-            IssueKind::RegionNeedsExpansion => "region_needs_expansion",
-            IssueKind::RegionNeedsShrink => "region_needs_shrink",
-            IssueKind::MissingRegions => "missing_regions",
-            IssueKind::InvalidTeleport => "invalid_teleport",
-            IssueKind::InvalidTeleportGroup => "invalid_teleport_group",
-            IssueKind::InvalidOneWay => "invalid_one_way",
-            IssueKind::InvalidOneWayGroup => "invalid_one_way_group",
-            IssueKind::MissingOneWays => "missing_one_ways",
-            IssueKind::MissingTeleports => "missing_teleports",
-            IssueKind::InvalidSplitTile => "invalid_split_tile",
-            IssueKind::InvalidSplitTileGroup => "invalid_split_tile_group",
-            IssueKind::MissingSplitTiles => "missing_split_tiles",
-            IssueKind::InvalidSplitNode => "invalid_split_node",
-            IssueKind::InvalidSplitNodeConnection => "invalid_split_node_connection",
-            IssueKind::InvalidSplitNodeConnectionGroup => "invalid_split_node_connection_group",
-            IssueKind::InvalidSplitNodeGroup => "invalid_split_node_group",
-            IssueKind::InvalidSplitRoute => "invalid_split_route",
-        }
-    }
-
-    /// Round-trips every variant including `CycleAnalysisOverflowed`, even though the latter
-    /// can never have a registered `RepairStrategy` (it's not a toggleable QC check — see
-    /// `CYCLE_ANALYSIS_OVERFLOWED`'s doc comment). `IssueKind::from_str` is also used by
-    /// `maze-wasm/src/runner.rs` to validate `config.strategies` keys; a config naming this
-    /// kind will parse here, then fail downstream with "unknown strategy" the same way any
-    /// other kind with no matching strategy registration would — there is no dedicated
-    /// rejection at this layer, by design, since strategy availability is the repair engine's
-    /// concern, not `IssueKind`'s.
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "missing_endpoints"  => Some(IssueKind::MissingEndpoints),
-            "unreachable_finish" => Some(IssueKind::UnreachableFinish),
-            "invalid_loop"       => Some(IssueKind::InvalidLoop),
-            "invalid_loop_group" => Some(IssueKind::InvalidLoopGroup),
-            "missing_loops"      => Some(IssueKind::MissingLoops),
-            "cycle_analysis_overflowed" => Some(IssueKind::CycleAnalysisOverflowed),
-            "repair_limit_reached" => Some(IssueKind::RepairLimitReached),
-            "excessive_scc_count" => Some(IssueKind::ExcessiveSccCount),
-            "region_needs_expansion" => Some(IssueKind::RegionNeedsExpansion),
-            "region_needs_shrink" => Some(IssueKind::RegionNeedsShrink),
-            "missing_regions" => Some(IssueKind::MissingRegions),
-            "invalid_teleport" => Some(IssueKind::InvalidTeleport),
-            "invalid_teleport_group" => Some(IssueKind::InvalidTeleportGroup),
-            "invalid_one_way" => Some(IssueKind::InvalidOneWay),
-            "invalid_one_way_group" => Some(IssueKind::InvalidOneWayGroup),
-            "missing_one_ways" => Some(IssueKind::MissingOneWays),
-            "missing_teleports" => Some(IssueKind::MissingTeleports),
-            "invalid_split_tile" => Some(IssueKind::InvalidSplitTile),
-            "invalid_split_tile_group" => Some(IssueKind::InvalidSplitTileGroup),
-            "missing_split_tiles" => Some(IssueKind::MissingSplitTiles),
-            "invalid_split_node" => Some(IssueKind::InvalidSplitNode),
-            "invalid_split_node_connection" => Some(IssueKind::InvalidSplitNodeConnection),
-            "invalid_split_node_connection_group" => Some(IssueKind::InvalidSplitNodeConnectionGroup),
-            "invalid_split_node_group" => Some(IssueKind::InvalidSplitNodeGroup),
-            "invalid_split_route" => Some(IssueKind::InvalidSplitRoute),
-            _ => None,
-        }
-    }
-}
-
-impl std::fmt::Display for IssueKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
+/// `as_str`/`from_str`/`Display` for `IssueKind` are generated (`codegen`'s `id_enum` module, see
+/// GitHub issue #361) into the sibling `issue_kind_ids.rs` from the variant list above — do not
+/// hand-write them here. `from_str` round-trips every variant including `CycleAnalysisOverflowed`,
+/// even though the latter can never have a registered `RepairStrategy` (it's not a toggleable QC
+/// check — see `CYCLE_ANALYSIS_OVERFLOWED`'s doc comment): also used by `maze-wasm/src/runner.rs`
+/// to validate `config.strategies` keys, where a config naming this kind parses here, then fails
+/// downstream with "unknown strategy" the same way any other kind with no matching strategy
+/// registration would — there is no dedicated rejection at this layer, by design, since strategy
+/// availability is the repair engine's concern, not `IssueKind`'s.
 
 /// Shared `source_checks`/`details` bookkeeping every concrete `Issue` type embeds — see
 /// `Issue`'s trait doc comment for the split between what's object-safe (`kind`/`meta`/

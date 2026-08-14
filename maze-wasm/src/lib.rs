@@ -4,9 +4,9 @@ mod result;
 mod runner;
 mod tessellation_dispatch;
 mod analytics;
-mod checks_catalog;
-mod check_descriptor;
-mod strategies_catalog;
+pub mod checks_catalog;
+pub mod check_descriptor;
+pub mod strategies_catalog;
 mod geometry;
 
 use wasm_bindgen::prelude::*;

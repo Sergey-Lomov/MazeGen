@@ -1,8 +1,10 @@
 pub mod check;
 pub mod codecs;
 pub mod golden;
+pub mod id_enum;
 pub mod naming;
 pub mod parser;
+pub mod quality_i18n;
 pub mod rust_emitter;
 pub mod schema;
 pub mod ts_emitter;

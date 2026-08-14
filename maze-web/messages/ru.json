@@ -786,6 +786,8 @@
   "issue.invalid_split_node.label": "Валидация сплит-узла",
   "issue.invalid_split_node.description": "Проверяет отдельный узел сплит-тайла - один из нескольких узлов тайла, а не весь тайл целиком.",
   "issue.invalid_split_node.split_node_connection_count_label": "Количество связей сплит-узла относительно порога {count}",
+  "issue.invalid_split_node_connection.label": "Валидация связи сплит-узла",
+  "issue.invalid_split_node_connection.description": "Проверяет отдельную связь одного узла сплит-тайла с внешним соседом - не совокупную связность всего тайла.",
   "issue.invalid_split_node_connection_group.label": "Валидация групп связей сплит-узлов",
   "issue.invalid_split_node_connection_group.description": "Проверяет совокупную связность узлов сплит-тайла с внешним миром.",
   "issue.invalid_split_node_connection_group.split_node_connection_per_neighbor_label": "Более {max} связ(и/ей) от одного сплита сходится на одном внешнем соседе",
