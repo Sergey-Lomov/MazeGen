@@ -9,11 +9,42 @@ import { NavGraphRenderer } from "./NavGraphRenderer";
 import { RouteOverlay } from "./RouteOverlay";
 import { PureCyclesOverlay } from "./PureCyclesOverlay";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
-import { postEditEdgesToDto, selectFloorScopedMaze } from "./selectors/mazeSelectors";
+import { VerticalConnectionRenderer, type VerticalConnectionStyle } from "./renderers/VerticalConnectionRenderer";
+import { postEditEdgesToDto, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, type TeleportFloorContext } from "./selectors/mazeSelectors";
 import { resolveEndpoint, buildSplitNodeResolver } from "./postEditEndpoint";
 import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
 import type { Viewport } from "./renderers/types";
+import { canvas } from "./colorTokens";
+
+/** Fixed style for `VerticalConnectionRenderer` — Analytics has no settings panel of its own for
+ *  this, so it always uses this one look, mirroring `PostEditRenderer`'s own `DEFAULT_VERTICAL_STYLE`
+ *  — kept as a separate copy per `maze-web/CLAUDE.md`'s feature-renderer ownership rule (no shared
+ *  renderer instances/constants across features). */
+const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = {
+  displayStyle: "marker",
+  verticalPassageMarker: {
+    shape: "circle",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 2,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  elevatorMarker: {
+    shape: "diamond",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 2,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  arrowColor: canvas.vertical.default,
+};
 
 export class AnalyticsRenderer {
   private readonly gridContainer: Container;
@@ -24,6 +55,7 @@ export class AnalyticsRenderer {
   private readonly wallsContainer: Container;
   private readonly splitJunctionContainer: Container;
   private readonly teleportContainer: Container;
+  private readonly verticalContainer: Container;
   private readonly markersContainer: Container;
   private readonly graphContainer: Container;
   private readonly navGraphContainer: Container;
@@ -35,6 +67,7 @@ export class AnalyticsRenderer {
   private readonly mazeOverlay: MazeOverlayRenderer;
   private readonly regionsRenderer: RegionsRenderer;
   private readonly regionClassesRenderer: RegionClassesRenderer;
+  private readonly verticalConnections: VerticalConnectionRenderer;
   private readonly graphRenderer: MazeGraphRenderer;
   private readonly navGraphRenderer: NavGraphRenderer;
   private readonly pureCyclesRenderer: PureCyclesOverlay;
@@ -53,6 +86,7 @@ export class AnalyticsRenderer {
     this.wallsContainer       = new Container();
     this.splitJunctionContainer = new Container();
     this.teleportContainer    = new Container();
+    this.verticalContainer    = new Container();
     this.markersContainer     = new Container();
     this.graphContainer       = new Container();
     this.navGraphContainer    = new Container();
@@ -68,6 +102,7 @@ export class AnalyticsRenderer {
     container.addChild(this.wallsContainer);
     container.addChild(this.splitJunctionContainer);
     container.addChild(this.teleportContainer);
+    container.addChild(this.verticalContainer);
     container.addChild(this.markersContainer);
     container.addChild(this.graphContainer);
     container.addChild(this.navGraphContainer);
@@ -86,6 +121,7 @@ export class AnalyticsRenderer {
     });
     this.regionsRenderer = new RegionsRenderer(this.regionsContainer);
     this.regionClassesRenderer = new RegionClassesRenderer(this.regionClassesContainer);
+    this.verticalConnections = new VerticalConnectionRenderer(this.verticalContainer);
     this.graphRenderer = new MazeGraphRenderer(this.graphContainer);
     this.navGraphRenderer = new NavGraphRenderer(this.navGraphContainer);
     this.pureCyclesRenderer = new PureCyclesOverlay(this.pureCyclesContainer);
@@ -126,7 +162,8 @@ export class AnalyticsRenderer {
         state.postEditTeleportEdges !== prev.postEditTeleportEdges ||
         state.postEditMeta !== prev.postEditMeta ||
         state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
-        state.activeFloorId !== prev.activeFloorId;
+        state.activeFloorId !== prev.activeFloorId ||
+        state.floors !== prev.floors;
 
       if (visibilityChanged || dataChanged) {
         this.syncAll(state);
@@ -146,7 +183,8 @@ export class AnalyticsRenderer {
     // no longer restricts to floor 0), so a same-(x,y) node on another floor must not be drawn on
     // top of the active floor's own.
     const level = activeFloorLevel(state);
-    const { nodes } = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId);
+    const { nodes, edges: floorScopedStateEdges } = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId);
+    const activeFloorIndex = state.floors.findIndex((f) => f.id === state.activeFloorId);
 
     const graphAnalytics = postEditAnalytics?.graphAnalytics ?? state.graphAnalytics;
     const navNodes   = postEditAnalytics?.navNodes   ?? state.navNodes;
@@ -185,7 +223,28 @@ export class AnalyticsRenderer {
     this.teleportContainer.visible    = showMaze;
     this.markersContainer.visible     = showMaze;
     if (showMaze) {
-      this.mazeOverlay.render({ nodes, edges, start, finish, cfg });
+      const teleportFloorContext: TeleportFloorContext = {
+        resolveNodeLevel: selectNodeLevelResolver(state.nodes),
+        unscopedNodeById: new Map(state.nodes.map((n) => [n.id, n])),
+        unscopedEdges: edges,
+        activeFloorIndex: Math.max(activeFloorIndex, 0),
+      };
+      this.mazeOverlay.render({ nodes, edges, start, finish, cfg, teleportFloorContext, teleportFloorNavigable: true, allEdges: state.edges });
+    }
+
+    // Vertical passage/elevator markers — read from the confirmed `state.nodes`/`state.edges`
+    // graph (survives post-edit confirm, see `floors.md`'s "VerticalPassage/Elevator edges survive
+    // a post-edit confirm"), not from `edges` above (post-edit's own draft basic/teleport edges) —
+    // mirrors `PostEditRenderer`'s identical split between `activeEdges` and `state.edges` for this.
+    const showVertical = showMaze;
+    this.verticalContainer.visible = showVertical;
+    if (showVertical) {
+      const nodeById = new Map(nodes.map((n) => [n.id, n]));
+      const verticalConnectionMarkers = buildVerticalConnectionMarkers(
+        nodeById, floorScopedStateEdges, cfg, selectNodeLevelResolver(state.nodes), Math.max(activeFloorIndex, 0),
+        selectVerticalPassagePairSet(state.edges), state.edges,
+      );
+      this.verticalConnections.render({ markers: verticalConnectionMarkers, style: DEFAULT_VERTICAL_STYLE, interactive: true });
     }
 
     // Components list shared by both Regions and Region classes overlays — built from
@@ -286,6 +345,7 @@ export class AnalyticsRenderer {
     this.mazeOverlay.destroy();
     this.regionsRenderer.destroy();
     this.regionClassesRenderer.destroy();
+    this.verticalConnections.destroy();
     this.graphRenderer.destroy();
     this.navGraphRenderer.destroy();
     this.pureCyclesRenderer.destroy();
@@ -298,6 +358,7 @@ export class AnalyticsRenderer {
     this.wallsContainer.destroy();
     this.splitJunctionContainer.destroy();
     this.teleportContainer.destroy();
+    this.verticalContainer.destroy();
     this.markersContainer.destroy();
     this.graphContainer.destroy();
     this.navGraphContainer.destroy();
