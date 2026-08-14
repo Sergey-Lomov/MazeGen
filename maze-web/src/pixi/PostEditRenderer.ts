@@ -12,8 +12,8 @@ import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer
 import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
 import { VerticalConnectionRenderer, type VerticalConnectionStyle } from "./renderers/VerticalConnectionRenderer";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers } from "./selectors/mazeSelectors";
-import { postEditTeleportsToDto } from "./postEditUtils";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, type TeleportFloorContext } from "./selectors/mazeSelectors";
+import { postEditTeleportsToDto, postEditVerticalToDto } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
 import type { NodeDto } from "../wasm/types";
@@ -226,7 +226,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
       state.postEditDraftMeta !== prev.postEditDraftMeta ||
       state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
       state.postEditActiveSplitNode !== prev.postEditActiveSplitNode ||
-      state.activeFloorId !== prev.activeFloorId
+      state.activeFloorId !== prev.activeFloorId ||
+      state.postEditTool !== prev.postEditTool
     ) {
       this.redrawAll(state);
     } else if (state.postEditHoveredLink !== prev.postEditHoveredLink) {
@@ -262,7 +263,12 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const postEditDraftEdges: Record<string, PostEditEdge> | null = state.postEditDraftEdges === null ? null : Object.fromEntries(
       Object.entries(state.postEditDraftEdges).filter(([, e]) => onLevel(e.from) && onLevel(e.to)),
     );
-    const postEditDraftTeleports: PostEditTeleportEntry[] = state.postEditDraftTeleports.filter((t) => onLevel(t.from) && onLevel(t.to));
+    // Kept whenever *either* endpoint is on the active floor (mirrors `selectFloorScopedMaze`'s own
+    // "keeps an edge whenever `from` is on the active floor" convention for cross-floor kinds) — a
+    // cross-floor teleport must stay visible/editable from both of its ends, not just the one that
+    // happened to be `from` at creation time. Requiring *both* ends on-level (the pre-fix behavior)
+    // made a cross-floor teleport vanish from every floor's own draft entirely.
+    const postEditDraftTeleports: PostEditTeleportEntry[] = state.postEditDraftTeleports.filter((t) => onLevel(t.from) || onLevel(t.to));
     const postEditDraftSplitPoints = recordOnLevel(state.postEditDraftSplitPoints, level);
     const postEditActiveSplitNode = recordOnLevel(state.postEditActiveSplitNode, level);
     const postEditDraftMeta = state.postEditDraftMeta === null ? null : {
@@ -358,25 +364,72 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.splitJunctions.render({ passages: splitPassages, wallFaces, specialShapes });
 
     const nodeById = new Map<number, NodeDto>(nodes.map(n => [n.id, n]));
-    const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg);
-    this.teleports.render({ edges: teleportEdges, cfg });
+    // Cross-floor teleports (badge rendering, mirrors `GenerationRenderer`) — `unscopedActiveEdges`
+    // resolves post-edit's own *draft* teleports (not `state.edges`, which may be stale/pre-confirm)
+    // without the active-floor filter `postEditDraftTeleports` above applies, so the reverse-
+    // direction edge of a bidirectional cross-floor pair (its own `from` on the other floor) is
+    // available for `byPair`'s bidirectional check the same way `TeleportFloorContext`'s own doc
+    // comment requires.
+    const unscopedResolveSplit = buildSplitNodeResolver(buildMultiFloorPointNodeMap(state.nodes), state.postEditDraftSplitPoints);
+    const unscopedActiveEdges = [
+      ...postEditEdgesToDto(state.postEditDraftEdges ?? {}, unscopedResolveSplit),
+      ...postEditTeleportsToDto(state.postEditDraftTeleports, unscopedResolveSplit),
+    ];
+    const activeFloorIndex = state.floors.findIndex((f) => f.id === state.activeFloorId);
+    const teleportFloorContext: TeleportFloorContext = {
+      resolveNodeLevel: selectNodeLevelResolver(state.nodes),
+      unscopedNodeById: new Map<number, NodeDto>(state.nodes.map((n) => [n.id, n])),
+      unscopedEdges: unscopedActiveEdges,
+      activeFloorIndex: Math.max(activeFloorIndex, 0),
+    };
+    const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg, teleportFloorContext);
+    this.teleports.render({ edges: teleportEdges, cfg, floorNavigable: state.postEditTool !== "reset" });
 
-    // Vertical passages/elevators (GitHub issue #359 follow-up to #337/#347) — these edge kinds
-    // are never post-edit-editable (only generation/vertical-connection tools create them), so
-    // they're read from the confirmed `state.nodes`/`state.edges` graph directly, not from
-    // `activeEdges` (post-edit's own draft edges/teleports). `edges`/`nodeById` here are already
-    // floor-scoped (`floorScoped`'s `selectFloorScopedMaze`, which keeps a vertical/elevator edge
-    // whenever its `from` is on the active floor); `resolveNodeLevel`/`verticalPairs` must come
-    // from the *unscoped* `state.nodes`/`state.edges` instead, same reason
+    // Vertical passages/elevators — generation-time ones are read from the confirmed
+    // `state.nodes`/`state.edges` graph directly, not from `activeEdges` (post-edit's own draft
+    // edges/teleports); user-placed ones (GitHub issue #341) come from
+    // `postEditDraftVerticalPassages`/`postEditDraftElevators` instead, converted the same way
+    // `activeEdges` converts draft teleports. `edges`/`nodeById` here are already floor-scoped
+    // (`floorScoped`'s `selectFloorScopedMaze`, which keeps a vertical/elevator edge whenever its
+    // `from` is on the active floor); `resolveNodeLevel`/`verticalPairs` must come from the
+    // *unscoped* `state.nodes`/(`state.edges` + draft) instead, same reason
     // `selectVerticalPassagePairSet`'s own doc comment gives (a floor-scoped edge list is missing
     // the reverse-direction edge of a bidirectional passage, whose own `from` lives on the other
     // floor).
-    const activeFloorIndex = state.floors.findIndex((f) => f.id === state.activeFloorId);
+    const draftVerticalEdges = postEditVerticalToDto(state.postEditDraftVerticalPassages, state.postEditDraftElevators, resolveSplit);
+    // Drop a generation-time `elevator`/`vertical_passage` edge once the user has edited that
+    // connection (see `postEditSuppressedElevatorPairs`'s/`postEditSuppressedVerticalPassagePairs`'s
+    // own doc comments) — draws the same "draft is now authoritative" state confirmPostEdit will
+    // send, without waiting for the next confirm.
+    const isSuppressedEdge = (e: { from: number; to: number; kind: string }) => {
+      if (e.kind !== "elevator" && e.kind !== "vertical_passage") return false;
+      const [a, b] = [e.from, e.to].sort((x, y) => x - y);
+      return e.kind === "elevator"
+        ? state.postEditSuppressedElevatorPairs.has(`${a},${b}`)
+        : state.postEditSuppressedVerticalPassagePairs.has(`${a},${b}`);
+    };
+    const stateEdgesUnsuppressed = state.edges.filter((e) => !isSuppressedEdge(e));
+    const edgesUnsuppressed = edges.filter((e) => !isSuppressedEdge(e));
+    const allVerticalEdges = [...stateEdgesUnsuppressed, ...draftVerticalEdges];
+    const floorScopedVerticalEdges = [...edgesUnsuppressed, ...draftVerticalEdges.filter((e) => {
+      const fromNode = nodeById.get(e.from);
+      return fromNode !== undefined;
+    })];
     const verticalConnectionMarkers = buildVerticalConnectionMarkers(
-      nodeById, edges, cfg, selectNodeLevelResolver(state.nodes), Math.max(activeFloorIndex, 0),
-      selectVerticalPassagePairSet(state.edges), state.edges,
+      nodeById, floorScopedVerticalEdges, cfg, selectNodeLevelResolver(state.nodes), Math.max(activeFloorIndex, 0),
+      selectVerticalPassagePairSet(allVerticalEdges), allVerticalEdges,
     );
-    this.verticalConnections.render({ markers: verticalConnectionMarkers, style: DEFAULT_VERTICAL_STYLE });
+    // Click-to-switch-floor (GitHub issue #341 follow-up): withheld while the reset tool is
+    // active (its own click means "delete this connection", not "navigate") and, for a one-way
+    // passage marker specifically (`filled === false`), while the one-way passage tool is active
+    // too (that tool's own click on the marker cycles its direction instead).
+    this.verticalConnections.render({
+      markers: verticalConnectionMarkers,
+      style: DEFAULT_VERTICAL_STYLE,
+      interactive: (marker) =>
+        state.postEditTool !== "reset" &&
+        !(marker.filled === false && state.postEditTool === "vertical_passage_one_way"),
+    });
 
     const markerData = buildMazeMarkers(nodeById, start, finish, cfg, undefined, undefined, activeEdges);
     this.markers.render({ markers: markerData });
@@ -433,4 +486,20 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.linkHoverContainer.destroy();
     this.issueHighlightContainer.destroy();
   }
+}
+
+/** Same `(x,y) -> NodeId[]` map as `PostEditController`'s own `buildNodeMap`, but spanning every
+ *  floor at once (GitHub issue #358) — keyed `"x,y"` for floor 0, `"x,y@level"` otherwise, matching
+ *  `postEditDraftSplitPoints`'s own key convention (mirrors `buildMultiFloorPointNodeMap` in
+ *  `postEditSlice.ts`, kept as its own copy here since that one isn't exported). */
+function buildMultiFloorPointNodeMap(nodes: NodeDto[]): Map<string, number[]> {
+  const m = new Map<string, number[]>();
+  for (const n of nodes) {
+    const level = n.level ?? 0;
+    const key = level === 0 ? `${n.x},${n.y}` : `${n.x},${n.y}@${level}`;
+    const list = m.get(key);
+    if (list) list.push(n.id);
+    else m.set(key, [n.id]);
+  }
+  return m;
 }

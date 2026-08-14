@@ -1,8 +1,8 @@
 import { useMazeStore } from "../store/mazeStore";
 import type { Container } from "pixi.js";
 import { pickEdgeAtPosition, isInEdgeVertexDeadZone } from "./fieldEditUtils";
-import { pickPostEditTeleportEndpointAt } from "./postEditUtils";
-import type { PostEditTeleportEndpointHit } from "../store/mazeStore";
+import { pickPostEditTeleportEndpointAt, pickPostEditVerticalPassageEndpointAt } from "./postEditUtils";
+import type { PostEditTeleportEndpointHit, PostEditVerticalPassageEndpointHit } from "../store/mazeStore";
 import { makeProjection } from "./tessellationProjection";
 import type { PostEditRenderer } from "./PostEditRenderer";
 import type { NodeDto } from "../wasm/types";
@@ -10,13 +10,14 @@ import { BaseController } from "./BaseController";
 import {
   type PostEditEndpoint, nodeEndpoint, edgeKey, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
 } from "./postEditEndpoint";
-import { selectFloorScopedMaze } from "./selectors/mazeSelectors";
+import { selectFloorScopedMaze, selectNodeLevelResolver } from "./selectors/mazeSelectors";
 import { activeFloorLevel } from "../store/storeHelpers";
 import { recordOnLevel } from "./fieldEditUtils";
 
 const DRAG_EDGE_TOOLS = new Set(["wall", "passage"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
-const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "teleport_two_way"]);
+const VERTICAL_PASSAGE_TOOLS = new Set(["vertical_passage_one_way", "vertical_passage_two_way"]);
+const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "teleport_two_way", "vertical_passage_one_way", "vertical_passage_two_way", "elevator"]);
 
 /** Whether a point currently has more than one node (a split point) — used by the unified Reset
  * tool (GitHub issue #327) to refuse resetting a split connection via the edge branch; such an
@@ -40,10 +41,16 @@ export class PostEditController extends BaseController {
 
   private draggingTeleportEndpoint: PostEditTeleportEndpointHit | null = null;
   private teleportDragMoved = false;
+  private draggingVerticalPassageEndpoint: PostEditVerticalPassageEndpointHit | null = null;
+  private verticalPassageDragMoved = false;
   private lastViewportPos = { x: 0, y: 0 };
 
   private onKeyDown = (e: KeyboardEvent) => {
-    if (e.code === "Escape") this.cancelPendingTeleport();
+    if (e.code === "Escape") {
+      this.cancelPendingTeleport();
+      useMazeStore.getState().cancelPostEditVerticalPassagePlacement();
+      useMazeStore.getState().cancelPostEditElevatorPlacement();
+    }
   };
 
   constructor(
@@ -143,10 +150,35 @@ export class PostEditController extends BaseController {
       return;
     }
 
+    if (this.draggingVerticalPassageEndpoint) {
+      const proj = makeProjection(state.activeTessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      const nodeMap = this.getNodeMap(floorNodes);
+      const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, {}, level);
+      if (endpoint === null || endpoint.kind !== "node") return;
+      const passage = state.postEditDraftVerticalPassages.find(p => p.id === this.draggingVerticalPassageEndpoint!.id);
+      if (!passage) return;
+      const hit = this.draggingVerticalPassageEndpoint;
+      const current = hit.end === "from" ? passage.from : passage.to;
+      const other = hit.end === "from" ? passage.to : passage.from;
+      const currentId = current.kind === "node" ? current.id : undefined;
+      const otherId = other.kind === "node" ? other.id : undefined;
+      const movedToOther = otherId !== undefined && otherId === endpoint.id;
+      if (currentId !== endpoint.id) {
+        this.verticalPassageDragMoved = true;
+        if (!movedToOther) {
+          useMazeStore.getState().movePostEditVerticalPassageEndpoint(hit.id, hit.end, endpoint);
+        }
+      }
+      return;
+    }
+
     if (TELEPORT_TOOLS.has(state.postEditTool)) {
       if (state.postEditTeleportPendingFrom !== null) {
-        const nodeById = this.getNodeById(floorNodes);
-        const fromNode = nodeById.get(state.postEditTeleportPendingFrom);
+        // Unscoped lookup — the pending origin's node can live on a floor other than the one
+        // currently active (a cross-floor teleport placement in progress), so the floor-scoped
+        // `floorNodes`/`nodeById` would silently drop the preview once the user switches floors.
+        const fromNode = state.nodes.find((n) => n.id === state.postEditTeleportPendingFrom);
         if (fromNode) {
           const proj = makeProjection(state.activeTessellationConfig);
           const { x: px, y: py } = proj.gridToScreen(fromNode.x, fromNode.y);
@@ -252,12 +284,28 @@ export class PostEditController extends BaseController {
         endpoint !== null && meta.finish !== null && endpointsEqual(meta.finish, endpoint) ? "finish" : null;
       const nodeById = this.getNodeById(floorNodes);
       const teleportHit = pickPostEditTeleportEndpointAt(vpX, vpY, state.activeTessellationConfig, state.postEditDraftTeleports, nodeById, resolveSplit);
+      // Vertical-passage endpoints can live on either floor of the pair, so hit-testing needs the
+      // *unscoped* node map/level resolver — `floorNodes`/`nodeById` above only cover the active
+      // floor's own nodes.
+      const allNodeById = this.getNodeById(state.nodes);
+      const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+      const verticalPassageHit = pickPostEditVerticalPassageEndpointAt(vpX, vpY, state.activeTessellationConfig, state.postEditDraftVerticalPassages, allNodeById, resolveNodeLevel, level);
+      const elevatorHit = state.postEditDraftElevators.find((e) => e.floors.some((f) => {
+        if (f.kind !== "node") return false;
+        if ((resolveNodeLevel(f.id) ?? 0) !== (level ?? 0)) return false;
+        const node = allNodeById.get(f.id);
+        return node !== undefined && endpoint !== null && endpoint.kind === "node" && node.id === endpoint.id;
+      }));
 
       if (button === 2) {
         if (markerUnderCursor) {
           useMazeStore.getState().clearPostEditEndpoint(markerUnderCursor);
         } else if (teleportHit) {
           useMazeStore.getState().removePostEditTeleport(teleportHit.id);
+        } else if (verticalPassageHit) {
+          useMazeStore.getState().removePostEditVerticalPassage(verticalPassageHit.id);
+        } else if (elevatorHit) {
+          useMazeStore.getState().removePostEditElevator(elevatorHit.id);
         } else if (state.postEditTeleportPendingFrom !== null) {
           this.cancelPendingTeleport();
         }
@@ -277,6 +325,11 @@ export class PostEditController extends BaseController {
         this.teleportDragMoved = false;
         return;
       }
+      if (verticalPassageHit) {
+        this.draggingVerticalPassageEndpoint = verticalPassageHit;
+        this.verticalPassageDragMoved = false;
+        return;
+      }
 
       // A split node not yet confirmed (`nodeId` undefined) can't be set as start/finish or
       // teleport-clicked yet — no-op, not an error (see postEditEndpoint.ts's doc comment; the
@@ -284,6 +337,8 @@ export class PostEditController extends BaseController {
       if (endpoint === null || nodeId === undefined) return;
       if (tool === "set_start") useMazeStore.getState().setPostEditEndpoint("start", endpoint);
       else if (tool === "set_finish") useMazeStore.getState().setPostEditEndpoint("finish", endpoint);
+      else if (tool === "elevator") useMazeStore.getState().startPostEditElevatorPlacement(endpoint);
+      else if (VERTICAL_PASSAGE_TOOLS.has(tool)) useMazeStore.getState().startPostEditVerticalPassagePlacement(endpoint, tool as "vertical_passage_one_way" | "vertical_passage_two_way");
       else this.tryTeleportClick(nodeId, tool);
       return;
     }
@@ -360,6 +415,17 @@ export class PostEditController extends BaseController {
         }
         this.draggingTeleportEndpoint = null;
         this.teleportDragMoved = false;
+      }
+
+      if (this.draggingVerticalPassageEndpoint) {
+        if (!this.verticalPassageDragMoved) {
+          const state = useMazeStore.getState();
+          if (VERTICAL_PASSAGE_TOOLS.has(state.postEditTool)) {
+            state.cyclePostEditVerticalPassageDirection(this.draggingVerticalPassageEndpoint.id);
+          }
+        }
+        this.draggingVerticalPassageEndpoint = null;
+        this.verticalPassageDragMoved = false;
       }
     }
   }

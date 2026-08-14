@@ -8,6 +8,8 @@ import { Switch } from "../Switch";
 import { IssuesBlock } from "../IssuesBlock";
 import { Stack, Inline, Grid } from "../Layout";
 import { ManageSplitNodesDialog } from "./ManageSplitNodesDialog";
+import { PostEditElevatorFloorDialog } from "../dialogs/PostEditElevatorFloorDialog";
+import { PostEditVerticalDirectionDialog } from "../dialogs/PostEditVerticalDirectionDialog";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 
@@ -33,6 +35,14 @@ function getTeleportTools(): [PostEditTool, string][] {
   ];
 }
 
+function getVerticalTools(): [PostEditTool, string][] {
+  return [
+    ["vertical_passage_two_way", m["preset.vertical_passage_two_way"]()],
+    ["vertical_passage_one_way", m["preset.vertical_passage_one_way"]()],
+    ["elevator", m["preset.elevator"]()],
+  ];
+}
+
 export function PostEditFeature() {
   const tool                = useMazeStore((s) => s.postEditTool);
   const setTool             = useMazeStore((s) => s.setPostEditTool);
@@ -45,6 +55,11 @@ export function PostEditFeature() {
   const postEditFocusedPoint = useMazeStore((s) => s.postEditFocusedPoint);
   const setPostEditFocusedPoint = useMazeStore((s) => s.setPostEditFocusedPoint);
   const openCard = useMazeStore((s) => s.openCard);
+  const floors = useMazeStore((s) => s.floors);
+  const postEditVerticalPassagePending = useMazeStore((s) => s.postEditVerticalPassagePending);
+  const cancelPostEditVerticalPassagePlacement = useMazeStore((s) => s.cancelPostEditVerticalPassagePlacement);
+  const postEditElevatorPending = useMazeStore((s) => s.postEditElevatorPending);
+  const cancelPostEditElevatorPlacement = useMazeStore((s) => s.cancelPostEditElevatorPlacement);
 
   // The "Manage split nodes" dialog closes when leaving the post-edit card — it has no meaning
   // once the user is looking at a different feature (see GitHub issue #221's plan, §6.2).
@@ -105,7 +120,25 @@ export function PostEditFeature() {
         >
           {m["post_edit.manage_split_nodes_tool"]()}
         </button>
+        {floors.length > 1 && getVerticalTools().map(([t, label]) => (
+          <button
+            key={t}
+            className={tool === t ? "hoverable-accent" : "hoverable"}
+            style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+            onClick={() => setTool(t)}
+          >
+            {label}
+          </button>
+        ))}
       </Stack>
+
+      {postEditElevatorPending && (
+        <PostEditElevatorFloorDialog onClose={cancelPostEditElevatorPlacement} />
+      )}
+
+      {postEditVerticalPassagePending && (
+        <PostEditVerticalDirectionDialog onClose={cancelPostEditVerticalPassagePlacement} />
+      )}
 
       <span style={styles.sectionLabel}>{m["post_edit.management"]()}</span>
       <Stack gap="itemGap">

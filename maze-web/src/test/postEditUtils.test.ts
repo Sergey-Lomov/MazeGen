@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildPostEditDraftEdgesFromGenerated, applyPostEditEdgeTool, extractPostEditTeleports, postEditTeleportsToDto, rotatePostEditSplitPoint, resetPostEditPoint } from "../pixi/postEditUtils";
+import {
+  buildPostEditDraftEdgesFromGenerated, applyPostEditEdgeTool, extractPostEditTeleports, postEditTeleportsToDto,
+  rotatePostEditSplitPoint, resetPostEditPoint, postEditVerticalToDto, postEditVerticalPassageDirectionToDto,
+  cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
+  removePostEditElevator,
+} from "../pixi/postEditUtils";
 import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { EdgeDto, NodeDto } from "../wasm/types";
 import type { PostEditEdge, PostEditMeta } from "../store/mazeStore";
@@ -450,5 +455,134 @@ describe("resetPostEditPoint", () => {
       [0, 0], draftEdges, [], {}, {}, emptyMeta, gridNodes, [], null, null,
     );
     expect(result.draftEdges[edgeKey(other, nodeEndpoint(idOf(-1, 0)))]).toEqual(draftEdges[edgeKey(other, nodeEndpoint(idOf(-1, 0)))]);
+  });
+});
+
+// --- postEditVerticalPassageDirectionToDto ---
+
+describe("postEditVerticalPassageDirectionToDto", () => {
+  it("two_way maps to undefined (wire DTO has no two_way variant)", () => {
+    expect(postEditVerticalPassageDirectionToDto("two_way")).toBeUndefined();
+  });
+
+  it("forward/backward pass through unchanged", () => {
+    expect(postEditVerticalPassageDirectionToDto("forward")).toBe("forward");
+    expect(postEditVerticalPassageDirectionToDto("backward")).toBe("backward");
+  });
+});
+
+// --- cyclePostEditVerticalPassageDirection ---
+
+describe("cyclePostEditVerticalPassageDirection", () => {
+  it("forward becomes backward", () => {
+    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
+    expect(cyclePostEditVerticalPassageDirection(passages, 1)[0].direction).toBe("backward");
+  });
+
+  it("backward becomes forward", () => {
+    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward" as const }];
+    expect(cyclePostEditVerticalPassageDirection(passages, 1)[0].direction).toBe("forward");
+  });
+
+  it("two_way is left unchanged (only meaningful for the one-way tool)", () => {
+    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" as const }];
+    expect(cyclePostEditVerticalPassageDirection(passages, 1)[0].direction).toBe("two_way");
+  });
+
+  it("leaves passages with a different id untouched", () => {
+    const passages = [{ id: 2, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
+    expect(cyclePostEditVerticalPassageDirection(passages, 1)).toEqual(passages);
+  });
+});
+
+// --- removePostEditVerticalPassage / removePostEditElevator ---
+
+describe("removePostEditVerticalPassage", () => {
+  it("removes the entry with the given id, keeps the rest", () => {
+    const passages = [
+      { id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const },
+      { id: 2, from: nodeEndpoint(2), to: nodeEndpoint(3), direction: "forward" as const },
+    ];
+    expect(removePostEditVerticalPassage(passages, 1)).toEqual([passages[1]]);
+  });
+});
+
+describe("removePostEditElevator", () => {
+  it("removes the entry with the given id, keeps the rest", () => {
+    const elevators = [
+      { id: 1, floors: [nodeEndpoint(0), nodeEndpoint(1)] },
+      { id: 2, floors: [nodeEndpoint(2), nodeEndpoint(3)] },
+    ];
+    expect(removePostEditElevator(elevators, 1)).toEqual([elevators[1]]);
+  });
+});
+
+// --- movePostEditVerticalPassageEndpoint ---
+
+describe("movePostEditVerticalPassageEndpoint", () => {
+  it("replaces only the given end of the matching entry", () => {
+    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
+    const result = movePostEditVerticalPassageEndpoint(passages, { id: 1, end: "to" }, nodeEndpoint(5));
+    expect(result[0]).toEqual({ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(5), direction: "forward" });
+  });
+
+  it("leaves entries with a different id untouched", () => {
+    const passages = [{ id: 2, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
+    expect(movePostEditVerticalPassageEndpoint(passages, { id: 1, end: "to" }, nodeEndpoint(5))).toEqual(passages);
+  });
+});
+
+// --- postEditVerticalToDto ---
+
+describe("postEditVerticalToDto", () => {
+  it("forward vertical passage produces one from->to edge", () => {
+    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const }];
+    expect(postEditVerticalToDto(passages, [], noSplits)).toEqual([{ from: 0, to: 1, kind: "vertical_passage" }]);
+  });
+
+  it("backward vertical passage produces one to->from edge", () => {
+    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "backward" as const }];
+    expect(postEditVerticalToDto(passages, [], noSplits)).toEqual([{ from: 1, to: 0, kind: "vertical_passage" }]);
+  });
+
+  it("two_way vertical passage produces both directions", () => {
+    const passages = [{ id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "two_way" as const }];
+    expect(postEditVerticalToDto(passages, [], noSplits)).toEqual([
+      { from: 0, to: 1, kind: "vertical_passage" },
+      { from: 1, to: 0, kind: "vertical_passage" },
+    ]);
+  });
+
+  it("drops a vertical passage whose endpoint doesn't resolve", () => {
+    const passages = [{ id: 1, from: splitEndpoint([1, 2], 0), to: nodeEndpoint(1), direction: "forward" as const }];
+    expect(postEditVerticalToDto(passages, [], noSplits)).toEqual([]);
+  });
+
+  it("elevator with 2 floors produces a bidirectional pair", () => {
+    const elevators = [{ id: 1, floors: [nodeEndpoint(0), nodeEndpoint(1)] }];
+    const result = postEditVerticalToDto([], elevators, noSplits);
+    expect(result).toHaveLength(2);
+    expect(result).toEqual(expect.arrayContaining([
+      { from: 0, to: 1, kind: "elevator" },
+      { from: 1, to: 0, kind: "elevator" },
+    ]));
+  });
+
+  it("elevator with 3 floors produces a full 6-edge mesh (every ordered pair)", () => {
+    const elevators = [{ id: 1, floors: [nodeEndpoint(0), nodeEndpoint(1), nodeEndpoint(2)] }];
+    const result = postEditVerticalToDto([], elevators, noSplits);
+    expect(result).toHaveLength(6);
+    const pairs = new Set(result.map((e) => `${e.from}->${e.to}`));
+    expect(pairs).toEqual(new Set(["0->1", "1->0", "0->2", "2->0", "1->2", "2->1"]));
+  });
+
+  it("elevator floor that doesn't resolve is excluded from the mesh, not dropped entirely", () => {
+    const elevators = [{ id: 1, floors: [nodeEndpoint(0), splitEndpoint([1, 2], 0), nodeEndpoint(1)] }];
+    const result = postEditVerticalToDto([], elevators, noSplits);
+    expect(result).toEqual(expect.arrayContaining([
+      { from: 0, to: 1, kind: "elevator" },
+      { from: 1, to: 0, kind: "elevator" },
+    ]));
+    expect(result).toHaveLength(2);
   });
 });

@@ -5,7 +5,10 @@ import {
   applyPostEditEdgeTool, buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports,
   postEditTeleportsToDto, cyclePostEditTeleportDirection, removePostEditTeleport, movePostEditTeleportEndpoint,
   rotatePostEditSplitPoint, resetPostEditPoint as resetPostEditPointCore,
+  cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
+  removePostEditElevator, postEditVerticalToDto,
 } from "../../pixi/postEditUtils";
+import { cellExistsAt } from "../../pixi/fieldEditUtils";
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
   resolverForNodeId, edgeKey, resolvePostEditPartnerAt,
@@ -14,9 +17,12 @@ import { addSlot, removeSlot, cycleActive, setActive, deriveSplitPointsFromNodes
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
-import type { MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry } from "../storeTypes";
+import type {
+  MazeStore, PostEditState, PostEditActions, PostEditTool, PostEditTeleportEntry,
+  PostEditVerticalPassageEntry, PostEditElevatorEntry,
+} from "../storeTypes";
 import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
-import { relevantRuleParams, activeFloorField, activeFloorLevel, floorTessellationOf } from "../storeHelpers";
+import { relevantRuleParams, activeFloorField, activeFloorLevel, floorTessellationOf, resolveFieldAtOf } from "../storeHelpers";
 import { configAllCells } from "../../pixi/tessellationCells";
 
 /** Groups a multi-floor `NodeDto[]` (GitHub issue #337) by `level` (`undefined` → `0`, same
@@ -99,6 +105,14 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   _generatedNodes: [],
   _generatedEdges: [],
   postEditDirty: false,
+  postEditDraftVerticalPassages: [] as PostEditVerticalPassageEntry[],
+  postEditVerticalPassagePending: null,
+  _nextPostEditVerticalPassageId: 1,
+  postEditDraftElevators: [] as PostEditElevatorEntry[],
+  postEditElevatorPending: null,
+  _nextPostEditElevatorId: 1,
+  postEditSuppressedElevatorPairs: new Set<string>(),
+  postEditSuppressedVerticalPassagePairs: new Set<string>(),
 
   setPostEditAutoConfirm: (v) => set({ postEditAutoConfirm: v }),
   setPostEditTool: (tool) => set({ postEditTool: tool }),
@@ -138,7 +152,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     const state = get();
     const {
       postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints,
-      activeTessellationConfig, nodes, edges, start, finish, stages,
+      activeTessellationConfig, nodes, start, finish, stages,
     } = state;
     if (postEditDraftEdges === null) return;
     const edgesSnapshot = postEditDraftEdges;
@@ -191,15 +205,36 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       ...teleportEdgesSnapshot.map(e => ({ from: { kind: "node" as const, id: e.from }, to: { kind: "node" as const, id: e.to }, kind: "teleport" as const })),
     ];
 
-    // `VerticalPassage`/`Elevator` edges (GitHub issue #358 follow-up) are never post-edit-
-    // editable, so they're just resent unchanged from the last confirmed graph (`state.edges`,
-    // populated at generation time and kept in sync by every confirm's own snapshot write) rather
-    // than routed through `postEditDraftEdges` — see `ComputeAnalyticsConfig.vertical_edges`'s own
-    // doc comment for why this round trip exists at all.
-    const verticalEdges = edges
+    // `VerticalPassage`/`Elevator` edges: generation-time ones are resent unchanged from the frozen
+    // `_generatedEdges` snapshot, not `state.edges` — the latter is overwritten by every confirm
+    // with the current (possibly manually-edited) graph, so resending from it would compare/rebuild
+    // against whatever the last edit produced instead of the actual generation output, and a
+    // point-reset's un-suppression (`resetPostEditPoint`) would have nothing left to restore once a
+    // connection had been edited even once (same class of bug `applyPostEditToolAt`'s own
+    // `_generatedEdges` doc comment describes for walls/passages, GitHub issue #323). Post-edit never
+    // redirects/removes a *generated* vertical/elevator edge, only adds new user-placed links via its
+    // own vertical-passage/elevator tools (GitHub issue #341) — see
+    // `ComputeAnalyticsConfig.vertical_edges`'s own doc comment.
+    // `postEditDraftVerticalPassages`/`postEditDraftElevators` are converted the same way
+    // `postEditDraftTeleports` is, through the previous confirmed snapshot's resolver.
+    // `postEditSuppressedElevatorPairs`/`postEditSuppressedVerticalPassagePairs` drop a
+    // generation-time edge once the user has edited that connection (see
+    // `confirmPostEditElevatorPlacement`'s/`commitPostEditVerticalPassage`'s own doc comments) —
+    // otherwise the old generation-time edge would keep being resent forever, coexisting with (and
+    // silently undoing) whatever the new draft entry says — e.g. cycling a one-way passage's
+    // direction would leave the *old* forward edge alongside the *new* backward one, reading as
+    // two-way instead of a direction flip.
+    const generatedVerticalEdges = state._generatedEdges
       .filter((e): e is typeof e & { kind: "vertical_passage" | "elevator" } =>
         e.kind === "vertical_passage" || e.kind === "elevator")
+      .filter((e) => {
+        const [a, b] = [e.from, e.to].sort((x, y) => x - y);
+        if (e.kind === "elevator") return !state.postEditSuppressedElevatorPairs.has(`${a},${b}`);
+        return !state.postEditSuppressedVerticalPassagePairs.has(`${a},${b}`);
+      })
       .map(e => ({ from: e.from, to: e.to, kind: e.kind }));
+    const draftVerticalEdges = postEditVerticalToDto(state.postEditDraftVerticalPassages, state.postEditDraftElevators, resolveSplit);
+    const verticalEdges = [...generatedVerticalEdges, ...draftVerticalEdges];
 
     // `ComputeAnalyticsConfig.split_points` is `[[x,y], slotId, level][]` (GitHub issue #359,
     // `compute_analytics` is now genuinely multi-level) — the `"@level"` suffix is parsed into its
@@ -396,6 +431,14 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         },
         postEditTool: "wall" as PostEditTool,
         postEditDirty: false,
+        postEditDraftVerticalPassages: [] as PostEditVerticalPassageEntry[],
+        postEditVerticalPassagePending: null,
+        _nextPostEditVerticalPassageId: 1,
+        postEditDraftElevators: [] as PostEditElevatorEntry[],
+        postEditElevatorPending: null,
+        _nextPostEditElevatorId: 1,
+        postEditSuppressedElevatorPairs: new Set<string>(),
+        postEditSuppressedVerticalPassagePairs: new Set<string>(),
       };
     });
     void get().confirmPostEdit();
@@ -430,6 +473,69 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       // `_nextPostEditTeleportId` past whatever it just used, or a later `addPostEditTeleport`
       // could mint a colliding id.
       const maxTeleportId = result.draftTeleports.reduce((max, t) => Math.max(max, t.id), 0);
+      // User-placed vertical passages/elevators (GitHub issue #341) have no generation-time
+      // counterpart to restore — a point reset just drops any draft entry touching this point on
+      // the active floor, same as a wall/passage reset drops its draft edges.
+      const touchesPoint = (ep: PostEditEndpoint) =>
+        ep.kind === "node" ? false : endpointsEqual(ep, splitEndpoint(point, ep.slotId, level));
+      const touchesPointNode = (ep: PostEditEndpoint) => {
+        if (ep.kind !== "node") return false;
+        const node = state._generatedNodes.find((n) => n.id === ep.id);
+        return node !== undefined && node.x === point[0] && node.y === point[1] && (node.level ?? 0) === (level ?? 0);
+      };
+      const refsPoint = (ep: PostEditEndpoint) => touchesPoint(ep) || touchesPointNode(ep);
+      const postEditDraftVerticalPassages = state.postEditDraftVerticalPassages.filter((p) => !refsPoint(p.from) && !refsPoint(p.to));
+      const postEditDraftElevators = state.postEditDraftElevators.filter((e) => !e.floors.some(refsPoint));
+      // A suppressed generation-time elevator pair naming a node at this point must un-suppress on
+      // reset too — resetting this point is meant to restore its generation-time state in full,
+      // which includes whatever elevator connection generation originally gave it.
+      const pointNodeIds = new Set(state._generatedNodes.filter((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0)).map((n) => n.id));
+      // An Elevator's generation-time mesh spans every floor it connects, not just this point's own
+      // node (GitHub issue #341 follow-up) — e.g. a 3-floor elevator edited down to 2 floors from
+      // floor 1 suppresses the *whole* previous mesh (floor1-2, floor1-3, floor2-3, see
+      // `confirmPostEditElevatorPlacement`'s own `sourceNodeIds` comment), so un-suppressing only
+      // pairs naming floor 1's own node would leave floor2-3 suppressed forever — restoring floor 2
+      // with no link onward to floor 3. Un-suppressing the *entire* generation-time elevator
+      // component this point's node belongs to (BFS over `_generatedEdges`' own elevator edges)
+      // restores the mesh in full, matching what a point reset is meant to guarantee.
+      const elevatorNeighbors = new Map<number, Set<number>>();
+      const addElevatorNeighbor = (from: number, to: number) => {
+        let set = elevatorNeighbors.get(from);
+        if (!set) {
+          set = new Set();
+          elevatorNeighbors.set(from, set);
+        }
+        set.add(to);
+      };
+      for (const e of state._generatedEdges) {
+        if (e.kind !== "elevator") continue;
+        addElevatorNeighbor(e.from, e.to);
+        addElevatorNeighbor(e.to, e.from);
+      }
+      const elevatorComponentIds = new Set(pointNodeIds);
+      const queue = [...pointNodeIds];
+      while (queue.length > 0) {
+        const id = queue.pop()!;
+        for (const neighbor of elevatorNeighbors.get(id) ?? []) {
+          if (!elevatorComponentIds.has(neighbor)) {
+            elevatorComponentIds.add(neighbor);
+            queue.push(neighbor);
+          }
+        }
+      }
+      const postEditSuppressedElevatorPairs = new Set(
+        [...state.postEditSuppressedElevatorPairs].filter((key) => {
+          const [a, b] = key.split(",").map(Number);
+          return !elevatorComponentIds.has(a) && !elevatorComponentIds.has(b);
+        }),
+      );
+      // Same un-suppress on reset for vertical-passage pairs (see the elevator comment above).
+      const postEditSuppressedVerticalPassagePairs = new Set(
+        [...state.postEditSuppressedVerticalPassagePairs].filter((key) => {
+          const [a, b] = key.split(",").map(Number);
+          return !pointNodeIds.has(a) && !pointNodeIds.has(b);
+        }),
+      );
       return {
         postEditDraftEdges: result.draftEdges,
         postEditDraftTeleports: result.draftTeleports,
@@ -437,6 +543,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         postEditActiveSplitNode: result.activeSplitNode,
         postEditDraftMeta: result.draftMeta,
         _nextPostEditTeleportId: Math.max(state._nextPostEditTeleportId, maxTeleportId + 1),
+        postEditDraftVerticalPassages,
+        postEditDraftElevators,
+        postEditSuppressedElevatorPairs,
+        postEditSuppressedVerticalPassagePairs,
         postEditDirty: true,
       };
     });
@@ -718,4 +828,304 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       void get().confirmPostEdit();
     }
   },
+
+  startPostEditVerticalPassagePlacement: (origin, tool) => {
+    const state = get();
+    if (origin.kind !== "node") return;
+    const originNode = state.nodes.find((n) => n.id === origin.id);
+    if (!originNode) return;
+    // Clicking a node that already has a *generation-time* `vertical_passage` edge (no draft entry
+    // — `PostEditController`'s own hit-test only ever finds an existing *draft* entry, since
+    // `pickPostEditVerticalPassageEndpointAt` only searches `postEditDraftVerticalPassages`) mints
+    // a draft entry seeded from that edge's own direction, rather than placing a brand-new one on
+    // top of it — the same "edit instead of duplicate" fix `startPostEditElevatorPlacement` already
+    // has for generation-time elevators. Without this, the vertical-passage tool always went
+    // straight to the create path below even for an already-connected node, and the freshly placed
+    // entry's own edge (its direction picked by *this* tool click, `vertical_passage_one_way`'s
+    // forward-only or `vertical_passage_two_way`'s both) would coexist with the old generation-time
+    // edge once both got resent on the next confirm — a one-way "change direction" click reading as
+    // "now two-way" instead of a flip.
+    const generatedPartner = state.edges.find((e) =>
+      e.kind === "vertical_passage" && (e.from === origin.id || e.to === origin.id));
+    if (generatedPartner) {
+      const partnerId = generatedPartner.from === origin.id ? generatedPartner.to : generatedPartner.from;
+      const reverseExists = state.edges.some((e) =>
+        e.kind === "vertical_passage" && e.from === partnerId && e.to === origin.id);
+      const forwardExists = generatedPartner.from === origin.id;
+      const direction: "forward" | "backward" | "two_way" =
+        forwardExists && reverseExists ? "two_way" : forwardExists ? "forward" : "backward";
+      const entry: PostEditVerticalPassageEntry = {
+        id: state._nextPostEditVerticalPassageId,
+        from: origin,
+        to: nodeEndpoint(partnerId),
+        direction,
+      };
+      const [a, b] = [origin.id, partnerId].sort((x, y) => x - y);
+      set((state) => ({
+        postEditDraftVerticalPassages: [...state.postEditDraftVerticalPassages, entry],
+        _nextPostEditVerticalPassageId: state._nextPostEditVerticalPassageId + 1,
+        postEditSuppressedVerticalPassagePairs: new Set(state.postEditSuppressedVerticalPassagePairs).add(`${a},${b}`),
+        postEditDirty: true,
+      }));
+      if (get().postEditAutoConfirm) {
+        void get().confirmPostEdit();
+      }
+      return;
+    }
+    const originLevel = originNode.level ?? 0;
+    const resolveFieldAt = resolveFieldAtOf(state);
+    const point: [number, number] = [originNode.x, originNode.y];
+    const availableDirections: ("up" | "down")[] = [];
+    if (cellExistsAt(resolveFieldAt, point, originLevel + 1)) availableDirections.push("up");
+    if (originLevel > 0 && cellExistsAt(resolveFieldAt, point, originLevel - 1)) availableDirections.push("down");
+    if (availableDirections.length === 0) return;
+    if (availableDirections.length === 1) {
+      commitPostEditVerticalPassage(get, set, origin, tool, availableDirections[0]);
+      return;
+    }
+    set({ postEditVerticalPassagePending: { origin, tool, availableDirections } });
+  },
+
+  choosePostEditVerticalPassageDirection: (direction) => {
+    const pending = get().postEditVerticalPassagePending;
+    if (!pending) return;
+    commitPostEditVerticalPassage(get, set, pending.origin, pending.tool, direction);
+  },
+
+  cancelPostEditVerticalPassagePlacement: () => set({ postEditVerticalPassagePending: null }),
+
+  cyclePostEditVerticalPassageDirection: (id) => {
+    set((state) => {
+      const target = state.postEditDraftVerticalPassages.find((p) => p.id === id);
+      // Suppress this pair's own generation-time edge unconditionally, not just on first edit — a
+      // draft entry already confirmed once has its own edges resting in `state.edges` by now too
+      // (every confirm folds the WASM snapshot's edges back), so a *second* direction cycle on an
+      // already-confirmed draft entry needs the same suppression the first one already added,
+      // mirrors `startPostEditElevatorPlacement`'s own re-edit doc comment for why this can't be
+      // "only on first edit".
+      const suppressed = new Set(state.postEditSuppressedVerticalPassagePairs);
+      if (target && target.from.kind === "node" && target.to.kind === "node") {
+        const [a, b] = [target.from.id, target.to.id].sort((x, y) => x - y);
+        suppressed.add(`${a},${b}`);
+      }
+      return {
+        postEditDraftVerticalPassages: cyclePostEditVerticalPassageDirection(state.postEditDraftVerticalPassages, id),
+        postEditSuppressedVerticalPassagePairs: suppressed,
+        postEditDirty: true,
+      };
+    });
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
+  removePostEditVerticalPassage: (id) => {
+    set((state) => ({
+      postEditDraftVerticalPassages: removePostEditVerticalPassage(state.postEditDraftVerticalPassages, id),
+      postEditDirty: true,
+    }));
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
+  movePostEditVerticalPassageEndpoint: (id, end, endpoint) => {
+    set((state) => {
+      const target = state.postEditDraftVerticalPassages.find((p) => p.id === id);
+      const suppressed = new Set(state.postEditSuppressedVerticalPassagePairs);
+      // Suppress both the pair's old node ids (its previous confirm's own edge, now stale) and its
+      // new ones (this move's own edge, about to be confirmed) — same rationale as
+      // `cyclePostEditVerticalPassageDirection`'s own doc comment.
+      if (target && target.from.kind === "node" && target.to.kind === "node") {
+        const [a, b] = [target.from.id, target.to.id].sort((x, y) => x - y);
+        suppressed.add(`${a},${b}`);
+      }
+      if (endpoint.kind === "node") {
+        const otherEnd = end === "from" ? target?.to : target?.from;
+        if (otherEnd && otherEnd.kind === "node") {
+          const [a, b] = [endpoint.id, otherEnd.id].sort((x, y) => x - y);
+          suppressed.add(`${a},${b}`);
+        }
+      }
+      return {
+        postEditDraftVerticalPassages: movePostEditVerticalPassageEndpoint(state.postEditDraftVerticalPassages, { id, end }, endpoint),
+        postEditSuppressedVerticalPassagePairs: suppressed,
+        postEditDirty: true,
+      };
+    });
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
+  startPostEditElevatorPlacement: (origin) => {
+    if (origin.kind !== "node") return;
+    const state = get();
+    const originNode = state.nodes.find((n) => n.id === origin.id);
+    if (!originNode) return;
+    // Clicking an existing elevator's own marker edits that entry instead of creating a second one
+    // — `floors` seeds from its actual current floors so the dialog reflects real state (GitHub
+    // issue #341 follow-up). An elevator can come from two sources: a user-placed draft entry
+    // (`postEditDraftElevators`, addressed by its own PostEditEndpoints) or a generation-time one,
+    // confirmed into the graph as a full mesh of bidirectional `elevator` edges in `state.edges`
+    // (no separate entry object to look up — its "floors" are just every node reachable from
+    // `origin.id` via an `elevator` edge, since a full mesh means one hop reaches every floor).
+    const originLevel = originNode.level ?? 0;
+    const existingDraft = state.postEditDraftElevators.find((e) => e.floors.some((f) =>
+      f.kind === "node" && f.id === origin.id));
+    if (existingDraft) {
+      const floors = new Set<number>();
+      const sourceNodeIds: number[] = [];
+      for (const f of existingDraft.floors) {
+        if (f.kind !== "node") continue;
+        const n = state.nodes.find((nd) => nd.id === f.id);
+        if (n) floors.add(n.level ?? 0);
+        sourceNodeIds.push(f.id);
+      }
+      // A draft entry already confirmed once has its own edges resting in `state.edges` too (every
+      // confirm's WASM snapshot folds every edge kind, including a just-confirmed draft elevator's,
+      // back into `state.edges`) — from that point on, `generatedVerticalEdges` in `confirmPostEdit`
+      // treats them exactly like any other generation-time mesh and keeps resending them regardless
+      // of `editingId`. `sourceNodeIds` must be captured here too (not only in the generation-time
+      // branch below) so a re-edit of an already-confirmed draft elevator suppresses its own stale
+      // mesh the same way — otherwise a floor removed from `floors` would still show its old marker,
+      // resurrected from `state.edges` on the very next confirm.
+      set({ postEditElevatorPending: { origin, floors, editingId: existingDraft.id, sourceNodeIds } });
+      return;
+    }
+    const generatedFloorIds = new Set<number>([origin.id]);
+    for (const e of state.edges) {
+      if (e.kind !== "elevator") continue;
+      if (e.from === origin.id) generatedFloorIds.add(e.to);
+      else if (e.to === origin.id) generatedFloorIds.add(e.from);
+    }
+    if (generatedFloorIds.size >= 2) {
+      const floors = new Set<number>();
+      for (const id of generatedFloorIds) {
+        const n = state.nodes.find((nd) => nd.id === id);
+        if (n) floors.add(n.level ?? 0);
+      }
+      // No `editingId` — a generation-time elevator has no `PostEditElevatorEntry` of its own to
+      // update; `sourceNodeIds` records which nodes the original mesh connected so
+      // `confirmPostEditElevatorPlacement` can suppress those generation-time edges once the edit
+      // is confirmed (otherwise the old mesh would keep coexisting with the new draft entry, and a
+      // floor the user un-checked would still show a marker via the still-resent generation edge).
+      set({ postEditElevatorPending: { origin, floors, sourceNodeIds: Array.from(generatedFloorIds) } });
+      return;
+    }
+    set({ postEditElevatorPending: { origin, floors: new Set([originLevel]) } });
+  },
+
+  togglePostEditElevatorFloor: (floorIndex) => {
+    set((state) => {
+      const pending = state.postEditElevatorPending;
+      if (!pending || pending.origin.kind !== "node") return {};
+      const originId = pending.origin.id;
+      const originNode = state.nodes.find((n) => n.id === originId);
+      const originLevel = originNode?.level ?? 0;
+      if (floorIndex === originLevel) return {};
+      const floors = new Set(pending.floors);
+      if (floors.has(floorIndex)) floors.delete(floorIndex);
+      else floors.add(floorIndex);
+      return { postEditElevatorPending: { ...pending, floors } };
+    });
+  },
+
+  confirmPostEditElevatorPlacement: () => {
+    const state = get();
+    const pending = state.postEditElevatorPending;
+    if (!pending || pending.floors.size < 2 || pending.origin.kind !== "node") return;
+    const originId = pending.origin.id;
+    const originNode = state.nodes.find((n) => n.id === originId);
+    if (!originNode) return;
+    const point: [number, number] = [originNode.x, originNode.y];
+    // Every selected floor resolves to that floor's own original node at `point` — mirrors
+    // `confirmPresetElevatorPlacement`, addressed by `PostEditEndpoint` (node id) instead of a
+    // `PresetEndpoint` (cell + level).
+    const floors: PostEditEndpoint[] = [];
+    for (const level of Array.from(pending.floors).sort((a, b) => a - b)) {
+      const node = state.nodes.find((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === level);
+      if (node) floors.push(nodeEndpoint(node.id));
+    }
+    if (floors.length < 2) return;
+    const editingId = pending.editingId;
+    const sourceNodeIds = pending.sourceNodeIds;
+    set((state) => {
+      const suppressed = new Set(state.postEditSuppressedElevatorPairs);
+      if (sourceNodeIds) {
+        // Every pair the elevator's *previous* confirmed state connected (whether that came from
+        // generation or an earlier post-edit confirm — either way its own edges already rest in
+        // `state.edges` by now) must stop being resent from `state.edges` on every future confirm,
+        // or the old mesh would keep coexisting with (and outliving) this edit's new floors set,
+        // silently re-adding a floor the user just un-checked.
+        for (let i = 0; i < sourceNodeIds.length; i++) {
+          for (let j = i + 1; j < sourceNodeIds.length; j++) {
+            const [a, b] = [sourceNodeIds[i], sourceNodeIds[j]].sort((x, y) => x - y);
+            suppressed.add(`${a},${b}`);
+          }
+        }
+      }
+      return {
+        postEditDraftElevators: editingId !== undefined
+          ? state.postEditDraftElevators.map((e) => e.id === editingId ? { ...e, floors } : e)
+          : [...state.postEditDraftElevators, { id: state._nextPostEditElevatorId, floors } as PostEditElevatorEntry],
+        _nextPostEditElevatorId: editingId !== undefined ? state._nextPostEditElevatorId : state._nextPostEditElevatorId + 1,
+        postEditElevatorPending: null,
+        postEditDirty: true,
+        postEditSuppressedElevatorPairs: suppressed,
+      };
+    });
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
+  cancelPostEditElevatorPlacement: () => set({ postEditElevatorPending: null }),
+
+  removePostEditElevator: (id) => {
+    set((state) => ({
+      postEditDraftElevators: removePostEditElevator(state.postEditDraftElevators, id),
+      postEditDirty: true,
+    }));
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
 });
+
+/** Builds the new `PostEditVerticalPassageEntry` for a single-click placement (GitHub issue #341,
+ * mirrors `commitPresetVerticalPassage` in `presetConnectionsSlice.ts`) — `origin` is always
+ * `from`; `direction` ("up"/"down", already resolved as available by
+ * `startPostEditVerticalPassagePlacement`/the dialog) picks `to`'s floor by resolving that floor's
+ * own original node at `origin`'s `(x, y)`. */
+function commitPostEditVerticalPassage(
+  get: () => MazeStore,
+  set: (partial: Partial<MazeStore> | ((state: MazeStore) => Partial<MazeStore>)) => void,
+  origin: PostEditEndpoint,
+  tool: "vertical_passage_one_way" | "vertical_passage_two_way",
+  direction: "up" | "down",
+): void {
+  if (origin.kind !== "node") return;
+  const state = get();
+  const originNode = state.nodes.find((n) => n.id === origin.id);
+  if (!originNode) return;
+  const originLevel = originNode.level ?? 0;
+  const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
+  const toNode = state.nodes.find((n) => n.x === originNode.x && n.y === originNode.y && (n.level ?? 0) === toLevel);
+  if (!toNode) return;
+  const entry: PostEditVerticalPassageEntry = {
+    id: state._nextPostEditVerticalPassageId,
+    from: origin,
+    to: nodeEndpoint(toNode.id),
+    direction: tool === "vertical_passage_two_way" ? "two_way" : "forward",
+  };
+  set((state) => ({
+    postEditDraftVerticalPassages: [...state.postEditDraftVerticalPassages, entry],
+    _nextPostEditVerticalPassageId: state._nextPostEditVerticalPassageId + 1,
+    postEditVerticalPassagePending: null,
+    postEditDirty: true,
+  }));
+  if (get().postEditAutoConfirm) {
+    void get().confirmPostEdit();
+  }
+}

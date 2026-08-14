@@ -16,6 +16,7 @@ import { warmCartesianCache } from "../pixi/cartesianCache";
 export type {
   PostEditEdgeKind, PostEditTool, PostEditEdge, PostEditMeta, PostEditAnalytics,
   PostEditTeleportDirection, PostEditTeleportEntry, PostEditTeleportEndpointHit,
+  PostEditVerticalPassageDirection, PostEditVerticalPassageEntry, PostEditVerticalPassageEndpointHit, PostEditElevatorEntry,
   TessellationKind, SquareShape, HexShape, TriangleShape, HexOrientation, TriOrientation,
   FieldPrimitive, FeatureId, RenderModeId, ExportFormatId, MazeState,
   PngExportOutputMode, PngCanvasMode, PrintDensity, PaperSize, PaperOrientation, PrintAnchor,
@@ -234,6 +235,18 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
         postEditEdges: null,
         postEditMeta: null,
         postEditAnalytics: null,
+        // Defaults to [] for project files saved before post-edit vertical passages/elevators
+        // existed (GitHub issue #341).
+        postEditDraftVerticalPassages: file.postEdit.verticalPassages ?? [],
+        _nextPostEditVerticalPassageId: !file.postEdit.verticalPassages || file.postEdit.verticalPassages.length === 0
+          ? 1
+          : Math.max(...file.postEdit.verticalPassages.map((p) => p.id)) + 1,
+        postEditDraftElevators: file.postEdit.elevators ?? [],
+        _nextPostEditElevatorId: !file.postEdit.elevators || file.postEdit.elevators.length === 0
+          ? 1
+          : Math.max(...file.postEdit.elevators.map((e) => e.id)) + 1,
+        postEditSuppressedElevatorPairs: new Set(file.postEdit.suppressedElevatorPairs ?? []),
+        postEditSuppressedVerticalPassagePairs: new Set(file.postEdit.suppressedVerticalPassagePairs ?? []),
       });
     }
 

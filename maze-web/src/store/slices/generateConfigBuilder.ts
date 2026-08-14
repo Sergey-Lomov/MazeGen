@@ -390,6 +390,17 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       _generatedFinish: snapshot.finish,
       _generatedNodes: snapshot.nodes,
       _generatedEdges: snapshot.edges,
+      // User-placed vertical passages/elevators (GitHub issue #341) have no generation-time
+      // counterpart to seed from — a fresh generate() clears any leftover draft from the previous
+      // maze, same as it clears every other post-edit draft collection above.
+      postEditDraftVerticalPassages: [],
+      postEditVerticalPassagePending: null,
+      _nextPostEditVerticalPassageId: 1,
+      postEditDraftElevators: [],
+      postEditElevatorPending: null,
+      _nextPostEditElevatorId: 1,
+      postEditSuppressedElevatorPairs: new Set<string>(),
+      postEditSuppressedVerticalPassagePairs: new Set<string>(),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

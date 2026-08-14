@@ -233,9 +233,19 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     debugStale: debugStaleOf(state),
   })),
 
-  startPresetElevatorPlacement: (origin) => set(() => ({
-    presetElevatorPending: { origin, floors: new Set([origin.level ?? 0]) },
-  })),
+  startPresetElevatorPlacement: (origin) => set((state) => {
+    const originLevel = origin.level ?? 0;
+    // Clicking an existing elevator's own marker (its point already has an entry reaching this
+    // floor) edits that entry instead of creating a second one — `floors` seeds from its actual
+    // current floors so the dialog reflects real state, not just the clicked floor (GitHub issue
+    // #341 follow-up).
+    const existing = state.presetElevators.find((e) =>
+      e.floors.some((f) => (f.level ?? 0) === originLevel && f.point[0] === origin.point[0] && f.point[1] === origin.point[1]));
+    if (existing) {
+      return { presetElevatorPending: { origin, floors: new Set(existing.floors.map((f) => f.level ?? 0)), editingId: existing.id } };
+    }
+    return { presetElevatorPending: { origin, floors: new Set([originLevel]) } };
+  }),
 
   togglePresetElevatorFloor: (floorIndex) => set((state) => {
     const pending = state.presetElevatorPending;
@@ -254,10 +264,12 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     const point = pending.origin.point;
     const floors = Array.from(pending.floors).sort((a, b) => a - b)
       .map((level) => presetEndpoint(point, undefined, level === 0 ? undefined : level));
-    const entry: PresetElevatorEntry = { id: state._nextPresetElevatorId, floors };
+    const presetElevators = pending.editingId !== undefined
+      ? state.presetElevators.map((e) => e.id === pending.editingId ? { ...e, floors } : e)
+      : [...state.presetElevators, { id: state._nextPresetElevatorId, floors }];
     return {
-      presetElevators: [...state.presetElevators, entry],
-      _nextPresetElevatorId: state._nextPresetElevatorId + 1,
+      presetElevators,
+      _nextPresetElevatorId: pending.editingId !== undefined ? state._nextPresetElevatorId : state._nextPresetElevatorId + 1,
       presetElevatorPending: null,
       presetsDirty: true,
       debugStale: debugStaleOf(state),

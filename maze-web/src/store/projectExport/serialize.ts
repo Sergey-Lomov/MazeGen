@@ -11,6 +11,10 @@ export function serializeProject(state: MazeState): ProjectFile {
         meta: state.postEditDraftMeta,
         teleports: state.postEditDraftTeleports,
         splitPoints: state.postEditDraftSplitPoints,
+        verticalPassages: state.postEditDraftVerticalPassages,
+        elevators: state.postEditDraftElevators,
+        suppressedElevatorPairs: Array.from(state.postEditSuppressedElevatorPairs),
+        suppressedVerticalPassagePairs: Array.from(state.postEditSuppressedVerticalPassagePairs),
       }
     : null;
 

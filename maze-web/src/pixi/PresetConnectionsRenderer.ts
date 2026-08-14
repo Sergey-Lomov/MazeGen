@@ -283,7 +283,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       state.presetVerticalPassages !== prev.presetVerticalPassages ||
       state.presetElevators !== prev.presetElevators ||
       state.presetSplitPoints !== prev.presetSplitPoints ||
-      state.presetActiveSplitNode !== prev.presetActiveSplitNode
+      state.presetActiveSplitNode !== prev.presetActiveSplitNode ||
+      state.presetConnectionsTool !== prev.presetConnectionsTool
     ) {
       this.redrawAll(state);
       return;
@@ -351,8 +352,22 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const markerData = buildPresetMarkers(presetStart?.point ?? null, presetFinish?.point ?? null, cfg);
     this.markers.render({ markers: markerData });
 
-    this.teleports.render({ edges: buildPresetTeleportEdges(presetTeleports, cfg, level), cfg });
-    this.verticals.render({ markers: buildPresetVerticalMarkers(presetVerticalPassages, presetElevators, cfg, level), style: DEFAULT_VERTICAL_STYLE });
+    this.teleports.render({
+      edges: buildPresetTeleportEdges(presetTeleports, cfg, level),
+      cfg,
+      floorNavigable: state.presetConnectionsTool !== "clear",
+    });
+    // Click-to-switch-floor (GitHub issue #341 follow-up): withheld while the clear tool is
+    // active (its own click means "delete this connection", not "navigate") and, for a one-way
+    // passage marker specifically (`filled === false`), while the one-way passage tool is active
+    // too (that tool's own click on the marker cycles its direction instead).
+    this.verticals.render({
+      markers: buildPresetVerticalMarkers(presetVerticalPassages, presetElevators, cfg, level),
+      style: DEFAULT_VERTICAL_STYLE,
+      interactive: (marker) =>
+        state.presetConnectionsTool !== "clear" &&
+        !(marker.filled === false && state.presetConnectionsTool === "vertical_passage_one_way"),
+    });
 
     this.redrawOrigin(state.showPresetOrigin);
     this.redrawGenSource(presetGenSource?.point ?? null);

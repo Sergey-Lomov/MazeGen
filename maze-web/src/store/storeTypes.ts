@@ -10,7 +10,7 @@ import type { MarkerShape, OneWayPattern, TeleportGroupOverride, TeleportCornerS
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 
-export type PostEditTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "teleport_one_way" | "teleport_two_way" | "manage_split_nodes";
+export type PostEditTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "teleport_one_way" | "teleport_two_way" | "vertical_passage_one_way" | "vertical_passage_two_way" | "elevator" | "manage_split_nodes";
 
 export interface PostEditEdge {
   from: PostEditEndpoint;
@@ -39,6 +39,34 @@ export interface PostEditTeleportEntry {
 
 /** Endpoint of a post-edit teleport, identified for hit-testing/drag by the owning entry's id and which end it is. */
 export interface PostEditTeleportEndpointHit {
+  id: number;
+  end: "from" | "to";
+}
+
+export type PostEditVerticalPassageDirection = "forward" | "backward" | "two_way";
+
+/** A user-placed `VerticalPassage` link, editable in Post-Edit (GitHub issue #341) — mirrors
+ * `PresetVerticalPassageEntry` (`fieldEditUtils.ts`), addressed by `PostEditEndpoint` (node id)
+ * instead of `PresetEndpoint` (cell + level), since post-edit addresses already-resolved nodes on
+ * the confirmed graph rather than pre-generation cells. Never `split`-addressed — a vertical
+ * passage always connects two points' *original* nodes, same as the preset-stage entry it mirrors.
+ * `from`/`to` are the two click points in placement order; `"backward"` runs `to -> from`. */
+export interface PostEditVerticalPassageEntry {
+  id: number;
+  from: PostEditEndpoint;
+  to: PostEditEndpoint;
+  direction: PostEditVerticalPassageDirection;
+}
+
+/** A user-placed `Elevator` link, editable in Post-Edit (GitHub issue #341) — mirrors
+ * `PresetElevatorEntry`. Two-way by construction, no direction concept. */
+export interface PostEditElevatorEntry {
+  id: number;
+  floors: PostEditEndpoint[];
+}
+
+/** Endpoint of a post-edit vertical passage — mirrors `PostEditTeleportEndpointHit`. */
+export interface PostEditVerticalPassageEndpointHit {
   id: number;
   end: "from" | "to";
 }
@@ -415,7 +443,12 @@ export interface PresetConnectionsState {
    * index) have been picked so far in the floor-picker dialog, always including the active floor
    * (the first click's own floor) which can't be unchecked. `null` when no elevator placement is
    * pending. */
-  presetElevatorPending: { origin: PresetEndpoint; floors: Set<number> } | null;
+  /** `editingId` (GitHub issue #341 follow-up) is set when this pending placement was opened by
+   * clicking an *existing* elevator marker — `floors` seeds from that entry's own current floors
+   * (not just the origin's) so the dialog reflects real state, and `confirmPresetElevatorPlacement`
+   * updates that entry in place instead of pushing a new one. `undefined` for a placement started
+   * on an empty point (ordinary create flow). */
+  presetElevatorPending: { origin: PresetEndpoint; floors: Set<number>; editingId?: number } | null;
   _nextPresetElevatorId: number;
   /** slotIds of each split point's extra nodes declared on the preset stage, keyed by "x,y[:level]"
    * (GitHub issue #231) — mirrors post-edit's `postEditDraftSplitPoints`. */
@@ -492,7 +525,9 @@ export interface PresetConnectionsActions {
   removePresetVerticalPassage: (id: number) => void;
   movePresetVerticalPassageEndpoint: (id: number, end: "from" | "to", endpoint: PresetEndpoint) => void;
   /** Starts a pending elevator placement at `origin` (the first click) — the active floor is
-   * always included in `floors` from the start and can't be removed. */
+   * always included in `floors` from the start and can't be removed. If `origin`'s point already
+   * has an elevator on the active floor, edits that entry instead (`floors` seeds from its current
+   * floors, `editingId` set) — see `presetElevatorPending`'s own doc comment. */
   startPresetElevatorPlacement: (origin: PresetEndpoint) => void;
   /** Toggles whether `floorIndex` is included in the in-progress elevator placement — a no-op if
    * `floorIndex` is the origin's own floor (can't be unchecked) or no placement is pending. */
@@ -1014,6 +1049,40 @@ export interface PostEditState {
    *  `EdgeHighlightRenderer`'s pointermove-driven hover does, but sourced from the panel instead of
    *  the cursor. */
   postEditHoveredLink: { from: PostEditEndpoint; to: PostEditEndpoint } | null;
+  /** User-editable vertical passages (GitHub issue #341) — mirrors `presetVerticalPassages`, own
+   * flat collection since `PostEditVerticalPassageEntry`'s endpoints live on different floors, not
+   * folded into `postEditDraftEdges`. */
+  postEditDraftVerticalPassages: PostEditVerticalPassageEntry[];
+  /** In-progress vertical-passage placement — mirrors `presetVerticalPassagePending`, addressed by
+   * `PostEditEndpoint` (the clicked node) instead of `PresetEndpoint`. */
+  postEditVerticalPassagePending: { origin: PostEditEndpoint; tool: "vertical_passage_one_way" | "vertical_passage_two_way"; availableDirections: ("up" | "down")[] } | null;
+  _nextPostEditVerticalPassageId: number;
+  /** User-editable elevators (GitHub issue #341) — mirrors `presetElevators`. */
+  postEditDraftElevators: PostEditElevatorEntry[];
+  /** In-progress elevator placement — mirrors `presetElevatorPending`. `sourceNodeIds` (set only
+   * when editing a *generation-time* elevator, i.e. no `editingId`) is the node ids the original
+   * generation-time elevator connected, captured at edit-open time — `confirmPostEdit` uses it to
+   * suppress just those generation-time `elevator` edges once the edit is confirmed, so the new
+   * draft entry is the sole source of truth for this elevator going forward instead of the old
+   * generation-time mesh continuing to coexist with (and outlive) the edit. */
+  postEditElevatorPending: { origin: PostEditEndpoint; floors: Set<number>; editingId?: number; sourceNodeIds?: number[] } | null;
+  _nextPostEditElevatorId: number;
+  /** Node-id pairs of generation-time `elevator` edges to suppress on every future confirm (GitHub
+   * issue #341 follow-up) — populated by `confirmPostEditElevatorPlacement` when the just-confirmed
+   * edit replaced a generation-time elevator (`pending.sourceNodeIds` set, no `editingId`). Keyed
+   * by the unordered node-id pair (`"min,max"`) so both directions of the old mesh are suppressed
+   * with one entry. Persists across confirms (unlike the pending state itself) since the
+   * generation-time edges themselves are resent from `state.edges` on every confirm and must be
+   * filtered out every time, not just the first. */
+  postEditSuppressedElevatorPairs: ReadonlySet<string>;
+  /** Node-id pairs (`"min,max"`) of generation-time `vertical_passage` edges to suppress on every
+   * future confirm (GitHub issue #341 follow-up) — mirrors `postEditSuppressedElevatorPairs`,
+   * populated whenever a `postEditDraftVerticalPassages` entry addressing this pair is created or
+   * edited (including a plain direction cycle), since even a same-session re-edit's own previous
+   * confirm already folded that entry's edges back into `state.edges`. Suppresses *both*
+   * directions between the pair regardless of the new entry's own direction — the draft entry is
+   * the sole source of truth for the pair once it exists. */
+  postEditSuppressedVerticalPassagePairs: ReadonlySet<string>;
 }
 
 export interface PostEditActions {
@@ -1052,6 +1121,20 @@ export interface PostEditActions {
    * dropped first, then one fresh slot per blueprint node is minted and its required faces get a
    * `passage`. See `splitBlueprints.ts`. */
   applySplitBlueprint: (point: [number, number], blueprint: SplitNodeBlueprint) => void;
+  /** Click on a node with `vertical_passage_one_way`/`vertical_passage_two_way` active — mirrors
+   * `startPresetVerticalPassagePlacement`, resolving available directions itself and either creating
+   * the entry immediately (one direction available) or opening `postEditVerticalPassagePending`. */
+  startPostEditVerticalPassagePlacement: (origin: PostEditEndpoint, tool: "vertical_passage_one_way" | "vertical_passage_two_way") => void;
+  choosePostEditVerticalPassageDirection: (direction: "up" | "down") => void;
+  cancelPostEditVerticalPassagePlacement: () => void;
+  cyclePostEditVerticalPassageDirection: (id: number) => void;
+  removePostEditVerticalPassage: (id: number) => void;
+  movePostEditVerticalPassageEndpoint: (id: number, end: "from" | "to", endpoint: PostEditEndpoint) => void;
+  startPostEditElevatorPlacement: (origin: PostEditEndpoint) => void;
+  togglePostEditElevatorFloor: (floorIndex: number) => void;
+  confirmPostEditElevatorPlacement: () => void;
+  cancelPostEditElevatorPlacement: () => void;
+  removePostEditElevator: (id: number) => void;
 }
 
 /** Teleports section settings (GitHub issue #293, restructured in a follow-up that removed the

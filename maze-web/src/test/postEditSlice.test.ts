@@ -488,12 +488,14 @@ describe("mazeStore post-edit actions", () => {
     expect(call?.nodes).toEqual(expect.arrayContaining([{ id: 2, x: 0, y: 0, i: 1 }]));
   });
 
-  it("confirmPostEdit passes vertical_passage/elevator edges through unchanged from state.edges", async () => {
-    // VerticalPassage/Elevator edges are never post-edit-editable (only generation/vertical-
-    // connection tools create them) — confirmPostEdit must resend them verbatim from state.edges
-    // so compute_analytics doesn't silently drop them from the rebuilt graph.
+  it("confirmPostEdit passes vertical_passage/elevator edges through unchanged from _generatedEdges", async () => {
+    // VerticalPassage/Elevator edges are only user-editable via their own post-edit tools (GitHub
+    // issue #341) — a generation-time one is otherwise resent verbatim from the frozen
+    // `_generatedEdges` snapshot, not the live `state.edges` (which a later confirm overwrites), so
+    // compute_analytics doesn't silently drop it from the rebuilt graph, and a point-reset's
+    // un-suppression has something to restore even after an earlier edit.
     useMazeStore.setState({
-      edges: [
+      _generatedEdges: [
         { from: 0, to: 1, kind: "basic" },
         { from: 1, to: 2, kind: "vertical_passage" },
         { from: 2, to: 0, kind: "elevator" },
@@ -564,6 +566,187 @@ describe("mazeStore post-edit actions", () => {
     useMazeStore.setState({ postEditAutoConfirm: true });
     useMazeStore.getState().resetPostEditPoint([0, 0]);
     expect(computeAnalytics).toHaveBeenCalled();
+  });
+
+  it("resetPostEditPoint's elevator un-suppress walks the full mesh via _generatedEdges, not just pairs naming the point's own node (GitHub issue #341 follow-up)", () => {
+    useMazeStore.setState({
+      floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }, { id: "f2", title: "Floor 3" }],
+      activeFloorId: "f1",
+      _generatedNodes: [
+        { id: 10, x: 0, y: 0, i: 0, level: 0 },
+        { id: 11, x: 0, y: 0, i: 0, level: 1 },
+        { id: 12, x: 0, y: 0, i: 0, level: 2 },
+      ],
+      _generatedEdges: [
+        { from: 10, to: 11, kind: "elevator" }, { from: 11, to: 10, kind: "elevator" },
+        { from: 10, to: 12, kind: "elevator" }, { from: 12, to: 10, kind: "elevator" },
+        { from: 11, to: 12, kind: "elevator" }, { from: 12, to: 11, kind: "elevator" },
+      ],
+      postEditSuppressedElevatorPairs: new Set(["10,11", "10,12", "11,12"]),
+      postEditAutoConfirm: false,
+    });
+    // Resets floor 2's (activeFloorId "f1", level 1) own point at (0,0) — its node is 11. The old
+    // (pre-fix) logic only un-suppressed pairs naming node 11 (10-11 and 11-12), leaving 10-12
+    // suppressed forever even though it's part of the same elevator. The BFS-based fix must clear
+    // the entire mesh.
+    useMazeStore.getState().resetPostEditPoint([0, 0]);
+    expect(useMazeStore.getState().postEditSuppressedElevatorPairs).toEqual(new Set());
+  });
+});
+
+describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #341)", () => {
+  it("startPostEditVerticalPassagePlacement on a node with an existing generation-time forward edge seeds a draft entry with that direction, instead of creating a duplicate", () => {
+    useMazeStore.setState({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
+      edges: [{ from: 0, to: 1, kind: "vertical_passage" }],
+      postEditDraftVerticalPassages: [],
+      postEditSuppressedVerticalPassagePairs: new Set<string>(),
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftVerticalPassages).toHaveLength(1);
+    expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(0), to: n(1), direction: "forward" });
+    // The generation-time pair must be suppressed, or the old edge would keep coexisting with the
+    // new draft entry on the next confirm (see the doc comment on this code path).
+    expect(s.postEditSuppressedVerticalPassagePairs.has("0,1")).toBe(true);
+  });
+
+  it("startPostEditVerticalPassagePlacement detects a bidirectional generation-time pair (both directed edges present) as two_way", () => {
+    useMazeStore.setState({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
+      edges: [{ from: 0, to: 1, kind: "vertical_passage" }, { from: 1, to: 0, kind: "vertical_passage" }],
+      postEditDraftVerticalPassages: [],
+      postEditSuppressedVerticalPassagePairs: new Set<string>(),
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_two_way");
+    expect(useMazeStore.getState().postEditDraftVerticalPassages[0].direction).toBe("two_way");
+  });
+
+  it("startPostEditVerticalPassagePlacement on a node whose generation-time edge only arrives (backward) detects it as backward", () => {
+    useMazeStore.setState({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
+      edges: [{ from: 1, to: 0, kind: "vertical_passage" }],
+      postEditDraftVerticalPassages: [],
+      postEditSuppressedVerticalPassagePairs: new Set<string>(),
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
+    expect(useMazeStore.getState().postEditDraftVerticalPassages[0].direction).toBe("backward");
+  });
+
+  it("cyclePostEditVerticalPassageDirection suppresses the pair unconditionally, including on a second cycle of an already-confirmed entry", () => {
+    useMazeStore.setState({
+      postEditDraftVerticalPassages: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
+      postEditSuppressedVerticalPassagePairs: new Set<string>(),
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().cyclePostEditVerticalPassageDirection(1);
+    expect(useMazeStore.getState().postEditDraftVerticalPassages[0].direction).toBe("backward");
+    expect(useMazeStore.getState().postEditSuppressedVerticalPassagePairs.has("0,1")).toBe(true);
+
+    // Second cycle on the same (now already-"confirmed" by convention) entry — suppression must
+    // still be (re-)applied, not skipped as "already done once" (GitHub issue #341 follow-up bug:
+    // a second direction cycle without this left the old edge from the first cycle's own confirm
+    // coexisting with the new one, reading as two-way).
+    useMazeStore.setState({ postEditSuppressedVerticalPassagePairs: new Set<string>() });
+    useMazeStore.getState().cyclePostEditVerticalPassageDirection(1);
+    expect(useMazeStore.getState().postEditSuppressedVerticalPassagePairs.has("0,1")).toBe(true);
+  });
+
+  it("removePostEditVerticalPassage removes the draft entry and marks dirty", () => {
+    useMazeStore.setState({
+      postEditDraftVerticalPassages: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
+      postEditAutoConfirm: false,
+      postEditDirty: false,
+    });
+    useMazeStore.getState().removePostEditVerticalPassage(1);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftVerticalPassages).toHaveLength(0);
+    expect(s.postEditDirty).toBe(true);
+  });
+
+  it("startPostEditElevatorPlacement on a node with an existing generation-time elevator mesh seeds pending floors from every reachable node, with sourceNodeIds for later suppression", () => {
+    useMazeStore.setState({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+        { id: 2, x: 0, y: 0, i: 0, level: 2 },
+      ],
+      edges: [
+        { from: 0, to: 1, kind: "elevator" }, { from: 1, to: 0, kind: "elevator" },
+        { from: 0, to: 2, kind: "elevator" }, { from: 2, to: 0, kind: "elevator" },
+        { from: 1, to: 2, kind: "elevator" }, { from: 2, to: 1, kind: "elevator" },
+      ],
+      postEditDraftElevators: [],
+      postEditElevatorPending: null,
+    });
+    useMazeStore.getState().startPostEditElevatorPlacement(n(0));
+    const pending = useMazeStore.getState().postEditElevatorPending;
+    expect(pending).not.toBeNull();
+    expect(pending!.floors).toEqual(new Set([0, 1, 2]));
+    expect(pending!.editingId).toBeUndefined();
+    expect(new Set(pending!.sourceNodeIds)).toEqual(new Set([0, 1, 2]));
+  });
+
+  it("startPostEditElevatorPlacement on a node already in a draft elevator edits that entry (editingId set) instead of creating a duplicate", () => {
+    useMazeStore.setState({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+      ],
+      edges: [],
+      postEditDraftElevators: [{ id: 7, floors: [n(0), n(1)] }],
+      postEditElevatorPending: null,
+    });
+    useMazeStore.getState().startPostEditElevatorPlacement(n(0));
+    const pending = useMazeStore.getState().postEditElevatorPending;
+    expect(pending!.editingId).toBe(7);
+    expect(pending!.floors).toEqual(new Set([0, 1]));
+  });
+
+  it("confirmPostEditElevatorPlacement suppresses every pairwise combination of the previous mesh's sourceNodeIds", () => {
+    useMazeStore.setState({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+        { id: 2, x: 0, y: 0, i: 0, level: 2 },
+      ],
+      postEditElevatorPending: { origin: n(0), floors: new Set([0, 1]), sourceNodeIds: [0, 1, 2] },
+      postEditSuppressedElevatorPairs: new Set<string>(),
+      postEditAutoConfirm: false,
+      postEditDraftElevators: [],
+    });
+    useMazeStore.getState().confirmPostEditElevatorPlacement();
+    const s = useMazeStore.getState();
+    expect(s.postEditSuppressedElevatorPairs).toEqual(new Set(["0,1", "0,2", "1,2"]));
+    expect(s.postEditDraftElevators).toHaveLength(1);
+    expect(s.postEditElevatorPending).toBeNull();
+  });
+
+  it("confirmPostEditElevatorPlacement with fewer than 2 selected floors is a no-op", () => {
+    useMazeStore.setState({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }],
+      postEditElevatorPending: { origin: n(0), floors: new Set([0]) },
+      postEditDraftElevators: [],
+    });
+    useMazeStore.getState().confirmPostEditElevatorPlacement();
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftElevators).toHaveLength(0);
+    expect(s.postEditElevatorPending).not.toBeNull();
+  });
+
+  it("removePostEditElevator removes the draft entry and marks dirty", () => {
+    useMazeStore.setState({
+      postEditDraftElevators: [{ id: 1, floors: [n(0), n(1)] }],
+      postEditAutoConfirm: false,
+      postEditDirty: false,
+    });
+    useMazeStore.getState().removePostEditElevator(1);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftElevators).toHaveLength(0);
+    expect(s.postEditDirty).toBe(true);
   });
 });
 

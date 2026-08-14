@@ -235,6 +235,38 @@ describe("VerticalConnectionRenderer", () => {
     expect(g.children).toHaveLength(0);
   });
 
+  it("interactive as a predicate gates each marker independently", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [
+        marker({ pos: [0, 0], targetFloorIndex: 1, filled: true }),
+        marker({ pos: [5, 0], targetFloorIndex: 2, filled: false }),
+      ],
+      style: baseStyle(),
+      interactive: (m) => m.filled,
+    });
+
+    // Only the `filled: true` marker's own hit-circle is added — the predicate rejects the other.
+    expect(g.children).toHaveLength(1);
+  });
+
+  it("interactive predicate returning false for every marker adds no hit-circles", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [0, 0], targetFloorIndex: 1 })],
+      style: baseStyle(),
+      interactive: () => false,
+    });
+
+    expect(g.children).toHaveLength(0);
+  });
+
   it("clear()/removeChildren() run on every render call — no stale draws or listeners accumulate across two renders", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);

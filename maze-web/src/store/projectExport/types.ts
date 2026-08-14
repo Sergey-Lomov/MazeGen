@@ -2,7 +2,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
-import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, FeatureId, RenderModeId } from "../mazeStore";
+import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, PostEditVerticalPassageEntry, PostEditElevatorEntry, FeatureId, RenderModeId } from "../mazeStore";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation } from "../storeTypes";
 
 export interface ProjectFilePostEdit {
@@ -12,6 +12,17 @@ export interface ProjectFilePostEdit {
   /** slotIds of each split point's extra nodes, keyed by "x,y" (GitHub issue #221). Without this,
    * saving/reloading a project would silently lose every manually created split point. */
   splitPoints: Record<string, number[]>;
+  /** User-placed vertical passages/elevators (GitHub issue #341) — optional, absent in project
+   * files saved before this feature existed. */
+  verticalPassages: PostEditVerticalPassageEntry[];
+  elevators: PostEditElevatorEntry[];
+  /** Node-id pairs (`"min,max"`) of generation-time `elevator` edges suppressed by an elevator edit
+   * (GitHub issue #341 follow-up) — without this, reloading a project would silently resurrect a
+   * generation-time floor connection the user had explicitly removed via the elevator dialog. */
+  suppressedElevatorPairs: string[];
+  /** Node-id pairs (`"min,max"`) of generation-time `vertical_passage` edges suppressed by a
+   * vertical-passage edit (GitHub issue #341 follow-up) — mirrors `suppressedElevatorPairs`. */
+  suppressedVerticalPassagePairs: string[];
 }
 
 export interface ProjectFileAnalytics {

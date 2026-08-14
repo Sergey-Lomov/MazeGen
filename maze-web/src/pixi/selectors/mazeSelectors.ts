@@ -1011,9 +1011,10 @@ export function buildTeleportEdges(
     if (seenPairKey.has(pairKey)) continue;
     seenPairKey.add(pairKey);
 
-    const fromPos = nodePos.get(e.from);
+    let fromPos = nodePos.get(e.from);
     let toPos = nodePos.get(e.to);
     let toFloor: number | undefined;
+    let fromFloor: number | undefined;
     // A cross-floor pair's reverse edge is never in `byPair` (built from the floor-scoped
     // `teleports` above, which structurally can't contain it — see `TeleportFloorContext`'s own
     // doc comment) — re-checked against the unscoped edge list once this edge is confirmed
@@ -1044,6 +1045,32 @@ export function buildTeleportEdges(
         }
       }
     }
+    // Symmetric case: this edge's own `from` (departure) lives on another floor, `to` (arrival) is
+    // here — e.g. the reverse directed edge of a two-way cross-floor pair, seen on the arrival
+    // floor. Without this branch the pair is silently dropped on this floor: `seenPairKey` already
+    // claims the pair key from whichever directed edge the caller's `edges` array happened to list
+    // first, so if that first one is the departure-elsewhere direction (`fromPos` unresolvable),
+    // the pair never gets a second chance via the other directed edge, and the separate arrival-
+    // only pass below only ever triggers for a *pure one-way* pair (which has no reverse directed
+    // edge to begin with, so `seenPairKey` never blocks it in the first place).
+    if (!fromPos && floorContext) {
+      const level = floorContext.resolveNodeLevel(e.from);
+      if (level !== undefined && level !== floorContext.activeFloorIndex) {
+        const toNode = nodeById.get(e.to);
+        const realFromNode = floorContext.unscopedNodeById.get(e.from);
+        if (toNode && realFromNode) {
+          const toCenter = getCellCenter(toNode.x, toNode.y, cfg);
+          const realFromCenter = getCellCenter(realFromNode.x, realFromNode.y, cfg);
+          const midX = (toCenter.x + realFromCenter.x) / 2;
+          const midY = (toCenter.y + realFromCenter.y) / 2;
+          const [snapX, snapY] = nearestCellCoord(midX, midY, cfg);
+          const snapped = getCellCenter(snapX, snapY, cfg);
+          fromPos = { x: snapped.x, y: snapped.y };
+          fromFloor = level;
+          reverseExists = floorContext.unscopedEdges.some((ue) => ue.kind === "teleport" && ue.from === e.to && ue.to === e.from);
+        }
+      }
+    }
     if (!fromPos || !toPos) continue;
 
     result.push({
@@ -1053,6 +1080,7 @@ export function buildTeleportEdges(
       fromNode: e.from,
       toNode: e.to,
       ...(toFloor !== undefined ? { toFloor } : {}),
+      ...(fromFloor !== undefined ? { fromFloor } : {}),
     });
   }
 

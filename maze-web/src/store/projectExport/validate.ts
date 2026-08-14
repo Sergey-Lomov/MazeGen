@@ -1,6 +1,6 @@
 import type { NodeLockKind } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
-import type { PostEditEdge, PostEditTeleportEntry, FeatureId, RenderModeId } from "../mazeStore";
+import type { PostEditEdge, PostEditTeleportEntry, PostEditVerticalPassageEntry, PostEditElevatorEntry, FeatureId, RenderModeId } from "../mazeStore";
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
 import {
@@ -392,6 +392,24 @@ function validatePostEditTeleportEntry(v: unknown, path: string): PostEditTelepo
   };
 }
 
+function validatePostEditVerticalPassageEntry(v: unknown, path: string): PostEditVerticalPassageEntry {
+  const obj = assertObject(v, path);
+  return {
+    id: assertNumber(obj.id, `${path}.id`),
+    from: validatePostEditEndpoint(obj.from, `${path}.from`),
+    to: validatePostEditEndpoint(obj.to, `${path}.to`),
+    direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
+  };
+}
+
+function validatePostEditElevatorEntry(v: unknown, path: string): PostEditElevatorEntry {
+  const obj = assertObject(v, path);
+  return {
+    id: assertNumber(obj.id, `${path}.id`),
+    floors: assertArray(obj.floors, `${path}.floors`).map((f, i) => validatePostEditEndpoint(f, `${path}.floors[${i}]`)),
+  };
+}
+
 /** Validates `postEdit.splitPoints` (GitHub issue #221) — each value must be an array of unique
  * non-negative integer slotIds. Format only, same rationale as `validatePostEditEndpoint`. */
 function validateSplitPoints(v: unknown, path: string): Record<string, number[]> {
@@ -428,7 +446,27 @@ function validatePostEdit(v: unknown): ProjectFilePostEdit {
   assertUniqueIds(teleports, (t) => t.id, "teleport id", "postEdit.teleports");
   // Optional — absent in project files saved before split points existed (GitHub issue #221).
   const splitPoints = obj.splitPoints != null ? validateSplitPoints(obj.splitPoints, "postEdit.splitPoints") : {};
-  return { edges, meta, teleports, splitPoints };
+  // Optional — absent in project files saved before post-edit vertical passages/elevators existed
+  // (GitHub issue #341).
+  const verticalPassages = obj.verticalPassages != null
+    ? assertArray(obj.verticalPassages, "postEdit.verticalPassages").map((v, i) => validatePostEditVerticalPassageEntry(v, `postEdit.verticalPassages[${i}]`))
+    : [];
+  assertUniqueIds(verticalPassages, (p) => p.id, "vertical passage id", "postEdit.verticalPassages");
+  const elevators = obj.elevators != null
+    ? assertArray(obj.elevators, "postEdit.elevators").map((v, i) => validatePostEditElevatorEntry(v, `postEdit.elevators[${i}]`))
+    : [];
+  assertUniqueIds(elevators, (e) => e.id, "elevator id", "postEdit.elevators");
+  // Optional — absent in project files saved before elevator editing existed (GitHub issue #341
+  // follow-up).
+  const suppressedElevatorPairs = obj.suppressedElevatorPairs != null
+    ? assertArray(obj.suppressedElevatorPairs, "postEdit.suppressedElevatorPairs").map((s, i) => assertString(s, `postEdit.suppressedElevatorPairs[${i}]`))
+    : [];
+  // Optional — absent in project files saved before vertical-passage editing existed (GitHub issue
+  // #341 follow-up).
+  const suppressedVerticalPassagePairs = obj.suppressedVerticalPassagePairs != null
+    ? assertArray(obj.suppressedVerticalPassagePairs, "postEdit.suppressedVerticalPassagePairs").map((s, i) => assertString(s, `postEdit.suppressedVerticalPassagePairs[${i}]`))
+    : [];
+  return { edges, meta, teleports, splitPoints, verticalPassages, elevators, suppressedElevatorPairs, suppressedVerticalPassagePairs };
 }
 
 function validateCoordPair(v: unknown, path: string): [number, number] {

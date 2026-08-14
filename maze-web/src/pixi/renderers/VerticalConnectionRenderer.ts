@@ -100,7 +100,17 @@ export class VerticalConnectionRenderer {
    *  regardless of this flag — see `VerticalConnectionMarker`'s own doc comment). One listener per
    *  marker `Graphics`, not a shared hit-test the way `TeleportRenderer.wireGroupInteractivity`
    *  needs (a handful of markers per floor at most — no bucket-search justified here). */
-  render(data: { markers: VerticalConnectionMarker[]; style: VerticalConnectionStyle; interactive?: boolean }): void {
+  render(data: {
+    markers: VerticalConnectionMarker[];
+    style: VerticalConnectionStyle;
+    /** Per-marker click-to-switch-floor gate — a plain `boolean` applies to every marker alike
+     *  (e.g. `GenerationRenderer`'s always-on read-only canvas); a predicate lets a tool-driven
+     *  canvas (`PostEditRenderer`, `PresetConnectionsRenderer`) withhold navigation while the
+     *  active tool needs the same click for something else (e.g. the reset tool, or the one-way
+     *  vertical-passage tool's own direction-cycle click on a one-way marker, `marker.filled ===
+     *  false`) — see GitHub issue #341's follow-up. */
+    interactive?: boolean | ((marker: VerticalConnectionMarker) => boolean);
+  }): void {
     this.g.clear();
     this.g.removeChildren().forEach((c) => c.destroy());
 
@@ -184,7 +194,8 @@ export class VerticalConnectionRenderer {
         }
       }
 
-      if (data.interactive && marker.targetFloorIndex !== undefined) {
+      const markerInteractive = typeof data.interactive === "function" ? data.interactive(marker) : (data.interactive ?? false);
+      if (markerInteractive && marker.targetFloorIndex !== undefined) {
         const targetFloorIndex = marker.targetFloorIndex;
         const hit = new Graphics().circle(cx, cy, radius + borderWidth + gapWidth).fill({ color: 0, alpha: 0 });
         hit.eventMode = "static";
