@@ -9,8 +9,7 @@ import { routeStraightConnectors, arrowPlacements, type RoutedConnector } from "
 import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportConnectorRouter";
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
 import { useMazeStore } from "../../store/mazeStore";
-import { navigateToFloor } from "./floorNavigation";
-import { drawFloorBadge } from "./floorBadge";
+import { attachFloorBadgeNavigation, drawFloorBadge, FLOOR_BADGE_STROKE_WIDTH } from "./floorBadge";
 
 const SQUARE_STROKE_WIDTH = 3;
 /** Extra radius (GitHub issue #293 follow-up) beyond the shape's own drawn radius for a group's
@@ -370,8 +369,8 @@ export class TeleportRenderer {
    *  that every connector (this point's own or another's) draws on top of it (see
    *  `renderGroups`'s own 3-pass doc comment). A point flagged in `selectionFloorBadges` (GitHub
    *  issue #337) draws its own plain circular gap ring instead (`drawFloorBadge`'s own border is
-   *  always `SQUARE_STROKE_WIDTH`, not `style.borderWidth` — the badge isn't a `style.shape` marker,
-   *  see that method's own doc comment) — unconditional, unlike the ordinary marker's ring below,
+   *  always `FLOOR_BADGE_STROKE_WIDTH`, not `style.borderWidth` — the badge isn't a `style.shape`
+   *  marker, see that method's own doc comment) — unconditional, unlike the ordinary marker's ring below,
    *  since a badge with no gap at all reads as fused to whatever connector segment runs under it.
    *  No-op for ordinary points when `edgeGapWidth` is `0`. */
   private drawGroupGaps(
@@ -388,7 +387,7 @@ export class TeleportRenderer {
     const rounded = style.cornerStyle === "round";
     for (const [px, py] of group.points) {
       if (this.selectionFloorBadges.has(coordKey(px, py))) {
-        const badgeR = style.size * TILE_SIZE + SQUARE_STROKE_WIDTH + Math.max(style.edgeGapWidth, 1);
+        const badgeR = style.size * TILE_SIZE + FLOOR_BADGE_STROKE_WIDTH + Math.max(style.edgeGapWidth, 1);
         g.circle(px, py, badgeR).fill(style.floorColor);
         continue;
       }
@@ -418,12 +417,7 @@ export class TeleportRenderer {
       if (floorNumber !== undefined) {
         drawFloorBadge(g, r, px, py, color, borderColor, style.floorColor, floorNumber);
         if (this.selectionFloorNavigable) {
-          const targetFloorIndex = floorNumber - 1;
-          const hit = new Graphics().circle(px, py, r).fill({ color: 0, alpha: 0 });
-          hit.eventMode = "static";
-          hit.cursor = "pointer";
-          hit.on("pointertap", () => navigateToFloor(targetFloorIndex));
-          g.addChild(hit);
+          attachFloorBadgeNavigation(g, px, py, r, floorNumber - 1);
         }
         continue;
       }

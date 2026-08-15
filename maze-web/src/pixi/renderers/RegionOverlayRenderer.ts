@@ -4,8 +4,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { CellFillRenderer } from "./CellFillRenderer";
 import type { CellFillGroup } from "./CellFillRenderer";
 import { NODE_RADIUS } from "../renderConstants";
-import { computeRegionBadgeRingPos, drawFloorBadge } from "./floorBadge";
-import { navigateToFloor } from "./floorNavigation";
+import { attachFloorBadgeNavigation, computeRegionBadgeRingPos, drawFloorBadge } from "./floorBadge";
 import { getCellCenter } from "../tessellationGeometry";
 import { canvas } from "../colorTokens";
 import type { TeleportEdge } from "./types";
@@ -176,12 +175,7 @@ export class RegionOverlayRenderer {
       const g = new Graphics();
       drawFloorBadge(g, NODE_RADIUS, pos.x, pos.y, color, color, canvas.floor.default, targetFloorIndex + 1);
       this.badgesContainer.addChild(g);
-
-      const hit = new Graphics().circle(pos.x, pos.y, NODE_RADIUS).fill({ color: 0, alpha: 0 });
-      hit.eventMode = "static";
-      hit.cursor = "pointer";
-      hit.on("pointertap", () => navigateToFloor(targetFloorIndex));
-      this.badgesContainer.addChild(hit);
+      attachFloorBadgeNavigation(this.badgesContainer, pos.x, pos.y, NODE_RADIUS, targetFloorIndex);
     };
 
     if (allEdges && resolveNodeLevel && activeFloorIndex !== undefined) {

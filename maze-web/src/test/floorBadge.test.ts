@@ -3,25 +3,49 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("pixi.js", () => {
   class FakeGraphics {
     calls: { fn: string; args: unknown[] }[] = [];
+    eventMode = "auto";
+    cursor = "";
+    handlers: Record<string, (...args: unknown[]) => void> = {};
     moveTo(...args: unknown[]) { this.calls.push({ fn: "moveTo", args }); return this; }
     lineTo(...args: unknown[]) { this.calls.push({ fn: "lineTo", args }); return this; }
     poly(...args: unknown[]) { this.calls.push({ fn: "poly", args }); return this; }
+    circle(...args: unknown[]) { this.calls.push({ fn: "circle", args }); return this; }
     fill(...args: unknown[]) { this.calls.push({ fn: "fill", args }); return this; }
     stroke(...args: unknown[]) { this.calls.push({ fn: "stroke", args }); return this; }
+    on(event: string, handler: (...args: unknown[]) => void) { this.handlers[event] = handler; return this; }
   }
-  return { Graphics: FakeGraphics, Container: class {}, Text: class {} };
+  class FakeContainer {
+    children: FakeGraphics[] = [];
+    addChild(child: FakeGraphics) { this.children.push(child); return child; }
+  }
+  return { Graphics: FakeGraphics, Container: FakeContainer, Text: class {} };
 });
 
 vi.mock("../pixi/tessellationGeometry", () => ({
   getCellCenter: (x: number, y: number) => ({ x: x * 10, y: y * 10 }),
 }));
 
-const { drawCrossFloorStub, computeRegionBadgeRingPos } = await import("../pixi/renderers/floorBadge");
-const { Graphics } = await import("pixi.js");
+vi.mock("../pixi/renderers/floorNavigation", () => ({
+  navigateToFloor: vi.fn(),
+}));
 
-type FakeG = InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] };
+const { drawCrossFloorStub, computeRegionBadgeRingPos, attachFloorBadgeNavigation, FLOOR_BADGE_STROKE_WIDTH } = await import(
+  "../pixi/renderers/floorBadge"
+);
+const { navigateToFloor } = await import("../pixi/renderers/floorNavigation");
+const { Graphics, Container } = await import("pixi.js");
+
+type FakeG = InstanceType<typeof Graphics> & {
+  calls: { fn: string; args: unknown[] }[];
+  eventMode: string;
+  cursor: string;
+  handlers: Record<string, (...args: unknown[]) => void>;
+};
+interface FakeCont {
+  children: FakeG[];
+}
 function newG(): FakeG {
-  return new Graphics() as FakeG;
+  return new Graphics() as unknown as FakeG;
 }
 
 describe("drawCrossFloorStub", () => {
@@ -93,5 +117,35 @@ describe("computeRegionBadgeRingPos", () => {
     const ringRadius = 8.75; // (4 + 3) * 1.25
     expect(pos.x).toBeCloseTo(10);
     expect(pos.y).toBeCloseTo(10 - ringRadius); // center.y - ringRadius (straight up)
+  });
+});
+
+describe("attachFloorBadgeNavigation", () => {
+  function newContainer(): FakeCont {
+    return new Container() as unknown as FakeCont;
+  }
+
+  it("sizes the hit-circle to radius + FLOOR_BADGE_STROKE_WIDTH, covering the badge's stroked border", () => {
+    const container = newContainer();
+    attachFloorBadgeNavigation(container as never, 20, 30, 5, 2);
+    const hit = container.children[0];
+    const [circleCall] = hit.calls.filter((c) => c.fn === "circle");
+    expect(circleCall.args).toEqual([20, 30, 5 + FLOOR_BADGE_STROKE_WIDTH]);
+  });
+
+  it("wires pointertap to navigateToFloor with the given target floor index", () => {
+    const container = newContainer();
+    attachFloorBadgeNavigation(container as never, 0, 0, 5, 3);
+    const hit = container.children[0];
+    hit.handlers["pointertap"]();
+    expect(navigateToFloor).toHaveBeenCalledWith(3);
+  });
+
+  it("makes the hit-circle interactive with a pointer cursor", () => {
+    const container = newContainer();
+    attachFloorBadgeNavigation(container as never, 0, 0, 5, 0);
+    const hit = container.children[0];
+    expect(hit.eventMode).toBe("static");
+    expect(hit.cursor).toBe("pointer");
   });
 });

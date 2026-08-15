@@ -170,9 +170,26 @@ export function drawCrossFloorStub(
   }
 }
 
+/** Adds an invisible hit-circle covering a whole badge drawn by `drawFloorBadge` at `(cx, cy)`,
+ *  wired to `navigateToFloor` so clicking anywhere on the badge (not just its digit text) switches
+ *  `FloorSwitcher` to `targetFloorIndex` (GitHub issue #368). `radius` is `drawFloorBadge`'s own
+ *  fill radius; the hit area extends `FLOOR_BADGE_STROKE_WIDTH` further out to also cover the
+ *  border ring, which `drawFloorBadge` strokes outward (`alignment: 0`) past that fill radius.
+ *  Shared by every floor-badge call site (`TeleportRenderer`, `RegionOverlayRenderer`,
+ *  `drawCrossFloorBadge` below) so the hit-area radius can never drift from the badge's own drawn
+ *  extent. */
+export function attachFloorBadgeNavigation(container: Container, cx: number, cy: number, radius: number, targetFloorIndex: number): void {
+  const hit = new Graphics().circle(cx, cy, radius + FLOOR_BADGE_STROKE_WIDTH).fill({ color: 0, alpha: 0 });
+  hit.eventMode = "static";
+  hit.cursor = "pointer";
+  hit.on("pointertap", () => navigateToFloor(targetFloorIndex));
+  container.addChild(hit);
+}
+
 /** Draws one cross-floor badge (GitHub issue #339) into `nodesContainer`, plus an invisible
- *  hit-circle wired to `navigateToFloor` so clicking the badge switches `FloorSwitcher` to the
- *  target floor. Pair with `drawCrossFloorStub` for the connecting line. */
+ *  hit-circle wired to `navigateToFloor` (`attachFloorBadgeNavigation`) so clicking the badge
+ *  switches `FloorSwitcher` to the target floor. Pair with `drawCrossFloorStub` for the connecting
+ *  line. */
 export function drawCrossFloorBadge(
   nodesContainer: Container,
   badgePos: Pos,
@@ -185,10 +202,5 @@ export function drawCrossFloorBadge(
   const g = new Graphics();
   drawFloorBadge(g, radius, badgePos.x, badgePos.y, color, borderColor, floorColor, targetFloorIndex + 1);
   nodesContainer.addChild(g);
-
-  const hit = new Graphics().circle(badgePos.x, badgePos.y, radius).fill({ color: 0, alpha: 0 });
-  hit.eventMode = "static";
-  hit.cursor = "pointer";
-  hit.on("pointertap", () => navigateToFloor(targetFloorIndex));
-  nodesContainer.addChild(hit);
+  attachFloorBadgeNavigation(nodesContainer, badgePos.x, badgePos.y, radius, targetFloorIndex);
 }
