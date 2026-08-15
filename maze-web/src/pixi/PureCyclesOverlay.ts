@@ -1,19 +1,15 @@
-import { Container, Graphics } from "pixi.js";
+import { Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto, NavEdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
-import { drawDirectionArrow } from "./renderers/wallUtils";
-import { TILE_SIZE } from "./constants";
 import { buildNodePositions } from "./tessellationGeometry";
-import { buildCrossFloorMarkers } from "./BaseGraphRenderer";
-import { drawCrossFloorStub, drawCrossFloorBadge } from "./renderers/floorBadge";
-import type { NodeCellResolver } from "./BaseGraphRenderer";
+import { BaseGraphRenderer, buildCrossFloorMarkers, buildPathRenderEdges } from "./BaseGraphRenderer";
+import type { NodeCellResolver, Pos } from "./BaseGraphRenderer";
 
 const PURE_NODE_COLOR = canvas.node.start;
 const PURE_EDGE_COLOR = canvas.node.start;
 const PURE_NODE_ALPHA = 1.0;
-const PURE_EDGE_WIDTH = 2;
 
 export interface PureCyclesData {
   nodes: NodeDto[];
@@ -38,118 +34,43 @@ export interface PureCyclesData {
   activeFloorIndex?: number;
 }
 
-interface Pos { x: number; y: number; }
-
-export class PureCyclesOverlay {
-  private container: Container;
-  private graphics: Graphics | null = null;
-  private badgesContainer: Container;
-
-  constructor(container: Container) {
-    this.container = container;
-    this.badgesContainer = new Container();
-    this.container.addChild(this.badgesContainer);
-  }
-
+export class PureCyclesOverlay extends BaseGraphRenderer {
   render(data: PureCyclesData): void {
-    this.clear();
+    this.resetContainers();
     const { nodes, navEdges, edges, pureCycleNodeIds, pureCycleEdgeKeys, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex } = data;
     if (nodes.length === 0) return;
 
     const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
     const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg, directedPairs);
 
-    const g = new Graphics();
-
-    // Track which directed edges exist (for one-way arrow logic).
-    const allNavEdgeKeys = new Set<string>();
-    for (const e of navEdges) {
-      allNavEdgeKeys.add(`${e.path[0]},${e.path[e.path.length - 1]}`);
-    }
-
-    const pureCycleHopPairs: { from: number; to: number }[] = [];
-    for (const e of navEdges) {
+    const pureCycleNavEdges = navEdges.filter((e) => {
       const fromId = e.path[0];
       const toId = e.path[e.path.length - 1];
-      const edgeKey = `${fromId},${toId}`;
-      if (!pureCycleEdgeKeys.has(edgeKey)) continue;
-      pureCycleHopPairs.push({ from: fromId, to: toId });
+      return pureCycleEdgeKeys.has(`${fromId},${toId}`);
+    });
+    // `hasReverse` is checked against the *full* nav-edge graph (`reverseCheckEdges`), not just
+    // the pure-cycle subset — a pure-cycle edge's reverse direction can exist among nav edges
+    // without itself being part of the pure-cycle set, and should still suppress the one-way arrow.
+    const renderEdges = buildPathRenderEdges(pureCycleNavEdges, nodePos, navEdges);
+    this.drawEdges(renderEdges, PURE_EDGE_COLOR);
 
-      const path = e.path.map(nid => nodePos.get(nid)).filter((p): p is Pos => p !== undefined);
-      if (path.length < 2) continue;
-
-      const first = path[0];
-      const last = path[path.length - 1];
-      const dxStart = path[1].x - first.x;
-      const dyStart = path[1].y - first.y;
-      const dxEnd = last.x - path[path.length - 2].x;
-      const dyEnd = last.y - path[path.length - 2].y;
-      const lenStart = Math.sqrt(dxStart * dxStart + dyStart * dyStart);
-      const lenEnd = Math.sqrt(dxEnd * dxEnd + dyEnd * dyEnd);
-      if (lenStart < 1 || lenEnd < 1) continue;
-
-      const margin = NODE_RADIUS + 1;
-      const startPt: Pos = { x: first.x + (dxStart / lenStart) * margin, y: first.y + (dyStart / lenStart) * margin };
-      const endPt: Pos = { x: last.x - (dxEnd / lenEnd) * margin, y: last.y - (dyEnd / lenEnd) * margin };
-
-      g.moveTo(startPt.x, startPt.y);
-      for (let i = 1; i < path.length - 1; i++) g.lineTo(path[i].x, path[i].y);
-      g.lineTo(endPt.x, endPt.y);
-      g.stroke({ width: PURE_EDGE_WIDTH, color: PURE_EDGE_COLOR });
-
-      // Arrow for one-way edges (no reverse in nav edges).
-      const hasReverse = allNavEdgeKeys.has(`${toId},${fromId}`);
-      if (!hasReverse) {
-        const midX = (startPt.x + endPt.x) / 2;
-        const midY = (startPt.y + endPt.y) / 2;
-        const edgeLen = Math.sqrt((endPt.x - startPt.x) ** 2 + (endPt.y - startPt.y) ** 2);
-        if (edgeLen >= 1) {
-          const ux = (endPt.x - startPt.x) / edgeLen;
-          const uy = (endPt.y - startPt.y) / edgeLen;
-          drawDirectionArrow(g, midX, midY, ux, uy, TILE_SIZE * 0.18, PURE_EDGE_COLOR);
-        }
-      }
-    }
-
-    // Cross-floor stubs draw before nodes, so they tuck behind node circles like a real edge.
-    let markers: ReturnType<typeof buildCrossFloorMarkers> = [];
     if (resolveNodeLevel && resolveNodeCell && activeFloorIndex !== undefined) {
-      markers = buildCrossFloorMarkers(pureCycleHopPairs, nodePos, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, NODE_RADIUS);
-      for (const marker of markers) {
-        drawCrossFloorStub(g, marker.nodePos, marker.badgePos, marker.direction, PURE_EDGE_COLOR, NODE_RADIUS, NODE_RADIUS);
-      }
+      const pureCycleHopPairs = pureCycleNavEdges.map((e) => ({ from: e.path[0], to: e.path[e.path.length - 1] }));
+      const markers = buildCrossFloorMarkers(pureCycleHopPairs, nodePos, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, NODE_RADIUS);
+      this.renderCrossFloorMarkers(markers, NODE_RADIUS, PURE_EDGE_COLOR, PURE_EDGE_COLOR, PURE_EDGE_COLOR);
     }
 
-    // Draw nodes.
+    const g = new Graphics();
     for (const nodeId of pureCycleNodeIds) {
       const pos = nodePos.get(nodeId);
       if (!pos) continue;
       g.circle(pos.x, pos.y, NODE_RADIUS);
       g.fill({ color: PURE_NODE_COLOR, alpha: PURE_NODE_ALPHA });
     }
-
-    this.container.addChild(g);
-    this.graphics = g;
-
-    for (const marker of markers) {
-      drawCrossFloorBadge(
-        this.badgesContainer, marker.badgePos, marker.targetFloorIndex, NODE_RADIUS,
-        PURE_EDGE_COLOR, PURE_EDGE_COLOR, canvas.floor.default,
-      );
-    }
+    this.nodesContainer.addChild(g);
   }
 
   clear(): void {
-    if (this.graphics) {
-      this.graphics.destroy();
-      this.graphics = null;
-    }
-    this.badgesContainer.destroy({ children: true });
-    this.badgesContainer = new Container();
-    this.container.addChild(this.badgesContainer);
-  }
-
-  destroy(): void {
-    this.clear();
+    this.resetContainers();
   }
 }

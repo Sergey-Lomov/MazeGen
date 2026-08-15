@@ -7,6 +7,8 @@ import { buildNodePositions } from "./tessellationGeometry";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { touchedNodeIds } from "./renderers/edgeUtils";
 import { canvas } from "./colorTokens";
+import { BaseGraphRenderer, buildCrossFloorMarkers } from "./BaseGraphRenderer";
+import type { NodeCellResolver } from "./BaseGraphRenderer";
 
 const HIGHLIGHT_COLOR = canvas.debug.issueHighlight;
 const HIGHLIGHT_WIDTH = 3;
@@ -28,24 +30,32 @@ export interface IssueHighlightData {
    * but both are rendered independently if both happen to be set. */
   regionGroups: number[][] | null;
   cfg: TessellationConfig;
+  /** Resolves a node id's own floor (`selectNodeLevelResolver`, built from the *unscoped* node
+   *  list) — needed to detect a highlighted edge whose other endpoint crosses to another floor
+   *  (GitHub issue #367, closing the #339 gap for this overlay). Omitted callers draw no
+   *  cross-floor badges. */
+  resolveNodeLevel?: (id: number) => number | undefined;
+  /** Resolves a node id's own cell coordinate, from the *unscoped* node list — needed alongside
+   *  `resolveNodeLevel` to place a cross-floor badge (GitHub issue #367). */
+  resolveNodeCell?: NodeCellResolver;
+  /** The active floor's own `levels_ordered()` index — required alongside `resolveNodeLevel`. */
+  activeFloorIndex?: number;
 }
 
-export class IssueHighlightOverlay {
-  private container: Container;
-  private graphics: Graphics | null = null;
+export class IssueHighlightOverlay extends BaseGraphRenderer {
   private readonly regionContainer: Container;
   private readonly regionRenderer: RegionHighlightRenderer;
 
   constructor(container: Container) {
-    this.container = container;
+    super(container);
     this.regionContainer = new Container();
-    this.container.addChild(this.regionContainer);
+    this.overlayContainer.addChild(this.regionContainer);
     this.regionRenderer = new RegionHighlightRenderer(this.regionContainer);
   }
 
   render(data: IssueHighlightData): void {
-    this.clearEdges();
-    const { nodes, edges, allEdges, regionGroups, cfg } = data;
+    this.resetContainers();
+    const { nodes, edges, allEdges, regionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex } = data;
     const hasEdges = edges != null && edges.length > 0;
     const hasRegions = regionGroups != null && regionGroups.length > 0 && nodes.length > 0;
 
@@ -57,11 +67,10 @@ export class IssueHighlightOverlay {
 
     if (!hasEdges || nodes.length === 0) return;
 
-    const g = new Graphics();
-
     const directedPairs = allEdges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
     const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg, directedPairs);
 
+    const g = new Graphics();
     for (const [from, to] of edges) {
       const a = nodePos.get(from);
       const b = nodePos.get(to);
@@ -70,32 +79,30 @@ export class IssueHighlightOverlay {
       g.lineTo(b.x, b.y);
       g.stroke({ width: HIGHLIGHT_WIDTH, color: HIGHLIGHT_COLOR, alpha: HIGHLIGHT_ALPHA });
     }
+    this.edgesContainer.addChild(g);
 
+    if (resolveNodeLevel && resolveNodeCell && activeFloorIndex !== undefined) {
+      const markers = buildCrossFloorMarkers(edges.map(([from, to]) => ({ from, to })), nodePos, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, NODE_RADIUS);
+      this.renderCrossFloorMarkers(markers, NODE_RADIUS, HIGHLIGHT_COLOR, HIGHLIGHT_COLOR, HIGHLIGHT_COLOR);
+    }
+
+    const nodesG = new Graphics();
     for (const nodeId of touchedNodeIds(edges)) {
       const pos = nodePos.get(nodeId);
       if (!pos) continue;
-      g.circle(pos.x, pos.y, NODE_RADIUS);
-      g.fill({ color: HIGHLIGHT_COLOR, alpha: HIGHLIGHT_ALPHA });
+      nodesG.circle(pos.x, pos.y, NODE_RADIUS);
+      nodesG.fill({ color: HIGHLIGHT_COLOR, alpha: HIGHLIGHT_ALPHA });
     }
-
-    this.container.addChild(g);
-    this.graphics = g;
-  }
-
-  private clearEdges(): void {
-    if (this.graphics) {
-      this.graphics.destroy();
-      this.graphics = null;
-    }
+    this.nodesContainer.addChild(nodesG);
   }
 
   clear(): void {
-    this.clearEdges();
+    this.resetContainers();
     this.regionRenderer.clear();
   }
 
-  destroy(): void {
-    this.clear();
+  override destroy(): void {
+    super.destroy();
     this.regionRenderer.destroy();
     this.regionContainer.destroy();
   }

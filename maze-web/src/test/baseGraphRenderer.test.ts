@@ -97,6 +97,23 @@ describe("buildPathRenderEdges", () => {
     expect(result).toHaveLength(1);
     expect(result[0].path).toEqual([{ x: 0, y: 0 }, { x: 10, y: 0 }]);
   });
+
+  it("checks hasReverse against reverseCheckEdges, not navEdges, when given a filtered subset", () => {
+    // Reverse direction (3->1) exists in the full graph but not in the filtered subset itself —
+    // `reverseCheckEdges` must still catch it (GitHub issue #367 follow-up regression:
+    // `PureCyclesOverlay` originally checked reverse only within its own filtered subset, wrongly
+    // drawing a one-way arrow whenever the reverse edge existed but wasn't itself in that subset).
+    const subset = [{ path: [1, 2, 3] }];
+    const fullGraph = [{ path: [1, 2, 3] }, { path: [3, 2, 1] }];
+    const result = buildPathRenderEdges(subset, nodePos, fullGraph);
+    expect(result).toHaveLength(1);
+    expect(result[0].hasReverse).toBe(true);
+  });
+
+  it("defaults reverseCheckEdges to navEdges itself when omitted", () => {
+    const result = buildPathRenderEdges([{ path: [1, 2, 3] }], nodePos);
+    expect(result[0].hasReverse).toBe(false);
+  });
 });
 
 describe("buildCrossFloorMarkers", () => {

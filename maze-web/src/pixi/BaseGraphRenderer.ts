@@ -59,12 +59,19 @@ export function buildPairedRenderEdges(
   return renderEdges;
 }
 
+/** Builds one `RenderEdge` per nav-edge path, margin-trimmed and arrow-suppressed on the caller's
+ *  own reverse-direction convention (`RenderEdge.hasReverse`). `reverseCheckEdges` (defaults to
+ *  `navEdges` itself) is the edge list `hasReverse` is checked against — pass the *full* nav-edge
+ *  graph here when `navEdges` is already filtered down to a subset (e.g. `PureCyclesOverlay`'s
+ *  pure-cycle edges), so a subset edge's reverse direction is still found even when that reverse
+ *  edge isn't itself part of the subset. */
 export function buildPathRenderEdges(
   navEdges: { path: number[] }[],
   nodePos: Map<number, Pos>,
+  reverseCheckEdges: { path: number[] }[] = navEdges,
 ): RenderEdge[] {
   const edgeKeys = new Set<string>();
-  for (const e of navEdges) {
+  for (const e of reverseCheckEdges) {
     const fromNode = e.path[0];
     const toNode = e.path[e.path.length - 1];
     edgeKeys.add(`${fromNode}->${toNode}`);
@@ -179,20 +186,25 @@ const CROSS_FLOOR_BADGE_BORDER = canvas.node.start;
  *  ordinary edges use, so it tucks behind node circles like a real edge — and each badge itself into
  *  `nodesContainer`. `lineColor` mirrors whatever edge color the caller's own overlay uses (e.g.
  *  `PureCyclesOverlay`'s green), so a badge's stub reads as the same kind of connection as the rest
- *  of that overlay's edges. */
+ *  of that overlay's edges. `badgeColor`/`badgeBorderColor` default to the shared cross-floor badge
+ *  color (`NavGraphRenderer`/`MazeGraphRenderer`'s own) — pass the caller's own edge color to match
+ *  an overlay whose edges aren't that shared color (e.g. `RouteOverlay`'s yellow, an
+ *  `IssueHighlightOverlay` highlight color), same rationale as `lineColor`. */
 export function drawCrossFloorMarkers(
   edgesContainer: Container,
   nodesContainer: Container,
   markers: CrossFloorMarker[],
   r: number,
   lineColor: number = canvas.edge.default,
+  badgeColor: number = CROSS_FLOOR_BADGE_COLOR,
+  badgeBorderColor: number = CROSS_FLOOR_BADGE_BORDER,
 ): void {
   const stubs = new Graphics();
   for (const marker of markers) {
     drawCrossFloorStub(stubs, marker.nodePos, marker.badgePos, marker.direction, lineColor, NODE_RADIUS, r);
     drawCrossFloorBadge(
       nodesContainer, marker.badgePos, marker.targetFloorIndex, r,
-      CROSS_FLOOR_BADGE_COLOR, CROSS_FLOOR_BADGE_BORDER, canvas.floor.default,
+      badgeColor, badgeBorderColor, canvas.floor.default,
     );
   }
   edgesContainer.addChild(stubs);
@@ -285,8 +297,8 @@ export abstract class BaseGraphRenderer {
    *  itself into `nodesContainer` (since it stands in for an off-floor node at the on-floor
    *  endpoint). `lineColor` defaults to the ordinary edge color; pass the caller's own edge color
    *  (e.g. `PureCyclesOverlay`'s green) to match that overlay's own edge style. */
-  protected renderCrossFloorMarkers(markers: CrossFloorMarker[], radius: number, lineColor?: number): void {
-    drawCrossFloorMarkers(this.edgesContainer, this.nodesContainer, markers, radius, lineColor);
+  protected renderCrossFloorMarkers(markers: CrossFloorMarker[], radius: number, lineColor?: number, badgeColor?: number, badgeBorderColor?: number): void {
+    drawCrossFloorMarkers(this.edgesContainer, this.nodesContainer, markers, radius, lineColor, badgeColor, badgeBorderColor);
   }
 
   protected redrawNode(g: Graphics, r: number, color: number): void {

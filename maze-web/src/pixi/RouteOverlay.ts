@@ -1,9 +1,9 @@
-import { Container, Graphics } from "pixi.js";
+import { Graphics } from "pixi.js";
 import { NODE_RADIUS } from "./renderConstants";
 import type { RouteInfoDto, NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { buildNodePositions } from "./tessellationGeometry";
-import { buildCrossFloorMarkers } from "./BaseGraphRenderer";
+import { BaseGraphRenderer, buildCrossFloorMarkers } from "./BaseGraphRenderer";
 import type { NodeCellResolver } from "./BaseGraphRenderer";
 import { drawCrossFloorBadge } from "./renderers/floorBadge";
 import { canvas } from "./colorTokens";
@@ -31,23 +31,10 @@ export interface RouteData {
   activeFloorIndex?: number;
 }
 
-export class RouteOverlay {
-  private container: Container;
-  private g: Graphics;
-  private badgesContainer: Container;
-
-  constructor(container: Container) {
-    this.container = container;
-    this.g = new Graphics();
-    container.addChild(this.g);
-    this.badgesContainer = new Container();
-    container.addChild(this.badgesContainer);
-  }
-
+export class RouteOverlay extends BaseGraphRenderer {
   render(data: RouteData): void {
+    this.resetContainers();
     const { routeInfo, nodes, edges, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex } = data;
-    this.g.clear();
-    this.clearBadges();
     if (routeInfo.path.length < 2) return;
 
     const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
@@ -55,6 +42,8 @@ export class RouteOverlay {
 
     const positions = routeInfo.path.map((id) => nodeMap.get(id));
     if (positions.filter((p) => p !== undefined).length < 2) return;
+
+    const g = new Graphics();
 
     // Draw each maximal run of on-floor positions as its own polyline segment — a gap in `positions`
     // (a hop through an off-floor node) must NOT connect the runs on either side of it directly,
@@ -66,55 +55,46 @@ export class RouteOverlay {
         if (segmentStart === -1) segmentStart = i;
       } else if (segmentStart !== -1) {
         if (i - segmentStart >= 2) {
-          this.g.moveTo(positions[segmentStart]!.x, positions[segmentStart]!.y);
-          for (let j = segmentStart + 1; j < i; j++) this.g.lineTo(positions[j]!.x, positions[j]!.y);
+          g.moveTo(positions[segmentStart]!.x, positions[segmentStart]!.y);
+          for (let j = segmentStart + 1; j < i; j++) g.lineTo(positions[j]!.x, positions[j]!.y);
         }
         segmentStart = -1;
       }
     }
-    this.g.stroke({ color: ROUTE_LINE_COLOR, width: ROUTE_LINE_WIDTH });
+    g.stroke({ color: ROUTE_LINE_COLOR, width: ROUTE_LINE_WIDTH });
+    this.edgesContainer.addChild(g);
 
-    let markers: ReturnType<typeof buildCrossFloorMarkers> = [];
-    let badgeRadius = ROUTE_DOT_RADIUS * 1.5;
+    const badgeRadius = ROUTE_DOT_RADIUS * 1.5;
     if (resolveNodeLevel && resolveNodeCell && activeFloorIndex !== undefined) {
       const hopPairs: { from: number; to: number }[] = [];
       for (let i = 1; i < routeInfo.path.length; i++) {
         hopPairs.push({ from: routeInfo.path[i - 1], to: routeInfo.path[i] });
       }
-      markers = buildCrossFloorMarkers(hopPairs, nodeMap, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, badgeRadius);
+      const markers = buildCrossFloorMarkers(hopPairs, nodeMap, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, badgeRadius);
+      // Route's own stub is a plain center-to-center line, no margin trim, no direction arrow —
+      // its own visual identity, unlike the other overlays' `drawCrossFloorStub`-based stub.
+      const stubs = new Graphics();
       for (const marker of markers) {
-        this.g.moveTo(marker.nodePos.x, marker.nodePos.y).lineTo(marker.badgePos.x, marker.badgePos.y)
+        stubs.moveTo(marker.nodePos.x, marker.nodePos.y).lineTo(marker.badgePos.x, marker.badgePos.y)
           .stroke({ width: ROUTE_LINE_WIDTH, color: ROUTE_LINE_COLOR });
+        drawCrossFloorBadge(
+          this.nodesContainer, marker.badgePos, marker.targetFloorIndex, badgeRadius,
+          ROUTE_LINE_COLOR, ROUTE_LINE_COLOR, canvas.floor.default,
+        );
       }
+      this.edgesContainer.addChild(stubs);
     }
 
+    const dots = new Graphics();
     for (const p of positions) {
       if (!p) continue;
-      this.g.circle(p.x, p.y, ROUTE_DOT_RADIUS);
+      dots.circle(p.x, p.y, ROUTE_DOT_RADIUS);
     }
-    this.g.fill(ROUTE_LINE_COLOR);
-
-    for (const marker of markers) {
-      drawCrossFloorBadge(
-        this.badgesContainer, marker.badgePos, marker.targetFloorIndex, badgeRadius,
-        ROUTE_LINE_COLOR, ROUTE_LINE_COLOR, canvas.floor.default,
-      );
-    }
-  }
-
-  private clearBadges(): void {
-    this.badgesContainer.destroy({ children: true });
-    this.badgesContainer = new Container();
-    this.container.addChild(this.badgesContainer);
+    dots.fill(ROUTE_LINE_COLOR);
+    this.nodesContainer.addChild(dots);
   }
 
   clear(): void {
-    this.g.clear();
-    this.clearBadges();
-  }
-
-  destroy(): void {
-    this.g.destroy();
-    this.badgesContainer.destroy({ children: true });
+    this.resetContainers();
   }
 }

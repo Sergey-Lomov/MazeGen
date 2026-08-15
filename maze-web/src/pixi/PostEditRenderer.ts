@@ -281,12 +281,22 @@ export class PostEditRenderer extends BaseFieldRenderer {
   private redrawIssueHighlight(state: MazeState): void {
     if (!this.cfg) return;
     const { nodes, edges } = this.floorScoped(state);
+    const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+    const unscopedNodeById = new Map(state.nodes.map((n) => [n.id, n]));
+    const resolveNodeCell = (id: number): [number, number] | undefined => {
+      const n = unscopedNodeById.get(id);
+      return n ? [n.x, n.y] : undefined;
+    };
+    const activeFloorIndex = Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
     this.issueHighlight.render({
       nodes,
       edges: state.hoveredIssueLoopEdges,
       allEdges: edges,
       regionGroups: state.hoveredIssueRegionGroups,
       cfg: this.cfg,
+      resolveNodeLevel,
+      resolveNodeCell,
+      activeFloorIndex,
     });
   }
 

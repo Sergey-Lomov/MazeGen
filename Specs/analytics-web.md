@@ -204,7 +204,7 @@ Owns all analytics canvas layers. Lives in `analyticsContainer` which is a synce
 
 ### IssueHighlightOverlay
 
-Draws straight lines directly between base-graph node centers for `hoveredIssueLoopEdges` (red, `0xff4444`) — no path compression needed since these are base-graph edges, not nav-edges. Visibility is independent of `showGraphOverlay`; it activates purely from `hoveredIssueLoopEdges` set by hovering an `IssueBubble` in `IssuesBlock`.
+Extends `BaseGraphRenderer` (GitHub issue #367). Draws straight lines directly between base-graph node centers for `hoveredIssueLoopEdges` (red, `0xff4444`) — no path compression needed since these are base-graph edges, not nav-edges. Visibility is independent of `showGraphOverlay`; it activates purely from `hoveredIssueLoopEdges` set by hovering an `IssueBubble` in `IssuesBlock`. Draws cross-floor badges (own red color) for a highlighted edge whose other endpoint is on a different floor, same mechanism as `PureCyclesOverlay`/`RouteOverlay` — see `floors.md`'s "Cross-floor badges in the graph overlays" section. `AnalyticsRenderer` passes `resolveNodeLevel`/`resolveNodeCell`/`activeFloorIndex`; `PostEditRenderer`'s own `redrawIssueHighlight` builds the same trio from its own unscoped `state.nodes`.
 
 ### MazeOverlayRenderer
 

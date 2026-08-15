@@ -334,7 +334,7 @@ export class AnalyticsRenderer {
     const showIssueHighlight = analyticsOpen && (hasLoopEdges || hasRegionGroups);
     this.issueHighlightContainer.visible = showIssueHighlight;
     if (showIssueHighlight) {
-      this.issueHighlightRenderer.render({ nodes, edges: hoveredIssueLoopEdges, allEdges: edges, regionGroups: hoveredIssueRegionGroups, cfg });
+      this.issueHighlightRenderer.render({ nodes, edges: hoveredIssueLoopEdges, allEdges: edges, regionGroups: hoveredIssueRegionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex });
     } else {
       this.issueHighlightRenderer.clear();
     }
