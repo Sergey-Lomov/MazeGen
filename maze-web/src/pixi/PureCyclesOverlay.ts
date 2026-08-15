@@ -6,6 +6,9 @@ import { canvas } from "./colorTokens";
 import { drawDirectionArrow } from "./renderers/wallUtils";
 import { TILE_SIZE } from "./constants";
 import { buildNodePositions } from "./tessellationGeometry";
+import { buildCrossFloorMarkers } from "./BaseGraphRenderer";
+import { drawCrossFloorStub, drawCrossFloorBadge } from "./renderers/floorBadge";
+import type { NodeCellResolver } from "./BaseGraphRenderer";
 
 const PURE_NODE_COLOR = canvas.node.start;
 const PURE_EDGE_COLOR = canvas.node.start;
@@ -24,6 +27,15 @@ export interface PureCyclesData {
   /** Set of "from_maze_id,to_maze_id" keys for pure-cycle edges. */
   pureCycleEdgeKeys: Set<string>;
   cfg: TessellationConfig;
+  /** Resolves a node id's own floor (`selectNodeLevelResolver`, built from the *unscoped* node
+   *  list) — needed to detect a pure-cycle edge whose other endpoint crosses to another floor
+   *  (GitHub issue #339). Omitted callers draw no cross-floor badges. */
+  resolveNodeLevel?: (id: number) => number | undefined;
+  /** Resolves a node id's own cell coordinate, from the *unscoped* node list — needed alongside
+   *  `resolveNodeLevel` to place a cross-floor badge (GitHub issue #339). */
+  resolveNodeCell?: NodeCellResolver;
+  /** The active floor's own `levels_ordered()` index — required alongside `resolveNodeLevel`. */
+  activeFloorIndex?: number;
 }
 
 interface Pos { x: number; y: number; }
@@ -31,14 +43,17 @@ interface Pos { x: number; y: number; }
 export class PureCyclesOverlay {
   private container: Container;
   private graphics: Graphics | null = null;
+  private badgesContainer: Container;
 
   constructor(container: Container) {
     this.container = container;
+    this.badgesContainer = new Container();
+    this.container.addChild(this.badgesContainer);
   }
 
   render(data: PureCyclesData): void {
     this.clear();
-    const { nodes, navEdges, edges, pureCycleNodeIds, pureCycleEdgeKeys, cfg } = data;
+    const { nodes, navEdges, edges, pureCycleNodeIds, pureCycleEdgeKeys, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex } = data;
     if (nodes.length === 0) return;
 
     const directedPairs = edges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
@@ -52,11 +67,13 @@ export class PureCyclesOverlay {
       allNavEdgeKeys.add(`${e.path[0]},${e.path[e.path.length - 1]}`);
     }
 
+    const pureCycleHopPairs: { from: number; to: number }[] = [];
     for (const e of navEdges) {
       const fromId = e.path[0];
       const toId = e.path[e.path.length - 1];
       const edgeKey = `${fromId},${toId}`;
       if (!pureCycleEdgeKeys.has(edgeKey)) continue;
+      pureCycleHopPairs.push({ from: fromId, to: toId });
 
       const path = e.path.map(nid => nodePos.get(nid)).filter((p): p is Pos => p !== undefined);
       if (path.length < 2) continue;
@@ -94,6 +111,15 @@ export class PureCyclesOverlay {
       }
     }
 
+    // Cross-floor stubs draw before nodes, so they tuck behind node circles like a real edge.
+    let markers: ReturnType<typeof buildCrossFloorMarkers> = [];
+    if (resolveNodeLevel && resolveNodeCell && activeFloorIndex !== undefined) {
+      markers = buildCrossFloorMarkers(pureCycleHopPairs, nodePos, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, NODE_RADIUS);
+      for (const marker of markers) {
+        drawCrossFloorStub(g, marker.nodePos, marker.badgePos, marker.direction, PURE_EDGE_COLOR, NODE_RADIUS, NODE_RADIUS);
+      }
+    }
+
     // Draw nodes.
     for (const nodeId of pureCycleNodeIds) {
       const pos = nodePos.get(nodeId);
@@ -104,6 +130,13 @@ export class PureCyclesOverlay {
 
     this.container.addChild(g);
     this.graphics = g;
+
+    for (const marker of markers) {
+      drawCrossFloorBadge(
+        this.badgesContainer, marker.badgePos, marker.targetFloorIndex, NODE_RADIUS,
+        PURE_EDGE_COLOR, PURE_EDGE_COLOR, canvas.floor.default,
+      );
+    }
   }
 
   clear(): void {
@@ -111,6 +144,9 @@ export class PureCyclesOverlay {
       this.graphics.destroy();
       this.graphics = null;
     }
+    this.badgesContainer.destroy({ children: true });
+    this.badgesContainer = new Container();
+    this.container.addChild(this.badgesContainer);
   }
 
   destroy(): void {

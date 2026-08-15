@@ -4,8 +4,8 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { base, hexToNumber } from "../styles/palette";
-import { BaseGraphRenderer, nodeColor, nodeRadius, buildPairedRenderEdges } from "./BaseGraphRenderer";
-import type { RenderNode } from "./BaseGraphRenderer";
+import { BaseGraphRenderer, nodeColor, nodeRadius, buildPairedRenderEdges, buildCrossFloorMarkers } from "./BaseGraphRenderer";
+import type { RenderNode, NodeCellResolver } from "./BaseGraphRenderer";
 import { buildNodePositions } from "./tessellationGeometry";
 
 const LABEL_STYLE = new TextStyle({ fontSize: 9, fill: hexToNumber(base.textInverse) });
@@ -20,6 +20,15 @@ export interface MazeGraphData {
   finish: number | null;
   cfg: TessellationConfig;
   interactive?: boolean;
+  /** Resolves a node id's own floor (`selectNodeLevelResolver`, built from the *unscoped* node
+   *  list) — needed to detect a base-graph edge whose other endpoint crosses to another floor
+   *  (GitHub issue #339). Omitted callers draw no cross-floor badges. */
+  resolveNodeLevel?: (id: number) => number | undefined;
+  /** Resolves a node id's own cell coordinate, from the *unscoped* node list — needed alongside
+   *  `resolveNodeLevel` to place a cross-floor badge (GitHub issue #339). */
+  resolveNodeCell?: NodeCellResolver;
+  /** The active floor's own `levels_ordered()` index — required alongside `resolveNodeLevel`. */
+  activeFloorIndex?: number;
 }
 
 export class MazeGraphRenderer extends BaseGraphRenderer {
@@ -36,7 +45,10 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
       || data.edges !== prev.edges
       || data.start !== prev.start
       || data.finish !== prev.finish
-      || data.cfg !== prev.cfg;
+      || data.cfg !== prev.cfg
+      || data.resolveNodeLevel !== prev.resolveNodeLevel
+      || data.resolveNodeCell !== prev.resolveNodeCell
+      || data.activeFloorIndex !== prev.activeFloorIndex;
     const debugChanged = !prev
       || data.showNodeIds !== prev.showNodeIds
       || data.showCoords !== prev.showCoords;
@@ -58,7 +70,7 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
   }
 
   private renderGraph(data: MazeGraphData): void {
-    const { nodes, edges, showNodeIds, showCoords, selectedNode, start, finish, cfg, interactive = true } = data;
+    const { nodes, edges, showNodeIds, showCoords, selectedNode, start, finish, cfg, interactive = true, resolveNodeLevel, resolveNodeCell, activeFloorIndex } = data;
     this.nodeViews.clear();
     this.nodeLabels.clear();
     this.resetContainers();
@@ -71,6 +83,11 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
 
     const renderNodes: RenderNode[] = nodes.map(n => ({ id: n.id, pos: nodePos.get(n.id)! }));
     this.nodeViews = this.drawNodes(renderNodes, selectedNode, start, finish, interactive);
+
+    if (resolveNodeLevel && resolveNodeCell && activeFloorIndex !== undefined) {
+      const markers = buildCrossFloorMarkers(edges, nodePos, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, NODE_RADIUS);
+      this.renderCrossFloorMarkers(markers, NODE_RADIUS);
+    }
 
     for (const node of nodes) {
       const label = this.makeLabel(node, showNodeIds, showCoords);

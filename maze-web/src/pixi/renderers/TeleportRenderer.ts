@@ -1,4 +1,4 @@
-import { Container, Graphics, Text } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import type { TeleportEdge, TeleportLineStyle, TeleportGroupOverride } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
@@ -10,6 +10,7 @@ import { TeleportConnectorRouter, type EndpointMarkerStyle } from "./teleportCon
 import { buildTeleportGroups, type TeleportGroup } from "../selectors/teleportGroups";
 import { useMazeStore } from "../../store/mazeStore";
 import { navigateToFloor } from "./floorNavigation";
+import { drawFloorBadge } from "./floorBadge";
 
 const SQUARE_STROKE_WIDTH = 3;
 /** Extra radius (GitHub issue #293 follow-up) beyond the shape's own drawn radius for a group's
@@ -415,7 +416,7 @@ export class TeleportRenderer {
     for (const [px, py] of group.points) {
       const floorNumber = this.selectionFloorBadges.get(coordKey(px, py));
       if (floorNumber !== undefined) {
-        this.drawFloorBadge(g, r, px, py, color, borderColor, style.floorColor, floorNumber);
+        drawFloorBadge(g, r, px, py, color, borderColor, style.floorColor, floorNumber);
         if (this.selectionFloorNavigable) {
           const targetFloorIndex = floorNumber - 1;
           const hit = new Graphics().circle(px, py, r).fill({ color: 0, alpha: 0 });
@@ -513,40 +514,6 @@ export class TeleportRenderer {
     draw(style.connectorWidth, color, style.arrowSize);
   }
 
-  /** Draws a cross-floor teleport's own "leads to another floor" badge (GitHub issue #337) at a
-   *  connector's cut-off midpoint — a plain circle (always round, regardless of `style.shape`, so it
-   *  never reads as an ordinary teleport marker), filled in the group's own `color` with a
-   *  `borderColor` ring, and the target floor's 1-based display number cut out of the fill in
-   *  `floorColor` (a "knockout" look, readable against the filled circle the same way a stencil
-   *  digit reads against a solid background) — not `borderColor` text on a `floorColor` fill, which
-   *  would make the badge itself blend into the surrounding floor instead of reading as a solid
-   *  marker. Sized at `r * 1.6` (well past the ordinary marker-label convention) since a single
-   *  digit needs to be legible at a glance among other overlapping canvas markers. Radius matches
-   *  the ordinary marker's own `r` so the connector's routing/gap math (sized for a normal endpoint)
-   *  still clears it correctly. Plain `Text` for now (blurs past its own rasterized size on
-   *  zoom-in) — true distance-field text is tracked separately (GitHub issue #352); `resolution` is
-   *  set well above 1 so this stays acceptably sharp for typical zoom levels in the meantime. */
-  private drawFloorBadge(g: Graphics, r: number, cx: number, cy: number, color: number, borderColor: number, floorColor: number, floorNumber: number): void {
-    g.circle(cx, cy, r).fill(color).stroke({ width: SQUARE_STROKE_WIDTH, color: borderColor, alignment: 0 });
-    const label = new Text({
-      text: `${floorNumber}`,
-      // `trim: true` makes pixi measure the digit's own tight ink bounding box (`Text.updateBounds`
-      // switches from `CanvasTextMetrics.measureText`'s nominal line-height box to
-      // `getCanvasBoundingBox`'s actual rendered-pixel scan — see pixi's own `CanvasTextGenerator`)
-      // instead of the font's nominal line-height box — without it, `anchor.set(0.5)` centers on the
-      // line-height box, which sits a typical font's digits (no descenders to balance the ascent
-      // above the baseline) visibly above true center. No headless canvas is available in this repo
-      // to pixel-verify the resulting centering directly (and per `maze-web/CLAUDE.md`, a browser
-      // isn't used for visual checks either) — this relies on reading pixi's own measurement code,
-      // not a rendered comparison.
-      style: { fontSize: Math.max(r * 1.6, 12), fill: floorColor, fontWeight: "bold", trim: true },
-      resolution: 4,
-    });
-    label.anchor.set(0.5);
-    label.x = cx;
-    label.y = cy;
-    g.addChild(label);
-  }
 
   /** Draws one marker — filled with `color` when `filled`, or with `floorColor` (empty look) when
    *  not, always bordered in `borderColor` on top. `mixed` draws a diagonal split of `shape` itself

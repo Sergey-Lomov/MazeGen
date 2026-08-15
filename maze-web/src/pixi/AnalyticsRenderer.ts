@@ -186,6 +186,14 @@ export class AnalyticsRenderer {
     const { nodes, edges: floorScopedStateEdges } = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId);
     const activeFloorIndex = state.floors.findIndex((f) => f.id === state.activeFloorId);
 
+    const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+    const unscopedNodeById = new Map(state.nodes.map((n) => [n.id, n]));
+    const resolveNodeCell = (id: number): [number, number] | undefined => {
+      const n = unscopedNodeById.get(id);
+      return n ? [n.x, n.y] : undefined;
+    };
+    const resolvedActiveFloorIndex = Math.max(activeFloorIndex, 0);
+
     const graphAnalytics = (postEditAnalytics?.statistics ?? state.statistics)?.graph_stats;
     const navNodes   = postEditAnalytics?.navNodes   ?? state.navNodes;
     const navEdges   = postEditAnalytics?.navEdges   ?? state.navEdges;
@@ -224,10 +232,10 @@ export class AnalyticsRenderer {
     this.markersContainer.visible     = showMaze;
     if (showMaze) {
       const teleportFloorContext: TeleportFloorContext = {
-        resolveNodeLevel: selectNodeLevelResolver(state.nodes),
-        unscopedNodeById: new Map(state.nodes.map((n) => [n.id, n])),
+        resolveNodeLevel,
+        unscopedNodeById,
         unscopedEdges: edges,
-        activeFloorIndex: Math.max(activeFloorIndex, 0),
+        activeFloorIndex: resolvedActiveFloorIndex,
       };
       this.mazeOverlay.render({ nodes, edges, start, finish, cfg, teleportFloorContext, teleportFloorNavigable: true, allEdges: state.edges });
     }
@@ -241,7 +249,7 @@ export class AnalyticsRenderer {
     if (showVertical) {
       const nodeById = new Map(nodes.map((n) => [n.id, n]));
       const verticalConnectionMarkers = buildVerticalConnectionMarkers(
-        nodeById, floorScopedStateEdges, cfg, selectNodeLevelResolver(state.nodes), Math.max(activeFloorIndex, 0),
+        nodeById, floorScopedStateEdges, cfg, resolveNodeLevel, resolvedActiveFloorIndex,
         selectVerticalPassagePairSet(state.edges), state.edges,
       );
       this.verticalConnections.render({ markers: verticalConnectionMarkers, style: DEFAULT_VERTICAL_STYLE, interactive: true });
@@ -287,6 +295,7 @@ export class AnalyticsRenderer {
         selectedNode: null,
         start, finish, cfg,
         interactive: false,
+        resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex,
       });
     }
 
@@ -294,7 +303,7 @@ export class AnalyticsRenderer {
     const showNavGraph = analyticsOpen && showNavGraphOverlay && navNodes.length > 0;
     this.navGraphContainer.visible = showNavGraph;
     if (showNavGraph) {
-      this.navGraphRenderer.render({ nodes, navNodes, navEdges, edges, start, finish, cfg });
+      this.navGraphRenderer.render({ nodes, navNodes, navEdges, edges, start, finish, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex });
     }
 
     // Pure cycles overlay
@@ -305,7 +314,7 @@ export class AnalyticsRenderer {
     const showPureCycles = analyticsOpen && showPureCyclesOverlay && navNodes.length > 0;
     this.pureCyclesContainer.visible = showPureCycles;
     if (showPureCycles) {
-      this.pureCyclesRenderer.render({ nodes, navEdges, edges, pureCycleNodeIds, pureCycleEdgeKeys, cfg });
+      this.pureCyclesRenderer.render({ nodes, navEdges, edges, pureCycleNodeIds, pureCycleEdgeKeys, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex });
     } else {
       this.pureCyclesRenderer.clear();
     }
@@ -314,7 +323,7 @@ export class AnalyticsRenderer {
     const showRoute = analyticsOpen && showRouteOverlay && routeInfo != null;
     this.routeContainer.visible = showRoute;
     if (showRoute) {
-      this.routeRenderer.render({ routeInfo, nodes, edges, cfg });
+      this.routeRenderer.render({ routeInfo, nodes, edges, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex });
     } else {
       this.routeRenderer.clear();
     }
