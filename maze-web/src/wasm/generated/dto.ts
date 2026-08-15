@@ -274,8 +274,10 @@ export interface VerticalStatsDto {
   one_way_passages_up: number;
   one_way_passages_down: number;
   /**
-   * Count of distinct `Elevator` groups (the full fan of edges connecting the same x-y point
-   * across its chosen floors counts once), not a raw edge count.
+   * Count of distinct `Elevator` groups — a connected component of `Elevator` edges (see
+   * `maze_core::graph::Graph::elevator_groups`), never grouped by shared x-y point: two
+   * elevators can occupy the same point without being connected (e.g. one spanning floors 1-3,
+   * a separate one spanning floors 4-6) and count as two groups.
    */
   elevator_groups: number;
   cross_floor_teleports: number;

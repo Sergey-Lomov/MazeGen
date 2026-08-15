@@ -4,6 +4,7 @@ pub mod issue_payload;
 pub mod event;
 pub mod check;
 pub mod comparison;
+pub mod geometric_floor_mode;
 pub mod cycle_kind;
 pub mod rule;
 pub mod rule_params;
@@ -33,6 +34,7 @@ pub use issue_kinds::{
 };
 pub use check::Check;
 pub use comparison::Comparison;
+pub use geometric_floor_mode::GeometricFloorMode;
 pub use cycle_kind::CycleKind;
 pub use rule::{Rule, RuleTrait, ApplyOutcome, RuleIterationOutcome};
 pub use rule_params::{RuleParams, RuleParamDescriptor, RuleParamKind, RULE_PARAM_DESCRIPTORS, PARAM_PROTECT_ROUTE, rule_param_applies_to};
@@ -57,12 +59,12 @@ pub use checks::{
     MinRegionCountCheck, MIN_REGION_COUNT_DEFAULT,
     TeleportDuplicatesConnectionCheck,
     TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT_COMPARISON,
-    TeleportGeometricLengthCheck, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT_COMPARISON,
+    TeleportGeometricLengthCheck, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT_COMPARISON, TELEPORT_GEOMETRIC_LENGTH_DEFAULT_FLOOR_MODE,
     TeleportGraphDistanceCheck, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_GRAPH_DISTANCE_DEFAULT_COMPARISON,
     TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
     TeleportGroupProximityCheck, TeleportProximityEdge, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT,
     OneWayWaypointDistanceCheck, OneWayWaypoint, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT_COMPARISON,
-    OneWayGroupGeometricProximityCheck, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
+    OneWayGroupGeometricProximityCheck, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
     OneWayGroupGraphProximityCheck, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
     OneWayGroupSuperHubCheck, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
     MinOneWayCountCheck, MIN_ONE_WAY_COUNT_DEFAULT,
@@ -76,7 +78,7 @@ pub use checks::{
     SplitTeleportIntersectionCheck, SplitTeleportDirection,
     MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT,
     MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT,
-    SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
+    SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
     SplitGroupGraphProximityCheck, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
     SplitCountCheck, SPLIT_COUNT_DEFAULT,
     SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT,

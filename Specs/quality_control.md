@@ -806,6 +806,26 @@ Shared utility the two checks below build on — see GitHub issue #74. `Tessella
 
 `Tessellation::edge_position(from, to) -> (f64, f64)` (GitHub issue #199 follow-up) is the canonical Cartesian position of the *edge* between two nodes, same convention/scale as `cartesian` — needed because an edge like a one-way passage renders visually on the tile border it crosses, not at either endpoint node, so node-to-node distance systematically underestimates how far apart two edges actually render. Default impl (used by every current tessellation) is the midpoint of the two endpoints' `cartesian` positions; a future tessellation whose edges don't sit at the node midpoint overrides this method instead of every caller reimplementing the correction. `space::geometric_edge_distance::<T>(a_from, a_to, b_from, b_to) -> f64` is the Euclidean distance between two edges' `edge_position`s — the edge-to-edge counterpart of `geometric_distance`, used by `OneWayGroupGeometricProximityCheck` (see below).
 
+**Floor-aware variants (GitHub issue #342, multi-floor mazes)**: `space::floor_aware_distance::<T>(a_level: usize, a: T::Point, b_level: usize, b: T::Point, include_height: bool) -> f64` and `space::floor_aware_edge_distance::<T>(a_level, a_from, a_to, b_level, b_from, b_to, include_height: bool) -> f64` are the multi-floor counterparts of `geometric_distance`/`geometric_edge_distance`. With `include_height: false` they reproduce the plain (non-floor-aware) function exactly, floor indices ignored entirely — the correct behavior for a single-floor maze or when a caller wants x-y distance only. With `include_height: true`, the floor difference (`b_level as f64 - a_level as f64`) is folded in as a third coordinate, one unit per floor apart, combined with the x-y distance via ordinary 3D Euclidean distance (`sqrt(dx² + dy² + dz²)`). These functions never decide *whether* a cross-floor pair should be evaluated at all — that decision belongs entirely to `GeometricFloorMode` below; a caller wanting "cross-floor pairs never count" skips calling the distance function for a mismatched pair rather than expecting it here.
+
+**`GeometricFloorMode` (`quality_control::geometric_floor_mode`, GitHub issue #342)** — shared cross-floor policy enum used by every geometric-distance check (`TeleportGeometricLengthCheck`, `OneWayGroupGeometricProximityCheck`, `SplitGroupGeometricProximityCheck`), mirroring `Comparison`'s "shared parametrizing enum" shape:
+
+```rust
+pub enum GeometricFloorMode {
+    Ignore,
+    AsCoordinate,
+    SameFloorOnly,
+}
+```
+
+- `Ignore` — floor is ignored entirely; plain x-y distance, same behavior as before floors existed (`include_height() == false`).
+- `AsCoordinate` — floor difference becomes a third coordinate, one unit per floor apart, folded into the same Euclidean distance as x/y via `floor_aware_distance`/`floor_aware_edge_distance` (`include_height() == true`).
+- `SameFloorOnly` — a pair spanning different floors never fails the check, regardless of `Comparison`/threshold; each check's own scan skips such a pair *before* computing any distance at all (the distance function is never called for it). Same-floor pairs under this mode still compute a plain x-y distance (`include_height() == false`).
+
+`as_str()`/`from_str()` round-trip through `"ignore"`/`"as_coordinate"`/`"same_floor_only"` for the wasm param boundary. **Default is `SameFloorOnly` for all three checks** (`TELEPORT_GEOMETRIC_LENGTH_DEFAULT_FLOOR_MODE`, `ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE`, `SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE`, all `= GeometricFloorMode::SameFloorOnly`) — this reproduces pre-#342 behavior exactly for a newly-added floor (a cross-floor pair never counted as close, since no cross-floor pair could exist before floors did), so enabling multi-floor mazes doesn't silently change any existing single-floor maze's check results, and doesn't silently start flagging cross-floor pairs a user hasn't opted into comparing.
+
+Repair strategies for these three checks (`TeleportGroupSelectStrategy`, `OneWayGroupSelectStrategy`, `SplitGroupSelectStrategy`, all built on the shared `group_select_apply` — see `repair.md`) need no floor-mode awareness: they operate purely on element/edge ids and membership counts once a group has already been identified by the check, with no coordinate/geometry logic of their own.
+
 **WASM Interface**: `cartesian_coords(config: { tessellation_type, points }) -> [[f64; 2]]` (`maze-wasm/src/lib.rs`) exposes `cartesian` to the frontend — given a tessellation type and a list of points, returns each point's canonical projection in the same order. `maze-web`'s single caller is `cartesianCache.ts`: `warmCartesianCache(cfg)` batches one call over every field cell whenever the tessellation kind changes (confirmTessellation, project load, generate), populating a `Map<"x,y", [number, number]>` that `getCartesian(x, y, cfg)` reads from synchronously — render loops call tile-center lookups every frame, so a per-call wasm round-trip would be far too slow. A cache miss (a point outside the prewarmed field, e.g. an invalid preset connection's endpoint) falls back to a single-point wasm call, cached afterward. `tessellationGeometry.ts`'s `squareCenter`/`hexCenter`/`triCenter` read from this cache and apply their own tile-size scale, half-tile offset, and (for hex/tri) orientation rotation on top — the single source of truth for tile geometry, replacing what used to be independently-maintained TypeScript formulas.
 
 ### TeleportGeometricLengthCheck
@@ -818,12 +838,15 @@ pub struct TeleportGeometricLengthCheck {
     pub comparison: Comparison,
     pub length: f64,
     pub protect_route: bool,
+    pub floor_mode: GeometricFloorMode,
 }
 ```
 
 Merges the former `TeleportMinGeometricLengthCheck`/`TeleportMaxGeometricLengthCheck` — see GitHub issue #74/#177's "Comparison operator" rule above (`comparison: Lt` reproduces the old "shorter than minimum" behavior, `Gt` reproduces "longer than maximum"). `check_type_id() == "teleport_geometric_length"`. Flags a teleport edge whose geometric (Euclidean, unit tile scale) distance between its entry and exit compares against `length`. A teleport meant to feel like a meaningful "jump" across the maze becomes pointless noise if its endpoints are only a couple of tiles apart in Cartesian space, even when they're topologically far (no direct passage); conversely a maximum keeps teleports from spanning the entire field when a more local "jump" is desired.
 
-Distance is purely geometric — via `space::geometric_distance` (`Tessellation::cartesian`, see the "Geometric distance" section above), resolving each teleport edge's `from`/`to` maze `NodeId` to its tessellation `Point` via `maze.field.point_of(...)`. Never logical/graph distance (that's `TeleportWaypointDistanceCheck`'s concern). A teleport endpoint whose point can't be resolved (shouldn't happen for a live edge in a well-formed `Maze`) is silently excluded from `invalid`, not treated as distance `0`.
+Distance is purely geometric — via `space::floor_aware_distance` (`Tessellation::cartesian`, see the "Geometric distance"/floor-aware-variants section above), resolving each teleport edge's `from`/`to` maze `NodeId` to its tessellation `Point` and level index via `maze.field.point_of(...)`/`maze.field.level_index_of(...)`. Never logical/graph distance (that's `TeleportWaypointDistanceCheck`'s concern). A teleport endpoint whose point/level can't be resolved (shouldn't happen for a live edge in a well-formed `Maze`) is silently excluded from `invalid`, not treated as distance `0`.
+
+`floor_mode` (GitHub issue #342, default `SameFloorOnly`) governs how a teleport crossing floors is treated — see `GeometricFloorMode` above. Under `SameFloorOnly` a cross-floor teleport is skipped before any distance is computed, so it never fails the check regardless of `comparison`/`length`.
 
 No waypoint/edge-selector parameters — unlike `TeleportWaypointDistanceCheck`, geometric length is a property of the teleport edge alone, not relative to start/finish. Default `length` of `0.0` with `comparison: Lt` never fires on its own (no distance is negative).
 
@@ -1039,6 +1062,7 @@ pub struct OneWayGroupGeometricProximityCheck {
     pub instance_id: String,
     pub distance: f64,
     pub protect_route: bool,
+    pub floor_mode: GeometricFloorMode,
 }
 
 pub struct OneWayGroupGraphProximityCheck {
@@ -1050,7 +1074,9 @@ pub struct OneWayGroupGraphProximityCheck {
 
 Flag a pair of one-way passage edges (`EdgeKind::Basic`, single direction) placed too close to each other — see GitHub issue #199, part of the one-way management epic (#92). Individual one-way checks (issue #198) only ever look at one edge at a time; these instead catch problems that emerge from *pairs* of one-way edges being close to each other, which no single-edge check can detect. Mirror `TeleportGroupProximityCheck`'s role, split into two independently configurable checks for the two metrics that check's `own_edge`/`other_edge`-agnostic one-way equivalent needs: `OneWayGroupGeometricProximityCheck` (Euclidean, unit tile scale) and `OneWayGroupGraphProximityCheck` (topological tile-hops via the shared nav-graph distance map, same `compute_distance_map_filtered_bounded` infrastructure `TeleportGroupProximityCheck` uses, excluding teleport hops from the traversal for the same reason that check does). Both share identical scan/protection shape; only the distance metric differs.
 
-**`OneWayGroupGeometricProximityCheck` measures edge-to-edge, not node-to-node (GitHub issue #199 follow-up)**: a one-way edge renders visually on the tile *border* it crosses, not at either endpoint node — so distance is `space::geometric_edge_distance(own_from, own_to, other_from, other_to)`, the Euclidean distance between the two edges' `Tessellation::edge_position`s directly, not a `min` over node-endpoint combinations. `Tessellation::edge_position(from, to)` defaults to the midpoint of `cartesian(from)`/`cartesian(to)` — correct for every current tessellation (square/hex/tri all place an edge crossing squarely between its two nodes); a future tessellation whose edges don't sit at the node midpoint overrides `edge_position` itself rather than this check special-casing it.
+**`OneWayGroupGeometricProximityCheck` measures edge-to-edge, not node-to-node (GitHub issue #199 follow-up)**: a one-way edge renders visually on the tile *border* it crosses, not at either endpoint node — so distance is `space::floor_aware_edge_distance(own_level, own_from, own_to, other_level, other_from, other_to, floor_mode.include_height())`, the Euclidean distance between the two edges' `Tessellation::edge_position`s directly, not a `min` over node-endpoint combinations. `Tessellation::edge_position(from, to)` defaults to the midpoint of `cartesian(from)`/`cartesian(to)` — correct for every current tessellation (square/hex/tri all place an edge crossing squarely between its two nodes); a future tessellation whose edges don't sit at the node midpoint overrides `edge_position` itself rather than this check special-casing it.
+
+`floor_mode` (GitHub issue #342, default `SameFloorOnly`) governs how a pair of one-way edges on different floors is treated — see `GeometricFloorMode` above. Under `SameFloorOnly` a cross-floor pair is skipped before `own_level`/`other_level` are ever compared via distance; a level lookup only needs the edge's `from` endpoint (`EdgeKind::Basic` edges are always same-floor by construction — cross-floor connectivity uses dedicated `EdgeKind::VerticalPassage`/`EdgeKind::Elevator` kinds instead).
 
 `OneWayGroupGraphProximityCheck` has no equivalent edge-position notion (topological distance is measured in tile-hops between nodes, not Cartesian points) — instead, unlike `TeleportGroupProximityCheck`, there is no edge-role selector: raw distance between two one-way edges is the closest pairing across both endpoints of each edge (`min` over the 2×2 `from`/`to` combinations, directed `min(forward, reverse)` per combination, mirroring `TeleportGroupProximityCheck`'s "worst-case/either-direction" reduction), same rationale as `OneWayWaypointDistanceCheck`'s own no-role-selector design.
 
@@ -1237,6 +1263,7 @@ pub const SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 pub struct SplitGroupGeometricProximityCheck {
     pub instance_id: String,
     pub distance: f64,
+    pub floor_mode: GeometricFloorMode,
 }
 
 pub struct SplitGroupGraphProximityCheck {
@@ -1247,9 +1274,11 @@ pub struct SplitGroupGraphProximityCheck {
 
 See GitHub issue #249, part of epic #246. Flag a pair of split tiles placed too close to each other — mirror `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck`'s role: no single-tile check (`SplitDistanceFromWaypointCheck`) can catch a problem that only emerges from two tiles being close to each other. Same tile-collection shape as `MaxSplitCountCheck` (deduped `all_points()`, `nodes_at(point).len() >= 2`, full node list including slot-0).
 
-`SplitGroupGeometricProximityCheck` measures Euclidean distance (`space::geometric_distance`) between the two tiles' points directly (unlike an edge-position check, a split tile is a whole point, not a border-crossing edge). `SplitGroupGraphProximityCheck` measures the minimum **exact** directed tile-hop distance (`min(forward, reverse)`, same "worst-case/either-direction" reduction `TeleportGroupProximityCheck`/`OneWayGroupGraphProximityCheck` use) over every combination of the two tiles' own nodes, via `graph::distance_map::exact_tile_distance` (see `graph-analytics.md`) — **not** the coarser `corridor_index`-based nav-node snapping `SplitDistanceFromWaypointCheck` accepts, since this check compares the distance value itself against a threshold (GitHub issue #249's original bug report: the coarse approximation could report two split nodes on the same long corridor as distance ≈0 regardless of their true tile-hop separation).
+`SplitGroupGeometricProximityCheck` measures Euclidean distance (`space::floor_aware_distance`) between the two tiles' points directly (unlike an edge-position check, a split tile is a whole point, not a border-crossing edge). `SplitGroupGraphProximityCheck` measures the minimum **exact** directed tile-hop distance (`min(forward, reverse)`, same "worst-case/either-direction" reduction `TeleportGroupProximityCheck`/`OneWayGroupGraphProximityCheck` use) over every combination of the two tiles' own nodes, via `graph::distance_map::exact_tile_distance` (see `graph-analytics.md`) — **not** the coarser `corridor_index`-based nav-node snapping `SplitDistanceFromWaypointCheck` accepts, since this check compares the distance value itself against a threshold (GitHub issue #249's original bug report: the coarse approximation could report two split nodes on the same long corridor as distance ≈0 regardless of their true tile-hop separation).
 
 For each tile, scans every other tile for the first one closer than `distance` — as soon as one problematic pair is found, it's recorded and the scan moves to the next tile. A symmetric pair is typically recorded twice (once per scan direction), each as its own 2-element group with `to_remove: 1` — same shape `OneWayGroupGeometricProximityCheck` produces. If any pairs are found, fires `InvalidSplitTileGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "distance", ...)` chained on. Both allow multiple simultaneous instances (`allow_multiple_instances: true`) — distinct thresholds are a legitimate simultaneous configuration, same rationale as the one-way/teleport proximity checks.
+
+`SplitGroupGeometricProximityCheck.floor_mode` (GitHub issue #342, default `SameFloorOnly`) governs how a pair of split tiles on different floors is treated — see `GeometricFloorMode` above; `SplitGroupGraphProximityCheck` has no equivalent parameter, since tile-hop distance is already floor-agnostic by construction (a hop count only exists along real graph edges, which never silently cross floors outside dedicated `VerticalPassage`/`Elevator` edge kinds). Level indices for all of a maze's tiles are precomputed once per `repair_check` call (`levels_ordered().enumerate()` into a `HashMap<LevelId, usize>`) rather than looked up per pair, avoiding an O(L) linear scan per point.
 
 `SplitGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_SPLIT_TILE_GROUP`.
 
@@ -1609,7 +1638,7 @@ unified QualityControlEngine" section for how a `QcRuleConfig` is validated and 
 | `min_region_count` | `missing_regions` | `region_class: Enum(options=[path,alternative,unreachable,trap], default=trap)`, `count: Integer(default=1, min=0, max=1_000_000)` | no |
 | `teleport_duplicates_connection` | `invalid_teleport` | — (rule-level `protect_route`, see "Rule-level parameters" above) | no |
 | `teleport_waypoint_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `waypoint: Enum(options=[start,finish,any], default=any)`, `edge: Enum(options=[entry_only,entry_or_exit], default=entry_or_exit)` (rule-level `protect_route`) | no |
-| `teleport_geometric_length` | `invalid_teleport` | `length: Float(default=0.0, min=0.0, max=1_000_000.0)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)` (rule-level `protect_route`) | no |
+| `teleport_geometric_length` | `invalid_teleport` | `length: Float(default=0.0, min=0.0, max=1_000_000.0)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` (rule-level `protect_route`) | no |
 | `teleport_graph_distance` | `invalid_teleport` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)` (rule-level `protect_route`) | no |
 | `teleport_super_hub_avoidance` | `invalid_teleport` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)`, `edge_hub: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` (rule-level `protect_route`) | no |
 | `teleport_split_intersection` | `invalid_teleport` | `edge_split: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` (rule-level `protect_route`) | no |
@@ -1619,7 +1648,7 @@ unified QualityControlEngine" section for how a `QcRuleConfig` is validated and 
 | `one_way_waypoint_distance` | `invalid_one_way` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `waypoint: Enum(options=[start,finish,any], default=any)` (rule-level `protect_route`) | yes |
 | `min_one_way_count` | `missing_one_ways` | `min_one_ways: Integer(default=1, min=1, max=1_000_000)` | no |
 | `min_one_way_ratio` | `missing_one_ways` | `min_ratio: Integer(default=10, min=0, max=100)` | no |
-| `one_way_group_geometric_proximity` | `invalid_one_way_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)` (rule-level `protect_route`) | yes |
+| `one_way_group_geometric_proximity` | `invalid_one_way_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` (rule-level `protect_route`) | yes |
 | `one_way_group_graph_proximity` | `invalid_one_way_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)` (rule-level `protect_route`) | yes |
 | `one_way_group_super_hub` | `invalid_one_way_group` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)` | no |
 | `max_one_way_count` | `invalid_one_way_group` | `max_one_ways: Integer(default=1_000, min=0, max=1_000_000)` | no |
@@ -1627,7 +1656,7 @@ unified QualityControlEngine" section for how a `QcRuleConfig` is validated and 
 | `split_distance_from_waypoint` | `invalid_split_tile` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `waypoint: Enum(options=[start,finish,any], default=any)` | no |
 | `max_split_count` | `invalid_split_tile_group` | `max_split_count: Integer(default=20, min=0, max=1_000_000)` | no |
 | `max_split_density` | `invalid_split_tile_group` | `max_split_density: Integer(default=30, min=0, max=100)` | no |
-| `split_group_geometric_proximity` | `invalid_split_tile_group` | `split_group_geometric_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)` | no |
+| `split_group_geometric_proximity` | `invalid_split_tile_group` | `split_group_geometric_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` | no |
 | `split_group_graph_proximity` | `invalid_split_tile_group` | `split_group_graph_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)` | no |
 | `split_count` | `missing_split_tiles` | `split_count: Integer(default=1, min=0, max=1_000_000)`, `patterns: PatternList(with_weights=false)` | no |
 | `split_density` | `missing_split_tiles` | `split_density: Integer(default=10, min=0, max=100)`, `split_tile_estimate: Integer(default=1, min=1, max=100_000)`, `patterns: PatternList(with_weights=false)` | no |

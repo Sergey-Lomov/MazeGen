@@ -1,6 +1,6 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
-use maze_core::quality_control::{Comparison, CycleKind};
+use maze_core::quality_control::{Comparison, CycleKind, GeometricFloorMode};
 use maze_core::RegionClass;
 
 #[derive(Serialize)]
@@ -125,6 +125,23 @@ pub fn comparison_param(default: Comparison) -> ParamDescriptor {
         label: "Comparison",
         kind: ParamKindDto::Enum {
             options: Comparison::ALL.iter().map(|c| c.as_str()).collect(),
+            default: default.as_str(),
+        },
+    }
+}
+
+/// Shared `floor_mode` param descriptor — GitHub issue #342: geometric (coordinate-based) distance
+/// checks (`teleport_geometric_length`, `one_way_group_geometric_proximity`,
+/// `split_group_geometric_proximity`) expose how a cross-floor pair is treated, since raw x-y
+/// distance is meaningless across floors (each floor has its own independent coordinate system).
+/// `default` is `SameFloorOnly` for all three (pre-#342 behavior for the checks that already
+/// effectively ignored cross-floor pairs, and the safest choice for the two that didn't).
+pub fn geometric_floor_mode_param(default: GeometricFloorMode) -> ParamDescriptor {
+    ParamDescriptor {
+        id: "floor_mode",
+        label: "Floor mode",
+        kind: ParamKindDto::Enum {
+            options: GeometricFloorMode::ALL.iter().map(|m| m.as_str()).collect(),
             default: default.as_str(),
         },
     }

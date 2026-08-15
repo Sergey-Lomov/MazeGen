@@ -3,15 +3,16 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::comparison::Comparison;
-use crate::quality_control::InvalidTeleportIssue;
+use crate::quality_control::{GeometricFloorMode, InvalidTeleportIssue};
 use super::teleport_geometric_length_core::{build_issue, find_invalid_teleports};
 
 pub const TELEPORT_GEOMETRIC_LENGTH_DEFAULT: f64 = 0.0;
 pub const TELEPORT_GEOMETRIC_LENGTH_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
+pub const TELEPORT_GEOMETRIC_LENGTH_DEFAULT_FLOOR_MODE: GeometricFloorMode = GeometricFloorMode::SameFloorOnly;
 
 /// Flags a teleport edge whose geometric (Euclidean, unit tile scale — see
-/// `space::geometric_distance`) distance between its entry and exit compares against a configured
-/// threshold — see GitHub issue #74/#177. Merges the former
+/// `space::floor_aware_distance`) distance between its entry and exit compares against a
+/// configured threshold — see GitHub issue #74/#177/#342. Merges the former
 /// `TeleportMinGeometricLengthCheck`/`TeleportMaxGeometricLengthCheck` (a min/max pair validating
 /// the same single-teleport property, both flagging `INVALID_TELEPORT`) into one check type
 /// parametrized by `Comparison` — `comparison: Lt` reproduces the old "shorter than minimum"
@@ -23,13 +24,15 @@ pub struct TeleportGeometricLengthCheck {
     /// GitHub issue #78, default `true`: a teleport lying on the maze's current start->finish
     /// route (`is_teleport_route_protected`) is never included in `invalid`.
     pub protect_route: bool,
+    /// GitHub issue #342: how a cross-floor teleport is treated by this geometric check.
+    pub floor_mode: GeometricFloorMode,
 }
 
 impl<T: Tessellation> Check<T, InvalidTeleportIssue> for TeleportGeometricLengthCheck {
     fn check_type_id(&self) -> &'static str { "teleport_geometric_length" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidTeleportIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let invalid = find_invalid_teleports(maze, self.protect_route, self.comparison, self.length);
+        let invalid = find_invalid_teleports(maze, self.protect_route, self.comparison, self.length, self.floor_mode);
         if let Some(issue) = build_issue(invalid, &self.instance_id, self.length) {
             issues.push(issue);
         }
@@ -61,7 +64,7 @@ mod tests {
     #[test]
     fn lt_fires_when_shorter_than_minimum() {
         let maze = maze_with_teleport((0, 0), (1, 0)); // distance 1.0
-        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true, floor_mode: GeometricFloorMode::Ignore };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -78,7 +81,7 @@ mod tests {
         maze.meta.start = Some(start);
         maze.meta.finish = Some(finish);
 
-        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true, floor_mode: GeometricFloorMode::Ignore };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -88,7 +91,7 @@ mod tests {
     #[test]
     fn lt_silent_when_longer_than_minimum() {
         let maze = maze_with_teleport((0, 0), (10, 0)); // distance 10.0
-        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true, floor_mode: GeometricFloorMode::Ignore };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -98,7 +101,7 @@ mod tests {
     #[test]
     fn lt_silent_when_threshold_is_zero() {
         let maze = maze_with_teleport((0, 0), (1, 0));
-        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 0.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 0.0, protect_route: true, floor_mode: GeometricFloorMode::Ignore };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -108,7 +111,7 @@ mod tests {
     #[test]
     fn gt_fires_when_longer_than_maximum() {
         let maze = maze_with_teleport((0, 0), (10, 0)); // distance 10.0
-        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, length: 5.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, length: 5.0, protect_route: true, floor_mode: GeometricFloorMode::Ignore };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -125,7 +128,7 @@ mod tests {
         maze.meta.start = Some(start);
         maze.meta.finish = Some(finish);
 
-        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, length: 5.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, length: 5.0, protect_route: true, floor_mode: GeometricFloorMode::Ignore };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -135,7 +138,7 @@ mod tests {
     #[test]
     fn gt_silent_when_shorter_than_maximum() {
         let maze = maze_with_teleport((0, 0), (1, 0)); // distance 1.0
-        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, length: 5.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Gt, length: 5.0, protect_route: true, floor_mode: GeometricFloorMode::Ignore };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -154,7 +157,7 @@ mod tests {
         g.add_edge(a, b, EdgeKind::Basic);
         let maze = Maze::new(field, g);
 
-        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 100.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 100.0, protect_route: true, floor_mode: GeometricFloorMode::Ignore };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -176,7 +179,7 @@ mod tests {
         g.add_edge(b, a, EdgeKind::Teleport);
         let maze = Maze::new(field, g);
 
-        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true };
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true, floor_mode: GeometricFloorMode::Ignore };
         let mut issues = Vec::new();
         let mut rng = crate::random::MazeRng::seed_from_u64(0);
         check.repair_check(&maze, &mut issues, &mut rng, ());
@@ -187,5 +190,66 @@ mod tests {
         let mut flagged = issues[0].invalid.clone();
         flagged.sort_unstable();
         assert_eq!(flagged, teleport_ids, "both teleport directions must be flagged, not just one");
+    }
+
+    /// Two floors, same x-y coordinates (0,0) and (1,0) on each — a teleport crosses from floor 0
+    /// to floor 1 at the same coordinates a same-floor length-1.0 teleport would use, isolating
+    /// the floor-mode behavior from x-y distance itself.
+    fn maze_with_cross_floor_teleport() -> Maze<SquareTessellation> {
+        let mut ids = IdGenerator::new();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(20, 20), &mut ids).unwrap();
+        let bottom = field.single_level_id();
+        let top = field.add_level(crate::space::Field::<SquareTessellation>::new(square_rect(20, 20), &mut ids).unwrap());
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.node_at(bottom, SquarePoint { x: 0, y: 0 }).unwrap();
+        let b = field.node_at(top, SquarePoint { x: 1, y: 0 }).unwrap();
+        g.add_edge(a, b, EdgeKind::Teleport);
+        Maze::new(field, g)
+    }
+
+    #[test]
+    fn ignore_mode_measures_plain_xy_distance_across_floors() {
+        let maze = maze_with_cross_floor_teleport(); // x-y distance 1.0, floors differ
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true, floor_mode: GeometricFloorMode::Ignore };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
+        assert_eq!(issues.len(), 1, "Ignore mode measures x-y only (1.0 < 5.0), floor difference has no effect");
+    }
+
+    #[test]
+    fn as_coordinate_mode_folds_floor_difference_into_the_distance() {
+        let maze = maze_with_cross_floor_teleport(); // x-y distance 1.0, one floor apart -> sqrt(2)
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 1.1, protect_route: true, floor_mode: GeometricFloorMode::AsCoordinate };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
+        assert!(issues.is_empty(), "sqrt(1^2+1^2) = 1.41 is not < 1.1, unlike the plain x-y distance of 1.0");
+
+        issues.clear();
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 1.5, protect_route: true, floor_mode: GeometricFloorMode::AsCoordinate };
+        check.repair_check(&maze, &mut issues, &mut rng, ());
+        assert_eq!(issues.len(), 1, "sqrt(2) = 1.41 < 1.5 must fire");
+    }
+
+    #[test]
+    fn same_floor_only_mode_never_flags_a_cross_floor_teleport() {
+        let maze = maze_with_cross_floor_teleport();
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 1000.0, protect_route: true, floor_mode: GeometricFloorMode::SameFloorOnly };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
+        assert!(issues.is_empty(), "cross-floor pair must never be flagged under SameFloorOnly, regardless of threshold");
+    }
+
+    #[test]
+    fn same_floor_only_mode_still_flags_a_same_floor_teleport() {
+        let maze = maze_with_teleport((0, 0), (1, 0)); // same floor, distance 1.0
+        let check = TeleportGeometricLengthCheck { instance_id: TEST_ID.to_string(), comparison: Comparison::Lt, length: 5.0, protect_route: true, floor_mode: GeometricFloorMode::SameFloorOnly };
+        let mut issues = Vec::new();
+        let mut rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut rng, ());
+        assert_eq!(issues.len(), 1, "SameFloorOnly still evaluates same-floor pairs normally");
     }
 }

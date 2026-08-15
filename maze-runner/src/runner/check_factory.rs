@@ -18,12 +18,12 @@ use maze_core::{
         MIN_REGION_COUNT_DEFAULT,
         TeleportDuplicatesConnectionCheck,
         TeleportWaypointDistanceCheck, TeleportWaypoint, TeleportEdgeSelector, TELEPORT_WAYPOINT_DISTANCE_DEFAULT,
-        TeleportGeometricLengthCheck, TELEPORT_GEOMETRIC_LENGTH_DEFAULT,
+        TeleportGeometricLengthCheck, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT_FLOOR_MODE,
         TeleportGraphDistanceCheck, TELEPORT_GRAPH_DISTANCE_DEFAULT,
         TeleportSuperHubAvoidanceCheck, TeleportHubEdgeSelector, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
         TeleportGroupProximityCheck, TeleportProximityEdge, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT,
         OneWayWaypointDistanceCheck, OneWayWaypoint, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT,
-        OneWayGroupGeometricProximityCheck, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
+        OneWayGroupGeometricProximityCheck, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
         OneWayGroupGraphProximityCheck, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         OneWayGroupSuperHubCheck, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
         MinOneWayCountCheck, MIN_ONE_WAY_COUNT_DEFAULT,
@@ -37,7 +37,7 @@ use maze_core::{
         SplitTeleportIntersectionCheck, SplitTeleportDirection,
         MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT,
         MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT,
-        SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT,
+        SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
         SplitGroupGraphProximityCheck, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         SplitCountCheck, SPLIT_COUNT_DEFAULT,
         SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT,
@@ -46,7 +46,7 @@ use maze_core::{
         SplitNodeConnectionPerFaceCheck, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT,
         SplitNodeConnectionTraversalDistanceCheck, SPLIT_NODE_CONNECTION_TRAVERSAL_DISTANCE_MIN_DETOUR_DEFAULT,
         MaxSplitTileNodeCountCheck, MAX_SPLIT_TILE_NODE_COUNT_DEFAULT,
-        Comparison, CycleKind, RuleParams,
+        Comparison, CycleKind, GeometricFloorMode, RuleParams,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
@@ -231,6 +231,11 @@ fn parse_teleport_proximity_edge(param: Option<&String>) -> TeleportProximityEdg
 /// or unparseable falls back to `default`, the check's own pre-#177 fixed operator.
 fn parse_comparison(param: Option<&String>, default: Comparison) -> Comparison {
     param.and_then(|v| Comparison::from_str(v)).unwrap_or(default)
+}
+
+/// GitHub issue #342: shared by every geometric-distance check that needs a cross-floor policy.
+fn parse_geometric_floor_mode(param: Option<&String>, default: GeometricFloorMode) -> GeometricFloorMode {
+    param.and_then(|v| GeometricFloorMode::from_str(v)).unwrap_or(default)
 }
 
 /// GitHub issue #217: `cycle_kind` is shared by every loop-based check built on
@@ -468,7 +473,8 @@ pub(crate) fn build_invalid_teleport_check<T: Tessellation>(instance: &CheckInst
                 .map(|v| v.max(0.0))
                 .unwrap_or(TELEPORT_GEOMETRIC_LENGTH_DEFAULT);
             let comparison = parse_comparison(instance.params.get("comparison"), Comparison::Lt);
-            Some(Box::new(TeleportGeometricLengthCheck { instance_id, comparison, length, protect_route }))
+            let floor_mode = parse_geometric_floor_mode(instance.params.get("floor_mode"), TELEPORT_GEOMETRIC_LENGTH_DEFAULT_FLOOR_MODE);
+            Some(Box::new(TeleportGeometricLengthCheck { instance_id, comparison, length, protect_route, floor_mode }))
         }
         "teleport_graph_distance" => {
             let distance = instance.params.get("distance")
@@ -533,7 +539,8 @@ pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(instance: &Ch
                 .filter(|v| v.is_finite())
                 .map(|v| v.max(0.0))
                 .unwrap_or(ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT);
-            Some(Box::new(OneWayGroupGeometricProximityCheck { instance_id, distance, protect_route: rule_params.protect_route }))
+            let floor_mode = parse_geometric_floor_mode(instance.params.get("floor_mode"), ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE);
+            Some(Box::new(OneWayGroupGeometricProximityCheck { instance_id, distance, protect_route: rule_params.protect_route, floor_mode }))
         }
         "one_way_group_graph_proximity" => {
             let distance = instance.params.get("distance")
@@ -690,7 +697,8 @@ pub(crate) fn build_split_group_check<T: Tessellation>(instance: &CheckInstanceC
                 .filter(|v| v.is_finite())
                 .map(|v| v.max(0.0))
                 .unwrap_or(SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT);
-            Some(Box::new(SplitGroupGeometricProximityCheck { instance_id, distance }))
+            let floor_mode = parse_geometric_floor_mode(instance.params.get("floor_mode"), SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE);
+            Some(Box::new(SplitGroupGeometricProximityCheck { instance_id, distance, floor_mode }))
         }
         "split_group_graph_proximity" => {
             let distance = instance.params.get("split_group_graph_proximity_distance")

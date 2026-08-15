@@ -150,6 +150,45 @@ pub fn geometric_edge_distance<T: Tessellation>(a_from: T::Point, a_to: T::Point
     ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt()
 }
 
+/// Euclidean distance between two nodes' points, each on its own floor (`MultiLevelField::
+/// level_index_of` position) — see GitHub issue #342. `include_height` folds the floor
+/// difference in as a third coordinate, one unit per floor apart, on top of the ordinary x-y
+/// distance `geometric_distance` computes; `false` reproduces `geometric_distance` exactly
+/// (floor ignored, same as a single-floor maze). Callers wanting "cross-floor pairs never count"
+/// instead of a height-aware metric skip calling this entirely for a mismatched pair rather than
+/// passing a mode here — this function only ever computes a distance, it never decides whether a
+/// pair should be evaluated at all.
+pub fn floor_aware_distance<T: Tessellation>(
+    a_level: usize,
+    a: T::Point,
+    b_level: usize,
+    b: T::Point,
+    include_height: bool,
+) -> f64 {
+    let (ax, ay) = T::cartesian(a);
+    let (bx, by) = T::cartesian(b);
+    let dz = if include_height { b_level as f64 - a_level as f64 } else { 0.0 };
+    ((bx - ax).powi(2) + (by - ay).powi(2) + dz.powi(2)).sqrt()
+}
+
+/// Euclidean distance between two edges' `Tessellation::edge_position`s, each on its own floor —
+/// the edge-based counterpart of `floor_aware_distance`, mirroring how `geometric_edge_distance`
+/// relates to `geometric_distance`. See GitHub issue #342.
+pub fn floor_aware_edge_distance<T: Tessellation>(
+    a_level: usize,
+    a_from: T::Point,
+    a_to: T::Point,
+    b_level: usize,
+    b_from: T::Point,
+    b_to: T::Point,
+    include_height: bool,
+) -> f64 {
+    let (ax, ay) = T::edge_position(a_from, a_to);
+    let (bx, by) = T::edge_position(b_from, b_to);
+    let dz = if include_height { b_level as f64 - a_level as f64 } else { 0.0 };
+    ((bx - ax).powi(2) + (by - ay).powi(2) + dz.powi(2)).sqrt()
+}
+
 /// A tile's point resolves to one *or more* `NodeId`s (see GitHub issue #219, epic #218) — most
 /// points hold exactly one (the `Vec` stays a single-element allocation), but a point can be
 /// split into several independent routing passages via `add_node_at`. `Field` itself has no
@@ -758,6 +797,74 @@ mod edge_position_tests {
         let d = geometric_edge_distance::<TriTessellation>(n0, n1, n1, n2);
         let node_distance = geometric_distance::<TriTessellation>(n0, n2);
         assert!((d - node_distance / 2.0).abs() < 1e-9, "distance was {d}, expected {}", node_distance / 2.0);
+    }
+}
+
+#[cfg(test)]
+mod floor_aware_distance_tests {
+    use super::*;
+    use crate::space::{SquarePoint, HexPoint, TriPoint};
+
+    #[test]
+    fn include_height_false_matches_geometric_distance_exactly() {
+        let a = SquarePoint { x: 0, y: 0 };
+        let b = SquarePoint { x: 3, y: 4 };
+        let plain = geometric_distance::<SquareTessellation>(a, b);
+        let same_floor = floor_aware_distance::<SquareTessellation>(0, a, 0, b, false);
+        let diff_floor = floor_aware_distance::<SquareTessellation>(0, a, 2, b, false);
+        assert_eq!(same_floor, plain);
+        assert_eq!(diff_floor, plain, "include_height=false must ignore the floor difference");
+    }
+
+    #[test]
+    fn include_height_true_folds_in_one_unit_per_floor_apart() {
+        let p = SquarePoint { x: 0, y: 0 };
+        // Same x-y point, one floor apart -> pure vertical distance of 1.0.
+        let d = floor_aware_distance::<SquareTessellation>(0, p, 1, p, true);
+        assert!((d - 1.0).abs() < 1e-9, "distance was {d}, expected 1.0");
+    }
+
+    #[test]
+    fn include_height_true_combines_xy_and_floor_distance_pythagorean() {
+        // x-y distance 1.0 (adjacent cells), one floor apart -> sqrt(1^2 + 1^2).
+        let d = floor_aware_distance::<SquareTessellation>(
+            0, SquarePoint { x: 0, y: 0 },
+            1, SquarePoint { x: 1, y: 0 },
+            true,
+        );
+        assert!((d - 2f64.sqrt()).abs() < 1e-9, "distance was {d}, expected {}", 2f64.sqrt());
+    }
+
+    #[test]
+    fn same_floor_and_point_is_zero_regardless_of_include_height() {
+        let p = HexPoint { q: 2, r: -1 };
+        assert_eq!(floor_aware_distance::<HexTessellation>(0, p, 0, p, false), 0.0);
+        assert_eq!(floor_aware_distance::<HexTessellation>(3, p, 3, p, true), 0.0);
+    }
+
+    #[test]
+    fn works_for_tri_tessellation_too() {
+        let a = TriPoint { col: 0, row: 0 };
+        let b = TriPoint { col: 1, row: 0 };
+        let plain = geometric_distance::<TriTessellation>(a, b);
+        assert_eq!(floor_aware_distance::<TriTessellation>(0, a, 0, b, false), plain);
+    }
+
+    #[test]
+    fn edge_include_height_false_matches_geometric_edge_distance_exactly() {
+        let (a_from, a_to) = (SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 });
+        let (b_from, b_to) = (SquarePoint { x: 0, y: 1 }, SquarePoint { x: 1, y: 1 });
+        let plain = geometric_edge_distance::<SquareTessellation>(a_from, a_to, b_from, b_to);
+        let d = floor_aware_edge_distance::<SquareTessellation>(0, a_from, a_to, 5, b_from, b_to, false);
+        assert_eq!(d, plain, "include_height=false must ignore the floor difference");
+    }
+
+    #[test]
+    fn edge_include_height_true_folds_in_one_unit_per_floor_apart() {
+        let (from, to) = (SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 });
+        // Same edge position, one floor apart -> pure vertical distance of 1.0.
+        let d = floor_aware_edge_distance::<SquareTessellation>(0, from, to, 1, from, to, true);
+        assert!((d - 1.0).abs() < 1e-9, "distance was {d}, expected 1.0");
     }
 }
 

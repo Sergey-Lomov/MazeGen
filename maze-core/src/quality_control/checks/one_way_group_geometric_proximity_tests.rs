@@ -8,7 +8,7 @@ use crate::meta::MazeMeta;
 const TEST_ID: &str = "one_way_group_geometric_proximity";
 
 fn check(distance: f64, protect_route: bool) -> OneWayGroupGeometricProximityCheck {
-    OneWayGroupGeometricProximityCheck { instance_id: TEST_ID.to_string(), distance, protect_route }
+    OneWayGroupGeometricProximityCheck { instance_id: TEST_ID.to_string(), distance, protect_route, floor_mode: GeometricFloorMode::Ignore }
 }
 
 /// Two disjoint one-way edges on a single row: A(0)->B(1) and C(cx)->D(cx+1).
@@ -165,4 +165,70 @@ fn protect_route_disabled_flags_the_route_pair_as_before() {
     let mut rng = crate::random::MazeRng::seed_from_u64(0);
     c.repair_check(&maze, &mut issues, &mut rng, ());
     assert_eq!(issues.len(), 1, "protect_route disabled must flag the pair exactly like before");
+}
+
+/// Two floors, same x-y coordinates: A(0)->B(1) on the bottom floor, C(0)->D(1) on the top floor —
+/// isolates floor-mode behavior from x-y edge-position distance itself (both edges have the same
+/// edge_position midpoint, 0.5, in their own floor's coordinate system).
+fn maze_with_cross_floor_one_ways() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
+    let mut ids = IdGenerator::new();
+    let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+    let bottom = field.single_level_id();
+    let top = field.add_level(crate::space::Field::<SquareTessellation>::new(square_rect(4, 1), &mut ids).unwrap());
+    let mut g = Graph::new();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let a = field.node_at(bottom, SquarePoint { x: 0, y: 0 }).unwrap();
+    let b = field.node_at(bottom, SquarePoint { x: 1, y: 0 }).unwrap();
+    let c = field.node_at(top, SquarePoint { x: 0, y: 0 }).unwrap();
+    let d = field.node_at(top, SquarePoint { x: 1, y: 0 }).unwrap();
+    let e1 = g.add_edge(a, b, EdgeKind::Basic);
+    let e2 = g.add_edge(c, d, EdgeKind::Basic);
+    let maze = Maze::new(field, g);
+    (maze, e1, e2)
+}
+
+#[test]
+fn ignore_mode_measures_plain_edge_position_distance_across_floors() {
+    let (maze, _, _) = maze_with_cross_floor_one_ways(); // same edge_position each floor -> distance 0.0
+    let c = OneWayGroupGeometricProximityCheck { instance_id: TEST_ID.to_string(), distance: 0.5, protect_route: true, floor_mode: GeometricFloorMode::Ignore };
+    let mut issues = Vec::new();
+    let mut rng = crate::random::MazeRng::seed_from_u64(0);
+    c.repair_check(&maze, &mut issues, &mut rng, ());
+    assert_eq!(issues.len(), 1, "Ignore mode measures x-y edge_position only (0.0 < 0.5), floor difference has no effect");
+}
+
+#[test]
+fn as_coordinate_mode_folds_floor_difference_into_the_distance() {
+    let (maze, _, _) = maze_with_cross_floor_one_ways(); // x-y distance 0.0, one floor apart -> 1.0
+    let c = OneWayGroupGeometricProximityCheck { instance_id: TEST_ID.to_string(), distance: 0.5, protect_route: true, floor_mode: GeometricFloorMode::AsCoordinate };
+    let mut issues = Vec::new();
+    let mut rng = crate::random::MazeRng::seed_from_u64(0);
+    c.repair_check(&maze, &mut issues, &mut rng, ());
+    assert!(issues.is_empty(), "floor-folded distance is 1.0, not < 0.5, unlike the plain x-y distance of 0.0");
+
+    issues.clear();
+    let c = OneWayGroupGeometricProximityCheck { instance_id: TEST_ID.to_string(), distance: 1.5, protect_route: true, floor_mode: GeometricFloorMode::AsCoordinate };
+    c.repair_check(&maze, &mut issues, &mut rng, ());
+    assert_eq!(issues.len(), 1, "floor-folded distance 1.0 < 1.5 must fire");
+}
+
+#[test]
+fn same_floor_only_mode_never_flags_a_cross_floor_pair() {
+    let (maze, _, _) = maze_with_cross_floor_one_ways();
+    let c = OneWayGroupGeometricProximityCheck { instance_id: TEST_ID.to_string(), distance: 1000.0, protect_route: true, floor_mode: GeometricFloorMode::SameFloorOnly };
+    let mut issues = Vec::new();
+    let mut rng = crate::random::MazeRng::seed_from_u64(0);
+    c.repair_check(&maze, &mut issues, &mut rng, ());
+    assert!(issues.is_empty(), "cross-floor pair must never be flagged under SameFloorOnly, regardless of threshold");
+}
+
+#[test]
+fn same_floor_only_mode_still_flags_a_same_floor_pair() {
+    let (maze, e1, e2) = maze_with_two_one_ways(2); // same floor, distance < 5.0
+    let c = OneWayGroupGeometricProximityCheck { instance_id: TEST_ID.to_string(), distance: 5.0, protect_route: true, floor_mode: GeometricFloorMode::SameFloorOnly };
+    let mut issues = Vec::new();
+    let mut rng = crate::random::MazeRng::seed_from_u64(0);
+    c.repair_check(&maze, &mut issues, &mut rng, ());
+    assert_eq!(issues.len(), 1, "SameFloorOnly still evaluates same-floor pairs normally");
+    let _ = (e1, e2);
 }

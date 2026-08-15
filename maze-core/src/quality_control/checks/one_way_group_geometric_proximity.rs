@@ -2,15 +2,16 @@ use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
 use crate::graph::route_protection::is_edge_on_route;
-use crate::space::{Tessellation, geometric_edge_distance};
+use crate::space::{Tessellation, floor_aware_edge_distance};
 use crate::quality_control::check::Check;
-use crate::quality_control::{InvalidOneWayGroupIssue};
+use crate::quality_control::{GeometricFloorMode, InvalidOneWayGroupIssue};
 
 pub const ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
+pub const ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode = GeometricFloorMode::SameFloorOnly;
 
 /// Flags a pair of one-way passage edges (`EdgeKind::Basic`, single direction) placed too close
-/// to each other in geometric (Euclidean, unit tile scale — see `space::geometric_edge_distance`)
-/// space — see GitHub issue #199. Individual one-way checks (issue #198) only ever look at one
+/// to each other in geometric (Euclidean, unit tile scale — see `space::floor_aware_edge_distance`)
+/// space — see GitHub issue #199/#342. Individual one-way checks (issue #198) only ever look at one
 /// edge at a time; this check instead catches problems that emerge from *pairs* of one-way edges
 /// being close to each other, which no single-edge check can detect. Mirrors
 /// `TeleportGroupProximityCheck`'s role, but for one-way edges and a geometric (not topological)
@@ -18,7 +19,7 @@ pub const ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 ///
 /// Unlike `TeleportGroupProximityCheck`, there is no edge-role selector: a one-way edge renders
 /// visually on the tile border it crosses, not at either endpoint node, so distance is measured
-/// between the two edges' `Tessellation::edge_position`s directly (`geometric_edge_distance`) —
+/// between the two edges' `Tessellation::edge_position`s directly (`floor_aware_edge_distance`) —
 /// there is no "entry"/"exit" endpoint pairing to reduce over the way there is for a teleport
 /// jump (or the node-to-node distance the pre-#199-followup version of this check used).
 ///
@@ -34,6 +35,8 @@ pub struct OneWayGroupGeometricProximityCheck {
     /// pair sits on the route, the pair is still recorded, since the non-route side remains a
     /// legitimate repair candidate.
     pub protect_route: bool,
+    /// GitHub issue #342: how a cross-floor one-way pair is treated by this geometric check.
+    pub floor_mode: GeometricFloorMode,
 }
 
 impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometricProximityCheck {
@@ -44,9 +47,10 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
             .filter(|e| e.kind == EdgeKind::Basic)
             .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
             .filter_map(|e| {
+                let level = maze.field.level_index_of(e.from)?;
                 let from = maze.field.point_of(e.from)?;
                 let to = maze.field.point_of(e.to)?;
-                Some((e.id, from, to))
+                Some((e.id, level, from, to))
             })
             .collect();
         if one_ways.len() < 2 {
@@ -55,13 +59,20 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
 
         let mut groups: Vec<(Vec<crate::ids::EdgeId>, u32)> = Vec::new();
 
-        for &(own_id, own_from, own_to) in &one_ways {
-            for &(other_id, other_from, other_to) in &one_ways {
+        for &(own_id, own_level, own_from, own_to) in &one_ways {
+            for &(other_id, other_level, other_from, other_to) in &one_ways {
                 if other_id == own_id {
                     continue;
                 }
+                if self.floor_mode == GeometricFloorMode::SameFloorOnly && own_level != other_level {
+                    continue;
+                }
 
-                let dist = geometric_edge_distance::<T>(own_from, own_to, other_from, other_to);
+                let dist = floor_aware_edge_distance::<T>(
+                    own_level, own_from, own_to,
+                    other_level, other_from, other_to,
+                    self.floor_mode.include_height(),
+                );
 
                 if dist < self.distance {
                     let both_route_protected = self.protect_route
