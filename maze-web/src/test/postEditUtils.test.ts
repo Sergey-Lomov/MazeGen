@@ -3,7 +3,7 @@ import {
   buildPostEditDraftEdgesFromGenerated, applyPostEditEdgeTool, extractPostEditTeleports, postEditTeleportsToDto,
   rotatePostEditSplitPoint, resetPostEditPoint, postEditVerticalToDto, postEditVerticalPassageDirectionToDto,
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
-  removePostEditElevator,
+  removePostEditElevator, elevatorComponent,
 } from "../pixi/postEditUtils";
 import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { EdgeDto, NodeDto } from "../wasm/types";
@@ -514,6 +514,48 @@ describe("removePostEditElevator", () => {
       { id: 2, floors: [nodeEndpoint(2), nodeEndpoint(3)] },
     ];
     expect(removePostEditElevator(elevators, 1)).toEqual([elevators[1]]);
+  });
+});
+
+describe("elevatorComponent", () => {
+  const mesh = [
+    { from: 0, to: 1, kind: "elevator" }, { from: 1, to: 0, kind: "elevator" },
+    { from: 0, to: 2, kind: "elevator" }, { from: 2, to: 0, kind: "elevator" },
+    { from: 1, to: 2, kind: "elevator" }, { from: 2, to: 1, kind: "elevator" },
+  ];
+
+  it("returns every node reachable from a single start id", () => {
+    expect(elevatorComponent(mesh, [0])).toEqual(new Set([0, 1, 2]));
+  });
+
+  it("merges components from multiple start ids into one result, not seeding from only the first", () => {
+    const disjoint = [
+      { from: 0, to: 1, kind: "elevator" }, { from: 1, to: 0, kind: "elevator" },
+      { from: 10, to: 11, kind: "elevator" }, { from: 11, to: 10, kind: "elevator" },
+    ];
+    // Two unconnected elevators; starting from one node of each must yield both components, not
+    // just the first start's — this is the multi-start behavior the reset-point caller relies on
+    // for a split point with several nodes on the same floor.
+    expect(elevatorComponent(disjoint, [0, 10])).toEqual(new Set([0, 1, 10, 11]));
+  });
+
+  it("two elevators sharing no edge stay separate even if a caller only starts from one", () => {
+    // Mirrors the Rust regression (GitHub issue #346): a same-point disjoint elevator must not
+    // leak into the result just because it exists elsewhere in `edges`.
+    const disjoint = [
+      { from: 0, to: 1, kind: "elevator" }, { from: 1, to: 0, kind: "elevator" },
+      { from: 10, to: 11, kind: "elevator" }, { from: 11, to: 10, kind: "elevator" },
+    ];
+    expect(elevatorComponent(disjoint, [0])).toEqual(new Set([0, 1]));
+  });
+
+  it("ignores non-elevator edges", () => {
+    const edges = [{ from: 0, to: 1, kind: "vertical_passage" }, { from: 0, to: 2, kind: "teleport" }];
+    expect(elevatorComponent(edges, [0])).toEqual(new Set([0]));
+  });
+
+  it("empty start set yields an empty component", () => {
+    expect(elevatorComponent(mesh, [])).toEqual(new Set());
   });
 });
 

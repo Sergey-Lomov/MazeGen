@@ -98,6 +98,15 @@ sections:
     `one_way_teleports`, `split_tile_count`, `split_node_count`, one row per named split group (see
     "Named Split Patterns" below), and a "Pattern statistics" button (hidden when
     `split_groups` is empty) opening `SplitPatternStatsModal`.
+  - **Vertical Connections** (`VerticalSection`, GitHub issue #346) — shown only when
+    `graph_stats.floor_count > 1` (a single-floor maze has none of these by construction, so the
+    section stays hidden rather than rendering a wall of zeroes). Rows: `bidirectional_passages`
+    ("two-way vertical passages"), `one_way_passages_up`, `one_way_passages_down`,
+    `elevator_groups` (distinct `Elevator` groups — see `graph-analytics.md`'s `Graph::elevator_groups`
+    for the connected-component-not-shared-point counting rule), `cross_floor_teleports`. No
+    percentages (unlike Sides/Elements) — these counts have no natural denominator. Maze-wide only,
+    reading straight from `statistics.vertical_stats: VerticalStatsDto`; never appears under "By
+    floors" since `VerticalStatsDto` has no `by_floor` slice.
 - **By floors** (`report_by_floors`) — one collapsible sub-section per floor that has a
   `statistics.cell_stats.by_floor[idx]` entry (`floorsWithStats`, topmost floor first), each
   containing its own Cells/Sides/Elements sub-blocks built from that floor's own `by_floor[idx]`

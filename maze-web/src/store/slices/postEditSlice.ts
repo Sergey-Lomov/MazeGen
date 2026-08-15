@@ -6,7 +6,7 @@ import {
   postEditTeleportsToDto, cyclePostEditTeleportDirection, removePostEditTeleport, movePostEditTeleportEndpoint,
   rotatePostEditSplitPoint, resetPostEditPoint as resetPostEditPointCore,
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
-  removePostEditElevator, postEditVerticalToDto,
+  removePostEditElevator, postEditVerticalToDto, elevatorComponent,
 } from "../../pixi/postEditUtils";
 import { cellExistsAt } from "../../pixi/fieldEditUtils";
 import {
@@ -494,31 +494,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       // with no link onward to floor 3. Un-suppressing the *entire* generation-time elevator
       // component this point's node belongs to (BFS over `_generatedEdges`' own elevator edges)
       // restores the mesh in full, matching what a point reset is meant to guarantee.
-      const elevatorNeighbors = new Map<number, Set<number>>();
-      const addElevatorNeighbor = (from: number, to: number) => {
-        let set = elevatorNeighbors.get(from);
-        if (!set) {
-          set = new Set();
-          elevatorNeighbors.set(from, set);
-        }
-        set.add(to);
-      };
-      for (const e of state._generatedEdges) {
-        if (e.kind !== "elevator") continue;
-        addElevatorNeighbor(e.from, e.to);
-        addElevatorNeighbor(e.to, e.from);
-      }
-      const elevatorComponentIds = new Set(pointNodeIds);
-      const queue = [...pointNodeIds];
-      while (queue.length > 0) {
-        const id = queue.pop()!;
-        for (const neighbor of elevatorNeighbors.get(id) ?? []) {
-          if (!elevatorComponentIds.has(neighbor)) {
-            elevatorComponentIds.add(neighbor);
-            queue.push(neighbor);
-          }
-        }
-      }
+      const elevatorComponentIds = elevatorComponent(state._generatedEdges, pointNodeIds);
       const postEditSuppressedElevatorPairs = new Set(
         [...state.postEditSuppressedElevatorPairs].filter((key) => {
           const [a, b] = key.split(",").map(Number);
@@ -965,7 +941,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // (`postEditDraftElevators`, addressed by its own PostEditEndpoints) or a generation-time one,
     // confirmed into the graph as a full mesh of bidirectional `elevator` edges in `state.edges`
     // (no separate entry object to look up — its "floors" are just every node reachable from
-    // `origin.id` via an `elevator` edge, since a full mesh means one hop reaches every floor).
+    // `origin.id` via `elevator` edges, i.e. `origin.id`'s own connected component).
     const originLevel = originNode.level ?? 0;
     const existingDraft = state.postEditDraftElevators.find((e) => e.floors.some((f) =>
       f.kind === "node" && f.id === origin.id));
@@ -989,12 +965,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       set({ postEditElevatorPending: { origin, floors, editingId: existingDraft.id, sourceNodeIds } });
       return;
     }
-    const generatedFloorIds = new Set<number>([origin.id]);
-    for (const e of state.edges) {
-      if (e.kind !== "elevator") continue;
-      if (e.from === origin.id) generatedFloorIds.add(e.to);
-      else if (e.to === origin.id) generatedFloorIds.add(e.from);
-    }
+    const generatedFloorIds = elevatorComponent(state.edges, [origin.id]);
     if (generatedFloorIds.size >= 2) {
       const floors = new Set<number>();
       for (const id of generatedFloorIds) {

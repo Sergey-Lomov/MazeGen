@@ -264,6 +264,23 @@ export interface ElementsStatsDto {
   split_groups: SplitGroupDto[];
 }
 
+/**
+ * Maze-wide-only `VerticalPassage`/`Elevator`/cross-floor-`Teleport` statistics (GitHub issue
+ * #346) — like `GraphStatsDto`, never broken down `by_floor`: every one of these edge kinds spans
+ * 2+ floors by construction, so there's no meaningful single-floor attribution.
+ */
+export interface VerticalStatsDto {
+  bidirectional_passages: number;
+  one_way_passages_up: number;
+  one_way_passages_down: number;
+  /**
+   * Count of distinct `Elevator` groups (the full fan of edges connecting the same x-y point
+   * across its chosen floors counts once), not a raw edge count.
+   */
+  elevator_groups: number;
+  cross_floor_teleports: number;
+}
+
 export interface RouteInfoDto {
   path_length: number;
   junction_count: number;
@@ -532,6 +549,7 @@ export interface MazeStatisticsDto {
   cell_stats: FloorScoped<NodeStatsDto>;
   passage_stats: FloorScoped<SpatialEdgeStatsDto>;
   elements_stats: FloorScoped<ElementsStatsDto>;
+  vertical_stats: VerticalStatsDto;
 }
 
 export interface MazeSnapshot {

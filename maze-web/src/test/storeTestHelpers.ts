@@ -143,6 +143,7 @@ export const mockSnapshot = {
     cell_stats: { total: { dead_ends: 2, straight: 0, turns: 0, junctions: [] }, by_floor: { 0: { dead_ends: 2, straight: 0, turns: 0, junctions: [] } } },
     passage_stats: { total: { bidirectional: 0, walls: 0, total_pairs: 0 }, by_floor: { 0: { bidirectional: 0, walls: 0, total_pairs: 0 } } },
     elements_stats: { total: { one_way_passages: 1, two_way_teleports: 0, one_way_teleports: 0, split_tile_count: 0, split_node_count: 0, split_groups: [] }, by_floor: { 0: { one_way_passages: 1, two_way_teleports: 0, one_way_teleports: 0, split_tile_count: 0, split_node_count: 0, split_groups: [] } } },
+    vertical_stats: { bidirectional_passages: 0, one_way_passages_up: 0, one_way_passages_down: 0, elevator_groups: 0, cross_floor_teleports: 0 },
   },
   route_info: null,
   timing: null,

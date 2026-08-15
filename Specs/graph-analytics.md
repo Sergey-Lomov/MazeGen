@@ -418,3 +418,63 @@ own counts (which would double-count a split point's every extra node).
 
 See `analytics-web.md`'s "Cells Section" and "Sides Section" for the `AnalyticsFeature` UI built on
 these DTOs.
+
+## Vertical Connection Statistics (GitHub issue #346)
+
+`maze-core/src/graph/stats.rs`'s `compute_vertical_stats` computes `VerticalPassage`/`Elevator`/
+cross-floor-`Teleport` counts — maze-wide only, like `GraphStatsDto`, never `FloorScoped`: every one
+of these edge kinds spans 2+ floors by construction (a `VerticalPassage` always crosses exactly one
+floor boundary, an `Elevator`'s fan always spans 2+ floors, and only *cross-floor* `Teleport` pairs
+are counted here), so there is no meaningful single-floor attribution.
+
+```rust
+pub struct VerticalStats {
+    pub bidirectional_passages: usize,
+    pub one_way_passages_up: usize,
+    pub one_way_passages_down: usize,
+    pub elevator_groups: usize,
+    pub cross_floor_teleports: usize,
+}
+
+pub fn compute_vertical_stats<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>) -> VerticalStats
+```
+
+- `bidirectional_passages` / `one_way_passages_up` / `one_way_passages_down` — `VerticalPassage`
+  edges, paired the same way `compute_teleport_edge_stats_impl` pairs `Teleport` edges (dedup by
+  unordered `(from, to)`, then check for the reverse edge). A one-way pair's direction is resolved
+  via `field.level_index_of` — "up" means the edge's `from` has a lower floor index than its `to`.
+- `elevator_groups` — see `Graph::elevator_groups` below; **not** a raw edge count and **not**
+  grouped by shared x-y point.
+- `cross_floor_teleports` — `Teleport` pairs (same pairing convention) whose two ends are on
+  different floors (`field.level_of(from) != field.level_of(to)`); same-floor teleports are excluded
+  entirely, mirroring `compute_teleport_edge_stats_scoped`'s own cross-floor exclusion rule.
+
+### `Graph::elevator_groups`
+
+```rust
+pub fn elevator_groups(&self) -> Vec<HashSet<NodeId>>
+```
+
+Every distinct `Elevator` group, as a **connected component of `Elevator`-kind edges** — union-find
+over every `Elevator` edge's endpoints. Deliberately *not* grouped by shared x-y point: two elevators
+can occupy the same point without being connected (e.g. one spanning floors 1-3, a separate one
+spanning floors 4-6, both fanning out from the same x-y coordinate) — grouping by point alone would
+wrongly merge them into one (this was a real bug, GitHub issue #346's follow-up fix). Order of both
+the outer `Vec` and each group's node iteration is unspecified.
+
+Public on `Graph` (not `stats.rs`-private) because both the Rust analytics side
+(`compute_vertical_stats`) and the web post-edit store need the same "what does this elevator
+actually connect" answer — the web side has its own connected-component BFS,
+`elevatorComponent` (`maze-web/src/pixi/postEditUtils.ts`), used by `postEditSlice.ts` for two
+things: un-suppressing a generation-time elevator's *entire* mesh on point reset, and seeding the
+elevator-edit dialog's current floor set when clicking an existing elevator marker. `elevatorComponent`
+takes every BFS start id at once (not one call per id) so a multi-node point (a split point with
+several nodes on the same floor) builds the adjacency map only once.
+
+### Web Integration
+
+`vertical_stats: VerticalStatsDto` is a plain (non-`FloorScoped`) member of `MazeStatisticsDto`,
+mirroring `VerticalStats` field-for-field. `AnalyticsFeature`'s `DetailedReportPanel` renders it via
+`VerticalSection`, shown only when `graph_stats.floor_count > 1` (always-zero on a single-floor maze,
+so the section stays hidden rather than showing a wall of zeroes). See `analytics-web.md`'s
+"Vertical Connections Section".

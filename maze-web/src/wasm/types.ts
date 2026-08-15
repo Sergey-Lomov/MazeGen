@@ -20,6 +20,7 @@ export type {
   NodeStatsDto,
   SpatialEdgeStatsDto,
   ElementsStatsDto,
+  VerticalStatsDto,
   RouteInfoDto,
   GraphStatsDto,
   SplitFaceRequirement,

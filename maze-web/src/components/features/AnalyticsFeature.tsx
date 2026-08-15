@@ -306,6 +306,18 @@ function ElementsSection({ stats, onOpenSplitStats }: { stats: ElementsStatsDto;
   );
 }
 
+function VerticalSection({ stats }: { stats: import("../../wasm/types").VerticalStatsDto }) {
+  return (
+    <div style={styles.statBlock}>
+      <StatRow label={m["analytics.vertical_bidirectional_passages"]()} count={stats.bidirectional_passages} />
+      <StatRow label={m["analytics.vertical_one_way_up"]()} count={stats.one_way_passages_up} />
+      <StatRow label={m["analytics.vertical_one_way_down"]()} count={stats.one_way_passages_down} />
+      <StatRow label={m["analytics.vertical_elevator_groups"]()} count={stats.elevator_groups} />
+      <StatRow label={m["analytics.vertical_cross_floor_teleports"]()} count={stats.cross_floor_teleports} />
+    </div>
+  );
+}
+
 function StatGroup({ nested, children }: { nested?: boolean; children: React.ReactNode }) {
   return <div style={nested ? styles.nestedGroup : styles.statGroup}>{children}</div>;
 }
@@ -352,6 +364,15 @@ export function DetailedReportPanel({ statistics, floors, cfg, nodes, onClose }:
             <StatGroup nested>
               <ElementsSection stats={statistics.elements_stats.total} onOpenSplitStats={() => setSplitPatternStatsOpen(true)} />
             </StatGroup>
+
+            {statistics.graph_stats.floor_count > 1 && (
+              <>
+                <SubsectionTitle label={m["analytics.vertical_section"]()} />
+                <StatGroup nested>
+                  <VerticalSection stats={statistics.vertical_stats} />
+                </StatGroup>
+              </>
+            )}
           </StatGroup>
         )}
 

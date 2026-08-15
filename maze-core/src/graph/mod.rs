@@ -263,6 +263,43 @@ impl Graph {
     pub fn edges(&self) -> impl Iterator<Item = &Edge> {
         self.edges.iter().filter_map(|e| e.as_ref())
     }
+
+    /// Every distinct `Elevator` group, as a connected component of `Elevator`-kind edges — never
+    /// by shared x-y point, since two elevators can occupy the same point without being connected
+    /// (e.g. one spanning floors 1-3, a separate one spanning floors 4-6, both at the same x-y —
+    /// GitHub issue #346). Order of both the outer `Vec` and each group's node iteration is
+    /// unspecified.
+    pub fn elevator_groups(&self) -> Vec<HashSet<NodeId>> {
+        let mut parent: HashMap<NodeId, NodeId> = HashMap::new();
+        fn find(parent: &mut HashMap<NodeId, NodeId>, x: NodeId) -> NodeId {
+            let p = *parent.get(&x).unwrap_or(&x);
+            if p == x {
+                x
+            } else {
+                let root = find(parent, p);
+                parent.insert(x, root);
+                root
+            }
+        }
+        for edge in self.edges() {
+            if edge.kind != EdgeKind::Elevator {
+                continue;
+            }
+            parent.entry(edge.from).or_insert(edge.from);
+            parent.entry(edge.to).or_insert(edge.to);
+            let (ra, rb) = (find(&mut parent, edge.from), find(&mut parent, edge.to));
+            if ra != rb {
+                parent.insert(ra, rb);
+            }
+        }
+        let nodes: Vec<NodeId> = parent.keys().copied().collect();
+        let mut groups: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
+        for node in nodes {
+            let root = find(&mut parent, node);
+            groups.entry(root).or_default().insert(node);
+        }
+        groups.into_values().collect()
+    }
 }
 
 impl Default for Graph {
@@ -306,5 +343,62 @@ mod parallel_edges_tests {
         let (ab, ba) = g.add_bidirectional_edge(0, 1, EdgeKind::Teleport);
         assert_ne!(ab, ba);
         assert_eq!(g.edges().count(), 4);
+    }
+}
+
+#[cfg(test)]
+mod elevator_groups_tests {
+    use super::*;
+
+    #[test]
+    fn no_elevator_edges_yields_no_groups() {
+        let mut g = Graph::new();
+        g.add_node(0);
+        g.add_node(1);
+        g.add_bidirectional_edge(0, 1, EdgeKind::Basic);
+        assert!(g.elevator_groups().is_empty());
+    }
+
+    #[test]
+    fn full_fan_across_three_floors_is_one_group_with_all_members() {
+        let mut g = Graph::new();
+        for n in [0, 1, 2] { g.add_node(n); }
+        g.add_bidirectional_edge(0, 1, EdgeKind::Elevator);
+        g.add_bidirectional_edge(0, 2, EdgeKind::Elevator);
+        g.add_bidirectional_edge(1, 2, EdgeKind::Elevator);
+        let groups = g.elevator_groups();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0], HashSet::from([0, 1, 2]));
+    }
+
+    #[test]
+    fn two_disjoint_elevators_are_two_groups_even_with_no_direct_edge_between_them() {
+        // Mirrors a real bug (GitHub issue #346): floors 0-2 form one elevator, floors 3-5 form a
+        // separate one, connected to each other by nothing — must not merge into one group just
+        // because both touch the graph.
+        let mut g = Graph::new();
+        for n in 0..6 { g.add_node(n); }
+        g.add_bidirectional_edge(0, 1, EdgeKind::Elevator);
+        g.add_bidirectional_edge(0, 2, EdgeKind::Elevator);
+        g.add_bidirectional_edge(1, 2, EdgeKind::Elevator);
+        g.add_bidirectional_edge(3, 4, EdgeKind::Elevator);
+        g.add_bidirectional_edge(3, 5, EdgeKind::Elevator);
+        g.add_bidirectional_edge(4, 5, EdgeKind::Elevator);
+
+        let groups = g.elevator_groups();
+        assert_eq!(groups.len(), 2);
+        let mut sorted: Vec<Vec<NodeId>> = groups.iter().map(|s| { let mut v: Vec<_> = s.iter().copied().collect(); v.sort_unstable(); v }).collect();
+        sorted.sort();
+        assert_eq!(sorted, vec![vec![0, 1, 2], vec![3, 4, 5]]);
+    }
+
+    #[test]
+    fn non_elevator_edges_are_ignored() {
+        let mut g = Graph::new();
+        g.add_node(0);
+        g.add_node(1);
+        g.add_bidirectional_edge(0, 1, EdgeKind::VerticalPassage);
+        g.add_bidirectional_edge(0, 1, EdgeKind::Teleport);
+        assert!(g.elevator_groups().is_empty());
     }
 }

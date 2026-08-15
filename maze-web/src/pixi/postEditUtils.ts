@@ -234,6 +234,42 @@ export function removePostEditElevator(elevators: PostEditElevatorEntry[], id: n
   return elevators.filter(e => e.id !== id);
 }
 
+/** Every node id reachable from any of `startIds` via `elevator`-kind edges in `edges`, `startIds`
+ *  themselves included — mirrors `maze_core::graph::Graph::elevator_groups`'s connected-component
+ *  definition (GitHub issue #346): a group is a graph connected component, never nodes sharing the
+ *  same x-y point (two elevators, e.g. floors 1-3 and floors 4-6, can occupy the same point without
+ *  being connected). BFS, not a single-hop lookup, so it stays correct even if a caller's `edges`
+ *  don't form a full mesh. Takes every start at once (rather than being called per-id) so a
+ *  multi-node point only builds the adjacency map once. */
+export function elevatorComponent(edges: { from: number; to: number; kind: string }[], startIds: Iterable<number>): Set<number> {
+  const neighbors = new Map<number, Set<number>>();
+  const addNeighbor = (from: number, to: number) => {
+    let set = neighbors.get(from);
+    if (!set) {
+      set = new Set();
+      neighbors.set(from, set);
+    }
+    set.add(to);
+  };
+  for (const e of edges) {
+    if (e.kind !== "elevator") continue;
+    addNeighbor(e.from, e.to);
+    addNeighbor(e.to, e.from);
+  }
+  const component = new Set<number>(startIds);
+  const queue = [...component];
+  while (queue.length > 0) {
+    const id = queue.pop()!;
+    for (const neighbor of neighbors.get(id) ?? []) {
+      if (!component.has(neighbor)) {
+        component.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+  }
+  return component;
+}
+
 /** `PostEditVerticalPassageEntry.direction` → the wire `VerticalPassageDirectionDto` — mirrors
  * `presetVerticalPassageDirectionToDto`. */
 export function postEditVerticalPassageDirectionToDto(

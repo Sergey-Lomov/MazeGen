@@ -7,7 +7,7 @@ use maze_core::{
         QualityControlEngine, Issue, CycleAnalysisOverflowedIssue,
         RepairLimitReachedIssue, IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload, resolve_issue_payload,
     },
-    graph::stats::{compute_node_stats_scoped, compute_spatial_edge_stats_scoped, compute_teleport_edge_stats, compute_teleport_edge_stats_scoped, average_degree},
+    graph::stats::{compute_node_stats_scoped, compute_spatial_edge_stats_scoped, compute_teleport_edge_stats, compute_teleport_edge_stats_scoped, compute_vertical_stats, average_degree},
     generation::{SplitFaceRequirement, OneWayDirection, PresetState},
     graph::split_topology::split_totals_scoped,
     Maze,
@@ -15,7 +15,7 @@ use maze_core::{
 use crate::dto::{
     EdgeDto, EdgeKindDto, IssueDto, IssuePayloadDto, IssueEdgeGroupPayloadDto, IssueSplitTilePayloadDto, IssueSplitGroupPayloadDto, IssueRouteEdgeDto, IssueRoutePayloadDto, IssueRegionPayloadDto,
     MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
-    NodeStatsDto, SpatialEdgeStatsDto, ElementsStatsDto, RouteInfoDto, JunctionBucket, GraphStatsDto,
+    NodeStatsDto, SpatialEdgeStatsDto, ElementsStatsDto, VerticalStatsDto, RouteInfoDto, JunctionBucket, GraphStatsDto,
     SplitFaceRequirementDto, OneWayDirectionDto, SplitGroupDto, FloorScoped, MazeStatisticsDto,
 };
 
@@ -357,7 +357,16 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             .collect(),
     };
 
-    let statistics = MazeStatisticsDto { graph_stats, cell_count, cell_stats, passage_stats, elements_stats };
+    let raw_vertical_stats = compute_vertical_stats(&maze.graph, &maze.field);
+    let vertical_stats = VerticalStatsDto {
+        bidirectional_passages: raw_vertical_stats.bidirectional_passages,
+        one_way_passages_up: raw_vertical_stats.one_way_passages_up,
+        one_way_passages_down: raw_vertical_stats.one_way_passages_down,
+        elevator_groups: raw_vertical_stats.elevator_groups,
+        cross_floor_teleports: raw_vertical_stats.cross_floor_teleports,
+    };
+
+    let statistics = MazeStatisticsDto { graph_stats, cell_count, cell_stats, passage_stats, elements_stats, vertical_stats };
 
     let route_info = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta).map(|r| RouteInfoDto {
         path_length:    r.path_length,

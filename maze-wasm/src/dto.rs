@@ -286,6 +286,22 @@ pub struct ElementsStatsDto {
     pub split_groups: Vec<SplitGroupDto>,
 }
 
+/// Maze-wide-only `VerticalPassage`/`Elevator`/cross-floor-`Teleport` statistics (GitHub issue
+/// #346) — like `GraphStatsDto`, never broken down `by_floor`: every one of these edge kinds spans
+/// 2+ floors by construction, so there's no meaningful single-floor attribution.
+#[derive(Serialize)]
+pub struct VerticalStatsDto {
+    pub bidirectional_passages: usize,
+    pub one_way_passages_up: usize,
+    pub one_way_passages_down: usize,
+    /// Count of distinct `Elevator` groups — a connected component of `Elevator` edges (see
+    /// `maze_core::graph::Graph::elevator_groups`), never grouped by shared x-y point: two
+    /// elevators can occupy the same point without being connected (e.g. one spanning floors 1-3,
+    /// a separate one spanning floors 4-6) and count as two groups.
+    pub elevator_groups: usize,
+    pub cross_floor_teleports: usize,
+}
+
 #[derive(Serialize)]
 pub struct RouteInfoDto {
     pub path_length: usize,
@@ -530,6 +546,7 @@ pub struct MazeStatisticsDto {
     pub cell_stats: FloorScoped<NodeStatsDto>,
     pub passage_stats: FloorScoped<SpatialEdgeStatsDto>,
     pub elements_stats: FloorScoped<ElementsStatsDto>,
+    pub vertical_stats: VerticalStatsDto,
 }
 
 #[derive(Serialize)]

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use crate::ids::NodeId;
 use crate::space::{LevelId, MultiLevelField, Tessellation};
 use crate::graph::Graph;
@@ -39,6 +39,21 @@ pub struct SpatialEdgeStats {
 pub struct TeleportEdgeStats {
     pub two_way: usize,
     pub one_way: usize,
+}
+
+// `VerticalPassage`/`Elevator`/cross-floor-`Teleport` statistics — maze-wide only (GitHub issue
+// #346): every one of these edge kinds spans 2+ floors by construction, so there is no meaningful
+// single-floor attribution (unlike `TeleportEdgeStats`, which has same-floor pairs too).
+pub struct VerticalStats {
+    pub bidirectional_passages: usize,
+    pub one_way_passages_up: usize,
+    pub one_way_passages_down: usize,
+    /// Count of distinct `Elevator` groups — see `Graph::elevator_groups`'s own doc comment for
+    /// what defines a group (connected component, not shared x-y point).
+    pub elevator_groups: usize,
+    /// `Teleport` pairs (mirrors `TeleportEdgeStats`'s pairing) whose two ends are on different
+    /// floors.
+    pub cross_floor_teleports: usize,
 }
 
 pub fn compute_node_stats<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>) -> GeometricNodeStats {
@@ -174,6 +189,58 @@ fn compute_teleport_edge_stats_impl(graph: &Graph, in_scope_edge: impl Fn(NodeId
     }
 
     TeleportEdgeStats { two_way, one_way }
+}
+
+/// Maze-wide `VerticalPassage`/`Elevator`/cross-floor-`Teleport` statistics — see `VerticalStats`.
+pub fn compute_vertical_stats<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>) -> VerticalStats {
+    let mut seen_passage_pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
+    let mut bidirectional_passages = 0usize;
+    let mut one_way_passages_up = 0usize;
+    let mut one_way_passages_down = 0usize;
+
+    for edge in graph.edges() {
+        if edge.kind != super::EdgeKind::VerticalPassage {
+            continue;
+        }
+        let pair = if edge.from < edge.to { (edge.from, edge.to) } else { (edge.to, edge.from) };
+        if !seen_passage_pairs.insert(pair) {
+            continue;
+        }
+        let reverse = graph.edge_between_kind(edge.to, edge.from, &super::EdgeKind::VerticalPassage).is_some();
+        if reverse {
+            bidirectional_passages += 1;
+        } else {
+            let from_idx = field.level_index_of(edge.from);
+            let to_idx = field.level_index_of(edge.to);
+            match (from_idx, to_idx) {
+                (Some(f), Some(t)) if f < t => one_way_passages_up += 1,
+                (Some(_), Some(_)) => one_way_passages_down += 1,
+                _ => {}
+            }
+        }
+    }
+
+    let elevator_groups = graph.elevator_groups().len();
+
+    let mut seen_teleport_pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
+    let mut cross_floor_teleports = 0usize;
+    for edge in graph.edges() {
+        if edge.kind != super::EdgeKind::Teleport || field.level_of(edge.from) == field.level_of(edge.to) {
+            continue;
+        }
+        let pair = if edge.from < edge.to { (edge.from, edge.to) } else { (edge.to, edge.from) };
+        if seen_teleport_pairs.insert(pair) {
+            cross_floor_teleports += 1;
+        }
+    }
+
+    VerticalStats {
+        bidirectional_passages,
+        one_way_passages_up,
+        one_way_passages_down,
+        elevator_groups,
+        cross_floor_teleports,
+    }
 }
 
 /// Average out-degree over the real graph (not the compressed nav-graph): `2*E/V` treated as
@@ -528,5 +595,132 @@ mod tests {
         graph.add_bidirectional_edge(mid, right, EdgeKind::Basic);
         // left: 1 neighbor, mid: 2 neighbors, right: 1 neighbor -> total 4 / 3 nodes.
         assert_eq!(average_degree(&graph), 4.0 / 3.0);
+    }
+
+    /// Three independent `w`x`h` floors, no cross-floor edges wired — callers add those
+    /// themselves. Needed (over `make_two_level_field_and_graph`) for `Elevator` tests, which
+    /// require 3+ floors to distinguish "one group across many floors" from "one group per pair".
+    fn make_three_level_field_and_graph(w: usize, h: usize) -> (MultiLevelField<SquareTessellation>, Graph, LevelId, LevelId, LevelId) {
+        let mut ids = IdGenerator::new();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(w, h), &mut ids).unwrap();
+        let level0 = field.single_level_id();
+        let level1 = field.add_level(Field::new(square_rect(w, h), &mut ids).unwrap());
+        let level2 = field.add_level(Field::new(square_rect(w, h), &mut ids).unwrap());
+        let mut graph = Graph::new();
+        for node in field.all_node_ids() { graph.add_node(node); }
+        (field, graph, level0, level1, level2)
+    }
+
+    #[test]
+    fn compute_vertical_stats_no_vertical_edges_all_zero() {
+        let (field, graph, _level0, _level1) = make_two_level_field_and_graph(2, 1);
+        let stats = compute_vertical_stats(&graph, &field);
+        assert_eq!(stats.bidirectional_passages, 0);
+        assert_eq!(stats.one_way_passages_up, 0);
+        assert_eq!(stats.one_way_passages_down, 0);
+        assert_eq!(stats.elevator_groups, 0);
+        assert_eq!(stats.cross_floor_teleports, 0);
+    }
+
+    #[test]
+    fn compute_vertical_stats_bidirectional_passage() {
+        let (field, mut graph, level0, level1) = make_two_level_field_and_graph(2, 1);
+        let a0 = node_at_level(&field, level0, 0, 0);
+        let a1 = node_at_level(&field, level1, 0, 0);
+        graph.add_bidirectional_edge(a0, a1, EdgeKind::VerticalPassage);
+        let stats = compute_vertical_stats(&graph, &field);
+        assert_eq!(stats.bidirectional_passages, 1);
+        assert_eq!(stats.one_way_passages_up, 0);
+        assert_eq!(stats.one_way_passages_down, 0);
+    }
+
+    #[test]
+    fn compute_vertical_stats_one_way_up_and_down() {
+        let (field, mut graph, level0, level1) = make_two_level_field_and_graph(3, 1);
+        let a0 = node_at_level(&field, level0, 0, 0);
+        let a1 = node_at_level(&field, level1, 0, 0);
+        graph.add_edge(a0, a1, EdgeKind::VerticalPassage); // level0 -> level1: up
+        let b0 = node_at_level(&field, level0, 1, 0);
+        let b1 = node_at_level(&field, level1, 1, 0);
+        graph.add_edge(b1, b0, EdgeKind::VerticalPassage); // level1 -> level0: down
+        let stats = compute_vertical_stats(&graph, &field);
+        assert_eq!(stats.one_way_passages_up, 1);
+        assert_eq!(stats.one_way_passages_down, 1);
+        assert_eq!(stats.bidirectional_passages, 0);
+    }
+
+    #[test]
+    fn compute_vertical_stats_elevator_counts_one_group_for_full_fan() {
+        let (field, mut graph, level0, level1, level2) = make_three_level_field_and_graph(2, 1);
+        let a0 = node_at_level(&field, level0, 0, 0);
+        let a1 = node_at_level(&field, level1, 0, 0);
+        let a2 = node_at_level(&field, level2, 0, 0);
+        // Full fan across 3 floors at the same x-y point (mirrors `try_add_elevator_edge`'s
+        // pairwise bidirectional wiring) -> one elevator group, not 3 edges' worth.
+        for (x, y) in [(a0, a1), (a0, a2), (a1, a2)] {
+            graph.add_bidirectional_edge(x, y, EdgeKind::Elevator);
+        }
+        let stats = compute_vertical_stats(&graph, &field);
+        assert_eq!(stats.elevator_groups, 1);
+    }
+
+    #[test]
+    fn compute_vertical_stats_elevator_counts_distinct_points_separately() {
+        let (field, mut graph, level0, level1, _level2) = make_three_level_field_and_graph(2, 1);
+        let a0 = node_at_level(&field, level0, 0, 0);
+        let a1 = node_at_level(&field, level1, 0, 0);
+        let b0 = node_at_level(&field, level0, 1, 0);
+        let b1 = node_at_level(&field, level1, 1, 0);
+        graph.add_bidirectional_edge(a0, a1, EdgeKind::Elevator);
+        graph.add_bidirectional_edge(b0, b1, EdgeKind::Elevator);
+        let stats = compute_vertical_stats(&graph, &field);
+        assert_eq!(stats.elevator_groups, 2);
+    }
+
+    #[test]
+    fn compute_vertical_stats_elevator_same_point_disjoint_floor_sets_count_as_two_groups() {
+        // 6-floor field: floors 0-2 form one elevator at (0,0), floors 3-5 form a separate
+        // elevator at the same x-y point, with no edges connecting the two sets.
+        let mut ids = IdGenerator::new();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let levels: Vec<LevelId> = std::iter::once(field.single_level_id())
+            .chain((1..6).map(|_| field.add_level(Field::new(square_rect(2, 1), &mut ids).unwrap())))
+            .collect();
+        let mut graph = Graph::new();
+        for node in field.all_node_ids() { graph.add_node(node); }
+
+        let node_at_floor = |field: &MultiLevelField<SquareTessellation>, idx: usize| node_at_level(field, levels[idx], 0, 0);
+        for (i, j) in [(0, 1), (0, 2), (1, 2)] {
+            let (a, b) = (node_at_floor(&field, i), node_at_floor(&field, j));
+            graph.add_bidirectional_edge(a, b, EdgeKind::Elevator);
+        }
+        for (i, j) in [(3, 4), (3, 5), (4, 5)] {
+            let (a, b) = (node_at_floor(&field, i), node_at_floor(&field, j));
+            graph.add_bidirectional_edge(a, b, EdgeKind::Elevator);
+        }
+
+        let stats = compute_vertical_stats(&graph, &field);
+        assert_eq!(stats.elevator_groups, 2, "same x-y point but disjoint floor sets are two separate elevators");
+    }
+
+    #[test]
+    fn compute_vertical_stats_cross_floor_teleport_counted_once_per_pair() {
+        let (field, mut graph, level0, level1) = make_two_level_field_and_graph(2, 1);
+        let a0 = node_at_level(&field, level0, 0, 0);
+        let b1 = node_at_level(&field, level1, 1, 0);
+        graph.add_edge(a0, b1, EdgeKind::Teleport);
+        graph.add_edge(b1, a0, EdgeKind::Teleport);
+        let stats = compute_vertical_stats(&graph, &field);
+        assert_eq!(stats.cross_floor_teleports, 1);
+    }
+
+    #[test]
+    fn compute_vertical_stats_same_floor_teleport_excluded() {
+        let (field, mut graph) = make_field_and_graph(2, 1);
+        let a = node_at(&field, 0, 0);
+        let b = node_at(&field, 1, 0);
+        graph.add_edge(a, b, EdgeKind::Teleport);
+        let stats = compute_vertical_stats(&graph, &field);
+        assert_eq!(stats.cross_floor_teleports, 0);
     }
 }
