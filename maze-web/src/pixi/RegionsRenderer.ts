@@ -1,48 +1,34 @@
 import { Container } from "pixi.js";
-import type { NodeDto } from "../wasm/types";
+import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { CellFillRenderer } from "./renderers/CellFillRenderer";
-import type { CellFillGroup } from "./renderers/CellFillRenderer";
+import { RegionOverlayRenderer } from "./renderers/RegionOverlayRenderer";
 import { buildPalette } from "./colorUtils";
 import { COMPONENT_MASK_ALPHA } from "./renderConstants";
+import type { TeleportEdge } from "./renderers/types";
 
 export interface RegionsData {
   nodes: NodeDto[];
   components: number[][];
   cfg: TessellationConfig;
+  allEdges?: EdgeDto[];
+  resolveNodeLevel?: (id: number) => number | undefined;
+  activeFloorIndex?: number;
+  teleportEdges?: TeleportEdge[];
 }
 
 export class RegionsRenderer {
-  private readonly cells: CellFillRenderer;
+  private readonly overlay: RegionOverlayRenderer;
 
-  constructor(container: Container) {
-    this.cells = new CellFillRenderer(container);
+  constructor(cellsContainer: Container, badgesContainer: Container) {
+    this.overlay = new RegionOverlayRenderer(cellsContainer, badgesContainer);
   }
 
   render(data: RegionsData): void {
-    const { nodes, components, cfg } = data;
-    if (nodes.length === 0 || components.length === 0) {
-      this.cells.render([], cfg);
-      return;
-    }
-
-    const nodeById = new Map<number, NodeDto>();
-    for (const n of nodes) nodeById.set(n.id, n);
-
-    const palette = buildPalette(components.length);
-    const groups: CellFillGroup[] = components.map((comp, i) => {
-      const cells: [number, number][] = [];
-      for (const nodeId of comp) {
-        const node = nodeById.get(nodeId);
-        if (node) cells.push([node.x, node.y]);
-      }
-      return { cells, color: palette[i], alpha: COMPONENT_MASK_ALPHA };
-    });
-
-    this.cells.render(groups, cfg);
+    const componentColors = buildPalette(data.components.length);
+    this.overlay.render({ ...data, componentColors, alpha: COMPONENT_MASK_ALPHA });
   }
 
   destroy(): void {
-    this.cells.destroy();
+    this.overlay.destroy();
   }
 }

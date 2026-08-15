@@ -10,7 +10,7 @@ import { RouteOverlay } from "./RouteOverlay";
 import { PureCyclesOverlay } from "./PureCyclesOverlay";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { VerticalConnectionRenderer, type VerticalConnectionStyle } from "./renderers/VerticalConnectionRenderer";
-import { postEditEdgesToDto, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, type TeleportFloorContext } from "./selectors/mazeSelectors";
+import { postEditEdgesToDto, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportEdges, type TeleportFloorContext } from "./selectors/mazeSelectors";
 import { resolveEndpoint, buildSplitNodeResolver } from "./postEditEndpoint";
 import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
@@ -57,6 +57,16 @@ export class AnalyticsRenderer {
   private readonly teleportContainer: Container;
   private readonly verticalContainer: Container;
   private readonly markersContainer: Container;
+  /** Region/region-class cross-floor badges (GitHub issue #345) — sit above `teleportContainer`/
+   *  `verticalContainer`/`markersContainer` so a region's own badge isn't occluded by a vertical
+   *  passage/elevator/teleport marker drawn at the same cell. Still owned by `RegionsRenderer`/
+   *  `RegionClassesRenderer` respectively (feature-renderer ownership rule) — these are only z-order
+   *  slots in `AnalyticsRenderer`'s own container tree, wired into the constructor alongside
+   *  `regionsContainer`/`regionClassesContainer`. Kept as two separate containers (not shared)
+   *  since the two overlays' own `showRegions`/`showRegionClasses` flags aren't mutually exclusive
+   *  by construction — sharing one would let one overlay's `render()` destroy the other's badges. */
+  private readonly regionBadgesContainer: Container;
+  private readonly regionClassBadgesContainer: Container;
   private readonly graphContainer: Container;
   private readonly navGraphContainer: Container;
   private readonly pureCyclesContainer: Container;
@@ -88,6 +98,8 @@ export class AnalyticsRenderer {
     this.teleportContainer    = new Container();
     this.verticalContainer    = new Container();
     this.markersContainer     = new Container();
+    this.regionBadgesContainer = new Container();
+    this.regionClassBadgesContainer = new Container();
     this.graphContainer       = new Container();
     this.navGraphContainer    = new Container();
     this.pureCyclesContainer  = new Container();
@@ -104,6 +116,8 @@ export class AnalyticsRenderer {
     container.addChild(this.teleportContainer);
     container.addChild(this.verticalContainer);
     container.addChild(this.markersContainer);
+    container.addChild(this.regionBadgesContainer);
+    container.addChild(this.regionClassBadgesContainer);
     container.addChild(this.graphContainer);
     container.addChild(this.navGraphContainer);
     container.addChild(this.pureCyclesContainer);
@@ -119,8 +133,8 @@ export class AnalyticsRenderer {
       teleports: this.teleportContainer,
       markers: this.markersContainer,
     });
-    this.regionsRenderer = new RegionsRenderer(this.regionsContainer);
-    this.regionClassesRenderer = new RegionClassesRenderer(this.regionClassesContainer);
+    this.regionsRenderer = new RegionsRenderer(this.regionsContainer, this.regionBadgesContainer);
+    this.regionClassesRenderer = new RegionClassesRenderer(this.regionClassesContainer, this.regionClassBadgesContainer);
     this.verticalConnections = new VerticalConnectionRenderer(this.verticalContainer);
     this.graphRenderer = new MazeGraphRenderer(this.graphContainer);
     this.navGraphRenderer = new NavGraphRenderer(this.navGraphContainer);
@@ -222,6 +236,18 @@ export class AnalyticsRenderer {
       this.grid.render({ viewport: this.viewport }, cfg);
     }
 
+    // Shared by the maze overlay's own teleport connectors/badges and the regions overlay's
+    // teleport-anchored cross-floor region badges (GitHub issue #345) — both must resolve the
+    // exact same snapped-midpoint badge position for a cross-floor teleport, so both read it from
+    // the same `buildTeleportEdges` call rather than each re-deriving it independently.
+    const teleportFloorContext: TeleportFloorContext = {
+      resolveNodeLevel,
+      unscopedNodeById,
+      unscopedEdges: edges,
+      activeFloorIndex: resolvedActiveFloorIndex,
+    };
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
     // Maze overlay (floor + walls + markers)
     const showMaze = analyticsOpen && showMazeOverlay && nodes.length > 0;
     this.floorContainer.visible       = showMaze;
@@ -230,13 +256,21 @@ export class AnalyticsRenderer {
     this.splitJunctionContainer.visible = showMaze;
     this.teleportContainer.visible    = showMaze;
     this.markersContainer.visible     = showMaze;
+
+    // Components list shared by both Regions and Region classes overlays — built from
+    // node_component map once regardless of which overlay (if any) is active.
+    const componentCount = graphAnalytics?.component_count ?? 0;
+    const showRegions = analyticsOpen && showComponentsOverlay && componentCount > 0;
+    const regionClasses = graphAnalytics?.region_classes ?? {};
+    const showRegionClasses = analyticsOpen && showRegionClassesOverlay && componentCount > 0 && Object.keys(regionClasses).length > 0;
+
+    // Built once, only when something will actually consume it — the maze overlay's own teleport
+    // connectors/badges, and/or the regions overlays' teleport-anchored cross-floor badges (#345).
+    const teleportEdges = (showMaze || showRegions || showRegionClasses)
+      ? buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext)
+      : undefined;
+
     if (showMaze) {
-      const teleportFloorContext: TeleportFloorContext = {
-        resolveNodeLevel,
-        unscopedNodeById,
-        unscopedEdges: edges,
-        activeFloorIndex: resolvedActiveFloorIndex,
-      };
       this.mazeOverlay.render({ nodes, edges, start, finish, cfg, teleportFloorContext, teleportFloorNavigable: true, allEdges: state.edges });
     }
 
@@ -247,7 +281,6 @@ export class AnalyticsRenderer {
     const showVertical = showMaze;
     this.verticalContainer.visible = showVertical;
     if (showVertical) {
-      const nodeById = new Map(nodes.map((n) => [n.id, n]));
       const verticalConnectionMarkers = buildVerticalConnectionMarkers(
         nodeById, floorScopedStateEdges, cfg, resolveNodeLevel, resolvedActiveFloorIndex,
         selectVerticalPassagePairSet(state.edges), state.edges,
@@ -257,7 +290,6 @@ export class AnalyticsRenderer {
 
     // Components list shared by both Regions and Region classes overlays — built from
     // node_component map once regardless of which overlay (if any) is active.
-    const componentCount = graphAnalytics?.component_count ?? 0;
     const components: number[][] = Array.from({ length: componentCount }, () => []);
     const rawNc = graphAnalytics?.node_component;
     if (rawNc != null) {
@@ -267,21 +299,20 @@ export class AnalyticsRenderer {
     }
 
     // Regions overlay
-    const showRegions = analyticsOpen && showComponentsOverlay && componentCount > 0;
     this.regionsContainer.visible = showRegions;
+    this.regionBadgesContainer.visible = showRegions;
     if (showRegions) {
-      this.regionsRenderer.render({ nodes, components, cfg });
+      this.regionsRenderer.render({ nodes, components, cfg, allEdges: state.edges, resolveNodeLevel, activeFloorIndex: resolvedActiveFloorIndex, teleportEdges });
     }
 
     // Region classes overlay — region_classes is empty whenever start/finish aren't both set
     // (see GraphStatsDto.region_classes); gate on that too, not just componentCount, so a
     // stale showRegionClassesOverlay=true (e.g. loaded from an older project file before
     // start/finish were assigned) can't paint every region gray via the renderer's fallback.
-    const regionClasses = graphAnalytics?.region_classes ?? {};
-    const showRegionClasses = analyticsOpen && showRegionClassesOverlay && componentCount > 0 && Object.keys(regionClasses).length > 0;
     this.regionClassesContainer.visible = showRegionClasses;
+    this.regionClassBadgesContainer.visible = showRegionClasses;
     if (showRegionClasses) {
-      this.regionClassesRenderer.render({ nodes, components, regionClasses, cfg });
+      this.regionClassesRenderer.render({ nodes, components, regionClasses, cfg, allEdges: state.edges, resolveNodeLevel, activeFloorIndex: resolvedActiveFloorIndex, teleportEdges });
     }
 
     // Graph overlay
@@ -369,6 +400,8 @@ export class AnalyticsRenderer {
     this.teleportContainer.destroy();
     this.verticalContainer.destroy();
     this.markersContainer.destroy();
+    this.regionBadgesContainer.destroy();
+    this.regionClassBadgesContainer.destroy();
     this.graphContainer.destroy();
     this.navGraphContainer.destroy();
     this.pureCyclesContainer.destroy();

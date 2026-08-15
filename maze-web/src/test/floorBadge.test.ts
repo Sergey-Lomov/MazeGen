@@ -12,7 +12,11 @@ vi.mock("pixi.js", () => {
   return { Graphics: FakeGraphics, Container: class {}, Text: class {} };
 });
 
-const { drawCrossFloorStub } = await import("../pixi/renderers/floorBadge");
+vi.mock("../pixi/tessellationGeometry", () => ({
+  getCellCenter: (x: number, y: number) => ({ x: x * 10, y: y * 10 }),
+}));
+
+const { drawCrossFloorStub, computeRegionBadgeRingPos } = await import("../pixi/renderers/floorBadge");
 const { Graphics } = await import("pixi.js");
 
 type FakeG = InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] };
@@ -62,5 +66,32 @@ describe("drawCrossFloorStub", () => {
     const [tipX] = points;
     const midX = (6 + 89) / 2;
     expect(tipX).toBeLessThan(midX);
+  });
+});
+
+describe("computeRegionBadgeRingPos", () => {
+  const cfg = {} as never;
+
+  it("places a single badge at the cell center", () => {
+    const pos = computeRegionBadgeRingPos([2, 3], cfg, 6, 0, 1);
+    expect(pos).toEqual({ x: 20, y: 30 });
+  });
+
+  it("spreads two badges evenly around a ring of radius (badgeRadius+strokeWidth)*1.25", () => {
+    const a = computeRegionBadgeRingPos([0, 0], cfg, 8, 0, 2);
+    const b = computeRegionBadgeRingPos([0, 0], cfg, 8, 1, 2);
+    const ringRadius = 13.75; // (8 + 3) * 1.25
+    expect(Math.hypot(a.x, a.y)).toBeCloseTo(ringRadius);
+    expect(Math.hypot(b.x, b.y)).toBeCloseTo(ringRadius);
+    // Opposite sides of the ring (slot 0 vs slot 1 of 2).
+    expect(a.x).toBeCloseTo(-b.x);
+    expect(a.y).toBeCloseTo(-b.y);
+  });
+
+  it("starts the first slot straight up from the cell center", () => {
+    const pos = computeRegionBadgeRingPos([1, 1], cfg, 4, 0, 3);
+    const ringRadius = 8.75; // (4 + 3) * 1.25
+    expect(pos.x).toBeCloseTo(10);
+    expect(pos.y).toBeCloseTo(10 - ringRadius); // center.y - ringRadius (straight up)
   });
 });

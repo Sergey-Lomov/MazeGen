@@ -5,7 +5,7 @@ import { navigateToFloor } from "./floorNavigation";
 import { drawDirectionArrow } from "./wallUtils";
 import { TILE_SIZE } from "../constants";
 
-const STROKE_WIDTH = 3;
+export const FLOOR_BADGE_STROKE_WIDTH = 3;
 
 /// Angle (radians, world space) from `center` toward one of `cell`'s own vertices, cycling through
 /// them by `slot`/`slotCount` — falls back to a fixed 45° when the tessellation has no vertex
@@ -34,7 +34,7 @@ function vertexAngle(cell: [number, number], center: Pos, cfg: TessellationConfi
  *  shared drawing logic between feature-renderers lives in a shared utility, never a shared
  *  renderer instance. */
 export function drawFloorBadge(g: Graphics, r: number, cx: number, cy: number, color: number, borderColor: number, floorColor: number, floorNumber: number): void {
-  g.circle(cx, cy, r).fill(color).stroke({ width: STROKE_WIDTH, color: borderColor, alignment: 0 });
+  g.circle(cx, cy, r).fill(color).stroke({ width: FLOOR_BADGE_STROKE_WIDTH, color: borderColor, alignment: 0 });
   const label = new Text({
     text: `${floorNumber}`,
     // `trim: true` makes pixi measure the digit's own tight ink bounding box (`Text.updateBounds`
@@ -102,6 +102,27 @@ export function computeCrossFloorBadgePos(
   }
 
   return { x: onCenter.x + Math.cos(angle) * dist, y: onCenter.y + Math.sin(angle) * dist };
+}
+
+/** Resolves the world position for one badge in a cell-centered ring of region cross-floor badges
+ *  (GitHub issue #345) — unlike `computeCrossFloorBadgePos` (which anchors to a tessellation
+ *  vertex and connects back to a node via a stub line), a region badge has no single "on-floor
+ *  node" to stand in for: any cell in the region can carry one, and there's no connector line to
+ *  another drawn point (the whole point is that the region's own fill color already carries the
+ *  continuity across floors — see `Specs/regions.md`). A single badge sits at the cell's own
+ *  center; two or more are spread evenly around a ring of radius `badgeRadius * 1.25` centered on
+ *  the cell, starting straight up (`-90°`) and going clockwise, so badges never overlap each other
+ *  or (mostly) the cell's own perimeter stroke. See `Specs/floors.md`'s "Cross-floor region badges"
+ *  section for the full feature description. */
+export function computeRegionBadgeRingPos(cell: [number, number], cfg: TessellationConfig, badgeRadius: number, slot: number, slotCount: number): Pos {
+  const center = getCellCenter(cell[0], cell[1], cfg);
+  if (slotCount <= 1) return center;
+  // Ring radius accounts for the badge's own stroke (drawn outward, `alignment: 0`) — otherwise
+  // two adjacent badges' outer rings (radius `badgeRadius + strokeWidth`) overlap despite sitting
+  // 1.25x the bare fill radius apart.
+  const ringRadius = (badgeRadius + FLOOR_BADGE_STROKE_WIDTH) * 1.25;
+  const angle = -Math.PI / 2 + (slot / slotCount) * 2 * Math.PI;
+  return { x: center.x + Math.cos(angle) * ringRadius, y: center.y + Math.sin(angle) * ringRadius };
 }
 
 /** Draws a cross-floor badge's own connecting stub — a line from the on-floor node's own position
