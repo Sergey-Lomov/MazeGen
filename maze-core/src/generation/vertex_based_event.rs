@@ -41,9 +41,9 @@ pub enum VertexBasedEvent {
     /// neighbor, so it becomes this step's bridge target.
     #[wire(tag = 4, mutating)]
     ReserveCandidateChosen { node: NodeId },
-    /// The reserve-scan exhausted `reserve` (every candidate either already seen this scan or
-    /// popped to empty) without finding a reachable node — generation has nothing left to bring
-    /// in via either mechanism (teleport bridge or reserve pop), so the run ends after this step.
+    /// The reserve-scan's single linear pass over `reserve` found no candidate with a visited
+    /// neighbor — generation has nothing left to bring in via either mechanism (teleport bridge or
+    /// reserve pop), so the run ends after this step.
     #[wire(tag = 5)]
     ReserveExhausted,
     /// A geometric-adjacency bridge was added from `src` (a visited neighbor of `dst`, picked

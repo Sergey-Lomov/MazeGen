@@ -29,7 +29,55 @@ pub(super) fn generate_default_split<T: Tessellation>(
 
 pub(super) fn empty_presets() -> super::PresetState { super::PresetState::empty() }
 
-// ─── add_to_frontier / pop_reserve / choose_from_frontier ───────────────
+// ─── handle_empty_frontier / reserve scan (GitHub issue #356 regression) ───────────────
+
+/// Regression for GitHub issue #356: generation used to stop early, ignoring part of the reserve,
+/// under certain configurations. The reserve scan used to pop candidates via a weighted-random
+/// draw, re-pushing rejects and aborting on the first repeat — since the draw isn't round-robin,
+/// a not-yet-reachable candidate could resurface (and trip the abort) long before every other
+/// reserve entry got a turn, even though a reachable one was still sitting in the reserve
+/// untried. This is inherently seed-dependent under the old pop-loop (some seeds got lucky and
+/// drew the reachable candidate first try), so the regression is asserted over many seeds rather
+/// than pinned to one: with the fix (a single deterministic linear pass over the reserve), the
+/// lone reachable candidate (`x1`, the only one adjacent to the visited `x0`) must be found and
+/// generation must keep going on every seed, not just favorable ones.
+#[test]
+fn handle_empty_frontier_finds_the_lone_reachable_candidate_behind_several_unreachable_ones() {
+    for seed in 0..50 {
+        let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 1);
+        let level = field.levels_ordered().next().unwrap();
+        let node = |x: i32| field.node_at(level, crate::space::SquarePoint { x, y: 0 }).unwrap();
+        let (x0, x1, x2, x3, x4, x5) = (node(0), node(1), node(2), node(3), node(4), node(5));
+
+        let mut state = GenState::new(&graph, seed, x0);
+        // Only x1 is geometrically adjacent to the visited x0; x2/x3/x4/x5 have no visited
+        // neighbor. x1 is queued last, the position a depth_first-weighted draw favors least.
+        state.reserve = vec![x2, x3, x4, x5, x1];
+        state.in_reserve = [x2, x3, x4, x5, x1].into_iter().collect();
+        state.frontier.clear();
+        state.in_frontier.clear();
+
+        let params = default_params();
+        let elements = default_elements();
+        let preset_state = empty_presets();
+        let mut start_reassignment = None;
+
+        let keep_going = handle_empty_frontier(
+            &mut graph, &mut field, &mut ids, &params, &elements, &no_split(), &preset_state,
+            &mut state, x0, &mut start_reassignment, None, None,
+        );
+
+        assert!(keep_going, "seed {seed}: a reachable candidate (x1) was present in the reserve — generation must not stop");
+        assert!(state.visited.contains(&x1), "seed {seed}: x1 must have been picked (only candidate with a visited neighbor)");
+        for n in [x2, x3, x4, x5] {
+            assert!(!state.visited.contains(&n), "seed {seed}: {n:?} has no visited neighbor yet and must stay unvisited");
+            assert!(state.reserve.contains(&n) && state.in_reserve.contains(&n),
+                "seed {seed}: not-yet-reachable candidate {n:?} must remain in the reserve for a later pass");
+        }
+    }
+}
+
+// ─── add_to_frontier / choose_from_frontier ───────────────
 
 #[test]
 fn add_to_frontier_appends_new_node_with_parent() {
@@ -54,42 +102,6 @@ fn add_to_frontier_ignores_duplicate_node() {
 
     assert_eq!(frontier.len(), 1, "node already in frontier must not be pushed again");
     assert_eq!(frontier[0].parent, Some(0), "first insertion's parent must be preserved");
-}
-
-#[test]
-fn pop_reserve_returns_none_when_empty() {
-    let mut reserve: Vec<NodeId> = vec![];
-    let mut in_reserve: HashSet<NodeId> = HashSet::new();
-    let params = default_params();
-
-    assert_eq!(pop_reserve(&mut reserve, &mut in_reserve, &params, &mut rng(1)), None);
-}
-
-#[test]
-fn pop_reserve_removes_and_returns_the_only_element() {
-    let mut reserve: Vec<NodeId> = vec![7];
-    let mut in_reserve: HashSet<NodeId> = [7].into_iter().collect();
-    let params = default_params();
-
-    let popped = pop_reserve(&mut reserve, &mut in_reserve, &params, &mut rng(1));
-
-    assert_eq!(popped, Some(7));
-    assert!(reserve.is_empty());
-    assert!(!in_reserve.contains(&7));
-}
-
-#[test]
-fn pop_reserve_depth_first_one_prefers_last_inserted() {
-    let params = GenerationParams { depth_first: 1.0, ..default_params() };
-    let mut last_wins = 0;
-    for seed in 0..100 {
-        let mut reserve: Vec<NodeId> = vec![10, 20, 30];
-        let mut in_reserve: HashSet<NodeId> = [10, 20, 30].into_iter().collect();
-        if pop_reserve(&mut reserve, &mut in_reserve, &params, &mut rng(seed)) == Some(30) {
-            last_wins += 1;
-        }
-    }
-    assert!(last_wins >= 95, "depth_first=1.0: last-inserted reserve entry should dominate, got {last_wins}/100");
 }
 
 #[test]

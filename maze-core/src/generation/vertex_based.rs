@@ -180,40 +180,68 @@ fn handle_empty_frontier<T: Tessellation>(
         return true;
     }
 
-    // Pop candidates from reserve until we find one with a visited neighbor.
-    // Track seen candidates to avoid infinite cycling over nodes that are
-    // not yet reachable (none of their neighbors are visited).
-    let mut seen: HashSet<NodeId> = HashSet::new();
+    // Find a reserve candidate with a visited (reachable) neighbor. Previously this popped via
+    // the weighted-random `pop_reserve` in a loop, re-pushing rejects and tracking a `seen` set
+    // to detect cycling — but `pop_reserve`'s draw is random, not round-robin, so a rejected
+    // candidate can resurface (and get re-counted or re-missed) long before every other candidate
+    // has had a turn: no bound on how many draws a full pass over the reserve actually takes, so
+    // the "abort on repeat" logic either gave up early (most of the reserve still untried) or
+    // spun for a very long time chasing coverage that random re-drawing doesn't guarantee
+    // (GitHub issue #356). Fixed by making the search itself deterministic: one linear pass over
+    // the current reserve, each entry visited exactly once, splitting it into "keep" (still not
+    // reachable, stays in reserve) and "drop" (already visited, discarded) — only the winning
+    // candidate (if any) is actually removed via `pop_reserve`-style weighted pick, but restricted
+    // to the reachable subset so it can't return an already-tried non-candidate.
     let src = {
         let mut search_scope = scope.as_deref_mut().map(|log| log.enter("reserve_search"));
-        let result = loop {
-            let Some(candidate) = pop_reserve(&mut state.reserve, &mut state.in_reserve, params, &mut state.rng) else {
-                break None;
-            };
+        let mut kept: Vec<NodeId> = Vec::with_capacity(state.reserve.len());
+        let mut reachable: Vec<NodeId> = Vec::new();
+        for candidate in state.reserve.drain(..) {
+            state.in_reserve.remove(&candidate);
             if state.visited.contains(&candidate) {
                 if let Some(g) = search_scope.as_mut() {
                     g.emit(VertexBasedEvent::ReserveCandidateRejected { node: candidate, already_visited: true });
                 }
                 continue;
             }
-            if seen.contains(&candidate) { break None; }
-            seen.insert(candidate);
             let has_visited_neighbor = field.neighbors(candidate)
                 .into_iter()
                 .chain(field.vertical_neighbors(candidate))
                 .any(|n| state.visited.contains(&n) && can_connect(n, candidate, preset_state));
             if has_visited_neighbor {
+                reachable.push(candidate);
+            } else {
                 if let Some(g) = search_scope.as_mut() {
-                    g.emit(VertexBasedEvent::ReserveCandidateChosen { node: candidate });
+                    g.emit(VertexBasedEvent::ReserveCandidateRejected { node: candidate, already_visited: false });
                 }
-                break Some(candidate);
+                kept.push(candidate);
             }
+        }
+        // `ReserveCandidateChosen` is `mutating` (removes `node` from the debug `reserve` mirror)
+        // and must fire for exactly the winner — emitting it for every reachable candidate found
+        // during the scan would desync the mirror for every candidate that loses the weighted pick
+        // and gets pushed back below (see `debug_value_deltas`'s doc comment on this event).
+        let result = if reachable.is_empty() {
+            None
+        } else {
+            let idx = gaussian_weighted_index(reachable.len(), params.depth_first, &mut state.rng);
+            let winner = reachable.swap_remove(idx);
             if let Some(g) = search_scope.as_mut() {
-                g.emit(VertexBasedEvent::ReserveCandidateRejected { node: candidate, already_visited: false });
+                g.emit(VertexBasedEvent::ReserveCandidateChosen { node: winner });
+                for &loser in &reachable {
+                    g.emit(VertexBasedEvent::ReserveCandidateRejected { node: loser, already_visited: false });
+                }
             }
-            state.reserve.push(candidate);
-            state.in_reserve.insert(candidate);
+            Some(winner)
         };
+        // Everything not chosen goes back into the reserve: the rest of the reachable pool
+        // (lost this round only because another candidate won the weighted pick) plus every
+        // not-yet-reachable candidate.
+        kept.extend(reachable);
+        for n in &kept {
+            state.in_reserve.insert(*n);
+        }
+        state.reserve = kept;
         if result.is_none() {
             if let Some(g) = search_scope.as_mut() {
                 g.emit(VertexBasedEvent::ReserveExhausted);
@@ -655,19 +683,6 @@ pub(super) fn add_to_frontier(node: NodeId, parent: Option<NodeId>, frontier: &m
     if in_frontier.insert(node) {
         frontier.push(FrontierEntry { node, parent });
     }
-}
-
-fn pop_reserve(
-    reserve: &mut Vec<NodeId>,
-    in_reserve: &mut HashSet<NodeId>,
-    params: &GenerationParams,
-    rng: &mut MazeRng,
-) -> Option<NodeId> {
-    if reserve.is_empty() { return None; }
-    let idx = gaussian_weighted_index(reserve.len(), params.depth_first, rng);
-    let node = reserve.remove(idx);
-    in_reserve.remove(&node);
-    Some(node)
 }
 
 fn choose_from_frontier(frontier: &[FrontierEntry], params: &GenerationParams, rng: &mut MazeRng) -> usize {
