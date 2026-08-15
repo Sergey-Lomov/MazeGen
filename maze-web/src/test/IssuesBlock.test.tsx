@@ -86,6 +86,49 @@ function invalidSplitNodeGroupIssue(sourceCheck: string): IssueDto {
   };
 }
 
+describe("IssueBubble floor badges (GitHub issue #365)", () => {
+  it("a bubble whose edges span two floors shows L1/L2 badges; clicking one switches the active floor without opening the description modal", () => {
+    const floor0 = { id: "floor_0", title: "Floor 1" };
+    const floor1 = { id: "floor_1", title: "Floor 2" };
+    useMazeStore.setState({
+      floors: [floor0, floor1],
+      activeFloorId: floor0.id,
+      nodes: [
+        { id: 1, x: 0, y: 0, i: 0, level: 0 },
+        { id: 2, x: 0, y: 0, i: 0, level: 1 },
+      ],
+    });
+    const issue = invalidLoopIssue("loop_length");
+    render(<IssueBubble issue={issue} sourceCheck="loop_length" />);
+
+    expect(screen.getByText("L1")).toBeInTheDocument();
+    expect(screen.getByText("L2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("L2"));
+    expect(useMazeStore.getState().activeFloorId).toBe(floor1.id);
+    // stopPropagation kept the click from also bubbling to the bubble's own onClick (opens the
+    // description modal, whose title duplicates the bubble's own label) -- if it leaked, there
+    // would be two "Loop validation" texts instead of one.
+    expect(screen.getAllByText("Loop validation").length).toBe(1);
+  });
+
+  it("a bubble whose edges stay on a single floor shows no floor badges", () => {
+    const floor0 = { id: "floor_0", title: "Floor 1" };
+    useMazeStore.setState({
+      floors: [floor0],
+      activeFloorId: floor0.id,
+      nodes: [
+        { id: 1, x: 0, y: 0, i: 0, level: 0 },
+        { id: 2, x: 0, y: 0, i: 0, level: 0 },
+      ],
+    });
+    const issue = invalidLoopIssue("loop_length");
+    render(<IssueBubble issue={issue} sourceCheck="loop_length" />);
+
+    expect(screen.queryByText("L1")).not.toBeInTheDocument();
+  });
+});
+
 describe("IssueBubble", () => {
   it("hovering an invalid_loop bubble sets hoveredIssueLoopEdges to this check's flattened edges; leaving clears it", () => {
     const issue = invalidLoopIssue("loop_length");

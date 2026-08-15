@@ -115,6 +115,13 @@ input[type="number"]::-webkit-inner-spin-button {
   filter: brightness(1.35);
 }
 
+/* Cancels `.hoverable-tint`'s brightness on a descendant with its own fixed, deliberately chosen
+   bg/text contrast (IssuesBlock's floor badges, GitHub issue #365) — filters compose
+   multiplicatively, so the inverse factor here neutralizes the ancestor's 1.35x exactly. */
+.hoverable-tint:hover .hoverable-tint-counter {
+  filter: brightness(calc(1 / 1.35));
+}
+
 /* For an already-selected row (accent background) — hover is a no-op, so the selection
    highlight doesn't visually compete with hover feedback. */
 .hoverable-selected:hover {

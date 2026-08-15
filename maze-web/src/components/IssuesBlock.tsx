@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ui, typography, muted, spacing } from "../styles/theme";
+import { darken } from "../styles/palette";
 import { Modal } from "./Modal";
 import { useMazeStore } from "../store/mazeStore";
 import { resolveIssue, resolveIssueSourceLabel, resolveIssueSourceDescription, presetLockElementsFor, TILE_GRANULARITY_CHECKS } from "./issueRegistry";
 import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
 import { SectionHeader } from "./SectionHeader";
 import { ToggleRow } from "./ToggleRow";
+import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors";
+import { navigateToFloor } from "../pixi/renderers/floorNavigation";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 import type { IssueDto, IssueEdgeGroupPayload } from "../wasm/types";
@@ -191,6 +194,18 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     : presetLockedElements;
   const presetLockedCount = dedupedElements?.filter((el) => el.preset_locked).length ?? 0;
 
+  // GitHub issue #365: every maze node id this bubble's own visible elements touch, across
+  // whichever payload shape is in play -- union of the same edge/group sources `handleMouseEnter`
+  // above already isolates per bubble (only this source check's visible elements, not every
+  // contributing check's combined). Used only to find which *floors* the bubble spans; the actual
+  // hover highlight is unaffected by this.
+  const touchedNodeIds = [
+    ...(loopEdges ?? []),
+    ...(teleportEdges ?? []),
+    ...(oneWayEdges ?? []),
+    ...(splitRouteEdges?.flat() ?? []),
+  ].flat().concat((splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat());
+
   return (
     <>
       <div
@@ -205,8 +220,22 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-        <span style={{ ...issueStyles.label, color: palette.text }}>{label}</span>
-        {description && <span style={{ ...issueStyles.infoIcon, color: palette.text }}>ℹ</span>}
+        <div style={issueStyles.bubbleTopRow}>
+          <span style={{ ...issueStyles.label, color: palette.text }}>{label}</span>
+          {description && <span style={{ ...issueStyles.infoIcon, color: palette.text }}>ℹ</span>}
+        </div>
+        {/* `hoverable-tint`'s brightness filter on the outer bubble div would also wash out these
+          * badges' own deliberately fixed bg/text contrast -- `hoverable-tint-counter` cancels it
+          * back out (inverse brightness, filters compose multiplicatively) so the badges stay
+          * exactly as dark/light regardless of the parent bubble's hover state. */}
+        {touchedNodeIds.length > 0 && (
+          <IssueFloorBadges
+            nodeIds={touchedNodeIds}
+            bg={darken(palette.text, 0.2)}
+            text={palette.bg}
+            className={description ? "hoverable-tint-counter" : undefined}
+          />
+        )}
       </div>
       {open && (
         <Modal title={label} onClose={() => setOpen(false)}>
@@ -221,6 +250,47 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
         </Modal>
       )}
     </>
+  );
+}
+
+/// Row of solid `L{n}` badges inside a bubble whose flagged elements span more than one floor
+/// (GitHub issue #365) -- a floor-scoped canvas highlight only shows the active floor's own
+/// entities, so this is the one place a user can discover "this problem also exists on floor 3"
+/// without switching floors themselves. `color` matches the parent bubble's own text color (same
+/// as the label/info-icon), not a fixed hue. Distinct floor *indices* (`NodeDto.level ?? 0`, the
+/// same convention `selectNodeLevelResolver`/`navigateToFloor` already use), not floor ids --
+/// sorted ascending so the row always reads bottom-to-top regardless of `nodeIds`' own order.
+/// Renders nothing for a single-floor span (including a maze with only one floor at all), same as
+/// every other cross-floor indicator in the app.
+function IssueFloorBadges({ nodeIds, bg, text, className }: { nodeIds: number[]; bg: string; text: string; className?: string }) {
+  const nodes = useMazeStore((s) => s.nodes);
+  const floors = useMazeStore((s) => s.floors);
+  // Memoized on `nodes` identity, not rebuilt per render -- `nodes` only changes on
+  // generate/reset/load, while this component can re-render far more often (any store update
+  // touching the Analytics panel), and rebuilding the full node->level Map per bubble per render
+  // would be wasted work at scale (many issue bubbles x many nodes).
+  const resolveNodeLevel = useMemo(() => selectNodeLevelResolver(nodes), [nodes]);
+  const levels = Array.from(new Set(nodeIds.map((id) => resolveNodeLevel(id)).filter((l): l is number => l !== undefined))).sort((a, b) => a - b);
+  if (levels.length <= 1) return null;
+  return (
+    <div className={className} style={issueStyles.floorBadgeRow}>
+      {levels.map((level) => (
+        <button
+          key={level}
+          type="button"
+          style={{ ...issueStyles.floorBadge, background: bg, color: text }}
+          // Badges live inside the bubble's own clickable div (opens the description modal) --
+          // stopPropagation keeps a badge click purely a floor switch, not also an open-modal click.
+          onClick={(e) => {
+            e.stopPropagation();
+            navigateToFloor(level);
+          }}
+          disabled={!floors[level]}
+        >
+          {`L${level + 1}`}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -278,6 +348,11 @@ const issueStyles: Record<string, React.CSSProperties> = {
   bubble: {
     ...embeddedNotificationStyle,
     display: "flex",
+    flexDirection: "column",
+    gap: spacing.itemGap / 2,
+  },
+  bubbleTopRow: {
+    display: "flex",
     alignItems: "center",
     gap: spacing.itemGap,
   },
@@ -300,5 +375,20 @@ const issueStyles: Record<string, React.CSSProperties> = {
     borderTop: `1px solid`,
     borderColor: ui.border.default,
     margin: `${spacing.itemGap}px 0`,
+  },
+  floorBadgeRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: spacing.itemGap / 2,
+    flexShrink: 0,
+  },
+  floorBadge: {
+    ...typography.body,
+    fontSize: "0.75em",
+    lineHeight: 1,
+    padding: "2px 6px",
+    borderRadius: 999,
+    border: "none",
+    cursor: "pointer",
   },
 };
