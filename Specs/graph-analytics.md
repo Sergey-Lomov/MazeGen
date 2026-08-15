@@ -20,13 +20,19 @@ pub struct GraphAnalytics {
 }
 ```
 
-### `GraphAnalyticsDto` (maze-wasm)
+### `GraphStatsDto` (maze-wasm)
+
+GitHub issue #364 renamed `GraphAnalyticsDto` to `GraphStatsDto` and moved it under
+`MazeStatisticsDto` (see "Web Integration" below) — same fields as before, plus `floor_count` and
+`average_degree`:
 
 ```rust
-pub struct GraphAnalyticsDto {
+pub struct GraphStatsDto {
+    pub floor_count: usize,       // MultiLevelField::level_count() — always 1 for a single-floor maze
     pub node_count: usize,
     pub edge_count: usize,
     pub component_count: usize,
+    pub average_degree: f64,      // 2*E/V over the real graph (not the nav-graph), treated as undirected; 0 for an empty graph
     pub cycle_count: usize,
     pub cycle_region_count: usize,
     pub simple_cycle_count: usize,             // fully-deduped composite-inclusive simple-cycle count, always >= cycle_count
@@ -34,14 +40,17 @@ pub struct GraphAnalyticsDto {
     pub pure_cycle_node_ids: Vec<u32>,         // maze node ids in the pure-cycle core
     pub pure_cycle_edge_pairs: Vec<[u32; 2]>,  // [from_maze_id, to_maze_id] pure-cycle nav-edges
     pub cycle_analysis_overflowed: bool,
+    pub region_classes: HashMap<String, RegionClass>,
 }
 ```
 
-Maze-id translation happens in `build_analytics_snapshot` (maze-wasm/src/analytics.rs) — `GraphAnalytics` works in `NavNodeId`/edge-index domain, the DTO re-expresses everything in maze `NodeId` domain for the web layer.
+Maze-id translation happens in `build_analytics_snapshot` (maze-wasm/src/analytics/snapshot.rs) — `GraphAnalytics` works in `NavNodeId`/edge-index domain, the DTO re-expresses everything in maze `NodeId` domain for the web layer.
 
 `component_count` and `node_component` in the DTO both come from base-graph SCC (`maze.analysis.scc`), computed independently of `GraphAnalytics` — kept for the `RegionsRenderer` overlay (every id in `node_component` is `< component_count`). `GraphAnalytics` itself has no physical-connectivity field; nothing in the nav-graph domain needs it.
 
-`node_component`'s key is `String`, not `u32` — `MazeSnapshot` is serialized via `serde_wasm_bindgen::Serializer::json_compatible()` (plain JS objects, not `Map`s), which requires string map keys; the maze node id is formatted with `.to_string()` when the map is built.
+`node_component`'s key is `String`, not `u32` — `MazeSnapshot` is serialized via `serde_wasm_bindgen::Serializer::json_compatible()` (plain JS objects, not `Map`s), which requires string map keys; the maze node id is formatted with `.to_string()` when the map is built. Same reasoning applies to `region_classes`'s key (`component_id`).
+
+`GraphStatsDto` is the one member of `MazeStatisticsDto` that is **not** `FloorScoped` — SCC components and cycles can span multiple floors (via teleport/vertical-passage/elevator edges), so there is no non-arbitrary way to attribute a spanning component/cycle to a single floor. `average_degree` in particular is maze-wide only and uses every edge kind/direction (`Graph::outgoing_neighbors`), unlike the Basic-only/bidirectional-only filter `classify_node` uses for cell-shape stats (see "Cell Shape Statistics" below) — these are deliberately different neighbor notions for different questions.
 
 ## Single Source of Truth: `find_all_simple_cycles`
 
@@ -132,7 +141,7 @@ One read-only overlay in the Analytics feature, owned by `AnalyticsRenderer` (`m
 
 - **`PureCyclesOverlay`** — draws nodes in `pure_cycle_node_ids` and edges keyed by `pure_cycle_edge_pairs`. Green (`0x44dd88`).
 
-Toggled via `showPureCyclesOverlay` in `mazeStore`. Stats block in `AnalyticsFeature` shows `node_count`, `edge_count`, `component_count`, `cycle_count` ("Basic cycles"), `simple_cycle_count` ("Complex cycles"), `cycle_region_count`.
+Toggled via `showPureCyclesOverlay` in `mazeStore`. `GraphSection` (in the Analytics feature's detailed report, see `analytics-web.md`) shows `component_count`, `average_degree`, `node_count`, `edge_count`, and — unless `cycle_analysis_overflowed` — `cycle_count` ("Basic cycles"), `simple_cycle_count` ("Complex cycles"), `cycle_region_count`.
 
 Base-graph SCC (`maze.analysis.scc`) is computed separately for the `RegionsRenderer` overlay (regions are derived client-side from `graph_analytics.node_component`).
 
@@ -176,9 +185,9 @@ Keyed on `(graph.version(), meta.start, meta.finish)` — same invalidation shap
 
 ### Web Integration
 
-`GraphAnalyticsDto.region_classes: HashMap<String, String>` (maze-wasm) — component id (as string key) → `"path" | "alternative" | "unreachable" | "trap"`. Computed in `build_analytics_snapshot` only when both `maze.meta.start` and `maze.meta.finish` are set; empty otherwise (region classes are unavailable without both endpoints, independent of whether a route actually exists between them).
+`GraphStatsDto.region_classes: HashMap<String, String>` (maze-wasm) — component id (as string key) → `"path" | "alternative" | "unreachable" | "trap"`. Computed in `build_analytics_snapshot` only when both `maze.meta.start` and `maze.meta.finish` are set; empty otherwise (region classes are unavailable without both endpoints, independent of whether a route actually exists between them).
 
-Web overlay: **`RegionClassesRenderer`** (`maze-web/src/pixi/`), toggled via `showRegionClassesOverlay` in `mazeStore`. Renders the same per-component cell groups as `RegionsRenderer` (derived from `graph_analytics.node_component`), tinted by `REGION_CLASS_COLORS` (`maze-web/src/pixi/colorUtils.ts`) instead of the rotating component palette — fixed colors per class (path: green, alternative: blue, unreachable: gray, trap: red). An info icon next to the toggle opens a legend modal mapping each class's color to its name and meaning. The toggle is disabled whenever `graphAnalytics.region_classes` is empty (start or finish unset), not when no route exists — see `analytics-web.md`.
+Web overlay: **`RegionClassesRenderer`** (`maze-web/src/pixi/`), toggled via `showRegionClassesOverlay` in `mazeStore`. Renders the same per-component cell groups as `RegionsRenderer` (derived from `statistics.graph_stats.node_component`), tinted by `REGION_CLASS_COLORS` (`maze-web/src/pixi/colorUtils.ts`) instead of the rotating component palette — fixed colors per class (path: green, alternative: blue, unreachable: gray, trap: red). An info icon next to the toggle opens a legend modal mapping each class's color to its name and meaning. The toggle is disabled whenever `statistics.graph_stats.region_classes` is empty (start or finish unset), not when no route exists — see `analytics-web.md`.
 
 ## Distance Maps (`distance_from_start` / `distance_from_finish`)
 
@@ -283,8 +292,9 @@ snapshot rather than going through `MazeAnalysis`'s `RefCell`-backed cache slots
 
 ### Web Integration
 
-`SplitAnalyticsDto` (`maze-wasm/src/dto.rs`), computed in `build_analytics_snapshot` from
-`maze.field`/`maze.graph` directly (not from `GraphAnalytics`):
+GitHub issue #364 folded split statistics into `ElementsStatsDto` (`maze-wasm/src/dto.rs`), one
+member of `MazeStatisticsDto` (see "Cell Shape & Passage Statistics" below) — there is no longer a
+separate `SplitAnalyticsDto`/`MazeSnapshot.split_analytics` field:
 
 ```rust
 pub struct SplitGroupDto {
@@ -292,10 +302,13 @@ pub struct SplitGroupDto {
     pub count: usize,
 }
 
-pub struct SplitAnalyticsDto {
-    pub tile_count: usize,
-    pub node_count: usize,
-    pub groups: Vec<SplitGroupDto>,
+pub struct ElementsStatsDto {
+    pub one_way_passages: usize,
+    pub two_way_teleports: usize,
+    pub one_way_teleports: usize,
+    pub split_tile_count: usize,
+    pub split_node_count: usize,
+    pub split_groups: Vec<SplitGroupDto>,
 }
 ```
 
@@ -305,9 +318,103 @@ as `IssuePayloadDto`). `topology[i]` is one node's per-face-position requirement
 `maze-core`'s `Tessellation::faces()` position directly (**not** the web `TileFaceEditor` authoring
 order — see `nav-graph.md`/GitHub issue #273's face-index distinction).
 
-`MazeSnapshot.split_analytics: SplitAnalyticsDto` follows `graph_analytics`'s wiring exactly:
-`GenerationState.splitAnalytics`, `PostEditAnalytics.splitAnalytics`, reset alongside
-`graphAnalytics` in `buildResetMazeState` — not persisted in project export (purely derived,
-recomputed after load, same as `graphAnalytics`).
+`ElementsStatsDto`, like the rest of `MazeStatisticsDto`, is `FloorScoped` (`.total` + `.by_floor`)
+— `split_totals_scoped` restricts the split-point scan to one floor when `Some(level)` is passed.
+Not persisted in project export (purely derived, recomputed after load, same as the rest of
+`statistics`).
 
-See `analytics-web.md`'s "Splits Block" section for the `AnalyticsFeature` UI built on this DTO.
+See `analytics-web.md`'s "Elements Section" for the `AnalyticsFeature` UI built on this DTO.
+
+## Cell Shape & Passage Statistics (GitHub issue #364)
+
+`maze-core/src/graph/stats.rs` and `maze-core/src/graph/classify.rs` compute the remaining members
+of `MazeStatisticsDto` — geometric cell-shape classification and spatial (wall/passage) adjacency —
+independent of `GraphAnalytics`/`NavGraph` (this is `Field`/`Graph` domain, not nav-domain), and not
+cached in `MazeAnalysis` (recomputed on every analytics snapshot, same precedent as `split_totals`
+above).
+
+### `classify_node` / `GeometricNodeClass`
+
+```rust
+pub enum GeometricNodeClass { DeadEnd, Straight, Turn, Junction(usize) }
+
+pub fn classify_node<T: Tessellation>(graph: &Graph, node: NodeId, field: &MultiLevelField<T>) -> GeometricNodeClass
+```
+
+Classifies a node by how many **shape neighbors** it has (0/1 → DeadEnd, 2 → Straight or Turn
+depending on `field.is_straight`, n>=3 → Junction(n)). A shape neighbor is a node reachable via an
+`EdgeKind::Basic` edge that is **bidirectional** (both `node -> neighbor` and `neighbor -> node`
+exist) — a one-way passage doesn't read as a "side" of the cell's own shape, and
+`Teleport`/`VerticalPassage`/`Elevator` edges aren't spatial neighbors on the field at all (they'd
+distort the classification with connections that don't correspond to an adjacent tile). This is a
+deliberately different, stricter neighbor notion than `unique_neighbors`
+(`graph::classify::unique_neighbors`, all edge kinds/directions via `Graph::outgoing_neighbors`),
+which is what `GraphStatsDto.average_degree` uses instead — the two questions ("what does this
+cell's shape look like" vs. "how connected is the graph overall") intentionally use different
+neighbor sets.
+
+### `compute_node_stats_scoped` / `NodeStatsDto`
+
+```rust
+pub struct GeometricNodeStats {
+    pub dead_ends: usize,
+    pub straight: usize,
+    pub turns: usize,
+    pub junctions: Vec<(usize, usize)>, // (degree, count), sorted by degree
+    pub teleport_entries: usize,        // distinct nodes that are the destination of >=1 Teleport edge
+}
+```
+
+`teleport_entries` is not part of the dead-end/straight/turn/junction partition (a node can be both
+a teleport entry and e.g. a junction) — it's a cross-cutting count, surfaced separately in
+`ElementsStatsDto` on the web DTO (`NodeStatsDto` has no `teleport_entries` field), not
+`NodeStatsDto`.
+
+`compute_node_stats_scoped(graph, field, level)` restricts both to nodes on `level` (`None` = maze-
+wide) — a `Teleport` edge counts toward `teleport_entries` only if its destination is on `level` too
+(a cross-floor teleport target isn't "this floor's" teleport entry, mirrors
+`compute_spatial_edge_stats_scoped`'s own edge-scoping rule below).
+
+### `compute_spatial_edge_stats_scoped` / `SpatialEdgeStatsDto`
+
+```rust
+pub struct SpatialEdgeStats {
+    pub bidirectional: usize,
+    pub one_way_passages: usize,
+    pub walls: usize,
+    pub total_pairs: usize, // bidirectional + one_way_passages + walls, from adjacency_pairs directly
+}
+```
+
+Walls are a spatial concept (an adjacent tile pair — via `field.neighbors`, not graph edges — with
+no edge between them at all), not a graph property; every adjacent tile pair is classified into
+exactly one of the three buckets. `total_pairs` is computed directly from the deduped adjacency-pair
+list rather than summed from the other fields, so it stays correct if a future edge category is
+added without every summation site needing an update — it is also the percentage denominator the
+web "Sides Section" uses (see `analytics-web.md`).
+
+`one_way_passages` is **not** part of `SpatialEdgeStatsDto` on the web side — GitHub issue #364
+moved it into `ElementsStatsDto` alongside the other directional/special edge kinds
+(`two_way_teleports`, `one_way_teleports`), so `SpatialEdgeStatsDto` only distinguishes "connected"
+from "not connected".
+
+### Web Integration
+
+All three (`cell_count`, `cell_stats`, `passage_stats`) are `FloorScoped` members of
+`MazeStatisticsDto`, computed once per level (total + each floor) in `build_analytics_snapshot` —
+`passage_stats`'s underlying `SpatialEdgeStats` is computed once per level and shared with
+`elements_stats`'s `one_way_passages` field rather than recomputed, since `compute_spatial_edge_stats_scoped`
+walks `adjacency_pairs` and every node's `classify_node` shape.
+
+```rust
+pub struct NodeStatsDto { pub dead_ends: usize, pub straight: usize, pub turns: usize, pub junctions: Vec<JunctionBucket> }
+pub struct SpatialEdgeStatsDto { pub bidirectional: usize, pub walls: usize, pub total_pairs: usize }
+pub struct FloorScoped<T> { pub total: T, pub by_floor: HashMap<String, T> } // key = floor index, as string (json_compatible())
+```
+
+`cell_count: FloorScoped<usize>` is the real geometric cell count per floor (`Field::all_points()`,
+deduped by point) — derived straight from field shape, not reconstructed by summing `cell_stats`'
+own counts (which would double-count a split point's every extra node).
+
+See `analytics-web.md`'s "Cells Section" and "Sides Section" for the `AnalyticsFeature` UI built on
+these DTOs.

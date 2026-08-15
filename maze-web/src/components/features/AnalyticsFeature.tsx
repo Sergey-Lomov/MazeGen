@@ -9,12 +9,13 @@ import { IssuesBlock } from "../IssuesBlock";
 import { ToggleRow } from "../ToggleRow";
 import { SectionHeader } from "../SectionHeader";
 import { Modal } from "../Modal";
+import { SidePanel } from "../SidePanel";
 import { canvas } from "../../pixi/colorTokens";
 import { TileFaceEditor } from "./TileFaceEditor";
 import { tileNodesForTopology } from "../../pixi/splitPatternTile";
 import { titleKeyForTopology } from "../../pixi/splitPatternTitles";
 import { resolveCheckLabel, resolveStrategyLabel } from "./qualityI18n";
-import type { SplitGroupDto, TimingNodeDto, GenerationTimingDto } from "../../wasm/types";
+import type { SplitGroupDto, TimingNodeDto, GenerationTimingDto, NodeStatsDto, SpatialEdgeStatsDto, ElementsStatsDto } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
 
 const SPLIT_PREVIEW_ANCHOR: [number, number] = [0, 0];
@@ -217,31 +218,218 @@ export function TimingDetailedReportModal({ timing, onClose }: { timing: Generat
   );
 }
 
+function SidesInfoModal({ onClose }: { onClose: () => void }) {
+  return (
+    <Modal title={m["analytics.sides_section"]()} onClose={onClose}>
+      <div style={styles.legendDesc}>{m["analytics.sides_info_desc"]()}</div>
+    </Modal>
+  );
+}
+
+function GraphSection({ g }: { g: import("../../wasm/types").GraphStatsDto }) {
+  return (
+    <div style={styles.statBlock}>
+      <StatRow label={m["analytics.graph_components"]()} count={g.component_count} />
+      <StatRow label={m["analytics.graph_average_degree"]()} valueText={g.average_degree.toFixed(2)} />
+      <StatRow label={m["analytics.graph_nodes"]()} count={g.node_count} />
+      <StatRow label={m["analytics.graph_edges"]()} count={g.edge_count} />
+      {!g.cycle_analysis_overflowed && (
+        <>
+          <StatRow label={m["analytics.graph_cycle_count"]()} count={g.cycle_count} />
+          <StatRow label={m["analytics.graph_simple_cycle_count"]()} count={g.simple_cycle_count} />
+          <StatRow label={m["analytics.graph_cycle_regions"]()} count={g.cycle_region_count} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function CellsSection({ stats, cellCount }: { stats: NodeStatsDto; cellCount: number }) {
+  const sorted = [...stats.junctions].sort((a, b) => a.degree - b.degree);
+  const total = stats.dead_ends + stats.straight + stats.turns + sorted.reduce((s, j) => s + j.count, 0);
+  const pct = (n: number) => total > 0 ? (n / total) * 100 : 0;
+  return (
+    <div style={styles.statBlock}>
+      <StatRow label={m["analytics.total"]()} count={cellCount} pct={null} />
+      <StatRow label={m["analytics.dead_ends"]()} count={stats.dead_ends} pct={pct(stats.dead_ends)} />
+      <StatRow label={m["analytics.straight"]()} count={stats.straight} pct={pct(stats.straight)} />
+      <StatRow label={m["analytics.turns"]()} count={stats.turns} pct={pct(stats.turns)} />
+      {sorted.map((j) => (
+        <StatRow key={j.degree} label={m["analytics.junction"]({ degree: j.degree })} count={j.count} pct={pct(j.count)} />
+      ))}
+    </div>
+  );
+}
+
+function SidesSection({ stats, oneWayPassages }: { stats: SpatialEdgeStatsDto; oneWayPassages: number }) {
+  const pct = (n: number) => stats.total_pairs > 0 ? (n / stats.total_pairs) * 100 : 0;
+  return (
+    <div style={styles.statBlock}>
+      <StatRow label={m["analytics.total"]()} count={stats.total_pairs} pct={null} />
+      <StatRow label={m["analytics.passages"]()} count={stats.bidirectional} pct={pct(stats.bidirectional)} />
+      <StatRow label={m["analytics.one_way_edges"]()} count={oneWayPassages} pct={pct(oneWayPassages)} />
+      <StatRow label={m["analytics.walls"]()} count={stats.walls} pct={pct(stats.walls)} />
+    </div>
+  );
+}
+
+function SubsectionTitle({ label, onOpenInfo }: { label: string; onOpenInfo?: () => void }) {
+  return (
+    <div style={styles.subsectionHeaderRow}>
+      <div style={sharedStyles.sectionHeader}>{label}</div>
+      {onOpenInfo && (
+        <span role="button" tabIndex={0} className="hoverable" style={styles.infoIcon} onClick={onOpenInfo}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onOpenInfo(); }}>ℹ</span>
+      )}
+    </div>
+  );
+}
+
+function ElementsSection({ stats, onOpenSplitStats }: { stats: ElementsStatsDto; onOpenSplitStats?: () => void }) {
+  const namedSplitGroups = stats.split_groups.filter((g) => titleKeyForTopology(g.topology) != null);
+  return (
+    <div style={styles.statBlock}>
+      <StatRow label={m["analytics.one_way_edges"]()} count={stats.one_way_passages} />
+      <StatRow label={m["analytics.two_way_teleports"]()} count={stats.two_way_teleports} />
+      <StatRow label={m["analytics.one_way_teleports"]()} count={stats.one_way_teleports} />
+      <StatRow label={m["analytics.split_tile_count"]()} count={stats.split_tile_count} />
+      <StatRow label={m["analytics.split_node_count"]()} count={stats.split_node_count} />
+      {namedSplitGroups.map((group, i) => (
+        <StatRow key={i} label={messageFor(titleKeyForTopology(group.topology)!)} count={group.count} />
+      ))}
+      {onOpenSplitStats && stats.split_groups.length > 0 && (
+        <button className="hoverable" style={{ ...sharedStyles.btnMuted, ...styles.patternStatsButton }} onClick={onOpenSplitStats}>
+          {m["analytics.split_pattern_stats_button"]()}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function StatGroup({ nested, children }: { nested?: boolean; children: React.ReactNode }) {
+  return <div style={nested ? styles.nestedGroup : styles.statGroup}>{children}</div>;
+}
+
+export function DetailedReportPanel({ statistics, floors, cfg, nodes, onClose }: {
+  statistics: import("../../wasm/types").MazeStatisticsDto;
+  floors: { id: string; title: string }[];
+  cfg: ReturnType<typeof activeFloorTessellationOf>;
+  nodes: { x: number; y: number }[];
+  onClose: () => void;
+}) {
+  const sectionsExpanded = useMazeStore((s) => s.analyticsSectionsExpanded);
+  const setAnalyticsSectionExpanded = useMazeStore((s) => s.setAnalyticsSectionExpanded);
+  const isExpanded = (id: string) => sectionsExpanded[id] ?? false;
+  const toggleSection = (id: string) => setAnalyticsSectionExpanded(id, !isExpanded(id));
+  const [splitPatternStatsOpen, setSplitPatternStatsOpen] = React.useState(false);
+  const [sidesInfoOpen, setSidesInfoOpen] = React.useState(false);
+
+  // `floors` (live UI state) and `statistics.*.by_floor` (a snapshot from the last generate/
+  // post-edit-confirm) can desync — e.g. the user adds a floor after generating, before
+  // regenerating. Only render floors the snapshot actually has stats for, so a stale/missing
+  // `by_floor` entry can't crash `CellsSection`/`SidesSection`/`ElementsSection` on `undefined`.
+  const floorsWithStats = floors.filter((_, idx) => statistics.cell_stats.by_floor[idx] != null);
+  const floorsTopFirst = [...floorsWithStats].reverse();
+
+  return (
+    <SidePanel title={m["analytics.stats_summary"]()} onClose={onClose}>
+      <div style={styles.panelBody}>
+        <SectionHeader label={m["analytics.general_stats"]()} expanded={isExpanded("report_general")} onToggle={() => toggleSection("report_general")} />
+        {isExpanded("report_general") && (
+          <StatGroup nested>
+            <SubsectionTitle label={m["analytics.graph_section"]()} />
+            <StatGroup nested><GraphSection g={statistics.graph_stats} /></StatGroup>
+
+            <SubsectionTitle label={m["analytics.cells_section"]()} />
+            <StatGroup nested><CellsSection stats={statistics.cell_stats.total} cellCount={statistics.cell_count.total} /></StatGroup>
+
+            <SubsectionTitle label={m["analytics.sides_section"]()} onOpenInfo={() => setSidesInfoOpen(true)} />
+            <StatGroup nested>
+              <SidesSection stats={statistics.passage_stats.total} oneWayPassages={statistics.elements_stats.total.one_way_passages} />
+            </StatGroup>
+
+            <SubsectionTitle label={m["analytics.elements_section"]()} />
+            <StatGroup nested>
+              <ElementsSection stats={statistics.elements_stats.total} onOpenSplitStats={() => setSplitPatternStatsOpen(true)} />
+            </StatGroup>
+          </StatGroup>
+        )}
+
+        <div style={styles.divider} />
+
+        <SectionHeader
+          label={m["analytics.by_floors_count"]({ count: floorsWithStats.length })}
+          expanded={isExpanded("report_by_floors")}
+          onToggle={() => toggleSection("report_by_floors")}
+        />
+        {isExpanded("report_by_floors") && (
+          <StatGroup nested>
+            {floorsTopFirst.map((floor) => {
+              const idx = floors.indexOf(floor);
+              const sectionId = `report_floor_${floor.id}`;
+              return (
+                <React.Fragment key={floor.id}>
+                  <SectionHeader label={floor.title} expanded={isExpanded(sectionId)} onToggle={() => toggleSection(sectionId)} />
+                  {isExpanded(sectionId) && (
+                    <div style={styles.floorSectionBody}>
+                      <StatGroup nested>
+                        <SubsectionTitle label={m["analytics.cells_section"]()} />
+                        <StatGroup nested>
+                          <CellsSection stats={statistics.cell_stats.by_floor[idx]} cellCount={statistics.cell_count.by_floor[idx] ?? 0} />
+                        </StatGroup>
+
+                        <SubsectionTitle label={m["analytics.sides_section"]()} onOpenInfo={() => setSidesInfoOpen(true)} />
+                        <StatGroup nested>
+                          <SidesSection stats={statistics.passage_stats.by_floor[idx]} oneWayPassages={statistics.elements_stats.by_floor[idx].one_way_passages} />
+                        </StatGroup>
+
+                        <SubsectionTitle label={m["analytics.elements_section"]()} />
+                        <StatGroup nested>
+                          <ElementsSection stats={statistics.elements_stats.by_floor[idx]} />
+                        </StatGroup>
+                      </StatGroup>
+                      <div style={styles.divider} />
+                    </div>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </StatGroup>
+        )}
+      </div>
+
+      {sidesInfoOpen && <SidesInfoModal onClose={() => setSidesInfoOpen(false)} />}
+
+      {splitPatternStatsOpen && (
+        <SplitPatternStatsModal
+          groups={statistics.elements_stats.total.split_groups}
+          tileCount={statistics.elements_stats.total.split_tile_count}
+          nodes={nodes}
+          cfg={cfg}
+          onClose={() => setSplitPatternStatsOpen(false)}
+        />
+      )}
+    </SidePanel>
+  );
+}
+
 export function AnalyticsFeature() {
-  const generatedNodeStats = useMazeStore((s) => s.nodeStats);
-  const generatedEdgeStats = useMazeStore((s) => s.edgeStats);
-  const generatedTeleportEdgeStats = useMazeStore((s) => s.teleportEdgeStats);
+  const generatedStatistics = useMazeStore((s) => s.statistics);
   const generatedRouteInfo = useMazeStore((s) => s.routeInfo);
-  const generatedGraphAnalytics = useMazeStore((s) => s.graphAnalytics);
-  const generatedSplitAnalytics = useMazeStore((s) => s.splitAnalytics);
   const timing = useMazeStore((s) => s.timing);
   const postEditAnalytics = useMazeStore((s) => s.postEditAnalytics);
   const issues = useMazeStore(useShallow(selectAnalyticsIssues));
   const nodes = useMazeStore((s) => s.nodes);
+  const floors = useMazeStore((s) => s.floors);
   const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
 
-  const nodeStats = postEditAnalytics?.nodeStats ?? generatedNodeStats;
-  const edgeStats = postEditAnalytics?.edgeStats ?? generatedEdgeStats;
-  const teleportEdgeStats = postEditAnalytics?.teleportEdgeStats ?? generatedTeleportEdgeStats;
+  const statistics = postEditAnalytics?.statistics ?? generatedStatistics;
   const routeInfo = postEditAnalytics != null ? postEditAnalytics.routeInfo : generatedRouteInfo;
-  const graphAnalytics = postEditAnalytics?.graphAnalytics ?? generatedGraphAnalytics;
-  const splitAnalytics = postEditAnalytics?.splitAnalytics ?? generatedSplitAnalytics;
   // Backend leaves region_classes empty whenever start or finish is unset — the same condition
   // the issue calls "unavailable otherwise" (independent of whether a route actually exists).
-  const regionClassesUnavailable = Object.keys(graphAnalytics?.region_classes ?? {}).length === 0;
-  const [splitPatternStatsOpen, setSplitPatternStatsOpen] = React.useState(false);
+  const regionClassesUnavailable = Object.keys(statistics?.graph_stats.region_classes ?? {}).length === 0;
   const [timingReportOpen, setTimingReportOpen] = React.useState(false);
-  const namedSplitGroups = (splitAnalytics?.groups ?? []).filter((g) => titleKeyForTopology(g.topology) != null);
+  const [detailedReportOpen, setDetailedReportOpen] = React.useState(false);
 
   const showMazeOverlay = useMazeStore((s) => s.showMazeOverlay);
   const showComponentsOverlay = useMazeStore((s) => s.showComponentsOverlay);
@@ -279,7 +467,7 @@ export function AnalyticsFeature() {
           <ToggleRow label={m["analytics.layer_components"]()} checked={showComponentsOverlay} onChange={setShowComponentsOverlay} />
           <ToggleRow label={m["analytics.layer_graph"]()} checked={showGraphOverlay} onChange={setShowGraphOverlay} />
           <ToggleRow label={m["analytics.layer_nav_graph"]()} checked={showNavGraphOverlay} onChange={setShowNavGraphOverlay} />
-          <ToggleRow label={m["analytics.layer_pure_cycles"]()} checked={showPureCyclesOverlay} onChange={setShowPureCyclesOverlay} disabled={(graphAnalytics?.cycle_count ?? 0) === 0} />
+          <ToggleRow label={m["analytics.layer_pure_cycles"]()} checked={showPureCyclesOverlay} onChange={setShowPureCyclesOverlay} disabled={(statistics?.graph_stats.cycle_count ?? 0) === 0} />
           <ToggleRow label={m["analytics.layer_route"]()} checked={showRouteOverlay} onChange={setShowRouteOverlay} disabled={routeInfo == null} />
           <ToggleRow
             label={m["analytics.layer_region_classes"]()}
@@ -293,33 +481,10 @@ export function AnalyticsFeature() {
 
       {regionClassLegendOpen && <RegionClassLegendModal onClose={() => setRegionClassLegendOpen(false)} />}
 
-      {/* Graph analytics block */}
-      {graphAnalytics != null && (
-        <>
-          <div style={styles.divider} />
-          <SectionHeader label={m["analytics.graph"]()} expanded={isExpanded("graph")} onToggle={() => toggleSection("graph")} />
-          {isExpanded("graph") && (
-            <div style={styles.statBlock}>
-              <StatRow label={m["analytics.graph_nodes"]()} count={graphAnalytics.node_count} />
-              <StatRow label={m["analytics.graph_edges"]()} count={graphAnalytics.edge_count} />
-              <StatRow label={m["analytics.graph_components"]()} count={graphAnalytics.component_count} />
-              {!graphAnalytics.cycle_analysis_overflowed && (
-                <>
-                  <StatRow label={m["analytics.graph_cycle_count"]()} count={graphAnalytics.cycle_count} />
-                  <StatRow label={m["analytics.graph_simple_cycle_count"]()} count={graphAnalytics.simple_cycle_count} />
-                  <StatRow label={m["analytics.graph_cycle_regions"]()} count={graphAnalytics.cycle_region_count} />
-                </>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      <div style={styles.divider} />
-
       {/* Path block — hidden when no route */}
       {routeInfo != null && (
         <>
+          <div style={styles.divider} />
           <SectionHeader label={m["analytics.path"]()} expanded={isExpanded("path")} onToggle={() => toggleSection("path")} />
           {isExpanded("path") && (
             <div style={styles.statBlock}>
@@ -335,90 +500,36 @@ export function AnalyticsFeature() {
               )}
             </div>
           )}
-          <div style={styles.divider} />
         </>
       )}
 
-      {/* Nodes block */}
-      <SectionHeader label={m["analytics.node_elements"]()} expanded={isExpanded("nodes")} onToggle={() => toggleSection("nodes")} />
-      {isExpanded("nodes") && nodeStats ? (() => {
-        const sorted = [...nodeStats.junctions].sort((a, b) => a.degree - b.degree);
-        const total = nodeStats.dead_ends + nodeStats.straight + nodeStats.turns
-          + sorted.reduce((s, j) => s + j.count, 0);
-        const pct = (n: number) => total > 0 ? (n / total) * 100 : 0;
-        return (
-          <div style={styles.statBlock}>
-            <StatRow label={m["analytics.dead_ends"]()} count={nodeStats.dead_ends} pct={pct(nodeStats.dead_ends)} />
-            <StatRow label={m["analytics.straight"]()} count={nodeStats.straight} pct={pct(nodeStats.straight)} />
-            <StatRow label={m["analytics.turns"]()} count={nodeStats.turns} pct={pct(nodeStats.turns)} />
-            {sorted.map((j) => (
-              <StatRow
-                key={j.degree}
-                label={m["analytics.junction"]({ degree: j.degree })}
-                count={j.count}
-                pct={pct(j.count)}
-              />
-            ))}
-            <StatRow label={m["analytics.teleport_entries"]()} count={nodeStats.teleport_entries} pct={pct(nodeStats.teleport_entries)} />
-          </div>
-        );
-      })() : null}
-
-      <div style={styles.divider} />
-
-      {/* Edges block */}
-      <SectionHeader label={m["analytics.edge_elements"]()} expanded={isExpanded("edges")} onToggle={() => toggleSection("edges")} />
-      {isExpanded("edges") && edgeStats ? (() => {
-        const total = edgeStats.bidirectional + edgeStats.one_way_passages + edgeStats.walls;
-        const pct = (n: number) => total > 0 ? (n / total) * 100 : 0;
-        return (
-          <div style={styles.statBlock}>
-            <StatRow label={m["analytics.passages"]()} count={edgeStats.bidirectional} pct={pct(edgeStats.bidirectional)} />
-            <StatRow label={m["analytics.one_way_edges"]()} count={edgeStats.one_way_passages} pct={pct(edgeStats.one_way_passages)} />
-            <StatRow label={m["analytics.walls"]()} count={edgeStats.walls} pct={pct(edgeStats.walls)} />
-            {teleportEdgeStats ? (
-              <>
-                <StatRow label={m["analytics.two_way_teleports"]()} count={teleportEdgeStats.two_way} pct={null} />
-                <StatRow label={m["analytics.one_way_teleports"]()} count={teleportEdgeStats.one_way} pct={null} />
-              </>
-            ) : null}
-          </div>
-        );
-      })() : null}
-
-      {/* Splits block — GitHub issue #262 */}
-      {splitAnalytics != null && (
+      {/* Summary statistics block — GitHub issue #364 */}
+      {statistics != null && (
         <>
           <div style={styles.divider} />
-          <SectionHeader label={m["analytics.splits"]()} expanded={isExpanded("splits")} onToggle={() => toggleSection("splits")} />
-          {isExpanded("splits") && (
+          <SectionHeader label={m["analytics.stats_summary"]()} expanded={isExpanded("stats_summary")} onToggle={() => toggleSection("stats_summary")} />
+          {isExpanded("stats_summary") && (
             <div style={styles.statBlock}>
-              <StatRow label={m["analytics.split_tile_count"]()} count={splitAnalytics.tile_count} />
-              <StatRow label={m["analytics.split_node_count"]()} count={splitAnalytics.node_count} />
-              {namedSplitGroups.map((group, i) => (
-                <StatRow
-                  key={i}
-                  label={messageFor(titleKeyForTopology(group.topology)!)}
-                  count={group.count}
-                />
-              ))}
-              {splitAnalytics.groups.length > 0 && (
-                <button className="hoverable" style={{ ...sharedStyles.btnMuted, ...styles.patternStatsButton }} onClick={() => setSplitPatternStatsOpen(true)}>
-                  {m["analytics.split_pattern_stats_button"]()}
-                </button>
-              )}
+              <StatRow label={m["analytics.floor_count"]()} count={statistics.graph_stats.floor_count} />
+              <StatRow label={m["analytics.cell_count"]()} count={statistics.cell_count.total} />
+              <StatRow label={m["analytics.graph_components"]()} count={statistics.graph_stats.component_count} />
+              <StatRow label={m["analytics.graph_cycle_count"]()} count={statistics.graph_stats.cycle_count} />
+              <StatRow label={m["analytics.graph_average_degree"]()} valueText={statistics.graph_stats.average_degree.toFixed(2)} />
+              <button className="hoverable" style={{ ...sharedStyles.btnMuted, ...styles.patternStatsButton }} onClick={() => setDetailedReportOpen(true)}>
+                {m["analytics.detailed_report_button"]()}
+              </button>
             </div>
           )}
         </>
       )}
 
-      {splitPatternStatsOpen && splitAnalytics != null && (
-        <SplitPatternStatsModal
-          groups={splitAnalytics.groups}
-          tileCount={splitAnalytics.tile_count}
-          nodes={nodes}
+      {detailedReportOpen && statistics != null && (
+        <DetailedReportPanel
+          statistics={statistics}
+          floors={floors}
           cfg={tessellationConfig}
-          onClose={() => setSplitPatternStatsOpen(false)}
+          nodes={nodes}
+          onClose={() => setDetailedReportOpen(false)}
         />
       )}
 
@@ -493,6 +604,14 @@ const styles: Record<string, React.CSSProperties> = {
   timingReportMs: { ...typography.caption, minWidth: 64, textAlign: "right" as const },
   timingReportPct: { ...typography.caption, minWidth: 56, textAlign: "right" as const },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
+  panelBody: { display: "flex", flexDirection: "column", gap: spacing.itemGap, padding: dialogSpacing.bodyPadding },
+  // One indentation level for a nested section's own content, relative to its `SectionHeader` —
+  // `report_general`/`report_by_floors` -> subsection -> stat rows is 2 levels deep at most.
+  statGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  nestedGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
+  floorSectionBody: { paddingBottom: 8 },
+  subsectionHeaderRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
+  infoIcon: { ...muted(typography.icon), lineHeight: 1, flexShrink: 0, cursor: "default", borderRadius: 3 },
   toggleBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   legendRow: { display: "flex", alignItems: "center", gap: spacing.groupGap },
   legendSwatch: { width: 14, height: 14, borderRadius: 3, flexShrink: 0 },

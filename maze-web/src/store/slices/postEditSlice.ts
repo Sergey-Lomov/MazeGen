@@ -332,14 +332,10 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         // right after a project load, even though the confirmed graph itself was correct.
         edges: snapshot.edges,
         postEditAnalytics: {
-          nodeStats: snapshot.node_stats,
-          edgeStats: snapshot.edge_stats,
-          teleportEdgeStats: snapshot.teleport_edge_stats,
+          statistics: snapshot.statistics,
           routeInfo: snapshot.route_info,
           navNodes: snapshot.nav_nodes,
           navEdges: snapshot.nav_edges,
-          graphAnalytics: snapshot.graph_analytics,
-          splitAnalytics: snapshot.split_analytics,
           issues: snapshot.issues,
         },
         postEditEdges: edgesSnapshot,

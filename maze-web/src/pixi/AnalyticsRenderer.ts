@@ -150,7 +150,7 @@ export class AnalyticsRenderer {
       const dataChanged =
         state.nodes !== prev.nodes ||
         state.edges !== prev.edges ||
-        state.graphAnalytics !== prev.graphAnalytics ||
+        state.statistics !== prev.statistics ||
         state.navNodes !== prev.navNodes ||
         state.navEdges !== prev.navEdges ||
         state.routeInfo !== prev.routeInfo ||
@@ -186,7 +186,7 @@ export class AnalyticsRenderer {
     const { nodes, edges: floorScopedStateEdges } = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId);
     const activeFloorIndex = state.floors.findIndex((f) => f.id === state.activeFloorId);
 
-    const graphAnalytics = postEditAnalytics?.graphAnalytics ?? state.graphAnalytics;
+    const graphAnalytics = (postEditAnalytics?.statistics ?? state.statistics)?.graph_stats;
     const navNodes   = postEditAnalytics?.navNodes   ?? state.navNodes;
     const navEdges   = postEditAnalytics?.navEdges   ?? state.navEdges;
     const routeInfo  = postEditAnalytics != null ? postEditAnalytics.routeInfo : state.routeInfo;
@@ -266,7 +266,7 @@ export class AnalyticsRenderer {
     }
 
     // Region classes overlay — region_classes is empty whenever start/finish aren't both set
-    // (see GraphAnalyticsDto.region_classes); gate on that too, not just componentCount, so a
+    // (see GraphStatsDto.region_classes); gate on that too, not just componentCount, so a
     // stale showRegionClassesOverlay=true (e.g. loaded from an older project file before
     // start/finish were assigned) can't paint every region gray via the renderer's fallback.
     const regionClasses = graphAnalytics?.region_classes ?? {};

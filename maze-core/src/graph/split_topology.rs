@@ -85,16 +85,29 @@ pub fn split_totals<T: Tessellation>(
     graph: &Graph,
     field: &MultiLevelField<T>,
 ) -> (usize, usize, HashMap<SplitTopology, usize>) {
+    split_totals_scoped(graph, field, None)
+}
+
+/// Same as `split_totals`, restricted to `level`'s own floor when `Some` — only split points
+/// whose level matches are counted (GitHub issue #364).
+pub fn split_totals_scoped<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+    level: Option<crate::space::LevelId>,
+) -> (usize, usize, HashMap<SplitTopology, usize>) {
     let mut tile_count = 0usize;
     let mut node_count = 0usize;
     let mut groups: HashMap<SplitTopology, usize> = HashMap::new();
 
     let mut seen_points: std::collections::HashSet<(crate::space::LevelId, T::Point)> = std::collections::HashSet::new();
-    for (level, point) in field.all_points_with_level() {
-        if !seen_points.insert((level, point)) {
+    for (point_level, point) in field.all_points_with_level() {
+        if level.is_some_and(|l| l != point_level) {
             continue;
         }
-        let nodes = field.nodes_at(level, point);
+        if !seen_points.insert((point_level, point)) {
+            continue;
+        }
+        let nodes = field.nodes_at(point_level, point);
         if nodes.len() < 2 {
             continue;
         }
@@ -112,7 +125,7 @@ pub fn split_totals<T: Tessellation>(
 mod tests {
     use super::*;
     use crate::{Graph, IdGenerator};
-    use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
+    use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     /// 3x1 field, middle point split into 2 nodes, each connected to one horizontal neighbor.
     fn maze_with_middle_split() -> (Graph, MultiLevelField<SquareTessellation>, Vec<crate::ids::NodeId>) {
@@ -203,6 +216,26 @@ mod tests {
             .map(|(_, count)| *count)
             .unwrap();
         assert_eq!(two_node_group_count, 2);
+    }
+
+    #[test]
+    fn split_totals_scoped_counts_only_the_given_floor() {
+        let mut ids = IdGenerator::new();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level0 = field.single_level_id();
+        field.add_node_at(level0, SquarePoint { x: 1, y: 0 }, &mut ids);
+        let level1 = field.add_level(Field::new(square_rect(3, 1), &mut ids).unwrap());
+        field.add_node_at(level1, SquarePoint { x: 1, y: 0 }, &mut ids);
+        field.add_node_at(level1, SquarePoint { x: 2, y: 0 }, &mut ids);
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+
+        let (tile_count0, ..) = split_totals_scoped(&g, &field, Some(level0));
+        assert_eq!(tile_count0, 1, "level0 has one split point");
+        let (tile_count1, ..) = split_totals_scoped(&g, &field, Some(level1));
+        assert_eq!(tile_count1, 2, "level1 has two split points");
+        let (tile_count_all, ..) = split_totals_scoped(&g, &field, None);
+        assert_eq!(tile_count_all, 3, "maze-wide (None) covers both floors");
     }
 
     #[test]

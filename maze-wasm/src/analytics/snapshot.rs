@@ -7,16 +7,16 @@ use maze_core::{
         QualityControlEngine, Issue, CycleAnalysisOverflowedIssue,
         RepairLimitReachedIssue, IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload, resolve_issue_payload,
     },
-    compute_node_stats, compute_spatial_edge_stats, compute_teleport_edge_stats,
+    graph::stats::{compute_node_stats_scoped, compute_spatial_edge_stats_scoped, compute_teleport_edge_stats, compute_teleport_edge_stats_scoped, average_degree},
     generation::{SplitFaceRequirement, OneWayDirection, PresetState},
-    split_totals,
+    graph::split_topology::split_totals_scoped,
     Maze,
 };
 use crate::dto::{
     EdgeDto, EdgeKindDto, IssueDto, IssuePayloadDto, IssueEdgeGroupPayloadDto, IssueSplitTilePayloadDto, IssueSplitGroupPayloadDto, IssueRouteEdgeDto, IssueRoutePayloadDto, IssueRegionPayloadDto,
     MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
-    NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, JunctionBucket, GraphAnalyticsDto,
-    SplitFaceRequirementDto, OneWayDirectionDto, SplitGroupDto, SplitAnalyticsDto,
+    NodeStatsDto, SpatialEdgeStatsDto, ElementsStatsDto, RouteInfoDto, JunctionBucket, GraphStatsDto,
+    SplitFaceRequirementDto, OneWayDirectionDto, SplitGroupDto, FloorScoped, MazeStatisticsDto,
 };
 
 fn edge_group_map_dto(map: HashMap<String, Vec<IssueEdgeGroupPayload>>) -> HashMap<String, Vec<IssueEdgeGroupPayloadDto>> {
@@ -254,25 +254,13 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         .map(|(comp_id, class)| (comp_id.to_string(), class.as_str().to_string()))
         .collect();
 
-    let (split_tile_count, split_node_count, split_groups) = split_totals(&maze.graph, &maze.field);
-    let split_analytics = SplitAnalyticsDto {
-        tile_count: split_tile_count,
-        node_count: split_node_count,
-        groups: split_groups.into_iter()
-            .map(|(topology, count)| SplitGroupDto {
-                topology: topology.into_iter()
-                    .map(|node_faces| node_faces.into_iter().map(split_face_requirement_dto).collect())
-                    .collect(),
-                count,
-            })
-            .collect(),
-    };
-
-    let graph_analytics_dto = GraphAnalyticsDto {
-        node_count:        graph_analytics.node_count,
-        edge_count:        graph_analytics.edge_count,
-        component_count:   scc.components.len(),
-        cycle_count:       graph_analytics.cycle_count,
+    let graph_stats = GraphStatsDto {
+        floor_count:        maze.field.level_count(),
+        node_count:         graph_analytics.node_count,
+        edge_count:         graph_analytics.edge_count,
+        component_count:    scc.components.len(),
+        average_degree:     average_degree(&maze.graph),
+        cycle_count:        graph_analytics.cycle_count,
         cycle_region_count: graph_analytics.cycle_region_count,
         simple_cycle_count: graph_analytics.simple_cycle_count,
         node_component,
@@ -282,29 +270,94 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         region_classes,
     };
 
-    let raw_node_stats = compute_node_stats(&maze.graph, &maze.field);
-    let node_stats = NodeStatsDto {
-        dead_ends: raw_node_stats.dead_ends,
-        straight:  raw_node_stats.straight,
-        turns:     raw_node_stats.turns,
-        junctions: raw_node_stats.junctions.iter()
-            .map(|&(degree, count)| JunctionBucket { degree, count })
+    // Per-floor stats are computed over every floor the field actually has, independent of
+    // `all_levels`/`levels` above (which only restricts what `nodes`/`edges` serialize for
+    // callers not yet multi-level-aware — see their own doc comment).
+    let all_field_levels: Vec<maze_core::space::LevelId> = maze.field.levels_ordered().collect();
+
+    // Real geometric cell count — `Field::all_points()`, deduped by point (mirrors
+    // `split_totals_scoped`'s own `seen_points` dedup), not reconstructed from `cell_stats`
+    // (which would double-count a split point's every extra node).
+    let level_cell_count = |level: maze_core::space::LevelId| -> usize {
+        maze.field.field_of(level).map_or(0, |f| {
+            let mut seen = std::collections::HashSet::new();
+            f.all_points().filter(|p| seen.insert(*p)).count()
+        })
+    };
+    let cell_count = FloorScoped {
+        total: all_field_levels.iter().map(|&l| level_cell_count(l)).sum(),
+        by_floor: all_field_levels.iter().enumerate()
+            .map(|(idx, &level)| (idx.to_string(), level_cell_count(level)))
             .collect(),
-        teleport_entries: raw_node_stats.teleport_entries,
     };
 
-    let raw_edge_stats = compute_spatial_edge_stats(&maze.graph, &maze.field);
-    let edge_stats = SpatialEdgeStatsDto {
-        bidirectional:    raw_edge_stats.bidirectional,
-        one_way_passages: raw_edge_stats.one_way_passages,
-        walls:            raw_edge_stats.walls,
+    let node_stats_dto = |raw: maze_core::graph::stats::GeometricNodeStats| NodeStatsDto {
+        dead_ends: raw.dead_ends,
+        straight:  raw.straight,
+        turns:     raw.turns,
+        junctions: raw.junctions.iter().map(|&(degree, count)| JunctionBucket { degree, count }).collect(),
+    };
+    let cell_stats = FloorScoped {
+        total: node_stats_dto(compute_node_stats_scoped(&maze.graph, &maze.field, None)),
+        by_floor: all_field_levels.iter().enumerate()
+            .map(|(idx, &level)| (idx.to_string(), node_stats_dto(compute_node_stats_scoped(&maze.graph, &maze.field, Some(level)))))
+            .collect(),
     };
 
-    let raw_teleport_stats = compute_teleport_edge_stats(&maze.graph);
-    let teleport_edge_stats = TeleportEdgeStatsDto {
-        two_way: raw_teleport_stats.two_way,
-        one_way: raw_teleport_stats.one_way,
+    let edge_stats_dto = |raw: &maze_core::graph::stats::SpatialEdgeStats| SpatialEdgeStatsDto {
+        bidirectional: raw.bidirectional,
+        walls:         raw.walls,
+        total_pairs:   raw.total_pairs,
     };
+    // Computed once per level (total + each floor) and shared by `passage_stats` and
+    // `elements_stats`'s `one_way_passages` below — both need the same
+    // `compute_spatial_edge_stats_scoped` result, which is not free to recompute (walks
+    // `adjacency_pairs` and every node's `classify_node` shape).
+    let raw_edge_stats_total = compute_spatial_edge_stats_scoped(&maze.graph, &maze.field, None);
+    let raw_edge_stats_by_floor: Vec<maze_core::graph::stats::SpatialEdgeStats> = all_field_levels.iter()
+        .map(|&level| compute_spatial_edge_stats_scoped(&maze.graph, &maze.field, Some(level)))
+        .collect();
+
+    let passage_stats = FloorScoped {
+        total: edge_stats_dto(&raw_edge_stats_total),
+        by_floor: raw_edge_stats_by_floor.iter().enumerate()
+            .map(|(idx, raw)| (idx.to_string(), edge_stats_dto(raw)))
+            .collect(),
+    };
+
+    let split_groups_dto = |groups: HashMap<maze_core::graph::split_topology::SplitTopology, usize>| -> Vec<SplitGroupDto> {
+        groups.into_iter()
+            .map(|(topology, count)| SplitGroupDto {
+                topology: topology.into_iter()
+                    .map(|node_faces| node_faces.into_iter().map(split_face_requirement_dto).collect())
+                    .collect(),
+                count,
+            })
+            .collect()
+    };
+    let elements_stats_dto = |level: Option<maze_core::space::LevelId>, edge_stats: &maze_core::graph::stats::SpatialEdgeStats| {
+        let teleport_stats = match level {
+            None => compute_teleport_edge_stats(&maze.graph),
+            Some(l) => compute_teleport_edge_stats_scoped(&maze.graph, &maze.field, l),
+        };
+        let (split_tile_count, split_node_count, split_groups) = split_totals_scoped(&maze.graph, &maze.field, level);
+        ElementsStatsDto {
+            one_way_passages: edge_stats.one_way_passages,
+            two_way_teleports: teleport_stats.two_way,
+            one_way_teleports: teleport_stats.one_way,
+            split_tile_count,
+            split_node_count,
+            split_groups: split_groups_dto(split_groups),
+        }
+    };
+    let elements_stats = FloorScoped {
+        total: elements_stats_dto(None, &raw_edge_stats_total),
+        by_floor: all_field_levels.iter().zip(raw_edge_stats_by_floor.iter()).enumerate()
+            .map(|(idx, (&level, raw))| (idx.to_string(), elements_stats_dto(Some(level), raw)))
+            .collect(),
+    };
+
+    let statistics = MazeStatisticsDto { graph_stats, cell_count, cell_stats, passage_stats, elements_stats };
 
     let route_info = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta).map(|r| RouteInfoDto {
         path_length:    r.path_length,
@@ -323,12 +376,8 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         issues,
         nav_nodes,
         nav_edges,
-        node_stats,
-        edge_stats,
-        teleport_edge_stats,
         route_info,
-        graph_analytics: graph_analytics_dto,
-        split_analytics,
+        statistics,
         timing: None,
     })
 }
@@ -380,7 +429,7 @@ mod tests {
 
         let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
-        assert!(snapshot.graph_analytics.cycle_analysis_overflowed);
+        assert!(snapshot.statistics.graph_stats.cycle_analysis_overflowed);
         assert!(snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
     }
 
@@ -398,8 +447,38 @@ mod tests {
 
         let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
-        assert!(!snapshot.graph_analytics.cycle_analysis_overflowed);
+        assert!(!snapshot.statistics.graph_stats.cycle_analysis_overflowed);
         assert!(!snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
+    }
+
+    #[test]
+    fn statistics_dto_reflects_cells_passages_and_elements() {
+        // 3x1 line: a-b bidirectional (open passage), b-c wall (no edge at all).
+        let mut ids = IdGenerator::new();
+        let field = MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let b = field.nodes_at(level, SquarePoint { x: 1, y: 0 }).first().copied().unwrap();
+        g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let stats = &snapshot.statistics;
+
+        assert_eq!(stats.cell_count.total, 3);
+        assert_eq!(stats.cell_stats.total.dead_ends, 3, "b-c is a wall, so b has only one shape neighbor (a) and is also a dead end");
+        assert_eq!(stats.cell_stats.total.straight, 0);
+        assert_eq!(stats.passage_stats.total.total_pairs, 2, "3x1 field has 2 adjacent pairs");
+        assert_eq!(stats.passage_stats.total.bidirectional, 1);
+        assert_eq!(stats.passage_stats.total.walls, 1);
+        assert_eq!(stats.elements_stats.total.one_way_passages, 0);
+        assert_eq!(stats.elements_stats.total.two_way_teleports, 0);
+        assert_eq!(stats.elements_stats.total.split_tile_count, 0);
+
+        assert_eq!(stats.cell_count.by_floor.get("0"), Some(&3), "single-floor maze mirrors the total in by_floor[\"0\"]");
+        assert_eq!(stats.passage_stats.by_floor.get("0").map(|s| s.total_pairs), Some(2));
     }
 
     #[test]
@@ -443,7 +522,7 @@ mod tests {
 
         let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
-        assert!(snapshot.graph_analytics.region_classes.is_empty());
+        assert!(snapshot.statistics.graph_stats.region_classes.is_empty());
     }
 
     #[test]
@@ -466,7 +545,7 @@ mod tests {
 
         // Fully bidirectional 3-node line collapses into a single SCC — start and finish share
         // a region, which is always "path" by definition.
-        assert!(!snapshot.graph_analytics.region_classes.is_empty());
-        assert!(snapshot.graph_analytics.region_classes.values().all(|c| c == "path"));
+        assert!(!snapshot.statistics.graph_stats.region_classes.is_empty());
+        assert!(snapshot.statistics.graph_stats.region_classes.values().all(|c| c == "path"));
     }
 }

@@ -13,13 +13,13 @@ Opening the Analytics card sets `analyticsOpen = true` in the store; closing it 
 
 Block order (top to bottom):
 
-1. **Issues** — hidden when `warnings.length === 0`
+1. **Issues**
 2. **Overlay layers** — always visible when card is open
 3. **Path** — hidden when `routeInfo == null` (loose check — WASM may return `undefined`)
-4. **Nodes**
-5. **Edges**
-6. **Graph** — hidden when `graphAnalytics == null`
-7. **Splits** — hidden when `splitAnalytics == null` (GitHub issue #262)
+4. **Summary statistics** — hidden when `statistics == null`; a compact block plus a "Detailed report" button opening `DetailedReportPanel` (GitHub issue #364)
+5. **Timing** — hidden when `timing == null`
+
+`DetailedReportPanel` is a `SidePanel`, not part of the card's own scroll — see "Summary Statistics & Detailed Report" below for its own content structure (General/Cells/Sides/Elements/Graph, plus a per-floor breakdown).
 
 ## Data Source: Post-Edit Integration
 
@@ -27,16 +27,16 @@ Analytics always operates on the post-edited graph, not the raw generated graph.
 
 | Data | Source |
 |---|---|
-| `nodeStats` | `postEditAnalytics?.nodeStats ?? state.nodeStats` |
-| `edgeStats` | `postEditAnalytics?.edgeStats ?? state.edgeStats` |
-| `warnings` | `postEditAnalytics?.warnings ?? state.warnings` |
+| `statistics` | `postEditAnalytics?.statistics ?? state.statistics` — `MazeStatisticsDto`, see `graph-analytics.md` |
+| `warnings`/`issues` | `postEditAnalytics?.issues ?? state.issues`, via `selectAnalyticsIssues` |
 | `routeInfo` | `postEditAnalytics != null ? postEditAnalytics.routeInfo : state.routeInfo` |
-| `graphAnalytics` | `postEditAnalytics?.graphAnalytics ?? state.graphAnalytics` |
-| `splitAnalytics` | `postEditAnalytics?.splitAnalytics ?? state.splitAnalytics` |
-| `components` | `postEditAnalytics?.components ?? state.components` |
-| `navNodes/navEdges` | `postEditAnalytics?.navNodes/navEdges ?? state.navNodes/navEdges` |
+| `floors` | `state.floors` (live UI state, not part of `postEditAnalytics`) |
 | `edges` (canvas) | `postEditEdgesToDto(state.postEditEdges)` — confirmed post-edit edges snapshot |
 | `start/finish` (canvas) | `postEditMeta?.start/finish ?? state.start/finish` — confirmed post-edit meta snapshot |
+
+`statistics` replaced the previously flat `nodeStats`/`edgeStats`/`graphAnalytics`/`splitAnalytics` fields (GitHub issue #364) — a single `MazeStatisticsDto`, most of it `FloorScoped` (`.total` + per-floor `.by_floor`, keyed by floor index as a string). See `graph-analytics.md`'s "Cell Shape & Passage Statistics" and "Web Integration" sections for the DTO shapes.
+
+**`floors` and `statistics.*.by_floor` can desync.** `floors` is live UI state (`addFloor`/`removeFloor`/`moveFloor` in `floorsSlice.ts`); `statistics` is a snapshot from the last generate/post-edit-confirm. Adding a floor after generating, before regenerating, leaves that floor's `by_floor` entry missing. `DetailedReportPanel` filters `floors` down to `floorsWithStats` (those with a `statistics.cell_stats.by_floor[idx]` entry) before rendering the per-floor breakdown, so a stale/missing entry is silently excluded rather than crashing on `undefined`.
 
 `routeInfo` uses strict `!= null` (not `??`) because `null` is a meaningful value meaning "no path exists" and must not fall back to generated `routeInfo`.
 
@@ -58,9 +58,9 @@ Toggles, each backed by a store boolean:
 | Connectivity regions | `showComponentsOverlay` | `false` | — |
 | Graph | `showGraphOverlay` | `false` | — |
 | Navigation graph | `showNavGraphOverlay` | `false` | — |
-| Cycles | `showPureCyclesOverlay` | `false` | `graphAnalytics.cycle_count === 0` |
+| Cycles | `showPureCyclesOverlay` | `false` | `statistics.graph_stats.cycle_count === 0` |
 | Route | `showRouteOverlay` | `false` | `routeInfo == null` |
-| Region classes | `showRegionClassesOverlay` | `false` | `graphAnalytics.region_classes` empty (start or finish unset) — independent of whether a route actually exists |
+| Region classes | `showRegionClassesOverlay` | `false` | `statistics.graph_stats.region_classes` empty (start or finish unset) — independent of whether a route actually exists |
 
 Toggle state persists when the card is closed and reopened. It resets only on full store reset. `showPureCyclesOverlay` and `showRegionClassesOverlay` are not yet persisted in project export (`ProjectFileAnalytics`) — they reset to default on project load, unlike the other toggles in this table.
 
@@ -76,60 +76,38 @@ Shown only when `routeInfo != null`. Fields:
 - `split_count` — number of split-tile occurrences on the route (GitHub issue #261)
 - `score` — float, shown only when `routeInfo.score != null`
 
-### Nodes Block
+### Summary Statistics & Detailed Report (GitHub issue #364)
 
-Statistics from `nodeStats: NodeStatsDto`. Denominator = `dead_ends + straight + turns + sum(junctions[*].count)`.
+The card itself shows only a compact summary block (hidden when `statistics == null`): floor count,
+total cell count, graph components, cycle count, average degree — plus a "Detailed report" button
+that opens `DetailedReportPanel`, a `SidePanel` (not a `Modal`) with two collapsible top-level
+sections:
 
-| Row | Value |
-|---|---|
-| Dead ends | `nodeStats.dead_ends` |
-| Straight | `nodeStats.straight` |
-| Turns | `nodeStats.turns` |
-| Junction ×N | one row per `junctions[]` entry, sorted by `degree` ascending |
+- **General statistics** (`report_general`) — maze-wide totals, in order:
+  - **Graph** (`GraphSection`) — `component_count`, `average_degree` (2 decimals), `node_count`,
+    `edge_count`, and — unless `cycle_analysis_overflowed` — `cycle_count` ("Basic cycles"),
+    `simple_cycle_count` ("Complex cycles"), `cycle_region_count`.
+  - **Cells** (`CellsSection`) — total cell count (`cell_count.total`, no percentage) plus
+    `cell_stats.total`'s dead-end/straight/turn/junction breakdown, each with count and percentage
+    of `dead_ends + straight + turns + sum(junctions[*].count)`.
+  - **Sides** (`SidesSection`) — total adjacent-pair count (`passage_stats.total.total_pairs`, no
+    percentage) plus passages (`bidirectional`), one-way (`elements_stats.total.one_way_passages`),
+    and walls, each with count and percentage of `total_pairs`. An info icon opens `SidesInfoModal`
+    explaining the wall/passage/one-way distinction.
+  - **Elements** (`ElementsSection`) — `one_way_passages`, `two_way_teleports`,
+    `one_way_teleports`, `split_tile_count`, `split_node_count`, one row per named split group (see
+    "Named Split Patterns" below), and a "Pattern statistics" button (hidden when
+    `split_groups` is empty) opening `SplitPatternStatsModal`.
+- **By floors** (`report_by_floors`) — one collapsible sub-section per floor that has a
+  `statistics.cell_stats.by_floor[idx]` entry (`floorsWithStats`, topmost floor first), each
+  containing its own Cells/Sides/Elements sub-blocks built from that floor's own `by_floor[idx]`
+  slice of `cell_stats`/`passage_stats`/`elements_stats`/`cell_count`. No per-floor Graph
+  sub-section — `graph_stats` is maze-wide only (SCCs/cycles can span floors via
+  teleport/vertical-passage/elevator edges), see `graph-analytics.md`.
 
-Each row shows count and percentage.
-
-### Edges Block
-
-Statistics from `edgeStats: EdgeStatsDto`. Denominator = `bidirectional + one_way + walls`.
-
-| Row | Value |
-|---|---|
-| Passages | `edgeStats.bidirectional` |
-| One-way | `edgeStats.one_way` |
-| Walls | `edgeStats.walls` |
-
-Each row shows count and percentage.
-
-### Graph Block
-
-Shown only when `graphAnalytics != null`. Statistics from `graphAnalytics: GraphAnalyticsDto`.
-
-| Row | Value |
-|---|---|
-| Nav nodes | `node_count` |
-| Nav edges | `edge_count` |
-| Components | `component_count` |
-| Cycle rank (β₁) | `cycle_rank` |
-| Min cycle length | `min_cycle_length` — hidden when null |
-| Max cycle density | `max_cycle_density` (2 decimal places) — shown as "—" when null |
-
-### Splits Block (GitHub issue #262)
-
-Shown only when `splitAnalytics != null`. Statistics from `splitAnalytics: SplitAnalyticsDto` —
-maze-wide split totals, independent of any route (contrast the Path Block's `split_count`, which
-counts split occurrences along the one shortest route — see `graph-analytics.md`'s "Split Topology
-& Statistics" section for the core computation).
-
-| Row | Value |
-|---|---|
-| Split tiles | `tile_count` |
-| Split nodes | `node_count` — every node at a split point, including each point's original node |
-| One row per named group | `count` — see "Named Split Patterns" below |
-
-A "Pattern statistics" button opens a modal listing every distinct canonical topology found on the
-field (`splitAnalytics.groups`), regardless of whether it has a registered title — see "Split
-Pattern Statistics Modal" below. The button is hidden when `splitAnalytics.groups` is empty.
+A "Pattern statistics" button opens `SplitPatternStatsModal`, listing every distinct canonical
+topology found on the field (`elements_stats.total.split_groups`), regardless of whether it has a
+registered title — see "Split Pattern Statistics Modal" below.
 
 #### Named Split Patterns
 
@@ -159,13 +137,13 @@ directly in the Splits Block.
 
 #### Split Pattern Statistics Modal
 
-One row per `splitAnalytics.groups` entry (sorted by `count` descending), each showing:
+One row per `elements_stats.total.split_groups` entry (sorted by `count` descending), each showing:
 - **Preview thumbnail** — `SplitGroupPreviewTile`, reusing `TileFaceEditor` itself (via
   `tileNodesForTopology`, which converts the DTO's core-ordered `topology` to the web
   `TileFaceEditor` face order — see GitHub issue #273) at a fixed anchor point, same rationale as
   `SplitPatternListEditor`'s own `PatternPreviewTile` (no separate rendering path to keep in sync).
 - **Title** — via `titleKeyForTopology`, omitted for an unregistered topology.
-- **Count**, **% of splits** (`count / splitAnalytics.tile_count`), **% of field tiles**
+- **Count**, **% of splits** (`count / elements_stats.total.split_tile_count`), **% of field tiles**
   (`count / fieldTileCount`, computed lazily inside the modal from `state.nodes`' distinct `(x, y)`
   coordinates — not precomputed on every `AnalyticsFeature` render, since it's only needed while
   this modal is open).
@@ -213,7 +191,7 @@ Owns all analytics canvas layers. Lives in `analyticsContainer` which is a synce
 | 12 | `routeContainer` | `RouteOverlay` | `analyticsOpen && showRouteOverlay && routeInfo != null` |
 | 13 | `issueHighlightContainer` | `IssueHighlightOverlay` | `analyticsOpen && (hoveredIssueLoopEdges or hoveredIssueRegionGroups non-empty)` |
 
-`closedCells` (layer 3) renders nodes with no connection at all in `WALL_COLOR` — isolated cells that are completely walled off, including a cell whose only connection is a teleport (a teleport counts as a connection here even though it renders no wall opening on any geometric side — see `buildClosedCells` in `mazeSelectors.ts`). Regions (layer 4) and Region classes (layer 5) both sit between closedCells and walls so their tint shows through wall rendering — intentional. The `components: number[][]` array (member node ids per SCC, derived from `graph_analytics.node_component`) is built once in `syncAll` and shared by both renderers rather than rebuilt per layer.
+`closedCells` (layer 3) renders nodes with no connection at all in `WALL_COLOR` — isolated cells that are completely walled off, including a cell whose only connection is a teleport (a teleport counts as a connection here even though it renders no wall opening on any geometric side — see `buildClosedCells` in `mazeSelectors.ts`). Regions (layer 4) and Region classes (layer 5) both sit between closedCells and walls so their tint shows through wall rendering — intentional. The `components: number[][]` array (member node ids per SCC, derived from `statistics.graph_stats.node_component`) is built once in `syncAll` and shared by both renderers rather than rebuilt per layer.
 
 ### IssueHighlightOverlay
 

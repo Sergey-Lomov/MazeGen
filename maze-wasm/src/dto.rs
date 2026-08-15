@@ -246,26 +246,44 @@ pub struct JunctionBucket {
     pub count: usize,
 }
 
+/// Cell (maze-node) geometric shape breakdown — GitHub issue #364: `teleport_entries` moved out
+/// to `ElementsStatsDto` (it's a cross-cutting "element" concept, not a cell shape), so this
+/// struct's own fields always partition `FloorScoped<NodeStatsDto>`'s node count exactly.
 #[derive(Serialize)]
 pub struct NodeStatsDto {
     pub dead_ends: usize,
     pub straight: usize,
     pub turns: usize,
     pub junctions: Vec<JunctionBucket>,
-    pub teleport_entries: usize,
 }
 
+/// Spatial adjacency-pair breakdown (walls vs. passages) — GitHub issue #364:
+/// `one_way_passages` moved out to `ElementsStatsDto` alongside the other directional/special
+/// edge kinds, so this struct only distinguishes "connected" from "not connected".
 #[derive(Serialize)]
 pub struct SpatialEdgeStatsDto {
     pub bidirectional: usize,
-    pub one_way_passages: usize,
     pub walls: usize,
+    /// Total adjacent tile-pair count — `bidirectional + walls`, computed directly from the
+    /// adjacency count rather than summed here, so a future edge category doesn't need this
+    /// field's producer updated to stay correct.
+    pub total_pairs: usize,
 }
 
+/// GitHub issue #364: every count that isn't a plain cell-shape or wall/passage fact — one-way
+/// passages, teleports, and split tiles/nodes/groups — grouped so the "Elements" report section
+/// doesn't need to reassemble them from three different DTOs.
 #[derive(Serialize)]
-pub struct TeleportEdgeStatsDto {
-    pub two_way: usize,
-    pub one_way: usize,
+pub struct ElementsStatsDto {
+    pub one_way_passages: usize,
+    pub two_way_teleports: usize,
+    pub one_way_teleports: usize,
+    /// Number of field points with 2+ nodes.
+    pub split_tile_count: usize,
+    /// Sum, over every split point, of its full node count (including the original node).
+    pub split_node_count: usize,
+    /// Every distinct canonical topology found on the field, with how many tiles share it.
+    pub split_groups: Vec<SplitGroupDto>,
 }
 
 #[derive(Serialize)]
@@ -278,12 +296,22 @@ pub struct RouteInfoDto {
     pub path: Vec<u32>,
 }
 
+/// Maze-wide-only graph statistics (GitHub issue #364) — unlike `MazeStatisticsDto`'s other
+/// blocks, this one is never broken down `by_floor`: SCC components and cycles can span multiple
+/// floors (via teleport/vertical passage/elevator edges), so a per-floor version would either
+/// double-count a spanning component/cycle on every floor it touches or need its own arbitrary
+/// exclusion rule — neither was worth the complexity, see the issue's discussion.
 #[derive(Serialize, Dto)]
-pub struct GraphAnalyticsDto {
+pub struct GraphStatsDto {
+    /// Number of floors (`MultiLevelField::level_count()`) — always `1` for a single-floor maze.
+    pub floor_count: usize,
     pub node_count: usize,
     pub edge_count: usize,
     /// Number of base-graph SCCs (matches `node_component`'s id range — for RegionsRenderer).
     pub component_count: usize,
+    /// Average out-degree over the real graph (not the nav-graph) — `2*E/V` treated as
+    /// undirected, `0` for an empty graph.
+    pub average_degree: f64,
     /// Number of independent cycles (E - V + C on the pure-cycle core).
     pub cycle_count: usize,
     /// Number of connected cyclic regions (WCC on the pure-cycle core).
@@ -340,18 +368,6 @@ pub enum OneWayDirectionDto {
 pub struct SplitGroupDto {
     pub topology: Vec<Vec<SplitFaceRequirementDto>>,
     pub count: usize,
-}
-
-/// Maze-wide split totals, independent of any route (contrast `RouteInfoDto.split_count`, which
-/// counts split occurrences along one specific route) — see GitHub issue #262.
-#[derive(Serialize)]
-pub struct SplitAnalyticsDto {
-    /// Number of field points with 2+ nodes.
-    pub tile_count: usize,
-    /// Sum, over every split point, of its full node count (including the original node).
-    pub node_count: usize,
-    /// Every distinct canonical topology found on the field, with how many tiles share it.
-    pub groups: Vec<SplitGroupDto>,
 }
 
 /// One endpoint of a post-edit edge — either a plain existing `NodeId`, or a reference to one of
@@ -486,6 +502,36 @@ pub struct ComputeAnalyticsConfig {
     pub preset_split_points: Vec<([i32; 2], u32, u32)>,
 }
 
+/// One statistic computed both maze-wide (`total`) and per-floor (`by_floor`, keyed by 0-based
+/// floor index — GitHub issue #364). `total` is an independent maze-wide computation, not the sum
+/// of `by_floor`'s entries: a maze-wide teleport pair with ends on different floors, for example,
+/// counts toward `total` but toward neither floor's own `by_floor` entry (see
+/// `maze_core::graph::stats::compute_teleport_edge_stats_scoped`'s doc comment). `by_floor` always
+/// has one entry per floor, even for a single-floor maze.
+#[derive(Serialize, Dto)]
+pub struct FloorScoped<T> {
+    pub total: T,
+    #[dto(ts_type = "Record<number, T>")]
+    pub by_floor: HashMap<String, T>,
+}
+
+/// Every maze statistic surfaced in the Analytics panel (GitHub issue #364), replacing the
+/// previously flat `node_stats`/`edge_stats`/`teleport_edge_stats`/`graph_analytics`/
+/// `split_analytics` fields on `MazeSnapshot`. `graph_stats` is the only maze-wide-only member —
+/// see its own doc comment for why it isn't `FloorScoped`.
+#[derive(Serialize)]
+pub struct MazeStatisticsDto {
+    pub graph_stats: GraphStatsDto,
+    /// Real geometric cell count per floor — `Field::all_points()` count, deduped by point (a
+    /// split point counts once, not once per its extra node) — unlike `cell_stats`' node-shape
+    /// breakdown, this is derived straight from field shape, not reconstructed by summing
+    /// `cell_stats`' own counts (which would count a split point's every extra node separately).
+    pub cell_count: FloorScoped<usize>,
+    pub cell_stats: FloorScoped<NodeStatsDto>,
+    pub passage_stats: FloorScoped<SpatialEdgeStatsDto>,
+    pub elements_stats: FloorScoped<ElementsStatsDto>,
+}
+
 #[derive(Serialize)]
 pub struct MazeSnapshot {
     pub nodes: Vec<NodeDto>,
@@ -495,12 +541,8 @@ pub struct MazeSnapshot {
     pub issues: Vec<IssueDto>,
     pub nav_nodes: Vec<NavNodeDto>,
     pub nav_edges: Vec<NavEdgeDto>,
-    pub node_stats: NodeStatsDto,
-    pub edge_stats: SpatialEdgeStatsDto,
-    pub teleport_edge_stats: TeleportEdgeStatsDto,
     pub route_info: Option<RouteInfoDto>,
-    pub graph_analytics: GraphAnalyticsDto,
-    pub split_analytics: SplitAnalyticsDto,
+    pub statistics: MazeStatisticsDto,
     /// `Some` only when this snapshot came from a generation run (`run_generate`) — see
     /// `GenerationTimingDto`'s doc comment.
     pub timing: Option<GenerationTimingDto>,

@@ -6,7 +6,7 @@ vi.mock("pixi.js", () => ({
 }));
 
 vi.mock("../store/mazeStore", () => ({
-  useMazeStore: { getState: () => ({ nodes: [], graphAnalytics: null }), subscribe: () => () => {} },
+  useMazeStore: { getState: () => ({ nodes: [], statistics: null }), subscribe: () => () => {} },
 }));
 
 import { hslToRgb, buildPalette } from "../pixi/colorUtils";

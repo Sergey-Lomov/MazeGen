@@ -1,4 +1,4 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, GraphAnalyticsDto, SplitAnalyticsDto, NodeLockKind, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, RouteInfoDto, MazeStatisticsDto, NodeLockKind, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
 import type { ParsedTape, Snapshot, DebugValueDescriptor } from "../debug/eventTape";
 import type { EventedEventKind } from "../wasm/mazeService";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -72,14 +72,10 @@ export interface PostEditVerticalPassageEndpointHit {
 }
 
 export interface PostEditAnalytics {
-  nodeStats: NodeStatsDto;
-  edgeStats: SpatialEdgeStatsDto;
-  teleportEdgeStats: TeleportEdgeStatsDto;
+  statistics: MazeStatisticsDto;
   routeInfo: RouteInfoDto | null;
   navNodes: NavNodeDto[];
   navEdges: NavEdgeDto[];
-  graphAnalytics: GraphAnalyticsDto;
-  splitAnalytics: SplitAnalyticsDto;
   issues: IssueDto[];
 }
 
@@ -656,8 +652,7 @@ export interface GenerationState {
   finish: number | null;
   navNodes: NavNodeDto[];
   navEdges: NavEdgeDto[];
-  graphAnalytics: GraphAnalyticsDto | null;
-  splitAnalytics: SplitAnalyticsDto | null;
+  statistics: MazeStatisticsDto | null;
   showNodeIds: boolean;
   showCoords: boolean;
   showMaze: boolean;
@@ -685,9 +680,6 @@ export interface GenerationState {
   strategyParams: Record<string, Record<string, string>>;
   initialConfig: InitialGenerationConfig;
   elementsConfig: ElementsConfig;
-  nodeStats: NodeStatsDto | null;
-  edgeStats: SpatialEdgeStatsDto | null;
-  teleportEdgeStats: TeleportEdgeStatsDto | null;
   routeInfo: RouteInfoDto | null;
   /** Per-stage and per-check/per-strategy timing breakdown — only set from a generation run, no
    *  post-edit fallback (post-edit/`compute_analytics` snapshots never run the generation pipeline). */

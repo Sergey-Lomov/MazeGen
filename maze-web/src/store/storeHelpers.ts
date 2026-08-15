@@ -1,4 +1,4 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, GraphAnalyticsDto, SplitAnalyticsDto, NodeStatsDto, SpatialEdgeStatsDto, TeleportEdgeStatsDto, RouteInfoDto, IssueDto, RuleParamDescriptor } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, MazeStatisticsDto, RouteInfoDto, IssueDto, RuleParamDescriptor } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { encodePoint, decodePoint } from "../pixi/tessellationProjection";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry, LevelField, ResolveFieldAt } from "../pixi/fieldEditUtils";
@@ -412,13 +412,9 @@ export function buildResetMazeState() {
     finish: null as number | null,
     navNodes: [] as NavNodeDto[],
     navEdges: [] as NavEdgeDto[],
-    graphAnalytics: null as GraphAnalyticsDto | null,
-    splitAnalytics: null as SplitAnalyticsDto | null,
+    statistics: null as MazeStatisticsDto | null,
     selectedNode: null as number | null,
     issues: [] as IssueDto[],
-    nodeStats: null as NodeStatsDto | null,
-    edgeStats: null as SpatialEdgeStatsDto | null,
-    teleportEdgeStats: null as TeleportEdgeStatsDto | null,
     routeInfo: null as RouteInfoDto | null,
     _generatedNodes: [] as NodeDto[],
     _generatedEdges: [] as EdgeDto[],

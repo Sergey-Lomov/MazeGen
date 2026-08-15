@@ -38,7 +38,7 @@ pub enum DtoItem {
     /// A plain struct -> TS interface. `rust_name` is the original Rust identifier (before any
     /// `#[dto(rename_ts = "...")]`) — kept so a *different* item's field referencing this type by
     /// its Rust name can still be resolved to the renamed `ts_name` (see `build_rename_map`).
-    Struct { rust_name: String, ts_name: String, doc: Vec<String>, fields: Vec<DtoField> },
+    Struct { rust_name: String, ts_name: String, doc: Vec<String>, generics: Vec<String>, fields: Vec<DtoField> },
     /// A unit-only enum with `#[serde(rename_all = "snake_case")]` -> TS string-literal union.
     StringUnion { rust_name: String, ts_name: String, doc: Vec<String>, variants: Vec<String> },
     /// A `#[serde(tag = "kind", rename_all = "snake_case")]` enum -> TS discriminated union.
@@ -82,6 +82,7 @@ fn parse_struct(s: &syn::ItemStruct) -> Result<DtoItem, DtoParseError> {
     let rust_name = s.ident.to_string();
     let ts_name = rename_ts(&s.attrs).unwrap_or_else(|| rust_name.clone());
     let doc = doc_lines(&s.attrs);
+    let generics: Vec<String> = s.generics.type_params().map(|p| p.ident.to_string()).collect();
     let Fields::Named(named) = &s.fields else {
         return Err(DtoParseError { message: format!("{}: only named-field structs are supported", s.ident) });
     };
@@ -89,7 +90,7 @@ fn parse_struct(s: &syn::ItemStruct) -> Result<DtoItem, DtoParseError> {
     for f in &named.named {
         fields.push(parse_field(f)?);
     }
-    Ok(DtoItem::Struct { rust_name, ts_name, doc, fields })
+    Ok(DtoItem::Struct { rust_name, ts_name, doc, generics, fields })
 }
 
 fn parse_field(f: &syn::Field) -> Result<DtoField, DtoParseError> {
@@ -306,9 +307,15 @@ fn resolve_type(ty: &Type) -> Result<String, String> {
                     let value = resolve_type(generics[1])?;
                     Ok(format!("Record<string, {value}>"))
                 }
-                // Opaque named type reference (dto.rs's own type, or a foreign one) — pass
-                // through unchanged. Ignores any of its own generic args; none of dto.rs's named
-                // types are themselves generic.
+                // Opaque named type reference (dto.rs's own type, or a foreign one) — pass through
+                // unchanged, carrying along its own generic args (if any) resolved the same way,
+                // e.g. `FloorScoped<NodeStatsDto>` -> `FloorScoped<NodeStatsDto>`. A bare type
+                // param inside a generic struct's own field (e.g. `FloorScoped<T>`'s `total: T`)
+                // has no generics of its own and falls through unchanged, as before.
+                _ if !generics.is_empty() => {
+                    let args: Result<Vec<String>, String> = generics.iter().map(|g| resolve_type(g)).collect();
+                    Ok(format!("{name}<{}>", args?.join(", ")))
+                }
                 _ => Ok(name),
             }
         }
@@ -453,9 +460,10 @@ fn emit_field_line(field: &DtoField, indent: &str) -> String {
 
 fn emit_item(item: &DtoItem) -> String {
     match item {
-        DtoItem::Struct { ts_name, doc, fields, .. } => {
+        DtoItem::Struct { ts_name, doc, generics, fields, .. } => {
             let mut out = emit_doc(doc, "");
-            out.push_str(&format!("export interface {ts_name} {{\n"));
+            let generics_suffix = if generics.is_empty() { String::new() } else { format!("<{}>", generics.join(", ")) };
+            out.push_str(&format!("export interface {ts_name}{generics_suffix} {{\n"));
             for f in fields {
                 out.push_str(&emit_field_line(f, "  "));
             }
@@ -675,6 +683,43 @@ mod tests {
         let DtoItem::Struct { fields, .. } = &items[0] else { panic!("expected struct") };
         let DtoField::Named { ts_type, .. } = &fields[0];
         assert_eq!(ts_type, "[[number, number], number, number][]");
+    }
+
+    #[test]
+    fn generic_struct_emits_type_param_on_the_interface() {
+        let items = parse_source(r#"
+            #[derive(Serialize)]
+            pub struct FloorScoped<T> {
+                pub total: T,
+                pub by_floor: HashMap<String, T>,
+            }
+        "#);
+        let text = generate_ts_file(&items, "foo.rs", &[]);
+        assert!(text.contains("export interface FloorScoped<T> {"), "{text}");
+        assert!(text.contains("total: T;"), "{text}");
+        assert!(text.contains("by_floor: Record<string, T>;"), "{text}");
+    }
+
+    #[test]
+    fn field_referencing_a_generic_type_carries_its_type_argument() {
+        let items = parse_source(r#"
+            #[derive(Serialize)]
+            pub struct FloorScoped<T> {
+                pub total: T,
+            }
+
+            #[derive(Serialize)]
+            pub struct NodeStatsDto {
+                pub dead_ends: u32,
+            }
+
+            #[derive(Serialize)]
+            pub struct MazeStatisticsDto {
+                pub node_stats: FloorScoped<NodeStatsDto>,
+            }
+        "#);
+        let text = generate_ts_file(&items, "foo.rs", &[]);
+        assert!(text.contains("node_stats: FloorScoped<NodeStatsDto>;"), "{text}");
     }
 
     #[test]
