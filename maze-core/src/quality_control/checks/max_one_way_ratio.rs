@@ -8,7 +8,7 @@ use crate::quality_control::check::Check;
 use crate::quality_control::{InvalidOneWayGroupIssue, FloorScope};
 use crate::quality_control::floor_group::{floors_of_edge, floor_point_count};
 
-pub const MAX_ONE_WAY_RATIO_DEFAULT: u32 = 100;
+pub const MAX_ONE_WAY_RATIO_DEFAULT: f64 = 100.0;
 pub const MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags an excess against the share of one-way passage edges (`EdgeKind::Basic`, single
@@ -32,7 +32,7 @@ pub const MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFlo
 /// exact bug via copy-paste from `MinOneWayRatioCheck`.)
 pub struct MaxOneWayRatioCheck {
     pub instance_id: String,
-    pub max_ratio: u32,
+    pub max_ratio: f64,
     pub floor_scope: FloorScope,
 }
 
@@ -46,7 +46,7 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck 
             .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
             .map(|e| e.id)
             .collect();
-        let max_ratio = self.max_ratio as u64;
+        let max_ratio = self.max_ratio;
 
         // Under `PerFloor` the whole group is reported (and `to_remove` computed against the
         // worst-over-budget floor) if any floor exceeds max_ratio -- a one-way crossing floors
@@ -115,14 +115,14 @@ impl MaxOneWayRatioCheck {
     /// Excess one-way count for one region (whole maze or one floor) given its own one-way count
     /// and cell count — shared by both `floor_scope` branches so the cross-multiplied gate and
     /// round-to-nearest `target_count` logic stay identical either way.
-    fn to_remove_for(count: u64, field_cells: u64, max_ratio: u64) -> u32 {
-        if field_cells == 0 || count * 100 <= max_ratio * field_cells {
+    fn to_remove_for(count: u64, field_cells: u64, max_ratio: f64) -> u32 {
+        if field_cells == 0 || count as f64 * 100.0 <= max_ratio * field_cells as f64 {
             return 0;
         }
         // Round-to-nearest can push target_count above count on a small enough field (rounding
         // error can exceed the margin the exact gate above guarantees) -- saturating_sub keeps
         // the result at 0 rather than underflowing in that edge case.
-        let target_count = (max_ratio * field_cells + 50) / 100;
+        let target_count = (max_ratio * field_cells as f64 / 100.0).round() as u64;
         count.saturating_sub(target_count) as u32
     }
 }

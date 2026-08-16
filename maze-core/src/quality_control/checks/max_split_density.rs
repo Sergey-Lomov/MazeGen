@@ -7,7 +7,7 @@ use crate::quality_control::check::Check;
 use crate::quality_control::{InvalidSplitTileGroupIssue, SplitTileNodes, FloorScope};
 use crate::quality_control::floor_group::floor_point_count;
 
-pub const MAX_SPLIT_DENSITY_DEFAULT: u32 = 30;
+pub const MAX_SPLIT_DENSITY_DEFAULT: f64 = 30.0;
 pub const MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags every split tile on the field invalid when their density (share of field cells carrying
@@ -19,7 +19,7 @@ pub const MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFlo
 /// `max_density * field_cells / 100` to the nearest integer, `to_remove = count - target_count`.
 pub struct MaxSplitDensityCheck {
     pub instance_id: String,
-    pub max_density: u32,
+    pub max_density: f64,
     pub floor_scope: FloorScope,
 }
 
@@ -97,14 +97,14 @@ impl MaxSplitDensityCheck {
     /// Excess tile count for one region (whole maze or one floor) given its own tile/cell counts
     /// — shared by both `floor_scope` branches so the round-to-nearest `target_count` logic stays
     /// identical either way. Mirrors `MaxOneWayRatioCheck::to_remove_for` exactly.
-    fn to_remove_for(count: usize, field_cells: usize, max_density: u32) -> u32 {
+    fn to_remove_for(count: usize, field_cells: usize, max_density: f64) -> u32 {
         if field_cells == 0 || density_per_100(count, field_cells) <= max_density {
             return 0;
         }
         // Round-to-nearest can push target_count above count on a small enough field (rounding
         // error can exceed the margin the gate above guarantees) -- saturating_sub keeps the
         // result at 0 rather than underflowing in that edge case.
-        let target_count = (max_density as usize * field_cells + 50) / 100;
+        let target_count = (max_density * field_cells as f64 / 100.0).round() as usize;
         count.saturating_sub(target_count) as u32
     }
 }
@@ -140,7 +140,7 @@ mod tests {
     fn fires_and_flags_every_split_tile_when_density_exceeds_max() {
         // 3 split tiles / 10 cells = 30% density.
         let maze = maze_with_split_tiles(3);
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20, floor_scope: FloorScope::WholeMaze };
+        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn silent_when_density_at_or_below_max() {
         let maze = maze_with_split_tiles(2);
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20, floor_scope: FloorScope::WholeMaze };
+        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "20% density must not fire against a max of 20");
@@ -164,10 +164,43 @@ mod tests {
     #[test]
     fn silent_when_no_split_tiles() {
         let maze = maze_with_split_tiles(0);
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0, floor_scope: FloorScope::WholeMaze };
+        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
+    }
+
+    /// 1000 field cells, 300 of them carrying a split tile -> a clean 30% density fine-grained
+    /// enough that a `.1`-scale fractional threshold isn't swallowed by the `target_count`
+    /// rounding step.
+    fn maze_with_300_of_1000_split_tiles() -> Maze<SquareTessellation> {
+        let mut ids = IdGenerator::new();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(1000, 1), &mut ids).unwrap();
+        let level = field.single_level_id();
+        for x in 0..300 {
+            field.add_node_at(level, SquarePoint { x, y: 0 }, &mut ids);
+        }
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        Maze::new(field, g)
+    }
+
+    #[test]
+    fn max_density_accepts_a_genuinely_fractional_threshold() {
+        // 300/1000 = 30% density. max_density 30.1 must stay silent (density clears it); 29.9
+        // must fire (density exceeds it fractionally) -- pins that the gate compares the true
+        // density, not one rounded to a whole percentage first.
+        let maze = maze_with_300_of_1000_split_tiles();
+        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30.1, floor_scope: FloorScope::WholeMaze };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert!(issues.is_empty(), "30% density must not exceed a fractional maximum of 30.1");
+
+        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 29.9, floor_scope: FloorScope::WholeMaze };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert_eq!(issues.len(), 1, "30% density must exceed a fractional maximum of 29.9");
+        assert_eq!(issues[0].groups[0].1, 1, "target_count=round(29.9*1000/100)=299, to_remove=300-299=1");
     }
 
     /// Each floor is 10 field cells; `bottom_count`/`top_count` of them carry a split tile.
@@ -192,7 +225,7 @@ mod tests {
     fn per_floor_flags_each_over_budget_floor_with_its_own_group_and_to_remove() {
         // Bottom: 3/10 = 30% density (to_remove 1 to reach 20%). Top: 4/10 = 40% (to_remove 2).
         let maze = maze_with_split_tiles_on_two_floors(3, 4);
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20, floor_scope: FloorScope::PerFloor };
+        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20.0, floor_scope: FloorScope::PerFloor };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);

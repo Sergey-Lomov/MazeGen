@@ -27,7 +27,7 @@ fn maze_with_three_one_ways_on_ten_cells() -> Maze<SquareTessellation> {
 #[test]
 fn silent_when_ratio_meets_maximum() {
     let maze = maze_with_three_one_ways_on_ten_cells();
-    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 30, floor_scope: FloorScope::WholeMaze };
+    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 30.0, floor_scope: FloorScope::WholeMaze };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert!(issues.is_empty(), "30 per 100 cells meets a maximum of 30");
@@ -36,7 +36,7 @@ fn silent_when_ratio_meets_maximum() {
 #[test]
 fn fires_with_all_one_ways_as_single_group_when_above_maximum() {
     let maze = maze_with_three_one_ways_on_ten_cells();
-    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 20, floor_scope: FloorScope::WholeMaze };
+    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 20.0, floor_scope: FloorScope::WholeMaze };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert_eq!(issues.len(), 1);
@@ -66,7 +66,7 @@ fn target_count_rounds_to_nearest_not_down() {
     }
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 5, floor_scope: FloorScope::WholeMaze };
+    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 5.0, floor_scope: FloorScope::WholeMaze };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert_eq!(issues.len(), 1);
@@ -90,10 +90,43 @@ fn silent_when_rounding_pushes_target_count_up_to_meet_count() {
     g.add_edge(p(0), p(1), EdgeKind::Basic);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 32, floor_scope: FloorScope::WholeMaze };
+    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 32.0, floor_scope: FloorScope::WholeMaze };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert!(issues.is_empty(), "rounding pushed target_count up to meet count exactly -- to_remove must be 0, not underflow");
+}
+
+/// 1000 field cells, 300 one-way edges -> a clean 30 per 100 cells ratio fine-grained enough that
+/// a `.1`-scale fractional threshold isn't swallowed by the `target_count` rounding step.
+fn maze_with_300_one_ways_on_1000_cells() -> Maze<SquareTessellation> {
+    let mut ids = IdGenerator::new();
+    let field = MultiLevelField::single_level(square_rect(1000, 1), &mut ids).unwrap();
+    let field_level = field.single_level_id();
+    let mut g = Graph::new();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
+    for i in 0..300 {
+        g.add_edge(p(i * 2), p(i * 2 + 1), EdgeKind::Basic);
+    }
+    Maze::new(field, g)
+}
+
+#[test]
+fn max_ratio_accepts_a_genuinely_fractional_threshold() {
+    // 300/1000 = 30 per 100 cells. max_ratio 30.1 must stay silent (ratio clears it); 29.9 must
+    // fire (ratio exceeds it fractionally) -- pins that the gate compares the true ratio, not one
+    // rounded to a whole number first.
+    let maze = maze_with_300_one_ways_on_1000_cells();
+    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 30.1, floor_scope: FloorScope::WholeMaze };
+    let mut issues = Vec::new();
+    check.repair_check(&maze, &mut issues, &mut rng(), ());
+    assert!(issues.is_empty(), "30 per 100 cells must not exceed a fractional maximum of 30.1");
+
+    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 29.9, floor_scope: FloorScope::WholeMaze };
+    let mut issues = Vec::new();
+    check.repair_check(&maze, &mut issues, &mut rng(), ());
+    assert_eq!(issues.len(), 1, "30 per 100 cells must exceed a fractional maximum of 29.9");
+    assert_eq!(issues[0].groups[0].1, 1, "target_count=round(29.9*1000/100)=299, to_remove=300-299=1");
 }
 
 #[test]
@@ -107,7 +140,7 @@ fn does_not_count_bidirectional_passage_as_one_way() {
     g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 0, floor_scope: FloorScope::WholeMaze };
+    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 0.0, floor_scope: FloorScope::WholeMaze };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert!(issues.is_empty(), "bidirectional passage must not count toward the ratio");
@@ -130,7 +163,7 @@ fn does_not_floor_the_true_ratio_before_comparing() {
     }
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 30, floor_scope: FloorScope::WholeMaze };
+    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 30.0, floor_scope: FloorScope::WholeMaze };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert_eq!(issues.len(), 1, "30.9% must not silently pass a 30% maximum via floor rounding");
@@ -160,7 +193,7 @@ fn maze_with_one_ways_on_two_floors() -> Maze<SquareTessellation> {
 #[test]
 fn per_floor_flags_each_over_budget_floor_with_its_own_group_and_to_remove() {
     let maze = maze_with_one_ways_on_two_floors();
-    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 20, floor_scope: FloorScope::PerFloor };
+    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 20.0, floor_scope: FloorScope::PerFloor };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert_eq!(issues.len(), 1);

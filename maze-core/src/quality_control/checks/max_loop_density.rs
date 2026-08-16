@@ -9,7 +9,7 @@ use crate::quality_control::{InvalidLoopGroupIssue, InvalidLoopGroupRequirement,
 use crate::quality_control::floor_group::{floors_of_edges, floor_point_count};
 use crate::quality_control::issue_kinds::canonical_cycle_key;
 
-pub const MAX_LOOP_DENSITY_DEFAULT: u32 = 30;
+pub const MAX_LOOP_DENSITY_DEFAULT: f64 = 30.0;
 pub const MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags every basis loop invalid when too large a share of the field is covered by loops
@@ -27,7 +27,7 @@ pub const MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloo
 /// exactly `cycle_count` cycles instead of every composite variant.
 pub struct MaxLoopDensityCheck {
     pub instance_id: String,
-    pub max_density: u32,
+    pub max_density: f64,
     pub floor_scope: FloorScope,
 }
 
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn fires_and_flags_every_loop_when_density_exceeds_max() {
         let maze = maze_with_two_disjoint_triangles();
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30, floor_scope: FloorScope::WholeMaze };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);
@@ -163,18 +163,17 @@ mod tests {
     #[test]
     fn silent_when_density_at_or_below_max() {
         let maze = maze_with_two_disjoint_triangles();
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 60, floor_scope: FloorScope::WholeMaze };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 60.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert!(issues.is_empty(), "60% density should clear a threshold of 60");
     }
 
     #[test]
-    fn density_rounds_instead_of_truncating() {
-        // 8 field cells, one triangle covers 3 -> true density 300/8 = 37.5%. Truncating
-        // division would read this as 37 (<= max_density 37, no fire); rounding reads it as
-        // 38 (> 37, fires) -- this test pins the rounding behavior so a regression to
-        // truncation is caught.
+    fn density_compares_true_fractional_value_not_a_rounded_one() {
+        // 8 field cells, one triangle covers 3 -> true density 300/8 = 37.5%. A max_density of
+        // 37.5 must not fire (density is at, not above, the max); 37.4 must fire, pinning that
+        // the comparison uses the exact fractional density rather than any rounded integer.
         let mut ids = IdGenerator::new();
         let field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(8, 1), &mut ids).unwrap();
         let field_level = field.single_level_id();
@@ -186,10 +185,15 @@ mod tests {
         g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
         let maze = Maze::new(field, g);
 
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 37, floor_scope: FloorScope::WholeMaze };
+        let at_max = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 37.5, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
-        check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
-        assert_eq!(issues.len(), 1, "37.5% rounds to 38, which exceeds max_density 37");
+        at_max.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
+        assert!(issues.is_empty(), "37.5% density must not exceed a max_density of exactly 37.5");
+
+        let below_max = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 37.4, floor_scope: FloorScope::WholeMaze };
+        let mut issues = Vec::new();
+        below_max.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
+        assert_eq!(issues.len(), 1, "37.5% density must exceed a max_density of 37.4");
     }
 
     #[test]
@@ -211,7 +215,7 @@ mod tests {
         g.add_edge(nodes[4], nodes[2], EdgeKind::Basic);
         let maze = Maze::new(field, g);
 
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30, floor_scope: FloorScope::WholeMaze };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);
@@ -229,7 +233,7 @@ mod tests {
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0, floor_scope: FloorScope::WholeMaze };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert!(issues.is_empty());
@@ -258,7 +262,7 @@ mod tests {
             }
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0, floor_scope: FloorScope::WholeMaze };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
@@ -291,7 +295,7 @@ mod tests {
     #[test]
     fn per_floor_flags_only_cycles_on_the_over_budget_floor() {
         let maze = maze_with_triangles_on_two_floors();
-        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30, floor_scope: FloorScope::PerFloor };
+        let check = MaxLoopDensityCheck { instance_id: TEST_ID.to_string(), max_density: 30.0, floor_scope: FloorScope::PerFloor };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);

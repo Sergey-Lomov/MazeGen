@@ -7,7 +7,7 @@ use crate::quality_control::check::Check;
 use crate::quality_control::{MissingOneWaysIssue, FloorScope, RepairArea};
 use crate::quality_control::floor_group::{floors_of_edge, floor_point_count};
 
-pub const MIN_ONE_WAY_RATIO_DEFAULT: u32 = 10;
+pub const MIN_ONE_WAY_RATIO_DEFAULT: f64 = 10.0;
 pub const MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags a deficit against the share of one-way passage edges (`EdgeKind::Basic`, single
@@ -26,7 +26,7 @@ pub const MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFlo
 /// issue #211's `MinTeleportRatioCheck`, which shares this exact bug via copy-paste.)
 pub struct MinOneWayRatioCheck {
     pub instance_id: String,
-    pub min_ratio: u32,
+    pub min_ratio: f64,
     pub floor_scope: FloorScope,
 }
 
@@ -40,7 +40,7 @@ impl<T: Tessellation> Check<T, MissingOneWaysIssue> for MinOneWayRatioCheck {
             .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
             .map(|e| e.id)
             .collect();
-        let min_ratio = self.min_ratio as u64;
+        let min_ratio = self.min_ratio;
 
         let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
             FloorScope::WholeMaze => {
@@ -82,13 +82,13 @@ impl MinOneWayRatioCheck {
     /// Deficit one-way count for one region (whole maze or one floor) given its own one-way count
     /// and cell count — shared by both `floor_scope` branches so the cross-multiplied-comparison
     /// rounding logic stays identical either way.
-    fn missing_for(count: u64, field_cells: u64, min_ratio: u64) -> u32 {
-        if field_cells == 0 || count * 100 >= min_ratio * field_cells {
+    fn missing_for(count: u64, field_cells: u64, min_ratio: f64) -> u32 {
+        if field_cells == 0 || count as f64 * 100.0 >= min_ratio * field_cells as f64 {
             return 0;
         }
         // `required` rounds to the nearest integer (not ceil), matching
         // `MaxOneWayRatioCheck::to_remove_for`'s round-to-nearest `target_count`.
-        let required = (min_ratio * field_cells + 50) / 100;
+        let required = (min_ratio * field_cells as f64 / 100.0).round() as u64;
         required.saturating_sub(count) as u32
     }
 }
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn silent_when_ratio_meets_minimum() {
         let maze = maze_with_one_one_way_on_ten_cells();
-        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 10, floor_scope: FloorScope::WholeMaze };
+        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 10.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "10 per 100 cells meets a minimum of 10");
@@ -132,7 +132,7 @@ mod tests {
     fn fires_with_missing_count_when_below_minimum() {
         // 10 per 100 cells, min_ratio 30 -> missing_ratio 20 -> ceil(20*10/100) = 2.
         let maze = maze_with_one_one_way_on_ten_cells();
-        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 30, floor_scope: FloorScope::WholeMaze };
+        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 30.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
@@ -148,7 +148,7 @@ mod tests {
         // 10 per 100 cells, min_ratio 13 -> required = round(13*10/100) = round(1.3) = 1, missing = 0
         // (required already met by rounding, not truncated away by a stricter ceil).
         let maze = maze_with_one_one_way_on_ten_cells();
-        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 13, floor_scope: FloorScope::WholeMaze };
+        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 13.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "round(1.3) = 1, already met by the existing single one-way");
@@ -158,11 +158,45 @@ mod tests {
     fn missing_count_rounds_to_nearest_not_up() {
         // 10 per 100 cells, min_ratio 17 -> required = round(17*10/100) = round(1.7) = 2, missing = 1.
         let maze = maze_with_one_one_way_on_ten_cells();
-        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 17, floor_scope: FloorScope::WholeMaze };
+        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 17.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 1)], "round(1.7) = 2, not ceil to 2 via truncation-then-up");
+    }
+
+    /// 1000 field cells, 100 one-way edges (100 distinct source cells) -> a clean 10 per 100
+    /// cells ratio fine-grained enough that a `.1`-scale fractional threshold isn't swallowed by
+    /// the `required` rounding step.
+    fn maze_with_100_one_ways_on_1000_cells() -> Maze<SquareTessellation> {
+        let mut ids = IdGenerator::new();
+        let field = MultiLevelField::single_level(square_rect(1000, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let p = |x: i32| field.node_at(field_level, SquarePoint { x, y: 0 }).unwrap();
+        for i in 0..100 {
+            g.add_edge(p(i * 2), p(i * 2 + 1), EdgeKind::Basic);
+        }
+        Maze::new(field, g)
+    }
+
+    #[test]
+    fn min_ratio_accepts_a_genuinely_fractional_threshold() {
+        // 100/1000 = 10 per 100 cells. min_ratio 9.9 must stay silent (ratio clears it); 10.1
+        // must fire (ratio falls fractionally short) -- pins that the gate compares the true
+        // ratio, not one rounded to a whole number first.
+        let maze = maze_with_100_one_ways_on_1000_cells();
+        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 9.9, floor_scope: FloorScope::WholeMaze };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert!(issues.is_empty(), "10 per 100 cells must clear a fractional minimum of 9.9");
+
+        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 10.1, floor_scope: FloorScope::WholeMaze };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert_eq!(issues.len(), 1, "10 per 100 cells must fall short of a fractional minimum of 10.1");
+        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 1)], "required=round(10.1*1000/100)=101, missing=1");
     }
 
     #[test]
@@ -176,7 +210,7 @@ mod tests {
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 50, floor_scope: FloorScope::WholeMaze };
+        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 50.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1, "bidirectional passage must not count toward the ratio");
@@ -199,7 +233,7 @@ mod tests {
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 30, floor_scope: FloorScope::WholeMaze };
+        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 30.0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1, "29.9% must not silently pass a 30% minimum via floor rounding");
@@ -224,7 +258,7 @@ mod tests {
     #[test]
     fn per_floor_flags_each_deficient_floor_with_its_own_area_and_amount() {
         let maze = maze_with_one_ways_on_two_floors();
-        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 20, floor_scope: FloorScope::PerFloor };
+        let check = MinOneWayRatioCheck { instance_id: TEST_ID.to_string(), min_ratio: 20.0, floor_scope: FloorScope::PerFloor };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);

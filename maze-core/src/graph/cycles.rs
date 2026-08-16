@@ -599,12 +599,13 @@ pub(crate) fn resolve_to_edge_ids(
     }).collect()
 }
 
-/// Rounds to the nearest integer, not truncating — a truncating division would silently pass
-/// a density threshold for a true density that is actually fractionally past it (e.g. 30.9%
-/// reading as 30). Shared by `MinLoopDensityCheck` and `MaxLoopDensityCheck` — same metric,
-/// checked against a minimum and a maximum respectively.
-pub(crate) fn density_per_100(cells: usize, field_cells: usize) -> u32 {
-    ((cells * 100 + field_cells / 2) / field_cells) as u32
+/// True (unrounded) density per 100 field cells — GitHub issue #265: density/ratio thresholds are
+/// `f64` now, so the metric itself compares exactly against a fractional threshold instead of
+/// rounding to the nearest integer first (the old integer version silently passed a threshold a
+/// true density was actually fractionally past, e.g. 30.9% rounding to 30 and clearing a maximum
+/// of 30). Shared by every `*_density`/`*_ratio` check.
+pub(crate) fn density_per_100(cells: usize, field_cells: usize) -> f64 {
+    cells as f64 * 100.0 / field_cells as f64
 }
 
 #[cfg(test)]

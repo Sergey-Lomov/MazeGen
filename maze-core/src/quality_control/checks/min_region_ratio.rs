@@ -6,7 +6,7 @@ use crate::quality_control::check::Check;
 use crate::quality_control::RegionNeedsExpansionIssue;
 use super::region_size_check_core::{find_invalid_regions, build_issue};
 
-pub const MIN_REGION_RATIO_DEFAULT: u32 = 25;
+pub const MIN_REGION_RATIO_DEFAULT: f64 = 25.0;
 
 /// Flags SCC regions smaller than a configured share of the field — see GitHub issue #50.
 /// Counterpart to `MinRegionSizeCheck` using a relative threshold (a percentage of
@@ -18,7 +18,7 @@ pub const MIN_REGION_RATIO_DEFAULT: u32 = 25;
 /// same as before this filter existed — see GitHub issue #54.
 pub struct MinRegionRatioCheck {
     pub instance_id: String,
-    pub min_region_ratio: u32,
+    pub min_region_ratio: f64,
     pub region_classes: Vec<RegionClass>,
 }
 
@@ -32,7 +32,7 @@ impl<T: Tessellation> Check<T, RegionNeedsExpansionIssue> for MinRegionRatioChec
         }
         let min_region_ratio = self.min_region_ratio;
         let Some(invalid) = find_invalid_regions(maze, &self.region_classes, |len| {
-            len as u64 * 100 < min_region_ratio as u64 * field_cells as u64
+            len as f64 * 100.0 < min_region_ratio * field_cells as f64
         }) else {
             return;
         };
@@ -73,7 +73,7 @@ mod tests {
     #[test]
     fn silent_when_all_regions_meet_minimum_ratio() {
         let maze = maze_with_small_region();
-        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 10, region_classes: ALL_REGION_CLASSES.to_vec() };
+        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 10.0, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "every region is at least 10% of the field");
@@ -82,7 +82,7 @@ mod tests {
     #[test]
     fn fires_when_a_region_is_below_minimum_ratio() {
         let maze = maze_with_small_region();
-        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 20, region_classes: ALL_REGION_CLASSES.to_vec() };
+        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 20.0, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
@@ -110,16 +110,31 @@ mod tests {
     #[test]
     fn silent_when_region_ratio_equals_minimum() {
         let maze = maze_with_one_region();
-        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 100, region_classes: ALL_REGION_CLASSES.to_vec() };
+        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 100.0, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "the single region is exactly 100% of the field, not below a minimum of 100");
     }
 
     #[test]
+    fn min_region_ratio_accepts_a_genuinely_fractional_threshold() {
+        // 7 singleton regions at 10% each. min_region_ratio 10.5 must fire (below); 9.5 must stay silent (above).
+        let maze = maze_with_small_region();
+        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 9.5, region_classes: ALL_REGION_CLASSES.to_vec() };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert!(issues.is_empty(), "10% regions must clear a fractional minimum of 9.5");
+
+        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 10.5, region_classes: ALL_REGION_CLASSES.to_vec() };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert_eq!(issues.len(), 1, "10% regions must fall short of a fractional minimum of 10.5");
+    }
+
+    #[test]
     fn silent_when_region_classes_empty() {
         let maze = maze_with_small_region();
-        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 20, region_classes: Vec::new() };
+        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 20.0, region_classes: Vec::new() };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "no region class is selected, so no region can match");
@@ -130,7 +145,7 @@ mod tests {
         let maze = maze_with_small_region();
         let check = MinRegionRatioCheck {
             instance_id: TEST_ID.to_string(),
-            min_region_ratio: 20,
+            min_region_ratio: 20.0,
             region_classes: vec![crate::graph::region_class::RegionClass::Trap],
         };
         let mut issues = Vec::new();
@@ -152,7 +167,7 @@ mod tests {
         maze.meta.finish = Some(nodes[1]);
         let check = MinRegionRatioCheck {
             instance_id: TEST_ID.to_string(),
-            min_region_ratio: 50,
+            min_region_ratio: 50.0,
             region_classes: vec![crate::graph::region_class::RegionClass::Unreachable],
         };
         let mut issues = Vec::new();
@@ -169,7 +184,7 @@ mod tests {
     #[test]
     fn region_classes_detail_omitted_without_endpoints() {
         let maze = maze_with_small_region();
-        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 20, region_classes: ALL_REGION_CLASSES.to_vec() };
+        let check = MinRegionRatioCheck { instance_id: TEST_ID.to_string(), min_region_ratio: 20.0, region_classes: ALL_REGION_CLASSES.to_vec() };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);

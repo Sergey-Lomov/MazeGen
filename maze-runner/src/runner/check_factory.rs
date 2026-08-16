@@ -283,8 +283,9 @@ pub(crate) fn build_missing_loops_check<T: Tessellation>(instance: &CheckInstanc
         }
         "min_loop_density" => {
             let min_density = instance.params.get("min_density")
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v.clamp(0, 100) as u32)
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(MIN_LOOP_DENSITY_DEFAULT);
             let avg_loop_length_estimate = instance.params.get("avg_loop_length_estimate")
                 .and_then(|v| v.parse::<i64>().ok())
@@ -310,8 +311,9 @@ pub(crate) fn build_missing_split_tiles_check<T: Tessellation>(instance: &CheckI
         }
         "split_density" => {
             let min_density = instance.params.get("split_density")
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v.clamp(0, 100) as u32)
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(SPLIT_DENSITY_DEFAULT);
             let split_tile_estimate = instance.params.get("split_tile_estimate")
                 .and_then(|v| v.parse::<i64>().ok())
@@ -368,8 +370,9 @@ pub(crate) fn build_invalid_loop_group_check<T: Tessellation>(instance: &CheckIn
     match instance.type_id.as_str() {
         "max_loop_density" => {
             let max_density = instance.params.get("max_density")
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v.clamp(0, 100) as u32)
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(MAX_LOOP_DENSITY_DEFAULT);
             let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE);
             Some(Box::new(MaxLoopDensityCheck { instance_id, max_density, floor_scope }))
@@ -411,8 +414,9 @@ pub(crate) fn build_region_needs_expansion_check<T: Tessellation>(instance: &Che
         }
         "min_region_ratio" => {
             let min_region_ratio = instance.params.get("min_region_ratio")
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v.clamp(0, 100) as u32)
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(MIN_REGION_RATIO_DEFAULT);
             let region_classes = parse_region_class_filter(instance.params.get("region_class"));
             Some(Box::new(MinRegionRatioCheck { instance_id, min_region_ratio, region_classes }))
@@ -433,8 +437,9 @@ pub(crate) fn build_region_needs_shrink_check<T: Tessellation>(instance: &CheckI
         }
         "max_region_ratio" => {
             let max_region_ratio = instance.params.get("max_region_ratio")
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v.clamp(0, 100) as u32)
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(MAX_REGION_RATIO_DEFAULT);
             let region_classes = parse_region_class_filter(instance.params.get("region_class"));
             Some(Box::new(MaxRegionRatioCheck { instance_id, max_region_ratio, region_classes }))
@@ -579,8 +584,9 @@ pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(instance: &Ch
         }
         "max_one_way_ratio" => {
             let max_ratio = instance.params.get("max_ratio")
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v.clamp(0, 100) as u32)
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(MAX_ONE_WAY_RATIO_DEFAULT);
             let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE);
             Some(Box::new(MaxOneWayRatioCheck { instance_id, max_ratio, floor_scope }))
@@ -601,8 +607,9 @@ pub(crate) fn build_missing_one_ways_check<T: Tessellation>(instance: &CheckInst
         }
         "min_one_way_ratio" => {
             let min_ratio = instance.params.get("min_ratio")
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v.clamp(0, 100) as u32)
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(MIN_ONE_WAY_RATIO_DEFAULT);
             let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE);
             Some(Box::new(MinOneWayRatioCheck { instance_id, min_ratio, floor_scope }))
@@ -703,8 +710,9 @@ pub(crate) fn build_split_group_check<T: Tessellation>(instance: &CheckInstanceC
         }
         "max_split_density" => {
             let max_density = instance.params.get("max_split_density")
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v.clamp(0, 100) as u32)
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(MAX_SPLIT_DENSITY_DEFAULT);
             let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE);
             Some(Box::new(MaxSplitDensityCheck { instance_id, max_density, floor_scope }))
@@ -742,8 +750,9 @@ pub(crate) fn build_missing_teleports_check<T: Tessellation>(instance: &CheckIns
         }
         "min_teleport_ratio" => {
             let min_teleport_ratio = instance.params.get("min_teleport_ratio")
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v.clamp(0, 100) as u32)
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(MIN_TELEPORT_RATIO_DEFAULT);
             let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE);
             Some(Box::new(MinTeleportRatioCheck { instance_id, min_teleport_ratio, floor_scope }))

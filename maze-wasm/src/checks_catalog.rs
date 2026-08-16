@@ -188,7 +188,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 ParamDescriptor {
                     id: "min_teleport_ratio",
                     label: "Min teleport count (per 100 cells)",
-                    kind: ParamKindDto::Integer { default: MIN_TELEPORT_RATIO_DEFAULT as i64, min: 0, max: 100 },
+                    kind: ParamKindDto::Float { default: MIN_TELEPORT_RATIO_DEFAULT, min: 0.0, max: 100.0 },
                 },
                 floor_scope_param(MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
@@ -220,7 +220,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 ParamDescriptor {
                     id: "min_ratio",
                     label: "Min one-way count (per 100 cells)",
-                    kind: ParamKindDto::Integer { default: MIN_ONE_WAY_RATIO_DEFAULT as i64, min: 0, max: 100 },
+                    kind: ParamKindDto::Float { default: MIN_ONE_WAY_RATIO_DEFAULT, min: 0.0, max: 100.0 },
                 },
                 floor_scope_param(MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
@@ -319,7 +319,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 ParamDescriptor {
                     id: "max_ratio",
                     label: "Max one-way count (per 100 cells)",
-                    kind: ParamKindDto::Integer { default: MAX_ONE_WAY_RATIO_DEFAULT as i64, min: 0, max: 100 },
+                    kind: ParamKindDto::Float { default: MAX_ONE_WAY_RATIO_DEFAULT, min: 0.0, max: 100.0 },
                 },
                 floor_scope_param(MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
@@ -350,7 +350,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 ParamDescriptor {
                     id: "min_density",
                     label: "Min loop density (per 100 cells)",
-                    kind: ParamKindDto::Integer { default: MIN_LOOP_DENSITY_DEFAULT as i64, min: 0, max: 100 },
+                    kind: ParamKindDto::Float { default: MIN_LOOP_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
                 },
                 ParamDescriptor {
                     id: "avg_loop_length_estimate",
@@ -432,7 +432,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 ParamDescriptor {
                     id: "max_density",
                     label: "Max loop density (per 100 cells)",
-                    kind: ParamKindDto::Integer { default: MAX_LOOP_DENSITY_DEFAULT as i64, min: 0, max: 100 },
+                    kind: ParamKindDto::Float { default: MAX_LOOP_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
                 },
                 floor_scope_param(MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
@@ -489,7 +489,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 ParamDescriptor {
                     id: "min_region_ratio",
                     label: "Min region ratio (per 100 cells)",
-                    kind: ParamKindDto::Integer { default: MIN_REGION_RATIO_DEFAULT as i64, min: 0, max: 100 },
+                    kind: ParamKindDto::Float { default: MIN_REGION_RATIO_DEFAULT, min: 0.0, max: 100.0 },
                 },
                 region_class_filter_param(),
             ],
@@ -519,7 +519,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 ParamDescriptor {
                     id: "max_region_ratio",
                     label: "Max region ratio (per 100 cells)",
-                    kind: ParamKindDto::Integer { default: MAX_REGION_RATIO_DEFAULT as i64, min: 0, max: 100 },
+                    kind: ParamKindDto::Float { default: MAX_REGION_RATIO_DEFAULT, min: 0.0, max: 100.0 },
                 },
                 region_class_filter_param(),
             ],
@@ -618,7 +618,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 ParamDescriptor {
                     id: "max_split_density",
                     label: "Max split density (per 100 cells)",
-                    kind: ParamKindDto::Integer { default: MAX_SPLIT_DENSITY_DEFAULT as i64, min: 0, max: 100 },
+                    kind: ParamKindDto::Float { default: MAX_SPLIT_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
                 },
                 floor_scope_param(MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
@@ -682,7 +682,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 ParamDescriptor {
                     id: "split_density",
                     label: "Min density (per 100 cells)",
-                    kind: ParamKindDto::Integer { default: SPLIT_DENSITY_DEFAULT as i64, min: 0, max: 100 },
+                    kind: ParamKindDto::Float { default: SPLIT_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
                 },
                 ParamDescriptor {
                     id: "split_tile_estimate",
