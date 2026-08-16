@@ -70,15 +70,24 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayCountCheck 
                 if over_budget.is_empty() {
                     return;
                 }
-                let max_excess = over_budget.iter()
-                    .map(|level| per_floor_count[level] - self.max_one_ways)
-                    .max()
-                    .unwrap_or(0);
-                let flagged: Vec<EdgeId> = one_ways.into_iter().zip(one_way_floors)
-                    .filter(|(_, floors)| floors.iter().any(|l| over_budget.contains(l)))
-                    .map(|(id, _)| id)
-                    .collect();
-                (flagged, max_excess)
+                // A one-way edge can span multiple floors and thus belong to more than one
+                // over-budget floor's group at once -- each over-budget floor gets its own
+                // independent group with its own excess count, rather than one merged group with
+                // a single (e.g. max) excess, so a repair strategy resolving one floor's excess
+                // doesn't silently satisfy a different floor's quota (or leave it unresolved).
+                let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
+                for &level in &over_budget {
+                    let excess = per_floor_count[&level] - self.max_one_ways;
+                    let flagged: Vec<EdgeId> = one_ways.iter().zip(&one_way_floors)
+                        .filter(|(_, floors)| floors.contains(&level))
+                        .map(|(&id, _)| id)
+                        .collect();
+                    groups.push((flagged, excess));
+                }
+                let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, groups)
+                    .with_detail(&self.instance_id, "max_one_ways", self.max_one_ways.to_string());
+                issues.push(issue);
+                return;
             }
         };
 

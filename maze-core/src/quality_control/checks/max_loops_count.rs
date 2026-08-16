@@ -255,4 +255,37 @@ mod tests {
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
+
+    /// Bottom floor: 2 independent triangles (over a max of 1). Top floor: 1 triangle (at max).
+    fn maze_with_triangles_on_two_floors() -> Maze<SquareTessellation> {
+        use crate::space::{Field, SquarePoint};
+        let mut ids = IdGenerator::new();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(3, 1), &mut ids).unwrap());
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        let pb = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
+        let pt = |x: i32| mf.node_at(top, SquarePoint { x, y: 0 }).unwrap();
+        g.add_edge(pb(0), pb(1), EdgeKind::Basic);
+        g.add_edge(pb(1), pb(2), EdgeKind::Basic);
+        g.add_edge(pb(2), pb(0), EdgeKind::Basic);
+        g.add_edge(pb(3), pb(4), EdgeKind::Basic);
+        g.add_edge(pb(4), pb(5), EdgeKind::Basic);
+        g.add_edge(pb(5), pb(3), EdgeKind::Basic);
+        g.add_edge(pt(0), pt(1), EdgeKind::Basic);
+        g.add_edge(pt(1), pt(2), EdgeKind::Basic);
+        g.add_edge(pt(2), pt(0), EdgeKind::Basic);
+        Maze::new(mf, g)
+    }
+
+    #[test]
+    fn per_floor_flags_only_cycles_on_the_over_budget_floor() {
+        let maze = maze_with_triangles_on_two_floors();
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 1, floor_scope: FloorScope::PerFloor };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].invalid.len(), 2, "only the bottom floor's 2 triangles are flagged, top floor's single triangle is left alone (at max)");
+    }
 }

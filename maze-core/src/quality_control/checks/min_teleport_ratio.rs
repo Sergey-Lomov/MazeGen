@@ -206,4 +206,33 @@ mod tests {
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "A<->B is one logical portal (10 per 100 cells), not two (20 per 100)");
     }
+
+    /// Bottom floor: 10 cells, 1 teleport (10%). Top floor: 10 cells, 0 teleports (0%).
+    fn maze_with_teleports_on_two_floors() -> Maze<SquareTessellation> {
+        use crate::space::Field;
+        let mut ids = IdGenerator::new();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        let pb = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
+        g.add_edge(pb(0), pb(1), EdgeKind::Teleport);
+        let _ = top;
+        Maze::new(mf, g)
+    }
+
+    #[test]
+    fn per_floor_flags_each_deficient_floor_with_its_own_area_and_amount() {
+        let maze = maze_with_teleports_on_two_floors();
+        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 20, floor_scope: FloorScope::PerFloor };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert_eq!(issues.len(), 1);
+        let mut missing = issues[0].missing.clone();
+        missing.sort_by_key(|&(_, amount)| amount);
+        assert_eq!(missing.len(), 2, "each deficient floor gets its own RepairArea::Level entry");
+        assert_eq!(missing[0].1, 1, "bottom floor: 10%, needs 1 more to reach round(20*10/100)=2");
+        assert_eq!(missing[1].1, 2, "top floor: 0%, needs 2 more");
+    }
 }

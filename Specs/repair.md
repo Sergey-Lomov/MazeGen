@@ -1382,6 +1382,28 @@ pub(crate) fn plan_pattern_split<T: Tessellation>(
 
 **Bug this fixed (no dedicated issue number, found while implementing #254)**: planning several `ReplacePointNodes` commands in one `apply()` call against neighboring points, with no `excluded` bookkeeping, could have a later command's `SplitNodeEdge::target` point at a node an earlier command in the same batch already replaced — that id no longer resolves by the time `apply_commands` applies it, so the whole later command is silently dropped (all-or-nothing feasibility), instead of minting the split tile it was supposed to. `ExcludedTargets` closes this by rejecting any such target at planning time, so a caller only ever proposes commands survivable at apply time; `MissingLoopsSplitStrategy` tracks its own committed points as `split_points` for this purpose (see below), `AddSplitStrategy` as `committed`.
 
+### RemainingDeficits (shared, not a strategy)
+
+A live, mutable working copy of a deficit issue's `missing: Vec<(RepairArea, u32)>`, shared by every strategy that services a `min_*`/`split_count`/`split_density`-style deficit issue: `MissingLoopsRandomStrategy`, `MissingLoopsSplitStrategy`, `MissingOneWaysFromWallStrategy`, `MissingOneWaysFromPassageStrategy`, `MissingTeleportsStrategy`, `AddSplitStrategy` (all listed below).
+
+**Why this exists** (GitHub issue #369 double-repair follow-up): a `FloorScope::PerFloor` check and a `FloorScope::WholeMaze` check on the *same* rule both contribute entries to one issue's `missing` (e.g. "3 per floor" + "12 whole-maze" on a 3-floor maze) — the whole-maze entry isn't independent of the per-floor entries, it's the *same* underlying requirement measured a different way, so satisfying a per-floor entry must count against the whole-maze entry too. Without this, a strategy that just loops `issue.missing` and adds the full amount for every entry independently massively over-delivers (21 instead of 12 in the example above).
+
+```rust
+pub(super) struct RemainingDeficits { /* entries: Vec<(RepairArea, u32)> */ }
+
+impl RemainingDeficits {
+    pub(super) fn new(missing: &[(RepairArea, u32)]) -> Self;
+    pub(super) fn areas(&self) -> impl Iterator<Item = RepairArea> + '_;
+    pub(super) fn live(&self, area: RepairArea) -> u32;
+    pub(super) fn consume(&mut self, covered: &[RepairArea]);
+    pub(super) fn consume_many(&mut self, area: RepairArea, count: u32);
+}
+```
+
+`new` sorts every `Level` entry before the (at most one) `WholeMaze` entry, by `LevelId` — a strategy processes floors first and the whole-maze catch-all last, by which point every per-floor need has already been satisfied and reflected in the live whole-maze count via `consume`.
+
+`areas()` gives the processing order for one `apply()` call; `live(area)` gives the up-to-date remaining count for `area`, reflecting every `consume` so far. `consume(covered)` is called once a new entity is actually added, decrementing (saturating) every live entry whose area is in `covered` — always both the entity's own area and `RepairArea::WholeMaze`, since `WholeMaze` represents the same requirement as every floor's own entry, not an independent one; a teleport additionally covers its exit floor if that differs from its entry floor. `consume_many(area, count)` is `consume(&[area, RepairArea::WholeMaze])` called `count` times, for a caller that only learns an aggregate count after the fact (e.g. `missing_one_ways_shared::pick_random_pairs`, which returns one `found: u32` per area rather than notifying per accepted pair).
+
 ### AddSplitStrategy
 
 Handles `MISSING_SPLIT_TILES` — see GitHub issue #247, split-QC epic #246. Mints new split tiles at randomly chosen eligible points (`generation::split_is_eligible` — not locked, point not already multi-node) until `issue.missing` is satisfied or `max_attempts` **failed** attempts have been spent (successful attempts don't count against the budget). Every node at the chosen point — slot-0 included — is replaced in one atomic step, via `MutationCommand::ReplacePointNodes` (see above); slot-0 is not special-cased (epic #246's "slot-0 is not special" rule).

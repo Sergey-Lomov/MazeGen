@@ -251,4 +251,36 @@ mod tests {
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 1)], "round(3.5) = 4, missing_cells = 1");
     }
+
+    /// Bottom floor: 10 cells, one triangle (30% coverage). Top floor: 10 cells, no cycle (0%).
+    fn maze_with_a_triangle_on_two_floors() -> Maze<SquareTessellation> {
+        use crate::space::Field;
+        let mut ids = IdGenerator::new();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        let pb = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
+        g.add_edge(pb(0), pb(1), EdgeKind::Basic);
+        g.add_edge(pb(1), pb(2), EdgeKind::Basic);
+        g.add_edge(pb(2), pb(0), EdgeKind::Basic);
+        let _ = top;
+        Maze::new(mf, g)
+    }
+
+    #[test]
+    fn per_floor_flags_each_deficient_floor_with_its_own_area_and_amount() {
+        // Bottom: 30%, needs round(60*10/100)=6, missing_cells=3. Top: 0%, needs 6.
+        let maze = maze_with_a_triangle_on_two_floors();
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 60, avg_loop_length_estimate: 1, floor_scope: FloorScope::PerFloor };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert_eq!(issues.len(), 1);
+        let mut missing = issues[0].missing.clone();
+        missing.sort_by_key(|&(_, amount)| amount);
+        assert_eq!(missing.len(), 2, "each deficient floor gets its own RepairArea::Level entry");
+        assert_eq!(missing[0].1, 3, "bottom floor: 30% covered, needs 3 more cells");
+        assert_eq!(missing[1].1, 6, "top floor: 0% covered, needs 6 more cells");
+    }
 }

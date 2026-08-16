@@ -517,7 +517,7 @@ pub enum FloorScope { WholeMaze, PerFloor }
 
 For deficit checks (`min_*`), a per-floor deficit is computed for each floor independently and the results are **summed** into one issue (`MissingLoopsIssue`, `MissingOneWaysIssue`, `MissingTeleportsIssue`, `MissingSplitTilesIssue`) — this is deliberately not routed through `IssueMerge::merge`, whose cross-check semantics (take the `max()` of two different checks' numbers) would be wrong for summing one check's own per-floor numbers.
 
-For surplus/group checks (`max_*`), each check computes the set of over-budget floors and flags every entity touching *any* over-budget floor; the reported `to_remove`/excess count is the **max** excess across over-budget floors (not summed), since removing that many entities from the flagged group is guaranteed to bring every over-budget floor back under its own threshold independently.
+For surplus/group checks (`max_*`) whose issue type carries a per-group `to_remove: u32` (`max_split_count`, `max_split_density`, `max_one_way_count`, `max_one_way_ratio` — all `InvalidGroupIssue<K>`-based), each over-budget floor gets its **own independent** `(group, to_remove)` tuple — `InvalidGroupIssue<K>::groups: Vec<(Vec<Element>, u32)>` natively supports several groups per issue, so there is no need to merge every over-budget floor's entities into one group with a single blended excess count. `max_split_count`/`max_split_density`'s split tiles belong to exactly one floor each, so their per-floor groups are disjoint; `max_one_way_count`/`max_one_way_ratio`'s one-way edges can span floors, so the same edge may legitimately appear in more than one floor's group when it touches several over-budget floors at once. `max_loops_count`/`max_loop_density` are structurally different (`InvalidLoopGroupIssue` is boolean-shaped — `invalid`/`valid` cycle lists, no `to_remove` scalar) and need no analogous per-floor split: under `PerFloor` they simply flag every cycle touching any over-budget floor as invalid directly.
 
 `as_str()`/`from_str()` round-trip through `"whole_maze"`/`"per_floor"`. **Default varies by check family**: every count-style check (`min_loops_count`, `max_loops_count`, `min_teleport_count`, `min_one_way_count`, `max_one_way_count`, `split_count`, `max_split_count`) defaults to `WholeMaze` (reproduces pre-#369 behavior exactly). Every density-style check (`min_loop_density`, `max_loop_density`, `min_teleport_ratio`, `min_one_way_ratio`, `max_one_way_ratio`, `split_density`, `max_split_density`) defaults to `PerFloor` — a density is a per-100-cells share, and per-floor coverage is the more meaningful reading of that share on a multi-floor maze than one number blended across floors of possibly very different sizes. Each check's own `*_DEFAULT_FLOOR_SCOPE` const carries this default through to `checks_catalog.rs`'s `floor_scope_param(default)` (wasm) and `check_factory.rs`'s `parse_floor_scope(param, default)` (maze-runner).
 
@@ -528,6 +528,7 @@ pub const MIN_LOOPS_DEFAULT: u32 = 1;
 
 pub struct MinLoopsCountCheck {
     pub min_loops: u32,
+    pub floor_scope: FloorScope,
 }
 
 pub const MIN_LOOP_DENSITY_DEFAULT: u32 = 30;
@@ -536,6 +537,7 @@ pub const AVG_LOOP_LENGTH_ESTIMATE_DEFAULT: u32 = 10;
 pub struct MinLoopDensityCheck {
     pub min_density: u32,
     pub avg_loop_length_estimate: u32,
+    pub floor_scope: FloorScope,
 }
 ```
 
@@ -643,6 +645,7 @@ pub const MAX_LOOP_DENSITY_DEFAULT: u32 = 30;
 
 pub struct MaxLoopDensityCheck {
     pub max_density: u32,
+    pub floor_scope: FloorScope,
 }
 ```
 
@@ -661,6 +664,7 @@ pub const MAX_LOOPS_COUNT_DEFAULT: u32 = 20;
 
 pub struct MaxLoopsCountCheck {
     pub max_loops_count: u32,
+    pub floor_scope: FloorScope,
 }
 ```
 
@@ -1023,11 +1027,13 @@ pub const MIN_TELEPORT_RATIO_DEFAULT: u32 = 10;
 pub struct MinTeleportCountCheck {
     pub instance_id: String,
     pub min_teleports: u32,
+    pub floor_scope: FloorScope,
 }
 
 pub struct MinTeleportRatioCheck {
     pub instance_id: String,
     pub min_teleport_ratio: u32,
+    pub floor_scope: FloorScope,
 }
 ```
 
@@ -1134,11 +1140,13 @@ pub const MIN_ONE_WAY_RATIO_DEFAULT: u32 = 10;
 pub struct MinOneWayCountCheck {
     pub instance_id: String,
     pub min_one_ways: u32,
+    pub floor_scope: FloorScope,
 }
 
 pub struct MinOneWayRatioCheck {
     pub instance_id: String,
     pub min_ratio: u32,
+    pub floor_scope: FloorScope,
 }
 ```
 
@@ -1161,11 +1169,13 @@ pub const MAX_ONE_WAY_RATIO_DEFAULT: u32 = 100;
 pub struct MaxOneWayCountCheck {
     pub instance_id: String,
     pub max_one_ways: u32,
+    pub floor_scope: FloorScope,
 }
 
 pub struct MaxOneWayRatioCheck {
     pub instance_id: String,
     pub max_ratio: u32,
+    pub floor_scope: FloorScope,
 }
 ```
 
@@ -1175,7 +1185,7 @@ One-way detection is the same single-direction `Basic`-edge filter every other o
 
 Unlike `MinOneWayCountCheck`/`MinOneWayRatioCheck` (which report a numeric deficit in `MissingOneWaysIssue`), both checks here report every one-way edge in the maze as a single group in `InvalidOneWayGroupIssue.groups`, paired with the excess count as `to_remove` (GitHub issue #202 follow-up — see `OneWayGroup`'s doc comment above): the strategy, not the check, decides *which* edges within the group are the ones actually fixed, but the check itself says *how many*. For `MaxOneWayCountCheck`, `to_remove = count - max_one_ways`. For `MaxOneWayRatioCheck`, `to_remove = count - target_count`, where `target_count` is `max_ratio * field_cells / 100` **rounded to the nearest integer** (`(max_ratio * field_cells + 50) / 100` in integer arithmetic, `saturating_sub` guarding the rare small-field case where rounding pushes `target_count` above `count`) — round-to-nearest, not floor/ceil, so a fractional target (e.g. 4.3) resolves to the closest whole edge count (4) rather than always truncating down (GitHub issue #202 follow-up review: an earlier floor-based version under-reported `to_remove` by one whenever the fraction rounded up). `OneWayGroupSelectStrategy` (registered against `INVALID_ONE_WAY_GROUP`) already handles groups of any size and already applies its own `protect_route` exclusion when picking a candidate — neither check carries a `protect_route` param of its own, same as `OneWayGroupSuperHubCheck`.
 
-If the count/ratio is above the configured maximum, fires `InvalidOneWayGroupIssue::new_from_check(instance_id, vec![(one_ways, to_remove)])` with `.with_detail(instance_id, "max_one_ways", ...)` / `.with_detail(instance_id, "max_ratio", ...)` chained on.
+Under `FloorScope::WholeMaze` (`max_one_way_count`'s default), if the count/ratio is above the configured maximum, fires `InvalidOneWayGroupIssue::new_from_check(instance_id, vec![(one_ways, to_remove)])` with `.with_detail(instance_id, "max_one_ways", ...)` / `.with_detail(instance_id, "max_ratio", ...)` chained on. Under `FloorScope::PerFloor` (`max_one_way_ratio`'s default, GitHub issue #369 follow-up), each over-budget floor gets its **own** `(edges, to_remove)` tuple in `groups`, `to_remove` computed against that floor's own count/cell-count rather than blended across floors — unlike a split tile, a one-way edge can span floors, so the same edge may appear in more than one floor's group when it touches several over-budget floors at once.
 
 `OneWayGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_ONE_WAY_GROUP`.
 
@@ -1257,11 +1267,13 @@ pub const MAX_SPLIT_DENSITY_DEFAULT: u32 = 30;
 pub struct MaxSplitCountCheck {
     pub instance_id: String,
     pub max_split_count: u32,
+    pub floor_scope: FloorScope,
 }
 
 pub struct MaxSplitDensityCheck {
     pub instance_id: String,
     pub max_density: u32,
+    pub floor_scope: FloorScope,
 }
 ```
 
@@ -1269,7 +1281,7 @@ See GitHub issue #249, part of epic #246. Flag a field-wide excess of split *til
 
 `MaxSplitCountCheck`: fires when the raw tile count exceeds `max_split_count`; `to_remove = count - max_split_count` directly (a tile-count excess, not converted from any node-count notion). `MaxSplitDensityCheck`: fires when `density_per_100(tile_count, field_cells)` exceeds `max_density` (same rounding helper `MaxLoopDensityCheck` uses — round-half-up, not floor); `to_remove` is the fewest tiles that would bring density back to `max_density`, found by scanning `(0..=tile_count).rev()` for the largest count whose density is still at or below the max (density is monotonic increasing in count).
 
-Both fire `InvalidSplitTileGroupIssue::new_from_check(instance_id, vec![(tiles, to_remove)])` — one group covering every split tile on the field — with `.with_detail(instance_id, "max_split_count"/"max_density", ...)` chained on.
+Under `FloorScope::WholeMaze` (`max_split_count`'s default), both fire `InvalidSplitTileGroupIssue::new_from_check(instance_id, vec![(tiles, to_remove)])` — one group covering every split tile on the field — with `.with_detail(instance_id, "max_split_count"/"max_density", ...)` chained on. Under `FloorScope::PerFloor` (`max_split_density`'s default, GitHub issue #369 follow-up), each over-budget floor gets its **own** `(tiles, to_remove)` tuple in `groups` — a split tile belongs to exactly one floor, so the per-floor tile sets are disjoint and each floor's own excess is reported against its own tiles, not blended with any other over-budget floor's excess.
 
 ### SplitGroupGeometricProximityCheck / SplitGroupGraphProximityCheck
 
@@ -1308,6 +1320,7 @@ pub struct SplitCountCheck {
     pub instance_id: String,
     pub min_count: u32,
     pub patterns: Vec<SplitPattern>,
+    pub floor_scope: FloorScope,
 }
 
 pub const SPLIT_DENSITY_DEFAULT: u32 = 10;
@@ -1318,6 +1331,7 @@ pub struct SplitDensityCheck {
     pub min_density: u32,
     pub split_tile_estimate: u32,
     pub patterns: Vec<SplitPattern>,
+    pub floor_scope: FloorScope,
 }
 ```
 
@@ -1518,13 +1532,31 @@ struct CheckDescriptor {
 
 **`allow_multiple_instances`** gates whether the web store/UI permit more than one independent
 active configuration of this check type at once (across rules, or within the same rule) — see
-GitHub issue #60. `true` only for `min_region_count`: a second instance with a different
-`region_class` is a legitimate, common configuration (e.g. "at least 2 trap regions" AND
-separately "at least 2 alternative regions"). Every other check stays `false` — single active
-instance at a time, same restriction that existed before #60's refactor. This is enforced
-store-side (`addCheck`/`createRule` in `generationSlice.ts`) and mirrored in the UI's candidate
-filtering (`RulesColumn.candidatesFor`, `CheckSelectDialog`) — wasm/core themselves don't reject
-a duplicate `type_id` across instances; `QualityControlEngine` runs every configured instance
+GitHub issue #60. `true` for checks where a second instance with different params is a legitimate,
+common configuration:
+- Proximity/distance/waypoint checks (`teleport_waypoint_distance`, `teleport_group_proximity`,
+  `one_way_waypoint_distance`, `one_way_group_geometric_proximity`, `one_way_group_graph_proximity`,
+  `split_distance_from_waypoint`, `split_group_geometric_proximity`, `split_group_graph_proximity`,
+  `split_node_connection_count`, `split_node_connection_per_face`, `split_node_connection_per_neighbor`,
+  `split_node_connection_traversal_distance`) — distinct threshold/edge/distance combinations are
+  independent configurations (e.g. "entry must be far from start" AND separately "exit must be far
+  from finish").
+- The 8 `min_*`/`split_count`/`split_density` deficit checks (`min_loops_count`, `min_loop_density`,
+  `min_one_way_count`, `min_one_way_ratio`, `min_teleport_count`, `min_teleport_ratio`,
+  `split_count`, `split_density`) — GitHub issue #369 follow-up: once their repair strategies
+  started sharing live deficit counts via `RemainingDeficits` (see below), stacking several
+  instances (e.g. one `WholeMaze` and one `PerFloor` instance of the same check) no longer
+  over-delivers, so multiple simultaneous instances became a safe, legitimate configuration.
+
+Every other check stays `false` — single active instance at a time, same restriction that existed
+before #60's refactor. This includes the 4 `max_*` surplus/group checks with `floor_scope`
+(`max_split_count`, `max_split_density`, `max_one_way_count`, `max_one_way_ratio`): their
+`InvalidGroupIssue<K>`-based issues have no analogous cross-*instance* merge — `IssueMerge::merge`
+only takes the larger `to_remove` for the *same* canonical group key, which is not a safe substitute
+for `RemainingDeficits`'s live-consumption tracking across independently-configured instances. This
+is enforced store-side (`addCheck`/`createRule` in `generationSlice.ts`) and mirrored in the UI's
+candidate filtering (`RulesColumn.candidatesFor`, `CheckSelectDialog`) — wasm/core themselves don't
+reject a duplicate `type_id` across instances; `QualityControlEngine` runs every configured instance
 unconditionally regardless of this flag, since nothing in the QC/repair pipeline depends on it
 being correct.
 

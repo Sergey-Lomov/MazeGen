@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
@@ -74,24 +74,34 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck 
                         *per_floor_count.entry(level).or_insert(0) += 1;
                     }
                 }
-                let mut over_budget: HashSet<LevelId> = HashSet::new();
-                let mut max_to_remove = 0u32;
+                let mut over_budget: HashMap<LevelId, u32> = HashMap::new();
                 for (&level, &count) in &per_floor_count {
                     let field_cells = floor_point_count(&maze.field, level) as u64;
                     let n = Self::to_remove_for(count, field_cells, max_ratio);
                     if n > 0 {
-                        over_budget.insert(level);
-                        max_to_remove = max_to_remove.max(n);
+                        over_budget.insert(level, n);
                     }
                 }
                 if over_budget.is_empty() {
                     return;
                 }
-                let flagged: Vec<EdgeId> = one_ways.into_iter().zip(one_way_floors)
-                    .filter(|(_, floors)| floors.iter().any(|l| over_budget.contains(l)))
-                    .map(|(id, _)| id)
-                    .collect();
-                (flagged, max_to_remove)
+                // A one-way edge can span multiple floors and thus belong to more than one
+                // over-budget floor's group at once -- each over-budget floor gets its own
+                // independent group with its own excess count, rather than one merged group with
+                // a single (e.g. max) excess, so a repair strategy resolving one floor's excess
+                // doesn't silently satisfy a different floor's quota (or leave it unresolved).
+                let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
+                for (&level, &to_remove) in &over_budget {
+                    let flagged: Vec<EdgeId> = one_ways.iter().zip(&one_way_floors)
+                        .filter(|(_, floors)| floors.contains(&level))
+                        .map(|(&id, _)| id)
+                        .collect();
+                    groups.push((flagged, to_remove));
+                }
+                let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, groups)
+                    .with_detail(&self.instance_id, "max_ratio", self.max_ratio.to_string());
+                issues.push(issue);
+                return;
             }
         };
 

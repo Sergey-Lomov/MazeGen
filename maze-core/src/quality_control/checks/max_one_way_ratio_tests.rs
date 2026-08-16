@@ -135,3 +135,40 @@ fn does_not_floor_the_true_ratio_before_comparing() {
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert_eq!(issues.len(), 1, "30.9% must not silently pass a 30% maximum via floor rounding");
 }
+
+/// Bottom floor: 10 cells, 3 one-ways (30%). Top floor: 10 cells, 4 one-ways (40%).
+fn maze_with_one_ways_on_two_floors() -> Maze<SquareTessellation> {
+    use crate::space::Field;
+    let mut ids = IdGenerator::new();
+    let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+    let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+    let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(10, 1), &mut ids).unwrap());
+    let mut g = Graph::new();
+    for node in mf.all_node_ids() { g.add_node(node); }
+    let pb = |x: i32| mf.node_at(bottom, SquarePoint { x, y: 0 }).unwrap();
+    let pt = |x: i32| mf.node_at(top, SquarePoint { x, y: 0 }).unwrap();
+    g.add_edge(pb(0), pb(1), EdgeKind::Basic);
+    g.add_edge(pb(1), pb(2), EdgeKind::Basic);
+    g.add_edge(pb(2), pb(3), EdgeKind::Basic);
+    g.add_edge(pt(0), pt(1), EdgeKind::Basic);
+    g.add_edge(pt(1), pt(2), EdgeKind::Basic);
+    g.add_edge(pt(2), pt(3), EdgeKind::Basic);
+    g.add_edge(pt(3), pt(4), EdgeKind::Basic);
+    Maze::new(mf, g)
+}
+
+#[test]
+fn per_floor_flags_each_over_budget_floor_with_its_own_group_and_to_remove() {
+    let maze = maze_with_one_ways_on_two_floors();
+    let check = MaxOneWayRatioCheck { instance_id: TEST_ID.to_string(), max_ratio: 20, floor_scope: FloorScope::PerFloor };
+    let mut issues = Vec::new();
+    check.repair_check(&maze, &mut issues, &mut rng(), ());
+    assert_eq!(issues.len(), 1);
+    let mut groups = issues[0].groups.clone();
+    groups.sort_by_key(|(g, _)| g.len());
+    assert_eq!(groups.len(), 2, "each over-budget floor must get its own independent group");
+    assert_eq!(groups[0].0.len(), 3, "bottom floor's own one-ways only");
+    assert_eq!(groups[0].1, 1, "bottom floor's own to_remove (target=round(20*10/100)=2, 3-2=1)");
+    assert_eq!(groups[1].0.len(), 4, "top floor's own one-ways only");
+    assert_eq!(groups[1].1, 2, "top floor's own to_remove (target=2, 4-2=2), not the max across floors");
+}

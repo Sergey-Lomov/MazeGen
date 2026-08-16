@@ -168,4 +168,32 @@ mod tests {
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 1)], "neither tile matches the listed pattern, so both are excluded from the count");
     }
+
+    /// Bottom floor: 1 split tile. Top floor: 0 split tiles.
+    fn maze_with_split_tiles_on_two_floors() -> Maze<SquareTessellation> {
+        use crate::space::Field;
+        let mut ids = IdGenerator::new();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new(std::iter::empty());
+        let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(4, 1), &mut ids).unwrap());
+        let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(4, 1), &mut ids).unwrap());
+        mf.add_node_at(bottom, SquarePoint { x: 0, y: 0 }, &mut ids);
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        let _ = top;
+        Maze::new(mf, g)
+    }
+
+    #[test]
+    fn per_floor_flags_each_deficient_floor_with_its_own_area_and_amount() {
+        let maze = maze_with_split_tiles_on_two_floors();
+        let check = SplitCountCheck { instance_id: TEST_ID.to_string(), min_count: 2, patterns: vec![], floor_scope: FloorScope::PerFloor };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert_eq!(issues.len(), 1);
+        let mut missing = issues[0].missing.clone();
+        missing.sort_by_key(|&(_, amount)| amount);
+        assert_eq!(missing.len(), 2, "each deficient floor gets its own RepairArea::Level entry");
+        assert_eq!(missing[0].1, 1, "bottom floor: 1 tile, needs 1 more");
+        assert_eq!(missing[1].1, 2, "top floor: 0 tiles, needs 2 more");
+    }
 }
