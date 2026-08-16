@@ -105,6 +105,36 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
     return values?.[p.id] ?? "";
   }
 
+  // Integer-kind fields must never accept a fractional value the user didn't intend (GitHub
+  // issue #387) -- block the decimal separator at the keystroke, so there's never an
+  // in-progress "2." to round or discard later.
+  function blockDecimalPoint(p: ParamDescriptor, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (p.kind.type === "integer" && (e.key === "." || e.key === ",")) {
+      e.preventDefault();
+    }
+  }
+
+  // Keydown only guards typed input -- a paste bypasses it entirely, so a pasted "7.5" would
+  // otherwise sit in the field (and reach onChange) until blur rounds it away. Reject the
+  // paste outright when its content has a decimal separator.
+  function blockDecimalPaste(p: ParamDescriptor, e: React.ClipboardEvent<HTMLInputElement>) {
+    if (p.kind.type === "integer" && /[.,]/.test(e.clipboardData.getData("text"))) {
+      e.preventDefault();
+    }
+  }
+
+  // Final normalization once editing is done -- round a stray fractional value (e.g. pasted
+  // in) to the nearest integer and clamp it to the param's own bounds, or fall back to the
+  // param's default if the field was left empty/unparseable.
+  function handleIntegerBlur(p: ParamDescriptor, raw: string) {
+    if (p.kind.type !== "integer") return;
+    const n = Number(raw);
+    const next = raw === "" || !Number.isFinite(n)
+      ? p.kind.default
+      : Math.min(p.kind.max, Math.max(p.kind.min, Math.round(n)));
+    onChange(p.id, String(next));
+  }
+
   // "min,max" -- mirrors maze-core's `parse_param` Interval encoding (repair/params.rs).
   function getIntervalParts(p: ParamDescriptor): [string, string] {
     const raw = get(p);
@@ -182,6 +212,9 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                   step={p.kind.type === "integer" ? 1 : 0.1}
                   disabled={disabled}
                   onChange={(e) => onChange(p.id, e.target.value)}
+                  onKeyDown={(e) => blockDecimalPoint(p, e)}
+                  onPaste={(e) => blockDecimalPaste(p, e)}
+                  onBlur={(e) => handleIntegerBlur(p, e.target.value)}
                   onClick={(e) => e.stopPropagation()}
                 />
               )}

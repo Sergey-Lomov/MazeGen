@@ -45,6 +45,12 @@ const plainFloatParam: ParamDescriptor = {
   kind: { type: "float", default: 50, min: 0, max: 500 },
 };
 
+const plainIntegerParam: ParamDescriptor = {
+  id: "max_attempts",
+  label: "Max attempts",
+  kind: { type: "integer", default: 5, min: 0, max: 100 },
+};
+
 const boolParam: ParamDescriptor = {
   id: "protect_route",
   label: "Protect route",
@@ -114,6 +120,69 @@ describe("ParamFields", () => {
       onCommit.mockClear();
       fireEvent.blur(maxInput);
       expect(onCommit).toHaveBeenCalledWith("desired_length", "3,100000");
+    });
+  });
+
+  describe("integer param", () => {
+    it("blocks typing a decimal point", () => {
+      const onChange = vi.fn();
+      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={onChange} />);
+      const input = screen.getByRole("spinbutton");
+      const event = new KeyboardEvent("keydown", { key: ".", bubbles: true, cancelable: true });
+      const prevented = !input.dispatchEvent(event);
+      expect(prevented).toBe(true);
+    });
+
+    it("rounds a fractional value to the nearest integer on blur", () => {
+      const onChange = vi.fn();
+      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={onChange} />);
+      fireEvent.blur(screen.getByRole("spinbutton"), { target: { value: "7.6" } });
+      expect(onChange).toHaveBeenCalledWith("max_attempts", "8");
+    });
+
+    it("falls back to the param's default when left empty on blur", () => {
+      const onChange = vi.fn();
+      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={onChange} />);
+      fireEvent.blur(screen.getByRole("spinbutton"), { target: { value: "" } });
+      expect(onChange).toHaveBeenCalledWith("max_attempts", "5");
+    });
+
+    it("falls back to the param's default when left unparseable on blur", () => {
+      const onChange = vi.fn();
+      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={onChange} />);
+      fireEvent.blur(screen.getByRole("spinbutton"), { target: { value: "-" } });
+      expect(onChange).toHaveBeenCalledWith("max_attempts", "5");
+    });
+
+    it("clamps a value above the param's max on blur", () => {
+      const onChange = vi.fn();
+      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={onChange} />);
+      fireEvent.blur(screen.getByRole("spinbutton"), { target: { value: "500" } });
+      expect(onChange).toHaveBeenCalledWith("max_attempts", "100");
+    });
+
+    it("clamps a value below the param's min on blur", () => {
+      const onChange = vi.fn();
+      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={onChange} />);
+      fireEvent.blur(screen.getByRole("spinbutton"), { target: { value: "-20" } });
+      expect(onChange).toHaveBeenCalledWith("max_attempts", "0");
+    });
+
+    it("blocks pasting text containing a decimal separator", () => {
+      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={vi.fn()} />);
+      const input = screen.getByRole("spinbutton");
+      const clipboardData = { getData: () => "7.5" } as unknown as DataTransfer;
+      const event = new Event("paste", { bubbles: true, cancelable: true }) as unknown as ClipboardEvent;
+      Object.defineProperty(event, "clipboardData", { value: clipboardData });
+      const prevented = !input.dispatchEvent(event);
+      expect(prevented).toBe(true);
+    });
+
+    it("does not round a plain float param on blur", () => {
+      const onChange = vi.fn();
+      render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={onChange} />);
+      fireEvent.blur(screen.getByRole("spinbutton"), { target: { value: "7.6" } });
+      expect(onChange).not.toHaveBeenCalled();
     });
   });
 
