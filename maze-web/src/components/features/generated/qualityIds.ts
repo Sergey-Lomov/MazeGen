@@ -192,7 +192,6 @@ export const PARAM_IDS = [
   "split_group_geometric_proximity_distance",
   "split_group_graph_proximity_distance",
   "split_teleport_direction",
-  "split_tile_estimate",
   "split_weight",
   "src_mode",
   "target_mode",

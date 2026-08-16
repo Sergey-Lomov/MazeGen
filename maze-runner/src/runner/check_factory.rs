@@ -40,7 +40,7 @@ use maze_core::{
         SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
         SplitGroupGraphProximityCheck, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         SplitCountCheck, SPLIT_COUNT_DEFAULT, SPLIT_COUNT_DEFAULT_FLOOR_SCOPE,
-        SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT, SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE,
+        SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE,
         SplitNodeConnectionCountCheck, SplitNodeConnectionDirection, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON,
         SplitNodeConnectionPerNeighborCheck, SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT,
         SplitNodeConnectionPerFaceCheck, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT,
@@ -315,13 +315,9 @@ pub(crate) fn build_missing_split_tiles_check<T: Tessellation>(instance: &CheckI
                 .filter(|v| v.is_finite())
                 .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(SPLIT_DENSITY_DEFAULT);
-            let split_tile_estimate = instance.params.get("split_tile_estimate")
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v.max(1) as u32)
-                .unwrap_or(SPLIT_DENSITY_ESTIMATE_DEFAULT);
             let patterns = parse_split_patterns_param(instance.params.get("patterns"));
             let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE);
-            Some(Box::new(SplitDensityCheck { instance_id, min_density, split_tile_estimate, patterns, floor_scope }))
+            Some(Box::new(SplitDensityCheck { instance_id, min_density, patterns, floor_scope }))
         }
         _ => None,
     }

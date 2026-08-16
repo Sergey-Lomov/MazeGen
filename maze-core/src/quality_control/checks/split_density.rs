@@ -9,21 +9,15 @@ use crate::quality_control::floor_group::floor_point_count;
 use super::split_count::{count_matching_split_tiles, count_matching_split_tiles_per_floor};
 
 pub const SPLIT_DENSITY_DEFAULT: f64 = 10.0;
-pub const SPLIT_DENSITY_ESTIMATE_DEFAULT: u32 = 1;
 pub const SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags a deficit against a share (per 100 field cells) of the field covered by split tiles —
 /// see GitHub issue #247, part of epic #246. Mirrors `MinLoopDensityCheck`'s shape exactly: same
-/// deficit-to-count conversion (`required_cells` rounds to the nearest integer, `missing_cells`
-/// then divided by an estimate — here `split_tile_estimate`, always 1 field cell per split tile
-/// since a split tile occupies exactly one field cell regardless of its own node count, but kept
-/// as a configurable estimate for symmetry with `MinLoopDensityCheck` and in case a future check
-/// wants a coarser request), same optional `patterns` filter as `SplitCountCheck` (empty = every
-/// split tile counts).
+/// deficit-to-count conversion (`required_cells` rounds to the nearest integer), same optional
+/// `patterns` filter as `SplitCountCheck` (empty = every split tile counts).
 pub struct SplitDensityCheck {
     pub instance_id: String,
     pub min_density: f64,
-    pub split_tile_estimate: u32,
     pub patterns: Vec<SplitPattern>,
     pub floor_scope: FloorScope,
 }
@@ -79,8 +73,7 @@ impl SplitDensityCheck {
         // `required_cells` rounds the fractional target cell count to the nearest integer, not
         // ceil — matches `MinLoopDensityCheck::missing_for`'s rounding direction.
         let required_cells = (self.min_density * field_cells as f64 / 100.0).round() as usize;
-        let missing_cells = required_cells.saturating_sub(count);
-        missing_cells.div_ceil(self.split_tile_estimate.max(1) as usize) as u32
+        required_cells.saturating_sub(count) as u32
     }
 }
 
@@ -114,7 +107,7 @@ mod tests {
     #[test]
     fn silent_when_density_at_or_above_min() {
         let maze = maze_with_split_tiles(3);
-        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 30.0, split_tile_estimate: 1, patterns: vec![], floor_scope: FloorScope::WholeMaze };
+        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 30.0, patterns: vec![], floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "30% density meets a minimum of 30");
@@ -122,10 +115,10 @@ mod tests {
 
     #[test]
     fn fires_with_missing_count_when_below_min() {
-        // 30% density, min_density 60 -> 30 missing points -> 3 missing cells out of 10 field
-        // cells -> ceil(3 / 1) = 3 split tiles requested.
+        // 30% density, min_density 60 -> required=round(60*10/100)=6, missing_cells=3 split
+        // tiles requested.
         let maze = maze_with_split_tiles(3);
-        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 60.0, split_tile_estimate: 1, patterns: vec![], floor_scope: FloorScope::WholeMaze };
+        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 60.0, patterns: vec![], floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
@@ -141,7 +134,7 @@ mod tests {
         // 30% density, min_density 31 -> required = round(31*10/100) = round(3.1) = 3, already met
         // by the 3 existing split tiles -> silent, not a stricter ceil-driven false positive.
         let maze = maze_with_split_tiles(3);
-        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 31.0, split_tile_estimate: 1, patterns: vec![], floor_scope: FloorScope::WholeMaze };
+        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 31.0, patterns: vec![], floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "round(3.1) = 3, already met by the 3 existing split tiles");
@@ -151,7 +144,7 @@ mod tests {
     fn required_cells_rounds_to_nearest_not_up() {
         // 30% density, min_density 35 -> required = round(35*10/100) = round(3.5) = 4, missing_cells = 1.
         let maze = maze_with_split_tiles(3);
-        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 35.0, split_tile_estimate: 1, patterns: vec![], floor_scope: FloorScope::WholeMaze };
+        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 35.0, patterns: vec![], floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
@@ -161,7 +154,7 @@ mod tests {
     #[test]
     fn silent_when_no_split_tiles() {
         let maze = maze_with_split_tiles(0);
-        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 0.0, split_tile_estimate: 1, patterns: vec![], floor_scope: FloorScope::WholeMaze };
+        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 0.0, patterns: vec![], floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -188,12 +181,12 @@ mod tests {
         // (density clears it); 30.1 must fire (density falls fractionally short) -- pins that the
         // gate compares the true density, not one rounded to a whole percentage first.
         let maze = maze_with_300_of_1000_split_tiles();
-        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 29.9, split_tile_estimate: 1, patterns: vec![], floor_scope: FloorScope::WholeMaze };
+        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 29.9, patterns: vec![], floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "30% density must clear a fractional minimum of 29.9");
 
-        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 30.1, split_tile_estimate: 1, patterns: vec![], floor_scope: FloorScope::WholeMaze };
+        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 30.1, patterns: vec![], floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1, "30% density must fall short of a fractional minimum of 30.1");
@@ -220,7 +213,7 @@ mod tests {
     fn per_floor_flags_each_deficient_floor_with_its_own_area_and_amount() {
         // Bottom: 30% density, needs round(60*10/100)=6, missing_cells=3. Top: 0%, needs 6.
         let maze = maze_with_split_tiles_on_two_floors();
-        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 60.0, split_tile_estimate: 1, patterns: vec![], floor_scope: FloorScope::PerFloor };
+        let check = SplitDensityCheck { instance_id: TEST_ID.to_string(), min_density: 60.0, patterns: vec![], floor_scope: FloorScope::PerFloor };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);

@@ -769,10 +769,6 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.split_density.label"] as MessageFn,
     description: m["param.split_density.description"] as MessageFn,
   },
-  split_tile_estimate: {
-    label: m["param.split_tile_estimate.label"] as MessageFn,
-    description: m["param.split_tile_estimate.description"] as MessageFn,
-  },
   patterns: {
     label: m["param.patterns.label"] as MessageFn,
     description: m["param.patterns.description"] as MessageFn,

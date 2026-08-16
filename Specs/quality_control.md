@@ -1324,12 +1324,10 @@ pub struct SplitCountCheck {
 }
 
 pub const SPLIT_DENSITY_DEFAULT: u32 = 10;
-pub const SPLIT_DENSITY_ESTIMATE_DEFAULT: u32 = 1;
 
 pub struct SplitDensityCheck {
     pub instance_id: String,
     pub min_density: u32,
-    pub split_tile_estimate: u32,
     pub patterns: Vec<SplitPattern>,
     pub floor_scope: FloorScope,
 }
@@ -1345,7 +1343,7 @@ See GitHub issue #247, part of epic #246. Mirror `MinLoopsCountCheck`/`MinLoopDe
 
 `SplitCountCheck` (`check_type_id() == "split_count"`): `count = count_matching_split_tiles(maze, &self.patterns)`; if below `min_count`, `missing = min_count.saturating_sub(count)`.
 
-`SplitDensityCheck` (`check_type_id() == "split_density"`): `density = density_per_100(count, maze.field.point_count())` (same round-half-up helper `MinLoopDensityCheck`/`MaxSplitDensityCheck` use); if below `min_density`, the coverage deficit converts into a tile count the same way `MinLoopDensityCheck` converts a cell deficit into a loop count: `missing_cells = ceil((min_density - density) * field_cells / 100)`, then `missing = ceil(missing_cells / split_tile_estimate.max(1))` — `split_tile_estimate` is the estimated field-cell coverage of one newly added split tile (default `1`, i.e. "assume each new split tile covers exactly one more field cell"), the split-tile counterpart to `MinLoopDensityCheck`'s `avg_loop_length_estimate`.
+`SplitDensityCheck` (`check_type_id() == "split_density"`): `density = density_per_100(count, maze.field.point_count())` (same round-half-up helper `MinLoopDensityCheck`/`MaxSplitDensityCheck` use); if below `min_density`, `required_cells = round(min_density * field_cells / 100)`, `missing = required_cells.saturating_sub(count)` — a split tile always occupies exactly one field cell, so the coverage deficit maps 1:1 to a split tile count with no estimate/conversion step (unlike `MinLoopDensityCheck`, where a loop can span multiple cells).
 
 Either way, if `missing` is `0`, the check is silent; otherwise fires `MissingSplitTilesIssue::new_from_check(instance_id, missing)`. Repaired by `AddSplitStrategy` (see `repair.md`) — no strategy-side branching on which check produced the issue, same as the loop pair.
 
@@ -1710,7 +1708,7 @@ Every `*_density`/`*_ratio` param below (density/ratio checks measured as "per 1
 | `split_group_geometric_proximity` | `invalid_split_tile_group` | `split_group_geometric_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` | no |
 | `split_group_graph_proximity` | `invalid_split_tile_group` | `split_group_graph_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)` | no |
 | `split_count` | `missing_split_tiles` | `split_count: Integer(default=1, min=0, max=1_000_000)`, `patterns: PatternList(with_weights=false)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
-| `split_density` | `missing_split_tiles` | `split_density: Float(default=10.0, min=0.0, max=100.0)`, `split_tile_estimate: Integer(default=1, min=1, max=100_000)`, `patterns: PatternList(with_weights=false)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
+| `split_density` | `missing_split_tiles` | `split_density: Float(default=10.0, min=0.0, max=100.0)`, `patterns: PatternList(with_weights=false)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
 | `split_node_connection_count` | `invalid_split_node` | `count: Integer(default=2, min=0, max=1_000_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `direction: Enum(options=[incoming,outgoing,bidirectional,any], default=any)` | no |
 | `split_node_connection_per_neighbor` | `invalid_split_node_connection_group` | `max: Integer(default=1, min=0, max=1_000_000)` | no |
 | `split_node_connection_per_face` | `invalid_split_node_connection_group` | `max: Integer(default=1, min=0, max=1_000_000)` | no |
