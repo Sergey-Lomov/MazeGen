@@ -134,6 +134,7 @@ export const PARAM_IDS = [
   "edge_hub",
   "edge_scope",
   "edge_split",
+  "elevator_weight",
   "entry_pick",
   "floor_mode",
   "floor_scope",
@@ -200,6 +201,7 @@ export const PARAM_IDS = [
   "unreachable_count",
   "unreachable_priority",
   "valid_overlap_weight",
+  "vertical_passage_weight",
   "waypoint",
 ] as const;
 
