@@ -206,8 +206,11 @@ fn handle_empty_frontier<T: Tessellation>(
             }
             let has_visited_neighbor = field.neighbors(candidate)
                 .into_iter()
-                .chain(field.vertical_neighbors(candidate))
-                .any(|n| state.visited.contains(&n) && can_connect(n, candidate, preset_state));
+                .any(|n| state.visited.contains(&n) && can_connect(n, candidate, preset_state))
+                || field.vertical_neighbors(candidate)
+                    .into_iter()
+                    .any(|n| state.visited.contains(&n) && can_connect(n, candidate, preset_state)
+                        && graph.edge_between(n, candidate).is_none() && graph.edge_between(candidate, n).is_none());
             if has_visited_neighbor {
                 reachable.push(candidate);
             } else {
@@ -256,7 +259,8 @@ fn handle_empty_frontier<T: Tessellation>(
         .collect();
     let vertical_neighbors: Vec<NodeId> = field.vertical_neighbors(src)
         .into_iter()
-        .filter(|&n| state.visited.contains(&n) && can_connect(n, src, preset_state))
+        .filter(|&n| state.visited.contains(&n) && can_connect(n, src, preset_state)
+            && graph.edge_between(n, src).is_none() && graph.edge_between(src, n).is_none())
         .collect();
 
     let vertical_roll = state.rng.random::<f64>();
@@ -401,14 +405,26 @@ pub(super) fn run_ordinary_step_body_for_node<T: Tessellation>(
     };
 
     // free_regular: unvisited, non-frontier, non-preset neighbors — become frontier/reserve.
-    // free_preset: preset-connected neighbors (geometric or teleport) not yet visited — connect to
-    // them but skip frontier's own edge-adding step (their edge already exists in the graph).
+    // free_preset: preset-connected neighbors (geometric, vertical, or teleport) not yet visited —
+    // connect to them but skip frontier's own edge-adding step (their edge already exists in the
+    // graph). Preset `VerticalPassage`/`Elevator` partners (GitHub issue #371) are geometrically
+    // invisible to `field.neighbors` (different floor), so they must be pulled in via
+    // `field.vertical_neighbors` explicitly — otherwise a preset-planted vertical edge is never
+    // discovered by ordinary growth and the partner floor only ever gets picked up later via the
+    // reserve-bridge fallback, which doesn't know the edge already exists and can add a redundant
+    // one (or, when `vertical_chance == 0`, add a vertical connection where none should exist).
     let preset_connected = &preset_state.preset_connected;
     let teleport_dsts = preset_state.preset_teleports.get(&src).map(Vec::as_slice).unwrap_or(&[]);
+    let preset_vertical_dsts: Vec<NodeId> = if preset_connected.contains(&src) {
+        field.vertical_neighbors(src).into_iter().filter(|n| preset_connected.contains(n)).collect()
+    } else {
+        Vec::new()
+    };
     let all_free: Vec<NodeId> = field.neighbors(src)
         .into_iter()
         .filter(|n| allowed_neighbors.is_none_or(|allowed| allowed.contains(n)))
         .chain(teleport_dsts.iter().copied())
+        .chain(preset_vertical_dsts.iter().copied())
         .filter(|&n| !state.visited.contains(&n) && !state.in_frontier.contains(&n)
             && (preset_connected.contains(&src) && preset_connected.contains(&n) || teleport_dsts.contains(&n) || can_connect(src, n, preset_state)))
         .collect();

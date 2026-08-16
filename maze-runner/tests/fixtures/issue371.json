@@ -1,0 +1,422 @@
+{
+  "version": 3,
+  "tessellation": {
+    "kind": "square",
+    "hexOrientation": "flat_top",
+    "triOrientation": "r0"
+  },
+  "floorFields": {
+    "floor_478bc2dd-57ef-4e8e-ac7f-947f16609e1b": {
+      "config": {
+        "type": "square",
+        "width": 1,
+        "height": 1
+      },
+      "savedConfigs": [
+        {
+          "type": "square",
+          "width": 1,
+          "height": 1
+        }
+      ],
+      "freeFieldPoints": {
+        "square": [],
+        "hex": [],
+        "triangle": []
+      },
+      "fieldEditMode": "default"
+    },
+    "floor_3b1f6cc8-eed4-481b-8005-6e44b995290c": {
+      "config": {
+        "type": "square",
+        "width": 1,
+        "height": 1
+      },
+      "savedConfigs": [
+        {
+          "type": "square",
+          "width": 1,
+          "height": 1
+        }
+      ],
+      "freeFieldPoints": {
+        "square": [],
+        "hex": [],
+        "triangle": []
+      },
+      "fieldEditMode": "default"
+    },
+    "floor_937b5dc0-4db2-4184-bc6e-0b75a86016c6": {
+      "config": {
+        "type": "square",
+        "width": 1,
+        "height": 1
+      },
+      "savedConfigs": [
+        {
+          "type": "square",
+          "width": 1,
+          "height": 1
+        }
+      ],
+      "freeFieldPoints": {
+        "square": [],
+        "hex": [],
+        "triangle": []
+      },
+      "fieldEditMode": "default"
+    }
+  },
+  "generation": {
+    "seed": 42,
+    "randomSeed": false,
+    "initial": {
+      "method": "custom_vertex_based",
+      "depth_first": 0.9,
+      "corridor_chance": 0.7,
+      "branching": 0.5,
+      "directionality": 0,
+      "cyclicity": 0
+    },
+    "elements": {
+      "one_way_chance": 0,
+      "teleport_chance": 0,
+      "teleport_one_way_chance": 0,
+      "split_chance": 0
+    },
+    "splitGeneration": {
+      "patternMode": false,
+      "maxSplitNodes": 2,
+      "patterns": []
+    },
+    "qcExperiment": false,
+    "seedHistory": [
+      42
+    ],
+    "seedHistoryIndex": 0
+  },
+  "quality": {
+    "rules": [
+      {
+        "id": "rule_b025e44d-ebde-44e8-989c-9a2875d7d468",
+        "name": "Добавление путевых точек",
+        "kind": "missing_endpoints",
+        "checks": [
+          {
+            "localId": 0,
+            "typeId": "missing_endpoints",
+            "params": {},
+            "disabled": false
+          }
+        ],
+        "strategyId": "scored_endpoints",
+        "disabled": false,
+        "ruleDisabled": false,
+        "nestedStrategies": [],
+        "params": {},
+        "collapsed": false
+      },
+      {
+        "id": "rule_62e5beea-d1ab-4bde-9147-0afb0c2b0aff",
+        "name": "Валидация путевых точек",
+        "kind": "unreachable_finish",
+        "checks": [
+          {
+            "localId": 0,
+            "typeId": "unreachable_finish",
+            "params": {},
+            "disabled": false
+          }
+        ],
+        "strategyId": null,
+        "disabled": false,
+        "ruleDisabled": false,
+        "nestedStrategies": [],
+        "params": {},
+        "collapsed": false
+      }
+    ],
+    "stages": [
+      {
+        "id": "stage_86de15e8-90f8-4671-9eca-bcc773d46aec",
+        "name": "Путевые точки",
+        "ruleIds": [
+          "rule_b025e44d-ebde-44e8-989c-9a2875d7d468",
+          "rule_62e5beea-d1ab-4bde-9147-0afb0c2b0aff"
+        ],
+        "disabled": false,
+        "collapsed": false
+      }
+    ],
+    "strategyParams": {},
+    "repairMaxIterations": 100,
+    "repairTimeBudgetSecs": 10
+  },
+  "presets": {
+    "connections": [],
+    "lockedNodes": [],
+    "defaultEdgeState": "undefined",
+    "autoLock": true,
+    "start": null,
+    "finish": null,
+    "genSource": null,
+    "teleports": [],
+    "verticalPassages": [],
+    "elevators": [
+      {
+        "id": 1,
+        "floors": [
+          {
+            "point": [
+              0,
+              0
+            ]
+          },
+          {
+            "point": [
+              0,
+              0
+            ],
+            "level": 1
+          },
+          {
+            "point": [
+              0,
+              0
+            ],
+            "level": 2
+          }
+        ]
+      }
+    ],
+    "splitPoints": {}
+  },
+  "postEdit": null,
+  "dirtyFlags": {
+    "postEdit": false,
+    "field": true,
+    "presets": false,
+    "maze": true
+  },
+  "analytics": {
+    "showMazeOverlay": true,
+    "showComponentsOverlay": false,
+    "showGraphOverlay": false,
+    "showNavGraphOverlay": false,
+    "showPureCyclesOverlay": true,
+    "showRouteOverlay": false,
+    "showRegionClassesOverlay": false,
+    "sectionsExpanded": {
+      "layers": true,
+      "issues": true
+    }
+  },
+  "debug": {
+    "debugMode": false,
+    "debugStep": 0,
+    "debugAutoPlayDelay": 200
+  },
+  "ui": {
+    "showPresetOrigin": false,
+    "showFieldOrigin": true,
+    "openCard": "generation",
+    "postEditAutoConfirm": true
+  },
+  "imageExport": {
+    "activeRenderMode": "vector_by_walls",
+    "openRenderModeSettings": "vector_by_walls",
+    "vectorByWallsSettings": {
+      "background": 1118481,
+      "showGrid": true,
+      "gridColor": 3355443,
+      "floorColor": 2960685,
+      "wallColor": 13421772,
+      "wallJoin": "round",
+      "wallThickness": 3,
+      "oneWayPattern": "triangle",
+      "oneWayColor": 16755200,
+      "oneWayGapWidth": 3,
+      "oneWaySize": 0.3,
+      "oneWayThickness": 4,
+      "oneWayJoin": "round",
+      "startMarker": {
+        "shape": "circle",
+        "cornerStyle": "round",
+        "fillColor": 4513160,
+        "borderColor": 4513160,
+        "borderWidth": 3,
+        "gapWidth": 3,
+        "size": 0.16
+      },
+      "finishMarker": {
+        "shape": "circle",
+        "cornerStyle": "round",
+        "fillColor": 14500966,
+        "borderColor": 14500966,
+        "borderWidth": 3,
+        "gapWidth": 3,
+        "size": 0.16
+      },
+      "teleportLineCornerStyle": "round",
+      "teleportLineShape": "diamond",
+      "teleportLineSize": 0.16,
+      "teleportEdgeColor": 10708701,
+      "teleportEdgeBorderColor": 10708701,
+      "teleportEdgeBorderWidth": 3,
+      "teleportEdgeGapWidth": 3,
+      "teleportConnectorColor": 10708701,
+      "teleportConnectorWidth": 3,
+      "teleportConnectorStyle": "orthogonal",
+      "teleportAvoidFieldExit": false,
+      "teleportArrowMode": "periodic",
+      "teleportArrowPeriod": 5,
+      "teleportArrowSize": 10,
+      "teleportConnectorGapWidth": 3,
+      "teleportGroupCustomization": false,
+      "teleportGroupOverrides": {},
+      "verticalPassageDisplayStyle": "marker",
+      "verticalPassageMarker": {
+        "shape": "square",
+        "cornerStyle": "round",
+        "fillColor": 3390463,
+        "borderColor": 3390463,
+        "borderWidth": 0,
+        "gapWidth": 3,
+        "size": 0.2
+      },
+      "elevatorMarker": {
+        "shape": "hexagon",
+        "cornerStyle": "round",
+        "fillColor": 10049023,
+        "borderColor": 10049023,
+        "borderWidth": 0,
+        "gapWidth": 3,
+        "size": 0.2
+      },
+      "oneWayArrowColor": 1118481,
+      "splitNodeColors": [],
+      "splitSpecialShapes": true,
+      "sharedStyle": {
+        "cornerStyle": "round",
+        "markerSize": 0.16,
+        "markerBorderWidth": 3,
+        "gapWidth": 3,
+        "overrides": {}
+      }
+    },
+    "vectorByWallsSectionsExpanded": {
+      "teleports": true,
+      "shared_style": true,
+      "one_ways": true,
+      "markers": true,
+      "tiles": true
+    },
+    "vectorByCorridorsSettings": {
+      "background": 1118481,
+      "showGrid": true,
+      "gridColor": 3355443,
+      "color": 13421772,
+      "thickness": 20,
+      "join": "round",
+      "startMarker": {
+        "shape": "circle",
+        "cornerStyle": "round",
+        "fillColor": 4513160,
+        "borderColor": 4513160,
+        "borderWidth": 3,
+        "gapWidth": 3,
+        "size": 0.16
+      },
+      "finishMarker": {
+        "shape": "circle",
+        "cornerStyle": "round",
+        "fillColor": 14500966,
+        "borderColor": 14500966,
+        "borderWidth": 3,
+        "gapWidth": 3,
+        "size": 0.16
+      },
+      "markerWidenPadding": 4,
+      "markerWidenShape": "match_marker",
+      "oneWayColor": 1118481,
+      "oneWayCount": 2,
+      "oneWayThickness": 5,
+      "oneWayGap": 2,
+      "oneWayWidth": 0.5,
+      "oneWayLength": 0.3,
+      "oneWayJoin": "round",
+      "teleportLineCornerStyle": "round",
+      "teleportLineShape": "diamond",
+      "teleportLineSize": 0.16,
+      "teleportEdgeColor": 10708701,
+      "teleportEdgeBorderColor": 10708701,
+      "teleportEdgeBorderWidth": 3,
+      "teleportEdgeGapWidth": 3,
+      "teleportConnectorColor": 10708701,
+      "teleportConnectorWidth": 3,
+      "teleportConnectorStyle": "orthogonal",
+      "teleportAvoidFieldExit": false,
+      "teleportArrowMode": "periodic",
+      "teleportArrowPeriod": 5,
+      "teleportArrowSize": 10,
+      "teleportConnectorGapWidth": 3,
+      "teleportGroupCustomization": false,
+      "teleportGroupOverrides": {},
+      "splitNodeColors": [],
+      "splitSpecialShapes": true,
+      "splitGapWidth": 3,
+      "splitDiagonalBowAmount": 0.15,
+      "sharedStyle": {
+        "cornerStyle": "round",
+        "markerSize": 0.16,
+        "markerBorderWidth": 3,
+        "gapWidth": 3,
+        "overrides": {}
+      }
+    },
+    "vectorByCorridorsSectionsExpanded": {
+      "splits": true
+    },
+    "pngExportSettings": {
+      "outputMode": "digital",
+      "digital": {
+        "scale": 1,
+        "canvasMode": "edge_to_edge",
+        "marginValue": 20,
+        "fixedWidth": 1920,
+        "fixedHeight": 1080
+      },
+      "print": {
+        "density": "print_300",
+        "paperSize": "a4",
+        "customWidthMm": 210,
+        "customHeightMm": 297,
+        "orientation": "landscape",
+        "marginHMm": 5,
+        "marginVMm": 5,
+        "scale": 1,
+        "scaleAutoFit": true,
+        "anchor": "center",
+        "offsetXMm": 0,
+        "offsetYMm": 0
+      }
+    }
+  },
+  "floors": {
+    "floors": [
+      {
+        "id": "floor_478bc2dd-57ef-4e8e-ac7f-947f16609e1b",
+        "title": "Floor 1"
+      },
+      {
+        "id": "floor_3b1f6cc8-eed4-481b-8005-6e44b995290c",
+        "title": "Floor 2"
+      },
+      {
+        "id": "floor_937b5dc0-4db2-4184-bc6e-0b75a86016c6",
+        "title": "Floor 3"
+      }
+    ],
+    "nextFloorNumber": 4
+  }
+}

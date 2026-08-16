@@ -1,6 +1,6 @@
 // GitHub issue #337 — VerticalPassage/Elevator generation tests.
 use super::*;
-use super::tests::{default_params, empty_presets, generate_default_split};
+use super::tests::{default_params, empty_presets, generate_default_split, no_split};
 use crate::generation::test_utils::default_elements;
 use crate::space::{square_rect, Field, SquarePoint};
 
@@ -597,5 +597,76 @@ fn frontier_empty_reserve_bridge_prefers_vertical_when_vertical_chance_is_one() 
             }
         }
     }
+}
+
+// --- Preset Elevator/VerticalPassage discovery via free_preset (GitHub issue #371 regression) ---
+//
+// Before this fix, a preset Elevator/VerticalPassage partner on another floor was never pulled
+// into `all_free`/`free_preset` by ordinary per-node growth (`field.neighbors` is geometric-only,
+// same floor) — the partner floor only ever got picked up later by `handle_empty_frontier`'s
+// reserve-bridge fallback, which fires whenever `geometric_neighbors` is empty regardless of
+// `vertical_chance`, and didn't check whether an edge between the pair already existed. With
+// `vertical_chance: 0.0` that produced a spurious extra `VerticalPassage`/`Elevator` edge on top
+// of the preset-planted one instead of the preset elevator alone accounting for all inter-floor
+// connectivity.
+
+#[test]
+fn preset_elevator_partner_is_discovered_via_free_preset_with_no_extra_vertical_edge() {
+    let (mut field, mut graph, mut ids) = multi_floor_field(1, 1, 2);
+    let elevator = crate::generation::PresetElevator {
+        floors: vec![crate::generation::PresetEndpoint::original((0, 0)), crate::generation::PresetEndpoint { point: (0, 0), slot: None, level: Some(1) }],
+    };
+    let preset_state = crate::generation::build_preset_state(
+        &mut graph, &mut field, &mut ids, &[], &[], &[elevator], &[], &[],
+        |x, y| SquarePoint { x, y }, None, None,
+    ).unwrap();
+
+    let start = node_at(&field, 0, 0, 0);
+    let elements = default_elements(); // vertical_chance defaults to 0.0
+    let params = default_params();
+    generate_default_split(&mut graph, &mut field, &mut ids, 1, start, &params, &elements, &preset_state, None);
+
+    let floor1_node = node_at(&field, 1, 0, 0);
+    let visited: std::collections::HashSet<NodeId> = graph.edges().flat_map(|e| [e.from, e.to]).chain([start]).collect();
+    assert!(visited.contains(&floor1_node), "preset elevator partner on floor 1 was never visited");
+
+    let vertical_edge_count = graph.edges().filter(|e| e.kind == EdgeKind::Elevator || e.kind == EdgeKind::VerticalPassage).count();
+    assert_eq!(
+        vertical_edge_count, 2,
+        "with vertical_chance=0.0, only the preset elevator's own two directed edges should exist — got {vertical_edge_count}, generation likely added a spurious extra vertical connection"
+    );
+}
+
+// `handle_empty_frontier`'s own reserve-bridge fallback must not add a redundant vertical edge
+// when the reserve candidate is already connected to its vertical neighbor by an edge planted
+// before generation started (e.g. a preset) — this is the fallback path's own half of the fix,
+// isolated from `free_preset` discovery (which the test above already covers and which normally
+// prevents the fallback from ever seeing a preset-connected pair in the first place).
+#[test]
+fn handle_empty_frontier_reserve_bridge_skips_a_vertical_neighbor_already_edge_connected() {
+    let (mut field, mut graph, mut ids) = multi_floor_field(1, 1, 2);
+    let src = node_at(&field, 0, 0, 0);
+    let bridge = node_at(&field, 1, 0, 0);
+    graph.add_bidirectional_edge(src, bridge, EdgeKind::VerticalPassage);
+
+    let mut state = state_with_visited(&graph, src, &[src]);
+    state.reserve = vec![bridge];
+    state.in_reserve = [bridge].into_iter().collect();
+    state.frontier.clear();
+    state.in_frontier.clear();
+
+    let params = default_params();
+    let elements = default_elements(); // vertical_chance defaults to 0.0
+    let preset_state = empty_presets();
+    let mut start_reassignment = None;
+
+    let keep_going = handle_empty_frontier(
+        &mut graph, &mut field, &mut ids, &params, &elements, &no_split(), &preset_state,
+        &mut state, src, &mut start_reassignment, None, None,
+    );
+
+    assert!(!keep_going, "bridge is already edge-connected to src, so the reserve holds no reachable candidate — generation must report done, not manufacture a redundant edge");
+    let vertical_edge_count = graph.edges().filter(|e| e.kind == EdgeKind::VerticalPassage).count();
+    assert_eq!(vertical_edge_count, 2, "the pre-existing bidirectional edge must be untouched — no extra VerticalPassage added on top of it");
 }
 
