@@ -6,7 +6,7 @@ import {
   postEditTeleportsToDto, cyclePostEditTeleportDirection, removePostEditTeleport, movePostEditTeleportEndpoint,
   rotatePostEditSplitPoint, resetPostEditPoint as resetPostEditPointCore,
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
-  removePostEditElevator, postEditVerticalToDto, elevatorComponent,
+  removePostEditElevator, postEditVerticalToDto, elevatorComponent, pruneRemovedSplitNodes,
 } from "../../pixi/postEditUtils";
 import { cellExistsAt } from "../../pixi/fieldEditUtils";
 import {
@@ -175,12 +175,9 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // collection keyed with an `"@level"` suffix (`undefined`/floor 0 has no suffix, same
     // convention `presetSplitPoints` uses — see `Specs/preset-connections.md`'s "Multi-floor
     // presets"), not always the bare `"x,y"` key.
-    const prunedNodes = nodes.filter((n) => {
-      if (n.i === 0) return true;
+    const prunedNodes = pruneRemovedSplitNodes(nodes, postEditDraftSplitPoints, (n) => {
       const level = n.level ?? 0;
-      const key = level === 0 ? `${n.x},${n.y}` : `${n.x},${n.y}@${level}`;
-      const slots = postEditDraftSplitPoints[key];
-      return slots !== undefined && slots.includes(n.i - 1);
+      return level === 0 ? `${n.x},${n.y}` : `${n.x},${n.y}@${level}`;
     });
 
     const pointNodeMap = buildMultiFloorPointNodeMap(prunedNodes);

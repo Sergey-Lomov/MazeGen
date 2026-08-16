@@ -36,6 +36,29 @@ export function buildPostEditDraftEdgesFromGenerated(
   return result;
 }
 
+/** Drops a node whose split slot has been removed client-side (`removeSplitNode`/
+ * `resetPostEditPoint`) but not yet reflected in `nodes` itself — `state.nodes` is only ever
+ * replaced wholesale by a `confirmPostEdit` response (`nodes: snapshot.nodes`), so a slot removed
+ * on the draft still has a stale `NodeDto` sitting in `nodes` until the next confirm lands. A node
+ * survives if it's the point's original (`i === 0`), or its slotId (`i - 1`) is still declared in
+ * `splitPoints` under `pointKey(n)`. Shared by `postEditSlice.ts`'s `prunedNodes` (what gets sent
+ * to WASM as `cfg.nodes`, keyed multi-floor with an `"@level"` suffix) and
+ * `PostEditRenderer.floorScoped` (what gets grouped into split points for drawing, keyed bare
+ * `"x,y"` since its `splitPoints` is already floor-scoped) — the two must never drift, since a
+ * removed-but-unconfirmed split node's own graph state and its on-canvas split-ness are the same
+ * underlying fact (GitHub issue #388). `pointKey` lets each caller supply its own key convention. */
+export function pruneRemovedSplitNodes<T extends { x: number; y: number; i: number }>(
+  nodes: T[],
+  splitPoints: Record<string, number[]>,
+  pointKey: (n: T) => string = (n) => `${n.x},${n.y}`,
+): T[] {
+  return nodes.filter((n) => {
+    if (n.i === 0) return true;
+    const slots = splitPoints[pointKey(n)];
+    return slots !== undefined && slots.includes(n.i - 1);
+  });
+}
+
 /** Rebuilds editable teleport entries from generation's EdgeDto[]. Kept as their own list rather
  * than folded into `buildPostEditDraftEdgesFromGenerated`'s `Record` (keyed by `from-to`), since a
  * Teleport and a Basic edge can coexist in the same direction between the same pair (see

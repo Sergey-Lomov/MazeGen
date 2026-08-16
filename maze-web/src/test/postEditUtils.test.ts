@@ -3,7 +3,7 @@ import {
   buildPostEditDraftEdgesFromGenerated, applyPostEditEdgeTool, extractPostEditTeleports, postEditTeleportsToDto,
   rotatePostEditSplitPoint, resetPostEditPoint, postEditVerticalToDto, postEditVerticalPassageDirectionToDto,
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
-  removePostEditElevator, elevatorComponent,
+  removePostEditElevator, elevatorComponent, pruneRemovedSplitNodes,
 } from "../pixi/postEditUtils";
 import { nodeEndpoint, splitEndpoint, edgeKey, type PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { EdgeDto, NodeDto } from "../wasm/types";
@@ -643,5 +643,46 @@ describe("postEditVerticalToDto", () => {
       { from: 1, to: 0, kind: "elevator" },
     ]));
     expect(result).toHaveLength(2);
+  });
+});
+
+// --- pruneRemovedSplitNodes ---
+
+describe("pruneRemovedSplitNodes", () => {
+  it("keeps a point's original node (i === 0) even with no split entry at all", () => {
+    const nodes = [{ id: 0, x: 0, y: 0, i: 0 }];
+    expect(pruneRemovedSplitNodes(nodes, {})).toEqual(nodes);
+  });
+
+  it("drops an extra node whose slotId is no longer declared in splitPoints (GitHub issue #388)", () => {
+    const nodes = [
+      { id: 0, x: 2, y: 2, i: 0 },
+      { id: 1, x: 2, y: 2, i: 1 },
+    ];
+    // slot 0 (i === 1) was removed client-side — splitPoints no longer lists it.
+    const result = pruneRemovedSplitNodes(nodes, { "2,2": [] });
+    expect(result).toEqual([{ id: 0, x: 2, y: 2, i: 0 }]);
+  });
+
+  it("keeps an extra node whose slotId is still declared", () => {
+    const nodes = [
+      { id: 0, x: 2, y: 2, i: 0 },
+      { id: 1, x: 2, y: 2, i: 1 },
+      { id: 2, x: 2, y: 2, i: 2 },
+    ];
+    // slot 0 (i === 1) removed, slot 1 (i === 2) still declared.
+    const result = pruneRemovedSplitNodes(nodes, { "2,2": [1] });
+    expect(result).toEqual([{ id: 0, x: 2, y: 2, i: 0 }, { id: 2, x: 2, y: 2, i: 2 }]);
+  });
+
+  it("supports a custom pointKey for multi-floor callers (@level suffix)", () => {
+    const nodes = [
+      { id: 0, x: 1, y: 1, i: 0, level: 1 },
+      { id: 1, x: 1, y: 1, i: 1, level: 1 },
+    ];
+    const pointKey = (n: { x: number; y: number; level?: number }) =>
+      (n.level ?? 0) === 0 ? `${n.x},${n.y}` : `${n.x},${n.y}@${n.level}`;
+    expect(pruneRemovedSplitNodes(nodes, { "1,1@1": [] }, pointKey)).toEqual([nodes[0]]);
+    expect(pruneRemovedSplitNodes(nodes, { "1,1@1": [0] }, pointKey)).toEqual(nodes);
   });
 });

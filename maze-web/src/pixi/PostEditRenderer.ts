@@ -13,7 +13,7 @@ import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
 import { VerticalConnectionRenderer, type VerticalConnectionStyle } from "./renderers/VerticalConnectionRenderer";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, type TeleportFloorContext } from "./selectors/mazeSelectors";
-import { postEditTeleportsToDto, postEditVerticalToDto } from "./postEditUtils";
+import { postEditTeleportsToDto, postEditVerticalToDto, pruneRemovedSplitNodes } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
 import type { NodeDto } from "../wasm/types";
@@ -257,7 +257,9 @@ export class PostEditRenderer extends BaseFieldRenderer {
    * floor's own. */
   private floorScoped(state: MazeState) {
     const level = activeFloorLevel(state);
-    const { nodes, edges, start, finish } = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId, state.start, state.finish);
+    const { nodes: floorNodes, edges, start, finish } = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId, state.start, state.finish);
+    const postEditDraftSplitPoints = recordOnLevel(state.postEditDraftSplitPoints, level);
+    const nodes = pruneRemovedSplitNodes(floorNodes, postEditDraftSplitPoints);
     const floorNodeIds = new Set(nodes.map((n) => n.id));
     const onLevel = (ep: PostEditEndpoint) => endpointOnLevel(ep, level, floorNodeIds);
     const postEditDraftEdges: Record<string, PostEditEdge> | null = state.postEditDraftEdges === null ? null : Object.fromEntries(
@@ -269,7 +271,6 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // happened to be `from` at creation time. Requiring *both* ends on-level (the pre-fix behavior)
     // made a cross-floor teleport vanish from every floor's own draft entirely.
     const postEditDraftTeleports: PostEditTeleportEntry[] = state.postEditDraftTeleports.filter((t) => onLevel(t.from) || onLevel(t.to));
-    const postEditDraftSplitPoints = recordOnLevel(state.postEditDraftSplitPoints, level);
     const postEditActiveSplitNode = recordOnLevel(state.postEditActiveSplitNode, level);
     const postEditDraftMeta = state.postEditDraftMeta === null ? null : {
       start: state.postEditDraftMeta.start !== null && onLevel(state.postEditDraftMeta.start) ? state.postEditDraftMeta.start : null,
