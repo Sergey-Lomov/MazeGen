@@ -1,12 +1,14 @@
+use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
+use crate::space::{LevelId, Tessellation};
 use crate::generation::SplitPattern;
 use crate::quality_control::check::Check;
-use crate::quality_control::MissingSplitTilesIssue;
+use crate::quality_control::{MissingSplitTilesIssue, FloorScope, RepairArea};
 use crate::quality_control::split_pattern_match::split_tile_matches_any;
 
 pub const SPLIT_COUNT_DEFAULT: u32 = 1;
+pub const SPLIT_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 
 /// Flags a deficit against a minimum split-tile count — see GitHub issue #247, part of epic #246.
 /// Mirrors `MinLoopsCountCheck`'s shape exactly, applied to split tiles instead of loops. When
@@ -20,19 +22,37 @@ pub struct SplitCountCheck {
     pub instance_id: String,
     pub min_count: u32,
     pub patterns: Vec<SplitPattern>,
+    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, MissingSplitTilesIssue> for SplitCountCheck {
     fn check_type_id(&self) -> &'static str { "split_count" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingSplitTilesIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let count = count_matching_split_tiles(maze, &self.patterns) as u32;
-        let missing = self.min_count.saturating_sub(count);
-        if missing == 0 {
+        let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
+            FloorScope::WholeMaze => {
+                let missing = self.min_count.saturating_sub(count_matching_split_tiles(maze, &self.patterns) as u32);
+                if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] }
+            }
+            FloorScope::PerFloor => {
+                let mut missing: Vec<(RepairArea, u32)> = count_matching_split_tiles_per_floor(maze, &self.patterns).into_iter()
+                    .filter_map(|(level, count)| {
+                        let missing = self.min_count.saturating_sub(count as u32);
+                        (missing > 0).then_some((RepairArea::Level(level), missing))
+                    })
+                    .collect();
+                // `HashMap` iteration order is randomized per run -- sort by level so repair
+                // strategies that loop over `issue.missing` consume RNG in a deterministic order.
+                missing.sort_by_key(|&(area, _)| area);
+                missing
+            }
+        };
+        if missing.is_empty() {
             return;
         }
+        let total: u32 = missing.iter().map(|(_, m)| m).sum();
         let issue = MissingSplitTilesIssue::new_from_check(&self.instance_id, missing)
-            .with_detail(&self.instance_id, "missing", missing.to_string());
+            .with_detail(&self.instance_id, "missing", total.to_string());
         issues.push(issue);
     }
 }
@@ -41,17 +61,33 @@ impl<T: Tessellation> Check<T, MissingSplitTilesIssue> for SplitCountCheck {
 /// split tile (`nodes_at(point).len() >= 2`), optionally filtered by `patterns` (empty = every
 /// split tile counts, no reconstruction/matching attempted at all).
 pub(super) fn count_matching_split_tiles<T: Tessellation>(maze: &Maze<T>, patterns: &[SplitPattern]) -> usize {
+    matching_split_tile_points(maze, patterns).count()
+}
+
+/// Per-floor split-tile counts, same matching rule as `count_matching_split_tiles` — a split tile
+/// belongs to exactly one floor (unlike edges/nodes spanning floors), so this is a plain grouping,
+/// not a cross-floor-counts-twice case (GitHub issue #369). Floors with no matching tile still
+/// appear with a count of 0, so callers can compute a deficit/excess against every floor.
+pub(super) fn count_matching_split_tiles_per_floor<T: Tessellation>(maze: &Maze<T>, patterns: &[SplitPattern]) -> HashMap<LevelId, usize> {
+    let mut per_floor: HashMap<LevelId, usize> =
+        maze.field.levels_ordered().map(|l| (l, 0)).collect();
+    for (level, _) in matching_split_tile_points(maze, patterns) {
+        *per_floor.entry(level).or_insert(0) += 1;
+    }
+    per_floor
+}
+
+fn matching_split_tile_points<'a, T: Tessellation>(maze: &'a Maze<T>, patterns: &'a [SplitPattern]) -> impl Iterator<Item = (LevelId, T::Point)> + 'a {
     let mut seen_points = std::collections::HashSet::new();
     maze.field.all_points_with_level()
-        .filter(|&(level, point)| seen_points.insert((level, point)))
-        .filter(|&(level, point)| {
+        .filter(move |&(level, point)| seen_points.insert((level, point)))
+        .filter(move |&(level, point)| {
             let nodes = maze.field.nodes_at(level, point);
             if nodes.len() < 2 {
                 return false;
             }
             patterns.is_empty() || split_tile_matches_any(&maze.graph, &maze.field, nodes, patterns)
         })
-        .count()
 }
 
 #[cfg(test)]
@@ -83,11 +119,11 @@ mod tests {
     #[test]
     fn fires_with_missing_count_when_below_minimum() {
         let maze = maze_with_split_tiles(1);
-        let check = SplitCountCheck { instance_id: TEST_ID.to_string(), min_count: 3, patterns: vec![] };
+        let check = SplitCountCheck { instance_id: TEST_ID.to_string(), min_count: 3, patterns: vec![], floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, 2);
+        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 2)]);
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("missing")),
             Some(&"2".to_string()),
@@ -97,7 +133,7 @@ mod tests {
     #[test]
     fn silent_when_count_meets_minimum() {
         let maze = maze_with_split_tiles(2);
-        let check = SplitCountCheck { instance_id: TEST_ID.to_string(), min_count: 2, patterns: vec![] };
+        let check = SplitCountCheck { instance_id: TEST_ID.to_string(), min_count: 2, patterns: vec![], floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -106,7 +142,7 @@ mod tests {
     #[test]
     fn silent_when_no_split_tiles_and_minimum_is_zero() {
         let maze = maze_with_split_tiles(0);
-        let check = SplitCountCheck { instance_id: TEST_ID.to_string(), min_count: 0, patterns: vec![] };
+        let check = SplitCountCheck { instance_id: TEST_ID.to_string(), min_count: 0, patterns: vec![], floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -126,10 +162,10 @@ mod tests {
             ],
             weight: 1.0,
         };
-        let check = SplitCountCheck { instance_id: TEST_ID.to_string(), min_count: 1, patterns: vec![unmatched_pattern] };
+        let check = SplitCountCheck { instance_id: TEST_ID.to_string(), min_count: 1, patterns: vec![unmatched_pattern], floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, 1, "neither tile matches the listed pattern, so both are excluded from the count");
+        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 1)], "neither tile matches the listed pattern, so both are excluded from the count");
     }
 }

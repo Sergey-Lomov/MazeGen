@@ -1,8 +1,8 @@
 use wasm_bindgen::prelude::*;
 use maze_core::{
-    quality_control::{IssueKind, Comparison, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, INVALID_LOOP_GROUP, LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_LOOPS_COUNT_DEFAULT, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, MAX_REGION_SIZE_DEFAULT, MAX_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT_FLOOR_MODE, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, INVALID_TELEPORT_GROUP, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT, INVALID_ONE_WAY, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT, INVALID_ONE_WAY_GROUP, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, MISSING_ONE_WAYS, MIN_ONE_WAY_COUNT_DEFAULT, MIN_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_COUNT_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT, MISSING_TELEPORTS, MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT, INVALID_SPLIT_TILE, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, INVALID_SPLIT_TILE_GROUP, MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, MISSING_SPLIT_TILES, SPLIT_COUNT_DEFAULT, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT, INVALID_SPLIT_NODE, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, INVALID_SPLIT_NODE_CONNECTION_GROUP, SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT, SPLIT_NODE_CONNECTION_TRAVERSAL_DISTANCE_MIN_DETOUR_DEFAULT, INVALID_SPLIT_NODE_GROUP, MAX_SPLIT_TILE_NODE_COUNT_DEFAULT, INVALID_SPLIT_ROUTE},
+    quality_control::{IssueKind, Comparison, MISSING_ENDPOINTS, UNREACHABLE_FINISH, MISSING_LOOPS, MIN_LOOPS_DEFAULT, MIN_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE, MIN_LOOP_DENSITY_DEFAULT, MIN_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, INVALID_LOOP, INVALID_LOOP_GROUP, LOOP_LENGTH_DEFAULT, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LOOP_DISTANCE_FROM_START_DEFAULT, LOOP_DISTANCE_FROM_FINISH_DEFAULT, MAX_LOOP_DENSITY_DEFAULT, MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE, MAX_LOOPS_COUNT_DEFAULT, MAX_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE, MAX_SCC_COUNT_DEFAULT, EXCESSIVE_SCC_COUNT, MIN_REGION_SIZE_DEFAULT, MIN_REGION_RATIO_DEFAULT, MAX_REGION_SIZE_DEFAULT, MAX_REGION_RATIO_DEFAULT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MIN_REGION_COUNT_DEFAULT, MISSING_REGIONS, INVALID_TELEPORT, TELEPORT_WAYPOINT_DISTANCE_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT, TELEPORT_GEOMETRIC_LENGTH_DEFAULT_FLOOR_MODE, TELEPORT_GRAPH_DISTANCE_DEFAULT, TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, INVALID_TELEPORT_GROUP, TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT, INVALID_ONE_WAY, ONE_WAY_WAYPOINT_DISTANCE_DEFAULT, INVALID_ONE_WAY_GROUP, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT, MISSING_ONE_WAYS, MIN_ONE_WAY_COUNT_DEFAULT, MIN_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE, MIN_ONE_WAY_RATIO_DEFAULT, MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE, MAX_ONE_WAY_COUNT_DEFAULT, MAX_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE, MAX_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE, MISSING_TELEPORTS, MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE, MIN_TELEPORT_RATIO_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE, INVALID_SPLIT_TILE, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, INVALID_SPLIT_TILE_GROUP, MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE, MAX_SPLIT_DENSITY_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, MISSING_SPLIT_TILES, SPLIT_COUNT_DEFAULT, SPLIT_COUNT_DEFAULT_FLOOR_SCOPE, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT, SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE, INVALID_SPLIT_NODE, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, INVALID_SPLIT_NODE_CONNECTION_GROUP, SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT, SPLIT_NODE_CONNECTION_TRAVERSAL_DISTANCE_MIN_DETOUR_DEFAULT, INVALID_SPLIT_NODE_GROUP, MAX_SPLIT_TILE_NODE_COUNT_DEFAULT, INVALID_SPLIT_ROUTE},
 };
-use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, split_patterns_filter_param, geometric_floor_mode_param};
+use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, split_patterns_filter_param, geometric_floor_mode_param, floor_scope_param};
 
 // Helper to turn IssueKind into a &'static str for JSON serialization.
 fn kind_str(k: IssueKind) -> &'static str {
@@ -171,8 +171,13 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Min teleport count",
                     kind: ParamKindDto::Integer { default: MIN_TELEPORT_COUNT_DEFAULT as i64, min: 1, max: 1_000_000 },
                 },
+                floor_scope_param(MIN_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
+            // Multiple instances (e.g. different floor_scope) now cooperate correctly via
+            // RemainingDeficits (GitHub issue #369's double-count fix), so stacking is a
+            // legitimate configuration -- same rationale as min_region_count's
+            // allow_multiple_instances.
+            allow_multiple_instances: true,
         },
         CheckDescriptor {
             id: "min_teleport_ratio",
@@ -185,8 +190,10 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Min teleport count (per 100 cells)",
                     kind: ParamKindDto::Integer { default: MIN_TELEPORT_RATIO_DEFAULT as i64, min: 0, max: 100 },
                 },
+                floor_scope_param(MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
+            // See min_teleport_count's allow_multiple_instances.
+            allow_multiple_instances: true,
         },
         CheckDescriptor {
             id: "min_one_way_count",
@@ -199,8 +206,10 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Min one-way count",
                     kind: ParamKindDto::Integer { default: MIN_ONE_WAY_COUNT_DEFAULT as i64, min: 1, max: 1_000_000 },
                 },
+                floor_scope_param(MIN_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
+            // See min_teleport_count's allow_multiple_instances.
+            allow_multiple_instances: true,
         },
         CheckDescriptor {
             id: "min_one_way_ratio",
@@ -213,8 +222,10 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Min one-way count (per 100 cells)",
                     kind: ParamKindDto::Integer { default: MIN_ONE_WAY_RATIO_DEFAULT as i64, min: 0, max: 100 },
                 },
+                floor_scope_param(MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
+            // See min_teleport_count's allow_multiple_instances.
+            allow_multiple_instances: true,
         },
         CheckDescriptor {
             id: "one_way_waypoint_distance",
@@ -295,6 +306,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Max one-way count",
                     kind: ParamKindDto::Integer { default: MAX_ONE_WAY_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
                 },
+                floor_scope_param(MAX_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             allow_multiple_instances: false,
         },
@@ -309,6 +321,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Max one-way count (per 100 cells)",
                     kind: ParamKindDto::Integer { default: MAX_ONE_WAY_RATIO_DEFAULT as i64, min: 0, max: 100 },
                 },
+                floor_scope_param(MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
             allow_multiple_instances: false,
         },
@@ -323,8 +336,10 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Min loop count",
                     kind: ParamKindDto::Integer { default: MIN_LOOPS_DEFAULT as i64, min: 1, max: 1_000_000 },
                 },
+                floor_scope_param(MIN_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
+            // See min_teleport_count's allow_multiple_instances.
+            allow_multiple_instances: true,
         },
         CheckDescriptor {
             id: "min_loop_density",
@@ -342,8 +357,10 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Average loop length estimate",
                     kind: ParamKindDto::Integer { default: AVG_LOOP_LENGTH_ESTIMATE_DEFAULT as i64, min: 1, max: 100_000 },
                 },
+                floor_scope_param(MIN_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
+            // See min_teleport_count's allow_multiple_instances.
+            allow_multiple_instances: true,
         },
         CheckDescriptor {
             id: "loop_length",
@@ -411,11 +428,14 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             label: "Maximum loop density",
             description: "Fires if too large a share of the field is covered by loops; every loop is flagged when the maximum is exceeded.",
             issue_kinds: vec![kind_str(INVALID_LOOP_GROUP)],
-            params: vec![ParamDescriptor {
-                id: "max_density",
-                label: "Max loop density (per 100 cells)",
-                kind: ParamKindDto::Integer { default: MAX_LOOP_DENSITY_DEFAULT as i64, min: 0, max: 100 },
-            }],
+            params: vec![
+                ParamDescriptor {
+                    id: "max_density",
+                    label: "Max loop density (per 100 cells)",
+                    kind: ParamKindDto::Integer { default: MAX_LOOP_DENSITY_DEFAULT as i64, min: 0, max: 100 },
+                },
+                floor_scope_param(MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE),
+            ],
             allow_multiple_instances: false,
         },
         CheckDescriptor {
@@ -423,11 +443,14 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             label: "Maximum loop count",
             description: "Fires if the field has more simple loops than the allowed maximum; every loop is flagged when the maximum is exceeded.",
             issue_kinds: vec![kind_str(INVALID_LOOP_GROUP)],
-            params: vec![ParamDescriptor {
-                id: "max_loops_count",
-                label: "Max loop count",
-                kind: ParamKindDto::Integer { default: MAX_LOOPS_COUNT_DEFAULT as i64, min: 0, max: 100_000 },
-            }],
+            params: vec![
+                ParamDescriptor {
+                    id: "max_loops_count",
+                    label: "Max loop count",
+                    kind: ParamKindDto::Integer { default: MAX_LOOPS_COUNT_DEFAULT as i64, min: 0, max: 100_000 },
+                },
+                floor_scope_param(MAX_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE),
+            ],
             allow_multiple_instances: false,
         },
         CheckDescriptor {
@@ -582,6 +605,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Max split count",
                     kind: ParamKindDto::Integer { default: MAX_SPLIT_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
                 },
+                floor_scope_param(MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             allow_multiple_instances: false,
         },
@@ -596,6 +620,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Max split density (per 100 cells)",
                     kind: ParamKindDto::Integer { default: MAX_SPLIT_DENSITY_DEFAULT as i64, min: 0, max: 100 },
                 },
+                floor_scope_param(MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
             allow_multiple_instances: false,
         },
@@ -643,8 +668,10 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     kind: ParamKindDto::Integer { default: SPLIT_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
                 },
                 split_patterns_filter_param(),
+                floor_scope_param(SPLIT_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
+            // See min_teleport_count's allow_multiple_instances.
+            allow_multiple_instances: true,
         },
         CheckDescriptor {
             id: "split_density",
@@ -663,8 +690,10 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     kind: ParamKindDto::Integer { default: SPLIT_DENSITY_ESTIMATE_DEFAULT as i64, min: 1, max: 100_000 },
                 },
                 split_patterns_filter_param(),
+                floor_scope_param(SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
+            // See min_teleport_count's allow_multiple_instances.
+            allow_multiple_instances: true,
         },
         CheckDescriptor {
             id: "split_node_connection_count",
@@ -757,9 +786,13 @@ mod tests {
         // GitHub issue #60's multi-instance design (min_region_count being the one check that
         // could run more than once at a time, for different region_class values) is retired:
         // a single min_region_count instance now evaluates all four classes' balances at once.
-        // teleport_waypoint_distance (issue #74) and teleport_group_proximity (issue #75) are the
-        // only checks that legitimately allow multiple simultaneous instances (distinct
-        // own_edge/other_edge/distance combinations are independent configurations).
+        // teleport_waypoint_distance (issue #74) and teleport_group_proximity (issue #75) are
+        // further checks that legitimately allow multiple simultaneous instances (distinct
+        // own_edge/other_edge/distance combinations are independent configurations). The 8
+        // min_*/split_count/split_density deficit checks joined this set once their repair
+        // strategies started sharing live deficit counts via RemainingDeficits (GitHub issue
+        // #369's double-count fix) -- stacking several instances (e.g. different floor_scope) no
+        // longer over-delivers.
         let checks = available_checks_list();
         let allowing: Vec<&str> = checks.iter()
             .filter(|c| c.allow_multiple_instances)
@@ -769,7 +802,15 @@ mod tests {
         allowing_sorted.sort();
         assert_eq!(
             allowing_sorted,
-            vec!["one_way_group_geometric_proximity", "one_way_group_graph_proximity", "one_way_waypoint_distance", "split_distance_from_waypoint", "split_group_geometric_proximity", "split_group_graph_proximity", "split_node_connection_count", "split_node_connection_per_face", "split_node_connection_per_neighbor", "split_node_connection_traversal_distance", "teleport_group_proximity", "teleport_waypoint_distance"],
+            vec![
+                "min_loop_density", "min_loops_count", "min_one_way_count", "min_one_way_ratio",
+                "min_teleport_count", "min_teleport_ratio",
+                "one_way_group_geometric_proximity", "one_way_group_graph_proximity", "one_way_waypoint_distance",
+                "split_count", "split_density",
+                "split_distance_from_waypoint", "split_group_geometric_proximity", "split_group_graph_proximity",
+                "split_node_connection_count", "split_node_connection_per_face", "split_node_connection_per_neighbor", "split_node_connection_traversal_distance",
+                "teleport_group_proximity", "teleport_waypoint_distance",
+            ],
             "unexpected set of checks allowing multiple instances: {allowing:?}"
         );
     }

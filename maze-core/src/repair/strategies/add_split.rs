@@ -4,12 +4,13 @@ use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::generation::{PresetState, SplitGenerationConfig};
 use crate::graph::route_protection::is_node_on_route;
-use crate::quality_control::MissingSplitTilesIssue;
+use crate::quality_control::{MissingSplitTilesIssue, RepairArea};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::split_core::{pick_weighted_pattern, plan_unconstrained_split as core_plan_unconstrained_split, plan_pattern_split as core_plan_pattern_split};
+use super::remaining_deficits::RemainingDeficits;
 
 pub const PARAM_ALLOW_LOSE_CONNECTIONS: &str = "allow_lose_connections";
 pub const PARAM_ALLOW_ADD_CONNECTIONS: &str = "allow_add_connections";
@@ -101,8 +102,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let missing = issue.missing;
-        if missing == 0 {
+        if issue.missing.is_empty() {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -113,51 +113,69 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
             .unwrap_or(MAX_ATTEMPTS_DEFAULT);
         let protect_route = self.protect_route;
 
-        let candidates: Vec<NodeId> = maze.field.all_node_ids()
-            .filter(|&node| crate::generation::split_is_eligible(&maze.field, preset_state, node))
-            .filter(|&node| !protect_route || !is_node_on_route(maze, node))
-            .collect();
-
         let mut commands = Vec::new();
-        let mut added = 0u32;
-        let mut failed_attempts = 0u32;
-        let mut pool = candidates;
+        let mut total_added = 0u32;
         // Points already committed to a `ReplacePointNodes` command earlier in this same call —
         // their node ids won't exist by apply time, so no later command in this batch may plan a
         // new edge (existing-connection reuse or `allow_add`) pointing at one (see
         // `split_core::ExcludedTargets`).
         let mut committed: std::collections::HashSet<NodeId> = std::collections::HashSet::new();
 
-        while added < missing && failed_attempts < max_attempts && !pool.is_empty() {
-            let pick_idx = rng.random_range(0..pool.len());
-            let at = pool[pick_idx];
+        let mut deficits = RemainingDeficits::new(&issue.missing);
+        let areas: Vec<RepairArea> = deficits.areas().collect();
+        for area in areas {
+            let missing = deficits.live(area);
+            if missing == 0 {
+                continue;
+            }
+            // A split tile belongs to exactly one floor (GitHub issue #369's floor-scope
+            // follow-up), so restricting by area is a plain point-set filter — no cross-floor
+            // double-counting concern like a teleport's exit side.
+            let mut pool: Vec<NodeId> = maze.field.all_node_ids()
+                .filter(|&node| crate::generation::split_is_eligible(&maze.field, preset_state, node))
+                .filter(|&node| !protect_route || !is_node_on_route(maze, node))
+                .filter(|&node| match area {
+                    RepairArea::WholeMaze => true,
+                    RepairArea::Level(level) => maze.field.level_of(node) == Some(level),
+                })
+                .collect();
 
-            let outcome = if self.config.patterns.is_empty() {
-                let node_count = self.config.max_split_nodes.max(2) as usize;
-                core_plan_unconstrained_split(maze, at, node_count, None, &committed, rng)
-            } else {
-                let pattern_idx = pick_weighted_pattern(&self.config.patterns, rng);
-                core_plan_pattern_split(maze, at, &self.config.patterns[pattern_idx], None, &committed, rng, allow_lose, allow_add)
-            };
+            let mut added = 0u32;
+            let mut failed_attempts = 0u32;
 
-            match outcome {
-                Some(nodes) => {
-                    committed.insert(at);
-                    commands.push(MutationCommand::ReplacePointNodes { at, nodes });
-                    added += 1;
-                    // Eligibility is per-point — once `at` has a command pending, it must not be
-                    // picked again this call (the point would no longer be `split_is_eligible`
-                    // after this command actually applies).
-                    pool.swap_remove(pick_idx);
-                }
-                None => {
-                    failed_attempts += 1;
-                    pool.swap_remove(pick_idx);
+            while added < missing && failed_attempts < max_attempts && !pool.is_empty() {
+                let pick_idx = rng.random_range(0..pool.len());
+                let at = pool[pick_idx];
+
+                let outcome = if self.config.patterns.is_empty() {
+                    let node_count = self.config.max_split_nodes.max(2) as usize;
+                    core_plan_unconstrained_split(maze, at, node_count, None, &committed, rng)
+                } else {
+                    let pattern_idx = pick_weighted_pattern(&self.config.patterns, rng);
+                    core_plan_pattern_split(maze, at, &self.config.patterns[pattern_idx], None, &committed, rng, allow_lose, allow_add)
+                };
+
+                match outcome {
+                    Some(nodes) => {
+                        committed.insert(at);
+                        commands.push(MutationCommand::ReplacePointNodes { at, nodes });
+                        added += 1;
+                        deficits.consume(&[area, RepairArea::WholeMaze]);
+                        // Eligibility is per-point — once `at` has a command pending, it must not
+                        // be picked again this call (the point would no longer be
+                        // `split_is_eligible` after this command actually applies).
+                        pool.swap_remove(pick_idx);
+                    }
+                    None => {
+                        failed_attempts += 1;
+                        pool.swap_remove(pick_idx);
+                    }
                 }
             }
+            total_added += added;
         }
 
-        if added == 0 {
+        if total_added == 0 {
             return (RepairResult::Failed, vec![]);
         }
         (RepairResult::Fixed { score: None }, commands)
@@ -200,7 +218,8 @@ mod tests {
     }
 
     fn missing_issue(missing: u32) -> MissingSplitTilesIssue {
-        MissingSplitTilesIssue::new_from_check("split_count", missing)
+        let entries = if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] };
+        MissingSplitTilesIssue::new_from_check("split_count", entries)
     }
 
     fn strategy_unconstrained() -> AddSplitStrategy {
@@ -323,6 +342,64 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);
         assert!(matches!(result, RepairResult::Failed));
+    }
+
+    #[test]
+    fn apply_restricts_candidates_to_the_named_level() {
+        let mut ids = IdGenerator::new();
+        let field_a = crate::space::Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let field_b = crate::space::Field::new(square_rect(5, 1), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let level_b = mf.add_level(field_b);
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
+        let nodes_before = maze.field.node_count();
+
+        let issue = MissingSplitTilesIssue::new_from_check("split_count", vec![(RepairArea::Level(level_b), 2)]);
+        let mut rng = MazeRng::seed_from_u64(7);
+        let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert_eq!(maze.field.node_count(), nodes_before + 2);
+        let split_points: std::collections::HashSet<_> = maze.field.all_points_with_level()
+            .filter(|&(level, point)| maze.field.nodes_at(level, point).len() > 1)
+            .collect();
+        assert_eq!(split_points.len(), 2);
+        for (level, _) in split_points {
+            assert_eq!(level, level_b, "every new split tile must be on the reported level");
+        }
+    }
+
+    #[test]
+    fn apply_does_not_double_count_a_whole_maze_entry_already_satisfied_by_per_floor_entries() {
+        // GitHub issue #369 follow-up: a per-floor deficit ("3 per floor" on 3 floors) and a
+        // whole-maze deficit on the same rule ("12 whole-maze") both land in one issue's
+        // `missing` — the whole-maze entry is the same requirement measured differently, not an
+        // independent 12 on top. Total added must be 12 (3+3+3, whole-maze already satisfied by
+        // then), not 21.
+        let mut ids = IdGenerator::new();
+        let field_a = crate::space::Field::new(square_rect(6, 6), &mut ids).unwrap();
+        let field_b = crate::space::Field::new(square_rect(6, 6), &mut ids).unwrap();
+        let field_c = crate::space::Field::new(square_rect(6, 6), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let level_b = mf.add_level(field_b);
+        let level_c = mf.add_level(field_c);
+        let level_a = mf.levels_ordered().next().unwrap();
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
+        let nodes_before = maze.field.node_count();
+
+        let issue = MissingSplitTilesIssue::new_from_check("split_count", vec![
+            (RepairArea::Level(level_a), 3),
+            (RepairArea::Level(level_b), 3),
+            (RepairArea::Level(level_c), 3),
+            (RepairArea::WholeMaze, 12),
+        ]);
+        let mut rng = MazeRng::seed_from_u64(11);
+        let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert_eq!(maze.field.node_count(), nodes_before + 12, "12 split tiles total, not 21");
     }
 
     #[test]

@@ -3,6 +3,7 @@
 //! enum) plus a `meta: IssueMeta` for the common `source_checks`/`details` bookkeeping.
 
 use std::collections::{HashMap, HashSet};
+use crate::quality_control::RepairArea;
 
 mod missing_endpoints;
 mod unreachable_finish;
@@ -163,6 +164,29 @@ pub(crate) fn merge_cycle_sets(
 /// against itself (`seen.insert` inside the loop, not just checked before it) — a naive
 /// `.filter(|id| !seen.contains(id))` would miss a duplicate `Id` appearing twice within
 /// `other_invalid` itself, since `seen` would never observe the first occurrence.
+/// Shared merge algorithm for the `Vec<(RepairArea, u32)>` deficit shape common to every
+/// per-area-deficit `Issue` type (`MissingLoopsIssue`, `MissingOneWaysIssue`,
+/// `MissingTeleportsIssue`, `MissingSplitTilesIssue` — GitHub issue #369's floor-scope follow-up).
+/// Two deficits for the *same* `RepairArea` take the **larger** of the two amounts — same
+/// rationale as the old scalar `missing.max(other.missing)`: two independent checks (or two calls
+/// of the same check) can legitimately disagree on how short one area is, and a repair strategy
+/// must fix at least the larger reported deficit, never silently under-fix by adding the two
+/// numbers or keeping whichever side happened to be `self`. Two deficits for *different*
+/// `RepairArea`s are concatenated as separate entries — a repair strategy handles each area
+/// independently, so there is nothing to combine.
+pub(crate) fn merge_repair_area_deficits(
+    self_missing: &mut Vec<(RepairArea, u32)>,
+    other_missing: Vec<(RepairArea, u32)>,
+) {
+    for (area, amount) in other_missing {
+        if let Some(entry) = self_missing.iter_mut().find(|(a, _)| *a == area) {
+            entry.1 = entry.1.max(amount);
+        } else {
+            self_missing.push((area, amount));
+        }
+    }
+}
+
 pub(crate) fn merge_id_sets<Id: Copy + Eq + std::hash::Hash>(
     self_invalid: &mut Vec<Id>,
     self_invalid_sources: &mut HashMap<Id, Vec<String>>,

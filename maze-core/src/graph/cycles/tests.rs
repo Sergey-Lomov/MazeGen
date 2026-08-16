@@ -339,6 +339,41 @@ fn basis_of_single_triangle_is_the_one_cycle() {
 }
 
 #[test]
+fn basis_of_triangle_with_dangling_bidirectional_vertical_passage_is_the_one_cycle() {
+    // Triangle 0-1-2 (real cycle) plus a bidirectional VerticalPassage dangling off vertex 0 to
+    // an otherwise-isolated node 3 — a there-and-back dead end must contribute zero rank, same as
+    // a dangling Basic edge would (GitHub issue #369 follow-up: vertical passages were observed
+    // each counting as their own independent cycle).
+    let g = triangle(0, 1, 2);
+    let mut g = g;
+    g.add_node(3);
+    g.add_edge(0, 3, EdgeKind::VerticalPassage);
+    g.add_edge(3, 0, EdgeKind::VerticalPassage);
+
+    let basis = basis_cycles(&g);
+    assert_eq!(basis.len(), 1, "dangling bidirectional VerticalPassage must not count as an independent cycle");
+}
+
+#[test]
+fn basis_of_triangle_plus_vertical_corridor_chain_is_the_one_cycle() {
+    // Triangle 0-1-2 (real cycle) plus a 3-floor vertical corridor hanging off vertex 0:
+    // 0 <-> 3 <-> 4 (bidirectional VerticalPassage each hop). Node 3 has exactly 2 in/2 out
+    // (one pair to 0, one pair to 4) so it is corridor-compressible, folding 0->3->4 and
+    // 4->3->0 into two multi-hop nav edges spanning floors -- must still cost zero rank.
+    let g = triangle(0, 1, 2);
+    let mut g = g;
+    g.add_node(3);
+    g.add_node(4);
+    g.add_edge(0, 3, EdgeKind::VerticalPassage);
+    g.add_edge(3, 0, EdgeKind::VerticalPassage);
+    g.add_edge(3, 4, EdgeKind::VerticalPassage);
+    g.add_edge(4, 3, EdgeKind::VerticalPassage);
+
+    let basis = basis_cycles(&g);
+    assert_eq!(basis.len(), 1, "dangling bidirectional vertical corridor chain must not count as an independent cycle");
+}
+
+#[test]
 fn basis_of_two_disjoint_triangles_is_both() {
     let mut g = Graph::new();
     for id in 0..6u64 { g.add_node(id); }
@@ -425,8 +460,13 @@ fn basis_early_exit_does_not_shrink_the_full_cycle_list() {
     // Deterministic pinning for this fixed 5x5 grid — mirrors
     // `dense_grid_completes_quickly_and_reports_observed_cycle_count`'s own pinned constant
     // (9349, post-dedup); this is the raw pre-dedup count basis construction runs alongside.
-    // Any change signals either a correctness regression or a deliberate algorithm change.
-    assert_eq!(cycles.len(), 18734, "raw pre-dedup cycle count must be unaffected by early-exit — investigate any change");
+    // 18698, not 18734: `johnson_circuit` no longer records a trivial "walk out and back"
+    // 2-cycle (one per bidirectional edge — 40 of them here) as its own `cycles` entry (GitHub
+    // issue #369 follow-up); `is_trivial_reverse_pair`'s post-hoc filter already discarded these
+    // downstream, so this is the same real cycle set, just without ever materializing the
+    // trivial ones as a side effect of early-exit no longer being their only reason to survive.
+    // Any further change signals either a correctness regression or a deliberate algorithm change.
+    assert_eq!(cycles.len(), 18698, "raw pre-dedup cycle count (minus trivial reverse-pairs, never materialized) must be unaffected by early-exit — investigate any change");
     // Euler formula for this single-SCC grid: E - V + 1, E counting each bidirectional
     // corridor once (undirected pairs, matching the basis' own canonical-index bit universe).
     let e_canonical = 2 * SIDE as usize * (SIDE as usize - 1);

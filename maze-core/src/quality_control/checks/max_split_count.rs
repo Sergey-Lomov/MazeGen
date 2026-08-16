@@ -1,10 +1,12 @@
+use std::collections::{HashMap, HashSet};
 use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
+use crate::space::{LevelId, Tessellation};
 use crate::quality_control::check::Check;
-use crate::quality_control::{InvalidSplitTileGroupIssue, SplitTileNodes};
+use crate::quality_control::{InvalidSplitTileGroupIssue, SplitTileNodes, FloorScope};
 
 pub const MAX_SPLIT_COUNT_DEFAULT: u32 = 20;
+pub const MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 
 /// Flags every split tile on the field invalid when their total count exceeds `max_split_count`
 /// — see GitHub issue #249, part of epic #246. A field-wide/aggregate decision (mirrors
@@ -17,6 +19,7 @@ pub const MAX_SPLIT_COUNT_DEFAULT: u32 = 20;
 pub struct MaxSplitCountCheck {
     pub instance_id: String,
     pub max_split_count: u32,
+    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitCountCheck {
@@ -24,21 +27,52 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitCountChec
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitTileGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         let mut seen_points = std::collections::HashSet::new();
-        let tiles: Vec<SplitTileNodes> = maze.field.all_points_with_level()
+        let tiles: Vec<(LevelId, SplitTileNodes)> = maze.field.all_points_with_level()
             .filter(|&(level, point)| seen_points.insert((level, point)))
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 { None } else { Some(SplitTileNodes::new(nodes.to_vec())) }
+                if nodes.len() < 2 { None } else { Some((level, SplitTileNodes::new(nodes.to_vec()))) }
             })
             .collect();
 
-        let count = tiles.len() as u32;
-        if count <= self.max_split_count {
-            return;
-        }
-        let to_remove = count - self.max_split_count;
+        // A split tile belongs to exactly one floor (unlike edges/nodes spanning floors), so
+        // under `PerFloor` this is a plain per-floor grouping/filter, not a counts-toward-both
+        // case (GitHub issue #369).
+        let (group, to_remove) = match self.floor_scope {
+            FloorScope::WholeMaze => {
+                let count = tiles.len() as u32;
+                if count <= self.max_split_count {
+                    return;
+                }
+                let to_remove = count - self.max_split_count;
+                (tiles.into_iter().map(|(_, tile)| tile).collect(), to_remove)
+            }
+            FloorScope::PerFloor => {
+                let mut per_floor_count: HashMap<LevelId, u32> =
+                    maze.field.levels_ordered().map(|l| (l, 0)).collect();
+                for &(level, _) in &tiles {
+                    *per_floor_count.entry(level).or_insert(0) += 1;
+                }
+                let over_budget: HashSet<LevelId> = per_floor_count.iter()
+                    .filter(|&(_, &count)| count > self.max_split_count)
+                    .map(|(&level, _)| level)
+                    .collect();
+                if over_budget.is_empty() {
+                    return;
+                }
+                let max_excess = over_budget.iter()
+                    .map(|level| per_floor_count[level] - self.max_split_count)
+                    .max()
+                    .unwrap_or(0);
+                let flagged: Vec<SplitTileNodes> = tiles.into_iter()
+                    .filter(|(level, _)| over_budget.contains(level))
+                    .map(|(_, tile)| tile)
+                    .collect();
+                (flagged, max_excess)
+            }
+        };
 
-        let issue = InvalidSplitTileGroupIssue::new_from_check(&self.instance_id, vec![(tiles, to_remove)])
+        let issue = InvalidSplitTileGroupIssue::new_from_check(&self.instance_id, vec![(group, to_remove)])
             .with_detail(&self.instance_id, "max_split_count", self.max_split_count.to_string());
         issues.push(issue);
     }
@@ -73,7 +107,7 @@ mod tests {
     #[test]
     fn fires_and_flags_every_split_tile_when_count_exceeds_max() {
         let maze = maze_with_split_tiles(3);
-        let check = MaxSplitCountCheck { instance_id: TEST_ID.to_string(), max_split_count: 1 };
+        let check = MaxSplitCountCheck { instance_id: TEST_ID.to_string(), max_split_count: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
@@ -89,7 +123,7 @@ mod tests {
     #[test]
     fn silent_when_count_at_or_below_max() {
         let maze = maze_with_split_tiles(2);
-        let check = MaxSplitCountCheck { instance_id: TEST_ID.to_string(), max_split_count: 2 };
+        let check = MaxSplitCountCheck { instance_id: TEST_ID.to_string(), max_split_count: 2, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "count equal to the max must not fire");
@@ -98,7 +132,7 @@ mod tests {
     #[test]
     fn silent_when_no_split_tiles() {
         let maze = maze_with_split_tiles(0);
-        let check = MaxSplitCountCheck { instance_id: TEST_ID.to_string(), max_split_count: 0 };
+        let check = MaxSplitCountCheck { instance_id: TEST_ID.to_string(), max_split_count: 0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());

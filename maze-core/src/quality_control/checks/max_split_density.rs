@@ -1,56 +1,99 @@
+use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
-use crate::space::Tessellation;
+use crate::space::{LevelId, Tessellation};
 use crate::graph::cycles::density_per_100;
 use crate::quality_control::check::Check;
-use crate::quality_control::{InvalidSplitTileGroupIssue, SplitTileNodes};
+use crate::quality_control::{InvalidSplitTileGroupIssue, SplitTileNodes, FloorScope};
+use crate::quality_control::floor_group::floor_point_count;
 
 pub const MAX_SPLIT_DENSITY_DEFAULT: u32 = 30;
+pub const MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags every split tile on the field invalid when their density (share of field cells carrying
 /// a split tile, per 100 — see `density_per_100`) exceeds `max_density` — see GitHub issue #249,
 /// part of epic #246. Mirrors `MaxLoopDensityCheck`'s identical rationale: a field-wide/aggregate
 /// decision, which tiles to actually collapse is `SplitGroupSelectStrategy`'s job. One group
-/// covering every split tile on the field (each as its own `SplitTileNodes` candidate),
-/// `to_remove` computed by rounding the excess density back down into a tile count (the smallest
-/// tile count that would bring density back to `max_density`).
+/// covering every split tile on the field (each as its own `SplitTileNodes` candidate), `to_remove`
+/// computed the same way as `MaxOneWayRatioCheck::to_remove_for`: `target_count` rounds
+/// `max_density * field_cells / 100` to the nearest integer, `to_remove = count - target_count`.
 pub struct MaxSplitDensityCheck {
     pub instance_id: String,
     pub max_density: u32,
+    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for MaxSplitDensityCheck {
     fn check_type_id(&self) -> &'static str { "max_split_density" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidSplitTileGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let field_cells = maze.field.point_count();
-        if field_cells == 0 {
-            return;
-        }
-
         let mut seen_points = std::collections::HashSet::new();
-        let tiles: Vec<SplitTileNodes> = maze.field.all_points_with_level()
+        let tiles: Vec<(LevelId, SplitTileNodes)> = maze.field.all_points_with_level()
             .filter(|&(level, point)| seen_points.insert((level, point)))
             .filter_map(|(level, point)| {
                 let nodes = maze.field.nodes_at(level, point);
-                if nodes.len() < 2 { None } else { Some(SplitTileNodes::new(nodes.to_vec())) }
+                if nodes.len() < 2 { None } else { Some((level, SplitTileNodes::new(nodes.to_vec()))) }
             })
             .collect();
 
-        if density_per_100(tiles.len(), field_cells) <= self.max_density {
-            return;
-        }
+        // A split tile belongs to exactly one floor, so under `PerFloor` this is a plain
+        // per-floor grouping/filter, not a counts-toward-both case (GitHub issue #369).
+        let (group, to_remove) = match self.floor_scope {
+            FloorScope::WholeMaze => {
+                let field_cells = maze.field.point_count();
+                if field_cells == 0 {
+                    return;
+                }
+                match Self::to_remove_for(tiles.len(), field_cells, self.max_density) {
+                    0 => return,
+                    n => (tiles.into_iter().map(|(_, tile)| tile).collect(), n),
+                }
+            }
+            FloorScope::PerFloor => {
+                let mut per_floor_count: HashMap<LevelId, usize> =
+                    maze.field.levels_ordered().map(|l| (l, 0)).collect();
+                for &(level, _) in &tiles {
+                    *per_floor_count.entry(level).or_insert(0) += 1;
+                }
+                let mut over_budget: HashMap<LevelId, u32> = HashMap::new();
+                for (&level, &count) in &per_floor_count {
+                    let field_cells = floor_point_count(&maze.field, level);
+                    let n = Self::to_remove_for(count, field_cells, self.max_density);
+                    if n > 0 {
+                        over_budget.insert(level, n);
+                    }
+                }
+                if over_budget.is_empty() {
+                    return;
+                }
+                let max_to_remove = over_budget.values().copied().max().unwrap_or(0);
+                let flagged: Vec<SplitTileNodes> = tiles.into_iter()
+                    .filter(|(level, _)| over_budget.contains_key(level))
+                    .map(|(_, tile)| tile)
+                    .collect();
+                (flagged, max_to_remove)
+            }
+        };
 
-        // Largest tile count whose density_per_100 is still at or below max_density -- density is
-        // monotonic increasing in count, so this is the fewest tiles that need collapsing.
-        let allowed_count = (0..=tiles.len()).rev()
-            .find(|&c| density_per_100(c, field_cells) <= self.max_density)
-            .unwrap_or(0);
-        let to_remove = (tiles.len() - allowed_count) as u32;
-
-        let issue = InvalidSplitTileGroupIssue::new_from_check(&self.instance_id, vec![(tiles, to_remove)])
+        let issue = InvalidSplitTileGroupIssue::new_from_check(&self.instance_id, vec![(group, to_remove)])
             .with_detail(&self.instance_id, "max_density", self.max_density.to_string());
         issues.push(issue);
+    }
+}
+
+impl MaxSplitDensityCheck {
+    /// Excess tile count for one region (whole maze or one floor) given its own tile/cell counts
+    /// — shared by both `floor_scope` branches so the round-to-nearest `target_count` logic stays
+    /// identical either way. Mirrors `MaxOneWayRatioCheck::to_remove_for` exactly.
+    fn to_remove_for(count: usize, field_cells: usize, max_density: u32) -> u32 {
+        if field_cells == 0 || density_per_100(count, field_cells) <= max_density {
+            return 0;
+        }
+        // Round-to-nearest can push target_count above count on a small enough field (rounding
+        // error can exceed the margin the gate above guarantees) -- saturating_sub keeps the
+        // result at 0 rather than underflowing in that edge case.
+        let target_count = (max_density as usize * field_cells + 50) / 100;
+        count.saturating_sub(target_count) as u32
     }
 }
 
@@ -85,7 +128,7 @@ mod tests {
     fn fires_and_flags_every_split_tile_when_density_exceeds_max() {
         // 3 split tiles / 10 cells = 30% density.
         let maze = maze_with_split_tiles(3);
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20 };
+        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
@@ -100,7 +143,7 @@ mod tests {
     #[test]
     fn silent_when_density_at_or_below_max() {
         let maze = maze_with_split_tiles(2);
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20 };
+        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 20, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "20% density must not fire against a max of 20");
@@ -109,7 +152,7 @@ mod tests {
     #[test]
     fn silent_when_no_split_tiles() {
         let maze = maze_with_split_tiles(0);
-        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0 };
+        let check = MaxSplitDensityCheck { instance_id: TEST_ID.to_string(), max_density: 0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());

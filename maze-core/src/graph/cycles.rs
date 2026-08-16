@@ -329,6 +329,18 @@ fn johnson_circuit(
     basis: &mut Vec<Vec<usize>>,
 ) -> Option<bool> {
     let mut found_cycle = false;
+    // The trivial "walk out and back" 2-cycle (see `is_trivial_reverse_pair`) closes over
+    // `path_edges`'s FIRST edge specifically (`v == start` on this call), not the most recently
+    // used one — Johnson's finds exactly one such pair per bidirectional edge in the graph,
+    // ballooning `cycles` toward `MAX_SIMPLE_CYCLES` on any reasonably sized maze. Skipping only
+    // this one case (rather than any `reverse_edge` step anywhere in the path) is provably safe:
+    // it's the same 2-cycle `is_trivial_reverse_pair` already excludes post-hoc, just recognized
+    // one level earlier so it never reaches `cycles`/`offer_to_basis` at all. Unlike a general
+    // "never step onto a reverse edge" rule, this cannot perturb Johnson's own blocking/unblocking
+    // bookkeeping for any OTHER edge, since it only ever discards the exact 2-edge cycle the
+    // post-hoc filter would have discarded anyway — every longer route, including ones that reuse
+    // a `reverse_edge` pair mid-path (e.g. the bowtie's B->D->C->B), is unaffected.
+    let first_edge = path_edges.first().copied();
 
     for &(edge_idx, w) in &adjacency[v] {
         if cycles.len() > MAX_SIMPLE_CYCLES {
@@ -338,10 +350,19 @@ fn johnson_circuit(
             continue;
         }
         if w == start {
-            path_edges.push(edge_idx);
-            offer_to_basis(path_edges, edges, words_per_row, basis_target, scc_basis, scc_basis_count, basis);
-            cycles.push(path_edges.clone());
-            path_edges.pop();
+            // Still a real closing move for Johnson's own blocking bookkeeping (`found_cycle`
+            // must reflect it, or `v`/`w`'s block state desyncs and hides later genuine cycles —
+            // see this function's doc comment on the bowtie regression), just never recorded in
+            // `cycles`/offered to the basis: a trivial "walk out and back" 2-cycle is not a real
+            // loop (see `is_trivial_reverse_pair`) and would otherwise flood `cycles` with one
+            // entry per bidirectional edge in the graph.
+            let is_trivial = path_edges.len() == 1 && first_edge.and_then(|e| edges[e].reverse_edge) == Some(edge_idx);
+            if !is_trivial {
+                path_edges.push(edge_idx);
+                offer_to_basis(path_edges, edges, words_per_row, basis_target, scc_basis, scc_basis_count, basis);
+                cycles.push(path_edges.clone());
+                path_edges.pop();
+            }
             found_cycle = true;
         } else if !blocked.contains(&w) {
             blocked.insert(w);

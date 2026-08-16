@@ -2,12 +2,14 @@ use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::MissingOneWaysIssue;
+use crate::quality_control::RepairArea;
 use crate::generation::PresetState;
 use crate::repair::params::StrategyParams;
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::missing_one_ways_shared::{pick_random_pairs, canonical_pair, ProposedPairs};
+use super::remaining_deficits::RemainingDeficits;
 
 /// Handles `MISSING_ONE_WAYS` — one of the two registered strategies (see
 /// `MissingOneWaysFromPassageStrategy` for the other) — see GitHub issue #201. Picks random pairs
@@ -28,45 +30,56 @@ impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysF
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let target = issue.missing;
-        if target == 0 {
+        if issue.missing.is_empty() {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
         let mut proposed: ProposedPairs = ProposedPairs::default();
         let mut commands = Vec::new();
+        let mut total_found: u32 = 0;
 
-        let found = pick_random_pairs(
-            maze,
-            rng,
-            target,
-            |src, dst, rng| {
-                if proposed.contains(&canonical_pair(src, dst)) {
-                    return false;
-                }
-                // A wall: no edge of any kind in either direction between the pair.
-                if maze.graph.edge_between(src, dst).is_some() || maze.graph.edge_between(dst, src).is_some() {
-                    return false;
-                }
+        let mut deficits = RemainingDeficits::new(&issue.missing);
+        let areas: Vec<RepairArea> = deficits.areas().collect();
+        for area in areas {
+            let target = deficits.live(area);
+            if target == 0 {
+                continue;
+            }
+            let found = pick_random_pairs(
+                maze,
+                rng,
+                target,
+                area,
+                |src, dst, rng| {
+                    if proposed.contains(&canonical_pair(src, dst)) {
+                        return false;
+                    }
+                    // A wall: no edge of any kind in either direction between the pair.
+                    if maze.graph.edge_between(src, dst).is_some() || maze.graph.edge_between(dst, src).is_some() {
+                        return false;
+                    }
 
-                proposed.insert(canonical_pair(src, dst));
-                let add_fwd = crate::generation::directed_edge_feasible(preset_state, src, dst);
-                let add_bwd = crate::generation::directed_edge_feasible(preset_state, dst, src);
-                let (from, to) = if add_fwd && add_bwd {
-                    if rng.random::<bool>() { (src, dst) } else { (dst, src) }
-                } else if add_fwd {
-                    (src, dst)
-                } else if add_bwd {
-                    (dst, src)
-                } else {
-                    return false;
-                };
-                commands.push(MutationCommand::AddDirectedEdge { from, to });
-                true
-            },
-        );
+                    proposed.insert(canonical_pair(src, dst));
+                    let add_fwd = crate::generation::directed_edge_feasible(preset_state, src, dst);
+                    let add_bwd = crate::generation::directed_edge_feasible(preset_state, dst, src);
+                    let (from, to) = if add_fwd && add_bwd {
+                        if rng.random::<bool>() { (src, dst) } else { (dst, src) }
+                    } else if add_fwd {
+                        (src, dst)
+                    } else if add_bwd {
+                        (dst, src)
+                    } else {
+                        return false;
+                    };
+                    commands.push(MutationCommand::AddDirectedEdge { from, to });
+                    true
+                },
+            );
+            deficits.consume_many(area, found);
+            total_found += found;
+        }
 
-        if found == 0 {
+        if total_found == 0 {
             return (RepairResult::Failed, vec![]);
         }
         (RepairResult::Fixed { score: None }, commands)
@@ -83,10 +96,12 @@ mod tests {
     use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
     use crate::space::{SquareTessellation, square_rect, MultiLevelField};
+    use crate::quality_control::RepairArea;
     use crate::repair::strategies::test_utils::apply_and_commit_default;
 
     fn missing_issue(missing: u32) -> MissingOneWaysIssue {
-        MissingOneWaysIssue::new_from_check("min_one_way_count", missing)
+        let entries = if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] };
+        MissingOneWaysIssue::new_from_check("min_one_way_count", entries)
     }
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
@@ -179,6 +194,56 @@ mod tests {
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert!(maze.graph.edge_between(nodes[1], nodes[0]).is_some(), "must use the only unblocked direction");
         assert!(maze.graph.edge_between(nodes[0], nodes[1]).is_none());
+    }
+
+    #[test]
+    fn apply_restricts_candidates_to_the_named_level() {
+        let mut ids = IdGenerator::new();
+        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let level_b = mf.add_level(field_b);
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
+
+        let issue = MissingOneWaysIssue::new_from_check("min_one_way_count", vec![(RepairArea::Level(level_b), 2)]);
+        let mut rng = MazeRng::seed_from_u64(42);
+        let result = apply_and_commit_default(&MissingOneWaysFromWallStrategy, &issue, &mut maze, &mut rng, &PresetState::empty());
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert!(maze.graph.edges().count() > 0);
+        for edge in maze.graph.edges() {
+            assert_eq!(maze.field.level_of(edge.from), Some(level_b));
+            assert_eq!(maze.field.level_of(edge.to), Some(level_b));
+        }
+    }
+
+    #[test]
+    fn apply_does_not_double_count_a_whole_maze_entry_already_satisfied_by_per_floor_entries() {
+        // GitHub issue #369 follow-up: per-floor + whole-maze entries on the same rule must not
+        // stack — 1 per floor on 3 floors + 3 whole-maze must add 3 edges total, not 6.
+        let mut ids = IdGenerator::new();
+        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_c = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let level_b = mf.add_level(field_b);
+        let level_c = mf.add_level(field_c);
+        let level_a = mf.levels_ordered().next().unwrap();
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
+
+        let issue = MissingOneWaysIssue::new_from_check("min_one_way_count", vec![
+            (RepairArea::Level(level_a), 1),
+            (RepairArea::Level(level_b), 1),
+            (RepairArea::Level(level_c), 1),
+            (RepairArea::WholeMaze, 3),
+        ]);
+        let mut rng = MazeRng::seed_from_u64(11);
+        let result = apply_and_commit_default(&MissingOneWaysFromWallStrategy, &issue, &mut maze, &mut rng, &PresetState::empty());
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert_eq!(maze.graph.edges().count(), 3, "3 edges total, not 6");
     }
 
     #[test]

@@ -3,14 +3,14 @@ use maze_core::{
     space::Tessellation,
     quality_control::{
         MissingEndpointsCheck, UnreachableFinishCheck,
-        MinLoopsCountCheck, MIN_LOOPS_DEFAULT,
-        MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT,
+        MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MIN_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE,
+        MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT, MIN_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE,
         AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, LoopLengthCheck, LOOP_LENGTH_DEFAULT,
         ExternalEscapeDiversityCheck,
         EXTERNAL_ESCAPE_DIVERSITY_DEFAULT, LoopDistanceFromStartCheck,
         LOOP_DISTANCE_FROM_START_DEFAULT, LoopDistanceFromFinishCheck,
-        LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT,
-        MaxLoopsCountCheck, MAX_LOOPS_COUNT_DEFAULT,
+        LOOP_DISTANCE_FROM_FINISH_DEFAULT, MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE,
+        MaxLoopsCountCheck, MAX_LOOPS_COUNT_DEFAULT, MAX_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE,
         SccCountCheck, MAX_SCC_COUNT_DEFAULT, MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT,
         MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT,
         MaxRegionSizeCheck, MAX_REGION_SIZE_DEFAULT, MaxRegionRatioCheck, MAX_REGION_RATIO_DEFAULT,
@@ -26,27 +26,27 @@ use maze_core::{
         OneWayGroupGeometricProximityCheck, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
         OneWayGroupGraphProximityCheck, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
         OneWayGroupSuperHubCheck, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
-        MinOneWayCountCheck, MIN_ONE_WAY_COUNT_DEFAULT,
-        MinOneWayRatioCheck, MIN_ONE_WAY_RATIO_DEFAULT,
-        MaxOneWayCountCheck, MAX_ONE_WAY_COUNT_DEFAULT,
-        MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT,
-        MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT,
-        MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT,
+        MinOneWayCountCheck, MIN_ONE_WAY_COUNT_DEFAULT, MIN_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE,
+        MinOneWayRatioCheck, MIN_ONE_WAY_RATIO_DEFAULT, MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE,
+        MaxOneWayCountCheck, MAX_ONE_WAY_COUNT_DEFAULT, MAX_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE,
+        MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE,
+        MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE,
+        MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE,
         TeleportSplitIntersectionCheck, TeleportSplitEdgeSelector,
         SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT,
         SplitTeleportIntersectionCheck, SplitTeleportDirection,
-        MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT,
-        MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT,
+        MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE,
+        MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE,
         SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
         SplitGroupGraphProximityCheck, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
-        SplitCountCheck, SPLIT_COUNT_DEFAULT,
-        SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT,
+        SplitCountCheck, SPLIT_COUNT_DEFAULT, SPLIT_COUNT_DEFAULT_FLOOR_SCOPE,
+        SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT, SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE,
         SplitNodeConnectionCountCheck, SplitNodeConnectionDirection, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON,
         SplitNodeConnectionPerNeighborCheck, SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT,
         SplitNodeConnectionPerFaceCheck, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT,
         SplitNodeConnectionTraversalDistanceCheck, SPLIT_NODE_CONNECTION_TRAVERSAL_DISTANCE_MIN_DETOUR_DEFAULT,
         MaxSplitTileNodeCountCheck, MAX_SPLIT_TILE_NODE_COUNT_DEFAULT,
-        Comparison, CycleKind, GeometricFloorMode, RuleParams,
+        Comparison, CycleKind, GeometricFloorMode, FloorScope, RuleParams,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
         ExcessiveSccCountIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, MissingRegionsIssue,
@@ -238,6 +238,12 @@ fn parse_geometric_floor_mode(param: Option<&String>, default: GeometricFloorMod
     param.and_then(|v| GeometricFloorMode::from_str(v)).unwrap_or(default)
 }
 
+/// GitHub issue #369: `floor_scope` is shared by every count/density-style check (except
+/// region-based checks and `scc_count`) — missing or unparseable falls back to `default`.
+fn parse_floor_scope(param: Option<&String>, default: FloorScope) -> FloorScope {
+    param.and_then(|v| FloorScope::from_str(v)).unwrap_or(default)
+}
+
 /// GitHub issue #217: `cycle_kind` is shared by every loop-based check built on
 /// `cycle_check_core::find_invalid_cycles` — missing or unparseable falls back to `CycleKind::Any`,
 /// the pre-#217 behavior of considering every cycle regardless of directionality.
@@ -272,7 +278,8 @@ pub(crate) fn build_missing_loops_check<T: Tessellation>(instance: &CheckInstanc
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(MIN_LOOPS_DEFAULT);
-            Some(Box::new(MinLoopsCountCheck { instance_id, min_loops }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MinLoopsCountCheck { instance_id, min_loops, floor_scope }))
         }
         "min_loop_density" => {
             let min_density = instance.params.get("min_density")
@@ -283,7 +290,8 @@ pub(crate) fn build_missing_loops_check<T: Tessellation>(instance: &CheckInstanc
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(AVG_LOOP_LENGTH_ESTIMATE_DEFAULT);
-            Some(Box::new(MinLoopDensityCheck { instance_id, min_density, avg_loop_length_estimate }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MinLoopDensityCheck { instance_id, min_density, avg_loop_length_estimate, floor_scope }))
         }
         _ => None,
     }
@@ -297,7 +305,8 @@ pub(crate) fn build_missing_split_tiles_check<T: Tessellation>(instance: &CheckI
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(SPLIT_COUNT_DEFAULT);
             let patterns = parse_split_patterns_param(instance.params.get("patterns"));
-            Some(Box::new(SplitCountCheck { instance_id, min_count, patterns }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), SPLIT_COUNT_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(SplitCountCheck { instance_id, min_count, patterns, floor_scope }))
         }
         "split_density" => {
             let min_density = instance.params.get("split_density")
@@ -309,7 +318,8 @@ pub(crate) fn build_missing_split_tiles_check<T: Tessellation>(instance: &CheckI
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(SPLIT_DENSITY_ESTIMATE_DEFAULT);
             let patterns = parse_split_patterns_param(instance.params.get("patterns"));
-            Some(Box::new(SplitDensityCheck { instance_id, min_density, split_tile_estimate, patterns }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(SplitDensityCheck { instance_id, min_density, split_tile_estimate, patterns, floor_scope }))
         }
         _ => None,
     }
@@ -361,14 +371,16 @@ pub(crate) fn build_invalid_loop_group_check<T: Tessellation>(instance: &CheckIn
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.clamp(0, 100) as u32)
                 .unwrap_or(MAX_LOOP_DENSITY_DEFAULT);
-            Some(Box::new(MaxLoopDensityCheck { instance_id, max_density }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MaxLoopDensityCheck { instance_id, max_density, floor_scope }))
         }
         "max_loops_count" => {
             let max_loops_count = instance.params.get("max_loops_count")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(MAX_LOOPS_COUNT_DEFAULT);
-            Some(Box::new(MaxLoopsCountCheck { instance_id, max_loops_count }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MaxLoopsCountCheck { instance_id, max_loops_count, floor_scope }))
         }
         _ => None,
     }
@@ -562,14 +574,16 @@ pub(crate) fn build_one_way_group_proximity_check<T: Tessellation>(instance: &Ch
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(MAX_ONE_WAY_COUNT_DEFAULT);
-            Some(Box::new(MaxOneWayCountCheck { instance_id, max_one_ways }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MaxOneWayCountCheck { instance_id, max_one_ways, floor_scope }))
         }
         "max_one_way_ratio" => {
             let max_ratio = instance.params.get("max_ratio")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.clamp(0, 100) as u32)
                 .unwrap_or(MAX_ONE_WAY_RATIO_DEFAULT);
-            Some(Box::new(MaxOneWayRatioCheck { instance_id, max_ratio }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MaxOneWayRatioCheck { instance_id, max_ratio, floor_scope }))
         }
         _ => None,
     }
@@ -582,14 +596,16 @@ pub(crate) fn build_missing_one_ways_check<T: Tessellation>(instance: &CheckInst
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(MIN_ONE_WAY_COUNT_DEFAULT);
-            Some(Box::new(MinOneWayCountCheck { instance_id, min_one_ways }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MinOneWayCountCheck { instance_id, min_one_ways, floor_scope }))
         }
         "min_one_way_ratio" => {
             let min_ratio = instance.params.get("min_ratio")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.clamp(0, 100) as u32)
                 .unwrap_or(MIN_ONE_WAY_RATIO_DEFAULT);
-            Some(Box::new(MinOneWayRatioCheck { instance_id, min_ratio }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MinOneWayRatioCheck { instance_id, min_ratio, floor_scope }))
         }
         _ => None,
     }
@@ -682,14 +698,16 @@ pub(crate) fn build_split_group_check<T: Tessellation>(instance: &CheckInstanceC
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(MAX_SPLIT_COUNT_DEFAULT);
-            Some(Box::new(MaxSplitCountCheck { instance_id, max_split_count }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MaxSplitCountCheck { instance_id, max_split_count, floor_scope }))
         }
         "max_split_density" => {
             let max_density = instance.params.get("max_split_density")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.clamp(0, 100) as u32)
                 .unwrap_or(MAX_SPLIT_DENSITY_DEFAULT);
-            Some(Box::new(MaxSplitDensityCheck { instance_id, max_density }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MaxSplitDensityCheck { instance_id, max_density, floor_scope }))
         }
         "split_group_geometric_proximity" => {
             let distance = instance.params.get("split_group_geometric_proximity_distance")
@@ -719,14 +737,16 @@ pub(crate) fn build_missing_teleports_check<T: Tessellation>(instance: &CheckIns
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(1) as u32)
                 .unwrap_or(MIN_TELEPORT_COUNT_DEFAULT);
-            Some(Box::new(MinTeleportCountCheck { instance_id, min_teleports }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MinTeleportCountCheck { instance_id, min_teleports, floor_scope }))
         }
         "min_teleport_ratio" => {
             let min_teleport_ratio = instance.params.get("min_teleport_ratio")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.clamp(0, 100) as u32)
                 .unwrap_or(MIN_TELEPORT_RATIO_DEFAULT);
-            Some(Box::new(MinTeleportRatioCheck { instance_id, min_teleport_ratio }))
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MinTeleportRatioCheck { instance_id, min_teleport_ratio, floor_scope }))
         }
         _ => None,
     }

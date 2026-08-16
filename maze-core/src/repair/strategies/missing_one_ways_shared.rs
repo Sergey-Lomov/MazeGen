@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
+use crate::quality_control::RepairArea;
 
 /// Shared random-candidate-pair search for `MissingOneWaysFromPassageStrategy`/
 /// `MissingOneWaysFromWallStrategy` — see GitHub issue #201. Both strategies need the same "pick a
@@ -23,9 +24,15 @@ pub(super) fn pick_random_pairs<T: Tessellation>(
     maze: &Maze<T>,
     rng: &mut dyn RngCore,
     target: u32,
+    area: RepairArea,
     mut try_pair: impl FnMut(NodeId, NodeId, &mut dyn RngCore) -> bool,
 ) -> u32 {
-    let mut pool: Vec<NodeId> = maze.field.all_node_ids().collect();
+    let mut pool: Vec<NodeId> = maze.field.all_node_ids()
+        .filter(|&n| match area {
+            RepairArea::WholeMaze => true,
+            RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
+        })
+        .collect();
     let mut found: u32 = 0;
 
     while found < target && !pool.is_empty() {
@@ -103,7 +110,7 @@ mod tests {
         // instead of retrying the rest, n1 would be evicted empty-handed too, and the whole pool
         // would exhaust with `found` stuck at 0.
         let mut n1_first_candidate: Option<NodeId> = None;
-        let found = pick_random_pairs(&maze, &mut rng, 1, |src, dst, _rng| {
+        let found = pick_random_pairs(&maze, &mut rng, 1, RepairArea::WholeMaze, |src, dst, _rng| {
             if src != n1 {
                 return false;
             }

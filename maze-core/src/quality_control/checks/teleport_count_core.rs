@@ -1,8 +1,9 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use crate::Maze;
 use crate::ids::NodeId;
-use crate::space::Tessellation;
+use crate::space::{LevelId, Tessellation};
 use crate::graph::EdgeKind;
+use crate::quality_control::floor_group::floors_of_node;
 
 /// Counts distinct teleports on the field — shared by `MinTeleportCountCheck`/
 /// `MinTeleportRatioCheck` (GitHub issue #211). A bidirectional teleport (`A->B` plus a parallel
@@ -12,15 +13,34 @@ use crate::graph::EdgeKind;
 /// every bidirectional teleport relative to a one-way teleport. Dedups by the unordered node pair
 /// instead.
 pub fn count_distinct_teleports<T: Tessellation>(maze: &Maze<T>) -> u32 {
+    distinct_teleport_pairs(maze).len() as u32
+}
+
+/// Distinct teleport portals as unordered node pairs — same dedup as `count_distinct_teleports`,
+/// exposed for `floor_scope: PerFloor` grouping (GitHub issue #369).
+fn distinct_teleport_pairs<T: Tessellation>(maze: &Maze<T>) -> HashSet<(NodeId, NodeId)> {
     let mut seen_pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
-    let mut count = 0u32;
     for edge in maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport) {
         let pair = if edge.from <= edge.to { (edge.from, edge.to) } else { (edge.to, edge.from) };
-        if seen_pairs.insert(pair) {
-            count += 1;
+        seen_pairs.insert(pair);
+    }
+    seen_pairs
+}
+
+/// Per-floor distinct teleport counts — a teleport whose two ends sit on different floors counts
+/// toward both (GitHub issue #369). Floors with no teleport still appear with a count of 0, so
+/// callers can compute a deficit/excess against every floor.
+pub fn count_distinct_teleports_per_floor<T: Tessellation>(maze: &Maze<T>) -> HashMap<LevelId, u32> {
+    let mut per_floor: HashMap<LevelId, u32> =
+        maze.field.levels_ordered().map(|l| (l, 0)).collect();
+    for (from, to) in distinct_teleport_pairs(maze) {
+        let mut floors = floors_of_node(&maze.field, from);
+        floors.extend(floors_of_node(&maze.field, to));
+        for level in floors {
+            *per_floor.entry(level).or_insert(0) += 1;
         }
     }
-    count
+    per_floor
 }
 
 #[cfg(test)]

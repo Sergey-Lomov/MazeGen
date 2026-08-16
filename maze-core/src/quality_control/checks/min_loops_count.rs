@@ -2,16 +2,26 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::{MissingLoopsIssue};
+use crate::quality_control::{MissingLoopsIssue, FloorScope, RepairArea};
+use crate::quality_control::floor_group::floors_of_edges;
+use crate::graph::cycles::resolve_to_edge_ids;
 
 pub const MIN_LOOPS_DEFAULT: u32 = 1;
+pub const MIN_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 
 /// Flags a deficit against a raw independent-cycle count — see GitHub issue #177 (originally
 /// merged with `MinLoopDensityCheck` into one `Mode`-switched check, split back out since the two
 /// measure genuinely different things: an absolute count vs. a field-coverage share).
+///
+/// `floor_scope` (GitHub issue #369): under `PerFloor`, `min_loops` is evaluated independently
+/// against each floor's own cycle count (a cycle spanning more than one floor, e.g. via a
+/// cross-floor teleport, counts toward every floor it touches) and the per-floor deficits are
+/// summed into one `missing` total — a single `MissingLoopsIssue` per check call either way, same
+/// as `WholeMaze`.
 pub struct MinLoopsCountCheck {
     pub instance_id: String,
     pub min_loops: u32,
+    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopsCountCheck {
@@ -27,12 +37,43 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopsCountCheck {
         if analytics.cycle_analysis_overflowed {
             return;
         }
-        let missing = self.min_loops.saturating_sub(analytics.cycle_count as u32);
-        if missing == 0 {
+
+        let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
+            FloorScope::WholeMaze => {
+                let missing = self.min_loops.saturating_sub(analytics.cycle_count as u32);
+                if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] }
+            }
+            FloorScope::PerFloor => {
+                let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
+                let cycles = resolve_to_edge_ids(&nav, &analytics.pure_cycle_basis, &maze.graph);
+                let mut per_floor_count: std::collections::HashMap<crate::space::LevelId, u32> =
+                    maze.field.levels_ordered().map(|l| (l, 0)).collect();
+                for cycle in &cycles {
+                    let floors = floors_of_edges(&maze.field, &maze.graph, cycle);
+                    for level in floors {
+                        *per_floor_count.entry(level).or_insert(0) += 1;
+                    }
+                }
+                let mut missing: Vec<(RepairArea, u32)> = per_floor_count.into_iter()
+                    .filter_map(|(level, count)| {
+                        let missing = self.min_loops.saturating_sub(count);
+                        (missing > 0).then_some((RepairArea::Level(level), missing))
+                    })
+                    .collect();
+                // `HashMap` iteration order is randomized per run -- sort by level so the
+                // resulting order (and thus RNG consumption order in repair strategies that loop
+                // over `issue.missing`) is deterministic for a fixed seed (GitHub issue #369
+                // follow-up).
+                missing.sort_by_key(|&(area, _)| area);
+                missing
+            }
+        };
+        if missing.is_empty() {
             return;
         }
+        let total: u32 = missing.iter().map(|(_, m)| m).sum();
         let issue = MissingLoopsIssue::new_from_check(&self.instance_id, missing)
-            .with_detail(&self.instance_id, "missing", missing.to_string());
+            .with_detail(&self.instance_id, "missing", total.to_string());
         issues.push(issue);
     }
 }
@@ -68,7 +109,7 @@ mod tests {
     #[test]
     fn silent_when_loop_count_meets_minimum() {
         let maze = maze_with_triangle();
-        let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1 };
+        let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -77,11 +118,11 @@ mod tests {
     #[test]
     fn fires_with_missing_count_when_below_minimum() {
         let maze = maze_with_triangle();
-        let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 3 };
+        let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 3, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, 2);
+        assert_eq!(issues[0].missing, vec![(crate::quality_control::RepairArea::WholeMaze, 2)]);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("missing")),
@@ -111,7 +152,7 @@ mod tests {
             }
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1 };
+        let check = MinLoopsCountCheck { instance_id: TEST_ID.to_string(), min_loops: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");

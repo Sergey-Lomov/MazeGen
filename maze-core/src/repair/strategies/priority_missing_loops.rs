@@ -29,9 +29,11 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 /// is exhausted.
 ///
 /// Unlike `PriorityRegionMergeStrategy`/`WeightedRegionMergeStrategy`, `MissingLoopsIssue` isn't
-/// a batch of independently-addressable items — it carries a single scalar `missing: u32` deficit
-/// for the whole maze — so there is nothing to split per-item here: the incoming issue is passed
-/// through to `dispatch_priority` **unchanged**, one dispatch per `apply()` call.
+/// a batch of independently-addressable items — its `missing: Vec<(RepairArea, u32)>` deficit list
+/// is still one issue, not a per-item batch — so there is nothing to split per-item here: the
+/// incoming issue is passed through to `dispatch_priority` **unchanged**, one dispatch per
+/// `apply()` call. The chosen nested strategy is responsible for honoring every `RepairArea` entry
+/// itself (see `MissingLoopsRandomStrategy`).
 ///
 /// No configurable parameters of its own.
 pub struct PriorityMissingLoopsStrategy;
@@ -56,7 +58,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for PriorityMissingLo
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        if issue.missing == 0 {
+        if issue.missing.is_empty() {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -102,7 +104,8 @@ mod tests {
     }
 
     fn missing_issue(missing: u32) -> MissingLoopsIssue {
-        MissingLoopsIssue::new_from_check("test", missing)
+        let entries = if missing == 0 { vec![] } else { vec![(crate::quality_control::RepairArea::WholeMaze, missing)] };
+        MissingLoopsIssue::new_from_check("test", entries)
     }
 
     fn nested_with(strategy: Box<dyn ErasedRepairStrategy<SquareTessellation>>) -> NestedStrategyConfig<SquareTessellation> {

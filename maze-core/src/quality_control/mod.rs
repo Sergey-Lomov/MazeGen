@@ -5,6 +5,9 @@ pub mod event;
 pub mod check;
 pub mod comparison;
 pub mod geometric_floor_mode;
+pub mod floor_scope;
+pub mod floor_group;
+pub mod repair_area;
 pub mod cycle_kind;
 pub mod rule;
 pub mod rule_params;
@@ -35,6 +38,9 @@ pub use issue_kinds::{
 pub use check::Check;
 pub use comparison::Comparison;
 pub use geometric_floor_mode::GeometricFloorMode;
+pub use floor_scope::FloorScope;
+pub use repair_area::RepairArea;
+pub use floor_group::{floors_of_edge, floors_of_edges, floors_of_node, floor_point_count};
 pub use cycle_kind::CycleKind;
 pub use rule::{Rule, RuleTrait, ApplyOutcome, RuleIterationOutcome};
 pub use rule_params::{RuleParams, RuleParamDescriptor, RuleParamKind, RULE_PARAM_DESCRIPTORS, PARAM_PROTECT_ROUTE, rule_param_applies_to};
@@ -43,14 +49,14 @@ pub use engine::QualityControlEngine;
 pub use checks::{
     MissingEndpointsCheck,
     UnreachableFinishCheck,
-    MinLoopsCountCheck, MIN_LOOPS_DEFAULT,
-    MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT,
+    MinLoopsCountCheck, MIN_LOOPS_DEFAULT, MIN_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE,
+    MinLoopDensityCheck, MIN_LOOP_DENSITY_DEFAULT, AVG_LOOP_LENGTH_ESTIMATE_DEFAULT, MIN_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE,
     LoopLengthCheck, LOOP_LENGTH_DEFAULT, LOOP_LENGTH_DEFAULT_COMPARISON,
     ExternalEscapeDiversityCheck, EXTERNAL_ESCAPE_DIVERSITY_DEFAULT,
     LoopDistanceFromStartCheck, LOOP_DISTANCE_FROM_START_DEFAULT,
     LoopDistanceFromFinishCheck, LOOP_DISTANCE_FROM_FINISH_DEFAULT,
-    MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT,
-    MaxLoopsCountCheck, MAX_LOOPS_COUNT_DEFAULT,
+    MaxLoopDensityCheck, MAX_LOOP_DENSITY_DEFAULT, MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE,
+    MaxLoopsCountCheck, MAX_LOOPS_COUNT_DEFAULT, MAX_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE,
     SccCountCheck, MAX_SCC_COUNT_DEFAULT,
     MinRegionSizeCheck, MIN_REGION_SIZE_DEFAULT,
     MinRegionRatioCheck, MIN_REGION_RATIO_DEFAULT,
@@ -67,21 +73,21 @@ pub use checks::{
     OneWayGroupGeometricProximityCheck, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
     OneWayGroupGraphProximityCheck, ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
     OneWayGroupSuperHubCheck, ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT,
-    MinOneWayCountCheck, MIN_ONE_WAY_COUNT_DEFAULT,
-    MinOneWayRatioCheck, MIN_ONE_WAY_RATIO_DEFAULT,
-    MaxOneWayCountCheck, MAX_ONE_WAY_COUNT_DEFAULT,
-    MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT,
-    MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT,
-    MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT,
+    MinOneWayCountCheck, MIN_ONE_WAY_COUNT_DEFAULT, MIN_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE,
+    MinOneWayRatioCheck, MIN_ONE_WAY_RATIO_DEFAULT, MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE,
+    MaxOneWayCountCheck, MAX_ONE_WAY_COUNT_DEFAULT, MAX_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE,
+    MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE,
+    MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE,
+    MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE,
     TeleportSplitIntersectionCheck, TeleportSplitEdgeSelector,
     SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT_COMPARISON,
     SplitTeleportIntersectionCheck, SplitTeleportDirection,
-    MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT,
-    MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT,
+    MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE,
+    MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE,
     SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
     SplitGroupGraphProximityCheck, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
-    SplitCountCheck, SPLIT_COUNT_DEFAULT,
-    SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT,
+    SplitCountCheck, SPLIT_COUNT_DEFAULT, SPLIT_COUNT_DEFAULT_FLOOR_SCOPE,
+    SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_ESTIMATE_DEFAULT, SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE,
     SplitNodeConnectionCountCheck, SplitNodeConnectionDirection, SPLIT_NODE_CONNECTION_COUNT_DEFAULT, SPLIT_NODE_CONNECTION_COUNT_DEFAULT_COMPARISON,
     SplitNodeConnectionPerNeighborCheck, SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT,
     SplitNodeConnectionPerFaceCheck, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT,

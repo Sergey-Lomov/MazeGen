@@ -26,6 +26,7 @@ pub mod one_way_to_wall;
 pub mod group_select;
 pub mod one_way_group_select;
 mod missing_one_ways_shared;
+mod remaining_deficits;
 pub mod missing_one_ways_from_passage;
 pub mod missing_one_ways_from_wall;
 pub mod missing_teleports;

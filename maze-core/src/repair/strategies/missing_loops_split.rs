@@ -5,13 +5,14 @@ use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::generation::{PresetState, SplitGenerationConfig};
 use crate::graph::route_protection::is_node_on_route;
-use crate::quality_control::MissingLoopsIssue;
+use crate::quality_control::{MissingLoopsIssue, RepairArea};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::{MutationCommand, SplitNodeEdgeDirection};
 use super::split_core::{RequiredConnection, pick_weighted_pattern, plan_unconstrained_split, plan_pattern_split};
 use super::dead_end_priority::{PARAM_SRC_MODE, SRC_MODE_RANDOM, SRC_MODE_OPTIONS, apply_src_mode};
+use super::remaining_deficits::RemainingDeficits;
 
 pub const PARAM_RESERVE_PERCENT: &str = "reserve_percent";
 pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
@@ -100,14 +101,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsSplit
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let missing = issue.missing;
-        if missing == 0 {
+        if issue.missing.is_empty() {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
         let reserve_percent = params.get(PARAM_RESERVE_PERCENT).and_then(|v| v.as_float()).unwrap_or(50.0);
-        let target = ((missing as f64) * (1.0 + reserve_percent / 100.0)).ceil() as u32;
-        let target = target.max(1);
         let protect_route = match params.get(PARAM_PROTECT_ROUTE) {
             Some(StrategyParamValue::Bool(v)) => *v,
             _ => true,
@@ -120,72 +118,92 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsSplit
             Some(StrategyParamValue::Enum(v)) => v.as_str(),
             _ => SRC_MODE_RANDOM,
         };
-        let eligible: Vec<NodeId> = maze.field.all_node_ids()
-            .filter(|&node| crate::generation::split_is_eligible(&maze.field, preset_state, node))
-            .filter(|&node| !protect_route || !is_node_on_route(maze, node))
-            .collect();
-        let mut pool = apply_src_mode(maze, eligible, src_mode, rng);
 
-        let mut added = 0u32;
-        let mut failed_attempts = 0u32;
         let mut attempted_pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
         let mut commands = Vec::new();
         let mut split_points: HashSet<NodeId> = HashSet::new();
+        let mut total_added = 0u32;
 
-        while added < target && failed_attempts < max_attempts && !pool.is_empty() {
-            // Pop from the end, not a random index — `apply_src_mode` orders the pool so
-            // dead-end candidates sit at this end when `dead_end_priority` is active (GitHub
-            // issue #278's exhaustion-fallback fix); a random-index pick would destroy that
-            // ordering. `src` always leaves the pool after this iteration regardless of outcome
-            // (see the unconditional `swap_remove` below), so popping it up front changes nothing
-            // about which candidates get tried, only the order.
-            let src = pool.pop().expect("pool.is_empty() already checked by the while condition");
-
-            let mut neighbors = maze.field.neighbors(src);
-            let mut planned = false;
-
-            while !neighbors.is_empty() {
-                let n_pick = rng.random_range(0..neighbors.len());
-                let dst = neighbors.swap_remove(n_pick);
-
-                let already_connected = maze.graph.edge_between(src, dst).is_some()
-                    || maze.graph.edge_between(dst, src).is_some()
-                    || attempted_pairs.contains(&(src, dst));
-                // `dst` is a `SplitNodeEdge::target` in the command about to be proposed for
-                // `src` — resolved to this exact `NodeId` right now, not re-resolved at apply
-                // time. If `dst`'s own point already got a `ReplacePointNodes` command earlier in
-                // this same `apply()` call, that node no longer exists by the time commands are
-                // applied (`replace_point_nodes_feasible` requires `field.point_of(edge.target)`
-                // to still resolve) — the whole command would be silently declined. Skip any `dst`
-                // whose point is already split-committed this call, rather than propose a command
-                // guaranteed to be rejected.
-                let dst_already_split = maze.field.level_of(dst).zip(maze.field.point_of(dst))
-                    .is_some_and(|(l, p)| maze.field.nodes_at(l, p).iter().any(|n| split_points.contains(n)));
-                if already_connected || dst_already_split {
-                    continue;
-                }
-                attempted_pairs.insert((src, dst));
-
-                let required = RequiredConnection { neighbor: dst, direction: SplitNodeEdgeDirection::Passage };
-                if let Some(nodes) = self.plan_split(maze, src, &required, &split_points, rng) {
-                    commands.push(MutationCommand::ReplacePointNodes { at: src, nodes });
-                    split_points.insert(src);
-                    added += 1;
-                    planned = true;
-                    break;
-                }
+        let mut deficits = RemainingDeficits::new(&issue.missing);
+        let areas: Vec<RepairArea> = deficits.areas().collect();
+        for area in areas {
+            let missing = deficits.live(area);
+            if missing == 0 {
+                continue;
             }
+            let target = ((missing as f64) * (1.0 + reserve_percent / 100.0)).ceil() as u32;
+            let target = target.max(1);
 
-            if !planned {
-                failed_attempts += 1;
+            let eligible: Vec<NodeId> = maze.field.all_node_ids()
+                .filter(|&node| crate::generation::split_is_eligible(&maze.field, preset_state, node))
+                .filter(|&node| !protect_route || !is_node_on_route(maze, node))
+                .filter(|&node| match area {
+                    RepairArea::WholeMaze => true,
+                    RepairArea::Level(level) => maze.field.level_of(node) == Some(level),
+                })
+                .collect();
+            let mut pool = apply_src_mode(maze, eligible, src_mode, rng);
+
+            let mut added = 0u32;
+            let mut failed_attempts = 0u32;
+
+            while added < target && failed_attempts < max_attempts && !pool.is_empty() {
+                // Pop from the end, not a random index — `apply_src_mode` orders the pool so
+                // dead-end candidates sit at this end when `dead_end_priority` is active (GitHub
+                // issue #278's exhaustion-fallback fix); a random-index pick would destroy that
+                // ordering. `src` always leaves the pool after this iteration regardless of outcome
+                // (see the unconditional `swap_remove` below), so popping it up front changes nothing
+                // about which candidates get tried, only the order.
+                let src = pool.pop().expect("pool.is_empty() already checked by the while condition");
+
+                let mut neighbors = maze.field.neighbors(src);
+                let mut planned = false;
+
+                while !neighbors.is_empty() {
+                    let n_pick = rng.random_range(0..neighbors.len());
+                    let dst = neighbors.swap_remove(n_pick);
+
+                    let already_connected = maze.graph.edge_between(src, dst).is_some()
+                        || maze.graph.edge_between(dst, src).is_some()
+                        || attempted_pairs.contains(&(src, dst));
+                    // `dst` is a `SplitNodeEdge::target` in the command about to be proposed for
+                    // `src` — resolved to this exact `NodeId` right now, not re-resolved at apply
+                    // time. If `dst`'s own point already got a `ReplacePointNodes` command earlier in
+                    // this same `apply()` call, that node no longer exists by the time commands are
+                    // applied (`replace_point_nodes_feasible` requires `field.point_of(edge.target)`
+                    // to still resolve) — the whole command would be silently declined. Skip any `dst`
+                    // whose point is already split-committed this call, rather than propose a command
+                    // guaranteed to be rejected.
+                    let dst_already_split = maze.field.level_of(dst).zip(maze.field.point_of(dst))
+                        .is_some_and(|(l, p)| maze.field.nodes_at(l, p).iter().any(|n| split_points.contains(n)));
+                    if already_connected || dst_already_split {
+                        continue;
+                    }
+                    attempted_pairs.insert((src, dst));
+
+                    let required = RequiredConnection { neighbor: dst, direction: SplitNodeEdgeDirection::Passage };
+                    if let Some(nodes) = self.plan_split(maze, src, &required, &split_points, rng) {
+                        commands.push(MutationCommand::ReplacePointNodes { at: src, nodes });
+                        split_points.insert(src);
+                        added += 1;
+                        deficits.consume(&[area, RepairArea::WholeMaze]);
+                        planned = true;
+                        break;
+                    }
+                }
+
+                if !planned {
+                    failed_attempts += 1;
+                }
+                // Either way `src` already left the pool via the `pop()` above — it's no longer
+                // split-eligible once a successful command applies, and every one of its neighbors
+                // was already tried this visit either way, mirroring `AddSplitStrategy`'s own
+                // per-point once-only bookkeeping.
             }
-            // Either way `src` already left the pool via the `pop()` above — it's no longer
-            // split-eligible once a successful command applies, and every one of its neighbors was
-            // already tried this visit either way, mirroring `AddSplitStrategy`'s own per-point
-            // once-only bookkeeping.
+            total_added += added;
         }
 
-        if added == 0 {
+        if total_added == 0 {
             return (RepairResult::Failed, vec![]);
         }
         (RepairResult::Fixed { score: None }, commands)
@@ -246,7 +264,8 @@ mod tests {
     }
 
     fn missing_issue(missing: u32) -> MissingLoopsIssue {
-        MissingLoopsIssue::new_from_check("min_loops_count", missing)
+        let entries = if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] };
+        MissingLoopsIssue::new_from_check("min_loops_count", entries)
     }
 
     #[test]
@@ -391,6 +410,67 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(1);
         let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &no_params(), &preset_state, &[]);
         assert!(matches!(result, RepairResult::Failed));
+    }
+
+    #[test]
+    fn apply_restricts_candidates_to_the_named_level() {
+        let mut ids = IdGenerator::new();
+        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let level_b = mf.add_level(field_b);
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
+        let nodes_before = maze.field.node_count();
+
+        let issue = MissingLoopsIssue::new_from_check("min_loops_count", vec![(RepairArea::Level(level_b), 1)]);
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
+        let params = build_params(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&strategy_unconstrained()), Some(&overrides));
+        let mut rng = MazeRng::seed_from_u64(11);
+        let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert_eq!(maze.field.node_count(), nodes_before + 1);
+        let split_points: std::collections::HashSet<_> = maze.field.all_points_with_level()
+            .filter(|&(level, point)| maze.field.nodes_at(level, point).len() > 1)
+            .collect();
+        assert_eq!(split_points.len(), 1);
+        assert_eq!(split_points.iter().next().unwrap().0, level_b, "the split tile must land on the reported level");
+    }
+
+    #[test]
+    fn apply_does_not_double_count_a_whole_maze_entry_already_satisfied_by_per_floor_entries() {
+        // GitHub issue #369 follow-up: a per-floor deficit and a whole-maze deficit on the same
+        // rule both land in one issue's `missing` — the whole-maze entry is the same requirement
+        // measured differently, not independent on top. 1 per floor on 3 floors + 3 whole-maze
+        // must add 3 split tiles total, not 6.
+        let mut ids = IdGenerator::new();
+        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_c = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let level_b = mf.add_level(field_b);
+        let level_c = mf.add_level(field_c);
+        let level_a = mf.levels_ordered().next().unwrap();
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
+        let nodes_before = maze.field.node_count();
+
+        let issue = MissingLoopsIssue::new_from_check("min_loops_count", vec![
+            (RepairArea::Level(level_a), 1),
+            (RepairArea::Level(level_b), 1),
+            (RepairArea::Level(level_c), 1),
+            (RepairArea::WholeMaze, 3),
+        ]);
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
+        let params = build_params(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&strategy_unconstrained()), Some(&overrides));
+        let mut rng = MazeRng::seed_from_u64(11);
+        let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert_eq!(maze.field.node_count(), nodes_before + 3, "3 split tiles total, not 6");
     }
 
     #[test]

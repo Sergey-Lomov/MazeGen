@@ -1,17 +1,19 @@
 use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_SPLIT_TILES};
+use crate::quality_control::RepairArea;
+use super::merge_repair_area_deficits;
 
 /// Produced by any check that flags the maze as short on split tiles overall (currently only
 /// `SplitCountCheck`/`SplitDensityCheck`; future checks needing more split tiles added may reuse
-/// this same kind). `missing` is how many split tiles short of the requirement the maze is — lets
-/// a repair strategy know how many to add. Mirrors `MissingLoopsIssue`'s shape/role exactly.
+/// this same kind). Mirrors `MissingLoopsIssue`'s shape/role exactly, including the
+/// `Vec<(RepairArea, u32)>` per-area deficit list (GitHub issue #369's floor-scope follow-up).
 #[derive(Debug, Clone, PartialEq)]
 pub struct MissingSplitTilesIssue {
     meta: IssueMeta,
-    pub missing: u32,
+    pub missing: Vec<(RepairArea, u32)>,
 }
 
 impl MissingSplitTilesIssue {
-    pub fn new_from_check(source_check: &str, missing: u32) -> Self {
+    pub fn new_from_check(source_check: &str, missing: Vec<(RepairArea, u32)>) -> Self {
         Self { meta: IssueMeta::new_from_check(source_check), missing }
     }
 
@@ -32,11 +34,9 @@ impl IssueRequirement for MissingSplitTilesIssue {
 crate::impl_issue!(MissingSplitTilesIssue);
 
 impl IssueMerge for MissingSplitTilesIssue {
-    /// `missing` is how large the deficit is, so when two checks disagree the repair strategy
-    /// must fix at least the larger reported deficit — taking `max` avoids silently under-fixing.
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
-        self.missing = self.missing.max(other.missing);
+        merge_repair_area_deficits(&mut self.missing, other.missing);
     }
 }
 
@@ -46,26 +46,18 @@ mod tests {
     use crate::quality_control::issue::Issue;
 
     #[test]
-    fn merge_takes_the_larger_missing_value_when_self_is_smaller() {
-        let mut a = MissingSplitTilesIssue::new_from_check("split_count", 5);
-        let b = MissingSplitTilesIssue::new_from_check("split_density", 8);
+    fn merge_takes_the_larger_missing_value_for_the_same_area() {
+        let mut a = MissingSplitTilesIssue::new_from_check("split_count", vec![(RepairArea::WholeMaze, 5)]);
+        let b = MissingSplitTilesIssue::new_from_check("split_density", vec![(RepairArea::WholeMaze, 8)]);
         a.merge(b);
-        assert_eq!(a.missing, 8, "must not silently keep the smaller self value");
-    }
-
-    #[test]
-    fn merge_takes_the_larger_missing_value_when_self_is_larger() {
-        let mut a = MissingSplitTilesIssue::new_from_check("split_count", 8);
-        let b = MissingSplitTilesIssue::new_from_check("split_density", 5);
-        a.merge(b);
-        assert_eq!(a.missing, 8);
+        assert_eq!(a.missing, vec![(RepairArea::WholeMaze, 8)], "must not silently keep the smaller self value");
     }
 
     #[test]
     fn merge_unions_source_checks_and_details() {
-        let mut a = MissingSplitTilesIssue::new_from_check("split_count", 5)
+        let mut a = MissingSplitTilesIssue::new_from_check("split_count", vec![(RepairArea::WholeMaze, 5)])
             .with_detail("split_count", "missing", "5".to_string());
-        let b = MissingSplitTilesIssue::new_from_check("split_density", 8)
+        let b = MissingSplitTilesIssue::new_from_check("split_density", vec![(RepairArea::WholeMaze, 8)])
             .with_detail("split_density", "missing", "8".to_string());
         a.merge(b);
 

@@ -1,11 +1,15 @@
+use std::collections::{HashMap, HashSet};
 use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
-use crate::space::Tessellation;
+use crate::ids::EdgeId;
+use crate::space::{LevelId, Tessellation};
 use crate::quality_control::check::Check;
-use crate::quality_control::InvalidOneWayGroupIssue;
+use crate::quality_control::{InvalidOneWayGroupIssue, FloorScope};
+use crate::quality_control::floor_group::{floors_of_edge, floor_point_count};
 
 pub const MAX_ONE_WAY_RATIO_DEFAULT: u32 = 100;
+pub const MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags an excess against the share of one-way passage edges (`EdgeKind::Basic`, single
 /// direction) relative to the field's size — see GitHub issue #202, part of the one-way
@@ -29,41 +33,87 @@ pub const MAX_ONE_WAY_RATIO_DEFAULT: u32 = 100;
 pub struct MaxOneWayRatioCheck {
     pub instance_id: String,
     pub max_ratio: u32,
+    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck {
     fn check_type_id(&self) -> &'static str { "max_one_way_ratio" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let field_cells = maze.field.point_count() as u64;
-        if field_cells == 0 {
-            return;
-        }
-
         // Same kind-filtered reverse lookup as MaxOneWayCountCheck/MinOneWayRatioCheck.
-        let one_ways: Vec<_> = maze.graph.edges()
+        let one_ways: Vec<EdgeId> = maze.graph.edges()
             .filter(|e| e.kind == EdgeKind::Basic)
             .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
             .map(|e| e.id)
             .collect();
-
-        let count = one_ways.len() as u64;
         let max_ratio = self.max_ratio as u64;
-        if count * 100 <= max_ratio * field_cells {
-            return;
-        }
 
-        // Round-to-nearest can push target_count above count on a small enough field (rounding
-        // error can exceed the margin the exact gate above guarantees) -- saturating_sub keeps
-        // to_remove at 0 rather than underflowing in that edge case.
-        let target_count = (max_ratio * field_cells + 50) / 100;
-        let to_remove = count.saturating_sub(target_count) as u32;
-        if to_remove == 0 {
-            return;
-        }
-        let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, vec![(one_ways, to_remove)])
+        // Under `PerFloor` the whole group is reported (and `to_remove` computed against the
+        // worst-over-budget floor) if any floor exceeds max_ratio -- a one-way crossing floors
+        // counts toward every floor it touches (GitHub issue #369).
+        let (group, to_remove) = match self.floor_scope {
+            FloorScope::WholeMaze => {
+                let field_cells = maze.field.point_count() as u64;
+                if field_cells == 0 {
+                    return;
+                }
+                let count = one_ways.len() as u64;
+                match Self::to_remove_for(count, field_cells, max_ratio) {
+                    0 => return,
+                    n => (one_ways, n),
+                }
+            }
+            FloorScope::PerFloor => {
+                let mut per_floor_count: HashMap<LevelId, u64> =
+                    maze.field.levels_ordered().map(|l| (l, 0)).collect();
+                let one_way_floors: Vec<_> = one_ways.iter()
+                    .map(|&id| floors_of_edge(&maze.field, &maze.graph, id))
+                    .collect();
+                for floors in &one_way_floors {
+                    for &level in floors {
+                        *per_floor_count.entry(level).or_insert(0) += 1;
+                    }
+                }
+                let mut over_budget: HashSet<LevelId> = HashSet::new();
+                let mut max_to_remove = 0u32;
+                for (&level, &count) in &per_floor_count {
+                    let field_cells = floor_point_count(&maze.field, level) as u64;
+                    let n = Self::to_remove_for(count, field_cells, max_ratio);
+                    if n > 0 {
+                        over_budget.insert(level);
+                        max_to_remove = max_to_remove.max(n);
+                    }
+                }
+                if over_budget.is_empty() {
+                    return;
+                }
+                let flagged: Vec<EdgeId> = one_ways.into_iter().zip(one_way_floors)
+                    .filter(|(_, floors)| floors.iter().any(|l| over_budget.contains(l)))
+                    .map(|(id, _)| id)
+                    .collect();
+                (flagged, max_to_remove)
+            }
+        };
+
+        let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, vec![(group, to_remove)])
             .with_detail(&self.instance_id, "max_ratio", self.max_ratio.to_string());
         issues.push(issue);
+    }
+}
+
+impl MaxOneWayRatioCheck {
+    /// Excess one-way count for one region (whole maze or one floor) given its own one-way count
+    /// and cell count — shared by both `floor_scope` branches so the cross-multiplied gate and
+    /// round-to-nearest `target_count` logic stay identical either way.
+    fn to_remove_for(count: u64, field_cells: u64, max_ratio: u64) -> u32 {
+        if field_cells == 0 || count * 100 <= max_ratio * field_cells {
+            return 0;
+        }
+        // Round-to-nearest can push target_count above count on a small enough field (rounding
+        // error can exceed the margin the exact gate above guarantees) -- saturating_sub keeps
+        // the result at 0 rather than underflowing in that edge case.
+        let target_count = (max_ratio * field_cells + 50) / 100;
+        count.saturating_sub(target_count) as u32
     }
 }
 

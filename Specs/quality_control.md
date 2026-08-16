@@ -504,6 +504,23 @@ pub enum Comparison { Lt, Gt, Le, Ge, Eq }
 - **Merge** when both directions validate one entity and both name the *same* corrective action (4.2 checks) — e.g. `LoopLengthCheck`'s `Lt`/`Gt` both mean "this cycle is invalid, cut it", so `min_loop_length`/`max_loop_length` merged into one `loop_length` check type. `TeleportGeometricLengthCheck` and `TeleportWaypointDistanceCheck`'s `comparison` param follow the same rule.
 - **Do not merge** when the two directions name *different* corrective actions — a deficit (4.1, "add more") vs. a surplus (4.3, "remove the excess") are semantically different problems even when they're a min/max pair on the same metric, so they keep separate `IssueKind`s, separate check types, and separate repair strategies. `MinRegionSizeCheck`/`MaxRegionSizeCheck` (and their `*_ratio` counterparts) are the standing example: `min_region_size` flags `REGION_NEEDS_EXPANSION` (grow the region), `max_region_size` flags `REGION_NEEDS_SHRINK` (shrink it) — see `REGION_NEEDS_SHRINK`'s doc comment. Count-vs-count pairs (`min_loops_count`/`max_loops_count`, `min_region_count`'s balance) follow the same non-merge rule for the same reason — `min_loops_count` flags `MISSING_LOOPS` (add more), `max_loops_count` flags `INVALID_LOOP_GROUP` (break the excess).
 
+### Floor scope (`FloorScope`)
+
+```rust
+pub enum FloorScope { WholeMaze, PerFloor }
+```
+
+`FloorScope` (`quality_control::floor_scope`, GitHub issue #369) — shared check-level param exposed by every count/density-style QC check *except* region-based checks (`min_region_size`, `min_region_ratio`, `max_region_size`, `max_region_ratio`, `min_region_count` — region membership is already floor-scoped by construction) and `scc_count`. Controls whether the check's threshold is evaluated once over the whole maze or independently per floor:
+
+- `WholeMaze` — the pre-#369 behavior: the check counts/measures across every floor combined and compares once against the threshold.
+- `PerFloor` — the check groups its entities by floor (via `floors_of_edge`/`floors_of_edges`/`floors_of_node`, `floor_group.rs`) and evaluates the threshold independently on each floor's own field-cell count (`MultiLevelField::point_count` per level). An entity spanning multiple floors (an edge or node touching more than one level) counts toward **every** floor it touches — not split fractionally, not attributed to a single "owning" floor. Split tiles are the one exception in practice: a split tile always belongs to exactly one floor, so grouping it is a plain bucketing operation rather than a multi-floor membership case.
+
+For deficit checks (`min_*`), a per-floor deficit is computed for each floor independently and the results are **summed** into one issue (`MissingLoopsIssue`, `MissingOneWaysIssue`, `MissingTeleportsIssue`, `MissingSplitTilesIssue`) — this is deliberately not routed through `IssueMerge::merge`, whose cross-check semantics (take the `max()` of two different checks' numbers) would be wrong for summing one check's own per-floor numbers.
+
+For surplus/group checks (`max_*`), each check computes the set of over-budget floors and flags every entity touching *any* over-budget floor; the reported `to_remove`/excess count is the **max** excess across over-budget floors (not summed), since removing that many entities from the flagged group is guaranteed to bring every over-budget floor back under its own threshold independently.
+
+`as_str()`/`from_str()` round-trip through `"whole_maze"`/`"per_floor"`. **Default varies by check family**: every count-style check (`min_loops_count`, `max_loops_count`, `min_teleport_count`, `min_one_way_count`, `max_one_way_count`, `split_count`, `max_split_count`) defaults to `WholeMaze` (reproduces pre-#369 behavior exactly). Every density-style check (`min_loop_density`, `max_loop_density`, `min_teleport_ratio`, `min_one_way_ratio`, `max_one_way_ratio`, `split_density`, `max_split_density`) defaults to `PerFloor` — a density is a per-100-cells share, and per-floor coverage is the more meaningful reading of that share on a multi-floor maze than one number blended across floors of possibly very different sizes. Each check's own `*_DEFAULT_FLOOR_SCOPE` const carries this default through to `checks_catalog.rs`'s `floor_scope_param(default)` (wasm) and `check_factory.rs`'s `parse_floor_scope(param, default)` (maze-runner).
+
 ### MinLoopsCountCheck / MinLoopDensityCheck
 
 ```rust
@@ -1622,14 +1639,14 @@ unified QualityControlEngine" section for how a `QcRuleConfig` is validated and 
 |----|------------|--------|-----------------|
 | `missing_endpoints` | `missing_endpoints` | — | yes |
 | `unreachable_finish` | `unreachable_finish` | — | yes |
-| `min_loops_count` | `missing_loops` | `min_loops: Integer(default=1, min=1, max=1_000_000)` | no |
-| `min_loop_density` | `missing_loops` | `min_density: Integer(default=30, min=0, max=100)`, `avg_loop_length_estimate: Integer(default=10, min=1, max=100_000)` | no |
+| `min_loops_count` | `missing_loops` | `min_loops: Integer(default=1, min=1, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
+| `min_loop_density` | `missing_loops` | `min_density: Integer(default=30, min=0, max=100)`, `avg_loop_length_estimate: Integer(default=10, min=1, max=100_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
 | `loop_length` | `invalid_loop` | `length: Integer(default=10, min=1, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)` | no |
 | `external_escape_diversity` | `invalid_loop` | `min_distinct_exits: Integer(default=3, min=0, max=1_000)` | no |
 | `loop_distance_from_start` | `invalid_loop` | `min_distance_from_start: Integer(default=0, min=0, max=100_000)` | no |
 | `loop_distance_from_finish` | `invalid_loop` | `min_distance_from_finish: Integer(default=0, min=0, max=100_000)` | no |
-| `max_loop_density` | `invalid_loop_group` | `max_density: Integer(default=30, min=0, max=100)` | no |
-| `max_loops_count` | `invalid_loop_group` | `max_loops_count: Integer(default=20, min=0, max=100_000)` | no |
+| `max_loop_density` | `invalid_loop_group` | `max_density: Integer(default=30, min=0, max=100)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
+| `max_loops_count` | `invalid_loop_group` | `max_loops_count: Integer(default=20, min=0, max=100_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
 | `scc_count` | `excessive_scc_count` | `max_scc_count: Integer(default=1, min=1, max=1_000_000)` | no |
 | `min_region_size` | `region_needs_expansion` | `min_region_size: Integer(default=20, min=1, max=1_000_000)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
 | `min_region_ratio` | `region_needs_expansion` | `min_region_ratio: Integer(default=25, min=0, max=100)`, `region_class: Enum(options=[all,path,alternative,unreachable,trap], default=all)` | no |
@@ -1643,23 +1660,23 @@ unified QualityControlEngine" section for how a `QcRuleConfig` is validated and 
 | `teleport_super_hub_avoidance` | `invalid_teleport` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)`, `edge_hub: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` (rule-level `protect_route`) | no |
 | `teleport_split_intersection` | `invalid_teleport` | `edge_split: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` (rule-level `protect_route`) | no |
 | `teleport_group_proximity` | `teleport_group_proximity` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `own_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)`, `other_edge: Enum(options=[entry,exit,entry_or_exit], default=entry_or_exit)` (rule-level `protect_route`) | no |
-| `min_teleport_count` | `missing_teleports` | `min_teleports: Integer(default=1, min=1, max=1_000_000)` | no |
-| `min_teleport_ratio` | `missing_teleports` | `min_teleport_ratio: Integer(default=10, min=0, max=100)` | no |
+| `min_teleport_count` | `missing_teleports` | `min_teleports: Integer(default=1, min=1, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
+| `min_teleport_ratio` | `missing_teleports` | `min_teleport_ratio: Integer(default=10, min=0, max=100)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
 | `one_way_waypoint_distance` | `invalid_one_way` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `waypoint: Enum(options=[start,finish,any], default=any)` (rule-level `protect_route`) | yes |
-| `min_one_way_count` | `missing_one_ways` | `min_one_ways: Integer(default=1, min=1, max=1_000_000)` | no |
-| `min_one_way_ratio` | `missing_one_ways` | `min_ratio: Integer(default=10, min=0, max=100)` | no |
+| `min_one_way_count` | `missing_one_ways` | `min_one_ways: Integer(default=1, min=1, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
+| `min_one_way_ratio` | `missing_one_ways` | `min_ratio: Integer(default=10, min=0, max=100)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
 | `one_way_group_geometric_proximity` | `invalid_one_way_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` (rule-level `protect_route`) | yes |
 | `one_way_group_graph_proximity` | `invalid_one_way_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)` (rule-level `protect_route`) | yes |
 | `one_way_group_super_hub` | `invalid_one_way_group` | `max_connections: Integer(default=1_000, min=0, max=1_000_000)` | no |
-| `max_one_way_count` | `invalid_one_way_group` | `max_one_ways: Integer(default=1_000, min=0, max=1_000_000)` | no |
-| `max_one_way_ratio` | `invalid_one_way_group` | `max_ratio: Integer(default=100, min=0, max=100)` | no |
+| `max_one_way_count` | `invalid_one_way_group` | `max_one_ways: Integer(default=1_000, min=0, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
+| `max_one_way_ratio` | `invalid_one_way_group` | `max_ratio: Integer(default=100, min=0, max=100)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
 | `split_distance_from_waypoint` | `invalid_split_tile` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `waypoint: Enum(options=[start,finish,any], default=any)` | no |
-| `max_split_count` | `invalid_split_tile_group` | `max_split_count: Integer(default=20, min=0, max=1_000_000)` | no |
-| `max_split_density` | `invalid_split_tile_group` | `max_split_density: Integer(default=30, min=0, max=100)` | no |
+| `max_split_count` | `invalid_split_tile_group` | `max_split_count: Integer(default=20, min=0, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
+| `max_split_density` | `invalid_split_tile_group` | `max_split_density: Integer(default=30, min=0, max=100)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
 | `split_group_geometric_proximity` | `invalid_split_tile_group` | `split_group_geometric_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` | no |
 | `split_group_graph_proximity` | `invalid_split_tile_group` | `split_group_graph_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)` | no |
-| `split_count` | `missing_split_tiles` | `split_count: Integer(default=1, min=0, max=1_000_000)`, `patterns: PatternList(with_weights=false)` | no |
-| `split_density` | `missing_split_tiles` | `split_density: Integer(default=10, min=0, max=100)`, `split_tile_estimate: Integer(default=1, min=1, max=100_000)`, `patterns: PatternList(with_weights=false)` | no |
+| `split_count` | `missing_split_tiles` | `split_count: Integer(default=1, min=0, max=1_000_000)`, `patterns: PatternList(with_weights=false)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
+| `split_density` | `missing_split_tiles` | `split_density: Integer(default=10, min=0, max=100)`, `split_tile_estimate: Integer(default=1, min=1, max=100_000)`, `patterns: PatternList(with_weights=false)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
 | `split_node_connection_count` | `invalid_split_node` | `count: Integer(default=2, min=0, max=1_000_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `direction: Enum(options=[incoming,outgoing,bidirectional,any], default=any)` | no |
 | `split_node_connection_per_neighbor` | `invalid_split_node_connection_group` | `max: Integer(default=1, min=0, max=1_000_000)` | no |
 | `split_node_connection_per_face` | `invalid_split_node_connection_group` | `max: Integer(default=1, min=0, max=1_000_000)` | no |

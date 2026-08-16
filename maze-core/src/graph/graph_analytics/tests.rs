@@ -58,6 +58,49 @@ fn pure_cycle_basis_matches_cycle_count_on_bowtie_clusters() {
     assert_eq!(analytics.pure_cycle_basis.len(), 4);
 }
 
+/// Two triangles on "different floors" bridged by a single bidirectional VerticalPassage — the
+/// bridge itself is not part of either cycle and must not be counted as a third independent one.
+#[test]
+fn two_triangles_bridged_by_vertical_passage_has_two_cycles() {
+    let mut g = Graph::new();
+    for id in 0..6u64 { g.add_node(id); }
+    g.add_edge(0, 1, EdgeKind::Basic);
+    g.add_edge(1, 2, EdgeKind::Basic);
+    g.add_edge(2, 0, EdgeKind::Basic);
+    g.add_edge(3, 4, EdgeKind::Basic);
+    g.add_edge(4, 5, EdgeKind::Basic);
+    g.add_edge(5, 3, EdgeKind::Basic);
+    g.add_edge(0, 3, EdgeKind::VerticalPassage);
+    g.add_edge(3, 0, EdgeKind::VerticalPassage);
+
+    let analytics = analyze(&g);
+    assert_eq!(analytics.cycle_count, 2, "the bridge itself must not count as a third cycle");
+    assert_eq!(analytics.pure_cycle_basis.len(), 2);
+}
+
+/// GitHub issue #369 follow-up: a dangling bidirectional VerticalPassage off a real triangle
+/// must not be counted as its own cycle — it's a dead-end spur (walk up, walk back down), not a
+/// loop; `cycle_count`/`pure_cycle_nav_nodes`/`pure_cycle_edge_indices` must all exclude it.
+#[test]
+fn dangling_vertical_passage_off_a_triangle_is_not_a_cycle() {
+    let mut g = Graph::new();
+    for id in 0..4u64 { g.add_node(id); }
+    g.add_edge(0, 1, EdgeKind::Basic);
+    g.add_edge(1, 2, EdgeKind::Basic);
+    g.add_edge(2, 0, EdgeKind::Basic);
+    g.add_edge(0, 3, EdgeKind::VerticalPassage);
+    g.add_edge(3, 0, EdgeKind::VerticalPassage);
+
+    let nav = build_nav_graph(&g);
+    let dead_end_nav_id = nav.nav_node_for(3);
+    let analytics = analyze(&g);
+    assert_eq!(analytics.cycle_count, 1, "only the triangle is a real cycle");
+    assert_eq!(analytics.pure_cycle_basis.len(), 1);
+    if let Some(dead_end) = dead_end_nav_id {
+        assert!(!analytics.pure_cycle_nav_nodes.contains(&dead_end), "the vertical passage's dead-end node must not be in the cycle core");
+    }
+}
+
 /// GitHub issue #284: `simple_cycle_count` must be the fully deduped simple-cycle count (each
 /// bowtie contributes 3 distinct simple cycles: 2 triangles + 1 composite route, so 6 across two
 /// clusters), never the raw pre-dedup count (which would double-count every cycle as its CW and

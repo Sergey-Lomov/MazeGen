@@ -1,6 +1,6 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
-use maze_core::quality_control::{Comparison, CycleKind, GeometricFloorMode};
+use maze_core::quality_control::{Comparison, CycleKind, GeometricFloorMode, FloorScope};
 use maze_core::RegionClass;
 
 #[derive(Serialize)]
@@ -159,6 +159,23 @@ pub fn cycle_kind_param() -> ParamDescriptor {
         kind: ParamKindDto::Enum {
             options: CycleKind::ALL.iter().map(|k| k.as_str()).collect(),
             default: CycleKind::Any.as_str(),
+        },
+    }
+}
+
+/// Shared `floor_scope` param descriptor — GitHub issue #369: every count/density-style QC check
+/// (except region-based checks and `scc_count`) exposes whether its threshold is evaluated over
+/// the whole maze or independently per floor (an entity spanning floors counts toward every floor
+/// it touches under `PerFloor`). `default` is `WholeMaze` for count-style checks (the pre-#369
+/// behavior) and `PerFloor` for density-style checks (per-floor coverage is the more meaningful
+/// default for a per-100-cells share).
+pub fn floor_scope_param(default: FloorScope) -> ParamDescriptor {
+    ParamDescriptor {
+        id: "floor_scope",
+        label: "Floor scope",
+        kind: ParamKindDto::Enum {
+            options: FloorScope::ALL.iter().map(|s| s.as_str()).collect(),
+            default: default.as_str(),
         },
     }
 }

@@ -3,13 +3,14 @@ use std::collections::{HashSet, VecDeque};
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
-use crate::quality_control::MissingTeleportsIssue;
+use crate::quality_control::{MissingTeleportsIssue, RepairArea};
 use crate::generation::PresetState;
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::farthest_reachable::farthest_from;
+use super::remaining_deficits::RemainingDeficits;
 
 pub const PARAM_ENTRY_PICK: &str = "entry_pick";
 pub const PARAM_UNREACHABLE_PRIORITY: &str = "unreachable_priority";
@@ -109,8 +110,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let missing = issue.missing;
-        if missing == 0 {
+        if issue.missing.is_empty() {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -127,62 +127,98 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
         let attempts_limit = params.get(PARAM_ATTEMPTS_LIMIT).and_then(|v| v.as_float()).map(|f| f.round().max(1.0) as usize).unwrap_or(3);
         let reserve_percent = params.get(PARAM_RESERVE_PERCENT).and_then(|v| v.as_float()).unwrap_or(50.0);
 
-        let target = (missing as f64 * (1.0 + reserve_percent / 100.0)).ceil() as u32;
-        let target = target.max(1);
-
-        let mut pool: Vec<NodeId> = maze.field.all_node_ids().collect();
         let mut proposed: HashSet<(NodeId, NodeId)> = HashSet::new();
         let mut commands = Vec::new();
-        let mut added: u32 = 0;
+        let mut total_added: u32 = 0;
 
-        while added < target && !pool.is_empty() {
-            let mut slot_filled = false;
+        let mut deficits = RemainingDeficits::new(&issue.missing);
+        let areas: Vec<RepairArea> = deficits.areas().collect();
+        for area in areas {
+            let missing = deficits.live(area);
+            if missing == 0 {
+                continue;
+            }
+            let target = (missing as f64 * (1.0 + reserve_percent / 100.0)).ceil() as u32;
+            let target = target.max(1);
 
-            for _ in 0..attempts_limit {
-                if pool.is_empty() {
+            // Only the entry side is restricted to the reported area — a teleport's exit is free
+            // to land on any floor (GitHub issue #369's floor-scope follow-up): teleports
+            // legitimately connect points on different floors, so forcing the exit onto the same
+            // area as the entry would rule out exactly the cross-floor teleports this strategy is
+            // meant to be able to add.
+            let mut pool: Vec<NodeId> = maze.field.all_node_ids()
+                .filter(|&n| match area {
+                    RepairArea::WholeMaze => true,
+                    RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
+                })
+                .collect();
+            let mut added: u32 = 0;
+
+            while added < target && !pool.is_empty() {
+                let mut slot_filled = false;
+
+                for _ in 0..attempts_limit {
+                    if pool.is_empty() {
+                        break;
+                    }
+                    let pick = rng.random_range(0..pool.len());
+                    let candidate = pool[pick];
+
+                    let entry = match entry_pick {
+                        ENTRY_FARTHEST_FROM_RANDOM => farthest_from_via_nav(maze, candidate),
+                        _ => candidate,
+                    };
+
+                    let Some(exit) = pick_exit(
+                        maze, entry, desired_min, desired_max, allow_out_of_interval,
+                        unreachable_priority, preset_state, &proposed, rng,
+                    ) else {
+                        pool.swap_remove(pick);
+                        continue;
+                    };
+
+                    let add_reverse = !rng.random_bool((one_way_chance / 100.0).clamp(0.0, 1.0))
+                        && crate::generation::directed_edge_feasible(preset_state, exit, entry);
+                    if add_reverse {
+                        commands.push(MutationCommand::AddBidirectionalTeleport { a: entry, b: exit });
+                        proposed.insert((entry, exit));
+                        proposed.insert((exit, entry));
+                    } else {
+                        commands.push(MutationCommand::AddDirectedTeleport { from: entry, to: exit });
+                        proposed.insert((entry, exit));
+                    }
+                    added += 1;
+                    slot_filled = true;
+
+                    // Decrement the entry's own area (usually `area`, but the entry may differ
+                    // from `candidate` under `entry_pick: farthest_from_random`, so re-derive it
+                    // from `entry`'s actual level rather than assuming it's still `area`) plus the
+                    // exit's level if it lands on a different floor, plus `WholeMaze` always — a
+                    // teleport can cross floors, so both ends' per-floor deficits are satisfied by
+                    // this one addition (GitHub issue #369 follow-up).
+                    let mut covered = vec![RepairArea::WholeMaze];
+                    if let Some(entry_level) = maze.field.level_of(entry) {
+                        covered.push(RepairArea::Level(entry_level));
+                    }
+                    if let Some(exit_level) = maze.field.level_of(exit) {
+                        covered.push(RepairArea::Level(exit_level));
+                    }
+                    deficits.consume(&covered);
                     break;
                 }
-                let pick = rng.random_range(0..pool.len());
-                let candidate = pool[pick];
 
-                let entry = match entry_pick {
-                    ENTRY_FARTHEST_FROM_RANDOM => farthest_from_via_nav(maze, candidate),
-                    _ => candidate,
-                };
-
-                let Some(exit) = pick_exit(
-                    maze, entry, desired_min, desired_max, allow_out_of_interval,
-                    unreachable_priority, preset_state, &proposed, rng,
-                ) else {
-                    pool.swap_remove(pick);
-                    continue;
-                };
-
-                let add_reverse = !rng.random_bool((one_way_chance / 100.0).clamp(0.0, 1.0))
-                    && crate::generation::directed_edge_feasible(preset_state, exit, entry);
-                if add_reverse {
-                    commands.push(MutationCommand::AddBidirectionalTeleport { a: entry, b: exit });
-                    proposed.insert((entry, exit));
-                    proposed.insert((exit, entry));
-                } else {
-                    commands.push(MutationCommand::AddDirectedTeleport { from: entry, to: exit });
-                    proposed.insert((entry, exit));
+                // attempts_limit consecutive failures without exhausting the pool -- give up on
+                // this teleport slot only, not the whole apply() call. The failed candidates were
+                // evicted from `pool` above, so the next slot's attempts_limit budget draws from a
+                // smaller, different pool rather than retrying the exact same losing candidates.
+                if !slot_filled && pool.is_empty() {
+                    break;
                 }
-                added += 1;
-                slot_filled = true;
-                break;
             }
-
-            // attempts_limit consecutive failures without exhausting the pool -- give up on
-            // this teleport slot only, not the whole apply() call. The failed candidates were
-            // evicted from `pool` above, so the next slot's attempts_limit budget draws from a
-            // smaller, different pool rather than retrying the exact same losing candidates.
-            if !slot_filled && pool.is_empty() {
-                break;
-            }
+            total_added += added;
         }
 
-        if added == 0 {
+        if total_added == 0 {
             return (RepairResult::Failed, vec![]);
         }
         (RepairResult::Fixed { score: None }, commands)
@@ -301,7 +337,8 @@ mod tests {
     }
 
     fn missing_issue(missing: u32) -> MissingTeleportsIssue {
-        MissingTeleportsIssue::new_from_check("min_teleport_count", missing)
+        let entries = if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] };
+        MissingTeleportsIssue::new_from_check("min_teleport_count", entries)
     }
 
     #[test]
@@ -486,6 +523,80 @@ mod tests {
         // (a failed slot no longer aborts every slot after it).
         let teleport_count = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count();
         assert_eq!(teleport_count, 2, "both teleport slots must succeed despite earlier attempts_limit exhaustion on locked-out candidates");
+    }
+
+    #[test]
+    fn apply_restricts_entry_to_the_named_level_but_allows_any_exit() {
+        // Two disjoint 4x4 levels, no connections between them at all. The deficit is reported
+        // only for level_b -- every added teleport's entry must be on level_b, but its exit is
+        // free to land on either level (a teleport can legitimately cross floors).
+        let mut ids = IdGenerator::new();
+        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let level_b = mf.add_level(field_b);
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
+
+        let issue = MissingTeleportsIssue::new_from_check("min_teleport_count", vec![(RepairArea::Level(level_b), 2)]);
+        let mut rng = MazeRng::seed_from_u64(42);
+        let result = apply_and_commit(&MissingTeleportsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert!(maze.graph.edges().count() > 0);
+        // A bidirectional teleport mints edges in both directions, so a plain `edge.from` check
+        // would wrongly flag the reverse (exit -> entry) edge. Each teleport's node *pair* must
+        // still include the reported level on one side (the entry), regardless of edge direction.
+        for edge in maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport) {
+            let from_level = maze.field.level_of(edge.from);
+            let to_level = maze.field.level_of(edge.to);
+            assert!(
+                from_level == Some(level_b) || to_level == Some(level_b),
+                "every teleport must have its entry on the reported level"
+            );
+        }
+    }
+
+    #[test]
+    fn apply_does_not_double_count_a_whole_maze_entry_already_satisfied_by_per_floor_entries() {
+        // GitHub issue #369 follow-up: per-floor + whole-maze entries on the same rule must not
+        // stack — 1 per floor on 3 floors + 3 whole-maze must add 3 teleports total, not 6.
+        let mut ids = IdGenerator::new();
+        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_c = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let level_b = mf.add_level(field_b);
+        let level_c = mf.add_level(field_c);
+        let level_a = mf.levels_ordered().next().unwrap();
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
+
+        let issue = MissingTeleportsIssue::new_from_check("min_teleport_count", vec![
+            (RepairArea::Level(level_a), 1),
+            (RepairArea::Level(level_b), 1),
+            (RepairArea::Level(level_c), 1),
+            (RepairArea::WholeMaze, 3),
+        ]);
+        let mut overrides = HashMap::new();
+        overrides.insert("reserve_percent".to_string(), "0".to_string());
+        let params = build_params(
+            <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
+            Some(&overrides),
+        );
+        let mut rng = MazeRng::seed_from_u64(11);
+        let result = apply_and_commit(&MissingTeleportsStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        let teleport_count = maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count();
+        assert!(teleport_count <= 6, "at most 3 teleports (each possibly bidirectional -> 2 edges), not 6+3=9 or worse");
+        // Count distinct (entry, exit) pairs regardless of direction to get the actual teleport count.
+        let mut pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
+        for edge in maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport) {
+            let key = if edge.from <= edge.to { (edge.from, edge.to) } else { (edge.to, edge.from) };
+            pairs.insert(key);
+        }
+        assert_eq!(pairs.len(), 3, "3 distinct teleports total, not 6");
     }
 
     #[test]

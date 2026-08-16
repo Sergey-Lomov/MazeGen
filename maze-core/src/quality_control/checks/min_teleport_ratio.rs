@@ -2,10 +2,12 @@ use rand::RngCore;
 use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
-use crate::quality_control::MissingTeleportsIssue;
-use super::teleport_count_core::count_distinct_teleports;
+use crate::quality_control::{MissingTeleportsIssue, FloorScope, RepairArea};
+use crate::quality_control::floor_group::floor_point_count;
+use super::teleport_count_core::{count_distinct_teleports, count_distinct_teleports_per_floor};
 
 pub const MIN_TELEPORT_RATIO_DEFAULT: u32 = 10;
+pub const MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags a deficit against the share of distinct teleports (see `count_distinct_teleports`)
 /// relative to the field's size — see GitHub issue #211. Mirrors `MinOneWayRatioCheck`'s role for
@@ -19,32 +21,56 @@ pub const MIN_TELEPORT_RATIO_DEFAULT: u32 = 10;
 pub struct MinTeleportRatioCheck {
     pub instance_id: String,
     pub min_teleport_ratio: u32,
+    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, MissingTeleportsIssue> for MinTeleportRatioCheck {
     fn check_type_id(&self) -> &'static str { "min_teleport_ratio" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingTeleportsIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let field_cells = maze.field.point_count() as u64;
-        if field_cells == 0 {
-            return;
-        }
-
-        let count = count_distinct_teleports(maze) as u64;
         let min_teleport_ratio = self.min_teleport_ratio as u64;
 
-        if count * 100 >= min_teleport_ratio * field_cells {
+        let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
+            FloorScope::WholeMaze => {
+                let field_cells = maze.field.point_count() as u64;
+                let missing = Self::missing_for(count_distinct_teleports(maze) as u64, field_cells, min_teleport_ratio);
+                if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] }
+            }
+            FloorScope::PerFloor => {
+                let mut missing: Vec<(RepairArea, u32)> = count_distinct_teleports_per_floor(maze).into_iter()
+                    .filter_map(|(level, count)| {
+                        let missing = Self::missing_for(count as u64, floor_point_count(&maze.field, level) as u64, min_teleport_ratio);
+                        (missing > 0).then_some((RepairArea::Level(level), missing))
+                    })
+                    .collect();
+                // `HashMap` iteration order is randomized per run -- sort by level so repair
+                // strategies that loop over `issue.missing` consume RNG in a deterministic order.
+                missing.sort_by_key(|&(area, _)| area);
+                missing
+            }
+        };
+        if missing.is_empty() {
             return;
         }
-
-        // Smallest `missing` such that (count + missing) * 100 >= min_teleport_ratio * field_cells.
-        // Always > 0 here: the gate above already ruled out count * 100 >= required, so
-        // required.div_ceil(100) is always strictly greater than count.
-        let required = min_teleport_ratio * field_cells;
-        let missing = required.div_ceil(100).saturating_sub(count) as u32;
+        let total: u32 = missing.iter().map(|(_, m)| m).sum();
         let issue = MissingTeleportsIssue::new_from_check(&self.instance_id, missing)
-            .with_detail(&self.instance_id, "missing", missing.to_string());
+            .with_detail(&self.instance_id, "missing", total.to_string());
         issues.push(issue);
+    }
+}
+
+impl MinTeleportRatioCheck {
+    /// Deficit teleport count for one region (whole maze or one floor) given its own teleport
+    /// count and cell count — shared by both `floor_scope` branches so the cross-multiplied
+    /// comparison and rounding logic stay identical either way.
+    fn missing_for(count: u64, field_cells: u64, min_teleport_ratio: u64) -> u32 {
+        if field_cells == 0 || count * 100 >= min_teleport_ratio * field_cells {
+            return 0;
+        }
+        // `required` rounds to the nearest integer (not ceil), matching
+        // `MaxOneWayRatioCheck::to_remove_for`'s round-to-nearest `target_count`.
+        let required = (min_teleport_ratio * field_cells + 50) / 100;
+        required.saturating_sub(count) as u32
     }
 }
 
@@ -78,7 +104,7 @@ mod tests {
     #[test]
     fn silent_when_ratio_meets_minimum() {
         let maze = maze_with_one_teleport_on_ten_cells();
-        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 10 };
+        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 10, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "10 per 100 cells meets a minimum of 10");
@@ -88,11 +114,11 @@ mod tests {
     fn fires_with_missing_count_when_below_minimum() {
         // 10 per 100 cells, min_teleport_ratio 30 -> missing_ratio 20 -> ceil(20*10/100) = 2.
         let maze = maze_with_one_teleport_on_ten_cells();
-        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 30 };
+        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 30, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, 2);
+        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 2)]);
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("missing")),
             Some(&"2".to_string()),
@@ -100,14 +126,25 @@ mod tests {
     }
 
     #[test]
-    fn missing_count_rounds_up() {
-        // 10 per 100 cells, min_teleport_ratio 11 -> missing_ratio 1 -> ceil(1*10/100) = ceil(0.1) = 1.
+    fn missing_count_rounds_to_nearest_not_down() {
+        // 10 per 100 cells, min_teleport_ratio 13 -> required = round(13*10/100) = round(1.3) = 1,
+        // missing = 0 (required already met by rounding, not truncated away by a stricter ceil).
         let maze = maze_with_one_teleport_on_ten_cells();
-        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 11 };
+        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 13, floor_scope: FloorScope::WholeMaze };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert!(issues.is_empty(), "round(1.3) = 1, already met by the existing single teleport");
+    }
+
+    #[test]
+    fn missing_count_rounds_to_nearest_not_up() {
+        // 10 per 100 cells, min_teleport_ratio 17 -> required = round(17*10/100) = round(1.7) = 2, missing = 1.
+        let maze = maze_with_one_teleport_on_ten_cells();
+        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 17, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, 1, "ceil must round up, not truncate to 0");
+        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 1)], "round(1.7) = 2, not ceil to 2 via truncation-then-up");
     }
 
     #[test]
@@ -121,7 +158,7 @@ mod tests {
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 1 };
+        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 50, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1, "a Basic edge must not count toward the ratio");
@@ -145,11 +182,11 @@ mod tests {
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 30 };
+        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 30, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1, "29.9% must not silently pass a 30% minimum via floor rounding");
-        assert_eq!(issues[0].missing, 1);
+        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 1)]);
     }
 
     #[test]
@@ -164,7 +201,7 @@ mod tests {
         g.add_edge(p(1), p(0), EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 10 };
+        let check = MinTeleportRatioCheck { instance_id: TEST_ID.to_string(), min_teleport_ratio: 10, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "A<->B is one logical portal (10 per 100 cells), not two (20 per 100)");

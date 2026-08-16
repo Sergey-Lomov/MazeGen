@@ -27,7 +27,7 @@ fn maze_with_two_one_ways() -> Maze<SquareTessellation> {
 #[test]
 fn silent_when_count_meets_maximum() {
     let maze = maze_with_two_one_ways();
-    let check = MaxOneWayCountCheck { instance_id: TEST_ID.to_string(), max_one_ways: 2 };
+    let check = MaxOneWayCountCheck { instance_id: TEST_ID.to_string(), max_one_ways: 2, floor_scope: FloorScope::WholeMaze };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert!(issues.is_empty());
@@ -36,7 +36,7 @@ fn silent_when_count_meets_maximum() {
 #[test]
 fn fires_with_all_one_ways_as_single_group_when_above_maximum() {
     let maze = maze_with_two_one_ways();
-    let check = MaxOneWayCountCheck { instance_id: TEST_ID.to_string(), max_one_ways: 1 };
+    let check = MaxOneWayCountCheck { instance_id: TEST_ID.to_string(), max_one_ways: 1, floor_scope: FloorScope::WholeMaze };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert_eq!(issues.len(), 1);
@@ -61,7 +61,7 @@ fn does_not_count_bidirectional_passage_as_one_way() {
     g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-    let check = MaxOneWayCountCheck { instance_id: TEST_ID.to_string(), max_one_ways: 0 };
+    let check = MaxOneWayCountCheck { instance_id: TEST_ID.to_string(), max_one_ways: 0, floor_scope: FloorScope::WholeMaze };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert!(issues.is_empty(), "bidirectional passage must not count toward the one-way total");
@@ -78,7 +78,7 @@ fn does_not_count_a_teleport_edge() {
     g.add_edge(p(0), p(1), EdgeKind::Teleport);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-    let check = MaxOneWayCountCheck { instance_id: TEST_ID.to_string(), max_one_ways: 0 };
+    let check = MaxOneWayCountCheck { instance_id: TEST_ID.to_string(), max_one_ways: 0, floor_scope: FloorScope::WholeMaze };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert!(issues.is_empty(), "a Teleport edge must not count toward the Basic one-way total");
@@ -96,7 +96,7 @@ fn flags_a_basic_one_way_paired_with_a_parallel_reverse_teleport() {
     g.add_edge(p(1), p(0), EdgeKind::Teleport);
     let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-    let check = MaxOneWayCountCheck { instance_id: TEST_ID.to_string(), max_one_ways: 0 };
+    let check = MaxOneWayCountCheck { instance_id: TEST_ID.to_string(), max_one_ways: 0, floor_scope: FloorScope::WholeMaze };
     let mut issues = Vec::new();
     check.repair_check(&maze, &mut issues, &mut rng(), ());
     assert_eq!(issues.len(), 1, "the parallel reverse Teleport must not mask the Basic one-way");

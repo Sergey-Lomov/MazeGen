@@ -10,6 +10,8 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::missing_one_ways_shared::{pick_random_pairs, canonical_pair, ProposedPairs};
+use super::remaining_deficits::RemainingDeficits;
+use crate::quality_control::RepairArea;
 
 pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
 
@@ -50,8 +52,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysF
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let target = issue.missing;
-        if target == 0 {
+        if issue.missing.is_empty() {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
@@ -62,65 +63,77 @@ impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysF
 
         let mut proposed: ProposedPairs = ProposedPairs::default();
         let mut commands = Vec::new();
+        let mut total_found: u32 = 0;
 
-        let found = pick_random_pairs(
-            maze,
-            rng,
-            target,
-            |src, dst, rng| {
-                if proposed.contains(&canonical_pair(src, dst)) {
-                    return false;
-                }
-                // Only a full bidirectional Basic passage qualifies — a wall, an existing
-                // one-way, or a Teleport-only connection are not candidates for this strategy.
-                let fwd = maze.graph.edge_between_kind(src, dst, &EdgeKind::Basic);
-                let bwd = maze.graph.edge_between_kind(dst, src, &EdgeKind::Basic);
-                let (Some(_), Some(_)) = (fwd, bwd) else { return false; };
-
-                // If protect_route is enabled and this pair is a route hop, the direction to
-                // *keep* is fixed (the route's own direction) — the removed direction must be the
-                // other one, never chosen at random or substituted for the route's own direction.
-                // Otherwise (not a route hop, or protection disabled) either direction may be
-                // removed, same as before.
-                let forced_remove = if protect_route {
-                    route_direction(maze, src, dst).map(|(route_from, route_to)| (route_to, route_from))
-                } else {
-                    None
-                };
-
-                proposed.insert(canonical_pair(src, dst));
-                if let Some((from, to)) = forced_remove {
-                    // Skip the pair entirely if the one direction allowed to be removed is
-                    // preset-protected — never leaves it half-mutated, and never falls back to
-                    // removing the route's own direction instead.
-                    if preset_state.is_preset_edge(from, to) {
+        let mut deficits = RemainingDeficits::new(&issue.missing);
+        let areas: Vec<RepairArea> = deficits.areas().collect();
+        for area in areas {
+            let target = deficits.live(area);
+            if target == 0 {
+                continue;
+            }
+            let found = pick_random_pairs(
+                maze,
+                rng,
+                target,
+                area,
+                |src, dst, rng| {
+                    if proposed.contains(&canonical_pair(src, dst)) {
                         return false;
                     }
-                    commands.push(MutationCommand::RemoveEdgeBetween { from, to });
-                    return true;
-                }
+                    // Only a full bidirectional Basic passage qualifies — a wall, an existing
+                    // one-way, or a Teleport-only connection are not candidates for this strategy.
+                    let fwd = maze.graph.edge_between_kind(src, dst, &EdgeKind::Basic);
+                    let bwd = maze.graph.edge_between_kind(dst, src, &EdgeKind::Basic);
+                    let (Some(_), Some(_)) = (fwd, bwd) else { return false; };
 
-                // Not route-forced: keep whichever direction preset state allows removing; skip
-                // the pair entirely if both directions are preset-protected.
-                let remove_fwd = !preset_state.is_preset_edge(src, dst);
-                let remove_bwd = !preset_state.is_preset_edge(dst, src);
-                if remove_fwd && remove_bwd {
-                    let (from, to) = if rng.random::<bool>() { (src, dst) } else { (dst, src) };
-                    commands.push(MutationCommand::RemoveEdgeBetween { from, to });
-                    true
-                } else if remove_fwd {
-                    commands.push(MutationCommand::RemoveEdgeBetween { from: src, to: dst });
-                    true
-                } else if remove_bwd {
-                    commands.push(MutationCommand::RemoveEdgeBetween { from: dst, to: src });
-                    true
-                } else {
-                    false
-                }
-            },
-        );
+                    // If protect_route is enabled and this pair is a route hop, the direction to
+                    // *keep* is fixed (the route's own direction) — the removed direction must be
+                    // the other one, never chosen at random or substituted for the route's own
+                    // direction. Otherwise (not a route hop, or protection disabled) either
+                    // direction may be removed, same as before.
+                    let forced_remove = if protect_route {
+                        route_direction(maze, src, dst).map(|(route_from, route_to)| (route_to, route_from))
+                    } else {
+                        None
+                    };
 
-        if found == 0 {
+                    proposed.insert(canonical_pair(src, dst));
+                    if let Some((from, to)) = forced_remove {
+                        // Skip the pair entirely if the one direction allowed to be removed is
+                        // preset-protected — never leaves it half-mutated, and never falls back to
+                        // removing the route's own direction instead.
+                        if preset_state.is_preset_edge(from, to) {
+                            return false;
+                        }
+                        commands.push(MutationCommand::RemoveEdgeBetween { from, to });
+                        return true;
+                    }
+
+                    // Not route-forced: keep whichever direction preset state allows removing;
+                    // skip the pair entirely if both directions are preset-protected.
+                    let remove_fwd = !preset_state.is_preset_edge(src, dst);
+                    let remove_bwd = !preset_state.is_preset_edge(dst, src);
+                    if remove_fwd && remove_bwd {
+                        let (from, to) = if rng.random::<bool>() { (src, dst) } else { (dst, src) };
+                        commands.push(MutationCommand::RemoveEdgeBetween { from, to });
+                        true
+                    } else if remove_fwd {
+                        commands.push(MutationCommand::RemoveEdgeBetween { from: src, to: dst });
+                        true
+                    } else if remove_bwd {
+                        commands.push(MutationCommand::RemoveEdgeBetween { from: dst, to: src });
+                        true
+                    } else {
+                        false
+                    }
+                },
+            );
+            deficits.consume_many(area, found);
+            total_found += found;
+        }
+
+        if total_found == 0 {
             return (RepairResult::Failed, vec![]);
         }
         (RepairResult::Fixed { score: None }, commands)
@@ -139,9 +152,11 @@ mod tests {
     use crate::space::{SquareTessellation, square_rect, MultiLevelField, SquarePoint};
     use crate::repair::strategies::test_utils::{apply_and_commit, apply_and_commit_default};
     use crate::meta::MazeMeta;
+    use crate::quality_control::RepairArea;
 
     fn missing_issue(missing: u32) -> MissingOneWaysIssue {
-        MissingOneWaysIssue::new_from_check("min_one_way_count", missing)
+        let entries = if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] };
+        MissingOneWaysIssue::new_from_check("min_one_way_count", entries)
     }
 
     fn maze_grid(side: usize) -> Maze<SquareTessellation> {
@@ -322,6 +337,94 @@ mod tests {
         let result = apply_and_commit_default(&MissingOneWaysFromPassageStrategy, &issue, &mut maze, &mut rng, &preset_state);
         assert!(matches!(result, RepairResult::Failed));
         assert_eq!(maze.graph.edges().count(), 2, "a fully preset-protected passage must survive untouched");
+    }
+
+    #[test]
+    fn apply_restricts_candidates_to_the_named_level() {
+        let mut ids = IdGenerator::new();
+        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let level_a = mf.single_level_id();
+        let level_b = mf.add_level(field_b);
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        for level in [level_a, level_b] {
+            for y in 0..4 {
+                for x in 0..4 {
+                    let here = mf.node_at(level, SquarePoint { x, y }).unwrap();
+                    if x + 1 < 4 {
+                        let right = mf.node_at(level, SquarePoint { x: x + 1, y }).unwrap();
+                        g.add_bidirectional_edge(here, right, EdgeKind::Basic);
+                    }
+                    if y + 1 < 4 {
+                        let up = mf.node_at(level, SquarePoint { x, y: y + 1 }).unwrap();
+                        g.add_bidirectional_edge(here, up, EdgeKind::Basic);
+                    }
+                }
+            }
+        }
+        let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
+        let edges_before = maze.graph.edges().count();
+
+        let issue = MissingOneWaysIssue::new_from_check("min_one_way_count", vec![(RepairArea::Level(level_b), 2)]);
+        let mut rng = MazeRng::seed_from_u64(42);
+        let result = apply_and_commit_default(&MissingOneWaysFromPassageStrategy, &issue, &mut maze, &mut rng, &PresetState::empty());
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert!(maze.graph.edges().count() < edges_before, "some passage must have been downgraded");
+
+        let removed_pairs: Vec<_> = maze.graph.edges()
+            .filter(|e| e.kind == EdgeKind::Basic)
+            .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
+            .collect();
+        assert!(!removed_pairs.is_empty());
+        for edge in removed_pairs {
+            assert_eq!(maze.field.level_of(edge.from), Some(level_b), "only level_b passages must be downgraded");
+        }
+    }
+
+    #[test]
+    fn apply_does_not_double_count_a_whole_maze_entry_already_satisfied_by_per_floor_entries() {
+        // GitHub issue #369 follow-up: per-floor + whole-maze entries on the same rule must not
+        // stack — 1 per floor on 3 floors + 3 whole-maze must downgrade 3 passages total, not 6.
+        let mut ids = IdGenerator::new();
+        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_c = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let level_a = mf.single_level_id();
+        let level_b = mf.add_level(field_b);
+        let level_c = mf.add_level(field_c);
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        for level in [level_a, level_b, level_c] {
+            for y in 0..4 {
+                for x in 0..4 {
+                    let here = mf.node_at(level, SquarePoint { x, y }).unwrap();
+                    if x + 1 < 4 {
+                        let right = mf.node_at(level, SquarePoint { x: x + 1, y }).unwrap();
+                        g.add_bidirectional_edge(here, right, EdgeKind::Basic);
+                    }
+                    if y + 1 < 4 {
+                        let up = mf.node_at(level, SquarePoint { x, y: y + 1 }).unwrap();
+                        g.add_bidirectional_edge(here, up, EdgeKind::Basic);
+                    }
+                }
+            }
+        }
+        let mut maze: Maze<SquareTessellation> = Maze::new(mf, g);
+        let edges_before = maze.graph.edges().count();
+
+        let issue = MissingOneWaysIssue::new_from_check("min_one_way_count", vec![
+            (RepairArea::Level(level_a), 1),
+            (RepairArea::Level(level_b), 1),
+            (RepairArea::Level(level_c), 1),
+            (RepairArea::WholeMaze, 3),
+        ]);
+        let mut rng = MazeRng::seed_from_u64(11);
+        let result = apply_and_commit_default(&MissingOneWaysFromPassageStrategy, &issue, &mut maze, &mut rng, &PresetState::empty());
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert_eq!(maze.graph.edges().count(), edges_before - 3, "3 passages downgraded total, not 6");
     }
 
     #[test]

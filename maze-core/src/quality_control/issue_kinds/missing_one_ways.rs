@@ -1,19 +1,21 @@
 use crate::quality_control::issue::{IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ONE_WAYS};
+use crate::quality_control::RepairArea;
+use super::merge_repair_area_deficits;
 #[cfg(test)]
 use crate::quality_control::issue::Issue;
 
 /// Produced by any check that flags the maze as short on one-way passage edges overall (currently
 /// `MinOneWayCountCheck`/`MinOneWayRatioCheck` — see GitHub issue #201, part of the one-way
-/// management epic #92). Mirrors `MissingLoopsIssue`'s role for loops. `missing` is how many
-/// one-way edges short of the requirement the maze is.
+/// management epic #92). Mirrors `MissingLoopsIssue`'s role/shape for loops exactly, including the
+/// `Vec<(RepairArea, u32)>` per-area deficit list (GitHub issue #369's floor-scope follow-up).
 #[derive(Debug, Clone, PartialEq)]
 pub struct MissingOneWaysIssue {
     meta: IssueMeta,
-    pub missing: u32,
+    pub missing: Vec<(RepairArea, u32)>,
 }
 
 impl MissingOneWaysIssue {
-    pub fn new_from_check(source_check: &str, missing: u32) -> Self {
+    pub fn new_from_check(source_check: &str, missing: Vec<(RepairArea, u32)>) -> Self {
         Self { meta: IssueMeta::new_from_check(source_check), missing }
     }
 
@@ -34,15 +36,9 @@ impl IssueRequirement for MissingOneWaysIssue {
 crate::impl_issue!(MissingOneWaysIssue);
 
 impl IssueMerge for MissingOneWaysIssue {
-    /// Takes the larger of the two `missing` values — `min_one_way_count`/`min_one_way_ratio` are
-    /// two independent checks that can both be active in the same rule and legitimately disagree
-    /// on how many one-way edges are missing (see GitHub issue #201's follow-up). A repair
-    /// strategy must fix at least the largest reported deficit; silently keeping whichever side
-    /// happened to be `self` (the pre-#201-follow-up behavior) could under-fix the smaller
-    /// disagreeing check's requirement and force an extra repair iteration to catch up.
     fn merge(&mut self, other: Self) {
         self.meta.merge_from(other.meta);
-        self.missing = self.missing.max(other.missing);
+        merge_repair_area_deficits(&mut self.missing, other.missing);
     }
 }
 
@@ -51,26 +47,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn merge_takes_the_larger_missing_value_when_self_is_smaller() {
-        let mut a = MissingOneWaysIssue::new_from_check("min_one_way_count", 5);
-        let b = MissingOneWaysIssue::new_from_check("min_one_way_ratio", 8);
+    fn merge_takes_the_larger_missing_value_for_the_same_area() {
+        let mut a = MissingOneWaysIssue::new_from_check("min_one_way_count", vec![(RepairArea::WholeMaze, 5)]);
+        let b = MissingOneWaysIssue::new_from_check("min_one_way_ratio", vec![(RepairArea::WholeMaze, 8)]);
         a.merge(b);
-        assert_eq!(a.missing, 8, "must not silently keep the smaller self value");
-    }
-
-    #[test]
-    fn merge_takes_the_larger_missing_value_when_self_is_larger() {
-        let mut a = MissingOneWaysIssue::new_from_check("min_one_way_count", 8);
-        let b = MissingOneWaysIssue::new_from_check("min_one_way_ratio", 5);
-        a.merge(b);
-        assert_eq!(a.missing, 8);
+        assert_eq!(a.missing, vec![(RepairArea::WholeMaze, 8)], "must not silently keep the smaller self value");
     }
 
     #[test]
     fn merge_unions_source_checks_and_details() {
-        let mut a = MissingOneWaysIssue::new_from_check("min_one_way_count", 5)
+        let mut a = MissingOneWaysIssue::new_from_check("min_one_way_count", vec![(RepairArea::WholeMaze, 5)])
             .with_detail("min_one_way_count", "missing", "5".to_string());
-        let b = MissingOneWaysIssue::new_from_check("min_one_way_ratio", 8)
+        let b = MissingOneWaysIssue::new_from_check("min_one_way_ratio", vec![(RepairArea::WholeMaze, 8)])
             .with_detail("min_one_way_ratio", "missing", "8".to_string());
         a.merge(b);
 

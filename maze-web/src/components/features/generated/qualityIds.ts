@@ -136,6 +136,7 @@ export const PARAM_IDS = [
   "edge_split",
   "entry_pick",
   "floor_mode",
+  "floor_scope",
   "invalid_overlap_weight",
   "junction_weight",
   "length",

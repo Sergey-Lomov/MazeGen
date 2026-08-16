@@ -1,11 +1,15 @@
+use std::collections::{HashMap, HashSet};
 use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
-use crate::space::Tessellation;
+use crate::ids::EdgeId;
+use crate::space::{LevelId, Tessellation};
 use crate::quality_control::check::Check;
-use crate::quality_control::InvalidOneWayGroupIssue;
+use crate::quality_control::{InvalidOneWayGroupIssue, FloorScope};
+use crate::quality_control::floor_group::floors_of_edge;
 
 pub const MAX_ONE_WAY_COUNT_DEFAULT: u32 = 1_000;
+pub const MAX_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 
 /// Flags an excess against a raw count of one-way passage edges (`EdgeKind::Basic`, single
 /// direction) — see GitHub issue #202, part of the one-way management epic (#92). Symmetric
@@ -23,6 +27,7 @@ pub const MAX_ONE_WAY_COUNT_DEFAULT: u32 = 1_000;
 pub struct MaxOneWayCountCheck {
     pub instance_id: String,
     pub max_one_ways: u32,
+    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayCountCheck {
@@ -30,19 +35,54 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayCountCheck 
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         // Same kind-filtered reverse lookup as MinOneWayCountCheck/OneWayWaypointDistanceCheck.
-        let one_ways: Vec<_> = maze.graph.edges()
+        let one_ways: Vec<EdgeId> = maze.graph.edges()
             .filter(|e| e.kind == EdgeKind::Basic)
             .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
             .map(|e| e.id)
             .collect();
 
-        let count = one_ways.len() as u32;
-        if count <= self.max_one_ways {
-            return;
-        }
+        // Under `PerFloor` the whole group is reported (and `to_remove` computed) against
+        // whichever floor is over budget -- a one-way crossing floors counts toward, and can be
+        // flagged by, every floor it touches (GitHub issue #369).
+        let (group, to_remove) = match self.floor_scope {
+            FloorScope::WholeMaze => {
+                let count = one_ways.len() as u32;
+                if count <= self.max_one_ways {
+                    return;
+                }
+                (one_ways, count - self.max_one_ways)
+            }
+            FloorScope::PerFloor => {
+                let mut per_floor_count: HashMap<LevelId, u32> =
+                    maze.field.levels_ordered().map(|l| (l, 0)).collect();
+                let one_way_floors: Vec<_> = one_ways.iter()
+                    .map(|&id| floors_of_edge(&maze.field, &maze.graph, id))
+                    .collect();
+                for floors in &one_way_floors {
+                    for &level in floors {
+                        *per_floor_count.entry(level).or_insert(0) += 1;
+                    }
+                }
+                let over_budget: HashSet<LevelId> = per_floor_count.iter()
+                    .filter(|&(_, &count)| count > self.max_one_ways)
+                    .map(|(&level, _)| level)
+                    .collect();
+                if over_budget.is_empty() {
+                    return;
+                }
+                let max_excess = over_budget.iter()
+                    .map(|level| per_floor_count[level] - self.max_one_ways)
+                    .max()
+                    .unwrap_or(0);
+                let flagged: Vec<EdgeId> = one_ways.into_iter().zip(one_way_floors)
+                    .filter(|(_, floors)| floors.iter().any(|l| over_budget.contains(l)))
+                    .map(|(id, _)| id)
+                    .collect();
+                (flagged, max_excess)
+            }
+        };
 
-        let to_remove = count - self.max_one_ways;
-        let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, vec![(one_ways, to_remove)])
+        let issue = InvalidOneWayGroupIssue::new_from_check(&self.instance_id, vec![(group, to_remove)])
             .with_detail(&self.instance_id, "max_one_ways", self.max_one_ways.to_string());
         issues.push(issue);
     }

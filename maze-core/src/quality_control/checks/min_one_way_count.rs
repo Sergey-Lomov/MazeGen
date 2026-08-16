@@ -1,18 +1,26 @@
+use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
-use crate::space::Tessellation;
+use crate::space::{LevelId, Tessellation};
 use crate::quality_control::check::Check;
-use crate::quality_control::{MissingOneWaysIssue};
+use crate::quality_control::{MissingOneWaysIssue, FloorScope, RepairArea};
+use crate::quality_control::floor_group::floors_of_edge;
 
 pub const MIN_ONE_WAY_COUNT_DEFAULT: u32 = 1;
+pub const MIN_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 
 /// Flags a deficit against a raw count of one-way passage edges (`EdgeKind::Basic`, single
 /// direction) — see GitHub issue #201, part of the one-way management epic (#92). Mirrors
 /// `MinLoopsCountCheck`'s role for loops.
+///
+/// `floor_scope` (GitHub issue #369): under `PerFloor`, `min_one_ways` is evaluated independently
+/// per floor (a one-way crossing floors counts toward both) and the per-floor deficits are summed
+/// into one `missing` total.
 pub struct MinOneWayCountCheck {
     pub instance_id: String,
     pub min_one_ways: u32,
+    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, MissingOneWaysIssue> for MinOneWayCountCheck {
@@ -23,17 +31,43 @@ impl<T: Tessellation> Check<T, MissingOneWaysIssue> for MinOneWayCountCheck {
         // edges count, and only when no Basic reverse exists (a bidirectional passage is not a
         // one-way even though each direction is itself EdgeKind::Basic). A parallel opposite-
         // direction Teleport must not be mistaken for the Basic edge's own reverse.
-        let count = maze.graph.edges()
+        let one_ways: Vec<_> = maze.graph.edges()
             .filter(|e| e.kind == EdgeKind::Basic)
             .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
-            .count() as u32;
+            .map(|e| e.id)
+            .collect();
 
-        let missing = self.min_one_ways.saturating_sub(count);
-        if missing == 0 {
+        let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
+            FloorScope::WholeMaze => {
+                let missing = self.min_one_ways.saturating_sub(one_ways.len() as u32);
+                if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] }
+            }
+            FloorScope::PerFloor => {
+                let mut per_floor_count: HashMap<LevelId, u32> =
+                    maze.field.levels_ordered().map(|l| (l, 0)).collect();
+                for &id in &one_ways {
+                    for level in floors_of_edge(&maze.field, &maze.graph, id) {
+                        *per_floor_count.entry(level).or_insert(0) += 1;
+                    }
+                }
+                let mut missing: Vec<(RepairArea, u32)> = per_floor_count.into_iter()
+                    .filter_map(|(level, count)| {
+                        let missing = self.min_one_ways.saturating_sub(count);
+                        (missing > 0).then_some((RepairArea::Level(level), missing))
+                    })
+                    .collect();
+                // `HashMap` iteration order is randomized per run -- sort by level so repair
+                // strategies that loop over `issue.missing` consume RNG in a deterministic order.
+                missing.sort_by_key(|&(area, _)| area);
+                missing
+            }
+        };
+        if missing.is_empty() {
             return;
         }
+        let total: u32 = missing.iter().map(|(_, m)| m).sum();
         let issue = MissingOneWaysIssue::new_from_check(&self.instance_id, missing)
-            .with_detail(&self.instance_id, "missing", missing.to_string());
+            .with_detail(&self.instance_id, "missing", total.to_string());
         issues.push(issue);
     }
 }
@@ -69,7 +103,7 @@ mod tests {
     #[test]
     fn silent_when_count_meets_minimum() {
         let maze = maze_with_one_one_way();
-        let check = MinOneWayCountCheck { instance_id: TEST_ID.to_string(), min_one_ways: 1 };
+        let check = MinOneWayCountCheck { instance_id: TEST_ID.to_string(), min_one_ways: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty());
@@ -78,11 +112,11 @@ mod tests {
     #[test]
     fn fires_with_missing_count_when_below_minimum() {
         let maze = maze_with_one_one_way();
-        let check = MinOneWayCountCheck { instance_id: TEST_ID.to_string(), min_one_ways: 3 };
+        let check = MinOneWayCountCheck { instance_id: TEST_ID.to_string(), min_one_ways: 3, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, 2);
+        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 2)]);
         assert_eq!(issues[0].source_checks(), vec![TEST_ID.to_string()]);
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("missing")),
@@ -101,11 +135,11 @@ mod tests {
         g.add_bidirectional_edge(p(0), p(1), EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = MinOneWayCountCheck { instance_id: TEST_ID.to_string(), min_one_ways: 1 };
+        let check = MinOneWayCountCheck { instance_id: TEST_ID.to_string(), min_one_ways: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, 1, "bidirectional passage must not count toward the one-way total");
+        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 1)], "bidirectional passage must not count toward the one-way total");
     }
 
     #[test]
@@ -119,11 +153,11 @@ mod tests {
         g.add_edge(p(0), p(1), EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = MinOneWayCountCheck { instance_id: TEST_ID.to_string(), min_one_ways: 1 };
+        let check = MinOneWayCountCheck { instance_id: TEST_ID.to_string(), min_one_ways: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, 1, "a Teleport edge must not count toward the Basic one-way total");
+        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 1)], "a Teleport edge must not count toward the Basic one-way total");
     }
 
     #[test]
@@ -138,7 +172,7 @@ mod tests {
         g.add_edge(p(1), p(0), EdgeKind::Teleport);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let check = MinOneWayCountCheck { instance_id: TEST_ID.to_string(), min_one_ways: 1 };
+        let check = MinOneWayCountCheck { instance_id: TEST_ID.to_string(), min_one_ways: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "the parallel reverse Teleport must not mask the Basic one-way");

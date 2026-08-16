@@ -2,13 +2,15 @@ use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
 use crate::ids::EdgeId;
-use crate::space::Tessellation;
+use crate::space::{LevelId, Tessellation};
 use crate::graph::cycles::resolve_to_edge_ids;
 use crate::quality_control::check::Check;
-use crate::quality_control::{InvalidLoopGroupIssue, InvalidLoopGroupRequirement};
+use crate::quality_control::{InvalidLoopGroupIssue, InvalidLoopGroupRequirement, FloorScope};
+use crate::quality_control::floor_group::floors_of_edges;
 use crate::quality_control::issue_kinds::canonical_cycle_key;
 
 pub const MAX_LOOPS_COUNT_DEFAULT: u32 = 20;
+pub const MAX_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
 
 /// Flags every basis loop invalid when the field has more independent loops than
 /// `max_loops_count` allows — a group-level decision (see `MaxLoopDensityCheck`'s identical
@@ -28,6 +30,7 @@ pub const MAX_LOOPS_COUNT_DEFAULT: u32 = 20;
 pub struct MaxLoopsCountCheck {
     pub instance_id: String,
     pub max_loops_count: u32,
+    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopsCountCheck {
@@ -40,17 +43,53 @@ impl<T: Tessellation> Check<T, InvalidLoopGroupIssue> for MaxLoopsCountCheck {
         if analytics.cycle_analysis_overflowed {
             return;
         }
-        if (analytics.cycle_count as u32) <= self.max_loops_count {
-            return;
-        }
 
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let all = resolve_to_edge_ids(&nav, &analytics.pure_cycle_basis, &maze.graph);
+
+        // Under `PerFloor` a cycle is flagged if *its own floor* is over budget — a cycle
+        // spanning more than one floor counts toward, and can be flagged by, every floor it
+        // touches (GitHub issue #369).
+        let flagged: Vec<Vec<EdgeId>> = match self.floor_scope {
+            FloorScope::WholeMaze => {
+                if (analytics.cycle_count as u32) <= self.max_loops_count {
+                    return;
+                }
+                all
+            }
+            FloorScope::PerFloor => {
+                let mut per_floor_count: HashMap<LevelId, u32> =
+                    maze.field.levels_ordered().map(|l| (l, 0)).collect();
+                let cycle_floors: Vec<_> = all.iter()
+                    .map(|cycle| floors_of_edges(&maze.field, &maze.graph, cycle))
+                    .collect();
+                for floors in &cycle_floors {
+                    for &level in floors {
+                        *per_floor_count.entry(level).or_insert(0) += 1;
+                    }
+                }
+                let over_budget: std::collections::HashSet<LevelId> = per_floor_count.into_iter()
+                    .filter(|&(_, count)| count > self.max_loops_count)
+                    .map(|(level, _)| level)
+                    .collect();
+                if over_budget.is_empty() {
+                    return;
+                }
+                all.into_iter().zip(cycle_floors)
+                    .filter(|(_, floors)| floors.iter().any(|l| over_budget.contains(l)))
+                    .map(|(cycle, _)| cycle)
+                    .collect()
+            }
+        };
+        if flagged.is_empty() {
+            return;
+        }
+
         let mut invalid_sources: HashMap<Vec<EdgeId>, Vec<String>> = HashMap::new();
-        for cycle in &all {
+        for cycle in &flagged {
             invalid_sources.entry(canonical_cycle_key(cycle)).or_default().push(self.instance_id.clone());
         }
-        let issue = InvalidLoopGroupIssue::new_from_check(&self.instance_id, all, vec![], invalid_sources)
+        let issue = InvalidLoopGroupIssue::new_from_check(&self.instance_id, flagged, vec![], invalid_sources)
             .with_detail(&self.instance_id, "max_loops_count", self.max_loops_count.to_string());
         issues.push(issue);
     }
@@ -90,7 +129,7 @@ mod tests {
     #[test]
     fn fires_and_flags_every_loop_when_count_exceeds_max() {
         let maze = maze_with_two_disjoint_triangles();
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 1 };
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);
@@ -106,7 +145,7 @@ mod tests {
     #[test]
     fn silent_when_count_at_or_below_max() {
         let maze = maze_with_two_disjoint_triangles();
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 2 };
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 2, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert!(issues.is_empty(), "count equal to the max must not fire");
@@ -140,7 +179,7 @@ mod tests {
         let analytics = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
         assert_eq!(analytics.cycle_count, 2, "sanity check: 2 independent cycles by Euler's formula");
 
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 2 };
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 2, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert!(issues.is_empty(), "must not fire: independent count (2) is at the max, even though 3 simple cycles exist");
@@ -149,7 +188,7 @@ mod tests {
     #[test]
     fn fires_when_independent_count_exceeds_max_on_composite_graph() {
         let maze = maze_with_shared_vertex_triangles();
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 1 };
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);
@@ -162,7 +201,7 @@ mod tests {
     #[test]
     fn composite_cycle_is_excluded_when_its_basis_components_are_already_selected() {
         let maze = maze_with_shared_vertex_triangles();
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 1 };
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert_eq!(issues.len(), 1);
@@ -182,7 +221,7 @@ mod tests {
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 0 };
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert!(issues.is_empty());
@@ -211,7 +250,7 @@ mod tests {
             }
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 0 };
+        let check = MaxLoopsCountCheck { instance_id: TEST_ID.to_string(), max_loops_count: 0, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), InvalidLoopGroupRequirement::all());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");

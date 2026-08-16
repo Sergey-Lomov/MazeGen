@@ -1,26 +1,37 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use rand::RngCore;
 use crate::Maze;
-use crate::ids::NodeId;
-use crate::space::Tessellation;
+use crate::ids::{EdgeId, NodeId};
+use crate::space::{LevelId, Tessellation};
 use crate::graph::cycles::{find_all_simple_cycles, resolve_to_edge_ids, density_per_100, CycleSearchResult};
 use crate::quality_control::check::Check;
-use crate::quality_control::{MissingLoopsIssue};
+use crate::quality_control::{MissingLoopsIssue, FloorScope, RepairArea};
+use crate::quality_control::floor_group::{floors_of_edges, floor_point_count};
 
 pub const MIN_LOOP_DENSITY_DEFAULT: u32 = 30;
 pub const AVG_LOOP_LENGTH_ESTIMATE_DEFAULT: u32 = 10;
+pub const MIN_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
 
 /// Flags a deficit against a share (per 100 field cells) of the field covered by any loop,
 /// converting the cell deficit into a loop count via `avg_loop_length_estimate` — see GitHub
 /// issue #177 (originally merged with `MinLoopsCountCheck` into one `Mode`-switched check, split
 /// back out since the two measure genuinely different things: a field-coverage share vs. an
-/// absolute count). `missing_cells` rounds up (ceil), not down, when converting the density-point
-/// deficit into a cell count — a target/deficit count must never under-report, or a genuine
-/// shortfall can round away to zero and the check goes silent (GitHub issue #207).
+/// absolute count). `required_cells` (the target covered-cell count) rounds to the nearest
+/// integer, same as `MaxOneWayRatioCheck::to_remove_for`'s `target_count` — not ceil/floor.
+/// `missing_cells.div_ceil(avg_loop_length_estimate)` still rounds up: that step estimates how
+/// many whole loops are needed to cover a cell deficit, and a fractional loop can't be added, so
+/// the loop count itself must never under-report.
+///
+/// `floor_scope` (GitHub issue #369): under `PerFloor` (the default for every density check),
+/// coverage is measured independently per floor against that floor's own cell count, and the
+/// per-floor `missing` counts are summed — a cycle spanning more than one floor contributes its
+/// covered cells to every floor it touches. Under `WholeMaze`, behavior is unchanged from before
+/// floors existed: one combined coverage share over every floor's cells at once.
 pub struct MinLoopDensityCheck {
     pub instance_id: String,
     pub min_density: u32,
     pub avg_loop_length_estimate: u32,
+    pub floor_scope: FloorScope,
 }
 
 impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
@@ -39,31 +50,72 @@ impl<T: Tessellation> Check<T, MissingLoopsIssue> for MinLoopDensityCheck {
         // so basis-only coverage is identical to full-list coverage by construction, never a
         // strict subset. Cheaper: fewer cycles to walk. Silently skip on overflow, same
         // rationale as MaxLoopDensityCheck (issue #22).
-        let covered: HashSet<NodeId> = match find_all_simple_cycles(nav) {
-            CycleSearchResult::Cycles { basis, .. } if !basis.is_empty() => {
-                let all = resolve_to_edge_ids(nav, &basis, &maze.graph);
-                all.iter()
-                    .flat_map(|cycle| cycle.iter().filter_map(|&id| maze.graph.edge(id)))
-                    .flat_map(|edge| [edge.from, edge.to])
-                    .collect()
-            }
-            CycleSearchResult::Cycles { .. } => HashSet::new(),
+        let all: Vec<Vec<EdgeId>> = match find_all_simple_cycles(nav) {
+            CycleSearchResult::Cycles { basis, .. } if !basis.is_empty() => resolve_to_edge_ids(nav, &basis, &maze.graph),
+            CycleSearchResult::Cycles { .. } => Vec::new(),
             CycleSearchResult::TooManyCycles => return,
         };
 
-        let density = density_per_100(covered.len(), field_cells);
-        if density >= self.min_density {
+        let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
+            FloorScope::WholeMaze => {
+                let covered: HashSet<NodeId> = all.iter()
+                    .flat_map(|cycle| cycle.iter().filter_map(|&id| maze.graph.edge(id)))
+                    .flat_map(|edge| [edge.from, edge.to])
+                    .collect();
+                let missing = self.missing_for(covered.len(), field_cells);
+                if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] }
+            }
+            FloorScope::PerFloor => {
+                let mut covered_per_floor: HashMap<LevelId, HashSet<NodeId>> =
+                    maze.field.levels_ordered().map(|l| (l, HashSet::new())).collect();
+                for cycle in &all {
+                    let touched_nodes: HashSet<NodeId> = cycle.iter()
+                        .filter_map(|&id| maze.graph.edge(id))
+                        .flat_map(|edge| [edge.from, edge.to])
+                        .collect();
+                    for level in floors_of_edges(&maze.field, &maze.graph, cycle) {
+                        covered_per_floor.entry(level).or_default().extend(&touched_nodes);
+                    }
+                }
+                let mut missing: Vec<(RepairArea, u32)> = covered_per_floor.into_iter()
+                    .filter_map(|(level, covered)| {
+                        let missing = self.missing_for(covered.len(), floor_point_count(&maze.field, level));
+                        (missing > 0).then_some((RepairArea::Level(level), missing))
+                    })
+                    .collect();
+                // `HashMap` iteration order is randomized per run -- sort by level so repair
+                // strategies that loop over `issue.missing` consume RNG in a deterministic order.
+                missing.sort_by_key(|&(area, _)| area);
+                missing
+            }
+        };
+        if missing.is_empty() {
             return;
         }
-
-        let missing_cells = ((self.min_density - density) as usize * field_cells).div_ceil(100);
-        let missing = missing_cells.div_ceil(self.avg_loop_length_estimate.max(1) as usize) as u32;
-        if missing == 0 {
-            return;
-        }
+        let total: u32 = missing.iter().map(|(_, m)| m).sum();
         let issue = MissingLoopsIssue::new_from_check(&self.instance_id, missing)
-            .with_detail(&self.instance_id, "missing", missing.to_string());
+            .with_detail(&self.instance_id, "missing", total.to_string());
         issues.push(issue);
+    }
+}
+
+impl MinLoopDensityCheck {
+    /// Deficit loop count for one region (whole maze or one floor) given its covered/total cell
+    /// counts — shared by both `floor_scope` branches so the rounding/conversion logic stays
+    /// identical either way.
+    fn missing_for(&self, covered: usize, cells: usize) -> u32 {
+        if cells == 0 {
+            return 0;
+        }
+        let density = density_per_100(covered, cells);
+        if density >= self.min_density {
+            return 0;
+        }
+        // `required_cells` rounds to the nearest integer (not ceil), matching
+        // `MaxOneWayRatioCheck::to_remove_for`'s round-to-nearest `target_count`.
+        let required_cells = (self.min_density as usize * cells + 50) / 100;
+        let missing_cells = required_cells.saturating_sub(covered);
+        missing_cells.div_ceil(self.avg_loop_length_estimate.max(1) as usize) as u32
     }
 }
 
@@ -99,7 +151,7 @@ mod tests {
     #[test]
     fn silent_when_density_at_or_above_min() {
         let maze = maze_with_one_triangle_density();
-        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 30, avg_loop_length_estimate: 10 };
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 30, avg_loop_length_estimate: 10, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "30% density meets a minimum of 30");
@@ -110,11 +162,11 @@ mod tests {
         // 30% density, min_density 60 -> 30 missing points -> 3 missing cells out of 10 field
         // cells -> ceil(3 / 1) = 3 loops requested.
         let maze = maze_with_one_triangle_density();
-        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 60, avg_loop_length_estimate: 1 };
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 60, avg_loop_length_estimate: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, 3);
+        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 3)]);
         assert_eq!(
             issues[0].details().get(TEST_ID).and_then(|kv| kv.get("missing")),
             Some(&"3".to_string()),
@@ -125,11 +177,11 @@ mod tests {
     fn missing_loop_count_rounds_up() {
         // 30% density, min_density 40 -> 10 missing points -> 1 missing cell -> ceil(1 / 4) = 1.
         let maze = maze_with_one_triangle_density();
-        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 40, avg_loop_length_estimate: 4 };
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 40, avg_loop_length_estimate: 4, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].missing, 1, "ceil(1/4) must round up to 1, not truncate to 0");
+        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 1)], "ceil(1/4) must round up to 1, not truncate to 0");
     }
 
     #[test]
@@ -143,11 +195,11 @@ mod tests {
         g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
         g.add_edge(nodes[1], nodes[2], EdgeKind::Basic);
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 100, avg_loop_length_estimate: 1 };
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 100, avg_loop_length_estimate: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert_eq!(issues.len(), 1);
-        assert!(issues[0].missing > 0);
+        assert!(!issues[0].missing.is_empty());
     }
 
     #[test]
@@ -172,22 +224,31 @@ mod tests {
             }
         }
         let maze: Maze<SquareTessellation> = Maze::new(field, g);
-        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 100, avg_loop_length_estimate: 1 };
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 100, avg_loop_length_estimate: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
         assert!(issues.is_empty(), "overflow must skip silently, not surface a partial/incorrect issue");
     }
 
     #[test]
-    fn missing_cells_rounds_up_instead_of_truncating() {
-        // 30% density, min_density 31 -> 1 missing point -> ceil(10*1/100) = 1 missing cell, not
-        // floor(10*1/100) = 0. A floor-based missing_cells would silently stay quiet here even
-        // though the field is genuinely short of the minimum density (see GitHub issue #207).
+    fn required_cells_rounds_to_nearest_not_down() {
+        // 30% density, min_density 31 -> required = round(31*10/100) = round(3.1) = 3, already met
+        // by the 3 covered cells -> silent, not a stricter ceil-driven false positive.
         let maze = maze_with_one_triangle_density();
-        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 31, avg_loop_length_estimate: 1 };
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 31, avg_loop_length_estimate: 1, floor_scope: FloorScope::WholeMaze };
         let mut issues = Vec::new();
         check.repair_check(&maze, &mut issues, &mut rng(), ());
-        assert_eq!(issues.len(), 1, "1 missing point must round up to 1 missing cell, not truncate to 0");
-        assert_eq!(issues[0].missing, 1);
+        assert!(issues.is_empty(), "round(3.1) = 3, already met by the 3 covered cells");
+    }
+
+    #[test]
+    fn required_cells_rounds_to_nearest_not_up() {
+        // 30% density, min_density 35 -> required = round(35*10/100) = round(3.5) = 4, missing_cells = 1.
+        let maze = maze_with_one_triangle_density();
+        let check = MinLoopDensityCheck { instance_id: TEST_ID.to_string(), min_density: 35, avg_loop_length_estimate: 1, floor_scope: FloorScope::WholeMaze };
+        let mut issues = Vec::new();
+        check.repair_check(&maze, &mut issues, &mut rng(), ());
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].missing, vec![(RepairArea::WholeMaze, 1)], "round(3.5) = 4, missing_cells = 1");
     }
 }

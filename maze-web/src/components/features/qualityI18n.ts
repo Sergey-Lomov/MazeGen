@@ -497,6 +497,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.floor_mode.label"] as MessageFn,
     description: m["param.floor_mode.description"] as MessageFn,
   },
+  floor_scope: {
+    label: m["param.floor_scope.label"] as MessageFn,
+    description: m["param.floor_scope.description"] as MessageFn,
+  },
   min_distinct_exits: {
     label: m["param.min_distinct_exits.label"] as MessageFn,
     description: m["param.min_distinct_exits.description"] as MessageFn,
@@ -897,6 +901,8 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "floor_mode.ignore": m["param.floor_mode.option.ignore"] as MessageFn,
   "floor_mode.as_coordinate": m["param.floor_mode.option.as_coordinate"] as MessageFn,
   "floor_mode.same_floor_only": m["param.floor_mode.option.same_floor_only"] as MessageFn,
+  "floor_scope.whole_maze": m["param.floor_scope.option.whole_maze"] as MessageFn,
+  "floor_scope.per_floor": m["param.floor_scope.option.per_floor"] as MessageFn,
   "entry_pick.random": m["param.entry_pick.option.random"] as MessageFn,
   "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random"] as MessageFn,
   "direction.incoming": m["param.direction.option.incoming"] as MessageFn,
@@ -971,6 +977,8 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "floor_mode.ignore": m["param.floor_mode.option.ignore.explanation"] as MessageFn,
   "floor_mode.as_coordinate": m["param.floor_mode.option.as_coordinate.explanation"] as MessageFn,
   "floor_mode.same_floor_only": m["param.floor_mode.option.same_floor_only.explanation"] as MessageFn,
+  "floor_scope.whole_maze": m["param.floor_scope.option.whole_maze.explanation"] as MessageFn,
+  "floor_scope.per_floor": m["param.floor_scope.option.per_floor.explanation"] as MessageFn,
   "entry_pick.random": m["param.entry_pick.option.random.explanation"] as MessageFn,
   "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random.explanation"] as MessageFn,
   "direction.incoming": m["param.direction.option.incoming.explanation"] as MessageFn,
