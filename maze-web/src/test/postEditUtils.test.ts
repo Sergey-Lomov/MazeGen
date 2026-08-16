@@ -65,6 +65,23 @@ describe("buildPostEditDraftEdgesFromGenerated", () => {
     expect(result[fwdKey]).toEqual({ from: nodeEndpoint(0), to: nodeEndpoint(1), kind: "basic" });
     expect(Object.keys(result).sort()).toEqual([fwdKey, bwdKey].sort());
   });
+
+  it("ignores vertical_passage and elevator edges entirely (GitHub issue #370)", () => {
+    // A generated VerticalPassage/Elevator edge must not also be resent as a "basic"/
+    // "one_way_forward" draft edge — confirmPostEdit resends vertical/elevator edges separately
+    // (restore_vertical_edges) from `_generatedEdges`, so leaking them into this Record too
+    // creates a parallel Basic edge alongside the real VerticalPassage edge, which desyncs
+    // `link_reverse_edges`'s pairing and gets misread as a phantom cycle.
+    const edges: EdgeDto[] = [
+      { from: 0, to: 1, kind: "basic" }, { from: 1, to: 0, kind: "basic" },
+      { from: 0, to: 2, kind: "vertical_passage" }, { from: 2, to: 0, kind: "vertical_passage" },
+      { from: 0, to: 3, kind: "elevator" },
+    ];
+    const result = buildPostEditDraftEdgesFromGenerated(edges);
+    const fwdKey = edgeKey(nodeEndpoint(0), nodeEndpoint(1));
+    const bwdKey = edgeKey(nodeEndpoint(1), nodeEndpoint(0));
+    expect(Object.keys(result).sort()).toEqual([fwdKey, bwdKey].sort());
+  });
 });
 
 // --- extractPostEditTeleports ---

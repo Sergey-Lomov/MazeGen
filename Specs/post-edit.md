@@ -333,7 +333,7 @@ Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", NodeId[]>` —
 
 ## `buildPostEditDraftEdgesFromGenerated`
 
-Shared function used by `_generateWithSeed` and `resetPostEdit`. Ignores `kind: "teleport"` entries entirely (see `extractPostEditTeleports` below). Detects one_way edges by absence of reverse: if `A→B` exists but `B→A` does not → `one_way_forward`. If both exist → `basic`.
+Shared function used by `_generateWithSeed` and `resetPostEdit`. Ignores `kind: "teleport"`, `kind: "vertical_passage"`, and `kind: "elevator"` entries entirely — teleport edges are tracked separately (see `extractPostEditTeleports` below); vertical passage/elevator edges are resent unchanged from `_generatedEdges` by `confirmPostEdit` (via WASM's `restore_vertical_edges`), so leaking them into this `Record` too would resend the same physical edge twice — once as a `Basic` draft entry, once as its own `VerticalPassage`/`Elevator` edge — producing a duplicate parallel nav-edge that desyncs `link_reverse_edges`'s pairing and gets misread as a phantom cycle (GitHub issue #370). Detects one_way edges by absence of reverse: if `A→B` exists but `B→A` does not → `one_way_forward`. If both exist → `basic`.
 
 ## `extractPostEditTeleports`
 

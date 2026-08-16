@@ -20,7 +20,7 @@ export function buildPostEditDraftEdgesFromGenerated(
   edges: EdgeDto[],
   endpointFor: (id: number) => PostEditEndpoint = nodeEndpoint,
 ): Record<string, PostEditEdge> {
-  const basicEdges = edges.filter(e => e.kind !== "teleport");
+  const basicEdges = edges.filter(e => e.kind !== "teleport" && e.kind !== "vertical_passage" && e.kind !== "elevator");
   const edgeSet = new Set(basicEdges.map(e => `${e.from}-${e.to}`));
   const result: Record<string, PostEditEdge> = {};
   for (const e of basicEdges) {
