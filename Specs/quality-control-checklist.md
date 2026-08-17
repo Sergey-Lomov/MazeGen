@@ -14,6 +14,15 @@ Only if no existing kind fits — see `quality_control.md`'s "Hard rule: `IssueK
 
 ## New Check
 
+0. Run `cargo run -p codegen -- --new-check <id>` to scaffold `checks/<id>.rs` (a `Check<T, I>`
+   skeleton + matching test module) and get this checklist printed back with `<id>` substituted in.
+   It also declares `pub mod <id>;` in `checks/mod.rs` — the `pub use` re-export (step 1b below)
+   still needs to be added by hand, since what to re-export (the struct, plus any `_DEFAULT`
+   constants) can't be inferred from the id alone. The scaffolded file references a
+   `<PascalId>Issue` type that doesn't exist yet on purpose — pick an existing `IssueKind` or add a
+   new one (see below) before it compiles. `--new-check`/`--new-strategy` must be run alone — not
+   combined with `--check`, `--scaffold`, or each other; `codegen` rejects that combination instead
+   of silently running only one of the requested actions.
 1. Implement `Check<T, I>` (own file under `quality_control/checks/`).
 2. Register a `CheckDescriptor { id, label, description, issue_kinds, params, allow_multiple_instances }` in `maze-wasm/src/checks_catalog.rs`'s `available_checks_list()` — this is the single source of truth for the check's id and every param id it exposes.
 3. Wire the check into `maze-runner`'s rule-building (`build_rule_for!`/check factory) so `config.checks` can select it.
@@ -28,6 +37,12 @@ A check that never calls `.with_detail(...)` (a pure structural check — `Missi
 
 ## New Strategy
 
+0. Run `cargo run -p codegen -- --new-strategy <id>` to scaffold `strategies/<id>.rs` (a
+   `RepairStrategy<T, I>` skeleton + matching test module) and get this checklist printed back with
+   `<id>` substituted in. It also declares `pub mod <id>;` in `strategies/mod.rs` — the `pub use`
+   re-export still needs to be added by hand. The scaffolded file's `apply()` is generic over a
+   placeholder `TodoIssueType` on purpose — replace it with the concrete issue type this strategy
+   repairs before it compiles.
 1. Implement `RepairStrategy<T, I>` (own file under `repair/strategies/`).
 2. Register a `StrategyDescriptor { id, handles, params, experimental, nested_slots }` in `maze-wasm/src/strategies_catalog.rs`'s `available_strategies_list()`.
 3. Add `qualityI18n.ts`'s `strategyI18n[id]` entry, plus `en.json`/`ru.json` keys.

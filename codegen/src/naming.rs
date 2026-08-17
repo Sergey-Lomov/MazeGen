@@ -55,9 +55,29 @@ pub fn to_snake_case(s: &str) -> String {
     out
 }
 
+/// `min_region_size` -> `MinRegionSize` — Rust type names (`Check`/`RepairStrategy` impls) are
+/// `PascalCase`, while check/strategy ids on disk (`check_type_id`/`strategy_id`, catalog ids,
+/// file stems) are `snake_case`; scaffolding a new struct name from an id needs this direction,
+/// which `to_camel_case` doesn't cover (it lowercases the first segment).
+pub fn to_pascal_case(snake: &str) -> String {
+    let camel = to_camel_case(snake);
+    let mut chars = camel.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn to_pascal_case_converts_snake_to_pascal() {
+        assert_eq!(to_pascal_case("min_region_size"), "MinRegionSize");
+        assert_eq!(to_pascal_case("missing_endpoints"), "MissingEndpoints");
+        assert_eq!(to_pascal_case(""), "");
+    }
 
     #[test]
     fn to_camel_case_converts_snake_to_camel() {

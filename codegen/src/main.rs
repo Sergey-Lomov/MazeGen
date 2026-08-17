@@ -3,19 +3,34 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use codegen::{check, dto_ts, golden, id_enum, naming::to_camel_case, parser, quality_i18n, rust_emitter, ts_emitter};
+use codegen::{check, dto_ts, golden, id_enum, naming::to_camel_case, parser, quality_i18n, rust_emitter, scaffold_new, ts_emitter};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
     let check_only = args.iter().any(|a| a == "--check");
     let scaffold = args.iter().any(|a| a == "--scaffold");
+    let new_check_id = flag_value(&args, "--new-check");
+    let new_strategy_id = flag_value(&args, "--new-strategy");
 
     if check_only && scaffold {
         eprintln!("codegen: --check and --scaffold are mutually exclusive (--check must stay read-only)");
         return ExitCode::FAILURE;
     }
 
+    if scaffold_flag_conflicts(new_check_id.is_some(), new_strategy_id.is_some(), check_only, scaffold) {
+        eprintln!("codegen: --new-check/--new-strategy must be run alone, not combined with --check/--scaffold/each other");
+        return ExitCode::FAILURE;
+    }
+
     let repo_root = find_repo_root();
+
+    if let Some(id) = &new_check_id {
+        return run_new_check(&repo_root, id);
+    }
+    if let Some(id) = &new_strategy_id {
+        return run_new_strategy(&repo_root, id);
+    }
+
     let maze_core_src = repo_root.join("maze-core").join("src");
     let ts_out_dir = repo_root.join("maze-web").join("src").join("debug").join("eventTape").join("generated");
     let golden_out_dir = repo_root.join("codegen").join("golden");
@@ -262,6 +277,77 @@ fn report_missing_entry(source_label: &str, entry: &quality_i18n::MissingEntry, 
     }
 }
 
+/// `--new-check`/`--new-strategy` scaffold a file and exit — combining either with `--check`
+/// (which must stay read-only) or `--scaffold` (a different, unrelated write mode) would silently
+/// run only the scaffold path while the other flag's request is dropped on the floor, so the
+/// combination is rejected instead of the extra flag being ignored.
+fn scaffold_flag_conflicts(has_new_check: bool, has_new_strategy: bool, check_only: bool, scaffold: bool) -> bool {
+    (has_new_check || has_new_strategy) && (check_only || scaffold || (has_new_check && has_new_strategy))
+}
+
+/// Returns the value following `flag` in `args` (e.g. `--new-check min_region_size` -> Some
+/// `"min_region_size"`), or `None` if `flag` isn't present or has nothing after it.
+fn flag_value(args: &[String], flag: &str) -> Option<String> {
+    args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned()
+}
+
+/// `snake_case` only, matching every existing check/strategy id — scaffolding a file from an id
+/// containing spaces, uppercase, or path separators would produce a broken filename or a Rust
+/// identifier that doesn't compile, so this is checked before any file is touched.
+fn is_valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+        && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
+fn run_new_check(repo_root: &Path, id: &str) -> ExitCode {
+    if !is_valid_id(id) {
+        eprintln!("codegen: --new-check id must be snake_case (lowercase letters, digits, underscores), got \"{id}\"");
+        return ExitCode::FAILURE;
+    }
+    let checks_dir = repo_root.join("maze-core").join("src").join("quality_control").join("checks");
+    let scaffold = scaffold_new::new_check(id, &checks_dir);
+    write_new_scaffold(scaffold, &checks_dir.join("mod.rs"), id)
+}
+
+fn run_new_strategy(repo_root: &Path, id: &str) -> ExitCode {
+    if !is_valid_id(id) {
+        eprintln!("codegen: --new-strategy id must be snake_case (lowercase letters, digits, underscores), got \"{id}\"");
+        return ExitCode::FAILURE;
+    }
+    let strategies_dir = repo_root.join("maze-core").join("src").join("repair").join("strategies");
+    let scaffold = scaffold_new::new_strategy(id, &strategies_dir);
+    write_new_scaffold(scaffold, &strategies_dir.join("mod.rs"), id)
+}
+
+fn write_new_scaffold(scaffold: scaffold_new::NewFileScaffold, mod_rs_path: &Path, id: &str) -> ExitCode {
+    if scaffold.path.exists() {
+        eprintln!("codegen: {} already exists — refusing to overwrite", scaffold.path.display());
+        return ExitCode::FAILURE;
+    }
+    if let Some(parent) = scaffold.path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Err(e) = fs::write(&scaffold.path, &scaffold.contents) {
+        eprintln!("codegen: failed to write {}: {e}", scaffold.path.display());
+        return ExitCode::FAILURE;
+    }
+
+    if let Ok(mod_rs_text) = fs::read_to_string(mod_rs_path) {
+        if let Some(updated) = scaffold_new::ensure_mod_declared(&mod_rs_text, id) {
+            if let Err(e) = fs::write(mod_rs_path, updated) {
+                eprintln!("codegen: failed to update {}: {e}", mod_rs_path.display());
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        eprintln!("codegen: WARNING: could not read {} — add `pub mod {id};` by hand", mod_rs_path.display());
+    }
+
+    println!("{}", scaffold.checklist);
+    ExitCode::SUCCESS
+}
+
 fn to_snake_case_stem(enum_name: &str) -> String {
     codegen::naming::to_snake_case(enum_name)
 }
@@ -346,6 +432,95 @@ mod report_missing_entry_tests {
         let mut had_errors = true;
         report_missing_entry("qualityI18n.ts", &entry, false, &mut had_errors);
         assert!(had_errors);
+    }
+}
+
+#[cfg(test)]
+mod scaffold_flag_conflicts_tests {
+    use super::*;
+
+    #[test]
+    fn new_check_alone_does_not_conflict() {
+        assert!(!scaffold_flag_conflicts(true, false, false, false));
+    }
+
+    #[test]
+    fn new_strategy_alone_does_not_conflict() {
+        assert!(!scaffold_flag_conflicts(false, true, false, false));
+    }
+
+    #[test]
+    fn neither_new_flag_never_conflicts() {
+        assert!(!scaffold_flag_conflicts(false, false, true, true));
+    }
+
+    #[test]
+    fn new_check_with_check_only_conflicts() {
+        assert!(scaffold_flag_conflicts(true, false, true, false));
+    }
+
+    #[test]
+    fn new_check_with_scaffold_conflicts() {
+        assert!(scaffold_flag_conflicts(true, false, false, true));
+    }
+
+    #[test]
+    fn new_check_and_new_strategy_together_conflicts() {
+        assert!(scaffold_flag_conflicts(true, true, false, false));
+    }
+}
+
+#[cfg(test)]
+mod flag_value_tests {
+    use super::*;
+
+    #[test]
+    fn returns_the_value_following_the_flag() {
+        let args = vec!["codegen".to_string(), "--new-check".to_string(), "min_region_size".to_string()];
+        assert_eq!(flag_value(&args, "--new-check"), Some("min_region_size".to_string()));
+    }
+
+    #[test]
+    fn returns_none_when_flag_is_absent() {
+        let args = vec!["codegen".to_string(), "--check".to_string()];
+        assert_eq!(flag_value(&args, "--new-check"), None);
+    }
+
+    #[test]
+    fn returns_none_when_flag_is_the_last_argument() {
+        let args = vec!["codegen".to_string(), "--new-check".to_string()];
+        assert_eq!(flag_value(&args, "--new-check"), None);
+    }
+}
+
+#[cfg(test)]
+mod is_valid_id_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_snake_case_ids() {
+        assert!(is_valid_id("min_region_size"));
+        assert!(is_valid_id("a"));
+        assert!(is_valid_id("a1_2b"));
+    }
+
+    #[test]
+    fn rejects_empty_string() {
+        assert!(!is_valid_id(""));
+    }
+
+    #[test]
+    fn rejects_leading_digit_or_underscore() {
+        assert!(!is_valid_id("1abc"));
+        assert!(!is_valid_id("_abc"));
+    }
+
+    #[test]
+    fn rejects_uppercase_and_path_separators() {
+        assert!(!is_valid_id("MinRegionSize"));
+        assert!(!is_valid_id("min-region-size"));
+        assert!(!is_valid_id("../evil"));
+        assert!(!is_valid_id("a/b"));
     }
 }
 
