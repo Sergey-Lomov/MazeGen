@@ -59,6 +59,8 @@ pub mod vertical_passage_group_graph_proximity;
 pub mod elevator_core;
 pub mod elevator_stop_count;
 pub mod elevator_span;
+pub mod max_elevator_count;
+pub mod max_elevator_density;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -115,3 +117,5 @@ pub use vertical_passage_group_graph_proximity::{VerticalPassageGroupGraphProxim
 pub use elevator_core::{Elevator, elevator_groups, stop_floors};
 pub use elevator_stop_count::{ElevatorStopCountCheck, ELEVATOR_STOP_COUNT_DEFAULT, ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON};
 pub use elevator_span::{ElevatorSpanCheck, ELEVATOR_SPAN_DEFAULT, ELEVATOR_SPAN_DEFAULT_COMPARISON};
+pub use max_elevator_count::{MaxElevatorCountCheck, MAX_ELEVATOR_COUNT_DEFAULT};
+pub use max_elevator_density::{MaxElevatorDensityCheck, MAX_ELEVATOR_DENSITY_DEFAULT};

@@ -34,6 +34,7 @@ pub enum IssueKind {
     InvalidVerticalPassageGroup,
     MissingVerticalPassages,
     InvalidElevator,
+    InvalidElevatorGroup,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -252,6 +253,14 @@ pub const MISSING_VERTICAL_PASSAGES: IssueKind = IssueKind::MissingVerticalPassa
 /// flagged elevator — mirrors `InvalidSplitTileIssue`'s "whole entity is the unit" shape. Repaired
 /// by `RemoveElevatorStrategy`/`ReplaceElevatorWithPassagesStrategy`.
 pub const INVALID_ELEVATOR: IssueKind = IssueKind::InvalidElevator;
+/// A set of `Elevator`s is jointly invalid — see GitHub issue #398, part of epic #344. Distinct
+/// from `INVALID_ELEVATOR`: that kind flags a single elevator invalid on its own; this one flags
+/// an aggregate condition over the whole-maze elevator group (excess count, excess density), none
+/// of which is individually invalid. Mirrors `INVALID_VERTICAL_PASSAGE_GROUP`'s split from
+/// `INVALID_VERTICAL_PASSAGE`. Carries `InvalidElevatorGroupIssue` — see that type's doc comment.
+/// Repaired by `ElevatorGroupSelectStrategy`, which delegates each candidate elevator's removal to
+/// a nested `INVALID_ELEVATOR` strategy (`RemoveElevatorStrategy`/`ReplaceElevatorWithPassagesStrategy`).
+pub const INVALID_ELEVATOR_GROUP: IssueKind = IssueKind::InvalidElevatorGroup;
 
 /// `as_str`/`from_str`/`Display` for `IssueKind` are generated (`codegen`'s `id_enum` module, see
 /// GitHub issue #361) into the sibling `issue_kind_ids.rs` from the variant list above — do not

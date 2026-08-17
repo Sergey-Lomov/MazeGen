@@ -228,6 +228,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     description: m["check.elevator_span.description"] as MessageFn,
     cardLabel: m["check.elevator_span.label"] as MessageFn,
   },
+  max_elevator_count: {
+    label: m["check.max_elevator_count.label"] as MessageFn,
+    description: m["check.max_elevator_count.description"] as MessageFn,
+  },
+  max_elevator_density: {
+    label: m["check.max_elevator_density.label"] as MessageFn,
+    description: m["check.max_elevator_density.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -339,6 +347,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_elevator.label"] as MessageFn,
     description: m["issue.invalid_elevator.description"] as MessageFn,
   },
+  invalid_elevator_group: {
+    label: m["issue.invalid_elevator_group.label"] as MessageFn,
+    description: m["issue.invalid_elevator_group.description"] as MessageFn,
+  },
 };
 
 /** Section grouping for `IssueSelectDialog` only — distinct from `issueI18n`'s full labels,
@@ -369,6 +381,7 @@ export const issueSectionI18n: Record<string, MessageFn> = {
   missing_vertical_passages: m["issue_select.section.vertical_passages"] as MessageFn,
   invalid_vertical_passage_group: m["issue_select.section.vertical_passages"] as MessageFn,
   invalid_elevator: m["issue_select.section.elevators"] as MessageFn,
+  invalid_elevator_group: m["issue_select.section.elevators"] as MessageFn,
 };
 
 /** Short item labels for `IssueSelectDialog` only, indented under `issueSectionI18n`'s header —
@@ -399,6 +412,7 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   missing_vertical_passages: m["issue_select.short_label.add"] as MessageFn,
   invalid_vertical_passage_group: m["issue_select.short_label.validate_groups"] as MessageFn,
   invalid_elevator: m["issue_select.short_label.validate"] as MessageFn,
+  invalid_elevator_group: m["issue_select.short_label.validate_groups"] as MessageFn,
 };
 
 export const NO_FIX_STRATEGY_ID = "no_fix";
@@ -559,6 +573,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   replace_elevator_with_passages: {
     label: m["strategy.replace_elevator_with_passages.label"] as MessageFn,
     description: m["strategy.replace_elevator_with_passages.description"] as MessageFn,
+  },
+  elevator_group_select: {
+    label: m["strategy.elevator_group_select.label"] as MessageFn,
+    description: m["strategy.elevator_group_select.description"] as MessageFn,
   },
 };
 
@@ -858,6 +876,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   max_split_density: {
     label: m["param.max_split_density.label"] as MessageFn,
     description: m["param.max_split_density.description"] as MessageFn,
+  },
+  max_elevator_count: {
+    label: m["param.max_elevator_count.label"] as MessageFn,
+    description: m["param.max_elevator_count.description"] as MessageFn,
+  },
+  max_elevator_density: {
+    label: m["param.max_elevator_density.label"] as MessageFn,
+    description: m["param.max_elevator_density.description"] as MessageFn,
   },
   split_group_geometric_proximity_distance: {
     label: m["param.split_group_geometric_proximity_distance.label"] as MessageFn,

@@ -45,6 +45,7 @@ pub mod vertical_target;
 pub mod missing_loops_vertical;
 pub mod remove_elevator;
 pub mod replace_elevator_with_passages;
+pub mod elevator_group_select;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -117,6 +118,7 @@ pub use vertical_passage_group_select::{VerticalPassageGroupSelectStrategy, SLOT
 pub use missing_loops_vertical::{MissingLoopsVerticalStrategy, PARAM_RESERVE_PERCENT as MISSING_LOOPS_VERTICAL_PARAM_RESERVE_PERCENT, PARAM_ONE_WAY_CHANCE as MISSING_LOOPS_VERTICAL_PARAM_ONE_WAY_CHANCE, PARAM_DIRECTION_BALANCE as MISSING_LOOPS_VERTICAL_PARAM_DIRECTION_BALANCE};
 pub use remove_elevator::RemoveElevatorStrategy;
 pub use replace_elevator_with_passages::{ReplaceElevatorWithPassagesStrategy, PARAM_ADJACENT_FLOORS_ONLY as REPLACE_ELEVATOR_WITH_PASSAGES_PARAM_ADJACENT_FLOORS_ONLY};
+pub use elevator_group_select::{ElevatorGroupSelectStrategy, SLOT_FIX_TARGET as ELEVATOR_GROUP_SELECT_SLOT_FIX_TARGET};
 
 #[cfg(test)]
 pub(crate) mod test_utils {

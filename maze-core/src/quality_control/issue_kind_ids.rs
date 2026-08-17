@@ -35,6 +35,7 @@ impl IssueKind {
             IssueKind::InvalidVerticalPassageGroup => "invalid_vertical_passage_group",
             IssueKind::MissingVerticalPassages => "missing_vertical_passages",
             IssueKind::InvalidElevator => "invalid_elevator",
+            IssueKind::InvalidElevatorGroup => "invalid_elevator_group",
         }
     }
 
@@ -69,6 +70,7 @@ impl IssueKind {
             "invalid_vertical_passage_group" => Some(IssueKind::InvalidVerticalPassageGroup),
             "missing_vertical_passages" => Some(IssueKind::MissingVerticalPassages),
             "invalid_elevator" => Some(IssueKind::InvalidElevator),
+            "invalid_elevator_group" => Some(IssueKind::InvalidElevatorGroup),
             _ => None,
         }
     }

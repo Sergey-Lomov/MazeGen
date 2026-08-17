@@ -65,6 +65,9 @@ use maze_core::{
         ElevatorStopCountCheck, ELEVATOR_STOP_COUNT_DEFAULT, ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON,
         ElevatorSpanCheck, ELEVATOR_SPAN_DEFAULT, ELEVATOR_SPAN_DEFAULT_COMPARISON,
         InvalidElevatorIssue,
+        MaxElevatorCountCheck, MAX_ELEVATOR_COUNT_DEFAULT,
+        MaxElevatorDensityCheck, MAX_ELEVATOR_DENSITY_DEFAULT,
+        InvalidElevatorGroupIssue,
     },
     RegionClass,
 };
@@ -103,6 +106,7 @@ pub(crate) enum KindTag {
     MissingVerticalPassages,
     InvalidVerticalPassageGroup,
     InvalidElevator,
+    InvalidElevatorGroup,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -161,6 +165,8 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "vertical_passage_group_graph_proximity" => KindTag::InvalidVerticalPassageGroup,
         "elevator_stop_count"        => KindTag::InvalidElevator,
         "elevator_span"              => KindTag::InvalidElevator,
+        "max_elevator_count"         => KindTag::InvalidElevatorGroup,
+        "max_elevator_density"       => KindTag::InvalidElevatorGroup,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -888,6 +894,27 @@ pub(crate) fn build_invalid_elevator_check<T: Tessellation>(instance: &CheckInst
                 .unwrap_or(ELEVATOR_SPAN_DEFAULT);
             let comparison = parse_comparison(instance.params.get("comparison"), ELEVATOR_SPAN_DEFAULT_COMPARISON);
             Some(Box::new(ElevatorSpanCheck { instance_id, comparison, span }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_invalid_elevator_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidElevatorGroupIssue>>> {
+    match instance.type_id.as_str() {
+        "max_elevator_count" => {
+            let max_elevator_count = instance.params.get("max_elevator_count")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MAX_ELEVATOR_COUNT_DEFAULT);
+            Some(Box::new(MaxElevatorCountCheck { instance_id, max_elevator_count }))
+        }
+        "max_elevator_density" => {
+            let max_density = instance.params.get("max_elevator_density")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
+                .unwrap_or(MAX_ELEVATOR_DENSITY_DEFAULT);
+            Some(Box::new(MaxElevatorDensityCheck { instance_id, max_density }))
         }
         _ => None,
     }

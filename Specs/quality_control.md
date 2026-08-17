@@ -1641,6 +1641,49 @@ pub struct InvalidElevatorIssue {
 
 `ElevatorNodes` wraps one elevator's full stop-node set, sorted on construction so two instances built from the same set in different orders compare/hash equal — mirrors `SplitTileNodes` exactly (GitHub issue #260's "whole entity is the unit" shape). `InvalidElevatorIssue.invalid` holds one `ElevatorNodes` per flagged elevator; `invalid_sources` tracks per-elevator check provenance, keyed by the same canonicalized `ElevatorNodes`. `IssueMerge` dedup-unions by clone (`ElevatorNodes` isn't `Copy`, so this can't reuse `merge_id_sets`) — mirrors `InvalidSplitTileIssue::merge`'s own clone-based-key approach.
 
+### MaxElevatorCountCheck / MaxElevatorDensityCheck
+
+```rust
+pub const MAX_ELEVATOR_COUNT_DEFAULT: u32 = 20;
+
+pub struct MaxElevatorCountCheck {
+    pub instance_id: String,
+    pub max_elevator_count: u32,
+}
+
+pub const MAX_ELEVATOR_DENSITY_DEFAULT: f64 = 30.0;
+
+pub struct MaxElevatorDensityCheck {
+    pub instance_id: String,
+    pub max_density: f64,
+}
+```
+
+See GitHub issue #398, part of epic #344. Both checks validate the elevator group as a whole rather than any single elevator — **whole-maze scope only, no `FloorScope`/per-floor model**, unlike nearly every other max-count/max-density check in the crate: an elevator inherently spans several floors, so there is no single "checked floor" to attribute it to. Mirrors `MaxSplitCountCheck`/`MaxSplitDensityCheck`'s identical rationale (a field-wide/aggregate decision — which elevators to actually remove is `ElevatorGroupSelectStrategy`'s job, not the check's), applied to `ElevatorNodes` as the "whole entity is the unit" element (like split tiles) rather than an `EdgeId`-based group (like vertical passages/one-ways/teleports).
+
+**`MaxElevatorCountCheck`** (`check_type_id() == "max_elevator_count"`) — collects every `elevator_groups(maze)` entry; if `count <= max_elevator_count` the check is silent, otherwise all of them become one group with `to_remove = count - max_elevator_count`.
+
+**`MaxElevatorDensityCheck`** (`check_type_id() == "max_elevator_density"`) — "elevators per 100 field cells" via `density_per_100`, `field_cells = maze.field.point_count()` (total across every floor — an elevator has no single owning floor, so this can't reuse a per-floor cell count the way per-floor checks do). Silent if `field_cells == 0` or the current density is at or below `max_density`; otherwise `target_count = round(max_density * field_cells / 100.0)`, `to_remove = count.saturating_sub(target_count)`, same rounding convention as `MaxSplitDensityCheck::to_remove_for`.
+
+Either way, fires `InvalidElevatorGroupIssue::new_from_check(instance_id, vec![(elevators, to_remove)])` with `.with_detail(instance_id, "max_elevator_count" | "max_elevator_density", threshold.to_string())` chained on (detail key matches the check's own threshold param id). Repaired by `ElevatorGroupSelectStrategy` (see `repair.md`).
+
+#### ElevatorGroupKind / InvalidElevatorGroupIssue
+
+```rust
+pub struct ElevatorGroupKind;
+
+impl InvalidGroupIssueKind for ElevatorGroupKind {
+    type Element = ElevatorNodes;
+    const KIND: IssueKind = INVALID_ELEVATOR_GROUP;
+    const NESTED_KIND: IssueKind = INVALID_ELEVATOR;
+    const NESTED_SLOT_ID: &'static str = "fix_target";
+}
+
+pub type InvalidElevatorGroupIssue = InvalidGroupIssue<ElevatorGroupKind>;
+```
+
+`ElevatorGroupKind` selects the `InvalidGroupIssue<K>`/`GroupSelectStrategy<K>` generic-group-issue instantiation (see `InvalidGroupIssueKind`'s own doc section above) for elevator groups — mirrors `SplitGroupKind`'s shape (`Element = ElevatorNodes`, a whole elevator) rather than `VerticalPassageGroupKind`'s (`Element = EdgeId`, a single passage edge), since an elevator — like a split tile — is an indivisible entity that gets wholly removed/converted, never partially. `INVALID_ELEVATOR_GROUP` is distinct from `INVALID_ELEVATOR`: that kind flags a single elevator invalid on its own; this one flags an aggregate condition over the whole-maze elevator group (excess count, excess density), none of which is individually invalid — mirrors `INVALID_VERTICAL_PASSAGE_GROUP`'s split from `INVALID_VERTICAL_PASSAGE`.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.

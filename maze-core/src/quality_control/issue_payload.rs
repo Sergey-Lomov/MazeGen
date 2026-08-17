@@ -6,7 +6,7 @@ use crate::generation::edge_ops::bidirectional_edge_feasible;
 use crate::space::{MultiLevelField, Tessellation};
 use super::issue::Issue;
 use crate::graph::EdgeKind;
-use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidVerticalPassageIssue, InvalidVerticalPassageGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, SplitRouteEdge, ExcessiveSccCountIssue, InvalidElevatorIssue, ElevatorNodes};
+use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidVerticalPassageIssue, InvalidVerticalPassageGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, SplitRouteEdge, ExcessiveSccCountIssue, InvalidElevatorIssue, ElevatorNodes, InvalidElevatorGroupIssue};
 
 /// One flagged edge-group element (a cycle, a one-way/teleport group, or a single flagged edge
 /// treated as a size-one group) resolved for the web/tape wire boundary — pairs the group's
@@ -434,40 +434,74 @@ fn excessive_scc_count_preset_locked<T: Tessellation>(field: &MultiLevelField<T>
     })
 }
 
-/// Resolves every flagged elevator's stop-node set into its currently-live fan of
-/// `EdgeKind::Elevator` edges, keyed by the specific check(s) that flagged *that* elevator
-/// (`invalid_sources`) — mirrors `resolve_invalid_split_tile_payload`'s per-element attribution.
-/// An elevator whose fan has already been fully removed by an earlier repair pass resolves to an
-/// empty edge list rather than being skipped, same convention as `edge_pair`'s stale-edge handling
-/// elsewhere in this file.
-fn resolve_invalid_elevator_payload(invalid: &[ElevatorNodes], invalid_sources: &HashMap<ElevatorNodes, Vec<String>>, graph: &Graph, preset_state: &PresetState) -> Option<IssuePayload> {
-    let mut groups: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
-    for elevator in invalid {
-        let mut edges = Vec::new();
-        let mut edge_ids = Vec::new();
-        for &a in &elevator.0 {
-            for &b in &elevator.0 {
-                if a >= b {
-                    continue;
-                }
-                for (from, to) in [(a, b), (b, a)] {
-                    if let Some(eid) = graph.edge_between(from, to) {
-                        if graph.edge(eid).is_some_and(|e| e.kind == EdgeKind::Elevator) {
-                            if let Some(pair) = edge_pair(graph, eid) {
-                                edges.push(pair);
-                                edge_ids.push(eid);
-                            }
+/// Resolves one elevator's stop-node set into its currently-live fan of `EdgeKind::Elevator`
+/// edges, both as base-graph `[from, to]` pairs and as raw `EdgeId`s (for `preset_locked`) —
+/// shared by `resolve_invalid_elevator_payload`/`resolve_elevator_group_map`, which differ only in
+/// how they key the result into `groups` (per-elevator vs. per-flagged-group). An elevator whose
+/// fan has already been fully removed by an earlier repair pass resolves to an empty edge list
+/// rather than being skipped, same convention as `edge_pair`'s stale-edge handling elsewhere in
+/// this file.
+fn elevator_edges(elevator: &ElevatorNodes, graph: &Graph) -> (Vec<[u32; 2]>, Vec<crate::ids::EdgeId>) {
+    let mut edges = Vec::new();
+    let mut edge_ids = Vec::new();
+    for &a in &elevator.0 {
+        for &b in &elevator.0 {
+            if a >= b {
+                continue;
+            }
+            for (from, to) in [(a, b), (b, a)] {
+                if let Some(eid) = graph.edge_between(from, to) {
+                    if graph.edge(eid).is_some_and(|e| e.kind == EdgeKind::Elevator) {
+                        if let Some(pair) = edge_pair(graph, eid) {
+                            edges.push(pair);
+                            edge_ids.push(eid);
                         }
                     }
                 }
             }
         }
+    }
+    (edges, edge_ids)
+}
+
+/// Resolves every flagged elevator's stop-node set into its currently-live fan of
+/// `EdgeKind::Elevator` edges, keyed by the specific check(s) that flagged *that* elevator
+/// (`invalid_sources`) — mirrors `resolve_invalid_split_tile_payload`'s per-element attribution.
+fn resolve_invalid_elevator_payload(invalid: &[ElevatorNodes], invalid_sources: &HashMap<ElevatorNodes, Vec<String>>, graph: &Graph, preset_state: &PresetState) -> Option<IssuePayload> {
+    let mut groups: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
+    for elevator in invalid {
+        let (edges, edge_ids) = elevator_edges(elevator, graph);
         let preset_locked = all_preset_locked(&edge_ids, graph, preset_state);
         for source in invalid_sources.get(elevator).into_iter().flatten() {
             groups.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edges.clone(), preset_locked });
         }
     }
     if groups.is_empty() { None } else { Some(IssuePayload::InvalidElevator { groups }) }
+}
+
+/// Resolves every flagged elevator group (excess count/density, whole-maze scope — see GitHub
+/// issue #398) into one `IssueEdgeGroupPayload` per flagged elevator, keyed by the specific
+/// check(s) that flagged *that group* (`invalid_sources`, canonical-group-key-keyed) — mirrors
+/// `resolve_edge_group_map`'s per-group attribution, but each payload entry is still one elevator
+/// (not the whole group merged into one edge list), since `IssueBubble`'s hover highlight expects
+/// one entry per flagged instance the same way `resolve_invalid_elevator_payload` already
+/// produces for `INVALID_ELEVATOR`. Reuses the same `IssuePayload::InvalidElevator` wire shape as
+/// `INVALID_ELEVATOR` — mirrors `InvalidOneWayGroupIssue` reusing `InvalidOneWay`.
+fn resolve_elevator_group_map(groups: &[(Vec<ElevatorNodes>, u32)], invalid_sources: &HashMap<Vec<ElevatorNodes>, Vec<String>>, graph: &Graph, preset_state: &PresetState) -> Option<IssuePayload> {
+    let mut out: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
+    for (group, _to_remove) in groups {
+        let mut key = group.clone();
+        key.sort_unstable();
+        let sources = invalid_sources.get(&key);
+        for elevator in group {
+            let (edges, edge_ids) = elevator_edges(elevator, graph);
+            let preset_locked = all_preset_locked(&edge_ids, graph, preset_state);
+            for source in sources.into_iter().flatten() {
+                out.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edges.clone(), preset_locked });
+            }
+        }
+    }
+    if out.is_empty() { None } else { Some(IssuePayload::InvalidElevator { groups: out }) }
 }
 
 pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, field: &MultiLevelField<T>, scc: &ConnectedComponents, preset_state: &PresetState) -> IssuePayload {
@@ -592,6 +626,12 @@ pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, 
 
     if let Some(InvalidElevatorIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidElevatorIssue>() {
         if let Some(payload) = resolve_invalid_elevator_payload(invalid, invalid_sources, graph, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidElevatorGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidElevatorGroupIssue>() {
+        if let Some(payload) = resolve_elevator_group_map(groups, invalid_sources, graph, preset_state) {
             return payload;
         }
     }
@@ -1793,5 +1833,88 @@ mod tests {
         let payload = resolve(&issue, &graph, &scc);
         let IssuePayload::InvalidVerticalPassage { groups } = payload else { panic!("expected InvalidVerticalPassage, got {payload:?}") };
         assert_eq!(groups["vertical_passage_group_geometric_proximity"][0].edges, vec![[1, 2]], "stale edge id must be dropped, not panic");
+    }
+
+    fn elevator_graph() -> (Graph, ElevatorNodes) {
+        use crate::graph::EdgeKind;
+        let mut graph = Graph::new();
+        graph.add_node(1);
+        graph.add_node(2);
+        graph.add_node(3);
+        graph.add_edge(1, 2, EdgeKind::Elevator);
+        graph.add_edge(2, 1, EdgeKind::Elevator);
+        graph.add_edge(1, 3, EdgeKind::Elevator);
+        graph.add_edge(3, 1, EdgeKind::Elevator);
+        graph.add_edge(2, 3, EdgeKind::Elevator);
+        graph.add_edge(3, 2, EdgeKind::Elevator);
+        (graph, ElevatorNodes::new(vec![1, 2, 3]))
+    }
+
+    #[test]
+    fn invalid_elevator_issue_with_no_flagged_elevators_resolves_to_none() {
+        let (graph, scc) = empty_graph_and_scc();
+        let issue = InvalidElevatorIssue::new_from_check("check", vec![]);
+        assert_eq!(resolve(&issue, &graph, &scc), IssuePayload::None);
+    }
+
+    #[test]
+    fn invalid_elevator_issue_resolves_flagged_elevator_as_its_full_edge_fan() {
+        let (graph, elevator) = elevator_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidElevatorIssue::new_from_check("elevator_stop_count", vec![elevator]);
+
+        let payload = resolve(&issue, &graph, &scc);
+        let IssuePayload::InvalidElevator { groups } = payload else { panic!("expected InvalidElevator, got {payload:?}") };
+        assert_eq!(groups.len(), 1);
+        let check_groups = &groups["elevator_stop_count"];
+        assert_eq!(check_groups.len(), 1);
+        let mut edges = check_groups[0].edges.clone();
+        edges.sort();
+        assert_eq!(edges, vec![[1, 2], [1, 3], [2, 1], [2, 3], [3, 1], [3, 2]]);
+    }
+
+    #[test]
+    fn invalid_elevator_group_issue_with_no_flagged_groups_resolves_to_none() {
+        let (graph, scc) = empty_graph_and_scc();
+        let issue = InvalidElevatorGroupIssue::new_from_check("check", vec![]);
+        assert_eq!(resolve(&issue, &graph, &scc), IssuePayload::None);
+    }
+
+    #[test]
+    fn invalid_elevator_group_issue_resolves_each_flagged_elevator_as_its_own_edge_fan() {
+        // Whole-maze scope group issue (GitHub issue #398) -- unlike the edge-based group kinds
+        // (one-way/teleport/vertical-passage), an elevator group's `Vec<ElevatorNodes>` still
+        // resolves to one payload entry per flagged elevator, mirroring `resolve_invalid_elevator_payload`.
+        let (graph, elevator) = elevator_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidElevatorGroupIssue::new_from_check("max_elevator_count", vec![(vec![elevator], 1)]);
+
+        let payload = resolve(&issue, &graph, &scc);
+        let IssuePayload::InvalidElevator { groups } = payload else { panic!("expected InvalidElevator, got {payload:?}") };
+        assert_eq!(groups.len(), 1);
+        let check_groups = &groups["max_elevator_count"];
+        assert_eq!(check_groups.len(), 1);
+        let mut edges = check_groups[0].edges.clone();
+        edges.sort();
+        assert_eq!(edges, vec![[1, 2], [1, 3], [2, 1], [2, 3], [3, 1], [3, 2]]);
+    }
+
+    #[test]
+    fn invalid_elevator_group_issue_preset_locked_when_every_edge_is_preset_protected() {
+        let (graph, elevator) = elevator_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidElevatorGroupIssue::new_from_check("max_elevator_density", vec![(vec![elevator], 1)]);
+
+        let mut preset_state = PresetState::empty();
+        preset_state.preset_edges.insert((1, 2));
+        preset_state.preset_edges.insert((2, 1));
+        preset_state.preset_edges.insert((1, 3));
+        preset_state.preset_edges.insert((3, 1));
+        preset_state.preset_edges.insert((2, 3));
+        preset_state.preset_edges.insert((3, 2));
+
+        let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state);
+        let IssuePayload::InvalidElevator { groups } = payload else { panic!("expected InvalidElevator, got {payload:?}") };
+        assert!(groups["max_elevator_density"][0].preset_locked);
     }
 }

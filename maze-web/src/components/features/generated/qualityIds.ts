@@ -7,6 +7,8 @@ export const CHECK_IDS = [
   "loop_distance_from_finish",
   "loop_distance_from_start",
   "loop_length",
+  "max_elevator_count",
+  "max_elevator_density",
   "max_loop_density",
   "max_loops_count",
   "max_one_way_count",
@@ -60,6 +62,7 @@ export const CHECK_IDS = [
 export const STRATEGY_IDS = [
   "add_split",
   "add_vertical_passage",
+  "elevator_group_select",
   "expand_region_passage",
   "farthest_endpoints",
   "invalid_loop_group_select",
@@ -106,6 +109,7 @@ export const RULE_PARAM_IDS = [
 export const ISSUE_KIND_IDS = [
   "excessive_scc_count",
   "invalid_elevator",
+  "invalid_elevator_group",
   "invalid_loop",
   "invalid_loop_group",
   "invalid_one_way",
@@ -169,6 +173,8 @@ export const PARAM_IDS = [
   "max_attempts",
   "max_connections",
   "max_density",
+  "max_elevator_count",
+  "max_elevator_density",
   "max_loops_count",
   "max_one_ways",
   "max_ratio",

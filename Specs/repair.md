@@ -1405,6 +1405,24 @@ There is no route-protection concept here (unlike one-way/teleport groups): a wh
 
 `SPLIT_PRIORITY_OPTIONS` is a superset of the shared `PRIORITY_OPTIONS` (`random`/`problematic`, see `group_select.rs`) with four split-specific metrics added — kept local to this strategy rather than widening the shared constant, since `OneWayGroupSelectStrategy`/`TeleportGroupSelectStrategy` have no equivalent per-candidate size/connectivity notion (an edge has neither). Every metric respects the epic's "slot-0 is not otherwise special" rule (`quality_control.md`): both `_voluminous` and `_connected` sort by the tile's *entire* node list, not just its extra nodes. Ties (equal volume/connectivity/membership) are broken by an unconditional shuffle applied before sorting, same rationale `order_by_priority` uses.
 
+### ElevatorGroupSelectStrategy
+
+Handles `INVALID_ELEVATOR_GROUP` — see GitHub issue #398, epic #344. For the group flagged by `MaxElevatorCountCheck`/`MaxElevatorDensityCheck` (`InvalidElevatorGroupIssue.groups: Vec<(Vec<ElevatorNodes>, u32)>` — see `quality_control.md`), picks whole elevators to remove and delegates each actual removal to a nested `INVALID_ELEVATOR` strategy filling the `fix_target` slot. Built directly on `group_select_apply` (above), same shape as `SplitGroupSelectStrategy` — its `K::Element` is `ElevatorNodes` (a whole elevator's stop-node set), so every fix always removes one entire elevator, never touches individual stop nodes.
+
+```rust
+pub const SLOT_FIX_TARGET: &str = "fix_target";
+```
+
+One nested slot, `fix_target`, expecting exactly one `INVALID_ELEVATOR`-handling strategy (`min: 1, max: Some(1)`, `dispatch_kind: Unordered`).
+
+Same as `SplitGroupSelectStrategy`: no route-protection concept (`element_allowed` always `true` — an elevator's removal feasibility is the nested strategy's own job at apply time), and `element_invalidated` always returns `false` (distinct `ElevatorNodes` candidates are always disjoint stop-node sets, so resolving one can never invalidate another still-live candidate).
+
+**Parameters:**
+
+| id | type | default | description |
+|----|------|---------|-------------|
+| `priority` | Enum(`random`/`problematic`) | `problematic` | Which eligible elevator to remove first — the shared `group_select::PARAM_PRIORITY` param, no elevator-specific metrics (unlike `SplitGroupSelectStrategy`'s volume/connectivity options). |
+
 ### split_core (shared, not a strategy)
 
 `maze-core/src/repair/strategies/split_core.rs` — split-tile face-planning logic shared by `AddSplitStrategy` (GitHub issue #247) and `MissingLoopsSplitStrategy` (GitHub issue #254), factored out once the latter needed the same rotation/mirror search and existing-connection bookkeeping with one extra constraint: a specific new node must end up connected to a specific pre-chosen neighbor (a loop-closing bridge), and that same node must carry at least one more connection so it's a through-node, not a dead end.
