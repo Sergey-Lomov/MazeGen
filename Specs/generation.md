@@ -13,7 +13,7 @@ Maze generation produces a spanning tree (or near-spanning tree with optional on
 | `branching` | 0.0–1.0 | 0.5 | Controls junction width via binomial distribution. 0 = always 2 connections, 1 = always maximum possible connections. Each additional connection beyond 2 is added independently with probability `branching`. |
 | `directionality` | 0.0–1.0 | 0.0 | Probability of preferring a straight-ahead neighbor (aligned with the incoming direction) when making the **first** connection from a node. Applies to both corridor and junction nodes — for junctions, only the first candidate uses directionality; remaining candidates are random. Requires `Field::is_straight`. Has no effect when there is no parent. |
 | `cyclicity` | 0.0–1.0 | 0.0 | Per-node probability of adding an extra edge to an already-visited neighbor, creating a cycle. Evaluated independently of the normal corridor/junction selection. If triggered, one visited neighbor is chosen at random and connected; this happens regardless of whether `free_neighbors` is empty. The normal free-neighbor connections still proceed as usual after the cyclic edge is added. |
-| `one_way_chance` | 0.0–1.0 | 0.04 | Probability that any given edge is directed (one-way) rather than bidirectional. Direction (src→dst or dst→src) is chosen with equal probability. |
+| `one_way_chance` | 0.0–1.0 | 0.0 | Probability that any given edge is directed (one-way) rather than bidirectional. Direction (src→dst or dst→src) is chosen with equal probability. |
 | `teleport_chance` | 0.0–1.0 | 0.0 | Probability that, at each edge-addition opportunity this algorithm handles, the edge is a teleport (`EdgeKind::Teleport`, non-adjacent allowed) instead of a normal geometrically-adjacent connection. See "Teleport connections" below — the exact roll point and effect are algorithm-specific, not a separate pass. |
 | `teleport_one_way_chance` | 0.0–1.0 | 0.0 | Probability that an added teleport is one-way rather than two-way. Only consulted when `teleport_chance` already hit — mirrors `one_way_chance`'s role but scoped to teleports. |
 
@@ -224,7 +224,7 @@ Algorithm parameters are passed via the `initial` field of `GenerateConfig`. `Ge
     "cyclicity": 0.0
   },
   "elements": {
-    "one_way_chance": 0.04,
+    "one_way_chance": 0.0,
     "teleport_chance": 0.0,
     "teleport_one_way_chance": 0.0,
     "cross_floor_teleport_balance": 0.0,

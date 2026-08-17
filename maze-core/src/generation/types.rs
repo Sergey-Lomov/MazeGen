@@ -46,7 +46,7 @@ pub struct ElementsConfig {
 impl Default for ElementsConfig {
     fn default() -> Self {
         ElementsConfig {
-            one_way_chance: 0.04,
+            one_way_chance: 0.0,
             teleport_chance: 0.0,
             teleport_one_way_chance: 0.0,
             split_chance: 0.0,

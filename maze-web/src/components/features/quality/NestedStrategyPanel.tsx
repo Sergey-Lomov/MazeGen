@@ -9,7 +9,7 @@ import { NestedStrategySelectDialog } from "./NestedStrategySelectDialog";
 import * as m from "~/paraglide/messages";
 import { ui, typography, spacing, indent, inset } from "../../../styles/theme";
 import { Inline } from "../../Layout";
-import { resolveStrategyLabel } from "../qualityI18n";
+import { resolveStrategyLabel, resolveNestedStrategyLabel } from "../qualityI18n";
 import type { NestedStrategyVM, NestedSlotVM } from "../useQualityViewModel";
 import { MAX_NESTED_STRATEGY_DEPTH, entriesForSlot, type NestedStrategyState, type PathSegment, type QcRuleState } from "../../../store/storeTypes";
 import { NESTED_STRATEGY_WEIGHT_PARAM_ID } from "../../../store/slices/generationSlice";
@@ -107,7 +107,7 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
     <div style={styles.entriesGap}>
       {entries.length === 0 && (
         <Inline gap="rowGap" justify="space-between" style={{ borderRadius: 3 }}>
-          <label style={styles.label}>{m["quality.nested_strategy.label"]()}</label>
+          <label style={styles.label}>{resolveNestedStrategyLabel(slotDesc.kind)}</label>
           <span style={styles.placeholder}>{m["quality.nested_strategy.placeholder"]()}</span>
         </Inline>
       )}
@@ -280,7 +280,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
           }}
         >
           <Inline gap="rowGap" justify="space-between" style={{ borderRadius: 3 }}>
-            <label style={styles.label}>{m["quality.nested_strategy.label"]()}</label>
+            <label style={styles.label}>{resolveNestedStrategyLabel(slotDesc.kind)}</label>
             <span style={styles.strategyName}>
               {resolveStrategyLabel(node.strategy.id)}
             </span>

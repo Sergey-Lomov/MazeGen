@@ -46,6 +46,13 @@ use maze_core::{
         SplitNodeConnectionPerFaceCheck, SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT,
         SplitNodeConnectionTraversalDistanceCheck, SPLIT_NODE_CONNECTION_TRAVERSAL_DISTANCE_MIN_DETOUR_DEFAULT,
         MaxSplitTileNodeCountCheck, MAX_SPLIT_TILE_NODE_COUNT_DEFAULT,
+        MinVerticalPassageCountCheck, MIN_VERTICAL_PASSAGE_COUNT_DEFAULT, MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE, MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING,
+        MinVerticalPassageRatioCheck, MIN_VERTICAL_PASSAGE_RATIO_DEFAULT, MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE, MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING,
+        MaxVerticalPassageCountCheck, MAX_VERTICAL_PASSAGE_COUNT_DEFAULT, MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE, MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE, MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING,
+        MaxVerticalPassageRatioCheck, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING,
+        VerticalPassageGroupGeometricProximityCheck, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_TYPE, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_COUNT_INCOMING, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
+        VerticalPassageGroupGraphProximityCheck, VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE,
+        VerticalPassageType,
         Comparison, CycleKind, GeometricFloorMode, FloorScope, RuleParams,
         MissingEndpointsIssue, UnreachableFinishIssue, MissingLoopsIssue, InvalidLoopIssue,
         InvalidLoopGroupIssue,
@@ -54,6 +61,7 @@ use maze_core::{
         MissingOneWaysIssue, MissingTeleportsIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue,
         MissingSplitTilesIssue, InvalidSplitNodeIssue, InvalidSplitNodeConnectionGroupIssue,
         InvalidSplitNodeGroupIssue, InvalidSplitRouteIssue,
+        MissingVerticalPassagesIssue, InvalidVerticalPassageGroupIssue,
     },
     RegionClass,
 };
@@ -89,6 +97,8 @@ pub(crate) enum KindTag {
     InvalidSplitNodeConnectionGroup,
     InvalidSplitNodeGroup,
     InvalidSplitRoute,
+    MissingVerticalPassages,
+    InvalidVerticalPassageGroup,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -139,6 +149,12 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "split_node_connection_per_face" => KindTag::InvalidSplitNodeConnectionGroup,
         "split_node_connection_traversal_distance" => KindTag::InvalidSplitRoute,
         "max_split_tile_node_count" => KindTag::InvalidSplitNodeGroup,
+        "min_vertical_passage_count" => KindTag::MissingVerticalPassages,
+        "min_vertical_passage_ratio" => KindTag::MissingVerticalPassages,
+        "max_vertical_passage_count" => KindTag::InvalidVerticalPassageGroup,
+        "max_vertical_passage_ratio" => KindTag::InvalidVerticalPassageGroup,
+        "vertical_passage_group_geometric_proximity" => KindTag::InvalidVerticalPassageGroup,
+        "vertical_passage_group_graph_proximity" => KindTag::InvalidVerticalPassageGroup,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -249,6 +265,25 @@ fn parse_floor_scope(param: Option<&String>, default: FloorScope) -> FloorScope 
 /// the pre-#217 behavior of considering every cycle regardless of directionality.
 fn parse_cycle_kind(param: Option<&String>) -> CycleKind {
     param.and_then(|v| CycleKind::from_str(v)).unwrap_or(CycleKind::Any)
+}
+
+/// GitHub issue #343 follow-up: `same_type_only` is shared by the two `VerticalPassage` proximity
+/// checks — missing or unparseable defaults to `false`.
+fn parse_same_type_only(param: Option<&String>) -> bool {
+    param.and_then(|v| v.parse::<bool>().ok()).unwrap_or(false)
+}
+
+/// GitHub issue #343 follow-up: `passage_type` is shared by the 4 min/max vertical-passage
+/// count/ratio checks and the 2 group-proximity checks — missing or unparseable falls back to
+/// `default`.
+fn parse_vertical_passage_type(param: Option<&String>, default: VerticalPassageType) -> VerticalPassageType {
+    param.and_then(|v| VerticalPassageType::from_str(v)).unwrap_or(default)
+}
+
+/// GitHub issue #343 follow-up: `count_incoming` is shared by the 4 min/max vertical-passage
+/// count/ratio checks — missing or unparseable falls back to `default`.
+fn parse_count_incoming(param: Option<&String>, default: bool) -> bool {
+    param.and_then(|v| v.parse::<bool>().ok()).unwrap_or(default)
 }
 
 /// One `build_*_check` function per `KindTag` — `type_id`s that share a `KindTag` (e.g.
@@ -752,6 +787,79 @@ pub(crate) fn build_missing_teleports_check<T: Tessellation>(instance: &CheckIns
                 .unwrap_or(MIN_TELEPORT_RATIO_DEFAULT);
             let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE);
             Some(Box::new(MinTeleportRatioCheck { instance_id, min_teleport_ratio, floor_scope }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_missing_vertical_passages_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingVerticalPassagesIssue>>> {
+    match instance.type_id.as_str() {
+        "min_vertical_passage_count" => {
+            let min_vertical_passages = instance.params.get("min_vertical_passages")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(1) as u32)
+                .unwrap_or(MIN_VERTICAL_PASSAGE_COUNT_DEFAULT);
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE);
+            let count_incoming = parse_count_incoming(instance.params.get("count_incoming"), MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING);
+            Some(Box::new(MinVerticalPassageCountCheck { instance_id, min_vertical_passages, floor_scope, passage_type: rule_params.vertical_passage_type, count_incoming }))
+        }
+        "min_vertical_passage_ratio" => {
+            let min_vertical_passage_ratio = instance.params.get("min_vertical_passage_ratio")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
+                .unwrap_or(MIN_VERTICAL_PASSAGE_RATIO_DEFAULT);
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE);
+            let count_incoming = parse_count_incoming(instance.params.get("count_incoming"), MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING);
+            Some(Box::new(MinVerticalPassageRatioCheck { instance_id, min_vertical_passage_ratio, floor_scope, passage_type: rule_params.vertical_passage_type, count_incoming }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_invalid_vertical_passage_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidVerticalPassageGroupIssue>>> {
+    match instance.type_id.as_str() {
+        "max_vertical_passage_count" => {
+            let max_vertical_passages = instance.params.get("max_vertical_passages")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MAX_VERTICAL_PASSAGE_COUNT_DEFAULT);
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE);
+            let passage_type = parse_vertical_passage_type(instance.params.get("passage_type"), MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE);
+            let count_incoming = parse_count_incoming(instance.params.get("count_incoming"), MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING);
+            Some(Box::new(MaxVerticalPassageCountCheck { instance_id, max_vertical_passages, floor_scope, passage_type, count_incoming }))
+        }
+        "max_vertical_passage_ratio" => {
+            let max_ratio = instance.params.get("max_ratio")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
+                .unwrap_or(MAX_VERTICAL_PASSAGE_RATIO_DEFAULT);
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE);
+            let passage_type = parse_vertical_passage_type(instance.params.get("passage_type"), MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE);
+            let count_incoming = parse_count_incoming(instance.params.get("count_incoming"), MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING);
+            Some(Box::new(MaxVerticalPassageRatioCheck { instance_id, max_ratio, floor_scope, passage_type, count_incoming }))
+        }
+        "vertical_passage_group_geometric_proximity" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.max(0.0))
+                .unwrap_or(VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT);
+            let passage_type = parse_vertical_passage_type(instance.params.get("passage_type"), VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_TYPE);
+            let same_type_only = parse_same_type_only(instance.params.get("same_type_only"));
+            let count_incoming = parse_count_incoming(instance.params.get("count_incoming"), VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_COUNT_INCOMING);
+            let floor_mode = parse_geometric_floor_mode(instance.params.get("floor_mode"), VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE);
+            Some(Box::new(VerticalPassageGroupGeometricProximityCheck { instance_id, distance, passage_type, same_type_only, count_incoming, floor_mode }))
+        }
+        "vertical_passage_group_graph_proximity" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT);
+            let passage_type = parse_vertical_passage_type(instance.params.get("passage_type"), VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE);
+            let same_type_only = parse_same_type_only(instance.params.get("same_type_only"));
+            Some(Box::new(VerticalPassageGroupGraphProximityCheck { instance_id, distance, passage_type, same_type_only }))
         }
         _ => None,
     }

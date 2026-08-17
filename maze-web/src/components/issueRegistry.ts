@@ -91,6 +91,9 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   invalid_split_node_connection_group: () => ({ label: m["issue.invalid_split_node_connection_group.label"](), description: m["issue.invalid_split_node_connection_group.description"](), severity: "warning" }),
   invalid_split_node_group: () => ({ label: m["issue.invalid_split_node_group.label"](), description: m["issue.invalid_split_node_group.description"](), severity: "warning" }),
   invalid_split_route: () => ({ label: m["issue.invalid_split_route.label"](), description: m["issue.invalid_split_route.description"](), severity: "warning" }),
+  missing_vertical_passages: () => ({ label: m["issue.missing_vertical_passages.label"](), description: m["issue.missing_vertical_passages.description"](), severity: "warning" }),
+  invalid_vertical_passage: () => ({ label: m["issue.invalid_vertical_passage.label"](), description: m["issue.invalid_vertical_passage.description"](), severity: "warning" }),
+  invalid_vertical_passage_group: () => ({ label: m["issue.invalid_vertical_passage_group.label"](), description: m["issue.invalid_vertical_passage_group.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -201,6 +204,12 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   split_node_connection_per_face: (d) => d.max !== undefined ? m["issue.invalid_split_node_connection_group.split_node_connection_per_face_label"]({ max: d.max }) : undefined,
   split_node_connection_traversal_distance: (d) => d.min_detour !== undefined ? m["issue.invalid_split_route.split_node_connection_traversal_distance_label"]({ min_detour: d.min_detour }) : undefined,
   max_split_tile_node_count: (d) => d.max !== undefined ? m["issue.invalid_split_node_group.max_split_tile_node_count_label"]({ max: d.max }) : undefined,
+  min_vertical_passage_count: (d) => d.missing !== undefined ? m["issue.missing_vertical_passages.min_vertical_passage_count_label"]({ missing: d.missing }) : undefined,
+  min_vertical_passage_ratio: (d) => d.missing !== undefined ? m["issue.missing_vertical_passages.min_vertical_passage_ratio_label"]({ missing: d.missing }) : undefined,
+  max_vertical_passage_count: (d) => d.max_vertical_passages !== undefined ? m["issue.invalid_vertical_passage_group.max_vertical_passage_count_label"]({ max_vertical_passages: d.max_vertical_passages }) : undefined,
+  max_vertical_passage_ratio: (d) => d.max_ratio !== undefined ? m["issue.invalid_vertical_passage_group.max_vertical_passage_ratio_label"]({ max_ratio: d.max_ratio }) : undefined,
+  vertical_passage_group_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_vertical_passage_group.vertical_passage_group_geometric_proximity_label"]({ distance: d.distance }) : undefined,
+  vertical_passage_group_graph_proximity: (d) => d.distance !== undefined ? m["issue.invalid_vertical_passage_group.vertical_passage_group_graph_proximity_label"]({ distance: d.distance }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's
@@ -235,6 +244,10 @@ const DETAIL_DESCRIPTIONS: Record<string, () => string> = {
   teleport_super_hub_avoidance: () => resolveCheckDescription("teleport_super_hub_avoidance", ""),
   split_distance_from_waypoint: () => resolveCheckDescription("split_distance_from_waypoint", ""),
   split_teleport_intersection: () => resolveCheckDescription("split_teleport_intersection", ""),
+  max_vertical_passage_count: () => resolveCheckDescription("max_vertical_passage_count", ""),
+  max_vertical_passage_ratio: () => resolveCheckDescription("max_vertical_passage_ratio", ""),
+  vertical_passage_group_geometric_proximity: () => resolveCheckDescription("vertical_passage_group_geometric_proximity", ""),
+  vertical_passage_group_graph_proximity: () => resolveCheckDescription("vertical_passage_group_graph_proximity", ""),
 };
 
 /// Resolves the description for one source check within an issue — mirrors

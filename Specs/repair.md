@@ -1507,6 +1507,44 @@ priority-ordered candidates"), `kind = MISSING_LOOPS`, `min = 1`, `max = None`,
   no candidate fills the slot after filtering: returns `Failed`.
 - Otherwise delegates directly to `dispatch_priority` with the unmodified `issue`.
 
+### AddVerticalPassageStrategy
+
+Handles `MISSING_VERTICAL_PASSAGES` — see GitHub issue #343. For each missing slot (`issue.missing: Vec<(RepairArea, u32)>`, mandatory — the producing check already computed it, same "no other channel" contract every deficit strategy shares), picks a random node whose adjacent floor (up or down, chosen at random when both exist — a boundary floor has only one direction available) resolves a target node at the same `(x, y)` point (`resolve_vertical_target`, mirrors `generation::vertex_based`'s own floor-adjacency resolution), then adds a `VerticalPassage` edge between them. Deliberately much simpler than `MissingTeleportsStrategy` — no entry-pick/desired-length/attempts-limit/reserve-percent machinery — since a vertical passage's target is already fully determined by adjacency, unlike a teleport's free choice of any node pair.
+
+**Parameters:**
+
+| id | type | default | range | description |
+|----|------|---------|-------|-------------|
+| `one_way_balance` | Float | `0.5` | `[0, 1]` | Chance the newly added passage is one-way (direction already rolled by the target resolution) rather than two-way. Rendered in the UI as a percent slider (`PERCENT_FRACTION_SLIDER_PARAM_IDS`). |
+
+For each deficient area (in `issue.missing` order), builds a candidate pool from every node in that area (`RepairArea::WholeMaze` = every field node, `RepairArea::Level(level)` = only that floor's own nodes) and repeatedly pops a random `src` from the pool, resolves its vertical target via `resolve_vertical_target`, and — unless both directions between the pair already exist — rolls `one_way_balance` to decide `AddDirectedVerticalPassage` (single direction, gated by `directed_edge_feasible`) vs. `AddBidirectionalVerticalPassage`. A `src` whose target can't be resolved (no adjacent floor, or no node at the same point on it) is simply skipped, not retried. Each successfully added edge retires that unit of deficit from **every** `RepairArea` it touches (`WholeMaze` and, if resolvable, `src`'s own `Level`) via the shared `RemainingDeficits` bookkeeping (see below) — the same live-deficit-sharing mechanism `MissingLoopsRandomStrategy`/`MissingOneWaysFromWallStrategy`/`AddSplitStrategy` use, so stacking a `WholeMaze`-scoped and a `PerFloor`-scoped instance of these checks in one rule never double-delivers.
+
+Returns `Failed` if nothing was added across every area (e.g. a single-level field, where no node has any vertical target at all); otherwise `Fixed { score: None }` with every proposed command, even if the pool ran dry before every area's own deficit was fully closed.
+
+### RemoveVerticalPassageStrategy
+
+Handles `INVALID_VERTICAL_PASSAGE` — see GitHub issue #343. The single, fixed fix strategy for the mandatory `fix_target` slot `VerticalPassageGroupSelectStrategy` (below) delegates to — mirrors `RemoveTeleportStrategy`'s shape: removes each flagged edge in `issue.invalid` via `MutationCommand::RemoveVerticalPassageWithReverse { id }`, which also removes the opposite-direction `VerticalPassage` edge between the same node pair, if any, so a two-way vertical passage is never left silently downgraded to one-way just because a check's edge selector only inspected/flagged one direction. No configurable parameters — unlike `RemoveTeleportStrategy`'s `allow_reverse`, downgrading to one-way was not requested for this kind. An empty `invalid` is valid — nothing to remove, returns `Fixed { score: None }` immediately.
+
+### VerticalPassageGroupSelectStrategy
+
+Handles `INVALID_VERTICAL_PASSAGE_GROUP` — see GitHub issue #343. Produced by `MaxVerticalPassageCountCheck`/`MaxVerticalPassageRatioCheck` (maze-wide/per-floor excess) and the two proximity checks (`VerticalPassageGroupGeometricProximityCheck`/`VerticalPassageGroupGraphProximityCheck`). Mirrors `OneWayGroupSelectStrategy`/`TeleportGroupSelectStrategy` exactly: candidate-pass/budget/nested-delegation mechanics live entirely in the shared `group_select::group_select_apply`, `VerticalPassageGroupKind` in place of `OneWayGroupKind`/`TeleportGroupKind`.
+
+```rust
+pub const SLOT_FIX_TARGET: &str = "fix_target";
+```
+
+One nested slot, `fix_target`, expecting exactly one `INVALID_VERTICAL_PASSAGE`-handling strategy (`min: 1, max: Some(1)`, `dispatch_kind: Unordered`) — `RemoveVerticalPassageStrategy`.
+
+**Parameters:**
+
+| id | type | default | options | description |
+|----|------|---------|---------|-------------|
+| `priority` | Enum | `problematic` | `random`, `problematic` | Which edge of a flagged group to remove first — `group_select`'s own `PARAM_PRIORITY` (see `GroupSelectStrategy / group_select_apply` above); `problematic` visits the highest-membership edge first, globally across every group. |
+
+No route protection — unlike `OneWayGroupSelectStrategy`/`TeleportGroupSelectStrategy`, this strategy's `element_allowed` closure always returns `true`; a vertical passage group excess isn't gated by a `protect_route` param in this issue's scope. `element_invalidated` checks `crate::repair::removed_edge_ids(nested_commands).contains(edge)` — no extra reverse-direction bookkeeping beyond that (unlike `TeleportGroupSelectStrategy`'s own gap-workaround for `RemoveTeleportWithReverse`), since `RemoveVerticalPassageWithReverse`'s own reverse removal is likewise not separately surfaced by `removed_edge_ids`, but no strategy-side symptom of that gap has been observed for this kind yet.
+
+Same `Fixed`/`Failed` result contract as `OneWayGroupSelectStrategy`/`TeleportGroupSelectStrategy`'s "wholly-protected groups" case: with no route protection here, every group always has at least one allowed candidate, so this particular failure mode (every group wholly protected) cannot occur for this strategy — `Failed` is only reached via `group_select_apply`'s own generic "nothing was actually fixed" path (e.g. `issue.groups` non-empty but no nested strategy configured).
+
 ## Pipeline
 
 Defined in `maze_core::generation::pipeline`.

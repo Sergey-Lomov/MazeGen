@@ -7,6 +7,7 @@ import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { spacing } from "../../../styles/theme";
 import { entriesForSlot, type PathSegment } from "../../../store/storeTypes";
+import { addVerticalPassageOverrides } from "./addVerticalPassageOverrides";
 import type { useQualityViewModel, NestedStrategyVM } from "../useQualityViewModel";
 import type { QualitySelection } from "./types";
 
@@ -78,6 +79,9 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
     const slot = vm.strategySlots.find((s) => s.ruleId === selection.ruleId);
     const strategy = slot?.strategy;
     if (!strategy) return <div style={styles.detailPanel} />;
+    const passageOverrides = strategy.id === "add_vertical_passage"
+      ? addVerticalPassageOverrides(slot.params.passage_type)
+      : null;
     return (
       <ParamizedDetail
         id={strategy.id}
@@ -89,6 +93,8 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
         onCommit={(paramId, value) => setStrategyParam(strategy.id, paramId, value)}
         flushRef={flushRef}
         contextId={strategy.id}
+        valueOverrides={passageOverrides?.values}
+        disabledIds={passageOverrides?.disabledIds}
       >
         {strategy.nestedSlots.length > 0 && (
           // Same visual gap as between two params in `ParamFields` (`gap: 16` when descriptions

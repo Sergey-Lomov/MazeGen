@@ -38,7 +38,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   stages: [newStage(0)],
   strategyParams: {},
   initialConfig: { method: "recursive_backtracker" as const },
-  elementsConfig: { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
+  elementsConfig: { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0 },
   routeInfo: null,
   timing: null,
   randomSeed: false,

@@ -21,10 +21,13 @@ mod wire_tags {
     pub const BIDIRECTIONAL_EDGE_PROPOSED: u16 = 26;
     pub const DIRECTED_TELEPORT_PROPOSED: u16 = 27;
     pub const BIDIRECTIONAL_TELEPORT_PROPOSED: u16 = 28;
+    pub const DIRECTED_VERTICAL_PASSAGE_PROPOSED: u16 = 45;
+    pub const BIDIRECTIONAL_VERTICAL_PASSAGE_PROPOSED: u16 = 46;
     pub const EDGE_REMOVE_PROPOSED: u16 = 29;
     pub const EDGE_REMOVE_BETWEEN_PROPOSED: u16 = 30;
     pub const EDGE_REMOVE_WITH_REVERSE_PROPOSED: u16 = 37;
     pub const TELEPORT_REMOVE_WITH_REVERSE_PROPOSED: u16 = 31;
+    pub const VERTICAL_PASSAGE_REMOVE_WITH_REVERSE_PROPOSED: u16 = 47;
     pub const START_SET_PROPOSED: u16 = 32;
     pub const FINISH_SET_PROPOSED: u16 = 33;
     pub const NODE_REMOVE_PROPOSED: u16 = 40;
@@ -33,10 +36,13 @@ mod wire_tags {
     pub const BIDIRECTIONAL_EDGE_ADDED: u16 = 7;
     pub const DIRECTED_TELEPORT_ADDED: u16 = 8;
     pub const BIDIRECTIONAL_TELEPORT_ADDED: u16 = 9;
+    pub const DIRECTED_VERTICAL_PASSAGE_ADDED: u16 = 48;
+    pub const BIDIRECTIONAL_VERTICAL_PASSAGE_ADDED: u16 = 49;
     pub const EDGE_REMOVED: u16 = 10;
     pub const EDGE_REMOVED_BETWEEN: u16 = 11;
     pub const EDGE_REMOVED_WITH_REVERSE: u16 = 35;
     pub const TELEPORT_REMOVED_WITH_REVERSE: u16 = 12;
+    pub const VERTICAL_PASSAGE_REMOVED_WITH_REVERSE: u16 = 50;
     pub const START_SET: u16 = 13;
     pub const FINISH_SET: u16 = 14;
     pub const NODE_REMOVED: u16 = 38;
@@ -45,10 +51,13 @@ mod wire_tags {
     pub const BIDIRECTIONAL_EDGE_DECLINED: u16 = 16;
     pub const DIRECTED_TELEPORT_DECLINED: u16 = 17;
     pub const BIDIRECTIONAL_TELEPORT_DECLINED: u16 = 18;
+    pub const DIRECTED_VERTICAL_PASSAGE_DECLINED: u16 = 51;
+    pub const BIDIRECTIONAL_VERTICAL_PASSAGE_DECLINED: u16 = 52;
     pub const EDGE_REMOVE_DECLINED: u16 = 19;
     pub const EDGE_REMOVE_BETWEEN_DECLINED: u16 = 20;
     pub const EDGE_REMOVE_WITH_REVERSE_DECLINED: u16 = 36;
     pub const TELEPORT_REMOVE_WITH_REVERSE_DECLINED: u16 = 21;
+    pub const VERTICAL_PASSAGE_REMOVE_WITH_REVERSE_DECLINED: u16 = 53;
     pub const START_SET_DECLINED: u16 = 22;
     pub const FINISH_SET_DECLINED: u16 = 23;
     pub const NODE_REMOVE_DECLINED: u16 = 39;
@@ -67,10 +76,13 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::BidirectionalEdgeProposed { .. } => wire_tags::BIDIRECTIONAL_EDGE_PROPOSED,
             QcEvent::DirectedTeleportProposed { .. } => wire_tags::DIRECTED_TELEPORT_PROPOSED,
             QcEvent::BidirectionalTeleportProposed { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_PROPOSED,
+            QcEvent::DirectedVerticalPassageProposed { .. } => wire_tags::DIRECTED_VERTICAL_PASSAGE_PROPOSED,
+            QcEvent::BidirectionalVerticalPassageProposed { .. } => wire_tags::BIDIRECTIONAL_VERTICAL_PASSAGE_PROPOSED,
             QcEvent::EdgeRemoveProposed { .. } => wire_tags::EDGE_REMOVE_PROPOSED,
             QcEvent::EdgeRemoveBetweenProposed { .. } => wire_tags::EDGE_REMOVE_BETWEEN_PROPOSED,
             QcEvent::EdgeRemoveWithReverseProposed { .. } => wire_tags::EDGE_REMOVE_WITH_REVERSE_PROPOSED,
             QcEvent::TeleportRemoveWithReverseProposed { .. } => wire_tags::TELEPORT_REMOVE_WITH_REVERSE_PROPOSED,
+            QcEvent::VerticalPassageRemoveWithReverseProposed { .. } => wire_tags::VERTICAL_PASSAGE_REMOVE_WITH_REVERSE_PROPOSED,
             QcEvent::StartSetProposed(..) => wire_tags::START_SET_PROPOSED,
             QcEvent::FinishSetProposed(..) => wire_tags::FINISH_SET_PROPOSED,
             QcEvent::NodeRemoveProposed(..) => wire_tags::NODE_REMOVE_PROPOSED,
@@ -79,10 +91,13 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::BidirectionalEdgeAdded { .. } => wire_tags::BIDIRECTIONAL_EDGE_ADDED,
             QcEvent::DirectedTeleportAdded { .. } => wire_tags::DIRECTED_TELEPORT_ADDED,
             QcEvent::BidirectionalTeleportAdded { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_ADDED,
+            QcEvent::DirectedVerticalPassageAdded { .. } => wire_tags::DIRECTED_VERTICAL_PASSAGE_ADDED,
+            QcEvent::BidirectionalVerticalPassageAdded { .. } => wire_tags::BIDIRECTIONAL_VERTICAL_PASSAGE_ADDED,
             QcEvent::EdgeRemoved { .. } => wire_tags::EDGE_REMOVED,
             QcEvent::EdgeRemovedBetween { .. } => wire_tags::EDGE_REMOVED_BETWEEN,
             QcEvent::EdgeRemovedWithReverse { .. } => wire_tags::EDGE_REMOVED_WITH_REVERSE,
             QcEvent::TeleportRemovedWithReverse { .. } => wire_tags::TELEPORT_REMOVED_WITH_REVERSE,
+            QcEvent::VerticalPassageRemovedWithReverse { .. } => wire_tags::VERTICAL_PASSAGE_REMOVED_WITH_REVERSE,
             QcEvent::StartSet(..) => wire_tags::START_SET,
             QcEvent::FinishSet(..) => wire_tags::FINISH_SET,
             QcEvent::NodeRemoved(..) => wire_tags::NODE_REMOVED,
@@ -91,10 +106,13 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::BidirectionalEdgeDeclined { .. } => wire_tags::BIDIRECTIONAL_EDGE_DECLINED,
             QcEvent::DirectedTeleportDeclined { .. } => wire_tags::DIRECTED_TELEPORT_DECLINED,
             QcEvent::BidirectionalTeleportDeclined { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_DECLINED,
+            QcEvent::DirectedVerticalPassageDeclined { .. } => wire_tags::DIRECTED_VERTICAL_PASSAGE_DECLINED,
+            QcEvent::BidirectionalVerticalPassageDeclined { .. } => wire_tags::BIDIRECTIONAL_VERTICAL_PASSAGE_DECLINED,
             QcEvent::EdgeRemoveDeclined { .. } => wire_tags::EDGE_REMOVE_DECLINED,
             QcEvent::EdgeRemoveBetweenDeclined { .. } => wire_tags::EDGE_REMOVE_BETWEEN_DECLINED,
             QcEvent::EdgeRemoveWithReverseDeclined { .. } => wire_tags::EDGE_REMOVE_WITH_REVERSE_DECLINED,
             QcEvent::TeleportRemoveWithReverseDeclined { .. } => wire_tags::TELEPORT_REMOVE_WITH_REVERSE_DECLINED,
+            QcEvent::VerticalPassageRemoveWithReverseDeclined { .. } => wire_tags::VERTICAL_PASSAGE_REMOVE_WITH_REVERSE_DECLINED,
             QcEvent::StartSetDeclined(..) => wire_tags::START_SET_DECLINED,
             QcEvent::FinishSetDeclined(..) => wire_tags::FINISH_SET_DECLINED,
             QcEvent::NodeRemoveDeclined(..) => wire_tags::NODE_REMOVE_DECLINED,
@@ -138,6 +156,14 @@ impl EncodeEventPayload for QcEvent {
                 write_node_id(out, *a);
                 write_node_id(out, *b);
             }
+            QcEvent::DirectedVerticalPassageProposed { from, to } => {
+                write_node_id(out, *from);
+                write_node_id(out, *to);
+            }
+            QcEvent::BidirectionalVerticalPassageProposed { a, b } => {
+                write_node_id(out, *a);
+                write_node_id(out, *b);
+            }
             QcEvent::EdgeRemoveProposed { from, to } => {
                 write_node_id(out, *from);
                 write_node_id(out, *to);
@@ -151,6 +177,10 @@ impl EncodeEventPayload for QcEvent {
                 write_node_id(out, *to);
             }
             QcEvent::TeleportRemoveWithReverseProposed { from, to } => {
+                write_node_id(out, *from);
+                write_node_id(out, *to);
+            }
+            QcEvent::VerticalPassageRemoveWithReverseProposed { from, to } => {
                 write_node_id(out, *from);
                 write_node_id(out, *to);
             }
@@ -184,6 +214,14 @@ impl EncodeEventPayload for QcEvent {
                 write_node_id(out, *a);
                 write_node_id(out, *b);
             }
+            QcEvent::DirectedVerticalPassageAdded { from, to } => {
+                write_node_id(out, *from);
+                write_node_id(out, *to);
+            }
+            QcEvent::BidirectionalVerticalPassageAdded { a, b } => {
+                write_node_id(out, *a);
+                write_node_id(out, *b);
+            }
             QcEvent::EdgeRemoved { from, to } => {
                 write_node_id(out, *from);
                 write_node_id(out, *to);
@@ -198,6 +236,11 @@ impl EncodeEventPayload for QcEvent {
                 write_bool(out, *reverse_removed);
             }
             QcEvent::TeleportRemovedWithReverse { from, to, reverse_removed } => {
+                write_node_id(out, *from);
+                write_node_id(out, *to);
+                write_bool(out, *reverse_removed);
+            }
+            QcEvent::VerticalPassageRemovedWithReverse { from, to, reverse_removed } => {
                 write_node_id(out, *from);
                 write_node_id(out, *to);
                 write_bool(out, *reverse_removed);
@@ -233,6 +276,14 @@ impl EncodeEventPayload for QcEvent {
                 write_node_id(out, *a);
                 write_node_id(out, *b);
             }
+            QcEvent::DirectedVerticalPassageDeclined { from, to } => {
+                write_node_id(out, *from);
+                write_node_id(out, *to);
+            }
+            QcEvent::BidirectionalVerticalPassageDeclined { a, b } => {
+                write_node_id(out, *a);
+                write_node_id(out, *b);
+            }
             QcEvent::EdgeRemoveDeclined { from, to } => {
                 write_node_id(out, *from);
                 write_node_id(out, *to);
@@ -247,6 +298,11 @@ impl EncodeEventPayload for QcEvent {
                 write_bool(out, *reverse_removed);
             }
             QcEvent::TeleportRemoveWithReverseDeclined { from, to, reverse_removed } => {
+                write_node_id(out, *from);
+                write_node_id(out, *to);
+                write_bool(out, *reverse_removed);
+            }
+            QcEvent::VerticalPassageRemoveWithReverseDeclined { from, to, reverse_removed } => {
                 write_node_id(out, *from);
                 write_node_id(out, *to);
                 write_bool(out, *reverse_removed);
@@ -277,10 +333,13 @@ impl DebugEvent for QcEvent {
                 | QcEvent::BidirectionalEdgeAdded { .. }
                 | QcEvent::DirectedTeleportAdded { .. }
                 | QcEvent::BidirectionalTeleportAdded { .. }
+                | QcEvent::DirectedVerticalPassageAdded { .. }
+                | QcEvent::BidirectionalVerticalPassageAdded { .. }
                 | QcEvent::EdgeRemoved { .. }
                 | QcEvent::EdgeRemovedBetween { .. }
                 | QcEvent::EdgeRemovedWithReverse { .. }
                 | QcEvent::TeleportRemovedWithReverse { .. }
+                | QcEvent::VerticalPassageRemovedWithReverse { .. }
                 | QcEvent::StartSet(..)
                 | QcEvent::FinishSet(..)
                 | QcEvent::NodeRemoved(..)
@@ -334,6 +393,22 @@ mod golden_tests {
     }
 
     #[test]
+    fn golden_round_trip_directed_vertical_passage_proposed() {
+        let event = QcEvent::DirectedVerticalPassageProposed { from: 7, to: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn golden_round_trip_bidirectional_vertical_passage_proposed() {
+        let event = QcEvent::BidirectionalVerticalPassageProposed { a: 7, b: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
     fn golden_round_trip_edge_remove_proposed() {
         let event = QcEvent::EdgeRemoveProposed { from: 7, to: 7 };
         let mut bytes = Vec::new();
@@ -360,6 +435,14 @@ mod golden_tests {
     #[test]
     fn golden_round_trip_teleport_remove_with_reverse_proposed() {
         let event = QcEvent::TeleportRemoveWithReverseProposed { from: 7, to: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn golden_round_trip_vertical_passage_remove_with_reverse_proposed() {
+        let event = QcEvent::VerticalPassageRemoveWithReverseProposed { from: 7, to: 7 };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
         assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
@@ -422,6 +505,22 @@ mod golden_tests {
     }
 
     #[test]
+    fn golden_round_trip_directed_vertical_passage_added() {
+        let event = QcEvent::DirectedVerticalPassageAdded { from: 7, to: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn golden_round_trip_bidirectional_vertical_passage_added() {
+        let event = QcEvent::BidirectionalVerticalPassageAdded { a: 7, b: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
     fn golden_round_trip_edge_removed() {
         let event = QcEvent::EdgeRemoved { from: 7, to: 7 };
         let mut bytes = Vec::new();
@@ -448,6 +547,14 @@ mod golden_tests {
     #[test]
     fn golden_round_trip_teleport_removed_with_reverse() {
         let event = QcEvent::TeleportRemovedWithReverse { from: 7, to: 7, reverse_removed: true };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1]);
+    }
+
+    #[test]
+    fn golden_round_trip_vertical_passage_removed_with_reverse() {
+        let event = QcEvent::VerticalPassageRemovedWithReverse { from: 7, to: 7, reverse_removed: true };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
         assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1]);
@@ -510,6 +617,22 @@ mod golden_tests {
     }
 
     #[test]
+    fn golden_round_trip_directed_vertical_passage_declined() {
+        let event = QcEvent::DirectedVerticalPassageDeclined { from: 7, to: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn golden_round_trip_bidirectional_vertical_passage_declined() {
+        let event = QcEvent::BidirectionalVerticalPassageDeclined { a: 7, b: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
     fn golden_round_trip_edge_remove_declined() {
         let event = QcEvent::EdgeRemoveDeclined { from: 7, to: 7 };
         let mut bytes = Vec::new();
@@ -536,6 +659,14 @@ mod golden_tests {
     #[test]
     fn golden_round_trip_teleport_remove_with_reverse_declined() {
         let event = QcEvent::TeleportRemoveWithReverseDeclined { from: 7, to: 7, reverse_removed: true };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1]);
+    }
+
+    #[test]
+    fn golden_round_trip_vertical_passage_remove_with_reverse_declined() {
+        let event = QcEvent::VerticalPassageRemoveWithReverseDeclined { from: 7, to: 7, reverse_removed: true };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
         assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1]);

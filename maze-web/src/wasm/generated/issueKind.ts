@@ -25,7 +25,10 @@ export type IssueKindId =
   | "invalid_split_node_connection"
   | "invalid_split_node_connection_group"
   | "invalid_split_node_group"
-  | "invalid_split_route";
+  | "invalid_split_route"
+  | "invalid_vertical_passage"
+  | "invalid_vertical_passage_group"
+  | "missing_vertical_passages";
 
 export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
   "missing_endpoints",
@@ -53,4 +56,7 @@ export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
   "invalid_split_node_connection_group",
   "invalid_split_node_group",
   "invalid_split_route",
+  "invalid_vertical_passage",
+  "invalid_vertical_passage_group",
+  "missing_vertical_passages",
 ] as const;

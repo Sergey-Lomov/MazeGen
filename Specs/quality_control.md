@@ -41,6 +41,12 @@ pub enum IssueKind {
 
 `InvalidSplitRoute` — see GitHub issue #277, part of epic #246. Flags a whole traversal *route* (an ordered sequence of edges), not a single node, a single connection, or an unordered group: a graph path shorter than a configured minimum detour connecting two nodes of the same split tile, suggesting the split doesn't meaningfully separate its own paths. Distinct from `InvalidSplitNodeConnectionGroup` (an earlier design iteration of the same check carried only the path's two endpoint edges as a proximity-style pair; superseded because a repair strategy needs the *whole* path to be able to cut any edge along the way, not just the two ends). Carries `InvalidSplitRouteIssue { routes: Vec<Vec<SplitRouteEdge>>, invalid_sources, .. }` where `SplitRouteEdge = (EdgeId, bool)` — the `bool` marks an edge incident to the split tile the route was found for (`from`/`to` resolves to that tile's own point). `routes`' order is significant (a route is a path, not a set) and, unlike every cycle/group `Issue` type, entries are deduplicated by *exact* sequence identity on merge, never by edge-set — two different routes sharing edges (or the same edges in a different order) are kept as distinct entries. Produced by `SplitNodeConnectionTraversalDistanceCheck`. Repaired by `SplitRouteCutStrategy`.
 
+`MissingVerticalPassages` mirrors `MissingLoops`'s role, but for a deficit in the count of `EdgeKind::VerticalPassage` edges (floor-to-floor connections — see `Specs/floors.md`) instead of loops — see GitHub issue #343. Currently produced by `MinVerticalPassageCountCheck`/`MinVerticalPassageRatioCheck`. Carries `MissingVerticalPassagesIssue { missing: Vec<(RepairArea, u32)> }` — the same per-area deficit list shape `MissingTeleportsIssue`/`MissingLoopsIssue`/`MissingSplitTilesIssue` use (GitHub issue #369's `FloorScope::PerFloor` support), not a bare scalar. Repaired by `AddVerticalPassageStrategy` (see `repair.md`).
+
+`InvalidVerticalPassage` mirrors `InvalidTeleport`'s role, but for a single `VerticalPassage` edge flagged invalid instead of a teleport — see GitHub issue #343. Unlike every other per-edge `Invalid*` kind, no top-level check produces it directly: it exists purely as the mandatory nested-strategy target `VerticalPassageGroupSelectStrategy` (below) delegates each candidate edge's removal to, via a single-edge `InvalidVerticalPassageIssue` synthesized fresh per candidate — same "no check of its own, purely a delegation target" role `InvalidSplitNodeConnectionGroup`'s nested kind (`InvalidSplitNodeConnection`) plays for `SplitNodeConnectionGroupSelectStrategy`. Carries `InvalidVerticalPassageIssue { invalid: Vec<EdgeId>, invalid_sources, .. }` — same flat `EdgeId`-list shape as `InvalidTeleportIssue`, a vertical passage is a single edge, not a cycle, so there is no `all`/index-into-`all` indirection. Repaired by `RemoveVerticalPassageStrategy`.
+
+`InvalidVerticalPassageGroup` mirrors `InvalidOneWayGroup`'s role, but for `VerticalPassage` edges instead of one-ways — see GitHub issue #343. Where `InvalidVerticalPassage` flags a single vertical-passage edge invalid on its own, `InvalidVerticalPassageGroup` flags an aggregate condition over two or more of them, none of which is individually invalid. Produced by four checks sharing the same issue shape: `MaxVerticalPassageCountCheck`/`MaxVerticalPassageRatioCheck` (maze-wide/per-floor excess count/ratio) and `VerticalPassageGroupGeometricProximityCheck`/`VerticalPassageGroupGraphProximityCheck` (proximity pairs, Euclidean vs. topological distance — kept as two distinct check types rather than one dual-metric check, same rationale as `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck`). Carries `InvalidVerticalPassageGroupIssue { groups, invalid_sources, .. }` — a type alias onto the generic `InvalidGroupIssue<VerticalPassageGroupKind>` shape (`Element = EdgeId`), mirrors `InvalidOneWayGroupIssue` exactly. Repaired by `VerticalPassageGroupSelectStrategy`, which delegates each candidate edge's removal to a nested `INVALID_VERTICAL_PASSAGE` strategy (`RemoveVerticalPassageStrategy`).
+
 ### SplitNodeConnectionTraversalDistanceCheck
 
 GitHub issue #277, part of epic #246. For each ordered pair `(a, b)` of a split tile's own nodes (`a != b`), runs a directed BFS from `a` over the raw `maze.graph` (not the corridor-compressed `NavGraph` — same "count every real hop" rationale `MissingTeleportsStrategy::bfs_distances` uses), capped at `min_detour - 1` steps with early exit once `b` is reached. If found, the whole found path is flagged as one route — every edge along it, in traversal order, each paired with whether it's incident to the split tile itself. Both directions (`a -> b` and `b -> a`) are checked independently and, when both are found short, recorded as two separate routes — directed edges mean a short path one way doesn't guarantee one the other way, and each route may need its own cut. `min_detour` (default 10) is the minimum path length a pair must clear; a path of exactly `min_detour` steps is not flagged, only strictly shorter.
@@ -1441,6 +1447,136 @@ legitimate simultaneous configuration, same rationale as the one-way/teleport pr
 `SplitNodeConnectionGroupSelectStrategy` (see `repair.md`) is the registered `RepairStrategy` for
 `INVALID_SPLIT_NODE_CONNECTION_GROUP`.
 
+### VerticalPassageType
+
+```rust
+pub enum VerticalPassageType {
+    Any,
+    TwoWay,
+    OneWay,
+    OneWayDown,
+    OneWayUp,
+}
+```
+
+See GitHub issue #343's follow-up. Used by all 6 vertical-passage checks below (`passage_type` field) — the min/max count/ratio checks and the two proximity checks now share one type-filtering vocabulary instead of the proximity checks' older per-edge `VerticalPassageDirection` (`Up`/`Down`/`All`). `Any` matches every logical passage; `TwoWay`/`OneWay` split by whether the passage has both directed edges or just one; `OneWayDown`/`OneWayUp` further split the one-way case by which direction its single edge actually goes.
+
+### MinVerticalPassageCountCheck / MinVerticalPassageRatioCheck
+
+```rust
+pub const MIN_VERTICAL_PASSAGE_COUNT_DEFAULT: u32 = 1;
+pub const MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
+pub const MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
+pub const MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING: bool = false;
+
+pub struct MinVerticalPassageCountCheck {
+    pub instance_id: String,
+    pub min_vertical_passages: u32,
+    pub floor_scope: FloorScope,
+    pub passage_type: VerticalPassageType,
+    pub count_incoming: bool,
+}
+
+pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT: f64 = 10.0;
+pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
+pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
+pub const MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING: bool = false;
+
+pub struct MinVerticalPassageRatioCheck {
+    pub instance_id: String,
+    pub min_vertical_passage_ratio: f64,
+    pub floor_scope: FloorScope,
+    pub passage_type: VerticalPassageType,
+    pub count_incoming: bool,
+}
+```
+
+See GitHub issue #343 and its follow-up. Two separate check types flagging `MISSING_VERTICAL_PASSAGES`, mirroring `MinLoopsCountCheck`/`MinLoopDensityCheck`'s absolute-count-vs-field-share split above — an absolute count and a per-100-cells share are different metrics, not a `Comparison`-mergeable min/max pair.
+
+Both count via the shared `vertical_passage_count_core::count_logical_vertical_passages`/`logical_vertical_passages_per_floor`, which count **logical passages**, not edges: a two-way `VerticalPassage` is stored as two directed `Edge`s (one each way) but counts as exactly one `LogicalVerticalPassage`, fixing an earlier double-count bug where `All`-direction counting saw both directions of the same passage. `passage_type: VerticalPassageType` (`Any` | `TwoWay` | `OneWay` | `OneWayDown` | `OneWayUp`) selects which logical passages are considered — see `VerticalPassageType`'s own doc comment. Unlike the max checks and the two proximity checks below, `passage_type` here is **not** a per-instance wasm param — `check_factory` sources it from the rule-level `RuleParams::vertical_passage_type` (see `PARAM_VERTICAL_PASSAGE_TYPE`), so every check on the same rule shares one value. `count_incoming: bool` (default `false`) only affects `PerFloor` scope: for a one-way passage, it always counts toward the floor it originates from; with `count_incoming` set, it additionally counts toward the floor it leads to. `count_incoming` is ignored under `WholeMaze` (there is no single "checked floor" to be incoming toward). A two-way/`Any` passage always counts toward both floors it touches, regardless of `count_incoming`.
+
+`MinVerticalPassageCountCheck` (`check_type_id() == "min_vertical_passage_count"`) — under `floor_scope: WholeMaze`, `missing = min_vertical_passages.saturating_sub(count)`. Under `PerFloor`, each floor's own deficit is computed independently and every deficient floor becomes its own `(RepairArea::Level(level), missing)` entry.
+
+`MinVerticalPassageRatioCheck` (`check_type_id() == "min_vertical_passage_ratio"`) — mirrors `MinTeleportRatioCheck`: a count expressed per 100 field cells, cross-multiplied (`count * 100 >= min_ratio * field_cells`) to avoid a floor-rounded ratio producing a false negative; `required = round(min_ratio * field_cells / 100)`, `missing = required.saturating_sub(count)`.
+
+Either way, `missing` entries with `0` are dropped; if the resulting list is empty the check is silent. Otherwise fires `MissingVerticalPassagesIssue::new_from_check(instance_id, missing)` with `.with_detail(instance_id, "missing", total.to_string())` chained on (`total` = sum of every area's `missing`) — same detail key regardless of which check type fired. Repaired by `AddVerticalPassageStrategy` (see `repair.md`).
+
+### MaxVerticalPassageCountCheck / MaxVerticalPassageRatioCheck
+
+```rust
+pub const MAX_VERTICAL_PASSAGE_COUNT_DEFAULT: u32 = 1_000;
+pub const MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::WholeMaze;
+pub const MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
+pub const MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING: bool = false;
+
+pub struct MaxVerticalPassageCountCheck {
+    pub instance_id: String,
+    pub max_vertical_passages: u32,
+    pub floor_scope: FloorScope,
+    pub passage_type: VerticalPassageType,
+    pub count_incoming: bool,
+}
+
+pub const MAX_VERTICAL_PASSAGE_RATIO_DEFAULT: f64 = 100.0;
+pub const MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE: FloorScope = FloorScope::PerFloor;
+pub const MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
+pub const MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING: bool = false;
+
+pub struct MaxVerticalPassageRatioCheck {
+    pub instance_id: String,
+    pub max_ratio: f64,
+    pub floor_scope: FloorScope,
+    pub passage_type: VerticalPassageType,
+    pub count_incoming: bool,
+}
+```
+
+See GitHub issue #343 and its follow-up. Mirrors `MaxOneWayCountCheck`/`MaxOneWayRatioCheck`'s shape: the flagged logical passages (each reported by its own canonical `EdgeId` — see `LogicalVerticalPassage`'s doc comment) are reported as a single group (or one group per over-budget floor under `PerFloor`) paired with the excess count as `to_remove` — the strategy, not the check, decides which passages within the group are actually removed (`VerticalPassageGroupSelectStrategy`). Both flag `INVALID_VERTICAL_PASSAGE_GROUP`, never `INVALID_VERTICAL_PASSAGE` directly — a count/ratio excess is a group-level condition over the whole matching passage set, not any one passage's own fault. Same `passage_type`/`count_incoming` semantics as the Min checks above — both the threshold count and the `to_remove` budget are expressed in logical-passage units, so a two-way passage's canonical edge counts, and can be selected for removal, exactly once.
+
+`MaxVerticalPassageCountCheck` (`check_type_id() == "max_vertical_passage_count"`) — under `WholeMaze`, if `count <= max_vertical_passages` the check is silent; otherwise the entire matching passage set becomes one group with `to_remove = count - max_vertical_passages`. Under `PerFloor`, every floor whose own touching-passage count exceeds `max_vertical_passages` becomes its own group (that floor's own touching passages, `to_remove` = that floor's own excess) — a passage spanning two over-budget floors (two-way, or one-way with `count_incoming`) can legitimately appear in more than one group.
+
+`MaxVerticalPassageRatioCheck` (`check_type_id() == "max_vertical_passage_ratio"`) — mirrors `MaxOneWayRatioCheck`: "passages per 100 field cells", cross-multiplied excess gate (`count * 100 > max_ratio * field_cells`), `target_count = round(max_ratio * field_cells / 100)`, `to_remove = count.saturating_sub(target_count)`. Same `WholeMaze`/`PerFloor` group shape as the count check above.
+
+Either way, fires `InvalidVerticalPassageGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "max_vertical_passages" | "max_ratio", threshold.to_string())` chained on (detail key matches the check's own threshold field name). Repaired by `VerticalPassageGroupSelectStrategy` (see `repair.md`).
+
+### VerticalPassageGroupGeometricProximityCheck / VerticalPassageGroupGraphProximityCheck
+
+```rust
+pub const VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
+pub const VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
+pub const VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_COUNT_INCOMING: bool = true;
+pub const VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode = GeometricFloorMode::AsCoordinate;
+
+pub struct VerticalPassageGroupGeometricProximityCheck {
+    pub instance_id: String,
+    pub distance: f64,
+    pub passage_type: VerticalPassageType,
+    pub same_type_only: bool,
+    pub count_incoming: bool,
+    pub floor_mode: GeometricFloorMode,
+}
+
+pub const VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: u32 = 0;
+pub const VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
+
+pub struct VerticalPassageGroupGraphProximityCheck {
+    pub instance_id: String,
+    pub distance: u32,
+    pub passage_type: VerticalPassageType,
+    pub same_type_only: bool,
+}
+```
+
+See GitHub issue #343 and its follow-up. Two separate check types (mirrors `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck` staying distinct rather than one dual-metric check), both producing `INVALID_VERTICAL_PASSAGE_GROUP` when a pair of scan-worthy vertical-passage entries sit too close to each other — a proximity pair, `to_remove: 1`, mirrors `TeleportGroupProximityCheck`'s pairwise-scan shape.
+
+Both share `vertical_passage_count_core::vertical_passage_proximity_candidates(maze, passage_type, count_incoming)` for their candidate set: `passage_type` (`Any` | `TwoWay` | `OneWay` | `OneWayDown` | `OneWayUp`) restricts which logical passages enter the scan at all — same filter the min/max count/ratio checks use, see `VerticalPassageType`'s own doc comment. A two-way passage always contributes both its ends as separate candidates (both are genuine entries on their own floor). `same_type_only: bool`, when set, additionally requires both candidates' own passages to share the same concrete type (`TwoWay`/`OneWayDown`/`OneWayUp`) for the pair to be flagged.
+
+**`VerticalPassageGroupGeometricProximityCheck`** (`check_type_id() == "vertical_passage_group_geometric_proximity"`) — Euclidean distance via `space::floor_aware_distance`, measured between each pair's own scan point, folded across floors per `floor_mode: GeometricFloorMode` (`Ignore` | `AsCoordinate` | `SameFloorOnly`, default `AsCoordinate` — see `GeometricFloorMode`'s own doc comment and `TeleportGeometricLengthCheck`/`OneWayGroupGeometricProximityCheck`/`SplitGroupGeometricProximityCheck` for the same shared parameter). `distance` (default `0.0`) is the minimum allowed separation — a pair strictly closer than `distance` is flagged. `count_incoming: bool` (default `true`) decides whether a one-way passage's `to` end joins its `from` end as a second candidate — meaningful here because the two ends sit at different geometric points (possibly on different floors).
+
+**`VerticalPassageGroupGraphProximityCheck`** (`check_type_id() == "vertical_passage_group_graph_proximity"`) — topological (tile-hop) distance via `graph::distance_map::compute_distance_map_filtered_bounded` over the shared nav-graph, from each candidate's own nav-node, forward direction, bounded to `distance` hops. The traversal excludes any single-hop `NavEdge` that is itself a `VerticalPassage`'s `(from, to)` pair — same "measures pedestrian proximity, not by-passage reachability" rationale `TeleportGroupProximityCheck` uses for teleport hops; unlike `Teleport`, `NavEdge` carries no dedicated flag for this, so the exclusion set is built explicitly from every `VerticalPassage` edge's own endpoints. `distance` (default `0`) is the minimum allowed tile-hop separation. Unlike the geometric check, there is no `count_incoming` here: a one-way passage's `to` end is not a meaningfully different topological position from its `from` end — any shortest path to a nearby passage still runs through it whether or not it's itself a scan candidate, so hiding it as a candidate would not hide the proximity it represents. A one-way passage therefore contributes only its `from` end.
+
+Either way, both candidates of a flagged pair independently scan and can each record the pair from their own side — a symmetric pair may appear as two `(vec![own_id, other_id], 1)` groups, not deduplicated into one. Silent if fewer than two candidates result from `passage_type`/`count_incoming`. Fires `InvalidVerticalPassageGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "distance", self.distance.to_string())` chained on. Repaired by `VerticalPassageGroupSelectStrategy` (see `repair.md`).
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -1713,10 +1849,16 @@ Every `*_density`/`*_ratio` param below (density/ratio checks measured as "per 1
 | `split_node_connection_per_neighbor` | `invalid_split_node_connection_group` | `max: Integer(default=1, min=0, max=1_000_000)` | no |
 | `split_node_connection_per_face` | `invalid_split_node_connection_group` | `max: Integer(default=1, min=0, max=1_000_000)` | no |
 | `max_split_tile_node_count` | `invalid_split_node_group` | `max: Integer(default=3, min=0, max=1_000_000)` | no |
+| `min_vertical_passage_count` | `missing_vertical_passages` | `min_vertical_passages: Integer(default=1, min=1, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)`, `count_incoming: Bool(default=false)` | no |
+| `min_vertical_passage_ratio` | `missing_vertical_passages` | `min_vertical_passage_ratio: Float(default=10.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)`, `count_incoming: Bool(default=false)` | no |
+| `max_vertical_passage_count` | `invalid_vertical_passage_group` | `max_vertical_passages: Integer(default=1_000, min=0, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `count_incoming: Bool(default=false)` | no |
+| `max_vertical_passage_ratio` | `invalid_vertical_passage_group` | `max_ratio: Float(default=100.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `count_incoming: Bool(default=false)` | no |
+| `vertical_passage_group_geometric_proximity` | `invalid_vertical_passage_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `same_type_only: Bool(default=false)`, `count_incoming: Bool(default=true)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=as_coordinate)` | no |
+| `vertical_passage_group_graph_proximity` | `invalid_vertical_passage_group` | `distance: Integer(default=0, min=0, max=100_000)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `same_type_only: Bool(default=false)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 
-`teleport_waypoint_distance` has `allow_multiple_instances: true` (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance`/`comparison` combinations are a legitimate simultaneous configuration. `split_group_geometric_proximity`/`split_group_graph_proximity` likewise allow multiple instances — distinct distance thresholds are a legitimate simultaneous configuration, same rationale as `one_way_group_geometric_proximity`/`teleport_group_proximity`. `split_node_connection_count`/`split_node_connection_per_neighbor`/`split_node_connection_per_face` also allow multiple instances — distinct threshold/direction or `max` combinations are a legitimate simultaneous configuration.
+`teleport_waypoint_distance` has `allow_multiple_instances: true` (see "CheckDescriptor" above) — same rationale as `min_region_count`: distinct `waypoint`/`edge`/`distance`/`comparison` combinations are a legitimate simultaneous configuration. `split_group_geometric_proximity`/`split_group_graph_proximity` likewise allow multiple instances — distinct distance thresholds are a legitimate simultaneous configuration, same rationale as `one_way_group_geometric_proximity`/`teleport_group_proximity`. `split_node_connection_count`/`split_node_connection_per_neighbor`/`split_node_connection_per_face` also allow multiple instances — distinct threshold/direction or `max` combinations are a legitimate simultaneous configuration. `min_vertical_passage_count`/`min_vertical_passage_ratio`/`vertical_passage_group_geometric_proximity`/`vertical_passage_group_graph_proximity` (GitHub issue #343) likewise allow multiple instances — same rationale as their teleport/one-way counterparts (distinct `floor_scope`/`direction`/`distance` combinations are legitimate simultaneous configurations); `max_vertical_passage_count`/`max_vertical_passage_ratio` do not, mirroring `max_one_way_count`/`max_one_way_ratio`'s own single-instance restriction.
 
 ## Architectural Contract
 

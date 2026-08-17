@@ -31,6 +31,9 @@ impl IssueKind {
             IssueKind::InvalidSplitNodeConnectionGroup => "invalid_split_node_connection_group",
             IssueKind::InvalidSplitNodeGroup => "invalid_split_node_group",
             IssueKind::InvalidSplitRoute => "invalid_split_route",
+            IssueKind::InvalidVerticalPassage => "invalid_vertical_passage",
+            IssueKind::InvalidVerticalPassageGroup => "invalid_vertical_passage_group",
+            IssueKind::MissingVerticalPassages => "missing_vertical_passages",
         }
     }
 
@@ -61,6 +64,9 @@ impl IssueKind {
             "invalid_split_node_connection_group" => Some(IssueKind::InvalidSplitNodeConnectionGroup),
             "invalid_split_node_group" => Some(IssueKind::InvalidSplitNodeGroup),
             "invalid_split_route" => Some(IssueKind::InvalidSplitRoute),
+            "invalid_vertical_passage" => Some(IssueKind::InvalidVerticalPassage),
+            "invalid_vertical_passage_group" => Some(IssueKind::InvalidVerticalPassageGroup),
+            "missing_vertical_passages" => Some(IssueKind::MissingVerticalPassages),
             _ => None,
         }
     }

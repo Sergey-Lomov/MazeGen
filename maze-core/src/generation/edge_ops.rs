@@ -233,6 +233,44 @@ pub(crate) fn try_add_bidirectional_teleport(
     true
 }
 
+/// try_add_directed_vertical_passage: adds a single one-way `VerticalPassage` edge `a -> b` —
+/// mirrors `try_add_directed_teleport` exactly, see GitHub issue #343.
+pub(crate) fn try_add_directed_vertical_passage(
+    graph: &mut Graph,
+    a: NodeId,
+    b: NodeId,
+    preset_state: &PresetState,
+) -> bool {
+    if !directed_edge_feasible(preset_state, a, b) {
+        return false;
+    }
+    if graph.edge_between(a, b).is_none() {
+        graph.add_edge(a, b, EdgeKind::VerticalPassage);
+    }
+    true
+}
+
+/// try_add_bidirectional_vertical_passage: strict "both directions free, or skip the pair" connect
+/// for a two-way `VerticalPassage` — mirrors `try_add_bidirectional_teleport` exactly, see GitHub
+/// issue #343.
+pub(crate) fn try_add_bidirectional_vertical_passage(
+    graph: &mut Graph,
+    a: NodeId,
+    b: NodeId,
+    preset_state: &PresetState,
+) -> bool {
+    if !bidirectional_edge_feasible(preset_state, a, b) {
+        return false;
+    }
+    if graph.edge_between(a, b).is_none() {
+        graph.add_edge(a, b, EdgeKind::VerticalPassage);
+    }
+    if graph.edge_between(b, a).is_none() {
+        graph.add_edge(b, a, EdgeKind::VerticalPassage);
+    }
+    true
+}
+
 /// Shared feasibility predicate for `try_remove_edge`/`cmd_remove_edge` (GitHub issue #118): the
 /// node pair must not be a preset (Basic) connection. See `bidirectional_edge_feasible`'s own
 /// doc comment for why this is factored out (and `pub(crate)`) rather than re-derived on each side.
@@ -299,6 +337,27 @@ pub(crate) fn try_remove_teleport_with_reverse(
     preset_state: &PresetState,
 ) -> Vec<crate::ids::EdgeId> {
     let reverse_id = graph.teleport_reverse(id);
+    let mut removed = Vec::with_capacity(2);
+    if try_remove_edge_by_id(graph, id, preset_state) {
+        removed.push(id);
+    }
+    if let Some(reverse_id) = reverse_id {
+        if try_remove_edge_by_id(graph, reverse_id, preset_state) {
+            removed.push(reverse_id);
+        }
+    }
+    removed
+}
+
+/// try_remove_vertical_passage_with_reverse: like `try_remove_teleport_with_reverse`, but for a
+/// `VerticalPassage` edge that may be one direction of a two-way vertical passage — see GitHub
+/// issue #343.
+pub(crate) fn try_remove_vertical_passage_with_reverse(
+    graph: &mut Graph,
+    id: crate::ids::EdgeId,
+    preset_state: &PresetState,
+) -> Vec<crate::ids::EdgeId> {
+    let reverse_id = graph.vertical_passage_reverse(id);
     let mut removed = Vec::with_capacity(2);
     if try_remove_edge_by_id(graph, id, preset_state) {
         removed.push(id);

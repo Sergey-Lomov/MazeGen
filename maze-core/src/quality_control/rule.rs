@@ -53,7 +53,8 @@ pub fn apply_commands<T: Tessellation>(
         let edge_endpoints = match &cmd {
             MutationCommand::RemoveEdge { id }
             | MutationCommand::RemoveEdgeWithReverse { id }
-            | MutationCommand::RemoveTeleportWithReverse { id } =>
+            | MutationCommand::RemoveTeleportWithReverse { id }
+            | MutationCommand::RemoveVerticalPassageWithReverse { id } =>
                 maze.graph.edge(*id).map(|e| (e.from, e.to)),
             _ => None,
         };
@@ -82,6 +83,10 @@ pub fn apply_commands<T: Tessellation>(
                 crate::generation::try_add_directed_teleport(&mut maze.graph, from, to, preset_state),
             MutationCommand::AddBidirectionalTeleport { a, b } =>
                 crate::generation::try_add_bidirectional_teleport(&mut maze.graph, a, b, preset_state),
+            MutationCommand::AddDirectedVerticalPassage { from, to } =>
+                crate::generation::try_add_directed_vertical_passage(&mut maze.graph, from, to, preset_state),
+            MutationCommand::AddBidirectionalVerticalPassage { a, b } =>
+                crate::generation::try_add_bidirectional_vertical_passage(&mut maze.graph, a, b, preset_state),
             MutationCommand::RemoveEdge { id } =>
                 crate::generation::try_remove_edge_by_id(&mut maze.graph, id, preset_state),
             MutationCommand::RemoveEdgeBetween { from, to } =>
@@ -93,6 +98,11 @@ pub fn apply_commands<T: Tessellation>(
             }
             MutationCommand::RemoveTeleportWithReverse { id } => {
                 let removed = crate::generation::try_remove_teleport_with_reverse(&mut maze.graph, id, preset_state);
+                reverse_removed = removed.len() > 1;
+                !removed.is_empty()
+            }
+            MutationCommand::RemoveVerticalPassageWithReverse { id } => {
+                let removed = crate::generation::try_remove_vertical_passage_with_reverse(&mut maze.graph, id, preset_state);
                 reverse_removed = removed.len() > 1;
                 !removed.is_empty()
             }
@@ -168,6 +178,10 @@ fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Op
         (MutationCommand::AddDirectedTeleport { from, to }, false) => QcEvent::DirectedTeleportDeclined { from: *from, to: *to },
         (MutationCommand::AddBidirectionalTeleport { a, b }, true) => QcEvent::BidirectionalTeleportAdded { a: *a, b: *b },
         (MutationCommand::AddBidirectionalTeleport { a, b }, false) => QcEvent::BidirectionalTeleportDeclined { a: *a, b: *b },
+        (MutationCommand::AddDirectedVerticalPassage { from, to }, true) => QcEvent::DirectedVerticalPassageAdded { from: *from, to: *to },
+        (MutationCommand::AddDirectedVerticalPassage { from, to }, false) => QcEvent::DirectedVerticalPassageDeclined { from: *from, to: *to },
+        (MutationCommand::AddBidirectionalVerticalPassage { a, b }, true) => QcEvent::BidirectionalVerticalPassageAdded { a: *a, b: *b },
+        (MutationCommand::AddBidirectionalVerticalPassage { a, b }, false) => QcEvent::BidirectionalVerticalPassageDeclined { a: *a, b: *b },
         (MutationCommand::RemoveEdge { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemoved { from, to } }
         (MutationCommand::RemoveEdge { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemoveDeclined { from, to } }
         (MutationCommand::RemoveEdgeBetween { from, to }, true) => QcEvent::EdgeRemovedBetween { from: *from, to: *to },
@@ -176,6 +190,8 @@ fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Op
         (MutationCommand::RemoveEdgeWithReverse { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemoveWithReverseDeclined { from, to, reverse_removed } }
         (MutationCommand::RemoveTeleportWithReverse { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::TeleportRemovedWithReverse { from, to, reverse_removed } }
         (MutationCommand::RemoveTeleportWithReverse { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::TeleportRemoveWithReverseDeclined { from, to, reverse_removed } }
+        (MutationCommand::RemoveVerticalPassageWithReverse { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::VerticalPassageRemovedWithReverse { from, to, reverse_removed } }
+        (MutationCommand::RemoveVerticalPassageWithReverse { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::VerticalPassageRemoveWithReverseDeclined { from, to, reverse_removed } }
         (MutationCommand::SetStart(node), true) => QcEvent::StartSet(*node),
         (MutationCommand::SetStart(node), false) => QcEvent::StartSetDeclined(*node),
         (MutationCommand::SetFinish(node), true) => QcEvent::FinishSet(*node),
@@ -211,6 +227,8 @@ fn qc_event_proposed_for_command<T: Tessellation>(cmd: &MutationCommand, maze: &
         MutationCommand::AddBidirectionalEdge { a, b } => QcEvent::BidirectionalEdgeProposed { a: *a, b: *b },
         MutationCommand::AddDirectedTeleport { from, to } => QcEvent::DirectedTeleportProposed { from: *from, to: *to },
         MutationCommand::AddBidirectionalTeleport { a, b } => QcEvent::BidirectionalTeleportProposed { a: *a, b: *b },
+        MutationCommand::AddDirectedVerticalPassage { from, to } => QcEvent::DirectedVerticalPassageProposed { from: *from, to: *to },
+        MutationCommand::AddBidirectionalVerticalPassage { a, b } => QcEvent::BidirectionalVerticalPassageProposed { a: *a, b: *b },
         MutationCommand::RemoveEdge { id } => {
             let (from, to) = maze.graph.edge(*id).map(|e| (e.from, e.to))?;
             QcEvent::EdgeRemoveProposed { from, to }
@@ -223,6 +241,10 @@ fn qc_event_proposed_for_command<T: Tessellation>(cmd: &MutationCommand, maze: &
         MutationCommand::RemoveTeleportWithReverse { id } => {
             let (from, to) = maze.graph.edge(*id).map(|e| (e.from, e.to))?;
             QcEvent::TeleportRemoveWithReverseProposed { from, to }
+        }
+        MutationCommand::RemoveVerticalPassageWithReverse { id } => {
+            let (from, to) = maze.graph.edge(*id).map(|e| (e.from, e.to))?;
+            QcEvent::VerticalPassageRemoveWithReverseProposed { from, to }
         }
         MutationCommand::SetStart(node) => QcEvent::StartSetProposed(*node),
         MutationCommand::SetFinish(node) => QcEvent::FinishSetProposed(*node),

@@ -188,6 +188,36 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.max_split_tile_node_count.label"] as MessageFn,
     description: m["check.max_split_tile_node_count.description"] as MessageFn,
   },
+  min_vertical_passage_count: {
+    label: m["check.min_vertical_passage_count.short_label"] as MessageFn,
+    description: m["check.min_vertical_passage_count.description"] as MessageFn,
+    cardLabel: m["check.min_vertical_passage_count.label"] as MessageFn,
+  },
+  min_vertical_passage_ratio: {
+    label: m["check.min_vertical_passage_ratio.short_label"] as MessageFn,
+    description: m["check.min_vertical_passage_ratio.description"] as MessageFn,
+    cardLabel: m["check.min_vertical_passage_ratio.label"] as MessageFn,
+  },
+  max_vertical_passage_count: {
+    label: m["check.max_vertical_passage_count.short_label"] as MessageFn,
+    description: m["check.max_vertical_passage_count.description"] as MessageFn,
+    cardLabel: m["check.max_vertical_passage_count.label"] as MessageFn,
+  },
+  max_vertical_passage_ratio: {
+    label: m["check.max_vertical_passage_ratio.short_label"] as MessageFn,
+    description: m["check.max_vertical_passage_ratio.description"] as MessageFn,
+    cardLabel: m["check.max_vertical_passage_ratio.label"] as MessageFn,
+  },
+  vertical_passage_group_geometric_proximity: {
+    label: m["check.vertical_passage_group_geometric_proximity.short_label"] as MessageFn,
+    description: m["check.vertical_passage_group_geometric_proximity.description"] as MessageFn,
+    cardLabel: m["check.vertical_passage_group_geometric_proximity.label"] as MessageFn,
+  },
+  vertical_passage_group_graph_proximity: {
+    label: m["check.vertical_passage_group_graph_proximity.short_label"] as MessageFn,
+    description: m["check.vertical_passage_group_graph_proximity.description"] as MessageFn,
+    cardLabel: m["check.vertical_passage_group_graph_proximity.label"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -283,6 +313,18 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_split_route.label"] as MessageFn,
     description: m["issue.invalid_split_route.description"] as MessageFn,
   },
+  missing_vertical_passages: {
+    label: m["issue.missing_vertical_passages.label"] as MessageFn,
+    description: m["issue.missing_vertical_passages.description"] as MessageFn,
+  },
+  invalid_vertical_passage: {
+    label: m["issue.invalid_vertical_passage.label"] as MessageFn,
+    description: m["issue.invalid_vertical_passage.description"] as MessageFn,
+  },
+  invalid_vertical_passage_group: {
+    label: m["issue.invalid_vertical_passage_group.label"] as MessageFn,
+    description: m["issue.invalid_vertical_passage_group.description"] as MessageFn,
+  },
 };
 
 /** Section grouping for `IssueSelectDialog` only — distinct from `issueI18n`'s full labels,
@@ -310,6 +352,8 @@ export const issueSectionI18n: Record<string, MessageFn> = {
   invalid_split_node_connection_group: m["issue_select.section.splits"] as MessageFn,
   invalid_split_node_group: m["issue_select.section.splits"] as MessageFn,
   invalid_split_route: m["issue_select.section.splits"] as MessageFn,
+  missing_vertical_passages: m["issue_select.section.vertical_passages"] as MessageFn,
+  invalid_vertical_passage_group: m["issue_select.section.vertical_passages"] as MessageFn,
 };
 
 /** Short item labels for `IssueSelectDialog` only, indented under `issueSectionI18n`'s header —
@@ -337,6 +381,8 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   invalid_split_node_connection_group: m["issue_select.short_label.validate_connection_groups"] as MessageFn,
   invalid_split_node_group: m["issue_select.short_label.validate_node_groups"] as MessageFn,
   invalid_split_route: m["issue_select.short_label.validate_route"] as MessageFn,
+  missing_vertical_passages: m["issue_select.short_label.add"] as MessageFn,
+  invalid_vertical_passage_group: m["issue_select.short_label.validate_groups"] as MessageFn,
 };
 
 export const NO_FIX_STRATEGY_ID = "no_fix";
@@ -473,6 +519,18 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   split_route_cut: {
     label: m["strategy.split_route_cut.label"] as MessageFn,
     description: m["strategy.split_route_cut.description"] as MessageFn,
+  },
+  add_vertical_passage: {
+    label: m["strategy.add_vertical_passage.label"] as MessageFn,
+    description: m["strategy.add_vertical_passage.description"] as MessageFn,
+  },
+  remove_vertical_passage: {
+    label: m["strategy.remove_vertical_passage.label"] as MessageFn,
+    description: m["strategy.remove_vertical_passage.description"] as MessageFn,
+  },
+  vertical_passage_group_select: {
+    label: m["strategy.vertical_passage_group_select.label"] as MessageFn,
+    description: m["strategy.vertical_passage_group_select.description"] as MessageFn,
   },
 };
 
@@ -829,6 +887,38 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.protect_original.label"] as MessageFn,
     description: m["param.protect_original.description"] as MessageFn,
   },
+  min_vertical_passages: {
+    label: m["param.min_vertical_passages.label"] as MessageFn,
+    description: m["param.min_vertical_passages.description"] as MessageFn,
+  },
+  min_vertical_passage_ratio: {
+    label: m["param.min_vertical_passage_ratio.label"] as MessageFn,
+    description: m["param.min_vertical_passage_ratio.description"] as MessageFn,
+  },
+  max_vertical_passages: {
+    label: m["param.max_vertical_passages.label"] as MessageFn,
+    description: m["param.max_vertical_passages.description"] as MessageFn,
+  },
+  one_way_balance: {
+    label: m["param.one_way_balance.label"] as MessageFn,
+    description: m["param.one_way_balance.description"] as MessageFn,
+  },
+  direction_balance: {
+    label: m["param.direction_balance.label"] as MessageFn,
+    description: m["param.direction_balance.description"] as MessageFn,
+  },
+  same_type_only: {
+    label: m["param.same_type_only.label"] as MessageFn,
+    description: m["param.same_type_only.description"] as MessageFn,
+  },
+  passage_type: {
+    label: m["param.passage_type.label"] as MessageFn,
+    description: m["param.passage_type.description"] as MessageFn,
+  },
+  count_incoming: {
+    label: m["param.count_incoming.label"] as MessageFn,
+    description: m["param.count_incoming.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -913,6 +1003,11 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "direction.outgoing": m["param.direction.option.outgoing"] as MessageFn,
   "direction.bidirectional": m["param.direction.option.bidirectional"] as MessageFn,
   "direction.any": m["param.direction.option.any"] as MessageFn,
+  "passage_type.any": m["param.passage_type.option.any"] as MessageFn,
+  "passage_type.two_way": m["param.passage_type.option.two_way"] as MessageFn,
+  "passage_type.one_way": m["param.passage_type.option.one_way"] as MessageFn,
+  "passage_type.one_way_down": m["param.passage_type.option.one_way_down"] as MessageFn,
+  "passage_type.one_way_up": m["param.passage_type.option.one_way_up"] as MessageFn,
   "split_teleport_direction.incoming": m["param.split_teleport_direction.option.incoming"] as MessageFn,
   "split_teleport_direction.outgoing": m["param.split_teleport_direction.option.outgoing"] as MessageFn,
   "split_teleport_direction.bidirectional": m["param.split_teleport_direction.option.bidirectional"] as MessageFn,
@@ -926,6 +1021,11 @@ export const paramOptionI18n: Record<string, MessageFn> = {
 // Explanations for individual option values of Enum-kind params, shown under the param's
 // own description in expanded detail views. Keyed the same way as `paramOptionI18n`.
 export const paramOptionExplanationI18n: Record<string, MessageFn> = {
+  "passage_type.any": m["param.passage_type.option.any.explanation"] as MessageFn,
+  "passage_type.two_way": m["param.passage_type.option.two_way.explanation"] as MessageFn,
+  "passage_type.one_way": m["param.passage_type.option.one_way.explanation"] as MessageFn,
+  "passage_type.one_way_down": m["param.passage_type.option.one_way_down.explanation"] as MessageFn,
+  "passage_type.one_way_up": m["param.passage_type.option.one_way_up.explanation"] as MessageFn,
   "target_mode.largest": m["param.target_mode.option.largest.explanation"] as MessageFn,
   "target_mode.smallest": m["param.target_mode.option.smallest.explanation"] as MessageFn,
   "target_mode.random": m["param.target_mode.option.random.explanation"] as MessageFn,
@@ -1038,6 +1138,13 @@ export function resolveIssueShortLabel(kind: string): string {
 
 export function resolveStrategyLabel(id: string): string {
   return strategyI18n[id]?.label() ?? id;
+}
+
+/** Label for a nested-strategy slot, chosen by the slot's own issue `kind` -- "merge" for a
+ * region-expansion slot (the nested strategy merges regions), "removal" for every other kind
+ * (the nested strategy removes the flagged element). */
+export function resolveNestedStrategyLabel(kind: string): string {
+  return kind === "region_needs_expansion" ? m["quality.nested_strategy.merge_label"]() : m["quality.nested_strategy.removal_label"]();
 }
 
 export function resolveStrategyDescription(id: string): string {

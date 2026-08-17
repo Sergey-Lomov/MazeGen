@@ -29,6 +29,16 @@ describe("QcEvent golden round trip", () => {
     const decoded = decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_TELEPORT_PROPOSED, bytes);
     expect(decoded).toEqual({ kind: "BidirectionalTeleportProposed", a: 7n, b: 7n });
   });
+  it("DirectedVerticalPassageProposed", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    const decoded = decodeQcEvent(QC_EVENT_TAG.DIRECTED_VERTICAL_PASSAGE_PROPOSED, bytes);
+    expect(decoded).toEqual({ kind: "DirectedVerticalPassageProposed", from: 7n, to: 7n });
+  });
+  it("BidirectionalVerticalPassageProposed", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    const decoded = decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_VERTICAL_PASSAGE_PROPOSED, bytes);
+    expect(decoded).toEqual({ kind: "BidirectionalVerticalPassageProposed", a: 7n, b: 7n });
+  });
   it("EdgeRemoveProposed", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
     const decoded = decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVE_PROPOSED, bytes);
@@ -48,6 +58,11 @@ describe("QcEvent golden round trip", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
     const decoded = decodeQcEvent(QC_EVENT_TAG.TELEPORT_REMOVE_WITH_REVERSE_PROPOSED, bytes);
     expect(decoded).toEqual({ kind: "TeleportRemoveWithReverseProposed", from: 7n, to: 7n });
+  });
+  it("VerticalPassageRemoveWithReverseProposed", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    const decoded = decodeQcEvent(QC_EVENT_TAG.VERTICAL_PASSAGE_REMOVE_WITH_REVERSE_PROPOSED, bytes);
+    expect(decoded).toEqual({ kind: "VerticalPassageRemoveWithReverseProposed", from: 7n, to: 7n });
   });
   it("StartSetProposed", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0]);
@@ -84,6 +99,16 @@ describe("QcEvent golden round trip", () => {
     const decoded = decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_TELEPORT_ADDED, bytes);
     expect(decoded).toEqual({ kind: "BidirectionalTeleportAdded", a: 7n, b: 7n });
   });
+  it("DirectedVerticalPassageAdded", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    const decoded = decodeQcEvent(QC_EVENT_TAG.DIRECTED_VERTICAL_PASSAGE_ADDED, bytes);
+    expect(decoded).toEqual({ kind: "DirectedVerticalPassageAdded", from: 7n, to: 7n });
+  });
+  it("BidirectionalVerticalPassageAdded", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    const decoded = decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_VERTICAL_PASSAGE_ADDED, bytes);
+    expect(decoded).toEqual({ kind: "BidirectionalVerticalPassageAdded", a: 7n, b: 7n });
+  });
   it("EdgeRemoved", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
     const decoded = decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVED, bytes);
@@ -103,6 +128,11 @@ describe("QcEvent golden round trip", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1]);
     const decoded = decodeQcEvent(QC_EVENT_TAG.TELEPORT_REMOVED_WITH_REVERSE, bytes);
     expect(decoded).toEqual({ kind: "TeleportRemovedWithReverse", from: 7n, to: 7n, reverseRemoved: true });
+  });
+  it("VerticalPassageRemovedWithReverse", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1]);
+    const decoded = decodeQcEvent(QC_EVENT_TAG.VERTICAL_PASSAGE_REMOVED_WITH_REVERSE, bytes);
+    expect(decoded).toEqual({ kind: "VerticalPassageRemovedWithReverse", from: 7n, to: 7n, reverseRemoved: true });
   });
   it("StartSet", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0]);
@@ -139,6 +169,16 @@ describe("QcEvent golden round trip", () => {
     const decoded = decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_TELEPORT_DECLINED, bytes);
     expect(decoded).toEqual({ kind: "BidirectionalTeleportDeclined", a: 7n, b: 7n });
   });
+  it("DirectedVerticalPassageDeclined", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    const decoded = decodeQcEvent(QC_EVENT_TAG.DIRECTED_VERTICAL_PASSAGE_DECLINED, bytes);
+    expect(decoded).toEqual({ kind: "DirectedVerticalPassageDeclined", from: 7n, to: 7n });
+  });
+  it("BidirectionalVerticalPassageDeclined", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    const decoded = decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_VERTICAL_PASSAGE_DECLINED, bytes);
+    expect(decoded).toEqual({ kind: "BidirectionalVerticalPassageDeclined", a: 7n, b: 7n });
+  });
   it("EdgeRemoveDeclined", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
     const decoded = decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVE_DECLINED, bytes);
@@ -158,6 +198,11 @@ describe("QcEvent golden round trip", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1]);
     const decoded = decodeQcEvent(QC_EVENT_TAG.TELEPORT_REMOVE_WITH_REVERSE_DECLINED, bytes);
     expect(decoded).toEqual({ kind: "TeleportRemoveWithReverseDeclined", from: 7n, to: 7n, reverseRemoved: true });
+  });
+  it("VerticalPassageRemoveWithReverseDeclined", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1]);
+    const decoded = decodeQcEvent(QC_EVENT_TAG.VERTICAL_PASSAGE_REMOVE_WITH_REVERSE_DECLINED, bytes);
+    expect(decoded).toEqual({ kind: "VerticalPassageRemoveWithReverseDeclined", from: 7n, to: 7n, reverseRemoved: true });
   });
   it("StartSetDeclined", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0]);

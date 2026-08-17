@@ -12,7 +12,7 @@ fn node_at(field: &MultiLevelField<crate::space::SquareTessellation>, x: i32, y:
 
 #[test]
 fn elements_config_default_one_way_chance() {
-    assert_eq!(ElementsConfig::default().one_way_chance, 0.04);
+    assert_eq!(ElementsConfig::default().one_way_chance, 0.0);
 }
 
 // ─── can_connect ─────────────────────────────────────────────────────────

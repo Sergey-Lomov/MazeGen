@@ -92,6 +92,10 @@ pub enum QcEvent {
     DirectedTeleportProposed { from: NodeId, to: NodeId },
     #[wire(tag = 28)]
     BidirectionalTeleportProposed { a: NodeId, b: NodeId },
+    #[wire(tag = 45)]
+    DirectedVerticalPassageProposed { from: NodeId, to: NodeId },
+    #[wire(tag = 46)]
+    BidirectionalVerticalPassageProposed { a: NodeId, b: NodeId },
     /// `from`/`to` (not `EdgeId`, GitHub issue #171's follow-up fix) — resolved from the graph
     /// (still intact at proposal time, before `apply_commands` runs) via `edge_endpoints`, the
     /// same way `EdgeRemoved`/`EdgeRemoveDeclined` resolve theirs. An `EdgeId` is meaningless to
@@ -111,6 +115,10 @@ pub enum QcEvent {
     /// separately, same as before this fix.
     #[wire(tag = 31)]
     TeleportRemoveWithReverseProposed { from: NodeId, to: NodeId },
+    /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemoveWithReverseProposed`'s doc
+    /// comment. See GitHub issue #343.
+    #[wire(tag = 47)]
+    VerticalPassageRemoveWithReverseProposed { from: NodeId, to: NodeId },
     #[wire(tag = 32, name = "id")]
     StartSetProposed(NodeId),
     #[wire(tag = 33, name = "id")]
@@ -136,6 +144,10 @@ pub enum QcEvent {
     DirectedTeleportAdded { from: NodeId, to: NodeId },
     #[wire(tag = 9, mutating)]
     BidirectionalTeleportAdded { a: NodeId, b: NodeId },
+    #[wire(tag = 48, mutating)]
+    DirectedVerticalPassageAdded { from: NodeId, to: NodeId },
+    #[wire(tag = 49, mutating)]
+    BidirectionalVerticalPassageAdded { a: NodeId, b: NodeId },
     /// `from`/`to` (not `EdgeId`, GitHub issue #171's follow-up fix) — resolved from the graph via
     /// `edge_endpoints` immediately before the edge is actually removed (`apply_commands`'s own
     /// `try_remove_edge_by_id` call site), since the id alone is meaningless to web-side
@@ -160,6 +172,10 @@ pub enum QcEvent {
     /// rationale, sourced from `try_remove_teleport_with_reverse`'s `Vec<EdgeId>` length instead.
     #[wire(tag = 12, mutating)]
     TeleportRemovedWithReverse { from: NodeId, to: NodeId, reverse_removed: bool },
+    /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemovedWithReverse`'s doc comment.
+    /// See GitHub issue #343.
+    #[wire(tag = 50, mutating)]
+    VerticalPassageRemovedWithReverse { from: NodeId, to: NodeId, reverse_removed: bool },
     #[wire(tag = 13, mutating, name = "id")]
     StartSet(NodeId),
     #[wire(tag = 14, mutating, name = "id")]
@@ -186,6 +202,10 @@ pub enum QcEvent {
     DirectedTeleportDeclined { from: NodeId, to: NodeId },
     #[wire(tag = 18)]
     BidirectionalTeleportDeclined { a: NodeId, b: NodeId },
+    #[wire(tag = 51)]
+    DirectedVerticalPassageDeclined { from: NodeId, to: NodeId },
+    #[wire(tag = 52)]
+    BidirectionalVerticalPassageDeclined { a: NodeId, b: NodeId },
     /// `from`/`to` — mirrors `EdgeRemoved`'s doc comment; resolved before revalidation, since a
     /// declined command means the edge was never actually removed but the id is still
     /// meaningless to web-side narration on its own.
@@ -207,6 +227,10 @@ pub enum QcEvent {
     /// as `EdgeRemoveWithReverseDeclined`'s own doc comment.
     #[wire(tag = 21)]
     TeleportRemoveWithReverseDeclined { from: NodeId, to: NodeId, reverse_removed: bool },
+    /// `from`/`to` of the *primary* `id` only — mirrors `TeleportRemoveWithReverseDeclined`'s doc
+    /// comment. See GitHub issue #343.
+    #[wire(tag = 53)]
+    VerticalPassageRemoveWithReverseDeclined { from: NodeId, to: NodeId, reverse_removed: bool },
     #[wire(tag = 22, name = "id")]
     StartSetDeclined(NodeId),
     #[wire(tag = 23, name = "id")]
@@ -241,6 +265,9 @@ mod tests {
         assert!(QcEvent::EdgeRemovedBetween { from: 1, to: 2 }.is_mutating());
         assert!(QcEvent::EdgeRemovedWithReverse { from: 1, to: 2, reverse_removed: true }.is_mutating());
         assert!(QcEvent::TeleportRemovedWithReverse { from: 1, to: 2, reverse_removed: true }.is_mutating());
+        assert!(QcEvent::DirectedVerticalPassageAdded { from: 1, to: 2 }.is_mutating());
+        assert!(QcEvent::BidirectionalVerticalPassageAdded { a: 1, b: 2 }.is_mutating());
+        assert!(QcEvent::VerticalPassageRemovedWithReverse { from: 1, to: 2, reverse_removed: true }.is_mutating());
         assert!(QcEvent::StartSet(1).is_mutating());
         assert!(QcEvent::FinishSet(1).is_mutating());
         assert!(QcEvent::NodeRemoved(1).is_mutating());
@@ -266,6 +293,9 @@ mod tests {
         assert!(!QcEvent::EdgeRemoveBetweenDeclined { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::EdgeRemoveWithReverseDeclined { from: 1, to: 2, reverse_removed: false }.is_mutating());
         assert!(!QcEvent::TeleportRemoveWithReverseDeclined { from: 1, to: 2, reverse_removed: false }.is_mutating());
+        assert!(!QcEvent::DirectedVerticalPassageDeclined { from: 1, to: 2 }.is_mutating());
+        assert!(!QcEvent::BidirectionalVerticalPassageDeclined { a: 1, b: 2 }.is_mutating());
+        assert!(!QcEvent::VerticalPassageRemoveWithReverseDeclined { from: 1, to: 2, reverse_removed: false }.is_mutating());
         assert!(!QcEvent::StartSetDeclined(1).is_mutating());
         assert!(!QcEvent::FinishSetDeclined(1).is_mutating());
         assert!(!QcEvent::NodeRemoveDeclined(1).is_mutating());
@@ -281,6 +311,9 @@ mod tests {
         assert!(!QcEvent::EdgeRemoveBetweenProposed { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::EdgeRemoveWithReverseProposed { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::TeleportRemoveWithReverseProposed { from: 1, to: 2 }.is_mutating());
+        assert!(!QcEvent::DirectedVerticalPassageProposed { from: 1, to: 2 }.is_mutating());
+        assert!(!QcEvent::BidirectionalVerticalPassageProposed { a: 1, b: 2 }.is_mutating());
+        assert!(!QcEvent::VerticalPassageRemoveWithReverseProposed { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::StartSetProposed(1).is_mutating());
         assert!(!QcEvent::FinishSetProposed(1).is_mutating());
         assert!(!QcEvent::NodeRemoveProposed(1).is_mutating());
@@ -304,6 +337,9 @@ mod tests {
             QcEvent::EdgeRemovedBetween { from: 0, to: 0 },
             QcEvent::EdgeRemovedWithReverse { from: 0, to: 0, reverse_removed: true },
             QcEvent::TeleportRemovedWithReverse { from: 0, to: 0, reverse_removed: true },
+            QcEvent::DirectedVerticalPassageAdded { from: 0, to: 0 },
+            QcEvent::BidirectionalVerticalPassageAdded { a: 0, b: 0 },
+            QcEvent::VerticalPassageRemovedWithReverse { from: 0, to: 0, reverse_removed: true },
             QcEvent::StartSet(0),
             QcEvent::FinishSet(0),
             QcEvent::NodeRemoved(0),
@@ -315,6 +351,9 @@ mod tests {
             QcEvent::EdgeRemoveBetweenDeclined { from: 0, to: 0 },
             QcEvent::EdgeRemoveWithReverseDeclined { from: 0, to: 0, reverse_removed: false },
             QcEvent::TeleportRemoveWithReverseDeclined { from: 0, to: 0, reverse_removed: false },
+            QcEvent::DirectedVerticalPassageDeclined { from: 0, to: 0 },
+            QcEvent::BidirectionalVerticalPassageDeclined { a: 0, b: 0 },
+            QcEvent::VerticalPassageRemoveWithReverseDeclined { from: 0, to: 0, reverse_removed: false },
             QcEvent::StartSetDeclined(0),
             QcEvent::FinishSetDeclined(0),
             QcEvent::NodeRemoveDeclined(0),
@@ -326,6 +365,9 @@ mod tests {
             QcEvent::EdgeRemoveBetweenProposed { from: 0, to: 0 },
             QcEvent::EdgeRemoveWithReverseProposed { from: 0, to: 0 },
             QcEvent::TeleportRemoveWithReverseProposed { from: 0, to: 0 },
+            QcEvent::DirectedVerticalPassageProposed { from: 0, to: 0 },
+            QcEvent::BidirectionalVerticalPassageProposed { a: 0, b: 0 },
+            QcEvent::VerticalPassageRemoveWithReverseProposed { from: 0, to: 0 },
             QcEvent::StartSetProposed(0),
             QcEvent::FinishSetProposed(0),
             QcEvent::NodeRemoveProposed(0),

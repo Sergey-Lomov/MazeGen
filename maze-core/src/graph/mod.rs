@@ -214,6 +214,18 @@ impl Graph {
         }).map(|other| other.id)
     }
 
+    /// Returns the opposite-direction `VerticalPassage` edge of a two-way vertical passage, if any
+    /// — mirrors `teleport_reverse` exactly, see GitHub issue #343. `id` must itself be a
+    /// `VerticalPassage` edge. `None` if `id` doesn't exist, isn't a `VerticalPassage`, or has no
+    /// reverse (a one-way vertical passage).
+    pub fn vertical_passage_reverse(&self, id: EdgeId) -> Option<EdgeId> {
+        let edge = self.edge(id)?;
+        if edge.kind != EdgeKind::VerticalPassage { return None; }
+        self.edges().find(|other| {
+            other.kind == EdgeKind::VerticalPassage && other.from == edge.to && other.to == edge.from
+        }).map(|other| other.id)
+    }
+
     pub fn reachable_to(&self, target: NodeId) -> Vec<NodeId> {
         let mut visited: HashSet<NodeId> = HashSet::new();
         let mut queue = VecDeque::new();

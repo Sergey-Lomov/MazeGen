@@ -1,6 +1,6 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
-use maze_core::quality_control::{Comparison, CycleKind, GeometricFloorMode, FloorScope};
+use maze_core::quality_control::{Comparison, CycleKind, GeometricFloorMode, FloorScope, VerticalPassageType};
 use maze_core::RegionClass;
 
 #[derive(Serialize)]
@@ -77,13 +77,18 @@ pub struct RuleParamDescriptorDto {
 /// anyway, resolving display text from its own i18n keyed by `id`, same as every other
 /// `ParamDescriptor.label` in this module).
 pub fn rule_params_list() -> Vec<RuleParamDescriptorDto> {
-    use maze_core::quality_control::{RULE_PARAM_DESCRIPTORS, RuleParamKind, PARAM_PROTECT_ROUTE};
+    use maze_core::quality_control::{RULE_PARAM_DESCRIPTORS, RuleParamKind, PARAM_PROTECT_ROUTE, PARAM_VERTICAL_PASSAGE_TYPE, VerticalPassageType};
     RULE_PARAM_DESCRIPTORS.iter().map(|d| {
         let kind = match d.kind {
             RuleParamKind::Bool { default } => ParamKindDto::Bool { default },
+            RuleParamKind::VerticalPassageTypeEnum { default } => ParamKindDto::Enum {
+                options: VerticalPassageType::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
+                default: default.as_str(),
+            },
         };
         let label = match d.id {
             id if id == PARAM_PROTECT_ROUTE => "Protect start-finish route",
+            id if id == PARAM_VERTICAL_PASSAGE_TYPE => "Type",
             other => other,
         };
         RuleParamDescriptorDto { id: d.id, label, kind, applies_to: d.applies_to }
@@ -177,6 +182,47 @@ pub fn floor_scope_param(default: FloorScope) -> ParamDescriptor {
             options: FloorScope::ALL.iter().map(|s| s.as_str()).collect(),
             default: default.as_str(),
         },
+    }
+}
+
+/// Shared `passage_type` param descriptor for the 4 min/max vertical-passage count/ratio checks
+/// and the 2 group-proximity checks (GitHub issue #343 follow-up) — which logical `VerticalPassage`
+/// passages participate (any, two-way only, one-way in either/a specific direction).
+pub fn vertical_passage_type_param(default: VerticalPassageType) -> ParamDescriptor {
+    ParamDescriptor {
+        id: "passage_type",
+        label: "Type",
+        kind: ParamKindDto::Enum {
+            options: VerticalPassageType::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
+            default: default.as_str(),
+        },
+    }
+}
+
+/// Shared `same_type_only` param descriptor for the 2 `VerticalPassage` proximity checks (GitHub
+/// issue #343 follow-up) — when enabled, a pair is only compared/flagged if both candidates' own
+/// passages share the same concrete type (`TwoWay`/`OneWayDown`/`OneWayUp`).
+pub fn vertical_passage_same_type_only_param() -> ParamDescriptor {
+    ParamDescriptor {
+        id: "same_type_only",
+        label: "Same type only",
+        kind: ParamKindDto::Bool { default: false },
+    }
+}
+
+/// Shared `count_incoming` param descriptor — only matters for one-way passages. For the 4 min/max
+/// vertical-passage count/ratio checks under `FloorScope::PerFloor` (GitHub issue #343 follow-up):
+/// when off, a one-way passage counts only toward its `from` floor; when on, it also counts toward
+/// its `to` floor. Ignored entirely under `FloorScope::WholeMaze`. For the 2 proximity checks:
+/// when off, a one-way passage's `to` end is excluded from the proximity scan entirely (only its
+/// `from` end participates); when on, both ends participate, same as a two-way passage's two ends.
+/// Each caller passes its own `default` since the two families disagree on it (count/ratio checks
+/// default to off, proximity checks default to on).
+pub fn vertical_passage_count_incoming_param(default: bool) -> ParamDescriptor {
+    ParamDescriptor {
+        id: "count_incoming",
+        label: "Count incoming",
+        kind: ParamKindDto::Bool { default },
     }
 }
 

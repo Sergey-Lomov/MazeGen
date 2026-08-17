@@ -89,10 +89,13 @@ fn command_endpoints(command: &MutationCommand) -> Option<(crate::ids::NodeId, c
         MutationCommand::AddBidirectionalEdge { a, b } => Some((a, b)),
         MutationCommand::AddDirectedTeleport { from, to } => Some((from, to)),
         MutationCommand::AddBidirectionalTeleport { a, b } => Some((a, b)),
-        MutationCommand::RemoveEdge { .. }
+        MutationCommand::AddDirectedVerticalPassage { .. }
+        | MutationCommand::AddBidirectionalVerticalPassage { .. }
+        | MutationCommand::RemoveEdge { .. }
         | MutationCommand::RemoveEdgeBetween { .. }
         | MutationCommand::RemoveEdgeWithReverse { .. }
         | MutationCommand::RemoveTeleportWithReverse { .. }
+        | MutationCommand::RemoveVerticalPassageWithReverse { .. }
         | MutationCommand::SetStart(_)
         | MutationCommand::SetFinish(_)
         | MutationCommand::RemoveNode { .. }

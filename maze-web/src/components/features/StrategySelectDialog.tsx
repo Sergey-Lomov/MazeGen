@@ -4,7 +4,7 @@ import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { WarningBubble } from "../WarningBubble";
 import { ParamFields } from "./ParamFields";
 import { useParamEditor } from "./useParamEditor";
-import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, resolveNestedSlotDescription, NO_FIX_STRATEGY_ID } from "./qualityI18n";
+import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, resolveNestedSlotDescription, resolveNestedStrategyLabel, NO_FIX_STRATEGY_ID } from "./qualityI18n";
 import { ui, radius, typography, spacing, inset } from "../../styles/theme";
 import { Inline } from "../Layout";
 import * as m from "~/paraglide/messages";
@@ -65,7 +65,7 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
           {requiredNestedSlots.map((slot) => (
             <div key={slot.slot_id} style={styles.field}>
               <Inline gap="rowGap" justify="space-between">
-                <label style={styles.label}>{m["quality.nested_strategy.label"]()}</label>
+                <label style={styles.label}>{resolveNestedStrategyLabel(slot.kind)}</label>
               </Inline>
               {resolveNestedSlotDescription(slot.slot_id) && (
                 <div style={styles.fieldDescription}>{resolveNestedSlotDescription(slot.slot_id)}</div>

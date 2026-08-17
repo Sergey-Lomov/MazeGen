@@ -21,6 +21,10 @@ const SELECT_MAX_WIDTH_RATIO = 0.4;
 // params (reserve_percent, min_distance, etc.) are edited as exact numbers elsewhere in the app.
 const PERCENT_SLIDER_PARAM_IDS = new Set(["unreachable_priority", "one_way_chance", "loop_one_way_chance"]);
 
+// Float params on a [0, 1] range rendered as a 0-100% slider -- the value stored/sent is the raw
+// fraction (0..1), only the slider bounds and displayed text are scaled by 100.
+const PERCENT_FRACTION_SLIDER_PARAM_IDS = new Set(["one_way_balance", "direction_balance"]);
+
 let measureCanvasCtx: CanvasRenderingContext2D | null | undefined;
 
 function getMeasureCtx(): CanvasRenderingContext2D | null {
@@ -56,6 +60,10 @@ interface Props {
    * whose check is toggled off (`CheckInstance.disabled`). Values are still shown, just not
    * editable, until the check is re-enabled. */
   disabled?: boolean;
+  /** Param ids to render non-interactive individually, on top of `disabled` — e.g. the
+   * `add_vertical_passage` strategy's `one_way_balance`/`direction_balance` sliders, forced and
+   * locked when the rule-level `passage_type` already determines their value. */
+  disabledIds?: Set<string>;
   /** Owning strategy id, for shared params (e.g. `priority`) whose option explanations read
    * differently per strategy — see `resolveParamOptionExplanation`'s per-strategy override. */
   contextId?: string;
@@ -81,7 +89,7 @@ function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | u
   return Math.min(desired, Math.max(softCap, hardCap));
 }
 
-export function ParamFields({ params, values, getValue, onChange, getDescription, disabled, contextId }: Props) {
+export function ParamFields({ params, values, getValue, onChange, getDescription, disabled, disabledIds, contextId }: Props) {
   const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -103,6 +111,10 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
   function get(p: ParamDescriptor): string {
     if (getValue) return getValue(p);
     return values?.[p.id] ?? "";
+  }
+
+  function isDisabled(p: ParamDescriptor): boolean {
+    return Boolean(disabled) || Boolean(disabledIds?.has(p.id));
   }
 
   // Integer-kind fields must never accept a fractional value the user didn't intend (GitHub
@@ -179,7 +191,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
       {params.map((p) => {
         const description = getDescription?.(p);
         return (
-          <div key={p.id} style={styles.field}>
+          <div key={p.id} style={{ ...styles.field, ...(isDisabled(p) ? styles.fieldDisabled : {}) }}>
             <Inline gap="rowGap" justify="space-between">
               <label style={styles.label}>{p.label}</label>
               {/* Each control stops its own click from bubbling — not the whole row/field — so a
@@ -196,28 +208,46 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                     max={p.kind.max}
                     step={1}
                     value={get(p)}
-                    disabled={disabled}
+                    disabled={isDisabled(p)}
                     onChange={(e) => onChange(p.id, e.target.value)}
                   />
                   <span style={styles.percentSliderValue}>{Math.round(Number(get(p)))}%</span>
                 </span>
               )}
-              {(p.kind.type === "float" || p.kind.type === "integer") && !PERCENT_SLIDER_PARAM_IDS.has(p.id) && (
-                <input
-                  type="number"
-                  style={styles.input}
-                  value={get(p)}
-                  min={p.kind.min}
-                  max={p.kind.max}
-                  step={p.kind.type === "integer" ? 1 : 0.1}
-                  disabled={disabled}
-                  onChange={(e) => onChange(p.id, e.target.value)}
-                  onKeyDown={(e) => blockDecimalPoint(p, e)}
-                  onPaste={(e) => blockDecimalPaste(p, e)}
-                  onBlur={(e) => handleIntegerBlur(p, e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                />
+              {p.kind.type === "float" && PERCENT_FRACTION_SLIDER_PARAM_IDS.has(p.id) && (
+                <span style={styles.percentSliderWrap} onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="range"
+                    className="maze-slider"
+                    style={styles.percentSlider}
+                    min={p.kind.min * 100}
+                    max={p.kind.max * 100}
+                    step={1}
+                    value={Number(get(p)) * 100}
+                    disabled={isDisabled(p)}
+                    onChange={(e) => onChange(p.id, String(Number(e.target.value) / 100))}
+                  />
+                  <span style={styles.percentSliderValue}>{Math.round(Number(get(p)) * 100)}%</span>
+                </span>
               )}
+              {(p.kind.type === "float" || p.kind.type === "integer") &&
+                !PERCENT_SLIDER_PARAM_IDS.has(p.id) &&
+                !PERCENT_FRACTION_SLIDER_PARAM_IDS.has(p.id) && (
+                  <input
+                    type="number"
+                    style={styles.input}
+                    value={get(p)}
+                    min={p.kind.min}
+                    max={p.kind.max}
+                    step={p.kind.type === "integer" ? 1 : 0.1}
+                    disabled={isDisabled(p)}
+                    onChange={(e) => onChange(p.id, e.target.value)}
+                    onKeyDown={(e) => blockDecimalPoint(p, e)}
+                    onPaste={(e) => blockDecimalPaste(p, e)}
+                    onBlur={(e) => handleIntegerBlur(p, e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                )}
               {p.kind.type === "interval" && (
                 <span style={styles.intervalWrap} onClick={(e) => e.stopPropagation()}>
                   {(() => {
@@ -231,7 +261,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                           value={lo}
                           min={kind.min}
                           max={kind.max}
-                          disabled={disabled}
+                          disabled={isDisabled(p)}
                           onChange={(e) => onChange(p.id, `${e.target.value},${hi}`)}
                           onBlur={(e) => {
                             // Clamp on blur, not on every keystroke -- an onChange clamp would
@@ -262,7 +292,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                           value={hi}
                           min={kind.min}
                           max={kind.max}
-                          disabled={disabled}
+                          disabled={isDisabled(p)}
                           onChange={(e) => onChange(p.id, `${lo},${e.target.value}`)}
                           onBlur={(e) => {
                             // Same rationale as the min input's own onBlur clamp above, including
@@ -288,7 +318,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 <span style={styles.switchWrap} onClick={(e) => e.stopPropagation()}>
                   <Switch
                     checked={get(p) === "true"}
-                    disabled={disabled}
+                    disabled={isDisabled(p)}
                     onChange={(checked) => onChange(p.id, checked ? "true" : "false")}
                   />
                 </span>
@@ -297,7 +327,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 <select
                   style={{ ...styles.select, width: enumSelectWidth(p, containerWidth) }}
                   value={get(p)}
-                  disabled={disabled}
+                  disabled={isDisabled(p)}
                   onChange={(e) => onChange(p.id, e.target.value)}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -310,7 +340,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 <button
                   className="hoverable"
                   style={styles.paramButton}
-                  disabled={disabled}
+                  disabled={isDisabled(p)}
                   onClick={(e) => { e.stopPropagation(); setOpenPatternListParam(p.id); }}
                 >
                   {m["quality.pattern_list_edit"]()} ({getPatterns(p).length})
@@ -320,7 +350,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 <button
                   className="hoverable"
                   style={styles.paramButton}
-                  disabled={disabled}
+                  disabled={isDisabled(p)}
                   onClick={(e) => { e.stopPropagation(); setOpenSplitConfigParam(p.id); }}
                 >
                   {m["quality.split_config_edit"]()}
@@ -383,6 +413,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: spacing.elementsGap,
+  },
+  fieldDisabled: {
+    opacity: 0.5,
   },
   // `typography.message` — the theme's own "label"-weight token (body size, secondary color) —
   // see theme.ts's own guidance against composing fontSize/color ad hoc.

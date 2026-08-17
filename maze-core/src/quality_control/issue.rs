@@ -30,6 +30,9 @@ pub enum IssueKind {
     InvalidSplitNodeConnectionGroup,
     InvalidSplitNodeGroup,
     InvalidSplitRoute,
+    InvalidVerticalPassage,
+    InvalidVerticalPassageGroup,
+    MissingVerticalPassages,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -218,6 +221,29 @@ pub const INVALID_SPLIT_NODE_GROUP: IssueKind = IssueKind::InvalidSplitNodeGroup
 /// `INVALID_SPLIT_NODE_CONNECTION` strategy (`RemoveSplitNodeConnectionStrategy`) and cuts any
 /// other chosen edge itself.
 pub const INVALID_SPLIT_ROUTE: IssueKind = IssueKind::InvalidSplitRoute;
+
+/// A `VerticalPassage` edge is invalid for some check-specific reason — see GitHub issue #343.
+/// Mirrors `INVALID_TELEPORT`'s role for teleports: a semantic category, not tied to one specific
+/// reason — currently produced by `VerticalPassageGroupGeometricProximityCheck`/
+/// `VerticalPassageGroupGraphProximityCheck`. Carries `InvalidVerticalPassageIssue` — see that type's
+/// doc comment. Repaired by `RemoveVerticalPassageStrategy`. Also the nested-strategy target for
+/// `INVALID_VERTICAL_PASSAGE_GROUP`'s own checks, mirroring `INVALID_ONE_WAY`'s dual role.
+pub const INVALID_VERTICAL_PASSAGE: IssueKind = IssueKind::InvalidVerticalPassage;
+/// A set of `VerticalPassage` edges is jointly invalid — see GitHub issue #343. Distinct from
+/// `INVALID_VERTICAL_PASSAGE`: that kind flags a single vertical-passage edge invalid on its own;
+/// this one flags a *relationship*/*aggregate* condition over two or more of them, none of which
+/// is individually invalid. Currently produced by `MaxVerticalPassageCountCheck`/
+/// `MaxVerticalPassageRatioCheck` (maze-wide/per-floor excess). Carries
+/// `InvalidVerticalPassageGroupIssue` — see that type's doc comment. Repaired by
+/// `VerticalPassageGroupSelectStrategy`, which delegates each candidate edge's removal to a
+/// nested `INVALID_VERTICAL_PASSAGE` strategy (`RemoveVerticalPassageStrategy`).
+pub const INVALID_VERTICAL_PASSAGE_GROUP: IssueKind = IssueKind::InvalidVerticalPassageGroup;
+/// The maze has fewer `VerticalPassage` edges than some check requires (currently
+/// `MinVerticalPassageCountCheck`/`MinVerticalPassageRatioCheck`) — see GitHub issue #343. Mirrors
+/// `MISSING_TELEPORTS`'s role for teleports: a missing-count condition rather than a specific-edge
+/// one. Carries `MissingVerticalPassagesIssue { missing }` — see that type's doc comment. Repaired
+/// by `AddVerticalPassageStrategy`.
+pub const MISSING_VERTICAL_PASSAGES: IssueKind = IssueKind::MissingVerticalPassages;
 
 /// `as_str`/`from_str`/`Display` for `IssueKind` are generated (`codegen`'s `id_enum` module, see
 /// GitHub issue #361) into the sibling `issue_kind_ids.rs` from the variant list above — do not

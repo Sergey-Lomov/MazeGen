@@ -815,6 +815,10 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.directed_teleport_added"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "BidirectionalTeleportAdded":
       return [{ kind: "text", text: m["debug.tree.qc.bidirectional_teleport_added"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
+    case "DirectedVerticalPassageAdded":
+      return [{ kind: "text", text: m["debug.tree.qc.directed_vertical_passage_added"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "BidirectionalVerticalPassageAdded":
+      return [{ kind: "text", text: m["debug.tree.qc.bidirectional_vertical_passage_added"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
     case "EdgeRemoved":
       return [{ kind: "text", text: m["debug.tree.qc.edge_removed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "EdgeRemovedBetween":
@@ -823,6 +827,8 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.edge_removed_with_reverse"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: true }];
     case "TeleportRemovedWithReverse":
       return [{ kind: "text", text: m["debug.tree.qc.teleport_removed_with_reverse"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: true }];
+    case "VerticalPassageRemovedWithReverse":
+      return [{ kind: "text", text: m["debug.tree.qc.vertical_passage_removed_with_reverse"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: true }];
     case "StartSet":
       return [{ kind: "text", text: m["debug.tree.qc.start_set"]() + " " }, { kind: "node", id: event.id }];
     case "FinishSet":
@@ -835,6 +841,10 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.directed_teleport_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "BidirectionalTeleportDeclined":
       return [{ kind: "text", text: m["debug.tree.qc.bidirectional_teleport_declined"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
+    case "DirectedVerticalPassageDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.directed_vertical_passage_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "BidirectionalVerticalPassageDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.bidirectional_vertical_passage_declined"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
     case "EdgeRemoveDeclined":
       return [{ kind: "text", text: m["debug.tree.qc.edge_remove_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "EdgeRemoveBetweenDeclined":
@@ -843,6 +853,8 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.edge_remove_with_reverse_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: true }];
     case "TeleportRemoveWithReverseDeclined":
       return [{ kind: "text", text: m["debug.tree.qc.teleport_remove_with_reverse_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: true }];
+    case "VerticalPassageRemoveWithReverseDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.vertical_passage_remove_with_reverse_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: true }];
     case "StartSetDeclined":
       return [{ kind: "text", text: m["debug.tree.qc.start_set_declined"]() + " " }, { kind: "node", id: event.id }];
     case "FinishSetDeclined":
@@ -855,6 +867,10 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.directed_teleport_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "BidirectionalTeleportProposed":
       return [{ kind: "text", text: m["debug.tree.qc.bidirectional_teleport_proposed"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
+    case "DirectedVerticalPassageProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.directed_vertical_passage_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
+    case "BidirectionalVerticalPassageProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.bidirectional_vertical_passage_proposed"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
     case "EdgeRemoveProposed":
       return [{ kind: "text", text: m["debug.tree.qc.edge_remove_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "EdgeRemoveBetweenProposed":
@@ -863,6 +879,8 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.edge_remove_with_reverse_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: true }];
     case "TeleportRemoveWithReverseProposed":
       return [{ kind: "text", text: m["debug.tree.qc.teleport_remove_with_reverse_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: true }];
+    case "VerticalPassageRemoveWithReverseProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.vertical_passage_remove_with_reverse_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: true }];
     case "StartSetProposed":
       return [{ kind: "text", text: m["debug.tree.qc.start_set_proposed"]() + " " }, { kind: "node", id: event.id }];
     case "FinishSetProposed":

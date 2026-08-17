@@ -1,3 +1,5 @@
+use crate::quality_control::VerticalPassageType;
+
 /// Descriptor for a single rule-level parameter — see GitHub issue #253. Mirrors
 /// `repair::params::StrategyParam`'s shape, but is not tied to `RepairStrategy`/`StrategyParams`:
 /// a `Check` consumes rule-level params too, and `Check` has no params concept of its own.
@@ -14,9 +16,11 @@ pub struct RuleParamDescriptor {
 
 pub enum RuleParamKind {
     Bool { default: bool },
+    VerticalPassageTypeEnum { default: VerticalPassageType },
 }
 
 pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
+pub const PARAM_VERTICAL_PASSAGE_TYPE: &str = "passage_type";
 
 /// Single source of truth for every rule-level parameter's id/type/default — both
 /// `maze-runner`'s `resolve_rule_params` and `maze-wasm`'s rule-level descriptor DTO are built
@@ -42,6 +46,15 @@ pub const RULE_PARAM_DESCRIPTORS: &[RuleParamDescriptor] = &[
             "add_split",
         ],
     },
+    RuleParamDescriptor {
+        id: PARAM_VERTICAL_PASSAGE_TYPE,
+        kind: RuleParamKind::VerticalPassageTypeEnum { default: VerticalPassageType::Any },
+        applies_to: &[
+            "min_vertical_passage_count",
+            "min_vertical_passage_ratio",
+            "add_vertical_passage",
+        ],
+    },
 ];
 
 /// Resolved rule-level parameter values — see GitHub issue #253. One `RuleParams` is built once
@@ -51,19 +64,36 @@ pub const RULE_PARAM_DESCRIPTORS: &[RuleParamDescriptor] = &[
 #[derive(Clone, Copy, Debug)]
 pub struct RuleParams {
     pub protect_route: bool,
+    pub vertical_passage_type: VerticalPassageType,
 }
 
 impl Default for RuleParams {
     fn default() -> Self {
-        Self { protect_route: default_bool(PARAM_PROTECT_ROUTE) }
+        Self {
+            protect_route: default_bool(PARAM_PROTECT_ROUTE),
+            vertical_passage_type: default_vertical_passage_type(PARAM_VERTICAL_PASSAGE_TYPE),
+        }
     }
 }
 
 fn default_bool(id: &str) -> bool {
     RULE_PARAM_DESCRIPTORS.iter()
         .find(|d| d.id == id)
-        .map(|d| match d.kind { RuleParamKind::Bool { default } => default })
+        .map(|d| match d.kind {
+            RuleParamKind::Bool { default } => default,
+            _ => false,
+        })
         .unwrap_or(false)
+}
+
+fn default_vertical_passage_type(id: &str) -> VerticalPassageType {
+    RULE_PARAM_DESCRIPTORS.iter()
+        .find(|d| d.id == id)
+        .map(|d| match d.kind {
+            RuleParamKind::VerticalPassageTypeEnum { default } => default,
+            _ => VerticalPassageType::Any,
+        })
+        .unwrap_or(VerticalPassageType::Any)
 }
 
 /// True if `param_id` is a known rule-level parameter that `member_id` (a check `type_id` or

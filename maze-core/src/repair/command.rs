@@ -25,6 +25,8 @@ pub enum MutationCommand {
     AddBidirectionalEdge { a: NodeId, b: NodeId },
     AddDirectedTeleport { from: NodeId, to: NodeId },
     AddBidirectionalTeleport { a: NodeId, b: NodeId },
+    AddDirectedVerticalPassage { from: NodeId, to: NodeId },
+    AddBidirectionalVerticalPassage { a: NodeId, b: NodeId },
     /// By `EdgeId` — mirrors `try_remove_edge_by_id`'s contract (never ambiguous between a
     /// `Basic`/`Teleport` edge coexisting in the same direction).
     RemoveEdge { id: EdgeId },
@@ -39,6 +41,9 @@ pub enum MutationCommand {
     /// Removes a `Teleport` edge and, if it's one direction of a two-way teleport, its reverse —
     /// mirrors `try_remove_teleport_with_reverse`.
     RemoveTeleportWithReverse { id: EdgeId },
+    /// Removes a `VerticalPassage` edge and, if it's one direction of a two-way vertical passage,
+    /// its reverse — mirrors `try_remove_vertical_passage_with_reverse`. See GitHub issue #343.
+    RemoveVerticalPassageWithReverse { id: EdgeId },
     /// Idempotent — applied only if `meta.start` is still unset at apply time. Deliberately has
     /// no paired `cmd_*`/`try_*` helper: it mutates `MazeMeta`, not `Graph`, so there is no
     /// edge-feasibility check to share.
@@ -142,6 +147,7 @@ pub fn removed_edge_ids(commands: &[MutationCommand]) -> Vec<EdgeId> {
         MutationCommand::RemoveEdge { id } => Some(*id),
         MutationCommand::RemoveEdgeWithReverse { id } => Some(*id),
         MutationCommand::RemoveTeleportWithReverse { id } => Some(*id),
+        MutationCommand::RemoveVerticalPassageWithReverse { id } => Some(*id),
         _ => None,
     }).collect()
 }

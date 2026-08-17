@@ -2,8 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, MISSING_VERTICAL_PASSAGES},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy},
 };
 use crate::check_descriptor::{ParamDescriptor, ParamKindDto};
 
@@ -341,6 +341,27 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
             params: strategy_params_dto(<SplitRouteCutStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitRouteIssue>>::params(&SplitRouteCutStrategy)),
             experimental: <SplitRouteCutStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitRouteIssue>>::is_experimental(&SplitRouteCutStrategy),
             nested_slots: nested_slots_dto(<SplitRouteCutStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitRouteIssue>>::expected_nested(&SplitRouteCutStrategy)),
+        },
+        StrategyDescriptor {
+            id: "add_vertical_passage",
+            handles: MISSING_VERTICAL_PASSAGES.as_str(),
+            params: strategy_params_dto(<AddVerticalPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingVerticalPassagesIssue>>::params(&AddVerticalPassageStrategy { passage_type: maze_core::quality_control::VerticalPassageType::Any })),
+            experimental: <AddVerticalPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingVerticalPassagesIssue>>::is_experimental(&AddVerticalPassageStrategy { passage_type: maze_core::quality_control::VerticalPassageType::Any }),
+            nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "remove_vertical_passage",
+            handles: INVALID_VERTICAL_PASSAGE.as_str(),
+            params: strategy_params_dto(<RemoveVerticalPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidVerticalPassageIssue>>::params(&RemoveVerticalPassageStrategy)),
+            experimental: <RemoveVerticalPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidVerticalPassageIssue>>::is_experimental(&RemoveVerticalPassageStrategy),
+            nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "vertical_passage_group_select",
+            handles: INVALID_VERTICAL_PASSAGE_GROUP.as_str(),
+            params: strategy_params_dto(<VerticalPassageGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidVerticalPassageGroupIssue>>::params(&VerticalPassageGroupSelectStrategy)),
+            experimental: <VerticalPassageGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidVerticalPassageGroupIssue>>::is_experimental(&VerticalPassageGroupSelectStrategy),
+            nested_slots: nested_slots_dto(<VerticalPassageGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidVerticalPassageGroupIssue>>::expected_nested(&VerticalPassageGroupSelectStrategy)),
         },
     ]
 }

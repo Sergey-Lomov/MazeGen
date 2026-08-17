@@ -8,6 +8,7 @@ import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { NestedStrategyPanel } from "./NestedStrategyPanel";
 import { entriesForSlot } from "../../../store/storeTypes";
+import { addVerticalPassageOverrides } from "./addVerticalPassageOverrides";
 import type { StrategySlotVM } from "../useQualityViewModel";
 import type { QualitySelection } from "./types";
 
@@ -41,6 +42,11 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
   });
 
   const [headerHovered, setHeaderHovered] = useState(false);
+
+  const passageOverrides = strategy?.id === "add_vertical_passage"
+    ? addVerticalPassageOverrides(slot.params.passage_type)
+    : null;
+  const displayValues = passageOverrides ? { ...values, ...passageOverrides.values } : values;
 
   return (
     <div style={{ ...styles.ruleStrategyPanel, ...(slot.disabled ? styles.strategyDisabled : {}) }}>
@@ -76,7 +82,12 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
       </div>
       {strategy && (strategy.params.length > 0 || strategy.nestedSlots.length > 0) && (
         <div style={styles.ruleStrategyParams}>
-          <ParamFields params={strategy.params} values={values} onChange={onChange} />
+          <ParamFields
+            params={strategy.params}
+            values={displayValues}
+            onChange={onChange}
+            disabledIds={passageOverrides?.disabledIds}
+          />
           {strategy.nestedSlots.map((slotDesc) => (
             <NestedStrategyPanel
               key={slotDesc.slotId}

@@ -31,6 +31,9 @@ mod invalid_split_node_connection;
 mod invalid_split_node_connection_group;
 mod invalid_split_node_group;
 mod invalid_split_route;
+mod invalid_vertical_passage;
+mod invalid_vertical_passage_group;
+mod missing_vertical_passages;
 
 pub use group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 pub use missing_endpoints::MissingEndpointsIssue;
@@ -58,6 +61,9 @@ pub use invalid_split_node_connection::InvalidSplitNodeConnectionIssue;
 pub use invalid_split_node_connection_group::{InvalidSplitNodeConnectionGroupIssue, SplitNodeConnectionGroupKind};
 pub use invalid_split_node_group::{InvalidSplitNodeGroupIssue, SplitNodeGroupKind};
 pub use invalid_split_route::{InvalidSplitRouteIssue, SplitRouteEdge};
+pub use invalid_vertical_passage::InvalidVerticalPassageIssue;
+pub use invalid_vertical_passage_group::{InvalidVerticalPassageGroupIssue, VerticalPassageGroupKind};
+pub use missing_vertical_passages::MissingVerticalPassagesIssue;
 
 /// Canonical key for a cycle: its edge set, sorted. Two `Vec<EdgeId>` describing the same cycle
 /// (same edges, any order) produce the same key — used both to dedup cycles across merges and

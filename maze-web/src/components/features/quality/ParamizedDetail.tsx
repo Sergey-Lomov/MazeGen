@@ -21,9 +21,14 @@ interface Props {
   children?: React.ReactNode;
   /** Owning strategy id — see `ParamFields`'s `contextId` doc comment. Absent for a plain check. */
   contextId?: string;
+  /** Forced values merged on top of the live-edited values before rendering, and the matching
+   * disabled param ids — e.g. `add_vertical_passage`'s sliders when the rule-level `passage_type`
+   * already determines them. See `addVerticalPassageOverrides`. */
+  valueOverrides?: Record<string, string>;
+  disabledIds?: Set<string>;
 }
 
-export function ParamizedDetail({ id, label, description, warning, params, storeValues, onCommit, flushRef, children, contextId }: Props) {
+export function ParamizedDetail({ id, label, description, warning, params, storeValues, onCommit, flushRef, children, contextId, valueOverrides, disabledIds }: Props) {
   const { values, onChange, flushRef: localFlushRef } = useParamEditor({
     entityId: id,
     params,
@@ -32,6 +37,8 @@ export function ParamizedDetail({ id, label, description, warning, params, store
   });
 
   flushRef.current = localFlushRef.current;
+
+  const displayValues = valueOverrides ? { ...values, ...valueOverrides } : values;
 
   return (
     <div style={styles.detailPanel}>
@@ -43,10 +50,11 @@ export function ParamizedDetail({ id, label, description, warning, params, store
           <div style={styles.detailDivider} />
           <ParamFields
             params={params}
-            values={values}
+            values={displayValues}
             onChange={onChange}
             getDescription={(p) => resolveParamDescription(p.id, contextId)}
             contextId={contextId}
+            disabledIds={disabledIds}
           />
         </>
       )}
