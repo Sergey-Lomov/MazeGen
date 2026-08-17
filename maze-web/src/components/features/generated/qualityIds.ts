@@ -225,6 +225,7 @@ export const PARAM_IDS = [
   "valid_overlap_weight",
   "vertical_direction_balance",
   "vertical_loop_one_way_chance",
+  "vertical_passage_priority",
   "vertical_passage_weight",
   "vertical_reserve_percent",
   "waypoint",

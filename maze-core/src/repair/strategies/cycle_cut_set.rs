@@ -1,8 +1,50 @@
 use std::collections::{HashMap, HashSet};
 use crate::Maze;
+use crate::graph::EdgeKind;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::generation::PresetState;
+
+/// Shared param id for how a cycle-breaking strategy treats `VerticalPassage` edges among its
+/// cut candidates — see `Specs/repair.md`. Used by both `InvalidLoopRandomStrategy` and
+/// `InvalidLoopScoredStrategy` (GitHub issue #392).
+pub(super) const PARAM_VERTICAL_PASSAGE_PRIORITY: &str = "vertical_passage_priority";
+
+pub(super) const VERTICAL_PASSAGE_PRIORITIZED: &str = "prioritized";
+pub(super) const VERTICAL_PASSAGE_NEUTRAL: &str = "neutral";
+pub(super) const VERTICAL_PASSAGE_PROTECTED: &str = "protected";
+
+pub(super) static VERTICAL_PASSAGE_PRIORITY_OPTIONS: &[&str] =
+    &[VERTICAL_PASSAGE_PRIORITIZED, VERTICAL_PASSAGE_NEUTRAL, VERTICAL_PASSAGE_PROTECTED];
+
+/// Narrows `candidates` (already preset/already-cut filtered by `candidate_edges`) by
+/// `vertical_passage_priority`: `prioritized` keeps only the `VerticalPassage` candidates when at
+/// least one exists (falls back to the full pool otherwise); `protected` drops every
+/// `VerticalPassage` candidate; `neutral`/unrecognized leaves the pool untouched. Applied before
+/// the strategy's own pick (random or scored) so vertical priority composes with either.
+pub(super) fn apply_vertical_passage_priority<T: Tessellation>(
+    mut candidates: Vec<EdgeId>,
+    maze: &Maze<T>,
+    priority: &str,
+) -> Vec<EdgeId> {
+    match priority {
+        VERTICAL_PASSAGE_PRIORITIZED => {
+            let vertical: Vec<EdgeId> = candidates.iter().copied()
+                .filter(|&id| is_vertical_passage(maze, id))
+                .collect();
+            if vertical.is_empty() { candidates } else { vertical }
+        }
+        VERTICAL_PASSAGE_PROTECTED => {
+            candidates.retain(|&id| !is_vertical_passage(maze, id));
+            candidates
+        }
+        _ => candidates,
+    }
+}
+
+fn is_vertical_passage<T: Tessellation>(maze: &Maze<T>, id: EdgeId) -> bool {
+    maze.graph.edge(id).is_some_and(|edge| edge.kind == EdgeKind::VerticalPassage)
+}
 
 /// Maps each edge to the indices (into `all`) of every cycle that contains it. Used to find,
 /// in O(1), which other pending cycles become moot once a given edge is cut — keeps a cut from
@@ -136,6 +178,56 @@ mod tests {
         let (maze, _) = make_maze_and_edges(3);
         let candidates = candidate_edges(&[], &maze, &PresetState::empty(), &HashSet::new());
         assert!(candidates.is_empty());
+    }
+
+    fn make_maze_with_kinds(kinds: &[EdgeKind]) -> (Maze<SquareTessellation>, Vec<EdgeId>) {
+        let n = kinds.len() + 1;
+        let mut ids = IdGenerator::new();
+        let field = MultiLevelField::single_level(square_rect(n, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
+        let mut graph = Graph::new();
+        for node in field.all_node_ids() { graph.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        let mut edge_ids = Vec::new();
+        for (i, &kind) in kinds.iter().enumerate() {
+            edge_ids.push(graph.add_edge(nodes[i], nodes[i + 1], kind));
+        }
+        (Maze::new(field, graph), edge_ids)
+    }
+
+    #[test]
+    fn vertical_priority_prioritized_keeps_only_vertical_when_present() {
+        let (maze, edges) = make_maze_with_kinds(&[EdgeKind::Basic, EdgeKind::VerticalPassage, EdgeKind::Basic]);
+        let narrowed = apply_vertical_passage_priority(edges.clone(), &maze, VERTICAL_PASSAGE_PRIORITIZED);
+        assert_eq!(narrowed, vec![edges[1]]);
+    }
+
+    #[test]
+    fn vertical_priority_prioritized_falls_back_to_full_pool_when_no_vertical() {
+        let (maze, edges) = make_maze_with_kinds(&[EdgeKind::Basic, EdgeKind::Teleport]);
+        let narrowed = apply_vertical_passage_priority(edges.clone(), &maze, VERTICAL_PASSAGE_PRIORITIZED);
+        assert_eq!(narrowed, edges);
+    }
+
+    #[test]
+    fn vertical_priority_protected_drops_vertical_candidates() {
+        let (maze, edges) = make_maze_with_kinds(&[EdgeKind::Basic, EdgeKind::VerticalPassage, EdgeKind::Basic]);
+        let narrowed = apply_vertical_passage_priority(edges.clone(), &maze, VERTICAL_PASSAGE_PROTECTED);
+        assert_eq!(narrowed, vec![edges[0], edges[2]]);
+    }
+
+    #[test]
+    fn vertical_priority_protected_can_empty_the_pool() {
+        let (maze, edges) = make_maze_with_kinds(&[EdgeKind::VerticalPassage]);
+        let narrowed = apply_vertical_passage_priority(edges, &maze, VERTICAL_PASSAGE_PROTECTED);
+        assert!(narrowed.is_empty());
+    }
+
+    #[test]
+    fn vertical_priority_neutral_leaves_pool_untouched() {
+        let (maze, edges) = make_maze_with_kinds(&[EdgeKind::Basic, EdgeKind::VerticalPassage]);
+        let narrowed = apply_vertical_passage_priority(edges.clone(), &maze, VERTICAL_PASSAGE_NEUTRAL);
+        assert_eq!(narrowed, edges);
     }
 
     #[test]

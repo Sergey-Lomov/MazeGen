@@ -5,16 +5,31 @@ use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::quality_control::{InvalidLoopIssue, InvalidLoopRequirement};
 use crate::generation::PresetState;
-use crate::repair::params::StrategyParams;
+use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
-use super::cycle_cut_set::{edge_to_cycles_map, discard_cycles_with_edge, candidate_edges};
+use super::cycle_cut_set::{
+    edge_to_cycles_map, discard_cycles_with_edge, candidate_edges, apply_vertical_passage_priority,
+    PARAM_VERTICAL_PASSAGE_PRIORITY, VERTICAL_PASSAGE_PRIORITY_OPTIONS, VERTICAL_PASSAGE_NEUTRAL,
+};
+
+static PARAMS: &[StrategyParam] = &[
+    StrategyParam {
+        id: PARAM_VERTICAL_PASSAGE_PRIORITY,
+        label: "Vertical passage priority",
+        kind: StrategyParamKind::Enum { options: VERTICAL_PASSAGE_PRIORITY_OPTIONS, default: VERTICAL_PASSAGE_NEUTRAL },
+    },
+];
 
 pub struct InvalidLoopRandomStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopRandomStrategy {
     fn strategy_id(&self) -> &'static str { "invalid_loop_random" }
+
+    fn params(&self) -> &'static [StrategyParam] {
+        PARAMS
+    }
 
     /// Proof this is safe (see GitHub issue #105): `apply` reads `issue.all`/`issue.invalid`
     /// only through `apply_cuts`, which builds `owners = edge_to_cycles_map(all)` and seeds
@@ -32,11 +47,15 @@ impl<T: Tessellation> RepairStrategy<T, InvalidLoopIssue> for InvalidLoopRandomS
         issue: &InvalidLoopIssue,
         maze: &Maze<T>,
         rng: &mut dyn RngCore,
-        _params: &StrategyParams,
+        params: &StrategyParams,
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let commands = apply_cuts(&issue.all, &issue.invalid, maze, rng, preset_state);
+        let vertical_priority = match params.get(PARAM_VERTICAL_PASSAGE_PRIORITY) {
+            Some(StrategyParamValue::Enum(s)) => s.as_str(),
+            _ => VERTICAL_PASSAGE_NEUTRAL,
+        };
+        let commands = apply_cuts(&issue.all, &issue.invalid, maze, rng, preset_state, vertical_priority);
         let result = if issue.invalid.is_empty() || !commands.is_empty() {
             RepairResult::Fixed { score: None }
         } else {
@@ -59,6 +78,7 @@ fn apply_cuts<T: Tessellation>(
     maze: &Maze<T>,
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
+    vertical_priority: &str,
 ) -> Vec<MutationCommand> {
     let owners = edge_to_cycles_map(all);
     let mut pending: Vec<usize> = short.to_vec();
@@ -68,7 +88,8 @@ fn apply_cuts<T: Tessellation>(
     while let Some(idx) = pending.pop() {
         let Some(cycle) = all.get(idx) else { continue };
         // Drop preset-protected and already-cut edges upfront so the random pick never wastes a sample on them.
-        let mut candidates = candidate_edges(cycle, maze, preset_state, &already_cut);
+        let candidates = candidate_edges(cycle, maze, preset_state, &already_cut);
+        let mut candidates = apply_vertical_passage_priority(candidates, maze, vertical_priority);
 
         while !candidates.is_empty() {
             let pick = rng.random_range(0..candidates.len());
@@ -390,5 +411,161 @@ mod tests {
         assert!(matches!(result, RepairResult::Failed), "fully preset-protected loop must be reported as unfixable");
         let edges_after: Vec<_> = maze_try.graph.edges().map(|e| e.id).collect();
         assert_eq!(edges_before, edges_after, "no edge should be touched when the cycle can't be broken");
+    }
+
+    // GitHub issue #392 — `vertical_passage_priority` behavioral tests.
+
+    fn params_with(overrides: &[(&str, &str)]) -> StrategyParams {
+        let mut map = std::collections::HashMap::new();
+        for &(k, v) in overrides {
+            map.insert(k.to_string(), v.to_string());
+        }
+        build_params(<InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation, InvalidLoopIssue>>::params(&InvalidLoopRandomStrategy), Some(&map))
+    }
+
+    /// Triangle where exactly one edge is `VerticalPassage`, the other two `Basic`.
+    fn maze_with_triangle_one_vertical() -> (Maze<SquareTessellation>, EdgeId) {
+        let mut ids = IdGenerator::new();
+        let field = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        g.add_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        let vertical = g.add_edge(nodes[1], nodes[2], EdgeKind::VerticalPassage);
+        g.add_edge(nodes[2], nodes[0], EdgeKind::Basic);
+        (Maze::new(field, g), vertical)
+    }
+
+    #[test]
+    fn vertical_priority_prioritized_always_cuts_the_vertical_edge() {
+        let (maze, vertical) = maze_with_triangle_one_vertical();
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let mut issues = Vec::new();
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
+        let issue = issues.into_iter().next().unwrap();
+
+        for seed in 0..20 {
+            let (mut maze_try, _) = maze_with_triangle_one_vertical();
+            let mut rng = MazeRng::seed_from_u64(seed);
+            let result = apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze_try, &mut rng, &params_with(&[("vertical_passage_priority", "prioritized")]), &PresetState::empty(), &[]);
+            assert!(matches!(result, RepairResult::Fixed { score: None }));
+            assert!(maze_try.graph.edge(vertical).is_none(), "seed {seed}: prioritized must always cut the vertical edge when present");
+        }
+    }
+
+    #[test]
+    fn vertical_priority_protected_never_cuts_the_vertical_edge() {
+        let (maze, vertical) = maze_with_triangle_one_vertical();
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let mut issues = Vec::new();
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
+        let issue = issues.into_iter().next().unwrap();
+
+        for seed in 0..20 {
+            let (mut maze_try, _) = maze_with_triangle_one_vertical();
+            let mut rng = MazeRng::seed_from_u64(seed);
+            let result = apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze_try, &mut rng, &params_with(&[("vertical_passage_priority", "protected")]), &PresetState::empty(), &[]);
+            assert!(matches!(result, RepairResult::Fixed { score: None }));
+            assert!(maze_try.graph.edge(vertical).is_some(), "seed {seed}: protected must never cut the vertical edge");
+        }
+    }
+
+    /// A cycle made entirely of vertical passages: `protected` must report `Failed`, same as a
+    /// fully preset-protected cycle (GitHub issue #230's contract), since the pool empties out.
+    #[test]
+    fn vertical_priority_protected_reports_failed_when_the_whole_cycle_is_vertical() {
+        let mut ids = IdGenerator::new();
+        let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(3, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        g.add_edge(nodes[0], nodes[1], EdgeKind::VerticalPassage);
+        g.add_edge(nodes[1], nodes[2], EdgeKind::VerticalPassage);
+        g.add_edge(nodes[2], nodes[0], EdgeKind::VerticalPassage);
+        let maze = Maze::new(field, g);
+
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let mut issues = Vec::new();
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
+        let issue = issues.into_iter().next().unwrap();
+
+        let mut maze_try = maze;
+        let mut rng = MazeRng::seed_from_u64(1);
+        let edges_before: Vec<_> = maze_try.graph.edges().map(|e| e.id).collect();
+        let result = apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze_try, &mut rng, &params_with(&[("vertical_passage_priority", "protected")]), &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Failed), "an all-vertical cycle under protected priority can never be broken");
+        let edges_after: Vec<_> = maze_try.graph.edges().map(|e| e.id).collect();
+        assert_eq!(edges_before, edges_after);
+    }
+
+    /// Square cycle with two `VerticalPassage` edges and two `Basic` ones: `prioritized` must
+    /// narrow to the vertical pair and pick between them by seed, not always the same one.
+    #[test]
+    fn vertical_priority_prioritized_picks_among_several_vertical_candidates_by_seed() {
+        fn maze_with_two_vertical() -> (Maze<SquareTessellation>, EdgeId, EdgeId) {
+            let mut ids = IdGenerator::new();
+            let field: crate::space::MultiLevelField<SquareTessellation> = crate::space::MultiLevelField::single_level(square_rect(4, 1), &mut ids).unwrap();
+            let field_level = field.single_level_id();
+            let mut g = Graph::new();
+            for node in field.all_node_ids() { g.add_node(node); }
+            let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+            let v1 = g.add_edge(nodes[0], nodes[1], EdgeKind::VerticalPassage);
+            let v2 = g.add_edge(nodes[1], nodes[2], EdgeKind::VerticalPassage);
+            g.add_edge(nodes[2], nodes[3], EdgeKind::Basic);
+            g.add_edge(nodes[3], nodes[0], EdgeKind::Basic);
+            (Maze::new(field, g), v1, v2)
+        }
+
+        let (maze, _, _) = maze_with_two_vertical();
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let mut issues = Vec::new();
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
+        let issue = issues.into_iter().next().unwrap();
+
+        let mut cut_v1 = false;
+        let mut cut_v2 = false;
+        for seed in 0..30 {
+            let (mut maze_try, v1, v2) = maze_with_two_vertical();
+            let mut rng = MazeRng::seed_from_u64(seed);
+            let result = apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze_try, &mut rng, &params_with(&[("vertical_passage_priority", "prioritized")]), &PresetState::empty(), &[]);
+            assert!(matches!(result, RepairResult::Fixed { score: None }));
+            let v1_gone = maze_try.graph.edge(v1).is_none();
+            let v2_gone = maze_try.graph.edge(v2).is_none();
+            assert!(v1_gone || v2_gone, "seed {seed}: prioritized must cut a vertical edge, not a basic one");
+            assert!(!(v1_gone && v2_gone), "seed {seed}: only one edge should be cut to fix a single invalid cycle");
+            cut_v1 |= v1_gone;
+            cut_v2 |= v2_gone;
+        }
+        assert!(cut_v1 && cut_v2, "across seeds, prioritized should pick each vertical candidate at least once, not always the same one");
+    }
+
+    #[test]
+    fn vertical_priority_neutral_matches_default_behavior() {
+        let (maze, _) = maze_with_triangle_one_vertical();
+        let check = LoopLengthCheck { instance_id: "min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any };
+        let mut issues = Vec::new();
+        let mut check_rng = crate::random::MazeRng::seed_from_u64(0);
+        check.repair_check(&maze, &mut issues, &mut check_rng, InvalidLoopRequirement::all());
+        let issue = issues.into_iter().next().unwrap();
+
+        for seed in 0..10 {
+            let (mut maze_default, _) = maze_with_triangle_one_vertical();
+            let mut rng_default = MazeRng::seed_from_u64(seed);
+            apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze_default, &mut rng_default, &no_params(), &PresetState::empty(), &[]);
+
+            let (mut maze_neutral, _) = maze_with_triangle_one_vertical();
+            let mut rng_neutral = MazeRng::seed_from_u64(seed);
+            apply_and_commit(&InvalidLoopRandomStrategy, &issue, &mut maze_neutral, &mut rng_neutral, &params_with(&[("vertical_passage_priority", "neutral")]), &PresetState::empty(), &[]);
+
+            let edges_default: Vec<_> = maze_default.graph.edges().map(|e| e.id).collect();
+            let edges_neutral: Vec<_> = maze_neutral.graph.edges().map(|e| e.id).collect();
+            assert_eq!(edges_default, edges_neutral, "seed {seed}: neutral must be identical to the (neutral-default) unparametrized run");
+        }
     }
 }

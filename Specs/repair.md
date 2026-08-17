@@ -714,13 +714,23 @@ Behavior per case:
 
 ### InvalidLoopRandomStrategy
 
-Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by any producing check (`LoopLengthCheck`: shorter/longer than a threshold, depending on `comparison`; future checks may flag cycles invalid for other reasons) by removing one random edge from it (plus its reverse, if present) — a wall placed at a random point along the loop. No configurable parameters. The strategy itself is agnostic to *why* a cycle was flagged invalid — it only consumes `InvalidLoopIssue`.
+Handles `INVALID_LOOP`. Breaks each simple cycle flagged invalid by any producing check (`LoopLengthCheck`: shorter/longer than a threshold, depending on `comparison`; future checks may flag cycles invalid for other reasons) by removing one random edge from it (plus its reverse, if present) — a wall placed at a random point along the loop. The strategy itself is agnostic to *why* a cycle was flagged invalid — it only consumes `InvalidLoopIssue`.
+
+**Parameters:**
+
+| id | type | default | options | description |
+|----|------|---------|---------|-------------|
+| `vertical_passage_priority` | Enum | `neutral` | `prioritized`, `neutral`, `protected` | How `VerticalPassage` edges are treated among the cut candidates (see below) |
 
 `InvalidLoopIssue`'s fields are never optional at the type level (unlike the pre-#113 `Option<IssueData>`), but their content depends on `requirement()` (see GitHub issue #105, `quality_control.md`'s `IssueRequirement` section) — the producing check already did the (potentially expensive) bounded cycle search, and there's no other channel for the strategy to learn the check's configured threshold or recompute the same result cheaply. `requirement()` returns `InvalidLoopRequirement::empty()` — `apply` only ever reads `all`/`invalid` through `apply_cuts`, which seeds its pending set from `invalid`'s indices and only ever shrinks it (`discard_cycles_with_edge`'s `retain`), so a valid cycle's entry is never read; `invalid_sources` isn't read at all. A re-indexed `all` containing only the invalid cycles (the base layer, `VALID_CYCLES` unset) produces the identical result — proven by a dedicated test (`apply_result_is_identical_for_full_and_invalid_only_requirement`) that cuts the same seed against both requirement values and asserts the same edges survive.
 
 - `issue: &InvalidLoopIssue` gives `all`/`invalid` directly: cuts the cycles at indices `invalid` into `all`. An empty `invalid` is valid — nothing to break, returns `Fixed` immediately.
 - If `data` is missing or the wrong variant: this is a malformed call (should never happen in a normal pipeline run, where the check always attaches data) — returns `Failed`, not "already fixed".
 - For each cycle: filters candidates to edges still present in the graph (`Graph::edge(id).is_some()` — an earlier cut in the same `apply` may have already broken a cycle sharing an edge with this one) **and not in `preset_state.preset_edges`** — preset Passage/OneWay connections are never removed, filtered out upfront so the random pick never wastes a sample on a protected edge.
+- **`vertical_passage_priority`** (shared with `InvalidLoopScoredStrategy`, implemented once in `cycle_cut_set::apply_vertical_passage_priority` and applied to the candidate pool right after the preset/existence filter above, GitHub issue #392):
+  - `prioritized`: if the filtered pool contains at least one `VerticalPassage` edge, narrows the pool to just those (so the pick below is a random `VerticalPassage`); otherwise leaves the pool as-is.
+  - `neutral` (default): no narrowing — `VerticalPassage` edges are picked from the same pool as any other kind.
+  - `protected`: drops every `VerticalPassage` edge from the pool before picking; can empty the pool if the cycle is made entirely of `VerticalPassage` edges, in which case the cycle is left unbroken.
 - Picks one random survivor from the filtered candidates and removes it via `try_remove_edge` (which re-checks `preset_state` as a final guard) plus its reverse (`Graph::edge_between(to, from)`, also via `try_remove_edge`), if any. If `try_remove_edge` ever refuses (defensive — shouldn't happen given the upfront filter), the candidate is dropped and another is picked at random; this repeats until either a cut succeeds or no candidates remain for that cycle.
 - **Accepted imprecision, not fully solved**: removing an edge can invalidate another cycle in the same batch through subtler graph changes than a shared `EdgeId` (e.g. corridor re-compression). The existence check only catches the shared-edge case; it does not re-validate every remaining cycle entry. Acceptable for a `Random` strategy — a smarter variant that recomputes between cuts is a separate future task if needed.
 - **Does not guard connectivity or bridge status**: a cut may disconnect the maze, surfacing as `UnreachableFinish`/`MissingEndpoints` on the next QC pass. Deliberately not handled here — the pipeline's fixpoint loop (`build_maze`, up to `MAX_REPAIR_ITERATIONS`) already exists for exactly this kind of cascading repair, via the already-registered endpoint strategies.
@@ -741,6 +751,7 @@ Unlike `InvalidLoopRandomStrategy`, `requirement()` returns `InvalidLoopRequirem
 |----|------|---------|-------|-------------|
 | `invalid_overlap_weight` | Float | 5.0 | [0, 100] | Weight per other invalid cycle (in `invalid`) sharing this edge |
 | `valid_overlap_weight` | Float | 6.0 | [0, 100] | Penalty per valid cycle (in `all`, not in `invalid`) sharing this edge |
+| `vertical_passage_priority` | Enum | `neutral` | `prioritized`, `neutral`, `protected` | Same semantics as `InvalidLoopRandomStrategy`'s parameter of the same name (see above); applied to the candidate pool before scoring, so a `prioritized` narrowing to `VerticalPassage`-only candidates also restricts which edges are scored |
 
 For a candidate edge, `invalid_overlap` counts how many cycles in `all` at indices listed in `invalid` (including the cycle currently being cut — a constant offset shared by every candidate in that cycle, so it doesn't affect which one wins) contain that `EdgeId` — raw, uncorrected: every invalid-cycle intersection is a real win regardless of linear dependence between invalid cycles, since `invalid` already names the concrete cycles that must be broken.
 
