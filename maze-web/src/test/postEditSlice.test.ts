@@ -326,6 +326,59 @@ describe("mazeStore post-edit actions", () => {
     expect(s.postEditDraftSplitPoints).toEqual({});
   });
 
+  it("resetPostEdit keeps a cross-floor teleport instead of dropping it (GitHub issue #363)", () => {
+    // Node 1 (floor 0) and node 2 (floor 1) are teleport-linked. The per-floor loop filters
+    // `_generatedEdges` to edges whose *both* endpoints belong to the floor being processed, which
+    // drops this edge on every iteration unless it's separately re-derived across floors.
+    useMazeStore.setState({
+      _generatedNodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 1, y: 0, i: 0, level: 0 },
+        { id: 2, x: 5, y: 5, i: 0, level: 1 },
+      ],
+      _generatedEdges: [
+        { from: 0, to: 1, kind: "basic" },
+        { from: 1, to: 2, kind: "teleport" },
+      ],
+      postEditDraftEdges: {},
+      postEditDraftTeleports: [],
+      postEditDirty: true,
+    });
+    useMazeStore.getState().resetPostEdit();
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftTeleports).toEqual([
+      { id: 1, from: n(1), to: n(2), direction: "forward" },
+    ]);
+  });
+
+  it("resetPostEdit assigns unique ids across a same-floor teleport and a cross-floor teleport (GitHub issue #363)", () => {
+    // Each `extractPostEditTeleports` call numbers its own batch starting at 1 — merging the
+    // per-floor batch (which finds the 0-1 same-floor teleport) with the separately-derived
+    // cross-floor batch (1-2) without renumbering would give both entries id 1, and every by-id
+    // lookup (drag handling, removePostEditTeleport, ...) resolves to the *first* match on a
+    // collision, silently operating on the wrong teleport.
+    useMazeStore.setState({
+      _generatedNodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 1, y: 0, i: 0, level: 0 },
+        { id: 2, x: 5, y: 5, i: 0, level: 1 },
+      ],
+      _generatedEdges: [
+        { from: 0, to: 1, kind: "teleport" },
+        { from: 1, to: 2, kind: "teleport" },
+      ],
+      postEditDraftEdges: {},
+      postEditDraftTeleports: [],
+      postEditDirty: true,
+    });
+    useMazeStore.getState().resetPostEdit();
+    const s = useMazeStore.getState();
+    const ids = s.postEditDraftTeleports.map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.sort()).toEqual([1, 2]);
+    expect(s._nextPostEditTeleportId).toBe(3);
+  });
+
   it("resetPostEdit derives separate split points for same-(x,y) split nodes on different floors, each stamped with its own level (GitHub issue #358)", () => {
     // Point (0,0) is split on both floor 0 (extra node id 2) and floor 1 (extra node id 5) —
     // each floor's own slot must land in the flat postEditDraftSplitPoints under its own

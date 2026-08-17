@@ -171,8 +171,8 @@ Generator auto-split (GitHub issue #222), broader serialization work (#224) beyo
 
 ### On `resetPostEdit()`
 
-1. Rebuilds `postEditDraftEdges` from `state.edges` via `buildPostEditDraftEdgesFromGenerated`.
-2. Rebuilds `postEditDraftTeleports` from `state.edges` via `extractPostEditTeleports`, resetting `_nextPostEditTeleportId` and `postEditTeleportPendingFrom = null`.
+1. Rebuilds `postEditDraftEdges` from `_generatedNodes`/`_generatedEdges` via `buildPostEditDraftEdgesFromGenerated`, grouped per floor first (`groupNodesByLevel`, see `Specs/floors.md`'s "Post-edit multi-floor awareness") so a same-(x, y) node on a different floor is never conflated into the same point's split-slot group.
+2. Rebuilds `postEditDraftTeleports` from the same per-floor edges via `extractPostEditTeleports`, plus a separate pass over the full, unfiltered `_generatedEdges` for teleport edges whose two endpoints sit on different floors (the per-floor grouping in step 1 requires both endpoints on the same floor, which would otherwise silently drop any cross-floor teleport — GitHub issue #363). All batches are merged, then renumbered as one sequence (`id: 1..N`) so ids stay unique across floors/batches — every by-id lookup (drag handling, `cyclePostEditTeleportDirection`, `removePostEditTeleport`, ...) uses the first matching id, so duplicate ids from independently-numbered batches would resolve to the wrong entry. Resets `_nextPostEditTeleportId` to one past the merged count, and `postEditTeleportPendingFrom = null`.
 3. Restores `postEditDraftMeta` from `_generatedStart`/`_generatedFinish`.
 4. Resets `postEditEdges = null`, `postEditTeleportEdges = []`, `postEditMeta = null`, `postEditAnalytics = null`.
 5. Resets `postEditTool` to `"wall"`.

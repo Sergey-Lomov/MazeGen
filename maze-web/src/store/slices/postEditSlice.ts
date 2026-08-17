@@ -375,7 +375,6 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
 
       let draftEdges: Record<string, ReturnType<typeof buildPostEditDraftEdgesFromGenerated>[string]> = {};
       let draftTeleports: PostEditTeleportEntry[] = [];
-      let nextTeleportId = 1;
       let splitPoints: Record<string, number[]> = {};
       const endpointForId = new Map<number, PostEditEndpoint>();
 
@@ -397,12 +396,37 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         }
 
         draftEdges = { ...draftEdges, ...buildPostEditDraftEdgesFromGenerated(levelEdges, endpointFor) };
-        const { teleports, nextId } = extractPostEditTeleports(levelEdges, endpointFor);
+        const { teleports } = extractPostEditTeleports(levelEdges, endpointFor);
         draftTeleports = [...draftTeleports, ...teleports];
-        nextTeleportId = Math.max(nextTeleportId, nextId);
       }
 
       const endpointFor = (id: number): PostEditEndpoint => endpointForId.get(id) ?? nodeEndpoint(id);
+
+      // Cross-floor teleports (GitHub issue #363): the per-level loop above filters
+      // `_generatedEdges` with `levelIds.has(e.from) && levelIds.has(e.to)`, which drops any edge
+      // whose two endpoints sit on different floors — a teleport is the one edge kind that can
+      // legitimately span floors (`Specs/preset-connections.md`'s "Multi-floor presets"), so it
+      // must be re-derived here from the full, unfiltered `_generatedEdges` instead, resolved via
+      // the now-complete `endpointFor` (built from every floor's `endpointForId` entries above).
+      const levelForId = new Map<number, number>();
+      for (const n of state._generatedNodes) levelForId.set(n.id, n.level ?? 0);
+      const crossFloorTeleportEdges = state._generatedEdges.filter(
+        (e) => e.kind === "teleport" && levelForId.get(e.from) !== levelForId.get(e.to),
+      );
+      if (crossFloorTeleportEdges.length > 0) {
+        const { teleports } = extractPostEditTeleports(crossFloorTeleportEdges, endpointFor);
+        draftTeleports = [...draftTeleports, ...teleports];
+      }
+
+      // Each `extractPostEditTeleports` call above numbers its own batch from 1 — merging batches
+      // from multiple floors (or the cross-floor batch) would otherwise produce duplicate `id`s,
+      // and every by-id lookup (`PostEditController`'s drag handling, `cyclePostEditTeleportDirection`,
+      // `removePostEditTeleport`, ...) uses `Array.find`, which silently resolves to the *first*
+      // match — a real, reachable bug once a maze has both same-floor and cross-floor teleports
+      // (exactly the scenario GitHub issue #363 restores). Renumbered once, after every batch is
+      // merged, so ids stay unique across the whole draft.
+      draftTeleports = draftTeleports.map((t, i) => ({ ...t, id: i + 1 }));
+      const nextTeleportId = draftTeleports.length + 1;
 
       return {
         nodes: state._generatedNodes,
