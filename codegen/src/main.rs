@@ -208,10 +208,10 @@ fn main() -> ExitCode {
         }
     }
 
-    let check_factory_path = repo_root.join("maze-runner").join("src").join("runner").join("check_factory.rs");
-    if let Ok(existing) = fs::read_to_string(&check_factory_path) {
+    let qc_kind_registry_path = repo_root.join("maze-runner").join("src").join("runner").join("qc_kind_registry.rs");
+    if let Ok(existing) = fs::read_to_string(&qc_kind_registry_path) {
         for m in quality_i18n::find_missing_check_factory(&quality_ids, &existing) {
-            report_missing_entry("check_factory.rs", &m, check_only, &mut had_errors);
+            report_missing_entry("qc_kind_registry.rs", &m, check_only, &mut had_errors);
         }
     }
 
@@ -265,8 +265,8 @@ fn normalize_line_endings(s: &str) -> String {
 
 /// Reports one `quality_i18n::MissingEntry` under `source_label` (the hand-written file it's
 /// missing from) — a hard `--check` error, or a plain-run warning. Shared by every completeness
-/// diff (`qualityI18n.ts`, `issueRegistry.ts`, `check_factory.rs`) so the three call sites agree on
-/// wording and on what counts as fatal.
+/// diff (`qualityI18n.ts`, `issueRegistry.ts`, `qc_kind_registry.rs`) so the three call sites agree
+/// on wording and on what counts as fatal.
 fn report_missing_entry(source_label: &str, entry: &quality_i18n::MissingEntry, check_only: bool, had_errors: &mut bool) {
     let msg = format!("{source_label}: {} has no entry for id \"{}\" (see generated/qualityIds.ts)", entry.registry, entry.id);
     if check_only {

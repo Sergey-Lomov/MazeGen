@@ -1,5 +1,6 @@
 pub(crate) mod check_factory;
 pub(crate) mod strategy_factory;
+pub(crate) mod qc_kind_registry;
 pub(crate) mod rule_factory;
 pub(crate) mod rule_params;
 #[cfg(test)]

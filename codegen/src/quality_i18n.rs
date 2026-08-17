@@ -156,25 +156,32 @@ fn no_detail_checks(source: &str) -> BTreeSet<String> {
     ids
 }
 
-/// Diffs `ids.check_ids` against `check_kind_for_type`'s `"<id>" => KindTag::...` match arms in
-/// `check_factory_source` (`maze-runner/src/runner/check_factory.rs`) — the single place every
-/// registered check `type_id` must appear for `build_rule_for!`'s factory to be able to construct
-/// it (GitHub issue #405). A check id absent from this match can never be selected by
-/// `config.checks`, the same class of silent gap `qualityI18n.ts`'s registries close for the UI
-/// side.
-pub fn find_missing_check_factory(ids: &QualityIds, check_factory_source: &str) -> Vec<MissingEntry> {
+/// Diffs `ids.check_ids` against the `qc_kind_registry!` table in `qc_kind_registry_source`
+/// (`maze-runner/src/runner/qc_kind_registry.rs`, GitHub issue #407) — the single place every
+/// registered check `type_id` must appear for the generated `check_kind_for_type`/`build_rule` to
+/// be able to construct it (GitHub issue #405's original gap, now closed by generating both from
+/// one table instead of hand-syncing them). A check id absent from this table can never be
+/// selected by `config.checks`, the same class of silent gap `qualityI18n.ts`'s registries close
+/// for the UI side.
+pub fn find_missing_check_factory(ids: &QualityIds, qc_kind_registry_source: &str) -> Vec<MissingEntry> {
     let mut missing = Vec::new();
-    let Some(fn_start) = check_factory_source.find("fn check_kind_for_type(") else {
-        // Function itself not found — almost certainly renamed/moved, not that every arm was
+    // Anchored on a line-start `qc_kind_registry! {` (the macro *call*) rather than a bare
+    // substring search — `macro_rules! qc_kind_registry { ... }` (the macro's own *definition*,
+    // which appears earlier in the file and contains no id literals) doesn't match this anchor,
+    // so a `.find("qc_kind_registry! {")` can't be fooled into landing there. A doc comment
+    // mentioning the literal invocation text is a similar trap this anchor also avoids, as long
+    // as the comment isn't itself at column 0 starting exactly with that text.
+    let Some(invocation_start) = qc_kind_registry_source.find("\nqc_kind_registry! {") else {
+        // Invocation itself not found — almost certainly renamed/moved, not that every entry was
         // deleted; report nothing rather than a wall of false positives masking the real problem.
         return missing;
     };
-    let fn_end = check_factory_source[fn_start..].find("\n}").map(|i| fn_start + i).unwrap_or(check_factory_source.len());
-    let fn_body = &check_factory_source[fn_start..fn_end];
+    let invocation_end = qc_kind_registry_source[invocation_start..].find("\n}").map(|i| invocation_start + i).unwrap_or(qc_kind_registry_source.len());
+    let invocation_body = &qc_kind_registry_source[invocation_start..invocation_end];
     for id in &ids.check_ids {
-        let arm_present = fn_body.contains(&format!("\"{id}\""));
-        if !arm_present {
-            missing.push(MissingEntry { registry: "check_kind_for_type", id: id.clone() });
+        let entry_present = invocation_body.contains(&format!("\"{id}\""));
+        if !entry_present {
+            missing.push(MissingEntry { registry: "qc_kind_registry", id: id.clone() });
         }
     }
     missing
@@ -397,17 +404,17 @@ mod tests {
     #[test]
     fn check_factory_missing_arm_is_reported() {
         let ids = ids_with(&["missing_endpoints", "unreachable_finish"]);
-        let source = "pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {\n    match type_id {\n        \"missing_endpoints\" => KindTag::MissingEndpoints,\n        other => panic!(\"unknown check type_id: {other}\"),\n    }\n}\n";
+        let source = "\nqc_kind_registry! {\n    MissingEndpoints => MissingEndpointsIssue, build_missing_endpoints_check, [\"missing_endpoints\"];\n}\n";
         let missing = find_missing_check_factory(&ids, source);
         assert_eq!(missing.len(), 1);
-        assert_eq!(missing[0].registry, "check_kind_for_type");
+        assert_eq!(missing[0].registry, "qc_kind_registry");
         assert_eq!(missing[0].id, "unreachable_finish");
     }
 
     #[test]
     fn check_factory_present_arm_is_not_reported() {
         let ids = ids_with(&["missing_endpoints"]);
-        let source = "pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {\n    match type_id {\n        \"missing_endpoints\" => KindTag::MissingEndpoints,\n        other => panic!(\"unknown check type_id: {other}\"),\n    }\n}\n";
+        let source = "\nqc_kind_registry! {\n    MissingEndpoints => MissingEndpointsIssue, build_missing_endpoints_check, [\"missing_endpoints\"];\n}\n";
         assert!(find_missing_check_factory(&ids, source).is_empty());
     }
 
@@ -415,6 +422,19 @@ mod tests {
     fn check_factory_absent_function_reports_nothing() {
         let ids = ids_with(&["missing_endpoints"]);
         let source = "fn something_else() {}\n";
+        assert!(find_missing_check_factory(&ids, source).is_empty());
+    }
+
+    /// Regression: the macro *definition* (`macro_rules! qc_kind_registry { ... }`) sits earlier
+    /// in the real file than the actual table *invocation* and contains no id literals at all —
+    /// a naive `.find("qc_kind_registry! {")` would land there first (via
+    /// `macro_rules! qc_kind_registry {`'s own trailing `{`) and see an empty/wrong range,
+    /// falsely reporting every id as missing. The line-start anchor must skip past the definition
+    /// and land on the real invocation below it.
+    #[test]
+    fn check_factory_skips_the_macro_definition_and_finds_the_real_invocation() {
+        let ids = ids_with(&["missing_endpoints"]);
+        let source = "macro_rules! qc_kind_registry {\n    (...) => { ... };\n}\n\nqc_kind_registry! {\n    MissingEndpoints => MissingEndpointsIssue, build_missing_endpoints_check, [\"missing_endpoints\"];\n}\n";
         assert!(find_missing_check_factory(&ids, source).is_empty());
     }
 

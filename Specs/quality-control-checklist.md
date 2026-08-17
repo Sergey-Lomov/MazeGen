@@ -25,7 +25,7 @@ Only if no existing kind fits — see `quality_control.md`'s "Hard rule: `IssueK
    of silently running only one of the requested actions.
 1. Implement `Check<T, I>` (own file under `quality_control/checks/`).
 2. Register a `CheckDescriptor { id, label, description, issue_kinds, params, allow_multiple_instances }` in `maze-wasm/src/checks_catalog.rs`'s `available_checks_list()` — this is the single source of truth for the check's id and every param id it exposes.
-3. Wire the check into `maze-runner`'s rule-building (`build_rule_for!`/check factory) so `config.checks` can select it.
+3. Wire the check into `maze-runner`'s rule-building: add its `type_id` to the matching `KindTag` entry's id list in `maze-runner/src/runner/qc_kind_registry.rs`'s `qc_kind_registry!` table (or add a new entry if it's a new `KindTag`) so `config.checks` can select it. This single table generates `KindTag`, `check_kind_for_type`, and `build_rule`'s dispatch together (GitHub issue #407) — before this, the three had to be hand-kept in sync separately, which is exactly the class of gap GitHub issue #405 hit.
 4. Add `qualityI18n.ts` entries: `checkI18n[id]` (label/description). Also add a `DETAIL_LABELS`/`DETAIL_DESCRIPTIONS` entry in `issueRegistry.ts` if the check calls `.with_detail(...)` (see "New Check without details" below if it doesn't).
 5. Add the corresponding `check.<id>.label`/`.description` (and any detail-label) keys to **both** `maze-web/messages/en.json` and `ru.json`.
 
@@ -66,7 +66,7 @@ This regenerates `maze-web/src/wasm/generated/issueKind.ts` and `maze-web/src/co
 
 - `qualityI18n.ts`'s `checkI18n`/`strategyI18n`/`issueI18n`/`paramI18n` registries.
 - `issueRegistry.ts`'s `DETAIL_LABELS`/`DETAIL_DESCRIPTIONS` registries, diffed against every check id **except** ids listed in `NO_DETAIL_CHECKS` (see "New Check without details" above; GitHub issue #405).
-- `maze-runner`'s `check_factory.rs`, specifically `check_kind_for_type`'s `"<id>" => KindTag::...` match arms — a check id absent here can never be selected by `build_rule_for!`'s factory (GitHub issue #405).
+- `maze-runner`'s `qc_kind_registry.rs`, specifically the `qc_kind_registry!` table invocation — a check id absent here can never be selected by `build_rule`'s factory (GitHub issue #405, closed via the unified registry in GitHub issue #407).
 
 It does **not** catch a missing `en.json`/`ru.json` message key or a missing `issueRegistry.ts`/`KNOWN_ISSUES` entry — those still need this checklist (see also `feedback_new_check_checklist` in this project's persistent memory for the same recurring gaps).
 
