@@ -105,6 +105,81 @@ fn collect_missing(out: &mut Vec<MissingEntry>, registry: &'static str, ids: &BT
     }
 }
 
+/// Diffs `ids.check_ids` against `DETAIL_LABELS`/`DETAIL_DESCRIPTIONS` object literal keys in
+/// `issue_registry_source` (`maze-web/src/components/issueRegistry.ts`) — same text-scan approach
+/// as `find_missing`/`collect_missing`, and same registry/id shape (`MissingEntry`) so
+/// `codegen --check`'s reporting path treats a gap here identically to a `qualityI18n.ts` gap
+/// (GitHub issue #405). Not every check needs an entry — a check that never calls
+/// `.with_detail(...)` on the Rust side has nothing to render, and there's no reliable text-scan
+/// way to derive that fact here (detail-emitting calls often live in a shared check-core helper
+/// several files away from the concrete check, with the detail key passed as a variable rather
+/// than a literal — see `region_size_check_core.rs`) — so `issueRegistry.ts` names that closed set
+/// explicitly as `NO_DETAIL_CHECKS` instead. Ids in that set are excluded from the diff entirely
+/// (not required to have a real, and not flagged if they don't) — everything else still needs a
+/// real `DETAIL_LABELS`/`DETAIL_DESCRIPTIONS` entry.
+pub fn find_missing_issue_registry(ids: &QualityIds, issue_registry_source: &str) -> Vec<MissingEntry> {
+    let no_detail = no_detail_checks(issue_registry_source);
+    let checked_ids: BTreeSet<String> = ids.check_ids.difference(&no_detail).cloned().collect();
+    let mut missing = Vec::new();
+    collect_missing(&mut missing, "DETAIL_LABELS", &checked_ids, issue_registry_source);
+    collect_missing(&mut missing, "DETAIL_DESCRIPTIONS", &checked_ids, issue_registry_source);
+    missing
+}
+
+/// Extracts the quoted ids inside `issueRegistry.ts`'s `const NO_DETAIL_CHECKS = [...]` array
+/// literal — a plain text scan bounded by the array's own `[`/`]`, same spirit as
+/// `collect_missing`'s object-literal scan. An absent `NO_DETAIL_CHECKS` (e.g. the const gets
+/// renamed) degrades to an empty set, which makes `find_missing_issue_registry` fall back to
+/// flagging every check id — the same "report nothing masks the real problem, but here the safer
+/// default is the opposite" trade-off as `collect_missing`'s own absent-registry case, just
+/// inverted: an accidentally-vanished allowlist should surface as new completeness failures, not
+/// silently stop excluding ids.
+fn no_detail_checks(source: &str) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    let Some(const_start) = source.find("const NO_DETAIL_CHECKS") else {
+        return ids;
+    };
+    let Some(open) = source[const_start..].find('[') else {
+        return ids;
+    };
+    let array_start = const_start + open + 1;
+    let Some(close) = source[array_start..].find(']') else {
+        return ids;
+    };
+    let array_body = &source[array_start..array_start + close];
+    for part in array_body.split(',') {
+        let trimmed = part.trim().trim_matches('"');
+        if !trimmed.is_empty() {
+            ids.insert(trimmed.to_string());
+        }
+    }
+    ids
+}
+
+/// Diffs `ids.check_ids` against `check_kind_for_type`'s `"<id>" => KindTag::...` match arms in
+/// `check_factory_source` (`maze-runner/src/runner/check_factory.rs`) — the single place every
+/// registered check `type_id` must appear for `build_rule_for!`'s factory to be able to construct
+/// it (GitHub issue #405). A check id absent from this match can never be selected by
+/// `config.checks`, the same class of silent gap `qualityI18n.ts`'s registries close for the UI
+/// side.
+pub fn find_missing_check_factory(ids: &QualityIds, check_factory_source: &str) -> Vec<MissingEntry> {
+    let mut missing = Vec::new();
+    let Some(fn_start) = check_factory_source.find("fn check_kind_for_type(") else {
+        // Function itself not found — almost certainly renamed/moved, not that every arm was
+        // deleted; report nothing rather than a wall of false positives masking the real problem.
+        return missing;
+    };
+    let fn_end = check_factory_source[fn_start..].find("\n}").map(|i| fn_start + i).unwrap_or(check_factory_source.len());
+    let fn_body = &check_factory_source[fn_start..fn_end];
+    for id in &ids.check_ids {
+        let arm_present = fn_body.contains(&format!("\"{id}\""));
+        if !arm_present {
+            missing.push(MissingEntry { registry: "check_kind_for_type", id: id.clone() });
+        }
+    }
+    missing
+}
+
 /// The paraglide message-key prefix each registry's entries are built from (`m["<prefix>.<id>.label"]`).
 /// `None` for any registry `find_missing` doesn't call `collect_missing` with — kept as a lookup
 /// miss rather than a panic so a future registry added on one side without the other degrades to
@@ -272,6 +347,75 @@ mod tests {
         assert_eq!(message_prefix_for("issueI18n"), Some("issue"));
         assert_eq!(message_prefix_for("paramI18n"), Some("param"));
         assert_eq!(message_prefix_for("someUnknownRegistry"), None);
+    }
+
+    #[test]
+    fn issue_registry_missing_detail_entry_is_reported_for_both_registries() {
+        let ids = ids_with(&["missing_endpoints", "unreachable_finish"]);
+        let source = "export const DETAIL_LABELS: Record<string, X> = {\n  missing_endpoints: (d) => d,\n};\n\nexport const DETAIL_DESCRIPTIONS: Record<string, X> = {\n  missing_endpoints: () => \"x\",\n};\n";
+        let missing = find_missing_issue_registry(&ids, source);
+        assert_eq!(missing.len(), 2);
+        assert!(missing.iter().any(|m| m.registry == "DETAIL_LABELS" && m.id == "unreachable_finish"));
+        assert!(missing.iter().any(|m| m.registry == "DETAIL_DESCRIPTIONS" && m.id == "unreachable_finish"));
+    }
+
+    #[test]
+    fn issue_registry_present_detail_entry_is_not_reported() {
+        let ids = ids_with(&["missing_endpoints"]);
+        let source = "export const DETAIL_LABELS: Record<string, X> = {\n  missing_endpoints: (d) => d,\n};\n\nexport const DETAIL_DESCRIPTIONS: Record<string, X> = {\n  missing_endpoints: () => \"x\",\n};\n";
+        assert!(find_missing_issue_registry(&ids, source).is_empty());
+    }
+
+    #[test]
+    fn issue_registry_no_detail_check_is_excluded_from_the_diff_entirely() {
+        let ids = ids_with(&["missing_endpoints", "unreachable_finish"]);
+        let source = "const NO_DETAIL_CHECKS = [\"missing_endpoints\"] as const;\n\nexport const DETAIL_LABELS: Record<string, X> = {\n  unreachable_finish: (d) => d,\n};\n\nexport const DETAIL_DESCRIPTIONS: Record<string, X> = {\n  unreachable_finish: () => \"x\",\n};\n";
+        assert!(find_missing_issue_registry(&ids, source).is_empty());
+    }
+
+    #[test]
+    fn issue_registry_no_detail_check_still_missing_a_real_entry_for_a_different_id() {
+        let ids = ids_with(&["missing_endpoints", "unreachable_finish"]);
+        let source = "const NO_DETAIL_CHECKS = [\"missing_endpoints\"] as const;\n\nexport const DETAIL_LABELS: Record<string, X> = {\n};\n\nexport const DETAIL_DESCRIPTIONS: Record<string, X> = {\n};\n";
+        let missing = find_missing_issue_registry(&ids, source);
+        assert_eq!(missing.len(), 2);
+        assert!(missing.iter().all(|m| m.id == "unreachable_finish"));
+    }
+
+    #[test]
+    fn no_detail_checks_parses_quoted_ids_from_the_array_literal() {
+        let source = "const NO_DETAIL_CHECKS = [\"a\", \"b\", \"c\"] as const;\n";
+        let ids = no_detail_checks(source);
+        assert_eq!(ids, BTreeSet::from(["a".to_string(), "b".to_string(), "c".to_string()]));
+    }
+
+    #[test]
+    fn no_detail_checks_absent_const_yields_empty_set() {
+        assert!(no_detail_checks("export const somethingElse = 1;\n").is_empty());
+    }
+
+    #[test]
+    fn check_factory_missing_arm_is_reported() {
+        let ids = ids_with(&["missing_endpoints", "unreachable_finish"]);
+        let source = "pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {\n    match type_id {\n        \"missing_endpoints\" => KindTag::MissingEndpoints,\n        other => panic!(\"unknown check type_id: {other}\"),\n    }\n}\n";
+        let missing = find_missing_check_factory(&ids, source);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].registry, "check_kind_for_type");
+        assert_eq!(missing[0].id, "unreachable_finish");
+    }
+
+    #[test]
+    fn check_factory_present_arm_is_not_reported() {
+        let ids = ids_with(&["missing_endpoints"]);
+        let source = "pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {\n    match type_id {\n        \"missing_endpoints\" => KindTag::MissingEndpoints,\n        other => panic!(\"unknown check type_id: {other}\"),\n    }\n}\n";
+        assert!(find_missing_check_factory(&ids, source).is_empty());
+    }
+
+    #[test]
+    fn check_factory_absent_function_reports_nothing() {
+        let ids = ids_with(&["missing_endpoints"]);
+        let source = "fn something_else() {}\n";
+        assert!(find_missing_check_factory(&ids, source).is_empty());
     }
 
     #[test]

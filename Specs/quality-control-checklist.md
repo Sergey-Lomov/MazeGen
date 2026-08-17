@@ -17,8 +17,14 @@ Only if no existing kind fits — see `quality_control.md`'s "Hard rule: `IssueK
 1. Implement `Check<T, I>` (own file under `quality_control/checks/`).
 2. Register a `CheckDescriptor { id, label, description, issue_kinds, params, allow_multiple_instances }` in `maze-wasm/src/checks_catalog.rs`'s `available_checks_list()` — this is the single source of truth for the check's id and every param id it exposes.
 3. Wire the check into `maze-runner`'s rule-building (`build_rule_for!`/check factory) so `config.checks` can select it.
-4. Add `qualityI18n.ts` entries: `checkI18n[id]` (label/description), and a `DETAIL_LABELS`/`DETAIL_DESCRIPTIONS` entry in `issueRegistry.ts` if the check records `details` the UI should render as a specific sentence rather than the issue kind's generic label.
+4. Add `qualityI18n.ts` entries: `checkI18n[id]` (label/description). Also add a `DETAIL_LABELS`/`DETAIL_DESCRIPTIONS` entry in `issueRegistry.ts` if the check calls `.with_detail(...)` (see "New Check without details" below if it doesn't).
 5. Add the corresponding `check.<id>.label`/`.description` (and any detail-label) keys to **both** `maze-web/messages/en.json` and `ru.json`.
+
+### New Check without details
+
+A check that never calls `.with_detail(...)` (a pure structural check — `MissingEndpointsCheck`, `UnreachableFinishCheck`, `TeleportDuplicatesConnectionCheck` are the current examples) has nothing for `DETAIL_LABELS`/`DETAIL_DESCRIPTIONS` to render, and the issue kind's generic `issue.<kind>.label`/`.description` already reads correctly for it. Add the check's id to `issueRegistry.ts`'s `NO_DETAIL_CHECKS` list instead of writing a `DETAIL_LABELS`/`DETAIL_DESCRIPTIONS` entry for it — `codegen --check`'s completeness diff excludes every id in that list.
+
+`codegen` can't derive "does this check call `.with_detail`" itself: the call often lives in a shared check-core helper several files away from the concrete check (e.g. `region_size_check_core.rs`'s `build_issue`), with the detail key passed as a variable rather than a literal, so a text scan can't reliably trace it — `NO_DETAIL_CHECKS` is a hand-maintained, explicit statement of which checks are known to have nothing to render.
 
 ## New Strategy
 
@@ -41,7 +47,13 @@ Rare — only for a param several checks/strategies share, see `RuleParamDescrip
 cargo run -p codegen -- --check
 ```
 
-This regenerates `maze-web/src/wasm/generated/issueKind.ts` and `maze-web/src/components/features/generated/qualityIds.ts` (both plain generated mirrors, never hand-edit), and diffs every check/strategy/rule-param/issue-kind/param id it finds in `maze-wasm`'s catalogs against `qualityI18n.ts`'s registries — a missing entry fails `--check` with the exact registry and id name. It does **not** catch a missing `en.json`/`ru.json` message key, a missing `DETAIL_LABELS` entry, or a missing `issueRegistry.ts`/`KNOWN_ISSUES` entry — those still need this checklist (see also `feedback_new_check_checklist` in this project's persistent memory for the same recurring gaps).
+This regenerates `maze-web/src/wasm/generated/issueKind.ts` and `maze-web/src/components/features/generated/qualityIds.ts` (both plain generated mirrors, never hand-edit), and diffs every check/strategy/rule-param/issue-kind/param id it finds in `maze-wasm`'s catalogs against three hand-written places, failing `--check` with the exact registry/file and id name on any gap:
+
+- `qualityI18n.ts`'s `checkI18n`/`strategyI18n`/`issueI18n`/`paramI18n` registries.
+- `issueRegistry.ts`'s `DETAIL_LABELS`/`DETAIL_DESCRIPTIONS` registries, diffed against every check id **except** ids listed in `NO_DETAIL_CHECKS` (see "New Check without details" above; GitHub issue #405).
+- `maze-runner`'s `check_factory.rs`, specifically `check_kind_for_type`'s `"<id>" => KindTag::...` match arms — a check id absent here can never be selected by `build_rule_for!`'s factory (GitHub issue #405).
+
+It does **not** catch a missing `en.json`/`ru.json` message key or a missing `issueRegistry.ts`/`KNOWN_ISSUES` entry — those still need this checklist (see also `feedback_new_check_checklist` in this project's persistent memory for the same recurring gaps).
 
 Instead of hand-typing every flagged `qualityI18n.ts` entry, run:
 

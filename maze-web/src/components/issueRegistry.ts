@@ -104,12 +104,24 @@ export function resolveIssue(kind: string): IssueInfo {
   return KNOWN_ISSUES[kind]?.() ?? { label: kind, description: "", severity: "warning" };
 }
 
+/// Check ids that never call `.with_detail(...)` on the Rust side (pure structural checks --
+/// `MissingEndpointsCheck`, `UnreachableFinishCheck`, `TeleportDuplicatesConnectionCheck`) -- the
+/// generic `issue.<kind>.label`/`.description` (via `resolveIssue`) already reads correctly for
+/// these, so they need no override in `DETAIL_LABELS`/`DETAIL_DESCRIPTIONS` below. Named and
+/// factored out (instead of a `() => undefined`/`() => resolveCheckDescription(...)` line per id)
+/// so `codegen --check`'s flat per-check-id completeness diff (GitHub issue #405) -- which can't
+/// tell a check with nothing to render apart from one whose entry was simply forgotten, since that
+/// requires tracing `.with_detail` calls through shared check-core helpers, not a plain text scan
+/// -- is satisfied by a single explicit list rather than scattered no-op closures.
+const NO_DETAIL_CHECKS = ["missing_endpoints", "unreachable_finish", "teleport_duplicates_connection"] as const;
+
 /// Per-source-check label override, filled in with that check's raw detail values (see
 /// `IssueDto.details`). Lets one `kind` (e.g. `invalid_loop`) read differently depending on
 /// which check actually produced it -- "Loop shorter than 5 tiles" vs "Loop longer than 100
 /// tiles" -- instead of a generic "Invalid loop" for both. A check id absent here falls back
 /// to the kind's generic label (`resolveIssue`).
 export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => string | undefined> = {
+  ...Object.fromEntries(NO_DETAIL_CHECKS.map((id) => [id, () => undefined])),
   min_loops_count: (d) => d.missing !== undefined ? m["issue.missing_loops.min_loops_count_label"]({ missing: d.missing }) : undefined,
   min_loop_density: (d) => d.missing !== undefined ? m["issue.missing_loops.min_loop_density_label"]({ missing: d.missing }) : undefined,
   loop_length: (d) => d.threshold !== undefined ? m["issue.invalid_loop.loop_length_label"]({ threshold: d.threshold }) : undefined,
@@ -247,6 +259,7 @@ export function resolveIssueSourceLabel(kind: string, typeId: string, details: R
 /// separate copy to keep in sync) — `teleport_split_intersection` uses its own dedicated
 /// `issue.*` text instead, worded for the issue-modal context specifically.
 const DETAIL_DESCRIPTIONS: Record<string, () => string> = {
+  ...Object.fromEntries(NO_DETAIL_CHECKS.map((id) => [id, () => resolveCheckDescription(id, "")])),
   teleport_split_intersection: () => m["issue.invalid_teleport.teleport_split_intersection_description"](),
   teleport_waypoint_distance: () => resolveCheckDescription("teleport_waypoint_distance", ""),
   teleport_super_hub_avoidance: () => resolveCheckDescription("teleport_super_hub_avoidance", ""),

@@ -181,14 +181,22 @@ fn main() -> ExitCode {
             }
         } else {
             for m in &missing {
-                let msg = format!("qualityI18n.ts: {} has no entry for id \"{}\" (see generated/qualityIds.ts)", m.registry, m.id);
-                if check_only {
-                    eprintln!("codegen: {msg}");
-                    had_errors = true;
-                } else {
-                    eprintln!("codegen: WARNING: {msg}");
-                }
+                report_missing_entry("qualityI18n.ts", m, check_only, &mut had_errors);
             }
+        }
+    }
+
+    let issue_registry_path = repo_root.join("maze-web").join("src").join("components").join("issueRegistry.ts");
+    if let Ok(existing) = fs::read_to_string(&issue_registry_path) {
+        for m in quality_i18n::find_missing_issue_registry(&quality_ids, &existing) {
+            report_missing_entry("issueRegistry.ts", &m, check_only, &mut had_errors);
+        }
+    }
+
+    let check_factory_path = repo_root.join("maze-runner").join("src").join("runner").join("check_factory.rs");
+    if let Ok(existing) = fs::read_to_string(&check_factory_path) {
+        for m in quality_i18n::find_missing_check_factory(&quality_ids, &existing) {
+            report_missing_entry("check_factory.rs", &m, check_only, &mut had_errors);
         }
     }
 
@@ -238,6 +246,20 @@ fn write_or_check(path: &Path, text: &str, check_only: bool, had_errors: &mut bo
 
 fn normalize_line_endings(s: &str) -> String {
     s.replace("\r\n", "\n")
+}
+
+/// Reports one `quality_i18n::MissingEntry` under `source_label` (the hand-written file it's
+/// missing from) — a hard `--check` error, or a plain-run warning. Shared by every completeness
+/// diff (`qualityI18n.ts`, `issueRegistry.ts`, `check_factory.rs`) so the three call sites agree on
+/// wording and on what counts as fatal.
+fn report_missing_entry(source_label: &str, entry: &quality_i18n::MissingEntry, check_only: bool, had_errors: &mut bool) {
+    let msg = format!("{source_label}: {} has no entry for id \"{}\" (see generated/qualityIds.ts)", entry.registry, entry.id);
+    if check_only {
+        eprintln!("codegen: {msg}");
+        *had_errors = true;
+    } else {
+        eprintln!("codegen: WARNING: {msg}");
+    }
 }
 
 fn to_snake_case_stem(enum_name: &str) -> String {
@@ -296,6 +318,35 @@ fn json_escape(s: &str) -> String {
     }
     out.push('"');
     out
+}
+
+#[cfg(test)]
+mod report_missing_entry_tests {
+    use super::*;
+
+    #[test]
+    fn check_only_sets_had_errors() {
+        let entry = quality_i18n::MissingEntry { registry: "checkI18n", id: "foo".to_string() };
+        let mut had_errors = false;
+        report_missing_entry("qualityI18n.ts", &entry, true, &mut had_errors);
+        assert!(had_errors);
+    }
+
+    #[test]
+    fn plain_run_does_not_set_had_errors() {
+        let entry = quality_i18n::MissingEntry { registry: "checkI18n", id: "foo".to_string() };
+        let mut had_errors = false;
+        report_missing_entry("qualityI18n.ts", &entry, false, &mut had_errors);
+        assert!(!had_errors);
+    }
+
+    #[test]
+    fn had_errors_already_true_stays_true_on_plain_run() {
+        let entry = quality_i18n::MissingEntry { registry: "checkI18n", id: "foo".to_string() };
+        let mut had_errors = true;
+        report_missing_entry("qualityI18n.ts", &entry, false, &mut had_errors);
+        assert!(had_errors);
+    }
 }
 
 #[cfg(test)]
