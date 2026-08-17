@@ -128,6 +128,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             IssuePayload::InvalidSplitTile { groups } => IssuePayloadDto::InvalidSplitTile { groups: split_group_map_dto(groups) },
             IssuePayload::InvalidSplitRoute { routes } => IssuePayloadDto::InvalidSplitRoute { routes: route_payload_map_dto(routes) },
             IssuePayload::ExcessiveSccCount { preset_locked } => IssuePayloadDto::ExcessiveSccCount { preset_locked },
+            IssuePayload::InvalidElevator { groups } => IssuePayloadDto::InvalidElevator { groups: edge_group_map_dto(groups) },
         };
         let source_checks = issue.source_checks().iter().map(|s| s.to_string()).collect();
         let mut details: HashMap<String, HashMap<String, String>> = issue.details().iter()

@@ -1577,6 +1577,70 @@ Both share `vertical_passage_count_core::vertical_passage_proximity_candidates(m
 
 Either way, both candidates of a flagged pair independently scan and can each record the pair from their own side — a symmetric pair may appear as two `(vec![own_id, other_id], 1)` groups, not deduplicated into one. Silent if fewer than two candidates result from `passage_type`/`count_incoming`. Fires `InvalidVerticalPassageGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "distance", self.distance.to_string())` chained on. Repaired by `VerticalPassageGroupSelectStrategy` (see `repair.md`).
 
+### elevator_core — connected-component finder over `Elevator`-kind edges
+
+`quality_control::checks::elevator_core` (`maze-core/src/quality_control/checks/elevator_core.rs`). See GitHub issue #397, part of epic #344.
+
+```rust
+pub struct Elevator {
+    pub stops: Vec<NodeId>,
+    pub edges: Vec<EdgeId>,
+}
+
+pub fn elevator_groups<T: Tessellation>(maze: &Maze<T>) -> Vec<Elevator>;
+pub fn stop_floors<T: Tessellation>(elevator: &Elevator, maze: &Maze<T>) -> Vec<usize>;
+```
+
+`elevator_groups` finds every connected component of `EdgeKind::Elevator` edges in the graph — one `Elevator` per component, `stops` the component's node set, `edges` one canonical `EdgeId` per unordered node pair actually connected by an `Elevator` edge (not the full `n*(n-1)` fan-edge id set; each direction of a pair shares one canonical id in `edges`). Traversal is a manual explicit-stack DFS (not recursion — avoids stack depth concerns on a pathological maze), following only `Elevator`-kind adjacency; `Basic`/`VerticalPassage`/`Teleport` edges never join or split a component. `stop_floors` maps `elevator.stops` to their floor indices (`MultiLevelField::level_index_of`) and dedups, sorted ascending — a defensive dedup against a hypothetical future tessellation with more than one node per point per floor, not a case that occurs today.
+
+Shared by `ElevatorStopCountCheck`, `ElevatorSpanCheck`, `RemoveElevatorStrategy`, and `ReplaceElevatorWithPassagesStrategy` — the single source of truth for "what is one elevator" used by both the checks and the strategies that repair them.
+
+### ElevatorStopCountCheck / ElevatorSpanCheck
+
+```rust
+pub const ELEVATOR_STOP_COUNT_DEFAULT: u32 = 2;
+pub const ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
+
+pub struct ElevatorStopCountCheck {
+    pub instance_id: String,
+    pub comparison: Comparison,
+    pub count: u32,
+}
+
+pub const ELEVATOR_SPAN_DEFAULT: u32 = 10;
+pub const ELEVATOR_SPAN_DEFAULT_COMPARISON: Comparison = Comparison::Lt;
+
+pub struct ElevatorSpanCheck {
+    pub instance_id: String,
+    pub comparison: Comparison,
+    pub span: u32,
+}
+```
+
+See GitHub issue #397, part of epic #344. Both checks flag a whole elevator (`ElevatorNodes` — every stop, see below) as invalid for a single-entity threshold comparison via the shared `Comparison` operator, mirroring `SplitDistanceFromWaypointCheck`'s single-entity/`Comparison`-parametrized shape rather than a min/max pair.
+
+**`ElevatorStopCountCheck`** (`check_type_id() == "elevator_stop_count"`) compares an elevator's stop count (`stop_floors(elevator, maze).len()`, distinct floors — not raw node count) against `count` via `comparison`. `Lt` (default) flags an elevator with too few stops (e.g. a 2-stop "elevator" that's really just a vertical passage in disguise); `Gt` flags one with implausibly many.
+
+**`ElevatorSpanCheck`** (`check_type_id() == "elevator_span"`) compares an elevator's inter-stop vertical distance — `stop_floors(elevator, maze)`'s last floor index minus its first — against `span` via `comparison`. `Lt` (default, threshold `10`) flags a too-tightly-clustered elevator (e.g. one spanning only adjacent floors, which a plain `VerticalPassage` could serve just as well); `Gt` flags one spanning an implausibly tall stretch of the maze. Span is the topmost-minus-bottommost floor gap, not stop count minus one — an elevator can skip floors between its outermost stops.
+
+Both checks scan every `elevator_groups(maze)` entry independently, collect the flagged ones into `Vec<ElevatorNodes>` (sorted for determinism), and — if non-empty — fire `InvalidElevatorIssue::new_from_check(instance_id, invalid)` with `.with_detail(instance_id, "count"/"span", ...)` chained on. Both allow multiple simultaneous instances (`allow_multiple_instances: true`) — each instance independently flags whichever elevators cross its own threshold, no shared mutable state to double-count (mirrors `teleport_waypoint_distance`/`teleport_group_proximity`'s own multi-instance rationale).
+
+`RemoveElevatorStrategy` / `ReplaceElevatorWithPassagesStrategy` (see `repair.md`) are the two registered `RepairStrategy` options for `INVALID_ELEVATOR` — a rule picks one.
+
+#### ElevatorNodes / InvalidElevatorIssue
+
+```rust
+pub struct ElevatorNodes(pub Vec<NodeId>);
+
+pub struct InvalidElevatorIssue {
+    pub invalid: Vec<ElevatorNodes>,
+    pub invalid_sources: HashMap<ElevatorNodes, Vec<String>>,
+    // meta: IssueMeta
+}
+```
+
+`ElevatorNodes` wraps one elevator's full stop-node set, sorted on construction so two instances built from the same set in different orders compare/hash equal — mirrors `SplitTileNodes` exactly (GitHub issue #260's "whole entity is the unit" shape). `InvalidElevatorIssue.invalid` holds one `ElevatorNodes` per flagged elevator; `invalid_sources` tracks per-elevator check provenance, keyed by the same canonicalized `ElevatorNodes`. `IssueMerge` dedup-unions by clone (`ElevatorNodes` isn't `Copy`, so this can't reuse `merge_id_sets`) — mirrors `InvalidSplitTileIssue::merge`'s own clone-based-key approach.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -1856,6 +1920,8 @@ Every `*_density`/`*_ratio` param below (density/ratio checks measured as "per 1
 | `max_vertical_passage_ratio` | `invalid_vertical_passage_group` | `max_ratio: Float(default=100.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `count_incoming: Bool(default=false)` | no |
 | `vertical_passage_group_geometric_proximity` | `invalid_vertical_passage_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `same_type_only: Bool(default=false)`, `count_incoming: Bool(default=true)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=as_coordinate)` | no |
 | `vertical_passage_group_graph_proximity` | `invalid_vertical_passage_group` | `distance: Integer(default=0, min=0, max=100_000)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `same_type_only: Bool(default=false)` | no |
+| `elevator_stop_count` | `invalid_elevator` | `count: Integer(default=2, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)` | no |
+| `elevator_span` | `invalid_elevator` | `span: Integer(default=10, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

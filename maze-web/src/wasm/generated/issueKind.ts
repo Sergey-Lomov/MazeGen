@@ -28,7 +28,8 @@ export type IssueKindId =
   | "invalid_split_route"
   | "invalid_vertical_passage"
   | "invalid_vertical_passage_group"
-  | "missing_vertical_passages";
+  | "missing_vertical_passages"
+  | "invalid_elevator";
 
 export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
   "missing_endpoints",
@@ -59,4 +60,5 @@ export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
   "invalid_vertical_passage",
   "invalid_vertical_passage_group",
   "missing_vertical_passages",
+  "invalid_elevator",
 ] as const;

@@ -161,6 +161,10 @@ export type IssuePayloadDto =
       kind: "excessive_scc_count";
       preset_locked: Record<string, boolean>;
     }
+  | {
+      kind: "invalid_elevator";
+      groups: Record<string, IssueEdgeGroupPayload[]>;
+    }
 ;
 
 export interface IssueDto {

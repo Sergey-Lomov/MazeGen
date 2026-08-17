@@ -17,6 +17,7 @@ use maze_core::{
         SplitNodeGroupSelectStrategy, SplitRouteCutStrategy,
         AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy,
         MissingLoopsVerticalStrategy,
+        RemoveElevatorStrategy, ReplaceElevatorWithPassagesStrategy,
     },
     quality_control::{IssueRequirement, RuleParams, rule_param_applies_to},
 };
@@ -79,6 +80,8 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(id: &str, params: &HashMap<
         "add_vertical_passage" => Box::new(AddVerticalPassageStrategy { passage_type: rule_params.vertical_passage_type }),
         "remove_vertical_passage" => Box::new(RemoveVerticalPassageStrategy),
         "vertical_passage_group_select" => Box::new(VerticalPassageGroupSelectStrategy),
+        "remove_elevator"      => Box::new(RemoveElevatorStrategy),
+        "replace_elevator_with_passages" => Box::new(ReplaceElevatorWithPassagesStrategy),
         other => return Err(format!("unknown strategy: {other}")),
     })
 }

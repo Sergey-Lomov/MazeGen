@@ -33,6 +33,7 @@ pub enum IssueKind {
     InvalidVerticalPassage,
     InvalidVerticalPassageGroup,
     MissingVerticalPassages,
+    InvalidElevator,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -244,6 +245,13 @@ pub const INVALID_VERTICAL_PASSAGE_GROUP: IssueKind = IssueKind::InvalidVertical
 /// one. Carries `MissingVerticalPassagesIssue { missing }` — see that type's doc comment. Repaired
 /// by `AddVerticalPassageStrategy`.
 pub const MISSING_VERTICAL_PASSAGES: IssueKind = IssueKind::MissingVerticalPassages;
+/// A single `Elevator` (a connected fan of `EdgeKind::Elevator` edges across a point's floors,
+/// see `checks::elevator_core`) is invalid for a check-specific reason — currently
+/// `ElevatorStopCountCheck`/`ElevatorSpanCheck` — see GitHub issue #397. Carries
+/// `InvalidElevatorIssue { invalid }`, one `ElevatorNodes` (the elevator's own stop node set) per
+/// flagged elevator — mirrors `InvalidSplitTileIssue`'s "whole entity is the unit" shape. Repaired
+/// by `RemoveElevatorStrategy`/`ReplaceElevatorWithPassagesStrategy`.
+pub const INVALID_ELEVATOR: IssueKind = IssueKind::InvalidElevator;
 
 /// `as_str`/`from_str`/`Display` for `IssueKind` are generated (`codegen`'s `id_enum` module, see
 /// GitHub issue #361) into the sibling `issue_kind_ids.rs` from the variant list above — do not

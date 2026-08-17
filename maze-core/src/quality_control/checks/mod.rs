@@ -56,6 +56,9 @@ pub mod max_vertical_passage_count;
 pub mod max_vertical_passage_ratio;
 pub mod vertical_passage_group_geometric_proximity;
 pub mod vertical_passage_group_graph_proximity;
+pub mod elevator_core;
+pub mod elevator_stop_count;
+pub mod elevator_span;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -109,3 +112,6 @@ pub use max_vertical_passage_count::{MaxVerticalPassageCountCheck, MAX_VERTICAL_
 pub use max_vertical_passage_ratio::{MaxVerticalPassageRatioCheck, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING};
 pub use vertical_passage_group_geometric_proximity::{VerticalPassageGroupGeometricProximityCheck, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_TYPE, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_COUNT_INCOMING, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE};
 pub use vertical_passage_group_graph_proximity::{VerticalPassageGroupGraphProximityCheck, VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE};
+pub use elevator_core::{Elevator, elevator_groups, stop_floors};
+pub use elevator_stop_count::{ElevatorStopCountCheck, ELEVATOR_STOP_COUNT_DEFAULT, ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON};
+pub use elevator_span::{ElevatorSpanCheck, ELEVATOR_SPAN_DEFAULT, ELEVATOR_SPAN_DEFAULT_COMPARISON};

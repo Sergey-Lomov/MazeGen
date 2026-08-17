@@ -62,6 +62,9 @@ use maze_core::{
         MissingSplitTilesIssue, InvalidSplitNodeIssue, InvalidSplitNodeConnectionGroupIssue,
         InvalidSplitNodeGroupIssue, InvalidSplitRouteIssue,
         MissingVerticalPassagesIssue, InvalidVerticalPassageGroupIssue,
+        ElevatorStopCountCheck, ELEVATOR_STOP_COUNT_DEFAULT, ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON,
+        ElevatorSpanCheck, ELEVATOR_SPAN_DEFAULT, ELEVATOR_SPAN_DEFAULT_COMPARISON,
+        InvalidElevatorIssue,
     },
     RegionClass,
 };
@@ -99,6 +102,7 @@ pub(crate) enum KindTag {
     InvalidSplitRoute,
     MissingVerticalPassages,
     InvalidVerticalPassageGroup,
+    InvalidElevator,
 }
 
 pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
@@ -155,6 +159,8 @@ pub(crate) fn check_kind_for_type(type_id: &str) -> KindTag {
         "max_vertical_passage_ratio" => KindTag::InvalidVerticalPassageGroup,
         "vertical_passage_group_geometric_proximity" => KindTag::InvalidVerticalPassageGroup,
         "vertical_passage_group_graph_proximity" => KindTag::InvalidVerticalPassageGroup,
+        "elevator_stop_count"        => KindTag::InvalidElevator,
+        "elevator_span"              => KindTag::InvalidElevator,
         other => panic!("unknown check type_id: {other}"),
     }
 }
@@ -860,6 +866,28 @@ pub(crate) fn build_invalid_vertical_passage_group_check<T: Tessellation>(instan
             let passage_type = parse_vertical_passage_type(instance.params.get("passage_type"), VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE);
             let same_type_only = parse_same_type_only(instance.params.get("same_type_only"));
             Some(Box::new(VerticalPassageGroupGraphProximityCheck { instance_id, distance, passage_type, same_type_only }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_invalid_elevator_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidElevatorIssue>>> {
+    match instance.type_id.as_str() {
+        "elevator_stop_count" => {
+            let count = instance.params.get("count")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(ELEVATOR_STOP_COUNT_DEFAULT);
+            let comparison = parse_comparison(instance.params.get("comparison"), ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON);
+            Some(Box::new(ElevatorStopCountCheck { instance_id, comparison, count }))
+        }
+        "elevator_span" => {
+            let span = instance.params.get("span")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(ELEVATOR_SPAN_DEFAULT);
+            let comparison = parse_comparison(instance.params.get("comparison"), ELEVATOR_SPAN_DEFAULT_COMPARISON);
+            Some(Box::new(ElevatorSpanCheck { instance_id, comparison, span }))
         }
         _ => None,
     }

@@ -200,6 +200,12 @@ pub enum IssuePayloadDto {
     ExcessiveSccCount {
         preset_locked: HashMap<String, bool>,
     },
+    /// Keyed by source check id — each inner Vec is one flagged elevator, expressed as base-graph
+    /// [from, to] maze node-id pairs, one pair per `Elevator` edge currently connecting its stops.
+    /// See GitHub issue #397.
+    InvalidElevator {
+        groups: HashMap<String, Vec<IssueEdgeGroupPayloadDto>>,
+    },
 }
 
 #[derive(Serialize, Dto)]

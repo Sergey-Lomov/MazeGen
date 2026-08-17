@@ -95,6 +95,13 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const verticalPassageGroups = sourceCheck != null && issue.payload.kind === "invalid_vertical_passage"
     ? issue.payload.groups[sourceCheck] ?? null
     : null;
+  // `invalid_elevator` (GitHub issue #397) reuses the same edge-group payload shape as
+  // `invalid_vertical_passage` and highlights the same way -- a flagged elevator's fan edges span
+  // multiple floors, so a line-per-edge highlight would read as stray diagonals; rendered as
+  // region squares over the elevator's own stop nodes instead (see `verticalPassageCellNodes`).
+  const elevatorGroups = sourceCheck != null && issue.payload.kind === "invalid_elevator"
+    ? issue.payload.groups[sourceCheck] ?? null
+    : null;
   // Same per-check isolation as `loopGroups` above — only this bubble's own source check's
   // flagged regions, not every contributing check's regions combined. Covers both
   // `region_needs_expansion` (undersized) and `region_needs_shrink` (oversized) — both highlight
@@ -153,6 +160,9 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const verticalPassageCellNodes = verticalPassageGroups != null
     ? [Array.from(new Set(verticalPassageGroups.filter(visibleGroup).flatMap((g) => g.edges).flat()))]
     : null;
+  const elevatorCellNodes = elevatorGroups != null
+    ? [Array.from(new Set(elevatorGroups.filter(visibleGroup).flatMap((g) => g.edges).flat()))]
+    : null;
   // Renders every visible tile as its own region-highlight group (one fill+perimeter per distinct
   // tile, `RegionHighlightRenderer`'s per-point dedup) -- visibility is decided at whichever
   // granularity `TILE_GRANULARITY_CHECKS` selects (tile-level for max_split_count/max_split_density,
@@ -187,10 +197,12 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ? () => setHoveredIssueRegionGroups(splitTileNodes)
     : verticalPassageCellNodes != null
     ? () => setHoveredIssueRegionGroups(verticalPassageCellNodes)
+    : elevatorCellNodes != null
+    ? () => setHoveredIssueRegionGroups(elevatorCellNodes)
     : undefined;
   const handleMouseLeave = loopEdges != null || teleportEdges != null || oneWayEdges != null || splitRouteEdges != null
     ? () => setHoveredIssueLoopEdges(null)
-    : visibleRegionGroups != null || splitTileNodes != null || verticalPassageCellNodes != null
+    : visibleRegionGroups != null || splitTileNodes != null || verticalPassageCellNodes != null || elevatorCellNodes != null
     ? () => setHoveredIssueRegionGroups(null)
     : undefined;
 
@@ -222,7 +234,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ...(teleportEdges ?? []),
     ...(oneWayEdges ?? []),
     ...(splitRouteEdges?.flat() ?? []),
-  ].flat().concat((splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat());
+  ].flat().concat((splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat());
 
   return (
     <>

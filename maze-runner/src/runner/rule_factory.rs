@@ -11,6 +11,7 @@ use maze_core::{
         MissingSplitTilesIssue, InvalidSplitNodeIssue, InvalidSplitNodeConnectionGroupIssue,
         InvalidSplitNodeGroupIssue, InvalidSplitRouteIssue,
         MissingVerticalPassagesIssue, InvalidVerticalPassageGroupIssue,
+        InvalidElevatorIssue,
     },
 };
 use crate::config::GenerateConfig;
@@ -25,6 +26,7 @@ use super::check_factory::{
     build_missing_split_tiles_check, build_invalid_split_node_check, build_split_node_connection_group_check,
     build_split_node_group_check, build_invalid_split_route_check,
     build_missing_vertical_passages_check, build_invalid_vertical_passage_group_check,
+    build_invalid_elevator_check,
 };
 use super::strategy_factory::{build_strategy_erased, downcast_strategy, build_nested};
 use super::rule_params::resolve_rule_params;
@@ -110,6 +112,7 @@ fn build_rule<T: Tessellation + 'static>(rule_cfg: &crate::config::QcRuleConfig)
         KindTag::InvalidSplitRoute => build_rule_for!(InvalidSplitRouteIssue, build_invalid_split_route_check, rule_cfg),
         KindTag::MissingVerticalPassages => build_rule_for!(MissingVerticalPassagesIssue, build_missing_vertical_passages_check, rule_cfg),
         KindTag::InvalidVerticalPassageGroup => build_rule_for!(InvalidVerticalPassageGroupIssue, build_invalid_vertical_passage_group_check, rule_cfg),
+        KindTag::InvalidElevator => build_rule_for!(InvalidElevatorIssue, build_invalid_elevator_check, rule_cfg),
     }
 }
 

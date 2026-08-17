@@ -33,7 +33,8 @@ export type IssuePayload =
   | { kind: "InvalidSplitTile"; groups: Map<string, SplitGroup[]> }
   | { kind: "InvalidSplitRoute"; routes: Map<string, [bigint, bigint, boolean][][]> }
   | { kind: "ExcessiveSccCount"; presetLocked: Map<string, boolean> }
-  | { kind: "InvalidVerticalPassage"; groups: Map<string, EdgeGroup[]> };
+  | { kind: "InvalidVerticalPassage"; groups: Map<string, EdgeGroup[]> }
+  | { kind: "InvalidElevator"; groups: Map<string, EdgeGroup[]> };
 
 /** Mirrors `IssueEdgeGroupPayload` in `maze-core/src/quality_control/issue_payload.rs` — one
  *  flagged cycle/group's base-graph edges paired with whether every one of them is
@@ -319,6 +320,10 @@ export function readIssuePayload(bytes: Uint8Array, offset: number): { value: Is
   if (tag === 9) {
     const { value: groups, next } = readStrKeyedEdgePairs(bytes, offset + 1);
     return { value: { kind: "InvalidVerticalPassage", groups }, next };
+  }
+  if (tag === 10) {
+    const { value: groups, next } = readStrKeyedEdgePairs(bytes, offset + 1);
+    return { value: { kind: "InvalidElevator", groups }, next };
   }
   throw new Error(`IssuePayload: unknown tag ${tag}`);
 }

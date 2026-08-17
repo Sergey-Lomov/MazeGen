@@ -1592,6 +1592,27 @@ No route protection — unlike `OneWayGroupSelectStrategy`/`TeleportGroupSelectS
 
 Same `Fixed`/`Failed` result contract as `OneWayGroupSelectStrategy`/`TeleportGroupSelectStrategy`'s "wholly-protected groups" case: with no route protection here, every group always has at least one allowed candidate, so this particular failure mode (every group wholly protected) cannot occur for this strategy — `Failed` is only reached via `group_select_apply`'s own generic "nothing was actually fixed" path (e.g. `issue.groups` non-empty but no nested strategy configured).
 
+### RemoveElevatorStrategy
+
+Handles `INVALID_ELEVATOR` — see GitHub issue #397, part of epic #344. Fully removes each flagged elevator: every `EdgeKind::Elevator` edge among its stops, via `MutationCommand::RemoveEdgeWithReverse`. `issue.invalid` names each elevator by its stop-node set (`ElevatorNodes`), not by a saved edge list (mirrors `RemoveSplitStrategy`'s "whole entity, not a saved edge list" approach) — the current fan of edges between those stops is re-resolved against `maze` at apply time via `elevator_core::elevator_groups` (matched by sorted-stops equality), so a stale issue (an elevator already partially repaired by an earlier fixpoint iteration) still removes whatever of its own edges remain rather than replaying a possibly-stale edge list. A flagged elevator no longer present in the current maze (no matching entry in `elevator_groups`) is simply skipped. No configurable parameters. Returns `Fixed { score: None }` even if every flagged elevator was skipped (mirrors other "always succeeds, commands may be empty" removal strategies) — only `ReplaceElevatorWithPassagesStrategy` distinguishes a genuinely empty result as `Failed`.
+
+### ReplaceElevatorWithPassagesStrategy
+
+Handles `INVALID_ELEVATOR` — see GitHub issue #397, part of epic #344. Replaces each flagged elevator with sequential two-way `VerticalPassage` edges between floor-adjacent stops, then removes the elevator's own `Elevator`-kind fan edges. Elevator resolution and the "flagged elevator no longer present" skip mirror `RemoveElevatorStrategy` above.
+
+**Parameters:**
+
+| id | type | default | description |
+|----|------|---------|-------------|
+| `adjacent_floors_only` | Bool | `true` | See below. |
+
+For a matched elevator with no fan edges at all (a degenerate single-stop elevator — nothing to remove or replace), the elevator is skipped entirely, not counted as fixed. Otherwise, the elevator's own `Elevator` edges are queued for removal via `MutationCommand::RemoveEdgeWithReverse` **before** any replacement `VerticalPassage` is queued — `MutationCommand::AddBidirectionalVerticalPassage`'s own `edge_between` existence check is not `EdgeKind`-gated, so a still-present `Elevator` edge between a target pair would make the add silently no-op if the order were reversed. The elevator's edges are removed unconditionally once matched, regardless of whether any replacement pair is actually found — the elevator must always vanish, never survive with a passage spanning a gap it was never meant to have.
+
+- **`adjacent_floors_only: true`** (default) — a passage is added only between pairs of the elevator's own stops that are genuinely floor-adjacent (consecutive floor indices via `MultiLevelField::level_index_of`, not merely consecutive entries in the sorted stop list). An elevator whose stops skip a floor (e.g. stops at floors 1 and 5, with no adjacent pair among them at all) produces no passage whatsoever for that gap — never a single passage bridging it.
+- **`adjacent_floors_only: false`** — passages are added from the elevator's bottommost to topmost stop, stepping through every floor level in between (`MultiLevelField::levels_ordered`) at the elevator's own `(x, y)` point, including floors the elevator itself never stopped at. A floor where that point has no node (`MultiLevelField::node_at` returns `None`) is skipped — both the passage into it and the passage out of it are dropped; the chain does not reconnect around the gap by bridging directly across it.
+
+Returns `Failed` only if no flagged elevator produced any command at all (none matched, or every match was the single-stop degenerate case); otherwise `Fixed { score: None }`.
+
 ## Pipeline
 
 Defined in `maze_core::generation::pipeline`.

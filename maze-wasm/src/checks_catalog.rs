@@ -7,7 +7,8 @@ use maze_core::{
     MAX_VERTICAL_PASSAGE_COUNT_DEFAULT, MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE, MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE, MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING,
     MAX_VERTICAL_PASSAGE_RATIO_DEFAULT, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING,
     VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_TYPE, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_COUNT_INCOMING, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
-    VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE},
+    VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE,
+    INVALID_ELEVATOR, ELEVATOR_STOP_COUNT_DEFAULT, ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON, ELEVATOR_SPAN_DEFAULT, ELEVATOR_SPAN_DEFAULT_COMPARISON},
 };
 use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, split_patterns_filter_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param};
 
@@ -880,6 +881,36 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             allow_multiple_instances: true,
         },
+        CheckDescriptor {
+            id: "elevator_stop_count",
+            label: "Elevator stop count",
+            description: "Compares an elevator's number of stops (distinct floors it connects) against the configured threshold.",
+            issue_kinds: vec![kind_str(INVALID_ELEVATOR)],
+            params: vec![
+                ParamDescriptor {
+                    id: "count",
+                    label: "Stop count threshold",
+                    kind: ParamKindDto::Integer { default: ELEVATOR_STOP_COUNT_DEFAULT as i64, min: 0, max: 100_000 },
+                },
+                comparison_param(ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON),
+            ],
+            allow_multiple_instances: true,
+        },
+        CheckDescriptor {
+            id: "elevator_span",
+            label: "Elevator span",
+            description: "Compares the vertical distance between an elevator's outermost stops against the configured threshold.",
+            issue_kinds: vec![kind_str(INVALID_ELEVATOR)],
+            params: vec![
+                ParamDescriptor {
+                    id: "span",
+                    label: "Span threshold",
+                    kind: ParamKindDto::Integer { default: ELEVATOR_SPAN_DEFAULT as i64, min: 0, max: 100_000 },
+                },
+                comparison_param(ELEVATOR_SPAN_DEFAULT_COMPARISON),
+            ],
+            allow_multiple_instances: true,
+        },
     ]
 }
 
@@ -898,7 +929,9 @@ mod tests {
         // min_*/split_count/split_density deficit checks joined this set once their repair
         // strategies started sharing live deficit counts via RemainingDeficits (GitHub issue
         // #369's double-count fix) -- stacking several instances (e.g. different floor_scope) no
-        // longer over-delivers.
+        // longer over-delivers. elevator_stop_count/elevator_span (GitHub issue #397) allow
+        // multiple instances too -- each instance independently flags whichever elevators cross
+        // its own threshold, no shared mutable state to double-count.
         let checks = available_checks_list();
         let allowing: Vec<&str> = checks.iter()
             .filter(|c| c.allow_multiple_instances)
@@ -909,6 +942,7 @@ mod tests {
         assert_eq!(
             allowing_sorted,
             vec![
+                "elevator_span", "elevator_stop_count",
                 "max_vertical_passage_count", "max_vertical_passage_ratio",
                 "min_loop_density", "min_loops_count", "min_one_way_count", "min_one_way_ratio",
                 "min_teleport_count", "min_teleport_ratio",

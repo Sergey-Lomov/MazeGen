@@ -28,6 +28,7 @@ export function presetLockElementsFor(issue: IssueDto, sourceCheck: string): { p
   if (payload.kind === "invalid_teleport") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_one_way") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_vertical_passage") return payload.groups[sourceCheck] ?? null;
+  if (payload.kind === "invalid_elevator") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_split_tile") {
     const groups = payload.groups[sourceCheck] ?? null;
     if (groups == null) return null;
@@ -95,6 +96,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   missing_vertical_passages: () => ({ label: m["issue.missing_vertical_passages.label"](), description: m["issue.missing_vertical_passages.description"](), severity: "warning" }),
   invalid_vertical_passage: () => ({ label: m["issue.invalid_vertical_passage.label"](), description: m["issue.invalid_vertical_passage.description"](), severity: "warning" }),
   invalid_vertical_passage_group: () => ({ label: m["issue.invalid_vertical_passage_group.label"](), description: m["issue.invalid_vertical_passage_group.description"](), severity: "warning" }),
+  invalid_elevator: () => ({ label: m["issue.invalid_elevator.label"](), description: m["issue.invalid_elevator.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -211,6 +213,8 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   max_vertical_passage_ratio: (d) => d.max_ratio !== undefined ? m["issue.invalid_vertical_passage_group.max_vertical_passage_ratio_label"]({ max_ratio: d.max_ratio }) : undefined,
   vertical_passage_group_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_vertical_passage_group.vertical_passage_group_geometric_proximity_label"]({ distance: d.distance }) : undefined,
   vertical_passage_group_graph_proximity: (d) => d.distance !== undefined ? m["issue.invalid_vertical_passage_group.vertical_passage_group_graph_proximity_label"]({ distance: d.distance }) : undefined,
+  elevator_stop_count: (d) => d.count !== undefined ? m["issue.invalid_elevator.elevator_stop_count_label"]({ count: d.count }) : undefined,
+  elevator_span: (d) => d.span !== undefined ? m["issue.invalid_elevator.elevator_span_label"]({ span: d.span }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

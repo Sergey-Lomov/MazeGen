@@ -5,7 +5,8 @@ use crate::generation::PresetState;
 use crate::generation::edge_ops::bidirectional_edge_feasible;
 use crate::space::{MultiLevelField, Tessellation};
 use super::issue::Issue;
-use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidVerticalPassageIssue, InvalidVerticalPassageGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, SplitRouteEdge, ExcessiveSccCountIssue};
+use crate::graph::EdgeKind;
+use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidVerticalPassageIssue, InvalidVerticalPassageGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, SplitRouteEdge, ExcessiveSccCountIssue, InvalidElevatorIssue, ElevatorNodes};
 
 /// One flagged edge-group element (a cycle, a one-way/teleport group, or a single flagged edge
 /// treated as a size-one group) resolved for the web/tape wire boundary — pairs the group's
@@ -162,6 +163,12 @@ pub enum IssuePayload {
     /// data on the issue). No per-element highlight data, unlike every variant above — this issue
     /// never highlights specific regions on the canvas. Mirrors `IssuePayloadDto::ExcessiveSccCount`.
     ExcessiveSccCount { preset_locked: HashMap<String, bool> },
+    /// Keyed by source check id — each inner `Vec` is one flagged elevator, expressed as base-graph
+    /// `[from, to]` pairs, one pair per `EdgeKind::Elevator` edge currently connecting its stops
+    /// (re-resolved against `graph` at payload time, since `ElevatorNodes` names the elevator by its
+    /// stop-node set, not by saved edge ids — see GitHub issue #397, mirrors `RemoveElevatorStrategy`'s
+    /// own re-resolution). Mirrors `IssuePayloadDto::InvalidElevator`.
+    InvalidElevator { groups: HashMap<String, Vec<IssueEdgeGroupPayload>> },
 }
 
 /// Resolves `issue`'s structural payload against `graph`/`scc` — extracted from
@@ -427,6 +434,42 @@ fn excessive_scc_count_preset_locked<T: Tessellation>(field: &MultiLevelField<T>
     })
 }
 
+/// Resolves every flagged elevator's stop-node set into its currently-live fan of
+/// `EdgeKind::Elevator` edges, keyed by the specific check(s) that flagged *that* elevator
+/// (`invalid_sources`) — mirrors `resolve_invalid_split_tile_payload`'s per-element attribution.
+/// An elevator whose fan has already been fully removed by an earlier repair pass resolves to an
+/// empty edge list rather than being skipped, same convention as `edge_pair`'s stale-edge handling
+/// elsewhere in this file.
+fn resolve_invalid_elevator_payload(invalid: &[ElevatorNodes], invalid_sources: &HashMap<ElevatorNodes, Vec<String>>, graph: &Graph, preset_state: &PresetState) -> Option<IssuePayload> {
+    let mut groups: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
+    for elevator in invalid {
+        let mut edges = Vec::new();
+        let mut edge_ids = Vec::new();
+        for &a in &elevator.0 {
+            for &b in &elevator.0 {
+                if a >= b {
+                    continue;
+                }
+                for (from, to) in [(a, b), (b, a)] {
+                    if let Some(eid) = graph.edge_between(from, to) {
+                        if graph.edge(eid).is_some_and(|e| e.kind == EdgeKind::Elevator) {
+                            if let Some(pair) = edge_pair(graph, eid) {
+                                edges.push(pair);
+                                edge_ids.push(eid);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let preset_locked = all_preset_locked(&edge_ids, graph, preset_state);
+        for source in invalid_sources.get(elevator).into_iter().flatten() {
+            groups.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edges.clone(), preset_locked });
+        }
+    }
+    if groups.is_empty() { None } else { Some(IssuePayload::InvalidElevator { groups }) }
+}
+
 pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, field: &MultiLevelField<T>, scc: &ConnectedComponents, preset_state: &PresetState) -> IssuePayload {
     if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
         let cycles = invalid.iter().filter_map(|&idx| all.get(idx));
@@ -545,6 +588,12 @@ pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, 
         let locked = excessive_scc_count_preset_locked(field, scc, preset_state);
         let preset_locked = issue.source_checks().iter().map(|s| (s.clone(), locked)).collect();
         return IssuePayload::ExcessiveSccCount { preset_locked };
+    }
+
+    if let Some(InvalidElevatorIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidElevatorIssue>() {
+        if let Some(payload) = resolve_invalid_elevator_payload(invalid, invalid_sources, graph, preset_state) {
+            return payload;
+        }
     }
 
     IssuePayload::None
