@@ -5,7 +5,7 @@ use crate::generation::PresetState;
 use crate::generation::edge_ops::bidirectional_edge_feasible;
 use crate::space::{MultiLevelField, Tessellation};
 use super::issue::Issue;
-use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, SplitRouteEdge, ExcessiveSccCountIssue};
+use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidVerticalPassageIssue, InvalidVerticalPassageGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, SplitRouteEdge, ExcessiveSccCountIssue};
 
 /// One flagged edge-group element (a cycle, a one-way/teleport group, or a single flagged edge
 /// treated as a size-one group) resolved for the web/tape wire boundary — pairs the group's
@@ -92,7 +92,8 @@ fn all_preset_locked(edges: &[crate::ids::EdgeId], graph: &Graph, preset_state: 
 /// `RuleChecked` payload (`quality_control::event`). Only `InvalidLoopIssue`/
 /// `InvalidLoopGroupIssue`/`RegionNeedsExpansionIssue`/`RegionNeedsShrinkIssue`/
 /// `InvalidTeleportIssue`/`InvalidTeleportGroupIssue`/`InvalidOneWayIssue`/
-/// `InvalidOneWayGroupIssue`/`InvalidSplitNodeConnectionGroupIssue`/`InvalidSplitTileIssue`/
+/// `InvalidOneWayGroupIssue`/`InvalidVerticalPassageIssue`/`InvalidVerticalPassageGroupIssue`/
+/// `InvalidSplitNodeConnectionGroupIssue`/`InvalidSplitTileIssue`/
 /// `InvalidSplitTileGroupIssue`/`InvalidSplitNodeIssue`/`InvalidSplitNodeGroupIssue`/
 /// `InvalidSplitRouteIssue` carry structural edge/node data today — every other concrete `Issue`
 /// type resolves to `None`, same as `build_analytics_snapshot`'s pre-existing behavior.
@@ -133,6 +134,15 @@ pub enum IssuePayload {
     /// reused) so `payload.kind` still mirrors `IssueKind::as_str()` (`invalid_one_way` vs.
     /// `invalid_teleport`), same rationale as every other variant here.
     InvalidOneWay { groups: HashMap<String, Vec<IssueEdgeGroupPayload>> },
+    /// Keyed by source check id — each inner `Vec` is one flagged vertical-passage "group",
+    /// expressed as base-graph `[from, to]` maze node-id pairs, one pair per `VerticalPassage`
+    /// edge in the group. `InvalidVerticalPassageIssue` (a single flagged edge is a group of size
+    /// one) and `InvalidVerticalPassageGroupIssue` (a proximity pair) both resolve into this same
+    /// shape — mirrors `InvalidTeleport`'s reuse across `InvalidTeleportIssue`/
+    /// `InvalidTeleportGroupIssue` — see GitHub issue #395. Mirrors
+    /// `IssuePayloadDto::InvalidVerticalPassage`. Kept a distinct variant from `InvalidTeleport`
+    /// (not reused) so `payload.kind` still mirrors `IssueKind::as_str()`.
+    InvalidVerticalPassage { groups: HashMap<String, Vec<IssueEdgeGroupPayload>> },
     /// Keyed by source check id — each entry is one flagged "instance" (a single tile, or a
     /// genuine multi-tile group for proximity/count/density checks — see `IssueSplitGroupPayload`'s
     /// doc comment), each paired with its own `preset_locked` flag (GitHub issue #245's split-node
@@ -472,6 +482,20 @@ pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, 
         let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state);
         if !groups.is_empty() {
             return IssuePayload::InvalidOneWay { groups };
+        }
+    }
+
+    if let Some(InvalidVerticalPassageIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidVerticalPassageIssue>() {
+        let groups = resolve_single_edge_map(invalid, invalid_sources, graph, preset_state);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidVerticalPassage { groups };
+        }
+    }
+
+    if let Some(InvalidVerticalPassageGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidVerticalPassageGroupIssue>() {
+        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidVerticalPassage { groups };
         }
     }
 
@@ -1641,5 +1665,84 @@ mod tests {
         let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &preset_state);
         let IssuePayload::ExcessiveSccCount { preset_locked } = payload else { panic!("expected ExcessiveSccCount, got {payload:?}") };
         assert!(preset_locked["check1"]);
+    }
+
+    fn vertical_passage_graph() -> (Graph, crate::ids::EdgeId, crate::ids::EdgeId) {
+        use crate::graph::EdgeKind;
+        let mut graph = Graph::new();
+        graph.add_node(1);
+        graph.add_node(2);
+        graph.add_node(3);
+        let e1 = graph.add_edge(1, 2, EdgeKind::VerticalPassage);
+        let e2 = graph.add_edge(2, 3, EdgeKind::VerticalPassage);
+        (graph, e1, e2)
+    }
+
+    #[test]
+    fn invalid_vertical_passage_issue_with_no_flagged_edges_resolves_to_none() {
+        let (graph, scc) = empty_graph_and_scc();
+        let issue = InvalidVerticalPassageIssue::new_from_check("check", vec![]);
+        assert_eq!(resolve(&issue, &graph, &scc), IssuePayload::None);
+    }
+
+    #[test]
+    fn invalid_vertical_passage_issue_resolves_flagged_edge_as_one_element_group() {
+        let (graph, e1, _) = vertical_passage_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidVerticalPassageIssue::new_from_check("vertical_passage_group_geometric_proximity", vec![e1]);
+
+        let payload = resolve(&issue, &graph, &scc);
+        let IssuePayload::InvalidVerticalPassage { groups } = payload else { panic!("expected InvalidVerticalPassage, got {payload:?}") };
+        assert_eq!(groups.len(), 1);
+        let check1_groups = &groups["vertical_passage_group_geometric_proximity"];
+        assert_eq!(check1_groups.len(), 1);
+        assert_eq!(check1_groups[0].edges, vec![[1, 2]]);
+    }
+
+    #[test]
+    fn invalid_vertical_passage_group_issue_with_no_flagged_pairs_resolves_to_none() {
+        let (graph, scc) = empty_graph_and_scc();
+        let issue = InvalidVerticalPassageGroupIssue::new_from_check("check", vec![]);
+        assert_eq!(resolve(&issue, &graph, &scc), IssuePayload::None);
+    }
+
+    #[test]
+    fn invalid_vertical_passage_group_issue_resolves_flagged_pair_as_two_element_group() {
+        let (graph, e1, e2) = vertical_passage_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidVerticalPassageGroupIssue::new_from_check("vertical_passage_group_graph_proximity", vec![(vec![e1, e2], 1)]);
+
+        let payload = resolve(&issue, &graph, &scc);
+        let IssuePayload::InvalidVerticalPassage { groups } = payload else { panic!("expected InvalidVerticalPassage, got {payload:?}") };
+        assert_eq!(groups.len(), 1);
+        let check1_groups = &groups["vertical_passage_group_graph_proximity"];
+        assert_eq!(check1_groups.len(), 1);
+        assert_eq!(check1_groups[0].edges, vec![[1, 2], [2, 3]]);
+    }
+
+    #[test]
+    fn invalid_vertical_passage_issue_merged_from_two_checks_attributes_each_edge_to_only_its_own_check() {
+        use crate::quality_control::issue::IssueMerge;
+        let (graph, e1, e2) = vertical_passage_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let mut issue = InvalidVerticalPassageIssue::new_from_check("vertical_passage_group_geometric_proximity", vec![e1]);
+        issue.merge(InvalidVerticalPassageIssue::new_from_check("vertical_passage_group_graph_proximity", vec![e2]));
+
+        let payload = resolve(&issue, &graph, &scc);
+        let IssuePayload::InvalidVerticalPassage { groups } = payload else { panic!("expected InvalidVerticalPassage, got {payload:?}") };
+        assert_eq!(groups["vertical_passage_group_geometric_proximity"][0].edges, vec![[1, 2]], "must not include e2");
+        assert_eq!(groups["vertical_passage_group_graph_proximity"][0].edges, vec![[2, 3]], "must not include e1");
+    }
+
+    #[test]
+    fn invalid_vertical_passage_issue_silently_skips_a_stale_edge_id_absent_from_the_graph() {
+        let (graph, e1, _) = vertical_passage_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let stale_id = e1 + 1000;
+        let issue = InvalidVerticalPassageIssue::new_from_check("vertical_passage_group_geometric_proximity", vec![e1, stale_id]);
+
+        let payload = resolve(&issue, &graph, &scc);
+        let IssuePayload::InvalidVerticalPassage { groups } = payload else { panic!("expected InvalidVerticalPassage, got {payload:?}") };
+        assert_eq!(groups["vertical_passage_group_geometric_proximity"][0].edges, vec![[1, 2]], "stale edge id must be dropped, not panic");
     }
 }

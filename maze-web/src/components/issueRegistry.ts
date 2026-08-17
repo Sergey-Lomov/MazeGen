@@ -27,6 +27,7 @@ export function presetLockElementsFor(issue: IssueDto, sourceCheck: string): { p
   if (payload.kind === "invalid_loop") return payload.edges[sourceCheck] ?? null;
   if (payload.kind === "invalid_teleport") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_one_way") return payload.groups[sourceCheck] ?? null;
+  if (payload.kind === "invalid_vertical_passage") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_split_tile") {
     const groups = payload.groups[sourceCheck] ?? null;
     if (groups == null) return null;

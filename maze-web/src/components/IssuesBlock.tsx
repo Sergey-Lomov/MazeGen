@@ -88,6 +88,13 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const oneWayGroups = sourceCheck != null && issue.payload.kind === "invalid_one_way"
     ? issue.payload.groups[sourceCheck] ?? null
     : null;
+  // `invalid_vertical_passage`/`invalid_vertical_passage_group` share the same
+  // `invalid_vertical_passage` payload shape (a single flagged edge is a group of size one — see
+  // `IssuePayloadDto`'s doc comment) — flattened and rendered through the same edge-highlight path
+  // as `teleportGroups`/`oneWayGroups`, no dedicated renderer needed.
+  const verticalPassageGroups = sourceCheck != null && issue.payload.kind === "invalid_vertical_passage"
+    ? issue.payload.groups[sourceCheck] ?? null
+    : null;
   // Same per-check isolation as `loopGroups` above — only this bubble's own source check's
   // flagged regions, not every contributing check's regions combined. Covers both
   // `region_needs_expansion` (undersized) and `region_needs_shrink` (oversized) — both highlight
@@ -137,6 +144,15 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const loopEdges = loopGroups?.filter(visibleGroup).flatMap((g) => g.edges) ?? null;
   const teleportEdges = teleportGroups?.filter(visibleGroup).flatMap((g) => g.edges) ?? null;
   const oneWayEdges = oneWayGroups?.filter(visibleGroup).flatMap((g) => g.edges) ?? null;
+  // Unlike teleport/one-way (thin directed edges, highlighted as lines), a vertical passage
+  // connects two floors at the same x-y point -- a line between its endpoints reads as a stray
+  // diagonal rather than "these cells". Highlighted as region squares instead, one flat
+  // deduplicated group (not one group per edge) -- `RegionHighlightRenderer` fills each group
+  // independently, so a node shared by two flagged edges (e.g. two proximity pairs through the
+  // same passage) would otherwise get double-filled/double-stroked.
+  const verticalPassageCellNodes = verticalPassageGroups != null
+    ? [Array.from(new Set(verticalPassageGroups.filter(visibleGroup).flatMap((g) => g.edges).flat()))]
+    : null;
   // Renders every visible tile as its own region-highlight group (one fill+perimeter per distinct
   // tile, `RegionHighlightRenderer`'s per-point dedup) -- visibility is decided at whichever
   // granularity `TILE_GRANULARITY_CHECKS` selects (tile-level for max_split_count/max_split_density,
@@ -169,10 +185,12 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ? () => setHoveredIssueRegionGroups(visibleRegionGroups)
     : splitTileNodes != null
     ? () => setHoveredIssueRegionGroups(splitTileNodes)
+    : verticalPassageCellNodes != null
+    ? () => setHoveredIssueRegionGroups(verticalPassageCellNodes)
     : undefined;
   const handleMouseLeave = loopEdges != null || teleportEdges != null || oneWayEdges != null || splitRouteEdges != null
     ? () => setHoveredIssueLoopEdges(null)
-    : visibleRegionGroups != null || splitTileNodes != null
+    : visibleRegionGroups != null || splitTileNodes != null || verticalPassageCellNodes != null
     ? () => setHoveredIssueRegionGroups(null)
     : undefined;
 
@@ -204,7 +222,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ...(teleportEdges ?? []),
     ...(oneWayEdges ?? []),
     ...(splitRouteEdges?.flat() ?? []),
-  ].flat().concat((splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat());
+  ].flat().concat((splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat());
 
   return (
     <>

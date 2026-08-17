@@ -89,6 +89,10 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             out.push(8);
             write_str_keyed_bools(out, preset_locked);
         }
+        IssuePayload::InvalidVerticalPassage { groups } => {
+            out.push(9);
+            write_str_keyed_edge_pairs(out, groups);
+        }
     }
 }
 

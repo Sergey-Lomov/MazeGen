@@ -39,6 +39,16 @@ function invalidOneWayIssue(sourceCheck: string): IssueDto {
   };
 }
 
+function invalidVerticalPassageIssue(sourceCheck: string, groups: { edges: [number, number][]; preset_locked: boolean }[] = [{ edges: [[3, 4]], preset_locked: false }]): IssueDto {
+  return {
+    kind: "invalid_vertical_passage",
+    payload: { kind: "invalid_vertical_passage", groups: { [sourceCheck]: groups } },
+    source_checks: [sourceCheck],
+    source_check_types: { [sourceCheck]: sourceCheck },
+    details: {},
+  };
+}
+
 function regionNeedsExpansionIssue(sourceCheck: string, regions: { region: number[]; preset_locked: boolean }[] = [{ region: [5, 6], preset_locked: false }]): IssueDto {
   return {
     kind: "region_needs_expansion",
@@ -161,6 +171,34 @@ describe("IssueBubble", () => {
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([[3, 4]]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
+  });
+
+  it("hovering an invalid_vertical_passage bubble sets hoveredIssueRegionGroups to the flagged cells (region-square highlight, not an edge line); leaving clears it", () => {
+    const issue = invalidVerticalPassageIssue("vertical_passage_group_geometric_proximity");
+    render(<IssueBubble issue={issue} sourceCheck="vertical_passage_group_geometric_proximity" />);
+
+    const bubble = screen.getByText("Vertical passage validation");
+    fireEvent.mouseEnter(bubble);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[3, 4]]);
+    fireEvent.mouseLeave(bubble);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
+  });
+
+  it("hovering an invalid_vertical_passage bubble with two edges sharing a node dedupes it into one group (no double-filled cell)", () => {
+    // Regression coverage for the double-fill bug: two flagged proximity pairs through the same
+    // passage node must not draw that cell's fill/perimeter twice (mirrors the invalid_split_tile
+    // dedup test above, GitHub issue #249's same rationale applied to vertical passages).
+    const issue = invalidVerticalPassageIssue("vertical_passage_group_geometric_proximity", [
+      { edges: [[3, 4]], preset_locked: false },
+      { edges: [[4, 5]], preset_locked: false },
+    ]);
+    render(<IssueBubble issue={issue} sourceCheck="vertical_passage_group_geometric_proximity" />);
+
+    const bubble = screen.getByText("Vertical passage validation");
+    fireEvent.mouseEnter(bubble);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[3, 4, 5]]);
+    fireEvent.mouseLeave(bubble);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });
 
   it("hovering a region_needs_expansion bubble sets hoveredIssueRegionGroups to this check's regions; leaving clears it", () => {

@@ -1600,6 +1600,7 @@ enum IssuePayloadDto {
     InvalidLoop { edges: HashMap<String, Vec<Vec<[u32; 2]>>> }, // invalid_loop only, keyed by source check instance id
     RegionNeedsExpansion { nodes: HashMap<String, Vec<Vec<u32>>> }, // region_needs_expansion only, keyed by source check instance id
     RegionNeedsShrink { nodes: HashMap<String, Vec<Vec<u32>>> }, // region_needs_shrink only, keyed by source check instance id
+    InvalidVerticalPassage { groups: HashMap<String, Vec<IssueEdgeGroupPayload>> }, // invalid_vertical_passage only, keyed by source check instance id — see quality-feature.md's "Issue rendering" section for its region-square (not edge-line) highlight treatment
 }
 ```
 

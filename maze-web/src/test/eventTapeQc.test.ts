@@ -109,6 +109,21 @@ describe("decodeQcEvent", () => {
     });
   });
 
+  it("decodes CheckRan with IssuePayload::InvalidVerticalPassage and an empty details map", () => {
+    // one entry: key "check1" -> one group -> one edge pair (1,2), then preset_locked=0
+    const groupsMap = concatBytes([
+      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(1), u32le(2), new Uint8Array([0]),
+    ]);
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("invalid_vertical_passage"), new Uint8Array([9]), groupsMap, u32le(0)]);
+    expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
+      kind: "CheckRan", checkId: "c1",
+      issue: {
+        issueKind: "invalid_vertical_passage", payload: { kind: "InvalidVerticalPassage", groups: new Map([["check1", [{ edges: [[1n, 2n]], presetLocked: false }]]]) },
+        details: new Map(),
+      },
+    });
+  });
+
   it("decodes CheckRan with IssuePayload::ExcessiveSccCount and an empty details map", () => {
     // one entry: key "check1" -> preset_locked=1, no nested lists (tag 8)
     const boolsMap = concatBytes([u32le(1), strPayload("check1"), new Uint8Array([1])]);

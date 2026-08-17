@@ -170,6 +170,15 @@ pub enum IssuePayloadDto {
     InvalidOneWay {
         groups: HashMap<String, Vec<IssueEdgeGroupPayloadDto>>,
     },
+    /// Keyed by source check id — each inner Vec is one flagged vertical-passage "group",
+    /// expressed as base-graph [from, to] maze node-id pairs, one pair per `VerticalPassage` edge
+    /// in the group. A single invalid vertical passage (`invalid_vertical_passage`) is a group of
+    /// size one; a proximity pair (`invalid_vertical_passage_group`) is a group of size two — see
+    /// GitHub issue #395. Reused across both kinds, mirroring `InvalidTeleport`'s reuse across
+    /// `invalid_teleport`/`invalid_teleport_group`.
+    InvalidVerticalPassage {
+        groups: HashMap<String, Vec<IssueEdgeGroupPayloadDto>>,
+    },
     /// Keyed by source check id — each entry is one flagged "instance" (a single tile, or a
     /// genuine multi-tile group for proximity/count/density checks), each paired with its own
     /// `preset_locked` status (GitHub issue #245's split extension). Shared wire variant for

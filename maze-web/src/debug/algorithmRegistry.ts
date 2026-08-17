@@ -95,6 +95,11 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
     case "ExcessiveSccCount":
       // No structural highlight data — this issue never points at specific regions on the canvas.
       return null;
+    case "InvalidVerticalPassage": {
+      // Reuses the "cycle" shape, same rationale as InvalidTeleport/InvalidOneWay above.
+      const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
+      return edges.length > 0 ? { kind: "cycle", edges } : null;
+    }
   }
 }
 

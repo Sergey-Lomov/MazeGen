@@ -124,6 +124,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             IssuePayload::RegionNeedsShrink { nodes } => IssuePayloadDto::RegionNeedsShrink { nodes: region_payload_map_dto(nodes) },
             IssuePayload::InvalidTeleport { groups } => IssuePayloadDto::InvalidTeleport { groups: edge_group_map_dto(groups) },
             IssuePayload::InvalidOneWay { groups } => IssuePayloadDto::InvalidOneWay { groups: edge_group_map_dto(groups) },
+            IssuePayload::InvalidVerticalPassage { groups } => IssuePayloadDto::InvalidVerticalPassage { groups: edge_group_map_dto(groups) },
             IssuePayload::InvalidSplitTile { groups } => IssuePayloadDto::InvalidSplitTile { groups: split_group_map_dto(groups) },
             IssuePayload::InvalidSplitRoute { routes } => IssuePayloadDto::InvalidSplitRoute { routes: route_payload_map_dto(routes) },
             IssuePayload::ExcessiveSccCount { preset_locked } => IssuePayloadDto::ExcessiveSccCount { preset_locked },

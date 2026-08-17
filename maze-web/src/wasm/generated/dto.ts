@@ -146,6 +146,10 @@ export type IssuePayloadDto =
       groups: Record<string, IssueEdgeGroupPayload[]>;
     }
   | {
+      kind: "invalid_vertical_passage";
+      groups: Record<string, IssueEdgeGroupPayload[]>;
+    }
+  | {
       kind: "invalid_split_tile";
       groups: Record<string, IssueSplitGroupPayload[]>;
     }
