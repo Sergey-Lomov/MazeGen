@@ -42,3 +42,11 @@ cargo run -p codegen -- --check
 ```
 
 This regenerates `maze-web/src/wasm/generated/issueKind.ts` and `maze-web/src/components/features/generated/qualityIds.ts` (both plain generated mirrors, never hand-edit), and diffs every check/strategy/rule-param/issue-kind/param id it finds in `maze-wasm`'s catalogs against `qualityI18n.ts`'s registries — a missing entry fails `--check` with the exact registry and id name. It does **not** catch a missing `en.json`/`ru.json` message key, a missing `DETAIL_LABELS` entry, or a missing `issueRegistry.ts`/`KNOWN_ISSUES` entry — those still need this checklist (see also `feedback_new_check_checklist` in this project's persistent memory for the same recurring gaps).
+
+Instead of hand-typing every flagged `qualityI18n.ts` entry, run:
+
+```
+cargo run -p codegen -- --scaffold
+```
+
+This auto-appends a TODO-stub entry (`label: "TODO_<id>"`, `description: "TODO"`) to `qualityI18n.ts`'s `checkI18n`/`strategyI18n`/`issueI18n`/`paramI18n` for every id `find_missing` currently flags, plus matching `"<prefix>.<id>.label"`/`.description"` TODO placeholder keys in both `en.json` and `ru.json`. It only covers those four registries — `DETAIL_LABELS`, `issueRegistry.ts`, and any `cardLabel`/`short_label` override still need hand-editing per this checklist. Replace every `TODO_*`/`TODO` placeholder with real text before considering the work done.

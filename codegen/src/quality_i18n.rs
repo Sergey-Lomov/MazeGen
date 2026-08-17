@@ -105,6 +105,88 @@ fn collect_missing(out: &mut Vec<MissingEntry>, registry: &'static str, ids: &BT
     }
 }
 
+/// The paraglide message-key prefix each registry's entries are built from (`m["<prefix>.<id>.label"]`).
+/// `None` for any registry `find_missing` doesn't call `collect_missing` with — kept as a lookup
+/// miss rather than a panic so a future registry added on one side without the other degrades to
+/// a skipped scaffold entry, not a runtime crash.
+fn message_prefix_for(registry: &str) -> Option<&'static str> {
+    match registry {
+        "checkI18n" => Some("check"),
+        "strategyI18n" => Some("strategy"),
+        "issueI18n" => Some("issue"),
+        "paramI18n" => Some("param"),
+        _ => None,
+    }
+}
+
+/// Appends a TODO-stub entry (`label: "TODO_<id>"`, `description: "TODO"`) to `qualityi18n_source`
+/// for every id in `missing`, and matching `"<prefix>.<id>.label"`/`"<prefix>.<id>.description"`
+/// TODO placeholder strings to both `en_source` and `ru_source` — so a fresh check/strategy/issue-
+/// kind/param id gets a runnable entry shape immediately, and the author only has to replace the
+/// placeholder text instead of retyping the entry/message-key structure from scratch. Same text-
+/// scan approach as `find_missing`/`collect_missing`: insertion point is right after the last
+/// existing entry for that registry (found by scanning for `"\n<prefix>.` occurrences), so the
+/// stub lands in the same block a human would have added it to, keeping the diff readable.
+pub fn scaffold(missing: &[MissingEntry], qualityi18n_source: &str, en_source: &str, ru_source: &str) -> (String, String, String) {
+    let mut ts = qualityi18n_source.to_string();
+    let mut en = en_source.to_string();
+    let mut ru = ru_source.to_string();
+
+    for m in missing {
+        let Some(prefix) = message_prefix_for(m.registry) else {
+            eprintln!("codegen: --scaffold: no message-key prefix known for registry \"{}\" — skipped id \"{}\"", m.registry, m.id);
+            continue;
+        };
+        ts = insert_ts_entry(&ts, m.registry, &m.id, prefix);
+        en = insert_message_keys(&en, prefix, &m.id);
+        ru = insert_message_keys(&ru, prefix, &m.id);
+    }
+
+    (ts, en, ru)
+}
+
+fn insert_ts_entry(source: &str, registry: &str, id: &str, prefix: &str) -> String {
+    let Some(registry_start) = source.find(&format!("export const {registry}")) else {
+        return source.to_string();
+    };
+    let Some(close_offset) = source[registry_start..].find("\n};") else {
+        return source.to_string();
+    };
+    let insert_at = registry_start + close_offset + 1; // right before the closing "};" line
+    let entry = format!(
+        "  {id}: {{\n    label: m[\"{prefix}.{id}.label\"] as MessageFn,\n    description: m[\"{prefix}.{id}.description\"] as MessageFn,\n  }},\n"
+    );
+    let mut out = String::with_capacity(source.len() + entry.len());
+    out.push_str(&source[..insert_at]);
+    out.push_str(&entry);
+    out.push_str(&source[insert_at..]);
+    out
+}
+
+/// Inserts `"<prefix>.<id>.label"`/`"<prefix>.<id>.description"` TODO placeholders right after the
+/// last existing `"<prefix>.` key, or right before the file's closing `}` if no such key exists yet.
+fn insert_message_keys(source: &str, prefix: &str, id: &str) -> String {
+    let marker = format!("\"{prefix}.");
+    let insert_at = match source.rfind(&marker) {
+        Some(last_key_start) => match source[last_key_start..].find('\n') {
+            Some(rel_newline) => last_key_start + rel_newline + 1,
+            None => source.len(),
+        },
+        None => match source.rfind('}') {
+            Some(closing_brace) => closing_brace,
+            None => source.len(),
+        },
+    };
+    let entry = format!(
+        "  \"{prefix}.{id}.label\": \"TODO_{id}\",\n  \"{prefix}.{id}.description\": \"TODO\",\n"
+    );
+    let mut out = String::with_capacity(source.len() + entry.len());
+    out.push_str(&source[..insert_at]);
+    out.push_str(&entry);
+    out.push_str(&source[insert_at..]);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,6 +230,88 @@ mod tests {
         let ids = ids_with(&["missing_endpoints"]);
         let source = "export const somethingElse = 1;\n";
         assert!(find_missing(&ids, source).is_empty());
+    }
+
+    #[test]
+    fn scaffold_appends_stub_entry_and_message_keys() {
+        let missing = vec![MissingEntry { registry: "checkI18n", id: "new_check".to_string() }];
+        let ts_source = "export const checkI18n: Record<string, X> = {\n  missing_endpoints: {\n    label: 1,\n  },\n};\n";
+        let en_source = "{\n  \"check.missing_endpoints.label\": \"Foo\",\n  \"check.missing_endpoints.description\": \"Bar\"\n}\n";
+        let ru_source = "{\n  \"check.missing_endpoints.label\": \"Фу\",\n  \"check.missing_endpoints.description\": \"Бар\"\n}\n";
+
+        let (new_ts, new_en, new_ru) = scaffold(&missing, ts_source, en_source, ru_source);
+
+        assert!(new_ts.contains("  new_check: {\n    label: m[\"check.new_check.label\"] as MessageFn,\n    description: m[\"check.new_check.description\"] as MessageFn,\n  },\n};"));
+        assert!(new_en.contains("\"check.new_check.label\": \"TODO_new_check\","));
+        assert!(new_en.contains("\"check.new_check.description\": \"TODO\","));
+        assert!(new_ru.contains("\"check.new_check.label\": \"TODO_new_check\","));
+        assert!(new_ru.contains("\"check.new_check.description\": \"TODO\","));
+
+        // Re-running find_missing against the scaffolded TS source no longer flags the id.
+        let ids = ids_with(&["missing_endpoints", "new_check"]);
+        assert!(find_missing(&ids, &new_ts).is_empty());
+    }
+
+    #[test]
+    fn scaffold_inserts_message_keys_before_closing_brace_when_prefix_absent() {
+        let missing = vec![MissingEntry { registry: "strategyI18n", id: "brand_new".to_string() }];
+        let ts_source = "export const strategyI18n: Record<string, X> = {\n  no_fix: {\n    label: 1,\n  },\n};\n";
+        let en_source = "{\n  \"other.key\": \"Val\"\n}\n";
+        let ru_source = "{\n  \"other.key\": \"Знач\"\n}\n";
+
+        let (_, new_en, _) = scaffold(&missing, ts_source, en_source, ru_source);
+
+        assert!(new_en.contains("\"strategy.brand_new.label\": \"TODO_brand_new\","));
+        assert!(new_en.trim_end().ends_with('}'));
+    }
+
+    #[test]
+    fn message_prefix_for_covers_every_registry_find_missing_uses() {
+        assert_eq!(message_prefix_for("checkI18n"), Some("check"));
+        assert_eq!(message_prefix_for("strategyI18n"), Some("strategy"));
+        assert_eq!(message_prefix_for("issueI18n"), Some("issue"));
+        assert_eq!(message_prefix_for("paramI18n"), Some("param"));
+        assert_eq!(message_prefix_for("someUnknownRegistry"), None);
+    }
+
+    #[test]
+    fn scaffold_skips_an_entry_for_an_unknown_registry_without_touching_other_sources() {
+        let missing = vec![MissingEntry { registry: "unknownI18n", id: "orphan".to_string() }];
+        let ts_source = "export const checkI18n: Record<string, X> = {\n};\n";
+        let en_source = "{\n  \"other.key\": \"Val\"\n}\n";
+        let ru_source = "{\n  \"other.key\": \"Знач\"\n}\n";
+
+        let (new_ts, new_en, new_ru) = scaffold(&missing, ts_source, en_source, ru_source);
+
+        assert_eq!(new_ts, ts_source);
+        assert_eq!(new_en, en_source);
+        assert_eq!(new_ru, ru_source);
+    }
+
+    #[test]
+    fn insert_ts_entry_is_a_no_op_when_the_registry_is_not_found() {
+        let source = "export const someOtherI18n: Record<string, X> = {\n};\n";
+        assert_eq!(insert_ts_entry(source, "checkI18n", "new_id", "check"), source);
+    }
+
+    #[test]
+    fn insert_ts_entry_is_a_no_op_when_the_registry_has_no_closing_brace() {
+        let source = "export const checkI18n: Record<string, X> = {\n  missing_endpoints: {\n    label: 1,\n  },\n";
+        assert_eq!(insert_ts_entry(source, "checkI18n", "new_id", "check"), source);
+    }
+
+    #[test]
+    fn insert_message_keys_appends_at_end_when_prefix_key_is_the_last_line_with_no_trailing_newline() {
+        let source = "{\n  \"check.missing_endpoints.label\": \"Foo\"".to_string() + "\"";
+        let out = insert_message_keys(&source, "check", "new_check");
+        assert!(out.ends_with("\"check.new_check.label\": \"TODO_new_check\",\n  \"check.new_check.description\": \"TODO\",\n"));
+    }
+
+    #[test]
+    fn insert_message_keys_appends_at_end_when_no_prefix_key_and_no_closing_brace_exist() {
+        let source = "not really json";
+        let out = insert_message_keys(source, "check", "new_check");
+        assert_eq!(out, format!("{source}  \"check.new_check.label\": \"TODO_new_check\",\n  \"check.new_check.description\": \"TODO\",\n"));
     }
 
     #[test]

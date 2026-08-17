@@ -8,6 +8,12 @@ use codegen::{check, dto_ts, golden, id_enum, naming::to_camel_case, parser, qua
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
     let check_only = args.iter().any(|a| a == "--check");
+    let scaffold = args.iter().any(|a| a == "--scaffold");
+
+    if check_only && scaffold {
+        eprintln!("codegen: --check and --scaffold are mutually exclusive (--check must stay read-only)");
+        return ExitCode::FAILURE;
+    }
 
     let repo_root = find_repo_root();
     let maze_core_src = repo_root.join("maze-core").join("src");
@@ -146,15 +152,42 @@ fn main() -> ExitCode {
     write_or_check(&quality_ts_path, &quality_ts_text, check_only, &mut had_errors);
 
     let quality_i18n_path = repo_root.join("maze-web").join("src").join("components").join("features").join("qualityI18n.ts");
+    let en_messages_path = repo_root.join("maze-web").join("messages").join("en.json");
+    let ru_messages_path = repo_root.join("maze-web").join("messages").join("ru.json");
     if let Ok(existing) = fs::read_to_string(&quality_i18n_path) {
         let missing = quality_i18n::find_missing(&quality_ids, &existing);
-        for m in &missing {
-            let msg = format!("qualityI18n.ts: {} has no entry for id \"{}\" (see generated/qualityIds.ts)", m.registry, m.id);
-            if check_only {
-                eprintln!("codegen: {msg}");
-                had_errors = true;
-            } else {
-                eprintln!("codegen: WARNING: {msg}");
+        if scaffold && !missing.is_empty() {
+            match (fs::read_to_string(&en_messages_path), fs::read_to_string(&ru_messages_path)) {
+                (Ok(en_existing), Ok(ru_existing)) => {
+                    let (new_ts, new_en, new_ru) = quality_i18n::scaffold(&missing, &existing, &en_existing, &ru_existing);
+                    if let Err(e) = fs::write(&quality_i18n_path, &new_ts) {
+                        eprintln!("codegen: failed to write {}: {e}", quality_i18n_path.display());
+                        had_errors = true;
+                    }
+                    if let Err(e) = fs::write(&en_messages_path, &new_en) {
+                        eprintln!("codegen: failed to write {}: {e}", en_messages_path.display());
+                        had_errors = true;
+                    }
+                    if let Err(e) = fs::write(&ru_messages_path, &new_ru) {
+                        eprintln!("codegen: failed to write {}: {e}", ru_messages_path.display());
+                        had_errors = true;
+                    }
+                    println!("codegen: scaffolded {} qualityI18n entr{}", missing.len(), if missing.len() == 1 { "y" } else { "ies" });
+                }
+                _ => {
+                    eprintln!("codegen: --scaffold could not read en.json/ru.json — skipped");
+                    had_errors = true;
+                }
+            }
+        } else {
+            for m in &missing {
+                let msg = format!("qualityI18n.ts: {} has no entry for id \"{}\" (see generated/qualityIds.ts)", m.registry, m.id);
+                if check_only {
+                    eprintln!("codegen: {msg}");
+                    had_errors = true;
+                } else {
+                    eprintln!("codegen: WARNING: {msg}");
+                }
             }
         }
     }
