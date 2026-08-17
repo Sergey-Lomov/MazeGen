@@ -303,8 +303,8 @@ fn score_path_adds_teleport_count_times_weight() {
     // so with path/junction/oneway weights zeroed the only contribution is teleport_weight
     // times how many of the two path edges are flagged as teleport.
     let edges_owned = vec![
-        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: true },
-        NavEdge { from: 1, to: 2, path: vec![20, 30], reverse_edge: None, is_teleport: false },
+        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: true, is_elevator: false },
+        NavEdge { from: 1, to: 2, path: vec![20, 30], reverse_edge: None, is_teleport: false, is_elevator: false },
     ];
     let edges: Vec<&NavEdge> = edges_owned.iter().collect();
     let junction_flags = vec![false, false, false];
@@ -331,8 +331,8 @@ fn score_path_adds_vertical_passage_and_elevator_count_times_weight() {
     // Edge 0's single hop (10 -> 20) is a VerticalPassage; edge 1's single hop (20 -> 30) is
     // an Elevator. With every other weight zeroed, each edge contributes its own weight once.
     let edges_owned = vec![
-        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false },
-        NavEdge { from: 1, to: 2, path: vec![20, 30], reverse_edge: None, is_teleport: false },
+        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false, is_elevator: false },
+        NavEdge { from: 1, to: 2, path: vec![20, 30], reverse_edge: None, is_teleport: false, is_elevator: false },
     ];
     let edges: Vec<&NavEdge> = edges_owned.iter().collect();
     let junction_flags = vec![false, false, false];
@@ -371,7 +371,7 @@ fn edge_kind_counts_finds_vertical_passage_even_with_a_parallel_basic_edge() {
     // arbitrary-kind `edge_between` -- otherwise it could resolve to the `Basic` edge and miss
     // the floor-crossing hop entirely.
     let edges_owned = vec![
-        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false },
+        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false, is_elevator: false },
     ];
     let edges: Vec<&NavEdge> = edges_owned.iter().collect();
 
@@ -390,8 +390,8 @@ fn score_path_adds_split_count_times_weight() {
     // non-oneway, non-teleport, so with every other weight zeroed the only contribution is
     // split_weight times the summed per-edge split_counts of the path's edges.
     let edges_owned = vec![
-        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false },
-        NavEdge { from: 1, to: 2, path: vec![20, 30, 40], reverse_edge: None, is_teleport: false },
+        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false, is_elevator: false },
+        NavEdge { from: 1, to: 2, path: vec![20, 30, 40], reverse_edge: None, is_teleport: false, is_elevator: false },
     ];
     let edges: Vec<&NavEdge> = edges_owned.iter().collect();
     let junction_flags = vec![false, false, false];
@@ -417,7 +417,7 @@ fn score_path_counts_the_routes_own_start_node_as_a_split_too() {
     // being a split tile unless score_path adds it separately via split_flags -- exactly like
     // it already does for junction_count via nav_nodes_on_path's i==0 push.
     let edges_owned = vec![
-        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false },
+        NavEdge { from: 0, to: 1, path: vec![10, 20], reverse_edge: None, is_teleport: false, is_elevator: false },
     ];
     let edges: Vec<&NavEdge> = edges_owned.iter().collect();
     let junction_flags = vec![false, false];

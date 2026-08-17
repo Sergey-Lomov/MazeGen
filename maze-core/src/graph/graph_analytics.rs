@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 #[cfg(test)]
 use std::collections::VecDeque;
 use super::nav::{NavEdge, NavGraph, NavNodeId};
-use super::cycles::{find_all_simple_cycles, drop_trivial_reverse_pairs, dedup_bidirectional_pairs, CycleSearchResult};
+use super::cycles::{find_all_simple_cycles, dedup_bidirectional_pairs, CycleSearchResult};
 use crate::dsu::Dsu;
 
 /// Iterate distinct *undirected* nav-edges: an edge and its `reverse_edge` are the same
@@ -80,51 +80,49 @@ fn trim_dead_ends(nav: &NavGraph) -> Vec<bool> {
 /// path, so a dense, fully-preset graph must surface as "analysis unavailable" rather than
 /// hang (see issue #22).
 ///
-/// Two deliberate departures from a plain "union the deduped cycle list" approach, both
-/// needed for `compute_cycle_metrics`'s Euler formula (`E - V + C`) to produce correct
-/// results — confirmed by regressions when either was skipped:
-///
-/// 1. **Drops only trivial reverse-pair 2-cycles** (`drop_trivial_reverse_pairs`), not the
-///    full canonical-index dedup (`dedup_bidirectional_pairs`). A dead-end spur (a single
-///    bidirectional edge to a leaf with no other connection) only ever appears in the cycle
-///    list as its own trivial walk-out-and-back pair — dropping trivial pairs correctly
-///    excludes it from the core (it's not on any real cycle). But two genuinely different
-///    routes between the same junction pair (e.g. a direct corridor plus a detour) also
-///    produce trivial pairs (each route walked back on itself) ALONGSIDE the real cycle
-///    (route A forward + route B backward) — only the trivial pairs are dropped, the real
-///    cycle's edges remain.
-/// 2. **Keeps both directions of every surviving cycle's edges**, not just the one walking
-///    direction recorded in the cycle (which `dedup_bidirectional_pairs` would reduce to).
-///    `count_core_edges`/`count_core_regions` pair an edge with its `reverse_edge` to count
-///    one physical corridor once — if only one direction is present in `core_edges`, the
-///    pairing fails and miscounts E, producing a wrong cycle_count (confirmed on the
-///    parallel-corridors fixture: cycle_count came out 0 instead of 1 without this).
+/// Keeps both directions of every cycle's edges, not just the one walking direction recorded
+/// in the cycle (which `dedup_bidirectional_pairs` would reduce to) — needed for
+/// `compute_cycle_metrics`'s Euler formula (`E - V + C`) to produce correct results.
+/// `count_core_edges`/`count_core_regions` pair an edge with its `reverse_edge` to count one
+/// physical corridor once — if only one direction is present in `core_edges`, the pairing
+/// fails and miscounts E, producing a wrong cycle_count (confirmed on the parallel-corridors
+/// fixture: cycle_count came out 0 instead of 1 without this).
 /// Also returns the independent GF(2) basis (GitHub issue #284) as nav-edge-index cycles, used
-/// as-is by `compute_graph_analytics` for `pure_cycle_basis` — `basis` is already free of
-/// trivial reverse-pairs by construction (see `find_all_simple_cycles`'s doc comment), so unlike
-/// `cycles` it does not need to go through `drop_trivial_reverse_pairs`. Also returns the fully
-/// deduped (`dedup_bidirectional_pairs`, not just `drop_trivial_reverse_pairs`) simple-cycle
-/// count, for `GraphAnalytics.simple_cycle_count` — the composite-inclusive count shown to the
-/// user alongside the independent `cycle_count`, so the UI can surface how much of the full
-/// enumeration is composite noise (see `Specs/graph-analytics.md`'s "Independent Cycle Basis"
-/// section). Must use the full dedup, not `drop_trivial_reverse_pairs` alone — the latter keeps
-/// a CW and CCW walk of the same physical loop as two separate entries (needed for the
-/// Euler-formula core below, point 2), which would double-count every bidirectional cycle in
-/// this UI-facing count.
+/// as-is by `compute_graph_analytics` for `pure_cycle_basis`. Also returns the fully deduped
+/// (`dedup_bidirectional_pairs`) simple-cycle count, for `GraphAnalytics.simple_cycle_count` —
+/// the composite-inclusive count shown to the user alongside the independent `cycle_count`, so
+/// the UI can surface how much of the full enumeration is composite noise (see
+/// `Specs/graph-analytics.md`'s "Independent Cycle Basis" section). Must use the full dedup —
+/// a CW and CCW walk of the same physical loop are two separate entries in the raw cycle list
+/// (needed for the Euler-formula core above), which would double-count every bidirectional
+/// cycle in this UI-facing count if left undeduped.
 fn cycle_core(nav: &NavGraph) -> Option<(HashSet<NavNodeId>, HashSet<usize>, Vec<Vec<usize>>, usize)> {
     let edges: Vec<&NavEdge> = nav.edges().collect();
     let (cycles, basis) = match find_all_simple_cycles(nav) {
         CycleSearchResult::Cycles { cycles, basis } => (cycles, basis),
         CycleSearchResult::TooManyCycles => return None,
     };
-    // Full canonical-key dedup (not just `drop_trivial_reverse_pairs`) — a CW and CCW walk of
-    // the same physical loop are two distinct entries in the raw Johnson's output but the same
-    // visual loop; `simple_cycle_count` must not double-count them. Computed from a clone before
-    // `drop_trivial_reverse_pairs` below, which intentionally keeps both directions of every
-    // surviving cycle's edges for the Euler-formula core (see this function's doc comment,
-    // point 2) — that's a different list shape than the one this count needs.
+    // An `Elevator` connects its floors as a fully-connected fan (every pair gets a two-way edge,
+    // `Specs/generation.md`'s "Vertical Connections") by design — a direct hop between any two of
+    // its floors, not routed through a spanning tree, so a rider never detours via a third floor.
+    // That fan is structurally a complete graph among its endpoints, which always contains cycles
+    // in the graph-theoretic sense once it spans 3+ floors — but those aren't real detour loops a
+    // maze-solver could walk, since every edge in the fan is the same instantaneous elevator hop.
+    // A basis cycle made entirely of `Elevator` nav-edges is exactly this: drop it before it's
+    // counted as an invalid loop. A cycle mixing `Elevator` with any other edge kind is a genuine
+    // detour and stays counted as normal.
+    let basis: Vec<Vec<usize>> = basis.into_iter()
+        .filter(|cycle| !cycle.iter().all(|&idx| edges[idx].is_elevator))
+        .collect();
+    let cycles: Vec<Vec<usize>> = cycles.into_iter()
+        .filter(|cycle| !cycle.iter().all(|&idx| edges[idx].is_elevator))
+        .collect();
+    // Full canonical-key dedup — a CW and CCW walk of the same physical loop are two distinct
+    // entries in the raw Johnson's output but the same visual loop; `simple_cycle_count` must
+    // not double-count them. Computed from a clone, since `cycles` itself intentionally keeps
+    // both directions of every edge for the Euler-formula core below (see this function's doc
+    // comment) — a different list shape than the one this count needs.
     let simple_cycle_count = dedup_bidirectional_pairs(nav, cycles.clone()).len();
-    let cycles = drop_trivial_reverse_pairs(nav, cycles);
 
     let mut cyclic_nodes: HashSet<NavNodeId> = HashSet::new();
     let mut cyclic_edges: HashSet<usize> = HashSet::new();
@@ -164,11 +162,10 @@ pub struct GraphAnalytics {
     /// `cycle_count` (below) is `pure_cycle_basis.len()` by construction, but is kept computed
     /// via the cheaper Euler formula rather than derived from this field — see `compute_cycle_metrics`.
     pub pure_cycle_basis: Vec<Vec<usize>>,
-    /// Raw count of all simple cycles found by `find_all_simple_cycles` (post-
-    /// `drop_trivial_reverse_pairs`), including every composite cycle — a much larger, less
-    /// stable number than `cycle_count` (GitHub issue #284). Surfaced to the UI as "complex
-    /// cycles" alongside `cycle_count`'s independent count, so composite noise is visible
-    /// rather than silently folded into one number.
+    /// Raw count of all simple cycles found by `find_all_simple_cycles`, including every
+    /// composite cycle — a much larger, less stable number than `cycle_count` (GitHub issue
+    /// #284). Surfaced to the UI as "complex cycles" alongside `cycle_count`'s independent
+    /// count, so composite noise is visible rather than silently folded into one number.
     pub simple_cycle_count: usize,
     /// True if cycle enumeration aborted because the graph has too many simple cycles to
     /// enumerate (see `find_all_simple_cycles`'s `MAX_SIMPLE_CYCLES`) — a dense, heavily

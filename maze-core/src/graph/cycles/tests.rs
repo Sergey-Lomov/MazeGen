@@ -173,59 +173,6 @@ fn bidirectional_self_loop_ring_cw_ccw_dedups_to_one_cycle() {
 }
 
 #[test]
-fn is_trivial_reverse_pair_true_for_an_edge_immediately_followed_by_its_own_reverse() {
-    // A<->B bidirectional corridor with junctions at both ends — each of A, B gets a second
-    // spur so they have 3 distinct neighbors (not the symmetric 2-in/2-out a passage node
-    // needs), forcing A->B/B->A to stay as their own direct nav-edges instead of being
-    // absorbed into a longer corridor through the spurs.
-    let mut g = Graph::new();
-    for id in 0..6u64 { g.add_node(id); }
-    g.add_bidirectional_edge(0, 1, EdgeKind::Basic); // A<->B
-    g.add_bidirectional_edge(0, 2, EdgeKind::Basic); // spur at A
-    g.add_bidirectional_edge(0, 3, EdgeKind::Basic); // second spur at A
-    g.add_bidirectional_edge(1, 4, EdgeKind::Basic); // spur at B
-    g.add_bidirectional_edge(1, 5, EdgeKind::Basic); // second spur at B
-
-    let nav = build_nav_graph(&g);
-    let edges: Vec<_> = nav.edges().collect();
-    let a_to_b = edges.iter().position(|e| e.path == vec![0, 1]).expect("A->B nav-edge");
-    let b_to_a = edges.iter().position(|e| e.path == vec![1, 0]).expect("B->A nav-edge");
-
-    assert!(is_trivial_reverse_pair(&edges, &[a_to_b, b_to_a]), "A->B->A is just walking the corridor back and forth");
-    assert!(is_trivial_reverse_pair(&edges, &[b_to_a, a_to_b]), "B->A->B is the same kind of walk-back, the other direction");
-}
-
-#[test]
-fn is_trivial_reverse_pair_false_for_a_self_loop() {
-    // Pure ring, no junctions — compresses to one nav-node with two self-loop nav-edges
-    // (CW/CCW), linked via reverse_edge. A self-loop is a length-1 cycle, never length-2,
-    // so it must never be misclassified as a trivial reverse pair.
-    let mut g = Graph::new();
-    for id in 0..3u64 { g.add_node(id); }
-    g.add_bidirectional_edge(0, 1, EdgeKind::Basic);
-    g.add_bidirectional_edge(1, 2, EdgeKind::Basic);
-    g.add_bidirectional_edge(2, 0, EdgeKind::Basic);
-
-    let nav = build_nav_graph(&g);
-    let edges: Vec<_> = nav.edges().collect();
-    assert_eq!(edges.len(), 2, "CW + CCW self-loops");
-
-    assert!(!is_trivial_reverse_pair(&edges, &[0]), "length-1 cycle (self-loop) is never a trivial reverse pair");
-}
-
-#[test]
-fn is_trivial_reverse_pair_false_for_a_genuine_longer_cycle() {
-    // A->B->C->A triangle: a 3-edge cycle, length != 2, must never be flagged trivial
-    // regardless of any reverse_edge linkage among its edges.
-    let g = triangle(0, 1, 2);
-    let nav = build_nav_graph(&g);
-    let edges: Vec<_> = nav.edges().collect();
-    assert_eq!(edges.len(), 3);
-
-    assert!(!is_trivial_reverse_pair(&edges, &[0, 1, 2]), "length-3 cycle is never a trivial reverse pair");
-}
-
-#[test]
 fn empty_graph_yields_no_cycles() {
     let g = Graph::new();
     let cycles = all_cycles(&g);
@@ -462,9 +409,9 @@ fn basis_early_exit_does_not_shrink_the_full_cycle_list() {
     // (9349, post-dedup); this is the raw pre-dedup count basis construction runs alongside.
     // 18698, not 18734: `johnson_circuit` no longer records a trivial "walk out and back"
     // 2-cycle (one per bidirectional edge — 40 of them here) as its own `cycles` entry (GitHub
-    // issue #369 follow-up); `is_trivial_reverse_pair`'s post-hoc filter already discarded these
-    // downstream, so this is the same real cycle set, just without ever materializing the
-    // trivial ones as a side effect of early-exit no longer being their only reason to survive.
+    // issue #369 follow-up) — a post-hoc filter used to discard these downstream, so this is the
+    // same real cycle set, just without ever materializing the trivial ones as a side effect of
+    // early-exit no longer being their only reason to survive.
     // Any further change signals either a correctness regression or a deliberate algorithm change.
     assert_eq!(cycles.len(), 18698, "raw pre-dedup cycle count (minus trivial reverse-pairs, never materialized) must be unaffected by early-exit — investigate any change");
     // Euler formula for this single-SCC grid: E - V + 1, E counting each bidirectional

@@ -10,9 +10,9 @@ use super::nav::{NavGraph, NavNodeId, NavEdge};
 ///
 /// `basis` is a subset of `cycles`' own raw traversal-order `Vec<usize>` values (cloned, not
 /// indices into `cycles`) — deliberately not index-based, so any later filtering of `cycles`
-/// (e.g. `drop_trivial_reverse_pairs`) never needs an index remap; `basis` is filtered
-/// independently by the same predicate when needed, or (see GitHub issue #284) simply used
-/// as-is where it is already known to be free of what that filter would drop.
+/// never needs an index remap; `basis` can be filtered independently by the same predicate
+/// when needed, or (see GitHub issue #284) simply used as-is where it is already known to be
+/// free of what that filter would drop.
 pub(crate) enum CycleSearchResult {
     Cycles { cycles: Vec<Vec<usize>>, basis: Vec<Vec<usize>> },
     TooManyCycles,
@@ -329,17 +329,16 @@ fn johnson_circuit(
     basis: &mut Vec<Vec<usize>>,
 ) -> Option<bool> {
     let mut found_cycle = false;
-    // The trivial "walk out and back" 2-cycle (see `is_trivial_reverse_pair`) closes over
-    // `path_edges`'s FIRST edge specifically (`v == start` on this call), not the most recently
-    // used one — Johnson's finds exactly one such pair per bidirectional edge in the graph,
-    // ballooning `cycles` toward `MAX_SIMPLE_CYCLES` on any reasonably sized maze. Skipping only
-    // this one case (rather than any `reverse_edge` step anywhere in the path) is provably safe:
-    // it's the same 2-cycle `is_trivial_reverse_pair` already excludes post-hoc, just recognized
-    // one level earlier so it never reaches `cycles`/`offer_to_basis` at all. Unlike a general
-    // "never step onto a reverse edge" rule, this cannot perturb Johnson's own blocking/unblocking
-    // bookkeeping for any OTHER edge, since it only ever discards the exact 2-edge cycle the
-    // post-hoc filter would have discarded anyway — every longer route, including ones that reuse
-    // a `reverse_edge` pair mid-path (e.g. the bowtie's B->D->C->B), is unaffected.
+    // The trivial "walk out and back" 2-cycle (an edge immediately followed by its own
+    // `reverse_edge` — not a real loop, just stepping into a corridor and immediately returning
+    // the way you came) closes over `path_edges`'s FIRST edge specifically (`v == start` on this
+    // call), not the most recently used one — Johnson's would otherwise find exactly one such
+    // pair per bidirectional edge in the graph, ballooning `cycles` toward `MAX_SIMPLE_CYCLES` on
+    // any reasonably sized maze. Skipping only this one case (rather than any `reverse_edge` step
+    // anywhere in the path) is provably safe and cannot perturb Johnson's own blocking/unblocking
+    // bookkeeping for any OTHER edge, since it only ever discards this exact 2-edge cycle — every
+    // longer route, including ones that reuse a `reverse_edge` pair mid-path (e.g. the bowtie's
+    // B->D->C->B), is unaffected.
     let first_edge = path_edges.first().copied();
 
     for &(edge_idx, w) in &adjacency[v] {
@@ -354,8 +353,8 @@ fn johnson_circuit(
             // must reflect it, or `v`/`w`'s block state desyncs and hides later genuine cycles —
             // see this function's doc comment on the bowtie regression), just never recorded in
             // `cycles`/offered to the basis: a trivial "walk out and back" 2-cycle is not a real
-            // loop (see `is_trivial_reverse_pair`) and would otherwise flood `cycles` with one
-            // entry per bidirectional edge in the graph.
+            // loop and would otherwise flood `cycles` with one entry per bidirectional edge in
+            // the graph.
             let is_trivial = path_edges.len() == 1 && first_edge.and_then(|e| edges[e].reverse_edge) == Some(edge_idx);
             if !is_trivial {
                 path_edges.push(edge_idx);
@@ -518,25 +517,6 @@ fn canonical_index(edge: &NavEdge, idx: usize) -> usize {
     }
 }
 
-/// True for a 2-edge cycle that is just an edge immediately followed by its own
-/// `reverse_edge` (e.g. B->C->B via a bidirectional corridor's forward+reverse pair). Not a
-/// real loop — just stepping into a corridor and immediately returning the way you came.
-/// Johnson's correctly finds this as a valid simple cycle (no repeated vertex), so it is
-/// excluded here as a deliberate domain-level rule, not an algorithm bug — see the
-/// `johnson_circuit` doc comment for why this can't be forbidden inside the DFS itself.
-fn is_trivial_reverse_pair(edges: &[&NavEdge], cycle: &[usize]) -> bool {
-    cycle.len() == 2 && edges[cycle[0]].reverse_edge == Some(cycle[1])
-}
-
-/// Drop only the trivial reverse-pair 2-cycles (see `is_trivial_reverse_pair`) — no
-/// canonical-index dedup. Used by `cycle_core` (`graph_analytics.rs`), which needs BOTH
-/// directions of every edge in a genuine cycle (for the Euler formula) but must still
-/// exclude a dead-end spur's "walk out and back" turn-around from counting as a cycle.
-pub(crate) fn drop_trivial_reverse_pairs(nav: &NavGraph, cycles: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
-    let edges: Vec<&NavEdge> = nav.edges().collect();
-    cycles.into_iter().filter(|cycle| !is_trivial_reverse_pair(&edges, cycle)).collect()
-}
-
 /// Combines `find_all_simple_cycles` + `dedup_bidirectional_pairs`, the pair every loop-based
 /// QC check (`MinLoopsCountCheck`, `MinLoopLengthCheck`, `MaxLoopLengthCheck`, etc.) needs
 /// before doing its own filtering. Returns `None` on `CycleSearchResult::TooManyCycles` — callers
@@ -554,16 +534,12 @@ pub(crate) fn find_deduped_simple_cycles(nav: &NavGraph) -> Option<Vec<Vec<usize
 /// `reverse_edge` pairs (ordinary bidirectional corridors, or a self-loop CW/CCW pair on
 /// the same nav-node) into one entry. A cycle using at least one one-way edge keeps its own
 /// distinct key (no reverse to fold into) — genuinely different directed cycles stay separate.
-/// Also drops trivial reverse-pair 2-cycles (see `is_trivial_reverse_pair`).
 pub(crate) fn dedup_bidirectional_pairs(nav: &NavGraph, cycles: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
     let edges: Vec<&NavEdge> = nav.edges().collect();
     let mut seen: HashSet<Vec<usize>> = HashSet::new();
     let mut result: Vec<Vec<usize>> = Vec::new();
 
     for cycle in cycles {
-        if is_trivial_reverse_pair(&edges, &cycle) {
-            continue;
-        }
         let mut key: Vec<usize> = cycle.iter().map(|&i| canonical_index(edges[i], i)).collect();
         key.sort_unstable();
         if seen.insert(key) {

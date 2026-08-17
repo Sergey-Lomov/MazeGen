@@ -33,6 +33,14 @@ pub struct NavEdge {
     /// path[1], ..)`, which is kind-ambiguous relative to the base graph without also checking the
     /// other kind. See GitHub issue #197.
     pub is_teleport: bool,
+    /// True if this is a single-hop (`path.len() == 2`) edge backed by an `Elevator`-kind graph
+    /// edge between `path[0]` and `path[1]`. Elevator endpoints are never corridor nodes (their
+    /// fan degree rules out the 2-in/2-out shape `is_corridor_node` requires), so an `Elevator`
+    /// hop is always single-hop, mirroring `is_teleport` above — including the same coexistence
+    /// caveat (a `Basic`/`VerticalPassage` edge can share the same pair in the same direction as
+    /// an `Elevator` edge, per `Graph::add_edge`'s kind-aware dedup) and the same reason
+    /// `link_reverse_edges` must key on this flag too, not just `path`.
+    pub is_elevator: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +87,7 @@ impl NavGraph {
         id
     }
 
-    pub(super) fn add_edge(&mut self, from_nav: NavNodeId, to_nav: NavNodeId, path: Vec<NodeId>, is_teleport: bool) {
+    pub(super) fn add_edge(&mut self, from_nav: NavNodeId, to_nav: NavNodeId, path: Vec<NodeId>, is_teleport: bool, is_elevator: bool) {
         let edge_idx = self.edges.len();
         // Index all interior corridor nodes to the destination nav node (coarse lookup), plus
         // their exact index within this edge's path (precise lookup — see `corridor_positions`).
@@ -87,7 +95,7 @@ impl NavGraph {
             self.corridor_index.entry(corridor_node).or_insert(to_nav);
             self.corridor_positions.entry(corridor_node).or_default().push((edge_idx, i));
         }
-        self.edges.push(NavEdge { from: from_nav, to: to_nav, path, reverse_edge: None, is_teleport });
+        self.edges.push(NavEdge { from: from_nav, to: to_nav, path, reverse_edge: None, is_teleport, is_elevator });
         self.outgoing[from_nav].push(edge_idx);
         self.incoming[to_nav].push(edge_idx);
     }
@@ -148,22 +156,23 @@ impl NavGraph {
         self.corridor_positions.get(&node_id).into_iter().flatten().copied()
     }
 
-    /// For each edge, find its reverse (same path reversed, same `is_teleport` kind) and link
-    /// them via `reverse_edge`. Keyed on `(path, is_teleport)`, not `path` alone — a `Basic` and
-    /// a `Teleport` one-hop `NavEdge` can share the same `path` in each direction (parallel edges
-    /// between the same node pair, see `NavEdge::is_teleport`), and keying by `path` alone would
-    /// let one direction's insert overwrite the other's slot, risking linking a `Basic` edge's
-    /// `reverse_edge` to an unrelated `Teleport` edge (or vice versa) instead of its true
-    /// same-kind reverse. GitHub issue #197.
+    /// For each edge, find its reverse (same path reversed, same `is_teleport`/`is_elevator`
+    /// kind) and link them via `reverse_edge`. Keyed on `(path, is_teleport, is_elevator)`, not
+    /// `path` alone — a `Basic`, a `Teleport`, and an `Elevator` one-hop `NavEdge` can each share
+    /// the same `path` in each direction (parallel edges between the same node pair, see
+    /// `NavEdge::is_teleport`/`NavEdge::is_elevator`), and keying by `path` alone would let one
+    /// direction's insert overwrite another's slot, risking linking a `Basic` edge's
+    /// `reverse_edge` to an unrelated `Teleport`/`Elevator` edge (or vice versa) instead of its
+    /// true same-kind reverse. GitHub issue #197.
     pub(super) fn link_reverse_edges(&mut self) {
-        let mut path_to_idx: HashMap<(Vec<NodeId>, bool), usize> = HashMap::new();
+        let mut path_to_idx: HashMap<(Vec<NodeId>, bool, bool), usize> = HashMap::new();
         for (i, edge) in self.edges.iter().enumerate() {
-            path_to_idx.insert((edge.path.clone(), edge.is_teleport), i);
+            path_to_idx.insert((edge.path.clone(), edge.is_teleport, edge.is_elevator), i);
         }
         for i in 0..self.edges.len() {
             if self.edges[i].reverse_edge.is_some() { continue; }
             let rev_path: Vec<NodeId> = self.edges[i].path.iter().rev().copied().collect();
-            if let Some(&j) = path_to_idx.get(&(rev_path, self.edges[i].is_teleport)) {
+            if let Some(&j) = path_to_idx.get(&(rev_path, self.edges[i].is_teleport, self.edges[i].is_elevator)) {
                 if i != j {
                     self.edges[i].reverse_edge = Some(j);
                     self.edges[j].reverse_edge = Some(i);

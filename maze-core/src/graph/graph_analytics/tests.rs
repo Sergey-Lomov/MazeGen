@@ -58,6 +58,79 @@ fn pure_cycle_basis_matches_cycle_count_on_bowtie_clusters() {
     assert_eq!(analytics.pure_cycle_basis.len(), 4);
 }
 
+/// GitHub issue #372: a 3+ floor `Elevator` connects its floors as a fully-connected fan
+/// (`Specs/generation.md`'s "Vertical Connections") — every pair of its floors gets a direct
+/// two-way edge, so the fan alone is a complete graph and structurally contains cycles once it
+/// spans 3+ floors. That's by design (a direct hop between any two floors, not routed through a
+/// third), not a real detour loop — must not be flagged as an invalid loop.
+#[test]
+fn elevator_fan_across_three_floors_has_no_cycles() {
+    let mut g = Graph::new();
+    for n in [0, 1, 2] { g.add_node(n); }
+    g.add_bidirectional_edge(0, 1, EdgeKind::Elevator);
+    g.add_bidirectional_edge(0, 2, EdgeKind::Elevator);
+    g.add_bidirectional_edge(1, 2, EdgeKind::Elevator);
+
+    let analytics = analyze(&g);
+    assert_eq!(analytics.cycle_count, 0, "elevator fan is not a real detour loop");
+    assert_eq!(analytics.pure_cycle_basis.len(), 0);
+    assert!(analytics.pure_cycle_nav_nodes.is_empty());
+    assert!(analytics.pure_cycle_edge_indices.is_empty());
+}
+
+/// A 4-floor elevator fan (larger complete graph, more independent cycles in the naive count)
+/// must also fully drop out — not just the 3-floor minimal case.
+#[test]
+fn elevator_fan_across_four_floors_has_no_cycles() {
+    let mut g = Graph::new();
+    for n in 0..4 { g.add_node(n); }
+    for i in 0..4 {
+        for j in (i + 1)..4 {
+            g.add_bidirectional_edge(i, j, EdgeKind::Elevator);
+        }
+    }
+
+    let analytics = analyze(&g);
+    assert_eq!(analytics.cycle_count, 0, "elevator fan is not a real detour loop, regardless of floor count");
+}
+
+/// A real (non-elevator) cycle elsewhere in the graph must stay counted even while an unrelated
+/// elevator fan in the same graph is dropped — the filter must not over-suppress.
+#[test]
+fn elevator_fan_does_not_suppress_a_genuine_cycle_elsewhere() {
+    let mut g = Graph::new();
+    for n in 0..3 { g.add_node(n); }
+    g.add_bidirectional_edge(0, 1, EdgeKind::Elevator);
+    g.add_bidirectional_edge(0, 2, EdgeKind::Elevator);
+    g.add_bidirectional_edge(1, 2, EdgeKind::Elevator);
+
+    for n in 10..13 { g.add_node(n); }
+    g.add_edge(10, 11, EdgeKind::Basic);
+    g.add_edge(11, 12, EdgeKind::Basic);
+    g.add_edge(12, 10, EdgeKind::Basic);
+
+    let analytics = analyze(&g);
+    assert_eq!(analytics.cycle_count, 1, "the genuine basic-edge triangle stays counted, the elevator fan does not");
+}
+
+/// A cycle that mixes an `Elevator` edge with ordinary geometric edges is a genuine detour (the
+/// elevator hop is only part of the loop) — must stay counted, unlike an elevator-only cycle.
+/// Uses a 3-node triangle (not a 2-node back-and-forth) so the mixed cycle doesn't degenerate
+/// into a same-pair-different-kind 2-cycle — a case `count_core_edges` mishandles independent of
+/// this filter (both edges lack `reverse_edge`, so it collapses them into one undirected pair
+/// instead of counting two parallel one-way corridors), tracked separately, not part of #372.
+#[test]
+fn cycle_mixing_elevator_and_basic_edges_still_counts() {
+    let mut g = Graph::new();
+    for n in 0..3 { g.add_node(n); }
+    g.add_edge(0, 1, EdgeKind::Basic);
+    g.add_edge(1, 2, EdgeKind::Basic);
+    g.add_edge(2, 0, EdgeKind::Elevator);
+
+    let analytics = analyze(&g);
+    assert_eq!(analytics.cycle_count, 1, "a basic+elevator loop is a genuine detour, must stay counted");
+}
+
 /// Two triangles on "different floors" bridged by a single bidirectional VerticalPassage — the
 /// bridge itself is not part of either cycle and must not be counted as a third independent one.
 #[test]

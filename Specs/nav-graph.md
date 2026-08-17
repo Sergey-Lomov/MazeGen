@@ -15,10 +15,13 @@ A maze node is a **passage node** if and only if:
 - The sets of outgoing neighbors and incoming neighbors are identical (two symmetric bidirectional pairs).
 - It is not in the **pinned** set (see `build_nav_graph_pinned`).
 - It is not an endpoint (`from` or `to`) of any `EdgeKind::Teleport` edge.
+- It is not an endpoint (`from` or `to`) of any `EdgeKind::Elevator` edge.
 
 All other nodes are **junction nodes** and become `NavNode` entries.
 
 **Teleport endpoints are never passage nodes**, unconditionally — even if the node's degree happens to satisfy the 2-symmetric-pairs shape above (e.g. exactly one `Basic` pair plus one `Teleport` edge can still total 2 outgoing/2 incoming with identical neighbor sets). See GitHub issue #74: `distance_from_start`/`distance_from_finish` (`analysis.md`) are keyed on `NavNodeId`, and teleport-specific QC checks (`TeleportWaypointDistanceCheck`) need `NavGraph::nav_node_for` to resolve a `NavNodeId` for every teleport endpoint to look up its distance-to-waypoint. Silently compressing a teleport endpoint into some other nav-edge's `path` would make `nav_node_for` return `None` for it, making such a check wrongly treat the endpoint as unreachable instead of measuring its real distance. This exemption is unconditional — nav-graph structure must not depend on which QC checks happen to be configured — same rationale as the `pinned` exemption above.
+
+**Elevator endpoints are never passage nodes**, for a structural reason rather than a QC-consumer one (GitHub issue #372): an `Elevator` connects its floors as a fully-connected fan (`Specs/generation.md`'s "Vertical Connections"), so a 3-floor elevator's floor node ends up with exactly 2 outgoing/2 incoming symmetric neighbors (the other two floors) — coincidentally satisfying the passage-node degree shape. Without this exemption such a node would be silently compressed into a corridor's interior path, hiding the fan structure from `NavGraph` entirely and defeating `cycle_core`'s elevator-fan cycle filter (see `graph-analytics.md`), which needs a real `NavNodeId` per floor endpoint to detect a cycle made purely of elevator hops. Unconditional, same as the `pinned`/teleport exemptions.
 
 > **Note on terminology:** "Corridor" in generation settings (`corridor_chance`, `corridor_length`) refers to multi-node passages generated as a unit — a different concept. The nav graph uses "passage node" for the topological property (exactly 2 symmetric bidirectional neighbors), independent of how the maze was generated. The geometric stat "Straight" in `GeometricNodeStats` is a related but distinct concept: a node with 2 outgoing neighbors where the path is geometrically straight (per `field.is_straight`).
 
@@ -45,6 +48,9 @@ pub struct NavEdge {
     /// True if this is a single-hop (`path.len() == 2`) edge backed by a `Teleport`-kind graph
     /// edge between `path[0]` and `path[1]`.
     pub is_teleport: bool,
+    /// True if this is a single-hop (`path.len() == 2`) edge backed by an `Elevator`-kind graph
+    /// edge between `path[0]` and `path[1]`.
+    pub is_elevator: bool,
 }
 ```
 
@@ -52,12 +58,13 @@ pub struct NavEdge {
 - `path[last]` is the maze node of the target `NavNode`.
 - Intermediate entries are the passage nodes absorbed into this edge.
 - For a bidirectional passage `A⇄X⇄B`, two edges are produced: `A→B` with path `[A, X, B]` and `B→A` with path `[B, X, A]`.
-- `reverse_edge` is populated post-construction by `link_reverse_edges`, keyed on `(path, is_teleport)` — see "Reverse edge linking" below.
+- `reverse_edge` is populated post-construction by `link_reverse_edges`, keyed on `(path, is_teleport, is_elevator)` — see "Reverse edge linking" below.
 - `is_teleport` (GitHub issue #197): only a single-hop edge can be teleport-backed — passage nodes are never teleport endpoints (see above), so a multi-hop `path` is always `Basic` hops end to end. A `Basic` edge may coexist in the same direction between the same pair as a `Teleport` edge (`Graph::add_edge`'s kind-aware dedup); construction then builds two distinct one-hop `NavEdge`s sharing the same `path`, disambiguated by this flag. Set at construction time from the specific graph `EdgeId` being processed — not re-derived via `Graph::edge_between_kind(path[0], path[1], ..)` afterward, which would be ambiguous between the two coexisting kinds.
+- `is_elevator` (GitHub issue #372): same rationale as `is_teleport`, for `EdgeKind::Elevator` instead — only a single-hop edge can be elevator-backed, since elevator endpoints are never passage nodes (see above).
 
 ### Reverse edge linking
 
-After construction, `link_reverse_edges` scans all edges and links each to its reverse (same corridor, opposite direction) via `reverse_edge`, where a reverse exists. Two edges are reverses of each other when one's `path` is the exact reverse of the other's **and** both have the same `is_teleport` value — keying on `path` alone would risk linking a `Basic` edge's `reverse_edge` to an unrelated `Teleport` edge (or vice versa) when both a `Basic` and a `Teleport` one-hop edge exist in each direction between the same node pair.
+After construction, `link_reverse_edges` scans all edges and links each to its reverse (same corridor, opposite direction) via `reverse_edge`, where a reverse exists. Two edges are reverses of each other when one's `path` is the exact reverse of the other's **and** both have the same `is_teleport` and `is_elevator` values — keying on `path` alone would risk linking a `Basic` edge's `reverse_edge` to an unrelated `Teleport`/`Elevator` edge (or vice versa) when more than one kind of one-hop edge exists in each direction between the same node pair.
 
 ### NavGraph
 

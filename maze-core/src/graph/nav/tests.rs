@@ -203,6 +203,61 @@ fn reverse_edge_links_same_kind_only_for_parallel_basic_and_teleport_edges() {
     assert_eq!(basic_count, 2, "expected 2 basic-backed one-hop edges (one per direction)");
 }
 
+// GitHub issue #372, same rationale as #197 above but for Elevator: with a Basic and an Elevator
+// edge coexisting in the same direction between the same pair, in both directions, construction
+// builds 4 one-hop NavEdges all sharing path [1,2] or [2,1]. link_reverse_edges must pair each
+// edge with the reverse of the *same* kind — keying by (path, is_teleport) alone (pre-fix
+// behavior) would let a Basic and an Elevator insert collide in the same path_to_idx slot,
+// risking a Basic edge's reverse_edge pointing at an unrelated Elevator edge or vice versa.
+#[test]
+fn reverse_edge_links_same_kind_only_for_parallel_basic_and_elevator_edges() {
+    let mut g = Graph::new();
+    for id in [1u64, 2] { g.add_node(id); }
+    g.add_edge(1, 2, EdgeKind::Basic);
+    g.add_edge(1, 2, EdgeKind::Elevator);
+    g.add_edge(2, 1, EdgeKind::Basic);
+    g.add_edge(2, 1, EdgeKind::Elevator);
+
+    let nav = build_nav_graph(&g);
+    let edges: Vec<&NavEdge> = nav.edges().collect();
+    assert_eq!(edges.len(), 4, "expected one NavEdge per physical graph edge");
+
+    for e in &edges {
+        let rev_idx = e.reverse_edge.expect("every edge here has a same-kind counterpart in the opposite direction");
+        let rev = nav.edge_by_idx(rev_idx);
+        assert_eq!(rev.is_elevator, e.is_elevator, "reverse_edge must link edges of the same is_elevator kind");
+        assert_eq!(rev.path, e.path.iter().copied().rev().collect::<Vec<_>>(), "reverse edge path must be reversed");
+    }
+
+    let elevator_count = edges.iter().filter(|e| e.is_elevator).count();
+    let basic_count = edges.iter().filter(|e| !e.is_elevator).count();
+    assert_eq!(elevator_count, 2, "expected 2 elevator-backed one-hop edges (one per direction)");
+    assert_eq!(basic_count, 2, "expected 2 basic-backed one-hop edges (one per direction)");
+}
+
+// An Elevator endpoint must never be absorbed as a corridor node even when its degree happens to
+// satisfy the 2-in/2-out symmetric shape — a 3-floor elevator fan gives each floor node exactly
+// that shape by coincidence (see `elevator_endpoints`'s doc comment in nav/build.rs). Each floor
+// must surface as its own NavNode, not get compressed into some other edge's interior path.
+#[test]
+fn elevator_fan_endpoints_are_never_absorbed_as_corridor_nodes() {
+    let mut g = Graph::new();
+    for id in [1u64, 2, 3] { g.add_node(id); }
+    g.add_edge(1, 2, EdgeKind::Elevator);
+    g.add_edge(2, 1, EdgeKind::Elevator);
+    g.add_edge(1, 3, EdgeKind::Elevator);
+    g.add_edge(3, 1, EdgeKind::Elevator);
+    g.add_edge(2, 3, EdgeKind::Elevator);
+    g.add_edge(3, 2, EdgeKind::Elevator);
+
+    let nav = build_nav_graph(&g);
+    assert_eq!(nav.nodes.len(), 3, "every elevator floor must stay its own NavNode, not compress into a corridor");
+
+    let edges: Vec<&NavEdge> = nav.edges().collect();
+    assert_eq!(edges.len(), 6, "expected one direct one-hop NavEdge per directed elevator hop");
+    assert!(edges.iter().all(|e| e.is_elevator && e.path.len() == 2), "every hop must be a single-hop elevator edge");
+}
+
 // outgoing_edges/incoming_edges/edge_by_idx must return the correct edges for a junction
 // with multiple distinct corridors.
 #[test]
