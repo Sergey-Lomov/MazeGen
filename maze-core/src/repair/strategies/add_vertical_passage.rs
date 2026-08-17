@@ -9,6 +9,7 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::remaining_deficits::RemainingDeficits;
+use super::vertical_target::{DirectionConstraint, resolve_vertical_target};
 
 pub const PARAM_ONE_WAY_BALANCE: &str = "one_way_balance";
 pub const PARAM_DIRECTION_BALANCE: &str = "direction_balance";
@@ -133,66 +134,6 @@ impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue> for AddVer
 }
 
 crate::impl_erased_repair_strategy!(AddVerticalPassageStrategy, MissingVerticalPassagesIssue);
-
-/// Which direction(s) `resolve_vertical_target` is allowed to pick, derived from the rule-level
-/// `passage_type` — `RequireUp`/`RequireDown` are used when `passage_type` is `OneWayUp`/
-/// `OneWayDown` (the strategy must add exactly that direction or skip the candidate entirely, never
-/// silently substitute the other), `Either` otherwise (rolled via `direction_balance`).
-enum DirectionConstraint {
-    Either,
-    RequireUp,
-    RequireDown,
-}
-
-/// Resolves `src`'s `VerticalPassage` target: the node at `src`'s own point on an adjacent floor.
-/// Mirrors `generation::vertex_based::resolve_vertical_passage_target`'s adjacency logic. Returns
-/// `(from, to)` oriented low-floor-to-high-floor when going up (`src -> target`) and
-/// high-floor-to-low-floor when going down (`src -> target` again, since `src` is the higher floor
-/// in that case) — always `(higher, lower)` for a down edge and `(lower, higher)` for an up edge, so
-/// callers building a one-way edge don't need to re-derive orientation. `None` if `src`'s level has
-/// no floor in an allowed direction, or no node exists at the same point on that floor (different
-/// shape/custom cells between floors).
-///
-/// Direction is picked per `constraint`: `Either` rolls `direction_balance` when both up and down
-/// exist and the balance is a genuine 0..1 probability (a boundary floor then falls back to whichever
-/// single direction is available); a balance pinned to exactly 0 or 1 is a hard choice instead, and
-/// behaves like `RequireDown`/`RequireUp` -- no fallback to the other direction, `None` when the
-/// chosen one is unavailable. `RequireUp`/`RequireDown` (from `passage_type`) only ever resolve that
-/// one direction the same way, returning `None` when `src`'s floor has no neighbor that way.
-fn resolve_vertical_target<T: Tessellation>(
-    maze: &Maze<T>,
-    src: NodeId,
-    rng: &mut dyn RngCore,
-    constraint: &DirectionConstraint,
-    direction_balance: f64,
-) -> Option<(NodeId, NodeId)> {
-    let point = maze.field.point_of(src)?;
-    let src_level = maze.field.level_of(src)?;
-    let levels: Vec<_> = maze.field.levels_ordered().collect();
-    let idx = levels.iter().position(|&l| l == src_level)?;
-    let up = levels.get(idx + 1).copied();
-    let down = idx.checked_sub(1).and_then(|i| levels.get(i).copied());
-
-    let direction_balance = direction_balance.clamp(0.0, 1.0);
-    let upward = match constraint {
-        DirectionConstraint::RequireUp => { up?; true }
-        DirectionConstraint::RequireDown => { down?; false }
-        // A balance pinned to exactly 0 or 1 is a hard direction choice, not a coin flip -- it must
-        // not fall back to the other direction just because the chosen one is unavailable (that
-        // fallback only makes sense for a genuine 0..1 probability, where "always" isn't promised).
-        DirectionConstraint::Either if direction_balance <= 0.0 => { down?; false }
-        DirectionConstraint::Either if direction_balance >= 1.0 => { up?; true }
-        DirectionConstraint::Either => match (up, down) {
-            (Some(_), Some(_)) => rng.random_bool(direction_balance),
-            (Some(_), None) => true,
-            (None, Some(_)) => false,
-            (None, None) => return None,
-        },
-    };
-    let target_level = if upward { up? } else { down? };
-    let target = maze.field.node_at(target_level, point)?;
-    Some((src, target))
-}
 
 #[cfg(test)]
 mod tests {

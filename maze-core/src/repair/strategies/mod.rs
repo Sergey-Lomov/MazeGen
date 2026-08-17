@@ -41,6 +41,8 @@ pub mod split_route_cut;
 pub mod add_vertical_passage;
 pub mod remove_vertical_passage;
 pub mod vertical_passage_group_select;
+pub mod vertical_target;
+pub mod missing_loops_vertical;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -110,6 +112,7 @@ pub use split_route_cut::{
 pub use add_vertical_passage::{AddVerticalPassageStrategy, PARAM_ONE_WAY_BALANCE as ADD_VERTICAL_PASSAGE_PARAM_ONE_WAY_BALANCE};
 pub use remove_vertical_passage::RemoveVerticalPassageStrategy;
 pub use vertical_passage_group_select::{VerticalPassageGroupSelectStrategy, SLOT_FIX_TARGET as VERTICAL_PASSAGE_GROUP_SELECT_SLOT_FIX_TARGET};
+pub use missing_loops_vertical::{MissingLoopsVerticalStrategy, PARAM_RESERVE_PERCENT as MISSING_LOOPS_VERTICAL_PARAM_RESERVE_PERCENT, PARAM_ONE_WAY_CHANCE as MISSING_LOOPS_VERTICAL_PARAM_ONE_WAY_CHANCE, PARAM_DIRECTION_BALANCE as MISSING_LOOPS_VERTICAL_PARAM_DIRECTION_BALANCE};
 
 #[cfg(test)]
 pub(crate) mod test_utils {

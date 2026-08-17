@@ -65,6 +65,7 @@ export const STRATEGY_IDS = [
   "invalid_loop_scored",
   "missing_loops_random",
   "missing_loops_split",
+  "missing_loops_vertical",
   "missing_one_ways_from_passage",
   "missing_one_ways_from_wall",
   "missing_regions",
@@ -222,7 +223,10 @@ export const PARAM_IDS = [
   "unreachable_count",
   "unreachable_priority",
   "valid_overlap_weight",
+  "vertical_direction_balance",
+  "vertical_loop_one_way_chance",
   "vertical_passage_weight",
+  "vertical_reserve_percent",
   "waypoint",
 ] as const;
 

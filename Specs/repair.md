@@ -819,6 +819,42 @@ Builds the candidate pool from `maze.field.all_node_ids()`, ordered by `apply_sr
 
 A pair already connected (via `Graph::edge_between` in either direction) or already proposed earlier in the same `apply` call is skipped without consuming the chance/direction rolls. Returns `Failed` if no connection could be added at all; otherwise `Fixed { score: None }` with every proposed command, even if fewer than `target` were actually added.
 
+### MissingLoopsVerticalStrategy
+
+Handles `MISSING_LOOPS` via a `VerticalPassage` edge instead of an ordinary geometric one — see GitHub issue #393. Mirrors `MissingLoopsRandomStrategy`'s own random-seed shape (same `reserve_percent`/one-way-chance/`src_mode` mechanics, "seed and let QC re-check" contract, no attempt to verify the new edge actually closes a cycle), except the candidate pair is resolved through the shared `vertical_target::resolve_vertical_target` (see below), so the second endpoint is always the same `(x, y)` point on an adjacent floor rather than a same-floor geometric neighbor.
+
+**Parameters:**
+
+| id | type | default | range | description |
+|----|------|---------|-------|-------------|
+| `vertical_reserve_percent` | Float | `0.0` | `[0, 500]` | Target connection count is `ceil(missing * (1 + vertical_reserve_percent / 100))`. Defaults to `0.0`, unlike `MissingLoopsRandomStrategy`'s `50.0` — a vertical connection is a scarcer, more disruptive resource, so callers opt into over-provisioning explicitly rather than getting it by default. |
+| `vertical_loop_one_way_chance` | Float | `0.0` | `[0, 100]` | Chance a seeded vertical connection is added as a single one-way edge instead of a full bidirectional passage. Rendered as a percent slider (`PERCENT_SLIDER_PARAM_IDS`). |
+| `vertical_direction_balance` | Float | `0.5` | `[0, 1]` | Probability `resolve_vertical_target` picks up rather than down when both are available — see below. Rendered as a percent slider (`PERCENT_FRACTION_SLIDER_PARAM_IDS`). |
+| `src_mode` | Enum | `random` | `random`, `dead_end_priority` — see `dead_end_priority` above. |
+
+Named with a `vertical_` prefix (distinct from `MissingLoopsRandomStrategy`'s own `reserve_percent`/`loop_one_way_chance` and `AddVerticalPassageStrategy`'s `direction_balance`) for the same flat-key web-i18n reason `loop_one_way_chance` itself is named distinctly — see `MissingLoopsRandomStrategy` above.
+
+Builds the candidate pool the same way `MissingLoopsRandomStrategy` does (`apply_src_mode` over `maze.field.all_node_ids()`, scoped to the issue's `RepairArea`), pops a `src` node via `Vec::pop`, and resolves its vertical target via `resolve_vertical_target(maze, src, rng, &DirectionConstraint::Either, vertical_direction_balance)` — always `Either`, since this strategy has no rule-level `passage_type` to honor (unlike `AddVerticalPassageStrategy`, it services `MISSING_LOOPS`, not `MISSING_VERTICAL_PASSAGES`). Unlike `AddVerticalPassageStrategy`, a `src` whose target resolution fails, or whose resolved pair turns out already connected/blocked, is not retried in the other direction — the `src` is simply dropped and the next one popped, matching `AddVerticalPassageStrategy`'s own single-candidate-per-src contract. The one-way/bidirectional choice and RNG sample-consumption order otherwise mirror `MissingLoopsRandomStrategy`'s own contract exactly (chance roll below `vertical_loop_one_way_chance` → direction coin flip → `AddDirectedVerticalPassage` gated by `directed_edge_feasible`; otherwise `AddBidirectionalVerticalPassage` gated by `bidirectional_edge_feasible`).
+
+Returns `Failed` if no connection could be added at all (e.g. a single-level field); otherwise `Fixed { score: None }` with every proposed command, even if fewer than `target` were actually added.
+
+### vertical_target (shared, not a strategy)
+
+`maze-core/src/repair/strategies/vertical_target.rs` — `resolve_vertical_target`/`DirectionConstraint`, extracted (GitHub issue #393) from `AddVerticalPassageStrategy` once `MissingLoopsVerticalStrategy` needed the same floor-adjacency resolution. Not itself a `RepairStrategy` — just a module both strategies import from.
+
+```rust
+pub enum DirectionConstraint { Either, RequireUp, RequireDown }
+
+pub fn resolve_vertical_target<T: Tessellation>(
+    maze: &Maze<T>, src: NodeId, rng: &mut dyn RngCore,
+    constraint: &DirectionConstraint, direction_balance: f64,
+) -> Option<(NodeId, NodeId)>;
+```
+
+Resolves `src`'s `VerticalPassage` target: the node at `src`'s own point on an adjacent floor, mirroring `generation::vertex_based`'s own adjacency resolution. Returns `(from, to)` already oriented `(lower, higher)` for an up edge and `(higher, lower)` for a down edge, so callers building a one-way edge don't need to re-derive orientation. `None` if `src`'s level has no floor in an allowed direction, or no node exists at the same point on that floor (different shape/custom cells between floors).
+
+Direction is picked per `constraint`: `RequireUp`/`RequireDown` (used by `AddVerticalPassageStrategy` when its rule-level `passage_type` is `OneWayUp`/`OneWayDown`) only ever resolve that one direction, `None` if unavailable. `Either` (used by `AddVerticalPassageStrategy` for every other `passage_type`, and unconditionally by `MissingLoopsVerticalStrategy`) rolls `direction_balance` when both up and down exist, falling back to whichever single direction is available on a boundary floor — *unless* `direction_balance` is pinned to exactly `0.0` or `1.0`, in which case it's treated as a hard direction choice rather than a genuine probability and never falls back to the other direction even if the pinned one is unavailable.
+
 ### region_merge_core (shared, not a strategy)
 
 `maze-core/src/repair/strategies/region_merge_core.rs` — logic shared by every strategy that merges an undersized SCC region into a neighboring region (`ExpandRegionPassageStrategy` and `TeleportRegionMergeStrategy` below), factored out once issue #89 needed the same target-selection/merge-loop bookkeeping a second time with a different candidate-discovery rule (geometric adjacency vs. any node pair). Not itself a `RepairStrategy` — just a module the strategies import from.
@@ -1509,7 +1545,7 @@ priority-ordered candidates"), `kind = MISSING_LOOPS`, `min = 1`, `max = None`,
 
 ### AddVerticalPassageStrategy
 
-Handles `MISSING_VERTICAL_PASSAGES` — see GitHub issue #343. For each missing slot (`issue.missing: Vec<(RepairArea, u32)>`, mandatory — the producing check already computed it, same "no other channel" contract every deficit strategy shares), picks a random node whose adjacent floor (up or down, chosen at random when both exist — a boundary floor has only one direction available) resolves a target node at the same `(x, y)` point (`resolve_vertical_target`, mirrors `generation::vertex_based`'s own floor-adjacency resolution), then adds a `VerticalPassage` edge between them. Deliberately much simpler than `MissingTeleportsStrategy` — no entry-pick/desired-length/attempts-limit/reserve-percent machinery — since a vertical passage's target is already fully determined by adjacency, unlike a teleport's free choice of any node pair.
+Handles `MISSING_VERTICAL_PASSAGES` — see GitHub issue #343. For each missing slot (`issue.missing: Vec<(RepairArea, u32)>`, mandatory — the producing check already computed it, same "no other channel" contract every deficit strategy shares), picks a random node whose adjacent floor (up or down, chosen at random when both exist — a boundary floor has only one direction available) resolves a target node at the same `(x, y)` point (`vertical_target::resolve_vertical_target` — shared module, see below, mirrors `generation::vertex_based`'s own floor-adjacency resolution), then adds a `VerticalPassage` edge between them. Deliberately much simpler than `MissingTeleportsStrategy` — no entry-pick/desired-length/attempts-limit/reserve-percent machinery — since a vertical passage's target is already fully determined by adjacency, unlike a teleport's free choice of any node pair.
 
 **Parameters:**
 
@@ -1517,7 +1553,7 @@ Handles `MISSING_VERTICAL_PASSAGES` — see GitHub issue #343. For each missing 
 |----|------|---------|-------|-------------|
 | `one_way_balance` | Float | `0.5` | `[0, 1]` | Chance the newly added passage is one-way (direction already rolled by the target resolution) rather than two-way. Rendered in the UI as a percent slider (`PERCENT_FRACTION_SLIDER_PARAM_IDS`). |
 
-For each deficient area (in `issue.missing` order), builds a candidate pool from every node in that area (`RepairArea::WholeMaze` = every field node, `RepairArea::Level(level)` = only that floor's own nodes) and repeatedly pops a random `src` from the pool, resolves its vertical target via `resolve_vertical_target`, and — unless both directions between the pair already exist — rolls `one_way_balance` to decide `AddDirectedVerticalPassage` (single direction, gated by `directed_edge_feasible`) vs. `AddBidirectionalVerticalPassage`. A `src` whose target can't be resolved (no adjacent floor, or no node at the same point on it) is simply skipped, not retried. Each successfully added edge retires that unit of deficit from **every** `RepairArea` it touches (`WholeMaze` and, if resolvable, `src`'s own `Level`) via the shared `RemainingDeficits` bookkeeping (see below) — the same live-deficit-sharing mechanism `MissingLoopsRandomStrategy`/`MissingOneWaysFromWallStrategy`/`AddSplitStrategy` use, so stacking a `WholeMaze`-scoped and a `PerFloor`-scoped instance of these checks in one rule never double-delivers.
+For each deficient area (in `issue.missing` order), builds a candidate pool from every node in that area (`RepairArea::WholeMaze` = every field node, `RepairArea::Level(level)` = only that floor's own nodes) and repeatedly pops a random `src` from the pool, resolves its vertical target via `vertical_target::resolve_vertical_target`, and — unless both directions between the pair already exist — rolls `one_way_balance` to decide `AddDirectedVerticalPassage` (single direction, gated by `directed_edge_feasible`) vs. `AddBidirectionalVerticalPassage`. A `src` whose target can't be resolved (no adjacent floor, or no node at the same point on it) is simply skipped, not retried. Each successfully added edge retires that unit of deficit from **every** `RepairArea` it touches (`WholeMaze` and, if resolvable, `src`'s own `Level`) via the shared `RemainingDeficits` bookkeeping (see below) — the same live-deficit-sharing mechanism `MissingLoopsRandomStrategy`/`MissingOneWaysFromWallStrategy`/`AddSplitStrategy` use, so stacking a `WholeMaze`-scoped and a `PerFloor`-scoped instance of these checks in one rule never double-delivers.
 
 Returns `Failed` if nothing was added across every area (e.g. a single-level field, where no node has any vertical target at all); otherwise `Fixed { score: None }` with every proposed command, even if the pool ran dry before every area's own deficit was fully closed.
 

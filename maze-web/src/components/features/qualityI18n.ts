@@ -420,6 +420,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.missing_loops_random.label"] as MessageFn,
     description: m["strategy.missing_loops_random.description"] as MessageFn,
   },
+  missing_loops_vertical: {
+    label: m["strategy.missing_loops_vertical.label"] as MessageFn,
+    description: m["strategy.missing_loops_vertical.description"] as MessageFn,
+  },
   missing_loops_split: {
     label: m["strategy.missing_loops_split.label"] as MessageFn,
     description: m["strategy.missing_loops_split.description"] as MessageFn,
@@ -627,6 +631,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.reserve_percent.label"] as MessageFn,
     description: m["param.reserve_percent.description"] as MessageFn,
   },
+  vertical_reserve_percent: {
+    label: m["param.vertical_reserve_percent.label"] as MessageFn,
+    description: m["param.vertical_reserve_percent.description"] as MessageFn,
+  },
   src_mode: {
     label: m["param.src_mode.label"] as MessageFn,
     description: m["param.src_mode.description"] as MessageFn,
@@ -803,6 +811,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.loop_one_way_chance.label"] as MessageFn,
     description: m["param.loop_one_way_chance.description"] as MessageFn,
   },
+  vertical_loop_one_way_chance: {
+    label: m["param.vertical_loop_one_way_chance.label"] as MessageFn,
+    description: m["param.vertical_loop_one_way_chance.description"] as MessageFn,
+  },
   attempts_limit: {
     label: m["param.attempts_limit.label"] as MessageFn,
     description: m["param.attempts_limit.description"] as MessageFn,
@@ -906,6 +918,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   direction_balance: {
     label: m["param.direction_balance.label"] as MessageFn,
     description: m["param.direction_balance.description"] as MessageFn,
+  },
+  vertical_direction_balance: {
+    label: m["param.vertical_direction_balance.label"] as MessageFn,
+    description: m["param.vertical_direction_balance.description"] as MessageFn,
   },
   same_type_only: {
     label: m["param.same_type_only.label"] as MessageFn,

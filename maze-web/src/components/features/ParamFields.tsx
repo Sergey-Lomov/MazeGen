@@ -19,11 +19,11 @@ const SELECT_MAX_WIDTH_RATIO = 0.4;
 // Float params rendered as a 0-100 percent slider instead of the default number input — an
 // explicit id allowlist rather than a blanket "every Float is a slider" rule, since most Float
 // params (reserve_percent, min_distance, etc.) are edited as exact numbers elsewhere in the app.
-const PERCENT_SLIDER_PARAM_IDS = new Set(["unreachable_priority", "one_way_chance", "loop_one_way_chance"]);
+const PERCENT_SLIDER_PARAM_IDS = new Set(["unreachable_priority", "one_way_chance", "loop_one_way_chance", "vertical_loop_one_way_chance"]);
 
 // Float params on a [0, 1] range rendered as a 0-100% slider -- the value stored/sent is the raw
 // fraction (0..1), only the slider bounds and displayed text are scaled by 100.
-const PERCENT_FRACTION_SLIDER_PARAM_IDS = new Set(["one_way_balance", "direction_balance"]);
+const PERCENT_FRACTION_SLIDER_PARAM_IDS = new Set(["one_way_balance", "direction_balance", "vertical_direction_balance"]);
 
 let measureCanvasCtx: CanvasRenderingContext2D | null | undefined;
 

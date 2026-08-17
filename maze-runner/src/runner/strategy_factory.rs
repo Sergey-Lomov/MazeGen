@@ -16,6 +16,7 @@ use maze_core::{
         RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy,
         SplitNodeGroupSelectStrategy, SplitRouteCutStrategy,
         AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy,
+        MissingLoopsVerticalStrategy,
     },
     quality_control::{IssueRequirement, RuleParams, rule_param_applies_to},
 };
@@ -49,6 +50,7 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(id: &str, params: &HashMap<
         "invalid_loop_scored"  => Box::new(InvalidLoopScoredStrategy),
         "invalid_loop_group_select" => Box::new(InvalidLoopGroupSelectStrategy),
         "missing_loops_random" => Box::new(MissingLoopsRandomStrategy),
+        "missing_loops_vertical" => Box::new(MissingLoopsVerticalStrategy),
         "missing_loops_split"  => Box::new(build_missing_loops_split_strategy(params)),
         "expand_region_passage" => Box::new(ExpandRegionPassageStrategy),
         "teleport_region_merge" => Box::new(TeleportRegionMergeStrategy),
