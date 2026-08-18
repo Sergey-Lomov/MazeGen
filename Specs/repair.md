@@ -1663,6 +1663,25 @@ For a matched elevator with no fan edges at all (a degenerate single-stop elevat
 
 Returns `Failed` only if no flagged elevator produced any command at all (none matched, or every match was the single-stop degenerate case); otherwise `Fixed { score: None }`.
 
+### AddElevatorStrategy
+
+Handles `MISSING_ELEVATORS` — see GitHub issue #401, part of epic #344. Builds brand-new elevators, one per deficit slot, each wired as a fully-connected two-way stop fan — same convention every other elevator-consuming piece of code assumes (`elevator_core::Elevator`'s own doc comment, `RemoveElevatorStrategy`/`ReplaceElevatorWithPassagesStrategy` above).
+
+**Parameters:**
+
+| id | type | default | description |
+|----|------|---------|-------------|
+| `stop_count` | Interval | `2..10` (min `2`) | How many stops the new elevator gets. |
+| `skip` | Interval | `0..10` (min `0`) | Floors *skipped* between two consecutive stops — `0` means adjacent floors, no skip. The floor-index step between consecutive stops is always `skip + 1`. |
+| `length_interval` | Interval | `3..10` (min `1`) | Number of floors the elevator spans, counted **inclusively** (e.g. floors 1..3 is `length = 3`). The geometric index span used internally is `length - 1`. |
+| `src_mode` (`PARAM_SRC_MODE`, shared with `dead_end_priority`) | Enum | `random` | Orders candidate starting points — `dead_end_priority` grows elevators out from the maze's least-connected cells first. |
+| `attempts_limit` | Float | `20` | Per-slot retry cap (new random start point + length/base-position/stop-count roll each attempt) before giving up on that slot. |
+| `reserve_percent` | Float | `0` | Extra elevators to build beyond the raw deficit per area: `target = ceil(missing * (1 + reserve_percent / 100))`. |
+
+For each deficit slot, `try_build_elevator` shuffles every candidate `length` in `length_min..=length_max` into random order, and for each length shuffles every candidate base floor-index position into random order — the first length/base-position pair for which a stop count is analytically reachable (computed from `span`/`skip`, not guessed) is used, rather than a single blind random roll of span/stop-count/base position together that could fail even when a valid combination exists. Once a length/base/stop-count triple is fixed, `distribute_stops` places the stops in between: each of the `stop_count - 1` floor-index steps is drawn independently at random from `skip_min + 1..=skip_max + 1` (narrowed to whatever the remaining steps can still cover, so a greedy draw never strands the walk short of the span's far endpoint), via backtracking — up to `MAX_BACKTRACK_RETRIES` (`50`) retries per step before backing up and re-rolling the previous one — rather than an even/uniform gap split, so consecutive stops get genuinely varied spacing. A candidate stop set is accepted only if every planned stop's point is free of an existing edge to every other planned stop and `preset_state`-feasible (`stops_feasible`); otherwise the whole attempt is discarded, never patched up.
+
+**Infeasible slots don't abort the whole repair** — mirrors `MissingTeleportsStrategy`'s `attempts_limit` pattern: a slot retries up to `attempts_limit` times, and a slot that never manages to build a fully valid elevator is simply skipped, not the source of a `Failed` result — the whole `apply()` call only reports `Failed` if literally zero elevators were built across every slot (or the field has fewer than 2 levels).
+
 ## Pipeline
 
 Defined in `maze_core::generation::pipeline`.

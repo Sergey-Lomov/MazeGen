@@ -16,6 +16,7 @@ export const QC_EVENT_TAG = {
   BIDIRECTIONAL_TELEPORT_PROPOSED: 28,
   DIRECTED_VERTICAL_PASSAGE_PROPOSED: 45,
   BIDIRECTIONAL_VERTICAL_PASSAGE_PROPOSED: 46,
+  BIDIRECTIONAL_ELEVATOR_PROPOSED: 54,
   EDGE_REMOVE_PROPOSED: 29,
   EDGE_REMOVE_BETWEEN_PROPOSED: 30,
   EDGE_REMOVE_WITH_REVERSE_PROPOSED: 37,
@@ -31,6 +32,7 @@ export const QC_EVENT_TAG = {
   BIDIRECTIONAL_TELEPORT_ADDED: 9,
   DIRECTED_VERTICAL_PASSAGE_ADDED: 48,
   BIDIRECTIONAL_VERTICAL_PASSAGE_ADDED: 49,
+  BIDIRECTIONAL_ELEVATOR_ADDED: 55,
   EDGE_REMOVED: 10,
   EDGE_REMOVED_BETWEEN: 11,
   EDGE_REMOVED_WITH_REVERSE: 35,
@@ -46,6 +48,7 @@ export const QC_EVENT_TAG = {
   BIDIRECTIONAL_TELEPORT_DECLINED: 18,
   DIRECTED_VERTICAL_PASSAGE_DECLINED: 51,
   BIDIRECTIONAL_VERTICAL_PASSAGE_DECLINED: 52,
+  BIDIRECTIONAL_ELEVATOR_DECLINED: 56,
   EDGE_REMOVE_DECLINED: 19,
   EDGE_REMOVE_BETWEEN_DECLINED: 20,
   EDGE_REMOVE_WITH_REVERSE_DECLINED: 36,
@@ -69,6 +72,7 @@ export type QcEvent =
   | { kind: "BidirectionalTeleportProposed"; a: bigint; b: bigint }
   | { kind: "DirectedVerticalPassageProposed"; from: bigint; to: bigint }
   | { kind: "BidirectionalVerticalPassageProposed"; a: bigint; b: bigint }
+  | { kind: "BidirectionalElevatorProposed"; a: bigint; b: bigint }
   | { kind: "EdgeRemoveProposed"; from: bigint; to: bigint }
   | { kind: "EdgeRemoveBetweenProposed"; from: bigint; to: bigint }
   | { kind: "EdgeRemoveWithReverseProposed"; from: bigint; to: bigint }
@@ -84,6 +88,7 @@ export type QcEvent =
   | { kind: "BidirectionalTeleportAdded"; a: bigint; b: bigint }
   | { kind: "DirectedVerticalPassageAdded"; from: bigint; to: bigint }
   | { kind: "BidirectionalVerticalPassageAdded"; a: bigint; b: bigint }
+  | { kind: "BidirectionalElevatorAdded"; a: bigint; b: bigint }
   | { kind: "EdgeRemoved"; from: bigint; to: bigint }
   | { kind: "EdgeRemovedBetween"; from: bigint; to: bigint }
   | { kind: "EdgeRemovedWithReverse"; from: bigint; to: bigint; reverseRemoved: boolean }
@@ -99,6 +104,7 @@ export type QcEvent =
   | { kind: "BidirectionalTeleportDeclined"; a: bigint; b: bigint }
   | { kind: "DirectedVerticalPassageDeclined"; from: bigint; to: bigint }
   | { kind: "BidirectionalVerticalPassageDeclined"; a: bigint; b: bigint }
+  | { kind: "BidirectionalElevatorDeclined"; a: bigint; b: bigint }
   | { kind: "EdgeRemoveDeclined"; from: bigint; to: bigint }
   | { kind: "EdgeRemoveBetweenDeclined"; from: bigint; to: bigint }
   | { kind: "EdgeRemoveWithReverseDeclined"; from: bigint; to: bigint; reverseRemoved: boolean }
@@ -170,6 +176,12 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       const __f0 = readNodeId(bytes, 0);
       const __f1 = readNodeId(bytes, 0 + 8);
       return { kind: "BidirectionalVerticalPassageProposed", a: __f0, b: __f1 };
+    }
+    case QC_EVENT_TAG.BIDIRECTIONAL_ELEVATOR_PROPOSED: {
+      expectLen(tag, bytes, 16);
+      const __f0 = readNodeId(bytes, 0);
+      const __f1 = readNodeId(bytes, 0 + 8);
+      return { kind: "BidirectionalElevatorProposed", a: __f0, b: __f1 };
     }
     case QC_EVENT_TAG.EDGE_REMOVE_PROPOSED: {
       expectLen(tag, bytes, 16);
@@ -257,6 +269,12 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       const __f0 = readNodeId(bytes, 0);
       const __f1 = readNodeId(bytes, 0 + 8);
       return { kind: "BidirectionalVerticalPassageAdded", a: __f0, b: __f1 };
+    }
+    case QC_EVENT_TAG.BIDIRECTIONAL_ELEVATOR_ADDED: {
+      expectLen(tag, bytes, 16);
+      const __f0 = readNodeId(bytes, 0);
+      const __f1 = readNodeId(bytes, 0 + 8);
+      return { kind: "BidirectionalElevatorAdded", a: __f0, b: __f1 };
     }
     case QC_EVENT_TAG.EDGE_REMOVED: {
       expectLen(tag, bytes, 16);
@@ -349,6 +367,12 @@ export function decodeQcEvent(tag: number, bytes: Uint8Array): QcEvent {
       const __f1 = readNodeId(bytes, 0 + 8);
       return { kind: "BidirectionalVerticalPassageDeclined", a: __f0, b: __f1 };
     }
+    case QC_EVENT_TAG.BIDIRECTIONAL_ELEVATOR_DECLINED: {
+      expectLen(tag, bytes, 16);
+      const __f0 = readNodeId(bytes, 0);
+      const __f1 = readNodeId(bytes, 0 + 8);
+      return { kind: "BidirectionalElevatorDeclined", a: __f0, b: __f1 };
+    }
     case QC_EVENT_TAG.EDGE_REMOVE_DECLINED: {
       expectLen(tag, bytes, 16);
       const __f0 = readNodeId(bytes, 0);
@@ -416,6 +440,7 @@ export function isMutatingQcEvent(event: QcEvent): boolean {
     event.kind === "BidirectionalTeleportAdded" ||
     event.kind === "DirectedVerticalPassageAdded" ||
     event.kind === "BidirectionalVerticalPassageAdded" ||
+    event.kind === "BidirectionalElevatorAdded" ||
     event.kind === "EdgeRemoved" ||
     event.kind === "EdgeRemovedBetween" ||
     event.kind === "EdgeRemovedWithReverse" ||

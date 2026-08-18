@@ -49,6 +49,7 @@ pub mod elevator_group_select;
 pub mod elevator_utils;
 pub mod remove_elevator_stop;
 pub mod elevator_stop_group_select;
+pub mod add_elevator;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -78,6 +79,7 @@ pub use group_select::{PARAM_PRIORITY as ONE_WAY_GROUP_SELECT_PARAM_PRIORITY, PR
 pub use missing_one_ways_from_passage::MissingOneWaysFromPassageStrategy;
 pub use missing_one_ways_from_wall::MissingOneWaysFromWallStrategy;
 pub use missing_teleports::{MissingTeleportsStrategy, PARAM_ENTRY_PICK as MISSING_TELEPORTS_PARAM_ENTRY_PICK, PARAM_DESIRED_LENGTH as MISSING_TELEPORTS_PARAM_DESIRED_LENGTH, ENTRY_RANDOM as MISSING_TELEPORTS_ENTRY_RANDOM, ENTRY_FARTHEST_FROM_RANDOM as MISSING_TELEPORTS_ENTRY_FARTHEST_FROM_RANDOM};
+pub use add_elevator::AddElevatorStrategy;
 pub use remove_split::{
     RemoveSplitStrategy, PARAM_SELECTION as REMOVE_SPLIT_PARAM_SELECTION,
     SELECTION_OPTIONS as REMOVE_SPLIT_SELECTION_OPTIONS,

@@ -23,6 +23,7 @@ mod wire_tags {
     pub const BIDIRECTIONAL_TELEPORT_PROPOSED: u16 = 28;
     pub const DIRECTED_VERTICAL_PASSAGE_PROPOSED: u16 = 45;
     pub const BIDIRECTIONAL_VERTICAL_PASSAGE_PROPOSED: u16 = 46;
+    pub const BIDIRECTIONAL_ELEVATOR_PROPOSED: u16 = 54;
     pub const EDGE_REMOVE_PROPOSED: u16 = 29;
     pub const EDGE_REMOVE_BETWEEN_PROPOSED: u16 = 30;
     pub const EDGE_REMOVE_WITH_REVERSE_PROPOSED: u16 = 37;
@@ -38,6 +39,7 @@ mod wire_tags {
     pub const BIDIRECTIONAL_TELEPORT_ADDED: u16 = 9;
     pub const DIRECTED_VERTICAL_PASSAGE_ADDED: u16 = 48;
     pub const BIDIRECTIONAL_VERTICAL_PASSAGE_ADDED: u16 = 49;
+    pub const BIDIRECTIONAL_ELEVATOR_ADDED: u16 = 55;
     pub const EDGE_REMOVED: u16 = 10;
     pub const EDGE_REMOVED_BETWEEN: u16 = 11;
     pub const EDGE_REMOVED_WITH_REVERSE: u16 = 35;
@@ -53,6 +55,7 @@ mod wire_tags {
     pub const BIDIRECTIONAL_TELEPORT_DECLINED: u16 = 18;
     pub const DIRECTED_VERTICAL_PASSAGE_DECLINED: u16 = 51;
     pub const BIDIRECTIONAL_VERTICAL_PASSAGE_DECLINED: u16 = 52;
+    pub const BIDIRECTIONAL_ELEVATOR_DECLINED: u16 = 56;
     pub const EDGE_REMOVE_DECLINED: u16 = 19;
     pub const EDGE_REMOVE_BETWEEN_DECLINED: u16 = 20;
     pub const EDGE_REMOVE_WITH_REVERSE_DECLINED: u16 = 36;
@@ -78,6 +81,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::BidirectionalTeleportProposed { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_PROPOSED,
             QcEvent::DirectedVerticalPassageProposed { .. } => wire_tags::DIRECTED_VERTICAL_PASSAGE_PROPOSED,
             QcEvent::BidirectionalVerticalPassageProposed { .. } => wire_tags::BIDIRECTIONAL_VERTICAL_PASSAGE_PROPOSED,
+            QcEvent::BidirectionalElevatorProposed { .. } => wire_tags::BIDIRECTIONAL_ELEVATOR_PROPOSED,
             QcEvent::EdgeRemoveProposed { .. } => wire_tags::EDGE_REMOVE_PROPOSED,
             QcEvent::EdgeRemoveBetweenProposed { .. } => wire_tags::EDGE_REMOVE_BETWEEN_PROPOSED,
             QcEvent::EdgeRemoveWithReverseProposed { .. } => wire_tags::EDGE_REMOVE_WITH_REVERSE_PROPOSED,
@@ -93,6 +97,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::BidirectionalTeleportAdded { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_ADDED,
             QcEvent::DirectedVerticalPassageAdded { .. } => wire_tags::DIRECTED_VERTICAL_PASSAGE_ADDED,
             QcEvent::BidirectionalVerticalPassageAdded { .. } => wire_tags::BIDIRECTIONAL_VERTICAL_PASSAGE_ADDED,
+            QcEvent::BidirectionalElevatorAdded { .. } => wire_tags::BIDIRECTIONAL_ELEVATOR_ADDED,
             QcEvent::EdgeRemoved { .. } => wire_tags::EDGE_REMOVED,
             QcEvent::EdgeRemovedBetween { .. } => wire_tags::EDGE_REMOVED_BETWEEN,
             QcEvent::EdgeRemovedWithReverse { .. } => wire_tags::EDGE_REMOVED_WITH_REVERSE,
@@ -108,6 +113,7 @@ impl EncodeEventPayload for QcEvent {
             QcEvent::BidirectionalTeleportDeclined { .. } => wire_tags::BIDIRECTIONAL_TELEPORT_DECLINED,
             QcEvent::DirectedVerticalPassageDeclined { .. } => wire_tags::DIRECTED_VERTICAL_PASSAGE_DECLINED,
             QcEvent::BidirectionalVerticalPassageDeclined { .. } => wire_tags::BIDIRECTIONAL_VERTICAL_PASSAGE_DECLINED,
+            QcEvent::BidirectionalElevatorDeclined { .. } => wire_tags::BIDIRECTIONAL_ELEVATOR_DECLINED,
             QcEvent::EdgeRemoveDeclined { .. } => wire_tags::EDGE_REMOVE_DECLINED,
             QcEvent::EdgeRemoveBetweenDeclined { .. } => wire_tags::EDGE_REMOVE_BETWEEN_DECLINED,
             QcEvent::EdgeRemoveWithReverseDeclined { .. } => wire_tags::EDGE_REMOVE_WITH_REVERSE_DECLINED,
@@ -161,6 +167,10 @@ impl EncodeEventPayload for QcEvent {
                 write_node_id(out, *to);
             }
             QcEvent::BidirectionalVerticalPassageProposed { a, b } => {
+                write_node_id(out, *a);
+                write_node_id(out, *b);
+            }
+            QcEvent::BidirectionalElevatorProposed { a, b } => {
                 write_node_id(out, *a);
                 write_node_id(out, *b);
             }
@@ -219,6 +229,10 @@ impl EncodeEventPayload for QcEvent {
                 write_node_id(out, *to);
             }
             QcEvent::BidirectionalVerticalPassageAdded { a, b } => {
+                write_node_id(out, *a);
+                write_node_id(out, *b);
+            }
+            QcEvent::BidirectionalElevatorAdded { a, b } => {
                 write_node_id(out, *a);
                 write_node_id(out, *b);
             }
@@ -284,6 +298,10 @@ impl EncodeEventPayload for QcEvent {
                 write_node_id(out, *a);
                 write_node_id(out, *b);
             }
+            QcEvent::BidirectionalElevatorDeclined { a, b } => {
+                write_node_id(out, *a);
+                write_node_id(out, *b);
+            }
             QcEvent::EdgeRemoveDeclined { from, to } => {
                 write_node_id(out, *from);
                 write_node_id(out, *to);
@@ -335,6 +353,7 @@ impl DebugEvent for QcEvent {
                 | QcEvent::BidirectionalTeleportAdded { .. }
                 | QcEvent::DirectedVerticalPassageAdded { .. }
                 | QcEvent::BidirectionalVerticalPassageAdded { .. }
+                | QcEvent::BidirectionalElevatorAdded { .. }
                 | QcEvent::EdgeRemoved { .. }
                 | QcEvent::EdgeRemovedBetween { .. }
                 | QcEvent::EdgeRemovedWithReverse { .. }
@@ -403,6 +422,14 @@ mod golden_tests {
     #[test]
     fn golden_round_trip_bidirectional_vertical_passage_proposed() {
         let event = QcEvent::BidirectionalVerticalPassageProposed { a: 7, b: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn golden_round_trip_bidirectional_elevator_proposed() {
+        let event = QcEvent::BidirectionalElevatorProposed { a: 7, b: 7 };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
         assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
@@ -521,6 +548,14 @@ mod golden_tests {
     }
 
     #[test]
+    fn golden_round_trip_bidirectional_elevator_added() {
+        let event = QcEvent::BidirectionalElevatorAdded { a: 7, b: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
     fn golden_round_trip_edge_removed() {
         let event = QcEvent::EdgeRemoved { from: 7, to: 7 };
         let mut bytes = Vec::new();
@@ -627,6 +662,14 @@ mod golden_tests {
     #[test]
     fn golden_round_trip_bidirectional_vertical_passage_declined() {
         let event = QcEvent::BidirectionalVerticalPassageDeclined { a: 7, b: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn golden_round_trip_bidirectional_elevator_declined() {
+        let event = QcEvent::BidirectionalElevatorDeclined { a: 7, b: 7 };
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
         assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);

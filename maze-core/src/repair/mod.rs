@@ -30,4 +30,5 @@ RemoveElevatorStrategy,
 ReplaceElevatorWithPassagesStrategy, REPLACE_ELEVATOR_WITH_PASSAGES_PARAM_ADJACENT_FLOORS_ONLY,
 ElevatorGroupSelectStrategy, ELEVATOR_GROUP_SELECT_SLOT_FIX_TARGET,
 RemoveElevatorStopStrategy,
-ElevatorStopGroupSelectStrategy, ELEVATOR_STOP_GROUP_SELECT_SLOT_FIX_TARGET};
+ElevatorStopGroupSelectStrategy, ELEVATOR_STOP_GROUP_SELECT_SLOT_FIX_TARGET,
+AddElevatorStrategy};

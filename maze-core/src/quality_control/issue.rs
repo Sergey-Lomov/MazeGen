@@ -37,6 +37,7 @@ pub enum IssueKind {
     InvalidElevatorGroup,
     InvalidElevatorStop,
     InvalidElevatorStopGroup,
+    MissingElevators,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -279,6 +280,14 @@ pub const INVALID_ELEVATOR_STOP: IssueKind = IssueKind::InvalidElevatorStop;
 /// `ElevatorStopGroupSelectStrategy`, which delegates each candidate stop's removal to a nested
 /// `INVALID_ELEVATOR_STOP` strategy (`RemoveElevatorStopStrategy`).
 pub const INVALID_ELEVATOR_STOP_GROUP: IssueKind = IssueKind::InvalidElevatorStopGroup;
+/// The maze has fewer elevators (`elevator_core::elevator_groups`) than some check requires —
+/// currently `MinElevatorCountCheck`/`MinElevatorDensityCheck` — see GitHub issue #401, part of
+/// epic #344. Mirrors `MISSING_TELEPORTS`'s role for teleports: a missing-count condition rather
+/// than a specific-edge one, whole-maze scope only (an elevator inherently spans several floors,
+/// so there is no single "checked floor" to attribute a deficit to — same rationale as
+/// `MaxElevatorCountCheck`/`MaxElevatorDensityCheck`). Carries `MissingElevatorsIssue { missing }`
+/// — see that type's doc comment. Repaired by `AddElevatorStrategy`.
+pub const MISSING_ELEVATORS: IssueKind = IssueKind::MissingElevators;
 
 /// `as_str`/`from_str`/`Display` for `IssueKind` are generated (`codegen`'s `id_enum` module, see
 /// GitHub issue #361) into the sibling `issue_kind_ids.rs` from the variant list above — do not

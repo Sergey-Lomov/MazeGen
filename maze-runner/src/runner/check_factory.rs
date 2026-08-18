@@ -68,6 +68,9 @@ use maze_core::{
         MaxElevatorCountCheck, MAX_ELEVATOR_COUNT_DEFAULT,
         MaxElevatorDensityCheck, MAX_ELEVATOR_DENSITY_DEFAULT,
         InvalidElevatorGroupIssue,
+        MinElevatorCountCheck, MIN_ELEVATOR_COUNT_DEFAULT,
+        MinElevatorDensityCheck, MIN_ELEVATOR_DENSITY_DEFAULT,
+        MissingElevatorsIssue,
         MaxElevatorStopsCheck, MAX_ELEVATOR_STOPS_DEFAULT,
         MaxElevatorStopsPerFloorCheck, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT,
         ElevatorStopsSkipCheck, ELEVATOR_STOPS_SKIP_DEFAULT,
@@ -822,6 +825,27 @@ pub(crate) fn build_invalid_elevator_group_check<T: Tessellation>(instance: &Che
                 .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(MAX_ELEVATOR_DENSITY_DEFAULT);
             Some(Box::new(MaxElevatorDensityCheck { instance_id, max_density }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_missing_elevators_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingElevatorsIssue>>> {
+    match instance.type_id.as_str() {
+        "min_elevator_count" => {
+            let min_elevators = instance.params.get("min_elevator_count")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MIN_ELEVATOR_COUNT_DEFAULT);
+            Some(Box::new(MinElevatorCountCheck { instance_id, min_elevators }))
+        }
+        "min_elevator_density" => {
+            let min_density = instance.params.get("min_elevator_density")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
+                .unwrap_or(MIN_ELEVATOR_DENSITY_DEFAULT);
+            Some(Box::new(MinElevatorDensityCheck { instance_id, min_density }))
         }
         _ => None,
     }

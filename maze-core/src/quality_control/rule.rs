@@ -87,6 +87,8 @@ pub fn apply_commands<T: Tessellation>(
                 crate::generation::try_add_directed_vertical_passage(&mut maze.graph, from, to, preset_state),
             MutationCommand::AddBidirectionalVerticalPassage { a, b } =>
                 crate::generation::try_add_bidirectional_vertical_passage(&mut maze.graph, a, b, preset_state),
+            MutationCommand::AddBidirectionalElevator { a, b } =>
+                crate::generation::try_add_bidirectional_elevator(&mut maze.graph, a, b, preset_state),
             MutationCommand::RemoveEdge { id } =>
                 crate::generation::try_remove_edge_by_id(&mut maze.graph, id, preset_state),
             MutationCommand::RemoveEdgeBetween { from, to } =>
@@ -182,6 +184,8 @@ fn qc_event_for_command(cmd: &MutationCommand, applied: bool, edge_endpoints: Op
         (MutationCommand::AddDirectedVerticalPassage { from, to }, false) => QcEvent::DirectedVerticalPassageDeclined { from: *from, to: *to },
         (MutationCommand::AddBidirectionalVerticalPassage { a, b }, true) => QcEvent::BidirectionalVerticalPassageAdded { a: *a, b: *b },
         (MutationCommand::AddBidirectionalVerticalPassage { a, b }, false) => QcEvent::BidirectionalVerticalPassageDeclined { a: *a, b: *b },
+        (MutationCommand::AddBidirectionalElevator { a, b }, true) => QcEvent::BidirectionalElevatorAdded { a: *a, b: *b },
+        (MutationCommand::AddBidirectionalElevator { a, b }, false) => QcEvent::BidirectionalElevatorDeclined { a: *a, b: *b },
         (MutationCommand::RemoveEdge { .. }, true) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemoved { from, to } }
         (MutationCommand::RemoveEdge { .. }, false) => { let (from, to) = edge_endpoints?; QcEvent::EdgeRemoveDeclined { from, to } }
         (MutationCommand::RemoveEdgeBetween { from, to }, true) => QcEvent::EdgeRemovedBetween { from: *from, to: *to },
@@ -229,6 +233,7 @@ fn qc_event_proposed_for_command<T: Tessellation>(cmd: &MutationCommand, maze: &
         MutationCommand::AddBidirectionalTeleport { a, b } => QcEvent::BidirectionalTeleportProposed { a: *a, b: *b },
         MutationCommand::AddDirectedVerticalPassage { from, to } => QcEvent::DirectedVerticalPassageProposed { from: *from, to: *to },
         MutationCommand::AddBidirectionalVerticalPassage { a, b } => QcEvent::BidirectionalVerticalPassageProposed { a: *a, b: *b },
+        MutationCommand::AddBidirectionalElevator { a, b } => QcEvent::BidirectionalElevatorProposed { a: *a, b: *b },
         MutationCommand::RemoveEdge { id } => {
             let (from, to) = maze.graph.edge(*id).map(|e| (e.from, e.to))?;
             QcEvent::EdgeRemoveProposed { from, to }

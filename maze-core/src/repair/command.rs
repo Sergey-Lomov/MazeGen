@@ -27,6 +27,10 @@ pub enum MutationCommand {
     AddBidirectionalTeleport { a: NodeId, b: NodeId },
     AddDirectedVerticalPassage { from: NodeId, to: NodeId },
     AddBidirectionalVerticalPassage { a: NodeId, b: NodeId },
+    /// Adds a two-way `Elevator` edge between one pair of an elevator's stops — see GitHub issue
+    /// #401. No directed variant, mirrors `try_add_bidirectional_elevator`'s own no-directed-
+    /// variant rationale.
+    AddBidirectionalElevator { a: NodeId, b: NodeId },
     /// By `EdgeId` — mirrors `try_remove_edge_by_id`'s contract (never ambiguous between a
     /// `Basic`/`Teleport` edge coexisting in the same direction).
     RemoveEdge { id: EdgeId },

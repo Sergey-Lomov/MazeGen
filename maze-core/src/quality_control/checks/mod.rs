@@ -65,6 +65,8 @@ pub mod max_elevator_stops;
 pub mod max_elevator_stops_per_floor;
 pub mod elevator_stops_skip;
 pub mod elevator_stops_span;
+pub mod min_elevator_count;
+pub mod min_elevator_density;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -127,3 +129,5 @@ pub use max_elevator_stops::{MaxElevatorStopsCheck, MAX_ELEVATOR_STOPS_DEFAULT};
 pub use max_elevator_stops_per_floor::{MaxElevatorStopsPerFloorCheck, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT};
 pub use elevator_stops_skip::{ElevatorStopsSkipCheck, ELEVATOR_STOPS_SKIP_DEFAULT};
 pub use elevator_stops_span::{ElevatorStopsSpanCheck, ELEVATOR_STOPS_SPAN_DEFAULT};
+pub use min_elevator_count::{MinElevatorCountCheck, MIN_ELEVATOR_COUNT_DEFAULT};
+pub use min_elevator_density::{MinElevatorDensityCheck, MIN_ELEVATOR_DENSITY_DEFAULT};

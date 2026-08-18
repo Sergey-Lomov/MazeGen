@@ -271,6 +271,29 @@ pub(crate) fn try_add_bidirectional_vertical_passage(
     true
 }
 
+/// try_add_bidirectional_elevator: strict "both directions free, or skip the pair" connect for a
+/// two-way `Elevator` edge between one pair of stops — mirrors
+/// `try_add_bidirectional_vertical_passage` exactly, see GitHub issue #401. No directed variant —
+/// generation/preset setup always wires an elevator's own fan as two-way (see
+/// `elevator_core::Elevator`'s doc comment), and no current caller needs a one-way elevator hop.
+pub(crate) fn try_add_bidirectional_elevator(
+    graph: &mut Graph,
+    a: NodeId,
+    b: NodeId,
+    preset_state: &PresetState,
+) -> bool {
+    if !bidirectional_edge_feasible(preset_state, a, b) {
+        return false;
+    }
+    if graph.edge_between(a, b).is_none() {
+        graph.add_edge(a, b, EdgeKind::Elevator);
+    }
+    if graph.edge_between(b, a).is_none() {
+        graph.add_edge(b, a, EdgeKind::Elevator);
+    }
+    true
+}
+
 /// Shared feasibility predicate for `try_remove_edge`/`cmd_remove_edge` (GitHub issue #118): the
 /// node pair must not be a preset (Basic) connection. See `bidirectional_edge_feasible`'s own
 /// doc comment for why this is factored out (and `pub(crate)`) rather than re-derived on each side.

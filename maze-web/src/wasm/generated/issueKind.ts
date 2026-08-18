@@ -32,7 +32,8 @@ export type IssueKindId =
   | "invalid_elevator"
   | "invalid_elevator_group"
   | "invalid_elevator_stop"
-  | "invalid_elevator_stop_group";
+  | "invalid_elevator_stop_group"
+  | "missing_elevators";
 
 export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
   "missing_endpoints",
@@ -67,4 +68,5 @@ export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
   "invalid_elevator_group",
   "invalid_elevator_stop",
   "invalid_elevator_stop_group",
+  "missing_elevators",
 ] as const;

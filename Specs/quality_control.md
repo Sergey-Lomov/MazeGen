@@ -47,6 +47,8 @@ pub enum IssueKind {
 
 `InvalidVerticalPassageGroup` mirrors `InvalidOneWayGroup`'s role, but for `VerticalPassage` edges instead of one-ways — see GitHub issue #343. Where `InvalidVerticalPassage` flags a single vertical-passage edge invalid on its own, `InvalidVerticalPassageGroup` flags an aggregate condition over two or more of them, none of which is individually invalid. Produced by four checks sharing the same issue shape: `MaxVerticalPassageCountCheck`/`MaxVerticalPassageRatioCheck` (maze-wide/per-floor excess count/ratio) and `VerticalPassageGroupGeometricProximityCheck`/`VerticalPassageGroupGraphProximityCheck` (proximity pairs, Euclidean vs. topological distance — kept as two distinct check types rather than one dual-metric check, same rationale as `OneWayGroupGeometricProximityCheck`/`OneWayGroupGraphProximityCheck`). Carries `InvalidVerticalPassageGroupIssue { groups, invalid_sources, .. }` — a type alias onto the generic `InvalidGroupIssue<VerticalPassageGroupKind>` shape (`Element = EdgeId`), mirrors `InvalidOneWayGroupIssue` exactly. Repaired by `VerticalPassageGroupSelectStrategy`, which delegates each candidate edge's removal to a nested `INVALID_VERTICAL_PASSAGE` strategy (`RemoveVerticalPassageStrategy`).
 
+`MissingElevators` mirrors `MissingVerticalPassages`'s role, but for a deficit in the overall count of elevators (`elevator_core::elevator_groups` — a fully-connected two-way stop fan built by `AddElevatorStrategy`, see `repair.md`) instead of vertical-passage edges — see GitHub issue #401, part of epic #344. Whole-maze scope only: an elevator inherently spans several floors, so there is no single "checked floor" to attribute a deficit to (same rationale `MinElevatorCountCheck`'s own doc comment gives, shared with `MaxElevatorCountCheck`). Currently produced by `MinElevatorCountCheck` (absolute count below a configured minimum) and `MinElevatorDensityCheck` (count per 100 field cells below a configured minimum, cross-multiplied the same way `MinVerticalPassageRatioCheck`/`MinTeleportRatioCheck` avoid floor-rounding false negatives). Carries `MissingElevatorsIssue { missing: Vec<(RepairArea, u32)> }` — same per-area deficit list shape as `MissingVerticalPassagesIssue`, though in practice `missing` only ever carries a single `RepairArea::WholeMaze` entry since both source checks are whole-maze scope only. Repaired by `AddElevatorStrategy` (see `repair.md`).
+
 ### SplitNodeConnectionTraversalDistanceCheck
 
 GitHub issue #277, part of epic #246. For each ordered pair `(a, b)` of a split tile's own nodes (`a != b`), runs a directed BFS from `a` over the raw `maze.graph` (not the corridor-compressed `NavGraph` — same "count every real hop" rationale `MissingTeleportsStrategy::bfs_distances` uses), capped at `min_detour - 1` steps with early exit once `b` is reached. If found, the whole found path is flagged as one route — every edge along it, in traversal order, each paired with whether it's incident to the split tile itself. Both directions (`a -> b` and `b -> a`) are checked independently and, when both are found short, recorded as two separate routes — directed edges mean a short path one way doesn't guarantee one the other way, and each route may need its own cut. `min_detour` (default 10) is the minimum path length a pair must clear; a path of exactly `min_detour` steps is not flagged, only strictly shorter.
@@ -1683,6 +1685,32 @@ pub type InvalidElevatorGroupIssue = InvalidGroupIssue<ElevatorGroupKind>;
 ```
 
 `ElevatorGroupKind` selects the `InvalidGroupIssue<K>`/`GroupSelectStrategy<K>` generic-group-issue instantiation (see `InvalidGroupIssueKind`'s own doc section above) for elevator groups — mirrors `SplitGroupKind`'s shape (`Element = ElevatorNodes`, a whole elevator) rather than `VerticalPassageGroupKind`'s (`Element = EdgeId`, a single passage edge), since an elevator — like a split tile — is an indivisible entity that gets wholly removed/converted, never partially. `INVALID_ELEVATOR_GROUP` is distinct from `INVALID_ELEVATOR`: that kind flags a single elevator invalid on its own; this one flags an aggregate condition over the whole-maze elevator group (excess count, excess density), none of which is individually invalid — mirrors `INVALID_VERTICAL_PASSAGE_GROUP`'s split from `INVALID_VERTICAL_PASSAGE`.
+
+### MinElevatorCountCheck / MinElevatorDensityCheck
+
+```rust
+pub const MIN_ELEVATOR_COUNT_DEFAULT: u32 = 1;
+
+pub struct MinElevatorCountCheck {
+    pub instance_id: String,
+    pub min_elevators: u32,
+}
+
+pub const MIN_ELEVATOR_DENSITY_DEFAULT: f64 = 5.0;
+
+pub struct MinElevatorDensityCheck {
+    pub instance_id: String,
+    pub min_density: f64,
+}
+```
+
+See GitHub issue #401, part of epic #344. Mirror `MaxElevatorCountCheck`/`MaxElevatorDensityCheck`'s whole-maze-only scope and rationale exactly (no `FloorScope` — an elevator spans several floors, so there is no single floor to attribute a deficit to), but flag `MISSING_ELEVATORS` for a deficit instead of `INVALID_ELEVATOR_GROUP` for an excess — `MissingElevatorsIssue`'s per-area `missing: Vec<(RepairArea, u32)>` list, not `ElevatorNodes`-based groups, since a deficit has no existing elevators to name, only a count still needed.
+
+**`MinElevatorCountCheck`** (`check_type_id() == "min_elevator_count"`) — `count = elevator_groups(maze).len()`; if `count >= min_elevators` the check is silent, otherwise `missing = min_elevators.saturating_sub(count)`.
+
+**`MinElevatorDensityCheck`** (`check_type_id() == "min_elevator_density"`) — "elevators per 100 field cells", cross-multiplied comparison (`count * 100 >= min_density * field_cells`) to avoid a floor-rounded ratio producing a false negative, mirroring `MinVerticalPassageRatioCheck`/`MinTeleportRatioCheck`. Silent if `field_cells == 0` or the density already clears the minimum; otherwise `required = round(min_density * field_cells / 100.0)`, `missing = required.saturating_sub(count)`.
+
+Either way, `missing == 0` means silent; otherwise fires `MissingElevatorsIssue::new_from_check(instance_id, vec![(RepairArea::WholeMaze, missing)])` with `.with_detail(instance_id, "missing", missing.to_string())` chained on. Repaired by `AddElevatorStrategy` (see `repair.md`).
 
 ### MaxElevatorStopsCheck / MaxElevatorStopsPerFloorCheck
 

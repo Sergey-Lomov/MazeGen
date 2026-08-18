@@ -101,6 +101,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   invalid_elevator_group: () => ({ label: m["issue.invalid_elevator_group.label"](), description: m["issue.invalid_elevator_group.description"](), severity: "warning" }),
   invalid_elevator_stop: () => ({ label: m["issue.invalid_elevator_stop.label"](), description: m["issue.invalid_elevator_stop.description"](), severity: "warning" }),
   invalid_elevator_stop_group: () => ({ label: m["issue.invalid_elevator_stop_group.label"](), description: m["issue.invalid_elevator_stop_group.description"](), severity: "warning" }),
+  missing_elevators: () => ({ label: m["issue.missing_elevators.label"](), description: m["issue.missing_elevators.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -237,6 +238,8 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   max_elevator_stops_per_floor: (d) => d.max_elevator_stops_per_floor !== undefined ? m["issue.invalid_elevator_stop_group.max_elevator_stops_per_floor_label"]({ max_elevator_stops_per_floor: d.max_elevator_stops_per_floor }) : undefined,
   elevator_stops_skip: (d) => d.elevator_stops_skip !== undefined ? m["issue.invalid_elevator_stop_group.elevator_stops_skip_label"]({ elevator_stops_skip: d.elevator_stops_skip }) : undefined,
   elevator_stops_span: (d) => d.elevator_stops_span !== undefined ? m["issue.invalid_elevator_stop_group.elevator_stops_span_label"]({ elevator_stops_span: d.elevator_stops_span }) : undefined,
+  min_elevator_count: (d) => d.missing !== undefined ? m["issue.missing_elevators.min_elevator_count_label"]({ missing: d.missing }) : undefined,
+  min_elevator_density: (d) => d.missing !== undefined ? m["issue.missing_elevators.min_elevator_density_label"]({ missing: d.missing }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

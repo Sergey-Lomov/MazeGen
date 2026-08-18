@@ -44,6 +44,7 @@ pub(crate) use edge_ops::{
     try_add_edge, try_add_edge_kind, try_add_bidirectional_edge,
     try_add_directed_edge, try_add_directed_teleport, try_add_bidirectional_teleport,
     try_add_directed_vertical_passage, try_add_bidirectional_vertical_passage,
+    try_add_bidirectional_elevator,
     try_remove_edge, try_remove_edge_by_id, try_remove_edge_with_reverse, try_remove_teleport_with_reverse,
     try_remove_vertical_passage_with_reverse,
     bidirectional_edge_feasible, directed_edge_feasible, add_edge_and_detect_direction,

@@ -96,6 +96,10 @@ pub enum QcEvent {
     DirectedVerticalPassageProposed { from: NodeId, to: NodeId },
     #[wire(tag = 46)]
     BidirectionalVerticalPassageProposed { a: NodeId, b: NodeId },
+    /// See GitHub issue #401. No directed variant — mirrors `try_add_bidirectional_elevator`'s
+    /// own no-directed-variant rationale.
+    #[wire(tag = 54)]
+    BidirectionalElevatorProposed { a: NodeId, b: NodeId },
     /// `from`/`to` (not `EdgeId`, GitHub issue #171's follow-up fix) — resolved from the graph
     /// (still intact at proposal time, before `apply_commands` runs) via `edge_endpoints`, the
     /// same way `EdgeRemoved`/`EdgeRemoveDeclined` resolve theirs. An `EdgeId` is meaningless to
@@ -148,6 +152,9 @@ pub enum QcEvent {
     DirectedVerticalPassageAdded { from: NodeId, to: NodeId },
     #[wire(tag = 49, mutating)]
     BidirectionalVerticalPassageAdded { a: NodeId, b: NodeId },
+    /// See GitHub issue #401. No directed variant, mirrors `BidirectionalElevatorProposed`.
+    #[wire(tag = 55, mutating)]
+    BidirectionalElevatorAdded { a: NodeId, b: NodeId },
     /// `from`/`to` (not `EdgeId`, GitHub issue #171's follow-up fix) — resolved from the graph via
     /// `edge_endpoints` immediately before the edge is actually removed (`apply_commands`'s own
     /// `try_remove_edge_by_id` call site), since the id alone is meaningless to web-side
@@ -206,6 +213,9 @@ pub enum QcEvent {
     DirectedVerticalPassageDeclined { from: NodeId, to: NodeId },
     #[wire(tag = 52)]
     BidirectionalVerticalPassageDeclined { a: NodeId, b: NodeId },
+    /// See GitHub issue #401. No directed variant, mirrors `BidirectionalElevatorProposed`.
+    #[wire(tag = 56)]
+    BidirectionalElevatorDeclined { a: NodeId, b: NodeId },
     /// `from`/`to` — mirrors `EdgeRemoved`'s doc comment; resolved before revalidation, since a
     /// declined command means the edge was never actually removed but the id is still
     /// meaningless to web-side narration on its own.
@@ -268,6 +278,7 @@ mod tests {
         assert!(QcEvent::DirectedVerticalPassageAdded { from: 1, to: 2 }.is_mutating());
         assert!(QcEvent::BidirectionalVerticalPassageAdded { a: 1, b: 2 }.is_mutating());
         assert!(QcEvent::VerticalPassageRemovedWithReverse { from: 1, to: 2, reverse_removed: true }.is_mutating());
+        assert!(QcEvent::BidirectionalElevatorAdded { a: 1, b: 2 }.is_mutating());
         assert!(QcEvent::StartSet(1).is_mutating());
         assert!(QcEvent::FinishSet(1).is_mutating());
         assert!(QcEvent::NodeRemoved(1).is_mutating());
@@ -296,6 +307,7 @@ mod tests {
         assert!(!QcEvent::DirectedVerticalPassageDeclined { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::BidirectionalVerticalPassageDeclined { a: 1, b: 2 }.is_mutating());
         assert!(!QcEvent::VerticalPassageRemoveWithReverseDeclined { from: 1, to: 2, reverse_removed: false }.is_mutating());
+        assert!(!QcEvent::BidirectionalElevatorDeclined { a: 1, b: 2 }.is_mutating());
         assert!(!QcEvent::StartSetDeclined(1).is_mutating());
         assert!(!QcEvent::FinishSetDeclined(1).is_mutating());
         assert!(!QcEvent::NodeRemoveDeclined(1).is_mutating());
@@ -314,6 +326,7 @@ mod tests {
         assert!(!QcEvent::DirectedVerticalPassageProposed { from: 1, to: 2 }.is_mutating());
         assert!(!QcEvent::BidirectionalVerticalPassageProposed { a: 1, b: 2 }.is_mutating());
         assert!(!QcEvent::VerticalPassageRemoveWithReverseProposed { from: 1, to: 2 }.is_mutating());
+        assert!(!QcEvent::BidirectionalElevatorProposed { a: 1, b: 2 }.is_mutating());
         assert!(!QcEvent::StartSetProposed(1).is_mutating());
         assert!(!QcEvent::FinishSetProposed(1).is_mutating());
         assert!(!QcEvent::NodeRemoveProposed(1).is_mutating());
@@ -340,6 +353,7 @@ mod tests {
             QcEvent::DirectedVerticalPassageAdded { from: 0, to: 0 },
             QcEvent::BidirectionalVerticalPassageAdded { a: 0, b: 0 },
             QcEvent::VerticalPassageRemovedWithReverse { from: 0, to: 0, reverse_removed: true },
+            QcEvent::BidirectionalElevatorAdded { a: 0, b: 0 },
             QcEvent::StartSet(0),
             QcEvent::FinishSet(0),
             QcEvent::NodeRemoved(0),
@@ -354,6 +368,7 @@ mod tests {
             QcEvent::DirectedVerticalPassageDeclined { from: 0, to: 0 },
             QcEvent::BidirectionalVerticalPassageDeclined { a: 0, b: 0 },
             QcEvent::VerticalPassageRemoveWithReverseDeclined { from: 0, to: 0, reverse_removed: false },
+            QcEvent::BidirectionalElevatorDeclined { a: 0, b: 0 },
             QcEvent::StartSetDeclined(0),
             QcEvent::FinishSetDeclined(0),
             QcEvent::NodeRemoveDeclined(0),
@@ -368,6 +383,7 @@ mod tests {
             QcEvent::DirectedVerticalPassageProposed { from: 0, to: 0 },
             QcEvent::BidirectionalVerticalPassageProposed { a: 0, b: 0 },
             QcEvent::VerticalPassageRemoveWithReverseProposed { from: 0, to: 0 },
+            QcEvent::BidirectionalElevatorProposed { a: 0, b: 0 },
             QcEvent::StartSetProposed(0),
             QcEvent::FinishSetProposed(0),
             QcEvent::NodeRemoveProposed(0),

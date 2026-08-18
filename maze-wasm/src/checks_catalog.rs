@@ -11,7 +11,8 @@ use maze_core::{
     INVALID_ELEVATOR, ELEVATOR_STOP_COUNT_DEFAULT, ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON, ELEVATOR_SPAN_DEFAULT, ELEVATOR_SPAN_DEFAULT_COMPARISON,
     INVALID_ELEVATOR_GROUP, MAX_ELEVATOR_COUNT_DEFAULT, MAX_ELEVATOR_DENSITY_DEFAULT,
     INVALID_ELEVATOR_STOP_GROUP, MAX_ELEVATOR_STOPS_DEFAULT, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT,
-    ELEVATOR_STOPS_SKIP_DEFAULT, ELEVATOR_STOPS_SPAN_DEFAULT},
+    ELEVATOR_STOPS_SKIP_DEFAULT, ELEVATOR_STOPS_SPAN_DEFAULT,
+    MISSING_ELEVATORS, MIN_ELEVATOR_COUNT_DEFAULT, MIN_ELEVATOR_DENSITY_DEFAULT},
 };
 use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, split_patterns_filter_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param};
 
@@ -913,6 +914,34 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 comparison_param(ELEVATOR_SPAN_DEFAULT_COMPARISON),
             ],
             allow_multiple_instances: true,
+        },
+        CheckDescriptor {
+            id: "min_elevator_count",
+            label: "Minimum elevator count",
+            description: "Fires if the total count of elevators in the maze is below the configured minimum.",
+            issue_kinds: vec![kind_str(MISSING_ELEVATORS)],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_elevator_count",
+                    label: "Min elevator count",
+                    kind: ParamKindDto::Integer { default: MIN_ELEVATOR_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "min_elevator_density",
+            label: "Minimum elevator density",
+            description: "Fires if the share of field cells carrying elevators is below the configured minimum.",
+            issue_kinds: vec![kind_str(MISSING_ELEVATORS)],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_elevator_density",
+                    label: "Min elevator density (per 100 cells)",
+                    kind: ParamKindDto::Float { default: MIN_ELEVATOR_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
+                },
+            ],
+            allow_multiple_instances: false,
         },
         CheckDescriptor {
             id: "max_elevator_count",

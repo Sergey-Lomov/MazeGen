@@ -25,6 +25,7 @@ use maze_core::{
         MissingVerticalPassagesIssue, InvalidVerticalPassageGroupIssue,
         InvalidElevatorIssue, InvalidElevatorGroupIssue,
         InvalidElevatorStopGroupIssue,
+        MissingElevatorsIssue,
     },
 };
 use super::check_factory::{
@@ -39,6 +40,7 @@ use super::check_factory::{
     build_split_node_group_check, build_invalid_split_route_check,
     build_missing_vertical_passages_check, build_invalid_vertical_passage_group_check,
     build_invalid_elevator_check, build_invalid_elevator_group_check, build_invalid_elevator_stop_group_check,
+    build_missing_elevators_check,
 };
 use super::strategy_factory::{build_strategy_erased, downcast_strategy, build_nested};
 use super::rule_params::resolve_rule_params;
@@ -179,6 +181,7 @@ qc_kind_registry! {
     InvalidElevator => InvalidElevatorIssue, build_invalid_elevator_check, ["elevator_stop_count", "elevator_span"];
     InvalidElevatorGroup => InvalidElevatorGroupIssue, build_invalid_elevator_group_check, ["max_elevator_count", "max_elevator_density"];
     InvalidElevatorStopGroup => InvalidElevatorStopGroupIssue, build_invalid_elevator_stop_group_check, ["max_elevator_stops", "max_elevator_stops_per_floor", "elevator_stops_skip", "elevator_stops_span"];
+    MissingElevators => MissingElevatorsIssue, build_missing_elevators_check, ["min_elevator_count", "min_elevator_density"];
 }
 
 #[cfg(test)]

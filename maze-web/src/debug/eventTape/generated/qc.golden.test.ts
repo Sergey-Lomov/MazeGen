@@ -39,6 +39,11 @@ describe("QcEvent golden round trip", () => {
     const decoded = decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_VERTICAL_PASSAGE_PROPOSED, bytes);
     expect(decoded).toEqual({ kind: "BidirectionalVerticalPassageProposed", a: 7n, b: 7n });
   });
+  it("BidirectionalElevatorProposed", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    const decoded = decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_ELEVATOR_PROPOSED, bytes);
+    expect(decoded).toEqual({ kind: "BidirectionalElevatorProposed", a: 7n, b: 7n });
+  });
   it("EdgeRemoveProposed", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
     const decoded = decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVE_PROPOSED, bytes);
@@ -109,6 +114,11 @@ describe("QcEvent golden round trip", () => {
     const decoded = decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_VERTICAL_PASSAGE_ADDED, bytes);
     expect(decoded).toEqual({ kind: "BidirectionalVerticalPassageAdded", a: 7n, b: 7n });
   });
+  it("BidirectionalElevatorAdded", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    const decoded = decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_ELEVATOR_ADDED, bytes);
+    expect(decoded).toEqual({ kind: "BidirectionalElevatorAdded", a: 7n, b: 7n });
+  });
   it("EdgeRemoved", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
     const decoded = decodeQcEvent(QC_EVENT_TAG.EDGE_REMOVED, bytes);
@@ -178,6 +188,11 @@ describe("QcEvent golden round trip", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
     const decoded = decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_VERTICAL_PASSAGE_DECLINED, bytes);
     expect(decoded).toEqual({ kind: "BidirectionalVerticalPassageDeclined", a: 7n, b: 7n });
+  });
+  it("BidirectionalElevatorDeclined", () => {
+    const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);
+    const decoded = decodeQcEvent(QC_EVENT_TAG.BIDIRECTIONAL_ELEVATOR_DECLINED, bytes);
+    expect(decoded).toEqual({ kind: "BidirectionalElevatorDeclined", a: 7n, b: 7n });
   });
   it("EdgeRemoveDeclined", () => {
     const bytes = new Uint8Array([7, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0]);

@@ -252,6 +252,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.elevator_stops_span.label"] as MessageFn,
     description: m["check.elevator_stops_span.description"] as MessageFn,
   },
+  min_elevator_count: {
+    label: m["check.min_elevator_count.label"] as MessageFn,
+    description: m["check.min_elevator_count.description"] as MessageFn,
+  },
+  min_elevator_density: {
+    label: m["check.min_elevator_density.label"] as MessageFn,
+    description: m["check.min_elevator_density.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -375,6 +383,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.invalid_elevator_stop_group.label"] as MessageFn,
     description: m["issue.invalid_elevator_stop_group.description"] as MessageFn,
   },
+  missing_elevators: {
+    label: m["issue.missing_elevators.label"] as MessageFn,
+    description: m["issue.missing_elevators.description"] as MessageFn,
+  },
 };
 
 /** Section grouping for `IssueSelectDialog` only — distinct from `issueI18n`'s full labels,
@@ -408,6 +420,7 @@ export const issueSectionI18n: Record<string, MessageFn> = {
   invalid_elevator_group: m["issue_select.section.elevators"] as MessageFn,
   invalid_elevator_stop: m["issue_select.section.elevators"] as MessageFn,
   invalid_elevator_stop_group: m["issue_select.section.elevators"] as MessageFn,
+  missing_elevators: m["issue_select.section.elevators"] as MessageFn,
 };
 
 /** Short item labels for `IssueSelectDialog` only, indented under `issueSectionI18n`'s header —
@@ -441,6 +454,7 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   invalid_elevator_group: m["issue_select.short_label.validate_groups"] as MessageFn,
   invalid_elevator_stop: m["issue_select.short_label.validate"] as MessageFn,
   invalid_elevator_stop_group: m["issue_select.short_label.validate_stop_groups"] as MessageFn,
+  missing_elevators: m["issue_select.short_label.add"] as MessageFn,
 };
 
 export const NO_FIX_STRATEGY_ID = "no_fix";
@@ -613,6 +627,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
   remove_elevator_stop: {
     label: m["strategy.remove_elevator_stop.label"] as MessageFn,
     description: m["strategy.remove_elevator_stop.description"] as MessageFn,
+  },
+  add_elevator: {
+    label: m["strategy.add_elevator.label"] as MessageFn,
+    description: m["strategy.add_elevator.description"] as MessageFn,
   },
 };
 
@@ -1048,6 +1066,26 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   elevator_stops_span: {
     label: m["param.elevator_stops_span.label"] as MessageFn,
     description: m["param.elevator_stops_span.description"] as MessageFn,
+  },
+  min_elevator_count: {
+    label: m["param.min_elevator_count.label"] as MessageFn,
+    description: m["param.min_elevator_count.description"] as MessageFn,
+  },
+  min_elevator_density: {
+    label: m["param.min_elevator_density.label"] as MessageFn,
+    description: m["param.min_elevator_density.description"] as MessageFn,
+  },
+  skip: {
+    label: m["param.skip.label"] as MessageFn,
+    description: m["param.skip.description"] as MessageFn,
+  },
+  stop_count: {
+    label: m["param.stop_count.label"] as MessageFn,
+    description: m["param.stop_count.description"] as MessageFn,
+  },
+  length_interval: {
+    label: m["param.length_interval.label"] as MessageFn,
+    description: m["param.length_interval.description"] as MessageFn,
   },
 };
 
