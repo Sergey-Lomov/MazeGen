@@ -178,7 +178,7 @@ qc_kind_registry! {
     ];
     InvalidElevator => InvalidElevatorIssue, build_invalid_elevator_check, ["elevator_stop_count", "elevator_span"];
     InvalidElevatorGroup => InvalidElevatorGroupIssue, build_invalid_elevator_group_check, ["max_elevator_count", "max_elevator_density"];
-    InvalidElevatorStopGroup => InvalidElevatorStopGroupIssue, build_invalid_elevator_stop_group_check, ["max_elevator_stops", "max_elevator_stops_per_floor"];
+    InvalidElevatorStopGroup => InvalidElevatorStopGroupIssue, build_invalid_elevator_stop_group_check, ["max_elevator_stops", "max_elevator_stops_per_floor", "elevator_stops_skip", "elevator_stops_span"];
 }
 
 #[cfg(test)]

@@ -235,6 +235,8 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   max_elevator_density: (d) => d.max_elevator_density !== undefined ? m["issue.invalid_elevator_group.max_density_label"]({ max_density: d.max_elevator_density }) : undefined,
   max_elevator_stops: (d) => d.max_elevator_stops !== undefined ? m["issue.invalid_elevator_stop_group.max_elevator_stops_label"]({ max_elevator_stops: d.max_elevator_stops }) : undefined,
   max_elevator_stops_per_floor: (d) => d.max_elevator_stops_per_floor !== undefined ? m["issue.invalid_elevator_stop_group.max_elevator_stops_per_floor_label"]({ max_elevator_stops_per_floor: d.max_elevator_stops_per_floor }) : undefined,
+  elevator_stops_skip: (d) => d.elevator_stops_skip !== undefined ? m["issue.invalid_elevator_stop_group.elevator_stops_skip_label"]({ elevator_stops_skip: d.elevator_stops_skip }) : undefined,
+  elevator_stops_span: (d) => d.elevator_stops_span !== undefined ? m["issue.invalid_elevator_stop_group.elevator_stops_span_label"]({ elevator_stops_span: d.elevator_stops_span }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

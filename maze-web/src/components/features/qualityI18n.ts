@@ -244,6 +244,14 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.max_elevator_stops_per_floor.label"] as MessageFn,
     description: m["check.max_elevator_stops_per_floor.description"] as MessageFn,
   },
+  elevator_stops_skip: {
+    label: m["check.elevator_stops_skip.label"] as MessageFn,
+    description: m["check.elevator_stops_skip.description"] as MessageFn,
+  },
+  elevator_stops_span: {
+    label: m["check.elevator_stops_span.label"] as MessageFn,
+    description: m["check.elevator_stops_span.description"] as MessageFn,
+  },
 };
 
 export const issueI18n: Record<string, { label: MessageFn; description: MessageFn }> = {
@@ -432,7 +440,7 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   invalid_elevator: m["issue_select.short_label.validate"] as MessageFn,
   invalid_elevator_group: m["issue_select.short_label.validate_groups"] as MessageFn,
   invalid_elevator_stop: m["issue_select.short_label.validate"] as MessageFn,
-  invalid_elevator_stop_group: m["issue_select.short_label.validate_groups"] as MessageFn,
+  invalid_elevator_stop_group: m["issue_select.short_label.validate_stop_groups"] as MessageFn,
 };
 
 export const NO_FIX_STRATEGY_ID = "no_fix";
@@ -1032,6 +1040,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   max_elevator_stops_per_floor: {
     label: m["param.max_elevator_stops_per_floor.label"] as MessageFn,
     description: m["param.max_elevator_stops_per_floor.description"] as MessageFn,
+  },
+  elevator_stops_skip: {
+    label: m["param.elevator_stops_skip.label"] as MessageFn,
+    description: m["param.elevator_stops_skip.description"] as MessageFn,
+  },
+  elevator_stops_span: {
+    label: m["param.elevator_stops_span.label"] as MessageFn,
+    description: m["param.elevator_stops_span.description"] as MessageFn,
   },
 };
 

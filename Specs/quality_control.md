@@ -1725,6 +1725,30 @@ See GitHub issue #399, part of epic #344. `ElevatorStopGroupKind`'s `Element = N
 
 `InvalidElevatorStopIssue` (kind `INVALID_ELEVATOR_STOP`) carries `invalid: Vec<NodeId>` — the flagged stop nodes to remove, one per entry — mirroring `InvalidElevatorIssue`'s shape at stop-node rather than whole-elevator granularity. Repaired by `RemoveElevatorStopStrategy` (see `repair.md`).
 
+### ElevatorStopsSkipCheck / ElevatorStopsSpanCheck
+
+```rust
+pub struct ElevatorStopsSkipCheck {
+    pub instance_id: String,
+    pub elevator_stops_skip: u32,
+}
+
+pub struct ElevatorStopsSpanCheck {
+    pub instance_id: String,
+    pub elevator_stops_span: u32,
+}
+```
+
+See GitHub issue #400, part of epic #344. Both checks validate **pairs of a single elevator's own stops**, distinct from `MaxElevatorStopsCheck`/`MaxElevatorStopsPerFloorCheck`'s stop-count granularity — they flag a specific stop *pair* invalid, not a stop count. Distance between two stops is their floor-index gap (`maze.field.level_index_of`), not a geometric/graph distance — unlike `TeleportGeometricLengthCheck`/`VerticalPassageGroupGeometricProximityCheck`'s Euclidean-distance checks, an elevator's own stops always share the same field point, so only the floor axis is meaningful here. Both reuse `InvalidElevatorStopGroupIssue`/`ElevatorStopGroupKind` (`Element = NodeId`), same as `MaxElevatorStopsCheck` above — a flagged pair is a two-element group with `to_remove: 1` (removing either stop resolves the pair), mirroring `VerticalPassageGroupGeometricProximityCheck`'s pair-group shape rather than `MaxElevatorStopsCheck`'s whole-elevator group shape.
+
+**`ElevatorStopsSkipCheck`** (`check_type_id() == "elevator_stops_skip"`) — for each elevator, sorts its own stops by floor index and checks only *adjacent* pairs (`Vec::windows(2)`); a pair whose gap is strictly below `elevator_stops_skip` is flagged. Non-adjacent pairs are never compared directly, even if their own gap would also be below the minimum — catching the tightest gap in a run of close stops is enough to signal "this elevator has a too-tight consecutive pair somewhere."
+
+**`ElevatorStopsSpanCheck`** (`check_type_id() == "elevator_stops_span"`) — for each elevator, checks *every* pair of stops (not just adjacent ones); a pair whose gap exceeds `elevator_stops_span` is flagged. Scanning all pairs, not just the topmost/bottommost one, means a mid-elevator pair can flag even when the elevator's overall topmost-to-bottommost span does not exceed the maximum on its own — e.g. three stops where only the two extremes are more than `elevator_stops_span` apart still flags just that one pair, but a config with sparse middle stops can produce several flagged pairs from one elevator. Distinct from `ElevatorSpanCheck` (`elevator_span`, GitHub issue #397, above): that check compares only the topmost-minus-bottommost span against a threshold and flags the *whole elevator* (`InvalidElevatorIssue`) when it fails, repaired by removing/replacing the elevator entirely; `ElevatorStopsSpanCheck` flags individual over-limit *pairs* (`InvalidElevatorStopGroupIssue`) and is repaired by removing one stop of each flagged pair, a narrower fix that can resolve the issue without giving up the whole elevator. The two checks' `Gt`-comparison case overlaps in what they can flag (the topmost/bottommost pair, when over-limit, is always among `ElevatorStopsSpanCheck`'s flagged pairs), but are independent, separately-configured checks — a rule can select either, both, or neither.
+
+Both fire `InvalidElevatorStopGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "elevator_stops_skip" | "elevator_stops_span", threshold.to_string())` chained on. Repaired by the same `ElevatorStopGroupSelectStrategy` (see `repair.md`) `MaxElevatorStopsCheck`/`MaxElevatorStopsPerFloorCheck` use — which stop of a flagged pair is actually removed is the strategy's job, not either check's.
+
+**Same-floor stop pairs**: neither check dedups stops by floor the way `stop_floors` does (used by `ElevatorStopCountCheck`/`ElevatorSpanCheck`) — they compare raw stop nodes. Two stops of the same elevator sharing a floor (currently never generated, but not assumed impossible — see `elevator_core::stop_floors`'s doc comment) sort adjacent with gap `0`, which `ElevatorStopsSkipCheck` always flags for any `elevator_stops_skip >= 1`.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.

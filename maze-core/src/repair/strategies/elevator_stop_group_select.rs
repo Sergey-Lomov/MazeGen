@@ -26,9 +26,10 @@ static NESTED_SLOTS: &[NestedSlot] = &[
     NestedSlot { slot_id: SLOT_FIX_TARGET, kind: INVALID_ELEVATOR_STOP, min: 1, max: Some(1), dispatch_kind: NestedDispatchKind::Unordered },
 ];
 
-/// Handles `INVALID_ELEVATOR_STOP_GROUP` — see GitHub issue #399. Produced by
-/// `MaxElevatorStopsCheck` (excess stops on a single elevator) and
-/// `MaxElevatorStopsPerFloorCheck` (excess elevator-stops on a single floor). Mirrors
+/// Handles `INVALID_ELEVATOR_STOP_GROUP` — see GitHub issue #399, extended by GitHub issue #400.
+/// Produced by `MaxElevatorStopsCheck` (excess stops on a single elevator),
+/// `MaxElevatorStopsPerFloorCheck` (excess elevator-stops on a single floor), and
+/// `ElevatorStopsSkipCheck`/`ElevatorStopsSpanCheck` (a single flagged stop pair each). Mirrors
 /// `ElevatorGroupSelectStrategy`'s shape, except `K::Element` is a bare `NodeId` (one stop), not a
 /// whole `ElevatorNodes` — every fix removes one stop from whichever elevator it belongs to,
 /// never the whole elevator. `apply()`'s own candidate-pass/budget/nested-delegation mechanics are

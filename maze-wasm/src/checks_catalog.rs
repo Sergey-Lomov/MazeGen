@@ -10,7 +10,8 @@ use maze_core::{
     VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE,
     INVALID_ELEVATOR, ELEVATOR_STOP_COUNT_DEFAULT, ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON, ELEVATOR_SPAN_DEFAULT, ELEVATOR_SPAN_DEFAULT_COMPARISON,
     INVALID_ELEVATOR_GROUP, MAX_ELEVATOR_COUNT_DEFAULT, MAX_ELEVATOR_DENSITY_DEFAULT,
-    INVALID_ELEVATOR_STOP_GROUP, MAX_ELEVATOR_STOPS_DEFAULT, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT},
+    INVALID_ELEVATOR_STOP_GROUP, MAX_ELEVATOR_STOPS_DEFAULT, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT,
+    ELEVATOR_STOPS_SKIP_DEFAULT, ELEVATOR_STOPS_SPAN_DEFAULT},
 };
 use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, split_patterns_filter_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param};
 
@@ -965,6 +966,34 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_elevator_stops_per_floor",
                     label: "Max elevator stops per floor",
                     kind: ParamKindDto::Integer { default: MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "elevator_stops_skip",
+            label: "Minimum elevator skip",
+            description: "Fires if the floor-index gap between two consecutive stops of the same elevator is below the configured minimum.",
+            issue_kinds: vec![kind_str(INVALID_ELEVATOR_STOP_GROUP)],
+            params: vec![
+                ParamDescriptor {
+                    id: "elevator_stops_skip",
+                    label: "Min elevator skip",
+                    kind: ParamKindDto::Integer { default: ELEVATOR_STOPS_SKIP_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "elevator_stops_span",
+            label: "Maximum elevator span",
+            description: "Fires if the floor-index gap between any two stops of the same elevator exceeds the configured maximum.",
+            issue_kinds: vec![kind_str(INVALID_ELEVATOR_STOP_GROUP)],
+            params: vec![
+                ParamDescriptor {
+                    id: "elevator_stops_span",
+                    label: "Max elevator span",
+                    kind: ParamKindDto::Integer { default: ELEVATOR_STOPS_SPAN_DEFAULT as i64, min: 0, max: 1_000_000 },
                 },
             ],
             allow_multiple_instances: false,

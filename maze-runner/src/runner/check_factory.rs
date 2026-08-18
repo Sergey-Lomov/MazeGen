@@ -70,6 +70,8 @@ use maze_core::{
         InvalidElevatorGroupIssue,
         MaxElevatorStopsCheck, MAX_ELEVATOR_STOPS_DEFAULT,
         MaxElevatorStopsPerFloorCheck, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT,
+        ElevatorStopsSkipCheck, ELEVATOR_STOPS_SKIP_DEFAULT,
+        ElevatorStopsSpanCheck, ELEVATOR_STOPS_SPAN_DEFAULT,
         InvalidElevatorStopGroupIssue,
     },
     RegionClass,
@@ -840,6 +842,20 @@ pub(crate) fn build_invalid_elevator_stop_group_check<T: Tessellation>(instance:
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT);
             Some(Box::new(MaxElevatorStopsPerFloorCheck { instance_id, max_elevator_stops_per_floor }))
+        }
+        "elevator_stops_skip" => {
+            let elevator_stops_skip = instance.params.get("elevator_stops_skip")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(ELEVATOR_STOPS_SKIP_DEFAULT);
+            Some(Box::new(ElevatorStopsSkipCheck { instance_id, elevator_stops_skip }))
+        }
+        "elevator_stops_span" => {
+            let elevator_stops_span = instance.params.get("elevator_stops_span")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(ELEVATOR_STOPS_SPAN_DEFAULT);
+            Some(Box::new(ElevatorStopsSpanCheck { instance_id, elevator_stops_span }))
         }
         _ => None,
     }

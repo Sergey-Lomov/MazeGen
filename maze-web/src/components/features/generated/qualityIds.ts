@@ -3,6 +3,8 @@
 export const CHECK_IDS = [
   "elevator_span",
   "elevator_stop_count",
+  "elevator_stops_skip",
+  "elevator_stops_span",
   "external_escape_diversity",
   "loop_distance_from_finish",
   "loop_distance_from_start",
@@ -166,6 +168,8 @@ export const PARAM_IDS = [
   "edge_hub",
   "edge_scope",
   "edge_split",
+  "elevator_stops_skip",
+  "elevator_stops_span",
   "elevator_weight",
   "entry_pick",
   "floor_mode",

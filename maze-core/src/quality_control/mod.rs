@@ -115,4 +115,6 @@ pub use checks::{
     MaxElevatorDensityCheck, MAX_ELEVATOR_DENSITY_DEFAULT,
     MaxElevatorStopsCheck, MAX_ELEVATOR_STOPS_DEFAULT,
     MaxElevatorStopsPerFloorCheck, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT,
+    ElevatorStopsSkipCheck, ELEVATOR_STOPS_SKIP_DEFAULT,
+    ElevatorStopsSpanCheck, ELEVATOR_STOPS_SPAN_DEFAULT,
 };
