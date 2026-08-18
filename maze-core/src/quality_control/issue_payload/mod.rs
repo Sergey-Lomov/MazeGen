@@ -1,0 +1,176 @@
+mod types;
+mod resolvers;
+#[cfg(test)]
+mod tests;
+
+pub use types::{
+    IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload,
+    IssueRouteEdge, IssueRoutePayload, IssueRegionPayload,
+};
+
+use crate::graph::Graph;
+use crate::generation::PresetState;
+use crate::space::{MultiLevelField, Tessellation};
+use crate::graph::scc::ConnectedComponents;
+use super::issue::Issue;
+use super::issue_kinds::{InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidVerticalPassageIssue, InvalidVerticalPassageGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, ExcessiveSccCountIssue, InvalidElevatorIssue, InvalidElevatorGroupIssue, InvalidElevatorStopIssue, InvalidElevatorStopGroupIssue};
+use resolvers::{
+    resolve_cycle_payload, resolve_single_edge_map, resolve_edge_group_map,
+    resolve_invalid_split_tile_payload, resolve_invalid_split_tile_group_payload,
+    resolve_invalid_split_node_payload, resolve_invalid_split_node_group_payload,
+    resolve_invalid_split_route_payload, resolve_region_map, region_preset_locked_for_shrink,
+    region_preset_locked_for_expansion, excessive_scc_count_preset_locked,
+    resolve_invalid_elevator_payload, resolve_elevator_group_map,
+    resolve_invalid_elevator_stop_payload, resolve_elevator_stop_group_map,
+};
+
+/// Resolves `issue`'s structural payload against `graph`/`scc` — extracted from
+/// `maze-wasm/src/analytics.rs`'s `build_analytics_snapshot` (GitHub issue #147) so the same
+/// downcast/resolve logic backs both the JSON analytics report and the binary QC event tape,
+/// instead of two independently-maintained copies.
+pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, field: &MultiLevelField<T>, scc: &ConnectedComponents, preset_state: &PresetState) -> IssuePayload {
+    if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
+        let cycles = invalid.iter().filter_map(|&idx| all.get(idx));
+        if let Some(payload) = resolve_cycle_payload(cycles, invalid_sources, graph, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidLoopGroupIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopGroupIssue>() {
+        if let Some(payload) = resolve_cycle_payload(invalid.iter(), invalid_sources, graph, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(RegionNeedsExpansionIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<RegionNeedsExpansionIssue>() {
+        let nodes = resolve_region_map(invalid, invalid_sources, scc,
+            |idx, region| region_preset_locked_for_expansion(field, region, idx, scc, preset_state));
+        if !nodes.is_empty() {
+            return IssuePayload::RegionNeedsExpansion { nodes };
+        }
+    }
+
+    if let Some(RegionNeedsShrinkIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<RegionNeedsShrinkIssue>() {
+        let nodes = resolve_region_map(invalid, invalid_sources, scc,
+            |_, region| region_preset_locked_for_shrink(graph, region, preset_state));
+        if !nodes.is_empty() {
+            return IssuePayload::RegionNeedsShrink { nodes };
+        }
+    }
+
+    if let Some(InvalidTeleportIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidTeleportIssue>() {
+        let groups = resolve_single_edge_map(invalid, invalid_sources, graph, preset_state);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidTeleport { groups };
+        }
+    }
+
+    if let Some(InvalidTeleportGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidTeleportGroupIssue>() {
+        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidTeleport { groups };
+        }
+    }
+
+    if let Some(InvalidOneWayIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidOneWayIssue>() {
+        let groups = resolve_single_edge_map(invalid, invalid_sources, graph, preset_state);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidOneWay { groups };
+        }
+    }
+
+    if let Some(InvalidOneWayGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidOneWayGroupIssue>() {
+        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidOneWay { groups };
+        }
+    }
+
+    if let Some(InvalidVerticalPassageIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidVerticalPassageIssue>() {
+        let groups = resolve_single_edge_map(invalid, invalid_sources, graph, preset_state);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidVerticalPassage { groups };
+        }
+    }
+
+    if let Some(InvalidVerticalPassageGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidVerticalPassageGroupIssue>() {
+        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidVerticalPassage { groups };
+        }
+    }
+
+    if let Some(InvalidSplitTileIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitTileIssue>() {
+        if let Some(payload) = resolve_invalid_split_tile_payload(invalid, invalid_sources, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidSplitTileGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitTileGroupIssue>() {
+        if let Some(payload) = resolve_invalid_split_tile_group_payload(groups, invalid_sources, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidSplitNodeIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitNodeIssue>() {
+        if let Some(payload) = resolve_invalid_split_node_payload(invalid, invalid_sources, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidSplitNodeGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitNodeGroupIssue>() {
+        if let Some(payload) = resolve_invalid_split_node_group_payload(groups, invalid_sources, preset_state) {
+            return payload;
+        }
+    }
+
+    // `InvalidSplitNodeConnectionGroupIssue` reuses the `InvalidOneWay` payload variant (identical
+    // shape: a group of edges) rather than getting its own wire tag, same rationale as
+    // `InvalidLoopGroupIssue`→`InvalidLoop`/`InvalidTeleportGroupIssue`→`InvalidTeleport` above —
+    // the web side already narrows on `payload.kind === "invalid_one_way"` for this reused kind,
+    // not on `issue.kind` (which stays `"invalid_split_node_connection_group"`).
+    if let Some(InvalidSplitNodeConnectionGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitNodeConnectionGroupIssue>() {
+        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state);
+        if !groups.is_empty() {
+            return IssuePayload::InvalidOneWay { groups };
+        }
+    }
+
+    if let Some(InvalidSplitRouteIssue { routes, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitRouteIssue>() {
+        if let Some(payload) = resolve_invalid_split_route_payload(routes, invalid_sources, graph, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(issue) = issue.as_any().downcast_ref::<ExcessiveSccCountIssue>() {
+        let locked = excessive_scc_count_preset_locked(field, scc, preset_state);
+        let preset_locked = issue.source_checks().iter().map(|s| (s.clone(), locked)).collect();
+        return IssuePayload::ExcessiveSccCount { preset_locked };
+    }
+
+    if let Some(InvalidElevatorIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidElevatorIssue>() {
+        if let Some(payload) = resolve_invalid_elevator_payload(invalid, invalid_sources, graph, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidElevatorGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidElevatorGroupIssue>() {
+        if let Some(payload) = resolve_elevator_group_map(groups, invalid_sources, graph, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidElevatorStopIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidElevatorStopIssue>() {
+        if let Some(payload) = resolve_invalid_elevator_stop_payload(invalid, invalid_sources, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidElevatorStopGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidElevatorStopGroupIssue>() {
+        if let Some(payload) = resolve_elevator_stop_group_map(groups, invalid_sources, preset_state) {
+            return payload;
+        }
+    }
+
+    IssuePayload::None
+}
