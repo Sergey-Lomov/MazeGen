@@ -6,7 +6,7 @@ use maze_core::generation::PresetState;
 use maze_core::graph::EdgeKind;
 use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 use maze_core::quality_control::{Rule, MissingEndpointsIssue, RuleIterationOutcome};
-use maze_core::quality_control::rule::apply_commands;
+use maze_core::quality_control::apply_commands::apply_commands;
 use maze_core::quality_control::checks::MissingEndpointsCheck;
 use maze_core::repair::{
     RepairResult, RepairStrategy, StrategyParams,

@@ -333,7 +333,7 @@ mod tests {
 
         let (result, commands) = strategy_unconstrained().apply(&issue, &maze, &mut rng, &params, &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        crate::quality_control::rule::apply_commands(&mut maze, &PresetState::empty(), commands.clone(), None, None);
+        crate::quality_control::apply_commands::apply_commands(&mut maze, &PresetState::empty(), commands.clone(), None, None);
 
         let proposed = commands.len();
         let actually_split = maze.field.node_count() - nodes_before;

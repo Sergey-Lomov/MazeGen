@@ -1,4 +1,5 @@
 mod snapshot;
+mod snapshot_dto;
 mod post_edit;
 
 pub use snapshot::build_analytics_snapshot;

@@ -5,53 +5,20 @@ use maze_core::{
     space::Tessellation,
     quality_control::{
         QualityControlEngine, Issue, CycleAnalysisOverflowedIssue,
-        RepairLimitReachedIssue, IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload, resolve_issue_payload,
+        RepairLimitReachedIssue, IssuePayload, resolve_issue_payload,
     },
     graph::stats::{compute_node_stats_scoped, compute_spatial_edge_stats_scoped, compute_teleport_edge_stats, compute_teleport_edge_stats_scoped, compute_vertical_stats, average_degree},
-    generation::{SplitFaceRequirement, OneWayDirection, PresetState},
+    generation::PresetState,
     graph::split_topology::split_totals_scoped,
     Maze,
 };
 use crate::dto::{
-    EdgeDto, EdgeKindDto, IssueDto, IssuePayloadDto, IssueEdgeGroupPayloadDto, IssueSplitTilePayloadDto, IssueSplitGroupPayloadDto, IssueRouteEdgeDto, IssueRoutePayloadDto, IssueRegionPayloadDto,
+    EdgeDto, EdgeKindDto, IssueDto, IssuePayloadDto,
     MazeSnapshot, NavEdgeDto, NavNodeDto, NodeDto,
     NodeStatsDto, SpatialEdgeStatsDto, ElementsStatsDto, VerticalStatsDto, RouteInfoDto, JunctionBucket, GraphStatsDto,
-    SplitFaceRequirementDto, OneWayDirectionDto, SplitGroupDto, FloorScoped, MazeStatisticsDto,
+    SplitGroupDto, FloorScoped, MazeStatisticsDto,
 };
-
-fn edge_group_map_dto(map: HashMap<String, Vec<IssueEdgeGroupPayload>>) -> HashMap<String, Vec<IssueEdgeGroupPayloadDto>> {
-    map.into_iter()
-        .map(|(k, v)| (k, v.into_iter().map(|g| IssueEdgeGroupPayloadDto { edges: g.edges, preset_locked: g.preset_locked }).collect()))
-        .collect()
-}
-
-fn split_tile_dto(tile: IssueSplitTilePayload) -> IssueSplitTilePayloadDto {
-    IssueSplitTilePayloadDto { nodes: tile.nodes, preset_locked: tile.preset_locked }
-}
-
-fn split_group_map_dto(map: HashMap<String, Vec<IssueSplitGroupPayload>>) -> HashMap<String, Vec<IssueSplitGroupPayloadDto>> {
-    map.into_iter()
-        .map(|(k, v)| (k, v.into_iter().map(|g| IssueSplitGroupPayloadDto {
-            tiles: g.tiles.into_iter().map(split_tile_dto).collect(),
-            preset_locked: g.preset_locked,
-        }).collect()))
-        .collect()
-}
-
-fn route_payload_map_dto(map: HashMap<String, Vec<IssueRoutePayload>>) -> HashMap<String, Vec<IssueRoutePayloadDto>> {
-    map.into_iter()
-        .map(|(k, v)| (k, v.into_iter().map(|r| IssueRoutePayloadDto {
-            edges: r.edges.into_iter().map(|e| IssueRouteEdgeDto { from: e.from, to: e.to, is_split_edge: e.is_split_edge }).collect(),
-            preset_locked: r.preset_locked,
-        }).collect()))
-        .collect()
-}
-
-fn region_payload_map_dto(map: HashMap<String, Vec<IssueRegionPayload>>) -> HashMap<String, Vec<IssueRegionPayloadDto>> {
-    map.into_iter()
-        .map(|(k, v)| (k, v.into_iter().map(|r| IssueRegionPayloadDto { region: r.region, preset_locked: r.preset_locked }).collect()))
-        .collect()
-}
+use super::snapshot_dto::{edge_group_map_dto, split_group_map_dto, route_payload_map_dto, region_payload_map_dto, split_face_requirement_dto};
 
 /// Compute analytics snapshot from a fully-built maze (GraphInput).
 /// Independent of the generation pipeline — accepts any Maze<T> with a populated graph.
@@ -392,18 +359,6 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         statistics,
         timing: None,
     })
-}
-
-pub(crate) fn split_face_requirement_dto(req: SplitFaceRequirement) -> SplitFaceRequirementDto {
-    match req {
-        SplitFaceRequirement::Passage => SplitFaceRequirementDto::Passage,
-        SplitFaceRequirement::OneWay(OneWayDirection::Forward) =>
-            SplitFaceRequirementDto::OneWay { direction: OneWayDirectionDto::Forward },
-        SplitFaceRequirement::OneWay(OneWayDirection::Backward) =>
-            SplitFaceRequirementDto::OneWay { direction: OneWayDirectionDto::Backward },
-        SplitFaceRequirement::Wall => SplitFaceRequirementDto::Wall,
-        SplitFaceRequirement::Unspecified => SplitFaceRequirementDto::Unspecified,
-    }
 }
 
 #[cfg(test)]

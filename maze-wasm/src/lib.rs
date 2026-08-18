@@ -1,4 +1,7 @@
 mod dto;
+mod dto_issues;
+mod dto_statistics;
+mod dto_analytics_config;
 mod generation_config;
 mod result;
 mod runner;

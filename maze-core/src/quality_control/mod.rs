@@ -1,3 +1,4 @@
+pub mod apply_commands;
 pub mod issue;
 pub mod issue_kinds;
 pub mod issue_payload;
@@ -52,7 +53,8 @@ pub use vertical_passage_type::VerticalPassageType;
 pub use repair_area::RepairArea;
 pub use floor_group::{floors_of_edge, floors_of_edges, floors_of_node, floor_point_count};
 pub use cycle_kind::CycleKind;
-pub use rule::{Rule, RuleTrait, ApplyOutcome, RuleIterationOutcome};
+pub use apply_commands::{apply_commands, ApplyOutcome};
+pub use rule::{Rule, RuleTrait, RuleIterationOutcome};
 pub use rule_params::{RuleParams, RuleParamDescriptor, RuleParamKind, RULE_PARAM_DESCRIPTORS, PARAM_PROTECT_ROUTE, PARAM_VERTICAL_PASSAGE_TYPE, rule_param_applies_to};
 pub use stage::Stage;
 pub use engine::QualityControlEngine;

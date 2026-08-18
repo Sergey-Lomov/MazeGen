@@ -136,7 +136,7 @@ pub(crate) mod test_utils {
     use crate::repair::params::StrategyParams;
     use crate::repair::result::RepairResult;
     use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
-    use crate::quality_control::rule::apply_commands;
+    use crate::quality_control::apply_commands::apply_commands;
     use crate::quality_control::issue::IssueRequirement;
 
     /// Calls `strategy.apply` then immediately applies the returned commands to `maze` — mirrors
