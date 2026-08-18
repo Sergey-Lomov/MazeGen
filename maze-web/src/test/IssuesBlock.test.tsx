@@ -59,6 +59,16 @@ function regionNeedsExpansionIssue(sourceCheck: string, regions: { region: numbe
   };
 }
 
+function invalidElevatorStopIssue(sourceCheck: string, regions: { region: number[]; preset_locked: boolean }[] = [{ region: [5], preset_locked: false }, { region: [6], preset_locked: false }]): IssueDto {
+  return {
+    kind: "invalid_elevator_stop",
+    payload: { kind: "invalid_elevator_stop", nodes: { [sourceCheck]: regions } },
+    source_checks: [sourceCheck],
+    source_check_types: { [sourceCheck]: sourceCheck },
+    details: {},
+  };
+}
+
 function invalidSplitTileIssue(sourceCheck: string): IssueDto {
   // `split_distance_from_waypoint` (invalid_split_tile) resolves one group per flagged tile -- a
   // single flagged tile with 2 nodes (7 and 8, e.g. slot-0 plus one extra split node).
@@ -208,6 +218,17 @@ describe("IssueBubble", () => {
     const bubble = screen.getByText("Region expansion");
     fireEvent.mouseEnter(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[5, 6]]);
+    fireEvent.mouseLeave(bubble);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
+  });
+
+  it("hovering an invalid_elevator_stop bubble sets hoveredIssueRegionGroups to one group per flagged stop (GitHub issue #399), not one merged group; leaving clears it", () => {
+    const issue = invalidElevatorStopIssue("max_elevator_stops");
+    render(<IssueBubble issue={issue} sourceCheck="max_elevator_stops" />);
+
+    const bubble = screen.getByText("Elevator stop validation");
+    fireEvent.mouseEnter(bubble);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[5], [6]]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });

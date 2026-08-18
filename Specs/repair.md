@@ -1423,6 +1423,38 @@ Same as `SplitGroupSelectStrategy`: no route-protection concept (`element_allowe
 |----|------|---------|-------------|
 | `priority` | Enum(`random`/`problematic`) | `problematic` | Which eligible elevator to remove first — the shared `group_select::PARAM_PRIORITY` param, no elevator-specific metrics (unlike `SplitGroupSelectStrategy`'s volume/connectivity options). |
 
+### ElevatorStopGroupSelectStrategy
+
+Handles `INVALID_ELEVATOR_STOP_GROUP` — see GitHub issue #399, part of epic #344. For the group flagged by `MaxElevatorStopsCheck`/`MaxElevatorStopsPerFloorCheck` (`InvalidElevatorStopGroupIssue.groups: Vec<(Vec<NodeId>, u32)>` — see `quality_control.md`), picks stop nodes to remove and delegates each actual removal to a nested `INVALID_ELEVATOR_STOP` strategy filling the `fix_target` slot. Built directly on `group_select_apply` (above), mirrors `ElevatorGroupSelectStrategy`'s shape except `K::Element` is a bare `NodeId` (one stop), not a whole `ElevatorNodes` — every fix removes one stop from whichever elevator it belongs to, never the whole elevator.
+
+```rust
+pub const SLOT_FIX_TARGET: &str = "fix_target";
+```
+
+One nested slot, `fix_target`, expecting exactly one `INVALID_ELEVATOR_STOP`-handling strategy (`min: 1, max: Some(1)`, `dispatch_kind: Unordered`) — `RemoveElevatorStopStrategy`.
+
+No route-protection concept (`element_allowed` always `true`), and `element_invalidated` always returns `false` — removing one stop only touches edges incident to that stop, never another stop's own edges, so no other still-live candidate can ever be invalidated by resolving one.
+
+**Parameters:**
+
+| id | type | default | description |
+|----|------|---------|-------------|
+| `priority` | Enum(`random`/`problematic`) | `problematic` | Which eligible stop to remove first — the shared `group_select::PARAM_PRIORITY` param. |
+
+### RemoveElevatorStopStrategy
+
+Handles `INVALID_ELEVATOR_STOP` — see GitHub issue #399, part of epic #344. Removes each flagged stop node from its own elevator: every `EdgeKind::Elevator` edge between that stop and any of the elevator's other stops, via `elevator_utils::remove_stop_commands`. The rest of the elevator (its remaining stops' own fan) is left untouched — distinct from `RemoveElevatorStrategy`, which removes the whole elevator. A flagged stop no longer part of any current elevator (e.g. an earlier fixpoint iteration already removed it) is simply skipped. No configurable parameters. Always returns `Fixed { score: None }`, mirroring `RemoveElevatorStrategy`'s own "always succeeds, commands may be empty" contract.
+
+### elevator_utils (shared, not a strategy)
+
+`maze-core/src/repair/strategies/elevator_utils.rs` — reusable per-stop/whole-elevator command builders, factored out for GitHub issue #399 so future elevator-editing strategies (e.g. adding a stop, adding a whole elevator across a floor range) have a single place to build from. Currently exposes:
+
+- `find_elevator_by_stop(maze, stop) -> Option<Elevator>` — re-resolves (via `elevator_core::elevator_groups`) which current elevator a bare `NodeId` belongs to. The shared lookup every per-stop operation needs, since a group-select candidate only carries a bare `NodeId`, not the elevator it came from.
+- `remove_elevator_commands(maze, stop) -> Option<Vec<MutationCommand>>` — every edge of the whole elevator `stop` belongs to (used by `RemoveElevatorStrategy`'s equivalent inline logic; exists here for reuse, not yet wired into that strategy).
+- `remove_stop_commands(maze, stop) -> Option<Vec<MutationCommand>>` — only the edges incident to `stop` within its elevator, used by `RemoveElevatorStopStrategy`.
+
+Adding a stop to an existing elevator, or adding a whole new elevator across a floor range, are not implemented yet — no current check/strategy needs them — but this module is the intended home for them when they're needed.
+
 ### split_core (shared, not a strategy)
 
 `maze-core/src/repair/strategies/split_core.rs` — split-tile face-planning logic shared by `AddSplitStrategy` (GitHub issue #247) and `MissingLoopsSplitStrategy` (GitHub issue #254), factored out once the latter needed the same rotation/mirror search and existing-connection bookkeeping with one extra constraint: a specific new node must end up connected to a specific pre-chosen neighbor (a loop-closing bridge), and that same node must carry at least one more connection so it's a through-node, not a dead end.

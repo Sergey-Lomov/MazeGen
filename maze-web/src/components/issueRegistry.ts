@@ -29,6 +29,7 @@ export function presetLockElementsFor(issue: IssueDto, sourceCheck: string): { p
   if (payload.kind === "invalid_one_way") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_vertical_passage") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_elevator") return payload.groups[sourceCheck] ?? null;
+  if (payload.kind === "invalid_elevator_stop") return payload.nodes[sourceCheck] ?? null;
   if (payload.kind === "invalid_split_tile") {
     const groups = payload.groups[sourceCheck] ?? null;
     if (groups == null) return null;
@@ -98,6 +99,8 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   invalid_vertical_passage_group: () => ({ label: m["issue.invalid_vertical_passage_group.label"](), description: m["issue.invalid_vertical_passage_group.description"](), severity: "warning" }),
   invalid_elevator: () => ({ label: m["issue.invalid_elevator.label"](), description: m["issue.invalid_elevator.description"](), severity: "warning" }),
   invalid_elevator_group: () => ({ label: m["issue.invalid_elevator_group.label"](), description: m["issue.invalid_elevator_group.description"](), severity: "warning" }),
+  invalid_elevator_stop: () => ({ label: m["issue.invalid_elevator_stop.label"](), description: m["issue.invalid_elevator_stop.description"](), severity: "warning" }),
+  invalid_elevator_stop_group: () => ({ label: m["issue.invalid_elevator_stop_group.label"](), description: m["issue.invalid_elevator_stop_group.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -230,6 +233,8 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   elevator_span: (d) => d.span !== undefined ? m["issue.invalid_elevator.elevator_span_label"]({ span: d.span }) : undefined,
   max_elevator_count: (d) => d.max_elevator_count !== undefined ? m["issue.invalid_elevator_group.max_elevator_count_label"]({ max_elevator_count: d.max_elevator_count }) : undefined,
   max_elevator_density: (d) => d.max_elevator_density !== undefined ? m["issue.invalid_elevator_group.max_density_label"]({ max_density: d.max_elevator_density }) : undefined,
+  max_elevator_stops: (d) => d.max_elevator_stops !== undefined ? m["issue.invalid_elevator_stop_group.max_elevator_stops_label"]({ max_elevator_stops: d.max_elevator_stops }) : undefined,
+  max_elevator_stops_per_floor: (d) => d.max_elevator_stops_per_floor !== undefined ? m["issue.invalid_elevator_stop_group.max_elevator_stops_per_floor_label"]({ max_elevator_stops_per_floor: d.max_elevator_stops_per_floor }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

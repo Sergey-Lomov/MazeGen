@@ -165,6 +165,10 @@ export type IssuePayloadDto =
       kind: "invalid_elevator";
       groups: Record<string, IssueEdgeGroupPayload[]>;
     }
+  | {
+      kind: "invalid_elevator_stop";
+      nodes: Record<string, IssueRegionPayload[]>;
+    }
 ;
 
 export interface IssueDto {

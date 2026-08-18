@@ -6,7 +6,7 @@ use crate::generation::edge_ops::bidirectional_edge_feasible;
 use crate::space::{MultiLevelField, Tessellation};
 use super::issue::Issue;
 use crate::graph::EdgeKind;
-use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidVerticalPassageIssue, InvalidVerticalPassageGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, SplitRouteEdge, ExcessiveSccCountIssue, InvalidElevatorIssue, ElevatorNodes, InvalidElevatorGroupIssue};
+use super::issue_kinds::{canonical_cycle_key, InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidVerticalPassageIssue, InvalidVerticalPassageGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, SplitTileNodes, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, SplitRouteEdge, ExcessiveSccCountIssue, InvalidElevatorIssue, ElevatorNodes, InvalidElevatorGroupIssue, InvalidElevatorStopIssue, InvalidElevatorStopGroupIssue};
 
 /// One flagged edge-group element (a cycle, a one-way/teleport group, or a single flagged edge
 /// treated as a size-one group) resolved for the web/tape wire boundary — pairs the group's
@@ -169,6 +169,14 @@ pub enum IssuePayload {
     /// stop-node set, not by saved edge ids — see GitHub issue #397, mirrors `RemoveElevatorStrategy`'s
     /// own re-resolution). Mirrors `IssuePayloadDto::InvalidElevator`.
     InvalidElevator { groups: HashMap<String, Vec<IssueEdgeGroupPayload>> },
+    /// Keyed by source check id — each entry is one flagged elevator stop, wrapped as a
+    /// single-node "region" (reuses `IssueRegionPayload`'s shape — see GitHub issue #399). A single
+    /// flagged stop (`INVALID_ELEVATOR_STOP`) and a jointly-flagged stop group
+    /// (`INVALID_ELEVATOR_STOP_GROUP`, excess count/density) both resolve into this same shape:
+    /// a group's stops are emitted as separate single-node entries rather than one multi-node
+    /// region, since each stop highlights independently (unlike a region's contiguous cell set).
+    /// Mirrors `IssuePayloadDto::InvalidElevatorStop`.
+    InvalidElevatorStop { nodes: HashMap<String, Vec<IssueRegionPayload>> },
 }
 
 /// Resolves `issue`'s structural payload against `graph`/`scc` — extracted from
@@ -504,6 +512,45 @@ fn resolve_elevator_group_map(groups: &[(Vec<ElevatorNodes>, u32)], invalid_sour
     if out.is_empty() { None } else { Some(IssuePayload::InvalidElevator { groups: out }) }
 }
 
+/// Resolves flagged single elevator stops into one `IssueRegionPayload` (a single-node "region")
+/// per flagged stop, keyed by the specific check(s) that flagged *that* stop (`invalid_sources`)
+/// — mirrors `resolve_invalid_split_node_payload`'s per-node attribution. `preset_locked` uses the
+/// same node-removal-lock predicate as split nodes (`is_node_locked_for_removal`), since a flagged
+/// stop is fixed the same way — removing it from its elevator's edge fan (`RemoveElevatorStopStrategy`).
+fn resolve_invalid_elevator_stop_payload(invalid: &[NodeId], invalid_sources: &HashMap<NodeId, Vec<String>>, preset_state: &PresetState) -> Option<IssuePayload> {
+    let mut nodes: HashMap<String, Vec<IssueRegionPayload>> = HashMap::new();
+    for &id in invalid {
+        let Some(id32) = u32::try_from(id).ok() else { continue };
+        let preset_locked = preset_state.is_node_locked_for_removal(id);
+        for source in invalid_sources.get(&id).into_iter().flatten() {
+            nodes.entry(source.clone()).or_default().push(IssueRegionPayload { region: vec![id32], preset_locked });
+        }
+    }
+    if nodes.is_empty() { None } else { Some(IssuePayload::InvalidElevatorStop { nodes }) }
+}
+
+/// Resolves every flagged elevator-stop group (excess count/density — see GitHub issue #399) into
+/// one `IssueRegionPayload` per stop in the group, keyed by the specific check(s) that flagged
+/// *that group* (`invalid_sources`, canonical-group-key-keyed) — mirrors `resolve_elevator_group_map`'s
+/// per-group attribution, but emits one entry per stop (not one entry per whole group) since each
+/// stop highlights as its own independent single-node region, unlike a whole elevator's edge fan.
+fn resolve_elevator_stop_group_map(groups: &[(Vec<NodeId>, u32)], invalid_sources: &HashMap<Vec<NodeId>, Vec<String>>, preset_state: &PresetState) -> Option<IssuePayload> {
+    let mut out: HashMap<String, Vec<IssueRegionPayload>> = HashMap::new();
+    for (group, _to_remove) in groups {
+        let mut key = group.clone();
+        key.sort_unstable();
+        let sources = invalid_sources.get(&key);
+        for &id in group {
+            let Some(id32) = u32::try_from(id).ok() else { continue };
+            let preset_locked = preset_state.is_node_locked_for_removal(id);
+            for source in sources.into_iter().flatten() {
+                out.entry(source.clone()).or_default().push(IssueRegionPayload { region: vec![id32], preset_locked });
+            }
+        }
+    }
+    if out.is_empty() { None } else { Some(IssuePayload::InvalidElevatorStop { nodes: out }) }
+}
+
 pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, field: &MultiLevelField<T>, scc: &ConnectedComponents, preset_state: &PresetState) -> IssuePayload {
     if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
         let cycles = invalid.iter().filter_map(|&idx| all.get(idx));
@@ -632,6 +679,18 @@ pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, 
 
     if let Some(InvalidElevatorGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidElevatorGroupIssue>() {
         if let Some(payload) = resolve_elevator_group_map(groups, invalid_sources, graph, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidElevatorStopIssue { invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidElevatorStopIssue>() {
+        if let Some(payload) = resolve_invalid_elevator_stop_payload(invalid, invalid_sources, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(InvalidElevatorStopGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidElevatorStopGroupIssue>() {
+        if let Some(payload) = resolve_elevator_stop_group_map(groups, invalid_sources, preset_state) {
             return payload;
         }
     }
@@ -1916,5 +1975,77 @@ mod tests {
         let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state);
         let IssuePayload::InvalidElevator { groups } = payload else { panic!("expected InvalidElevator, got {payload:?}") };
         assert!(groups["max_elevator_density"][0].preset_locked);
+    }
+
+    #[test]
+    fn invalid_elevator_stop_issue_with_no_flagged_stops_resolves_to_none() {
+        let (graph, scc) = empty_graph_and_scc();
+        let issue = InvalidElevatorStopIssue::new_from_check("check", vec![]);
+        assert_eq!(resolve(&issue, &graph, &scc), IssuePayload::None);
+    }
+
+    #[test]
+    fn invalid_elevator_stop_issue_resolves_each_flagged_stop_as_its_own_single_node_region() {
+        let (graph, _elevator) = elevator_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidElevatorStopIssue::new_from_check("max_elevator_stops", vec![1, 2]);
+
+        let payload = resolve(&issue, &graph, &scc);
+        let IssuePayload::InvalidElevatorStop { nodes } = payload else { panic!("expected InvalidElevatorStop, got {payload:?}") };
+        assert_eq!(nodes.len(), 1);
+        let check_regions = &nodes["max_elevator_stops"];
+        let mut regions: Vec<Vec<u32>> = check_regions.iter().map(|r| r.region.clone()).collect();
+        regions.sort();
+        assert_eq!(regions, vec![vec![1], vec![2]], "each flagged stop must be its own single-node region, not one merged region");
+    }
+
+    #[test]
+    fn invalid_elevator_stop_issue_preset_locked_when_stop_touches_a_preset_edge() {
+        let (graph, _elevator) = elevator_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidElevatorStopIssue::new_from_check("max_elevator_stops", vec![1]);
+
+        let mut preset_state = PresetState::empty();
+        preset_state.preset_edges.insert((1, 2));
+        let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state);
+        let IssuePayload::InvalidElevatorStop { nodes } = payload else { panic!("expected InvalidElevatorStop, got {payload:?}") };
+        assert!(nodes["max_elevator_stops"][0].preset_locked);
+    }
+
+    #[test]
+    fn invalid_elevator_stop_group_issue_with_no_flagged_groups_resolves_to_none() {
+        let (graph, scc) = empty_graph_and_scc();
+        let issue = InvalidElevatorStopGroupIssue::new_from_check("check", vec![]);
+        assert_eq!(resolve(&issue, &graph, &scc), IssuePayload::None);
+    }
+
+    #[test]
+    fn invalid_elevator_stop_group_issue_resolves_each_stop_in_the_group_as_its_own_region() {
+        let (graph, _elevator) = elevator_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidElevatorStopGroupIssue::new_from_check("max_elevator_stops_per_floor", vec![(vec![1, 2, 3], 1)]);
+
+        let payload = resolve(&issue, &graph, &scc);
+        let IssuePayload::InvalidElevatorStop { nodes } = payload else { panic!("expected InvalidElevatorStop, got {payload:?}") };
+        let check_regions = &nodes["max_elevator_stops_per_floor"];
+        let mut regions: Vec<Vec<u32>> = check_regions.iter().map(|r| r.region.clone()).collect();
+        regions.sort();
+        assert_eq!(regions, vec![vec![1], vec![2], vec![3]], "every stop in the group must be emitted as its own single-node region");
+    }
+
+    #[test]
+    fn invalid_elevator_stop_group_issue_preset_locked_when_stop_touches_a_preset_edge() {
+        let (graph, _elevator) = elevator_graph();
+        let (_, scc) = empty_graph_and_scc();
+        let issue = InvalidElevatorStopGroupIssue::new_from_check("max_elevator_stops", vec![(vec![1, 2], 1)]);
+
+        let mut preset_state = PresetState::empty();
+        preset_state.preset_edges.insert((1, 2));
+        let payload = resolve_issue_payload(&issue, &graph, &dummy_field(), &scc, &preset_state);
+        let IssuePayload::InvalidElevatorStop { nodes } = payload else { panic!("expected InvalidElevatorStop, got {payload:?}") };
+        let check_regions = &nodes["max_elevator_stops"];
+        let locked: HashMap<u32, bool> = check_regions.iter().map(|r| (r.region[0], r.preset_locked)).collect();
+        assert!(locked[&1], "stop 1 touches the preset edge (1,2), must be locked");
+        assert!(locked[&2], "stop 2 also touches the preset edge (1,2), must be locked");
     }
 }

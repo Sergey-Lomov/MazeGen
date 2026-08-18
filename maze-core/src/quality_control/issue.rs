@@ -35,6 +35,8 @@ pub enum IssueKind {
     MissingVerticalPassages,
     InvalidElevator,
     InvalidElevatorGroup,
+    InvalidElevatorStop,
+    InvalidElevatorStopGroup,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -261,6 +263,22 @@ pub const INVALID_ELEVATOR: IssueKind = IssueKind::InvalidElevator;
 /// Repaired by `ElevatorGroupSelectStrategy`, which delegates each candidate elevator's removal to
 /// a nested `INVALID_ELEVATOR` strategy (`RemoveElevatorStrategy`/`ReplaceElevatorWithPassagesStrategy`).
 pub const INVALID_ELEVATOR_GROUP: IssueKind = IssueKind::InvalidElevatorGroup;
+/// One or more of a single elevator's own stop nodes are individually invalid — see GitHub issue
+/// #399, part of epic #344. Distinct from `INVALID_ELEVATOR`: that kind flags a whole elevator for
+/// removal/conversion; this one flags specific stop nodes within an otherwise-fine elevator for
+/// removal, shrinking the elevator by that many stops rather than removing it outright. Carries
+/// `InvalidElevatorStopIssue` — a `Vec<NodeId>` of the stop nodes to remove, mirroring
+/// `InvalidElevatorIssue`'s shape but at stop-node rather than whole-elevator granularity. Repaired
+/// by `RemoveElevatorStopStrategy`.
+pub const INVALID_ELEVATOR_STOP: IssueKind = IssueKind::InvalidElevatorStop;
+/// A set of stop nodes across one or more elevators is jointly invalid — see GitHub issue #399,
+/// part of epic #344. Distinct from `INVALID_ELEVATOR_STOP`: that kind flags specific stop nodes
+/// invalid on their own; this one flags an aggregate condition (excess stop count on a single
+/// elevator, or excess elevator-stop density on a single floor), none of which is individually
+/// invalid. Carries `InvalidElevatorStopGroupIssue` — see that type's doc comment. Repaired by
+/// `ElevatorStopGroupSelectStrategy`, which delegates each candidate stop's removal to a nested
+/// `INVALID_ELEVATOR_STOP` strategy (`RemoveElevatorStopStrategy`).
+pub const INVALID_ELEVATOR_STOP_GROUP: IssueKind = IssueKind::InvalidElevatorStopGroup;
 
 /// `as_str`/`from_str`/`Display` for `IssueKind` are generated (`codegen`'s `id_enum` module, see
 /// GitHub issue #361) into the sibling `issue_kind_ids.rs` from the variant list above — do not

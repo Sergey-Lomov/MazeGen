@@ -68,6 +68,9 @@ use maze_core::{
         MaxElevatorCountCheck, MAX_ELEVATOR_COUNT_DEFAULT,
         MaxElevatorDensityCheck, MAX_ELEVATOR_DENSITY_DEFAULT,
         InvalidElevatorGroupIssue,
+        MaxElevatorStopsCheck, MAX_ELEVATOR_STOPS_DEFAULT,
+        MaxElevatorStopsPerFloorCheck, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT,
+        InvalidElevatorStopGroupIssue,
     },
     RegionClass,
 };
@@ -817,6 +820,26 @@ pub(crate) fn build_invalid_elevator_group_check<T: Tessellation>(instance: &Che
                 .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(MAX_ELEVATOR_DENSITY_DEFAULT);
             Some(Box::new(MaxElevatorDensityCheck { instance_id, max_density }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_invalid_elevator_stop_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidElevatorStopGroupIssue>>> {
+    match instance.type_id.as_str() {
+        "max_elevator_stops" => {
+            let max_elevator_stops = instance.params.get("max_elevator_stops")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MAX_ELEVATOR_STOPS_DEFAULT);
+            Some(Box::new(MaxElevatorStopsCheck { instance_id, max_elevator_stops }))
+        }
+        "max_elevator_stops_per_floor" => {
+            let max_elevator_stops_per_floor = instance.params.get("max_elevator_stops_per_floor")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT);
+            Some(Box::new(MaxElevatorStopsPerFloorCheck { instance_id, max_elevator_stops_per_floor }))
         }
         _ => None,
     }

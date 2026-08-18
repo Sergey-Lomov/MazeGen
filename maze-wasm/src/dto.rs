@@ -206,6 +206,13 @@ pub enum IssuePayloadDto {
     InvalidElevator {
         groups: HashMap<String, Vec<IssueEdgeGroupPayloadDto>>,
     },
+    /// Keyed by source check id — each entry is one flagged elevator stop, wrapped as a
+    /// single-node "region" (reuses `IssueRegionPayloadDto`'s shape). A single flagged stop
+    /// (`invalid_elevator_stop`) and a jointly-flagged stop group (`invalid_elevator_stop_group`,
+    /// excess count/density) both resolve into this same shape — see GitHub issue #399.
+    InvalidElevatorStop {
+        nodes: HashMap<String, Vec<IssueRegionPayloadDto>>,
+    },
 }
 
 #[derive(Serialize, Dto)]

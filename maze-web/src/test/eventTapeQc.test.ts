@@ -137,6 +137,21 @@ describe("decodeQcEvent", () => {
     });
   });
 
+  it("decodes CheckRan with IssuePayload::InvalidElevatorStop and an empty details map (GitHub issue #399, tag 11)", () => {
+    // one entry: key "check1" -> one region -> one node (5), then preset_locked=1
+    const nodesMap = concatBytes([
+      u32le(1), strPayload("check1"), u32le(1), u32le(1), u32le(5), new Uint8Array([1]),
+    ]);
+    const payload = concatBytes([strPayload("c1"), new Uint8Array([1]), strPayload("invalid_elevator_stop"), new Uint8Array([11]), nodesMap, u32le(0)]);
+    expect(decodeQcEvent(QC_EVENT_TAG.CHECK_RAN, payload)).toEqual({
+      kind: "CheckRan", checkId: "c1",
+      issue: {
+        issueKind: "invalid_elevator_stop", payload: { kind: "InvalidElevatorStop", nodes: new Map([["check1", [{ region: [5n], presetLocked: true }]]]) },
+        details: new Map(),
+      },
+    });
+  });
+
   it("decodes IssuesMerged with IssuePayload::None and an empty details map", () => {
     const payload = concatBytes([strPayload("invalid_loop"), new Uint8Array([0]), u32le(0)]);
     expect(decodeQcEvent(QC_EVENT_TAG.ISSUES_MERGED, payload)).toEqual({

@@ -9,7 +9,8 @@ use maze_core::{
     VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_TYPE, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_COUNT_INCOMING, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
     VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE,
     INVALID_ELEVATOR, ELEVATOR_STOP_COUNT_DEFAULT, ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON, ELEVATOR_SPAN_DEFAULT, ELEVATOR_SPAN_DEFAULT_COMPARISON,
-    INVALID_ELEVATOR_GROUP, MAX_ELEVATOR_COUNT_DEFAULT, MAX_ELEVATOR_DENSITY_DEFAULT},
+    INVALID_ELEVATOR_GROUP, MAX_ELEVATOR_COUNT_DEFAULT, MAX_ELEVATOR_DENSITY_DEFAULT,
+    INVALID_ELEVATOR_STOP_GROUP, MAX_ELEVATOR_STOPS_DEFAULT, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT},
 };
 use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, split_patterns_filter_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param};
 
@@ -936,6 +937,34 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_elevator_density",
                     label: "Max elevator density (per 100 cells)",
                     kind: ParamKindDto::Float { default: MAX_ELEVATOR_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
+                },
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "max_elevator_stops",
+            label: "Maximum stops per elevator",
+            description: "Fires if a single elevator's own stop count exceeds the configured maximum.",
+            issue_kinds: vec![kind_str(INVALID_ELEVATOR_STOP_GROUP)],
+            params: vec![
+                ParamDescriptor {
+                    id: "max_elevator_stops",
+                    label: "Max stops per elevator",
+                    kind: ParamKindDto::Integer { default: MAX_ELEVATOR_STOPS_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "max_elevator_stops_per_floor",
+            label: "Maximum elevator stops per floor",
+            description: "Fires if a single floor's total elevator-stop count (across every elevator touching it) exceeds the configured maximum.",
+            issue_kinds: vec![kind_str(INVALID_ELEVATOR_STOP_GROUP)],
+            params: vec![
+                ParamDescriptor {
+                    id: "max_elevator_stops_per_floor",
+                    label: "Max elevator stops per floor",
+                    kind: ParamKindDto::Integer { default: MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT as i64, min: 0, max: 1_000_000 },
                 },
             ],
             allow_multiple_instances: false,

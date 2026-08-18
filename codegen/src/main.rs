@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use codegen::{check, dto_ts, golden, id_enum, naming::to_camel_case, parser, quality_i18n, rust_emitter, scaffold_new, ts_emitter};
+use codegen::{check, dto_ts, golden, id_enum, issue_payload_check, naming::to_camel_case, parser, quality_i18n, rust_emitter, scaffold_new, ts_emitter};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -205,6 +205,20 @@ fn main() -> ExitCode {
     if let Ok(existing) = fs::read_to_string(&issue_registry_path) {
         for m in quality_i18n::find_missing_issue_registry(&quality_ids, &existing) {
             report_missing_entry("issueRegistry.ts", &m, check_only, &mut had_errors);
+        }
+    }
+
+    let issue_payload_rust_path = repo_root.join("maze-core").join("src").join("quality_control").join("event_encode.rs");
+    let issue_payload_ts_path = repo_root.join("maze-web").join("src").join("debug").join("eventTape").join("qcCustom.ts");
+    match (fs::read_to_string(&issue_payload_rust_path), fs::read_to_string(&issue_payload_ts_path)) {
+        (Ok(rust_src), Ok(ts_src)) => {
+            for err in issue_payload_check::check_tags(&rust_src, &ts_src) {
+                eprintln!("codegen: check error: {}", err.0);
+                had_errors = true;
+            }
+        }
+        _ => {
+            eprintln!("codegen: WARNING: could not read event_encode.rs/qcCustom.ts — skipped IssuePayload tag check");
         }
     }
 

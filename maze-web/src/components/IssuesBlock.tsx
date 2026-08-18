@@ -102,6 +102,13 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const elevatorGroups = sourceCheck != null && issue.payload.kind === "invalid_elevator"
     ? issue.payload.groups[sourceCheck] ?? null
     : null;
+  // `invalid_elevator_stop`/`invalid_elevator_stop_group` (GitHub issue #399) share the same
+  // single-node "region" payload shape as `region_needs_expansion`/`region_needs_shrink` -- each
+  // flagged stop (or, for a group, each stop in the group) highlights as its own independent
+  // single-node region square, not a merged multi-node region.
+  const elevatorStopNodes = sourceCheck != null && issue.payload.kind === "invalid_elevator_stop"
+    ? issue.payload.nodes[sourceCheck] ?? null
+    : null;
   // Same per-check isolation as `loopGroups` above — only this bubble's own source check's
   // flagged regions, not every contributing check's regions combined. Covers both
   // `region_needs_expansion` (undersized) and `region_needs_shrink` (oversized) — both highlight
@@ -163,6 +170,12 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const elevatorCellNodes = elevatorGroups != null
     ? [Array.from(new Set(elevatorGroups.filter(visibleGroup).flatMap((g) => g.edges).flat()))]
     : null;
+  // One region-highlight group per flagged stop (not one merged group) -- mirrors
+  // `visibleRegionGroups` below but keeps each stop independently toggleable/highlightable, since
+  // stops in a group aren't necessarily adjacent the way a region's member cells are.
+  const elevatorStopCellNodes = elevatorStopNodes != null
+    ? elevatorStopNodes.filter(visibleGroup).map((n) => n.region)
+    : null;
   // Renders every visible tile as its own region-highlight group (one fill+perimeter per distinct
   // tile, `RegionHighlightRenderer`'s per-point dedup) -- visibility is decided at whichever
   // granularity `TILE_GRANULARITY_CHECKS` selects (tile-level for max_split_count/max_split_density,
@@ -199,10 +212,12 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ? () => setHoveredIssueRegionGroups(verticalPassageCellNodes)
     : elevatorCellNodes != null
     ? () => setHoveredIssueRegionGroups(elevatorCellNodes)
+    : elevatorStopCellNodes != null
+    ? () => setHoveredIssueRegionGroups(elevatorStopCellNodes)
     : undefined;
   const handleMouseLeave = loopEdges != null || teleportEdges != null || oneWayEdges != null || splitRouteEdges != null
     ? () => setHoveredIssueLoopEdges(null)
-    : visibleRegionGroups != null || splitTileNodes != null || verticalPassageCellNodes != null || elevatorCellNodes != null
+    : visibleRegionGroups != null || splitTileNodes != null || verticalPassageCellNodes != null || elevatorCellNodes != null || elevatorStopCellNodes != null
     ? () => setHoveredIssueRegionGroups(null)
     : undefined;
 
@@ -234,7 +249,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ...(teleportEdges ?? []),
     ...(oneWayEdges ?? []),
     ...(splitRouteEdges?.flat() ?? []),
-  ].flat().concat((splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat());
+  ].flat().concat((splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat());
 
   return (
     <>

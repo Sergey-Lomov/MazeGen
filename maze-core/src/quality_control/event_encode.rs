@@ -97,6 +97,10 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             out.push(10);
             write_str_keyed_edge_pairs(out, groups);
         }
+        IssuePayload::InvalidElevatorStop { nodes } => {
+            out.push(11);
+            write_str_keyed_node_lists(out, nodes);
+        }
     }
 }
 

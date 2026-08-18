@@ -1684,6 +1684,47 @@ pub type InvalidElevatorGroupIssue = InvalidGroupIssue<ElevatorGroupKind>;
 
 `ElevatorGroupKind` selects the `InvalidGroupIssue<K>`/`GroupSelectStrategy<K>` generic-group-issue instantiation (see `InvalidGroupIssueKind`'s own doc section above) for elevator groups — mirrors `SplitGroupKind`'s shape (`Element = ElevatorNodes`, a whole elevator) rather than `VerticalPassageGroupKind`'s (`Element = EdgeId`, a single passage edge), since an elevator — like a split tile — is an indivisible entity that gets wholly removed/converted, never partially. `INVALID_ELEVATOR_GROUP` is distinct from `INVALID_ELEVATOR`: that kind flags a single elevator invalid on its own; this one flags an aggregate condition over the whole-maze elevator group (excess count, excess density), none of which is individually invalid — mirrors `INVALID_VERTICAL_PASSAGE_GROUP`'s split from `INVALID_VERTICAL_PASSAGE`.
 
+### MaxElevatorStopsCheck / MaxElevatorStopsPerFloorCheck
+
+```rust
+pub struct MaxElevatorStopsCheck {
+    pub instance_id: String,
+    pub max_elevator_stops: u32,
+}
+
+pub struct MaxElevatorStopsPerFloorCheck {
+    pub instance_id: String,
+    pub max_elevator_stops_per_floor: u32,
+}
+```
+
+See GitHub issue #399, part of epic #344. Both checks validate a **stop-level** granularity, distinct from `MaxElevatorCountCheck`/`MaxElevatorDensityCheck`'s whole-elevator-level: they flag individual stop nodes of an otherwise-fine elevator for removal, shrinking it, rather than removing a whole elevator. `Element = NodeId` (a single stop), not `ElevatorNodes`.
+
+**`MaxElevatorStopsCheck`** (`check_type_id() == "max_elevator_stops"`) — per-elevator scope. Scans every `elevator_groups(maze)` entry independently; an elevator whose own stop count exceeds `max_elevator_stops` becomes its own group (all of its stops, sorted), paired with `to_remove = count - max_elevator_stops`. Several over-budget elevators each contribute their own group to the same issue (sorted by stop-node set for determinism) — mirrors `MaxVerticalPassageCountCheck`'s `FloorScope::PerFloor` shape in spirit (one group per over-budget unit), except the unit here is "one elevator", not "one floor".
+
+**`MaxElevatorStopsPerFloorCheck`** (`check_type_id() == "max_elevator_stops_per_floor"`) — per-floor scope, always (no `WholeMaze` variant — a floor-level count is the only shape that makes sense for this check). Any elevator stop on a floor counts toward that floor's tally, from any elevator — an elevator contributes at most one stop per floor it touches, by construction (`elevator_core`'s stop set never puts two of the same elevator's stops on one floor). Groups every over-budget floor's stops into its own group (sorted by `LevelId` for determinism), `to_remove = count - max_elevator_stops_per_floor`.
+
+Either way, fires `InvalidElevatorStopGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "max_elevator_stops" | "max_elevator_stops_per_floor", threshold.to_string())` chained on. Repaired by `ElevatorStopGroupSelectStrategy` (see `repair.md`) — which stops within an over-budget group are actually removed is the strategy's job, not either check's.
+
+### ElevatorStopGroupKind / InvalidElevatorStopGroupIssue
+
+```rust
+pub struct ElevatorStopGroupKind;
+
+impl InvalidGroupIssueKind for ElevatorStopGroupKind {
+    type Element = NodeId;
+    const KIND: IssueKind = INVALID_ELEVATOR_STOP_GROUP;
+    const NESTED_KIND: IssueKind = INVALID_ELEVATOR_STOP;
+    const NESTED_SLOT_ID: &'static str = "fix_target";
+}
+
+pub type InvalidElevatorStopGroupIssue = InvalidGroupIssue<ElevatorStopGroupKind>;
+```
+
+See GitHub issue #399, part of epic #344. `ElevatorStopGroupKind`'s `Element = NodeId` (a bare stop node), distinct from `ElevatorGroupKind`'s `Element = ElevatorNodes` (a whole elevator) — a fix here always removes one stop from whichever elevator it belongs to, never the whole elevator. `INVALID_ELEVATOR_STOP_GROUP` is distinct from `INVALID_ELEVATOR_STOP`: that kind flags individual stops invalid on their own; this one flags an aggregate condition (excess stops on one elevator, or excess elevator-stop density on one floor), none of which is individually invalid — mirrors `INVALID_ELEVATOR_GROUP`'s split from `INVALID_ELEVATOR`.
+
+`InvalidElevatorStopIssue` (kind `INVALID_ELEVATOR_STOP`) carries `invalid: Vec<NodeId>` — the flagged stop nodes to remove, one per entry — mirroring `InvalidElevatorIssue`'s shape at stop-node rather than whole-elevator granularity. Repaired by `RemoveElevatorStopStrategy` (see `repair.md`).
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -1708,6 +1749,7 @@ enum IssuePayloadDto {
     RegionNeedsExpansion { nodes: HashMap<String, Vec<Vec<u32>>> }, // region_needs_expansion only, keyed by source check instance id
     RegionNeedsShrink { nodes: HashMap<String, Vec<Vec<u32>>> }, // region_needs_shrink only, keyed by source check instance id
     InvalidVerticalPassage { groups: HashMap<String, Vec<IssueEdgeGroupPayload>> }, // invalid_vertical_passage only, keyed by source check instance id — see quality-feature.md's "Issue rendering" section for its region-square (not edge-line) highlight treatment
+    InvalidElevatorStop { nodes: HashMap<String, Vec<IssueRegionPayload>> }, // invalid_elevator_stop and invalid_elevator_stop_group, keyed by source check instance id — see GitHub issue #399
 }
 ```
 
@@ -1756,6 +1798,25 @@ logic exactly, for `region_needs_shrink` issues (currently produced by
 `MaxRegionSizeCheck`/`MaxRegionRatioCheck`) — built from `RegionNeedsShrinkIssue.invalid`/
 `invalid_sources` the same way. `payload` is only `RegionNeedsShrink` when the issue is
 `region_needs_shrink` and at least one check flagged a region — otherwise it's `None`.
+
+`IssuePayloadDto::InvalidElevatorStop.nodes` reuses `IssueRegionPayload`'s single-node "region"
+shape (same struct `RegionNeedsExpansion`/`RegionNeedsShrink` use) for `invalid_elevator_stop` and
+`invalid_elevator_stop_group` issues (see GitHub issue #399) — keyed by source check instance id
+for the same per-check attribution reason as the other payload kinds. Each entry wraps one flagged
+stop as a one-node region (`region: [node_id]`) so it highlights independently, the same
+region-square treatment `IssueHighlightOverlay.ts` already gives `RegionNeedsExpansion`/
+`RegionNeedsShrink` — a group's stops are emitted as separate single-node entries, not one merged
+multi-node region, since stops in a group aren't necessarily spatially adjacent. Built by
+`resolve_invalid_elevator_stop_payload`/`resolve_elevator_stop_group_map`
+(`maze-core/src/quality_control/issue_payload.rs`) from `InvalidElevatorStopIssue::invalid`/
+`InvalidElevatorStopGroupIssue::groups` and their respective `invalid_sources` maps.
+
+On the binary QC event tape (`event_encode.rs`/`qcCustom.ts`, see `event_log.md`), `IssuePayload`
+variants are hand-written wire tags on both sides (`write_issue_payload` writes; `readIssuePayload`
+reads) rather than `Schema`-generated — `InvalidElevatorStop` is tag `11`. `codegen`'s
+`issue_payload_check` module (`codegen/src/issue_payload_check.rs`) text-scans both functions' tag
+literals and fails `--check`/plain runs on any mismatch, since a tag added to one side and
+forgotten on the other only surfaces as a runtime "unknown tag" crash otherwise.
 
 ### CheckDescriptor
 

@@ -328,6 +328,17 @@ describe("presetLockElementsFor", () => {
     expect(presetLockElementsFor(issue, "max_region_size")).toEqual([{ region: [7, 8], preset_locked: false }]);
   });
 
+  it("returns invalid_elevator_stop's single-node regions with their own preset_locked flags (GitHub issue #399)", () => {
+    const issue: IssueDto = {
+      kind: "invalid_elevator_stop",
+      payload: { kind: "invalid_elevator_stop", nodes: { max_elevator_stops: [{ region: [5], preset_locked: true }] } },
+      source_checks: ["max_elevator_stops"],
+      source_check_types: { max_elevator_stops: "max_elevator_stops" },
+      details: {},
+    };
+    expect(presetLockElementsFor(issue, "max_elevator_stops")).toEqual([{ region: [5], preset_locked: true }]);
+  });
+
   it("wraps excessive_scc_count's single check-level preset_locked bool as a one-element array", () => {
     const issue: IssueDto = {
       kind: "excessive_scc_count",

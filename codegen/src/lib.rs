@@ -3,6 +3,7 @@ pub mod codecs;
 pub mod dto_ts;
 pub mod golden;
 pub mod id_enum;
+pub mod issue_payload_check;
 pub mod naming;
 pub mod parser;
 pub mod quality_i18n;
