@@ -3,7 +3,7 @@ use crate::graph::EdgeKind;
 use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
 use crate::quality_control::issue::IssueKind;
 use crate::quality_control::issue_kinds::RepairLimitKind;
-use crate::quality_control::issue_payload::{IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload};
+use crate::quality_control::issue_payload::{IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload, IssueMissingElevatorStopsPayload};
 
 /// Binary wire-encoding helpers for `QcEvent`'s custom-codec fields (`qc_wire.rs`'s
 /// `use super::write_*` imports these) — split out of `event.rs` (GitHub issue #147's
@@ -104,6 +104,10 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
         IssuePayload::AreaDeficit { areas } => {
             out.push(12);
             write_str_keyed_area_deficits(out, areas);
+        }
+        IssuePayload::MissingElevatorStopCount { groups } => {
+            out.push(13);
+            write_str_keyed_missing_elevator_stops(out, groups);
         }
     }
 }
@@ -235,6 +239,24 @@ fn write_str_keyed_area_deficits(out: &mut Vec<u8>, map: &std::collections::Hash
             }
         }
     });
+}
+
+/// Encodes `IssuePayload::MissingElevatorStopCount`'s `groups` field (GitHub issue #402) — one entry per
+/// flagged elevator stop-deficit: the elevator's live edge fan (`write_edge_pairs`'s shape), a
+/// 4-byte LE `missing` count, a length-prefixed `available` node-id list, then a trailing 1-byte
+/// `preset_locked` flag (0/1), mirroring `write_edge_group_payload`'s own trailing flag.
+fn write_missing_elevator_stops_payload(out: &mut Vec<u8>, entry: &IssueMissingElevatorStopsPayload) {
+    write_edge_pairs(out, &entry.edges);
+    out.extend_from_slice(&entry.missing.to_le_bytes());
+    out.extend_from_slice(&(entry.available.len() as u32).to_le_bytes());
+    for &node in &entry.available {
+        out.extend_from_slice(&node.to_le_bytes());
+    }
+    out.push(entry.preset_locked as u8);
+}
+
+fn write_str_keyed_missing_elevator_stops(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<IssueMissingElevatorStopsPayload>>) {
+    write_str_keyed_lists(out, map, |out, entry| write_missing_elevator_stops_payload(out, entry));
 }
 
 pub(crate) fn write_issue_kind(out: &mut Vec<u8>, kind: &IssueKind) {

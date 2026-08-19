@@ -181,4 +181,27 @@ pub enum IssuePayload {
     /// e.g. `InvalidLoopIssue`'s `invalid_sources`), so every entry is attributed uniformly to
     /// every one of the issue's `source_checks()`. Mirrors `IssuePayloadDto::AreaDeficit`.
     AreaDeficit { areas: HashMap<String, Vec<Option<u32>>> },
+    /// Keyed by source check id — each entry is one flagged elevator's stop-count deficit: the
+    /// elevator's currently-live fan of `EdgeKind::Elevator` edges (same shape as
+    /// `InvalidElevator`'s `edges`, re-resolved against `graph` the same way), how many stops are
+    /// still requested, and the available floor candidates resolved to base-graph node ids
+    /// (`LevelId` isn't wire-safe) — see GitHub issue #402. Lets the web side highlight both the
+    /// elevator itself and its candidate floors on hover. `MissingElevatorHeight`/
+    /// `ExcessiveElevatorStopGap` reuse `InvalidElevator`'s plain edge-group shape instead — both
+    /// leave candidate-floor selection to their own repair strategy, so neither has anything to
+    /// offer here. Mirrors `IssuePayloadDto::MissingElevatorStopCount`.
+    MissingElevatorStopCount { groups: HashMap<String, Vec<IssueMissingElevatorStopsPayload>> },
+}
+
+/// One flagged elevator's stop-deficit resolved for the wire boundary (GitHub issue #402) — pairs
+/// the elevator's live `EdgeKind::Elevator` edge fan with the requested stop count and the
+/// available floor candidates (as base-graph node ids at the elevator's point, resolved from the
+/// issue's `LevelId` list via `MultiLevelField::node_at`). `preset_locked` mirrors
+/// `IssueEdgeGroupPayload`'s meaning: every one of the elevator's current edges is preset-protected.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IssueMissingElevatorStopsPayload {
+    pub edges: Vec<[u32; 2]>,
+    pub missing: u32,
+    pub available: Vec<u32>,
+    pub preset_locked: bool,
 }

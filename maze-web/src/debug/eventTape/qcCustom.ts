@@ -36,7 +36,8 @@ export type IssuePayload =
   | { kind: "InvalidVerticalPassage"; groups: Map<string, EdgeGroup[]> }
   | { kind: "InvalidElevator"; groups: Map<string, EdgeGroup[]> }
   | { kind: "InvalidElevatorStop"; nodes: Map<string, RegionGroup[]> }
-  | { kind: "AreaDeficit"; areas: Map<string, (number | null)[]> };
+  | { kind: "AreaDeficit"; areas: Map<string, (number | null)[]> }
+  | { kind: "MissingElevatorStopCount"; groups: Map<string, MissingElevatorStopsGroup[]> };
 
 /** Mirrors `IssueEdgeGroupPayload` in `maze-core/src/quality_control/issue_payload.rs` — one
  *  flagged cycle/group's base-graph edges paired with whether every one of them is
@@ -66,6 +67,16 @@ export interface SplitTile {
  *  whether every tile in it is preset-locked (GitHub issue #245's split extension). */
 export interface SplitGroup {
   tiles: SplitTile[];
+  presetLocked: boolean;
+}
+
+/** Mirrors `IssueMissingElevatorStopsPayload` in `maze-core/src/quality_control/issue_payload/types.rs`
+ *  — one flagged elevator's stop-deficit: its live edge fan, how many stops are still requested,
+ *  and available floor candidates as node ids (GitHub issue #402). */
+export interface MissingElevatorStopsGroup {
+  edges: [bigint, bigint][];
+  missing: number;
+  available: bigint[];
   presetLocked: boolean;
 }
 
@@ -312,6 +323,48 @@ function readStrKeyedAreaDeficits(bytes: Uint8Array, offset: number): { value: M
   return { value, next: pos };
 }
 
+/** Reads the `HashMap<String, Vec<IssueMissingElevatorStopsPayload>>` wire shape
+ *  `write_str_keyed_missing_elevator_stops` produces (`IssuePayload::MissingElevatorStopCount`'s
+ *  `groups`) — each entry is its edge-pair list (`write_edge_pairs`'s shape), a 4-byte `missing`
+ *  count, a length-prefixed `available` node-id list, then a trailing `preset_locked` byte. */
+function readStrKeyedMissingElevatorStops(bytes: Uint8Array, offset: number): { value: Map<string, MissingElevatorStopsGroup[]>; next: number } {
+  const value = new Map<string, MissingElevatorStopsGroup[]>();
+  const entryCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  for (let i = 0; i < entryCount; i++) {
+    const { value: key, next: afterKey } = readStr(bytes, pos);
+    pos = afterKey;
+    const groupCount = readU32(bytes, pos);
+    pos += 4;
+    const groups: MissingElevatorStopsGroup[] = [];
+    for (let g = 0; g < groupCount; g++) {
+      const pairCount = readU32(bytes, pos);
+      pos += 4;
+      const edges: [bigint, bigint][] = [];
+      for (let p = 0; p < pairCount; p++) {
+        const from = BigInt(readU32(bytes, pos));
+        const to = BigInt(readU32(bytes, pos + 4));
+        edges.push([from, to]);
+        pos += 8;
+      }
+      const missing = readU32(bytes, pos);
+      pos += 4;
+      const availableCount = readU32(bytes, pos);
+      pos += 4;
+      const available: bigint[] = [];
+      for (let a = 0; a < availableCount; a++) {
+        available.push(BigInt(readU32(bytes, pos)));
+        pos += 4;
+      }
+      const presetLocked = bytes[pos] !== 0;
+      pos += 1;
+      groups.push({ edges, missing, available, presetLocked });
+    }
+    value.set(key, groups);
+  }
+  return { value, next: pos };
+}
+
 /** Reads an `IssuePayload` starting at `offset` — mirrors `write_issue_payload`. */
 export function readIssuePayload(bytes: Uint8Array, offset: number): { value: IssuePayload; next: number } {
   const tag = bytes[offset];
@@ -363,6 +416,10 @@ export function readIssuePayload(bytes: Uint8Array, offset: number): { value: Is
   if (tag === 12) {
     const { value: areas, next } = readStrKeyedAreaDeficits(bytes, offset + 1);
     return { value: { kind: "AreaDeficit", areas }, next };
+  }
+  if (tag === 13) {
+    const { value: groups, next } = readStrKeyedMissingElevatorStops(bytes, offset + 1);
+    return { value: { kind: "MissingElevatorStopCount", groups }, next };
   }
   throw new Error(`IssuePayload: unknown tag ${tag}`);
 }

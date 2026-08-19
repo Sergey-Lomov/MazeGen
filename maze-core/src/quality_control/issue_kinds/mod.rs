@@ -40,6 +40,9 @@ mod invalid_elevator_stop;
 mod invalid_elevator_stop_group;
 mod missing_elevators;
 mod area_missing_elevator_stops;
+mod missing_elevator_stop_count;
+mod missing_elevator_height;
+mod excessive_elevator_stop_gap;
 
 pub use group_issue::{InvalidGroupIssue, InvalidGroupIssueKind};
 pub use missing_endpoints::MissingEndpointsIssue;
@@ -76,6 +79,9 @@ pub use invalid_elevator_stop::InvalidElevatorStopIssue;
 pub use invalid_elevator_stop_group::{InvalidElevatorStopGroupIssue, ElevatorStopGroupKind};
 pub use missing_elevators::MissingElevatorsIssue;
 pub use area_missing_elevator_stops::AreaMissingElevatorStopsIssue;
+pub use missing_elevator_stop_count::MissingElevatorStopCountIssue;
+pub use missing_elevator_height::MissingElevatorHeightIssue;
+pub use excessive_elevator_stop_gap::ExcessiveElevatorStopGapIssue;
 
 /// Canonical key for a cycle: its edge set, sorted. Two `Vec<EdgeId>` describing the same cycle
 /// (same edges, any order) produce the same key — used both to dedup cycles across merges and

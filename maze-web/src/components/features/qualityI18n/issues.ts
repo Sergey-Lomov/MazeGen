@@ -131,6 +131,18 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.area_missing_elevator_stops.label"] as MessageFn,
     description: m["issue.area_missing_elevator_stops.description"] as MessageFn,
   },
+  excessive_elevator_stop_gap: {
+    label: m["issue.excessive_elevator_stop_gap.label"] as MessageFn,
+    description: m["issue.excessive_elevator_stop_gap.description"] as MessageFn,
+  },
+  missing_elevator_height: {
+    label: m["issue.missing_elevator_height.label"] as MessageFn,
+    description: m["issue.missing_elevator_height.description"] as MessageFn,
+  },
+  missing_elevator_stop_count: {
+    label: m["issue.missing_elevator_stop_count.label"] as MessageFn,
+    description: m["issue.missing_elevator_stop_count.description"] as MessageFn,
+  },
 };
 
 /** Section grouping for `IssueSelectDialog` only — distinct from `issueI18n`'s full labels,
@@ -166,6 +178,9 @@ export const issueSectionI18n: Record<string, MessageFn> = {
   invalid_elevator_stop_group: m["issue_select.section.elevators"] as MessageFn,
   missing_elevators: m["issue_select.section.elevators"] as MessageFn,
   area_missing_elevator_stops: m["issue_select.section.elevators"] as MessageFn,
+  missing_elevator_stop_count: m["issue_select.section.elevators"] as MessageFn,
+  missing_elevator_height: m["issue_select.section.elevators"] as MessageFn,
+  excessive_elevator_stop_gap: m["issue_select.section.elevators"] as MessageFn,
 };
 
 /** Short item labels for `IssueSelectDialog` only, indented under `issueSectionI18n`'s header —
@@ -201,6 +216,9 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   invalid_elevator_stop_group: m["issue_select.short_label.validate_stop_groups"] as MessageFn,
   missing_elevators: m["issue_select.short_label.add"] as MessageFn,
   area_missing_elevator_stops: m["issue_select.short_label.add"] as MessageFn,
+  missing_elevator_stop_count: m["issue_select.short_label.add_stops"] as MessageFn,
+  missing_elevator_height: m["issue_select.short_label.expand_elevator"] as MessageFn,
+  excessive_elevator_stop_gap: m["issue_select.short_label.close_gaps"] as MessageFn,
 };
 
 export function resolveIssueLabel(kind: string): string {

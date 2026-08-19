@@ -2,8 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, MISSING_VERTICAL_PASSAGES, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, MISSING_ELEVATORS, AREA_MISSING_ELEVATOR_STOPS},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy, MissingLoopsVerticalStrategy, RemoveElevatorStrategy, ReplaceElevatorWithPassagesStrategy, ElevatorGroupSelectStrategy, RemoveElevatorStopStrategy, ElevatorStopGroupSelectStrategy, AddElevatorStrategy, AddElevatorStopStrategy},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, MISSING_VERTICAL_PASSAGES, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, MISSING_ELEVATORS, AREA_MISSING_ELEVATOR_STOPS, MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy, MissingLoopsVerticalStrategy, RemoveElevatorStrategy, ReplaceElevatorWithPassagesStrategy, ElevatorGroupSelectStrategy, RemoveElevatorStopStrategy, ElevatorStopGroupSelectStrategy, AddElevatorStrategy, AddElevatorStopStrategy, AddElevatorStopCountStrategy, AddElevatorHeightStopStrategy, AddElevatorStopForGapStrategy},
 };
 use crate::check_descriptor::{ParamDescriptor, ParamKindDto};
 
@@ -383,6 +383,27 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
             params: strategy_params_dto(<AddElevatorStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::AreaMissingElevatorStopsIssue>>::params(&AddElevatorStopStrategy)),
             experimental: <AddElevatorStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::AreaMissingElevatorStopsIssue>>::is_experimental(&AddElevatorStopStrategy),
             nested_slots: nested_slots_dto(<AddElevatorStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::AreaMissingElevatorStopsIssue>>::expected_nested(&AddElevatorStopStrategy)),
+        },
+        StrategyDescriptor {
+            id: "add_elevator_stop_count",
+            handles: MISSING_ELEVATOR_STOP_COUNT.as_str(),
+            params: strategy_params_dto(<AddElevatorStopCountStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorStopCountIssue>>::params(&AddElevatorStopCountStrategy)),
+            experimental: <AddElevatorStopCountStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorStopCountIssue>>::is_experimental(&AddElevatorStopCountStrategy),
+            nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "add_elevator_height_stop",
+            handles: MISSING_ELEVATOR_HEIGHT.as_str(),
+            params: strategy_params_dto(<AddElevatorHeightStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorHeightIssue>>::params(&AddElevatorHeightStopStrategy)),
+            experimental: <AddElevatorHeightStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorHeightIssue>>::is_experimental(&AddElevatorHeightStopStrategy),
+            nested_slots: vec![],
+        },
+        StrategyDescriptor {
+            id: "add_elevator_stop_for_gap",
+            handles: EXCESSIVE_ELEVATOR_STOP_GAP.as_str(),
+            params: strategy_params_dto(<AddElevatorStopForGapStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::ExcessiveElevatorStopGapIssue>>::params(&AddElevatorStopForGapStrategy)),
+            experimental: <AddElevatorStopForGapStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::ExcessiveElevatorStopGapIssue>>::is_experimental(&AddElevatorStopForGapStrategy),
+            nested_slots: vec![],
         },
         StrategyDescriptor {
             id: "remove_elevator",

@@ -142,8 +142,33 @@ fn main() -> ExitCode {
         write_or_check(&ts_path, &ts_text, check_only, &mut had_errors);
     }
 
-    let dto_rs_path = repo_root.join("maze-wasm").join("src").join("dto.rs");
-    match dto_ts::parse_dto_file(&dto_rs_path) {
+    // `dto.rs` re-exports its actual struct/enum definitions from sibling `dto_*.rs` files
+    // (`dto_issues.rs`, `dto_statistics.rs`, `dto_analytics_config.rs` — see the "Decomposition
+    // refactoring" commit) via `pub use`, so `dto.rs` alone no longer contains every `#[derive(Dto)]`
+    // item; each sibling must be parsed too or its types silently vanish from the generated TS.
+    let dto_wasm_dir = repo_root.join("maze-wasm").join("src");
+    let dto_source_files = [
+        "dto.rs",
+        "dto_issues.rs",
+        "dto_statistics.rs",
+        "dto_analytics_config.rs",
+    ];
+    let mut dto_parse_result: Result<Vec<dto_ts::DtoItem>, dto_ts::DtoParseError> = Ok(Vec::new());
+    for file in dto_source_files {
+        let path = dto_wasm_dir.join(file);
+        match dto_ts::parse_dto_file(&path) {
+            Ok(mut items) => {
+                if let Ok(all) = &mut dto_parse_result {
+                    all.append(&mut items);
+                }
+            }
+            Err(e) => {
+                dto_parse_result = Err(e);
+                break;
+            }
+        }
+    }
+    match dto_parse_result {
         Ok(dto_items) => {
             let dto_ts_text = dto_ts::generate_ts_file(&dto_items, "maze-wasm/src/dto.rs", &[
                 ("IssueKindId", "./issueKind"),
@@ -166,10 +191,17 @@ fn main() -> ExitCode {
     let quality_ts_path = repo_root.join("maze-web").join("src").join("components").join("features").join("generated").join("qualityIds.ts");
     write_or_check(&quality_ts_path, &quality_ts_text, check_only, &mut had_errors);
 
-    let quality_i18n_path = repo_root.join("maze-web").join("src").join("components").join("features").join("qualityI18n.ts");
+    // `qualityI18n.ts` was decomposed into `qualityI18n/{checks,issues,params,strategies}.ts`
+    // (one file per `export const *I18n` registry) — `find_missing`/`scaffold` are per-registry
+    // text scans that no-op on a file missing their target registry, so running them once per
+    // sub-file (instead of once against a single monolithic file that no longer exists) is safe:
+    // each call only ever matches its own registry's home file.
+    let quality_i18n_dir = repo_root.join("maze-web").join("src").join("components").join("features").join("qualityI18n");
     let en_messages_path = repo_root.join("maze-web").join("messages").join("en.json");
     let ru_messages_path = repo_root.join("maze-web").join("messages").join("ru.json");
-    if let Ok(existing) = fs::read_to_string(&quality_i18n_path) {
+    for file_name in ["checks.ts", "issues.ts", "params.ts", "strategies.ts"] {
+        let quality_i18n_path = quality_i18n_dir.join(file_name);
+        let Ok(existing) = fs::read_to_string(&quality_i18n_path) else { continue };
         let missing = quality_i18n::find_missing(&quality_ids, &existing);
         if scaffold && !missing.is_empty() {
             match (fs::read_to_string(&en_messages_path), fs::read_to_string(&ru_messages_path)) {
@@ -187,7 +219,7 @@ fn main() -> ExitCode {
                         eprintln!("codegen: failed to write {}: {e}", ru_messages_path.display());
                         had_errors = true;
                     }
-                    println!("codegen: scaffolded {} qualityI18n entr{}", missing.len(), if missing.len() == 1 { "y" } else { "ies" });
+                    println!("codegen: scaffolded {} qualityI18n/{file_name} entr{}", missing.len(), if missing.len() == 1 { "y" } else { "ies" });
                 }
                 _ => {
                     eprintln!("codegen: --scaffold could not read en.json/ru.json — skipped");
@@ -196,7 +228,7 @@ fn main() -> ExitCode {
             }
         } else {
             for m in &missing {
-                report_missing_entry("qualityI18n.ts", m, check_only, &mut had_errors);
+                report_missing_entry(&format!("qualityI18n/{file_name}"), m, check_only, &mut had_errors);
             }
         }
     }

@@ -39,6 +39,9 @@ pub enum IssueKind {
     InvalidElevatorStopGroup,
     MissingElevators,
     AreaMissingElevatorStops,
+    MissingElevatorStopCount,
+    MissingElevatorHeight,
+    ExcessiveElevatorStopGap,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -296,6 +299,30 @@ pub const MISSING_ELEVATORS: IssueKind = IssueKind::MissingElevators;
 /// contributes zero usable vertical connections). Carries `AreaMissingElevatorStopsIssue
 /// { missing }` — see that type's doc comment. Repaired by `AddElevatorStopStrategy`.
 pub const AREA_MISSING_ELEVATOR_STOPS: IssueKind = IssueKind::AreaMissingElevatorStops;
+/// An existing elevator has fewer stops overall than `MinElevatorStopCountCheck` requires — see
+/// GitHub issue #402, part of epic #344. Distinct from `MISSING_ELEVATORS`: that kind flags a
+/// deficit in the overall elevator count (build brand-new elevators); this one flags a deficit in
+/// one *existing* elevator's own stop count (add stops to it). Carries
+/// `MissingElevatorStopCountIssue { missing }` — see that type's doc comment. Repaired by
+/// `AddElevatorStopCountStrategy`. Split from a single shared `MISSING_ELEVATOR_STOPS` kind (see
+/// git history) into its own kind, `MISSING_ELEVATOR_HEIGHT`, and `EXCESSIVE_ELEVATOR_STOP_GAP` —
+/// each deficit reason needs its own candidate-floor search geometry (plain "any free floor" here
+/// vs. height-satisfying floors vs. floors strictly between one gap's endpoints), which doesn't
+/// combine cleanly into one repair strategy.
+pub const MISSING_ELEVATOR_STOP_COUNT: IssueKind = IssueKind::MissingElevatorStopCount;
+/// An existing elevator's vertical span (topmost stop's floor index minus bottommost's) is below
+/// `MinElevatorHeightCheck`'s configured minimum — see GitHub issue #402, part of epic #344.
+/// Carries `MissingElevatorHeightIssue { missing }` — see that type's doc comment. Repaired by
+/// `AddElevatorHeightStopStrategy`, which grows the elevator's own floor interval (randomly,
+/// optionally balanced between both ends) until it's long enough, then adds one stop below and one
+/// above it.
+pub const MISSING_ELEVATOR_HEIGHT: IssueKind = IssueKind::MissingElevatorHeight;
+/// An existing elevator has a consecutive stop pair (adjacent after sorting by floor index) whose
+/// gap — the number of floors skipped between them — exceeds `MaxElevatorStopGapCheck`'s
+/// configured maximum — see GitHub issue #402, part of epic #344. Carries
+/// `ExcessiveElevatorStopGapIssue { missing }` — see that type's doc comment. Repaired by
+/// `AddElevatorStopForGapStrategy`.
+pub const EXCESSIVE_ELEVATOR_STOP_GAP: IssueKind = IssueKind::ExcessiveElevatorStopGap;
 
 /// `as_str`/`from_str`/`Display` for `IssueKind` are generated (`codegen`'s `id_enum` module, see
 /// GitHub issue #361) into the sibling `issue_kind_ids.rs` from the variant list above — do not

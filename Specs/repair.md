@@ -1682,6 +1682,30 @@ For each deficit slot, `try_build_elevator` shuffles every candidate `length` in
 
 **Infeasible slots don't abort the whole repair** — mirrors `MissingTeleportsStrategy`'s `attempts_limit` pattern: a slot retries up to `attempts_limit` times, and a slot that never manages to build a fully valid elevator is simply skipped, not the source of a `Failed` result — the whole `apply()` call only reports `Failed` if literally zero elevators were built across every slot (or the field has fewer than 2 levels).
 
+### AddElevatorHeightStopStrategy
+
+Handles `MISSING_ELEVATOR_HEIGHT` — see GitHub issue #402, part of epic #344. `MinElevatorHeightCheck` flags an existing elevator whose inclusive floor span (`top - bottom + 1`) is below a configured minimum. A single added stop can't always close the deficit (e.g. stops at floors 3 and 5 of 7, `min_height` 6: extending 6 floors up from 3 or down from 5 both overshoot the field), so this strategy grows an inner window `[lo, hi]` — starting at `bottom+1, top-1`, strictly inside the elevator's own existing bottom/top stops — one floor at a time until it spans `min_height - 2` floors (the below/above edge stops added afterward each contribute `+1`, reaching `min_height`).
+
+Each growth step, a side is only eligible to grow if it has at least 2 "reserve" floors further out: 1 to grow onto now, 1 held for the edge stop placed afterward. A floor counts toward that reserve if a new stop could actually go there (`stop_feasible` — no existing edge to any current stop, and preset-feasible) *or* if it's already one of the elevator's own existing stops — an occupied floor still "reserves" the slot even though no new stop goes there. Growth stops once the window is wide enough, or once neither side is eligible (both ends have hit the field's own top/bottom floor *at this elevator's point*, never the maze's absolute top/bottom floor, since other points may extend further). With `balanced_growth` on, once a step had both sides eligible, the next step is biased to the opposite side; off (the default), every step with both sides eligible picks one at random.
+
+Once the window stops growing, one stop is picked from the pool of floors below `lo` and one from the pool above `hi` — each pool includes existing-stop floors too, but picking one is a no-op (no command is added for a floor that already has a stop). `allow_incomplete` (default on) gates only on the grown window's *width*: with it off, an entry whose window never reached `min_height - 2` is skipped entirely; with it on, the strategy still tries to place below/above stops for whatever window it managed to grow to. Either way, once the width requirement is met, the entry commits however many of the two edge stops turn out reachable — 0, 1, or 2 — reaching the needed width never guarantees both edge floors are placeable (one side may be preset-blocked, or a fully one-sided growth run may leave the other side with no room beyond its own existing stop). `max_compactness` (default off) changes which pool floor is picked: off, a random floor anywhere in the pool; on, the floor immediately adjacent to the grown window's own edge.
+
+**Parameters:**
+
+| id | type | default | description |
+|----|------|---------|-------------|
+| `balanced_growth` | Bool | `false` | Once both sides are eligible, bias the next growth step to alternate sides instead of picking at random every time. |
+| `allow_incomplete` | Bool | `true` | Off: skip an entry whose window never reached the needed width, instead of placing whatever edge stops are reachable. |
+| `max_compactness` | Bool | `false` | On: place each edge stop on the pool floor closest to the grown window, instead of a random pool floor. |
+
+Multiple `missing` entries for the same elevator (e.g. several `min_elevator_height` checks at different thresholds) are folded to one growth pass, keeping the largest `min_height` demanded — growing twice would double-add stops. The elevator named by an entry is re-resolved against the live `maze` via `elevator_utils::find_elevator_by_stop` rather than trusted from the issue's stale snapshot; an entry whose elevator no longer exists is skipped. **Partial success counts as success** — one entry failing doesn't fail the whole strategy.
+
+### AddElevatorStopForGapStrategy
+
+Handles `EXCESSIVE_ELEVATOR_STOP_GAP` — see GitHub issue #402, part of epic #344. `MaxElevatorStopGapCheck` flags a consecutive stop pair (adjacent after sorting by floor index) whose gap — the number of floors *skipped* between them, `hi_index - lo_index - 1` — exceeds a configured maximum, reporting only the elevator and the gap's own bottom/top floor. For each entry, this strategy picks a random floor strictly between `lo` and `hi` that's `stop_feasible` and adds it as a stop, wired to every one of the elevator's *current* stops (existing ones and any already added earlier in the same `apply` call).
+
+No params of its own. The elevator named by an entry is re-resolved against the live `maze` via `elevator_utils::find_elevator_by_stop`; an entry whose elevator no longer exists, or whose `lo`/`hi` floor no longer resolves to a node on the elevator's point, is skipped. **Partial success counts as success** — one entry failing to place a stop doesn't fail the whole strategy, only a complete failure across every entry does.
+
 ## Pipeline
 
 Defined in `maze_core::generation::pipeline`.

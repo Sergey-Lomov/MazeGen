@@ -30,6 +30,7 @@ export function presetLockElementsFor(issue: IssueDto, sourceCheck: string): { p
   if (payload.kind === "invalid_vertical_passage") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_elevator") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_elevator_stop") return payload.nodes[sourceCheck] ?? null;
+  if (payload.kind === "missing_elevator_stop_count") return payload.groups[sourceCheck] ?? null;
   if (payload.kind === "invalid_split_tile") {
     const groups = payload.groups[sourceCheck] ?? null;
     if (groups == null) return null;
@@ -103,6 +104,9 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   invalid_elevator_stop_group: () => ({ label: m["issue.invalid_elevator_stop_group.label"](), description: m["issue.invalid_elevator_stop_group.description"](), severity: "warning" }),
   missing_elevators: () => ({ label: m["issue.missing_elevators.label"](), description: m["issue.missing_elevators.description"](), severity: "warning" }),
   area_missing_elevator_stops: () => ({ label: m["issue.area_missing_elevator_stops.label"](), description: m["issue.area_missing_elevator_stops.description"](), severity: "warning" }),
+  missing_elevator_stop_count: () => ({ label: m["issue.missing_elevator_stop_count.label"](), description: m["issue.missing_elevator_stop_count.description"](), severity: "warning" }),
+  missing_elevator_height: () => ({ label: m["issue.missing_elevator_height.label"](), description: m["issue.missing_elevator_height.description"](), severity: "warning" }),
+  excessive_elevator_stop_gap: () => ({ label: m["issue.excessive_elevator_stop_gap.label"](), description: m["issue.excessive_elevator_stop_gap.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -243,6 +247,9 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   min_elevator_density: (d) => d.missing !== undefined ? m["issue.missing_elevators.min_elevator_density_label"]({ missing: d.missing }) : undefined,
   min_elevator_stops_per_area_count: (d) => d.missing !== undefined ? m["issue.area_missing_elevator_stops.min_elevator_stops_per_area_count_label"]({ missing: d.missing }) : undefined,
   min_elevator_stops_per_area_density: (d) => d.missing !== undefined ? m["issue.area_missing_elevator_stops.min_elevator_stops_per_area_density_label"]({ missing: d.missing }) : undefined,
+  min_elevator_stop_count: (d) => d.min_elevator_stop_count !== undefined ? m["issue.missing_elevator_stop_count.min_elevator_stop_count_label"]({ min_elevator_stop_count: d.min_elevator_stop_count }) : undefined,
+  min_elevator_height: (d) => d.min_elevator_height !== undefined ? m["issue.missing_elevator_height.min_elevator_height_label"]({ min_elevator_height: d.min_elevator_height }) : undefined,
+  max_elevator_stop_gap: (d) => d.max_elevator_stop_gap !== undefined ? m["issue.excessive_elevator_stop_gap.max_elevator_stop_gap_label"]({ max_elevator_stop_gap: d.max_elevator_stop_gap }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

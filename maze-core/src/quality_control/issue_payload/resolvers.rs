@@ -10,6 +10,7 @@ use super::super::repair_area::RepairArea;
 use super::types::{
     all_preset_locked, IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload,
     IssueSplitGroupPayload, IssueRouteEdge, IssueRoutePayload, IssueRegionPayload,
+    IssueMissingElevatorStopsPayload,
 };
 
 /// Resolves one `EdgeId` into a base-graph `[from, to]` node-id pair, or `None` if the edge is
@@ -405,4 +406,68 @@ pub(super) fn resolve_area_deficit_map<T: Tessellation>(
         out.insert(check.clone(), areas.clone());
     }
     out
+}
+
+/// Resolves every flagged elevator stop-count-deficit entry (GitHub issue #402) into one
+/// `IssueMissingElevatorStopsPayload`, keyed by the specific check(s) that flagged *that entry*
+/// (`invalid_sources`, keyed by the entry's exact `(ElevatorNodes, u32, Vec<LevelId>)` tuple —
+/// mirrors `MissingElevatorStopCountIssue::merge`'s deliberate non-dedup: two checks flagging the
+/// same elevator produce two distinct entries, each attributed to its own source). An elevator
+/// whose point can no longer be resolved (all stops already removed by an earlier repair pass) is
+/// skipped — mirrors `find_elevator_by_stop`'s stale-elevator handling in
+/// `AddElevatorStopCountStrategy`.
+pub(super) fn resolve_missing_elevator_stop_count_payload<T: Tessellation>(
+    missing: &[(ElevatorNodes, u32, Vec<crate::space::LevelId>)],
+    invalid_sources: &HashMap<(ElevatorNodes, u32, Vec<crate::space::LevelId>), Vec<String>>,
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+    preset_state: &PresetState,
+) -> Option<IssuePayload> {
+    let mut groups: HashMap<String, Vec<IssueMissingElevatorStopsPayload>> = HashMap::new();
+    for entry @ (elevator, count, levels) in missing {
+        let Some(point) = elevator.0.first().and_then(|&n| field.point_of(n)) else { continue };
+        let (edges, edge_ids) = elevator_edges(elevator, graph);
+        let preset_locked = all_preset_locked(&edge_ids, graph, preset_state);
+        let available: Vec<u32> = levels.iter()
+            .filter_map(|&level| field.node_at(level, point))
+            .filter_map(|node| u32::try_from(node).ok())
+            .collect();
+        let payload = IssueMissingElevatorStopsPayload { edges, missing: *count, available, preset_locked };
+        for source in invalid_sources.get(entry).into_iter().flatten() {
+            groups.entry(source.clone()).or_default().push(payload.clone());
+        }
+    }
+    if groups.is_empty() { None } else { Some(IssuePayload::MissingElevatorStopCount { groups }) }
+}
+
+/// Resolves every flagged elevator height-deficit entry (GitHub issue #402) into the shared
+/// `InvalidElevator` edge-group wire shape — reuses `elevator_edges`/`all_preset_locked` the same
+/// way `resolve_invalid_elevator_payload` does. No candidate-floor data: growing the stop interval
+/// is `AddElevatorHeightStopStrategy`'s job, so there's nothing to offer as a hover candidate.
+pub(super) fn resolve_missing_elevator_height_payload(missing: &[(ElevatorNodes, u32)], invalid_sources: &HashMap<(ElevatorNodes, u32), Vec<String>>, graph: &Graph, preset_state: &PresetState) -> Option<IssuePayload> {
+    let mut groups: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
+    for entry @ (elevator, _) in missing {
+        let (edges, edge_ids) = elevator_edges(elevator, graph);
+        let preset_locked = all_preset_locked(&edge_ids, graph, preset_state);
+        for source in invalid_sources.get(entry).into_iter().flatten() {
+            groups.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edges.clone(), preset_locked });
+        }
+    }
+    if groups.is_empty() { None } else { Some(IssuePayload::InvalidElevator { groups }) }
+}
+
+/// Resolves every flagged excessive-stop-gap entry (GitHub issue #402) into the shared
+/// `InvalidElevator` edge-group wire shape — same rationale as
+/// `resolve_missing_elevator_height_payload`: picking the fill-in floor is
+/// `AddElevatorStopForGapStrategy`'s job, not something to highlight as a candidate.
+pub(super) fn resolve_excessive_elevator_stop_gap_payload(missing: &[(ElevatorNodes, crate::space::LevelId, crate::space::LevelId)], invalid_sources: &HashMap<(ElevatorNodes, crate::space::LevelId, crate::space::LevelId), Vec<String>>, graph: &Graph, preset_state: &PresetState) -> Option<IssuePayload> {
+    let mut groups: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
+    for entry @ (elevator, _, _) in missing {
+        let (edges, edge_ids) = elevator_edges(elevator, graph);
+        let preset_locked = all_preset_locked(&edge_ids, graph, preset_state);
+        for source in invalid_sources.get(entry).into_iter().flatten() {
+            groups.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edges.clone(), preset_locked });
+        }
+    }
+    if groups.is_empty() { None } else { Some(IssuePayload::InvalidElevator { groups }) }
 }

@@ -5,7 +5,7 @@ mod tests;
 
 pub use types::{
     IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload,
-    IssueRouteEdge, IssueRoutePayload, IssueRegionPayload,
+    IssueRouteEdge, IssueRoutePayload, IssueRegionPayload, IssueMissingElevatorStopsPayload,
 };
 
 use crate::graph::Graph;
@@ -13,7 +13,7 @@ use crate::generation::PresetState;
 use crate::space::{MultiLevelField, Tessellation};
 use crate::graph::scc::ConnectedComponents;
 use super::issue::Issue;
-use super::issue_kinds::{InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidVerticalPassageIssue, InvalidVerticalPassageGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, ExcessiveSccCountIssue, InvalidElevatorIssue, InvalidElevatorGroupIssue, InvalidElevatorStopIssue, InvalidElevatorStopGroupIssue, MissingVerticalPassagesIssue, MissingTeleportsIssue, MissingElevatorsIssue, AreaMissingElevatorStopsIssue};
+use super::issue_kinds::{InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidVerticalPassageIssue, InvalidVerticalPassageGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, ExcessiveSccCountIssue, InvalidElevatorIssue, InvalidElevatorGroupIssue, InvalidElevatorStopIssue, InvalidElevatorStopGroupIssue, MissingVerticalPassagesIssue, MissingTeleportsIssue, MissingElevatorsIssue, AreaMissingElevatorStopsIssue, MissingElevatorStopCountIssue, MissingElevatorHeightIssue, ExcessiveElevatorStopGapIssue};
 use resolvers::{
     resolve_cycle_payload, resolve_single_edge_map, resolve_edge_group_map,
     resolve_invalid_split_tile_payload, resolve_invalid_split_tile_group_payload,
@@ -23,6 +23,8 @@ use resolvers::{
     resolve_invalid_elevator_payload, resolve_elevator_group_map,
     resolve_invalid_elevator_stop_payload, resolve_elevator_stop_group_map,
     resolve_area_deficit_map,
+    resolve_missing_elevator_stop_count_payload, resolve_missing_elevator_height_payload,
+    resolve_excessive_elevator_stop_gap_payload,
 };
 
 /// Resolves `issue`'s structural payload against `graph`/`scc` — extracted from
@@ -202,6 +204,24 @@ pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, 
         let areas = resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
         if !areas.is_empty() {
             return IssuePayload::AreaDeficit { areas };
+        }
+    }
+
+    if let Some(MissingElevatorStopCountIssue { missing, invalid_sources, .. }) = issue.as_any().downcast_ref::<MissingElevatorStopCountIssue>() {
+        if let Some(payload) = resolve_missing_elevator_stop_count_payload(missing, invalid_sources, graph, field, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(MissingElevatorHeightIssue { missing, invalid_sources, .. }) = issue.as_any().downcast_ref::<MissingElevatorHeightIssue>() {
+        if let Some(payload) = resolve_missing_elevator_height_payload(missing, invalid_sources, graph, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(ExcessiveElevatorStopGapIssue { missing, invalid_sources, .. }) = issue.as_any().downcast_ref::<ExcessiveElevatorStopGapIssue>() {
+        if let Some(payload) = resolve_excessive_elevator_stop_gap_payload(missing, invalid_sources, graph, preset_state) {
+            return payload;
         }
     }
 

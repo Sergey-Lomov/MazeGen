@@ -471,6 +471,34 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.allow_span_extension.label"] as MessageFn,
     description: m["param.allow_span_extension.description"] as MessageFn,
   },
+  max_elevator_stop_gap: {
+    label: m["param.max_elevator_stop_gap.label"] as MessageFn,
+    description: m["param.max_elevator_stop_gap.description"] as MessageFn,
+  },
+  min_elevator_height: {
+    label: m["param.min_elevator_height.label"] as MessageFn,
+    description: m["param.min_elevator_height.description"] as MessageFn,
+  },
+  min_elevator_stop_count: {
+    label: m["param.min_elevator_stop_count.label"] as MessageFn,
+    description: m["param.min_elevator_stop_count.description"] as MessageFn,
+  },
+  allow_incomplete: {
+    label: m["param.allow_incomplete.label"] as MessageFn,
+    description: m["param.allow_incomplete.description"] as MessageFn,
+  },
+  balanced_growth: {
+    label: m["param.balanced_growth.label"] as MessageFn,
+    description: m["param.balanced_growth.description"] as MessageFn,
+  },
+  expand_elevator: {
+    label: m["param.expand_elevator.label"] as MessageFn,
+    description: m["param.expand_elevator.description"] as MessageFn,
+  },
+  max_compactness: {
+    label: m["param.max_compactness.label"] as MessageFn,
+    description: m["param.max_compactness.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -487,6 +515,11 @@ export const nestedSlotI18n: Record<string, { description: MessageFn }> = {
 
 // Labels for individual option values of Enum-kind params, keyed by `${paramId}.${value}`.
 export const paramOptionI18n: Record<string, MessageFn> = {
+  "expand_elevator.forbidden": m["param.expand_elevator.option.forbidden"] as MessageFn,
+  "expand_elevator.discouraged": m["param.expand_elevator.option.discouraged"] as MessageFn,
+  "expand_elevator.indifferent": m["param.expand_elevator.option.indifferent"] as MessageFn,
+  "expand_elevator.preferred": m["param.expand_elevator.option.preferred"] as MessageFn,
+  "expand_elevator.required": m["param.expand_elevator.option.required"] as MessageFn,
   "target_mode.largest": m["param.target_mode.option.largest"] as MessageFn,
   "target_mode.smallest": m["param.target_mode.option.smallest"] as MessageFn,
   "target_mode.random": m["param.target_mode.option.random"] as MessageFn,
@@ -576,6 +609,11 @@ export const paramOptionI18n: Record<string, MessageFn> = {
 // Explanations for individual option values of Enum-kind params, shown under the param's
 // own description in expanded detail views. Keyed the same way as `paramOptionI18n`.
 export const paramOptionExplanationI18n: Record<string, MessageFn> = {
+  "expand_elevator.forbidden": m["param.expand_elevator.option.forbidden.explanation"] as MessageFn,
+  "expand_elevator.discouraged": m["param.expand_elevator.option.discouraged.explanation"] as MessageFn,
+  "expand_elevator.indifferent": m["param.expand_elevator.option.indifferent.explanation"] as MessageFn,
+  "expand_elevator.preferred": m["param.expand_elevator.option.preferred.explanation"] as MessageFn,
+  "expand_elevator.required": m["param.expand_elevator.option.required.explanation"] as MessageFn,
   "passage_type.any": m["param.passage_type.option.any.explanation"] as MessageFn,
   "passage_type.two_way": m["param.passage_type.option.two_way.explanation"] as MessageFn,
   "passage_type.one_way": m["param.passage_type.option.one_way.explanation"] as MessageFn,

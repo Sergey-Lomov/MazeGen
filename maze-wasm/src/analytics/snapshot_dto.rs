@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use maze_core::{
-    quality_control::{IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload},
+    quality_control::{IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload, IssueMissingElevatorStopsPayload},
     generation::{SplitFaceRequirement, OneWayDirection},
 };
 use crate::dto::{
     IssueEdgeGroupPayloadDto, IssueSplitTilePayloadDto, IssueSplitGroupPayloadDto, IssueRouteEdgeDto, IssueRoutePayloadDto, IssueRegionPayloadDto,
-    SplitFaceRequirementDto, OneWayDirectionDto,
+    SplitFaceRequirementDto, OneWayDirectionDto, IssueMissingElevatorStopsPayloadDto,
 };
 
 pub(super) fn edge_group_map_dto(map: HashMap<String, Vec<IssueEdgeGroupPayload>>) -> HashMap<String, Vec<IssueEdgeGroupPayloadDto>> {
@@ -39,6 +39,17 @@ pub(super) fn route_payload_map_dto(map: HashMap<String, Vec<IssueRoutePayload>>
 pub(super) fn region_payload_map_dto(map: HashMap<String, Vec<IssueRegionPayload>>) -> HashMap<String, Vec<IssueRegionPayloadDto>> {
     map.into_iter()
         .map(|(k, v)| (k, v.into_iter().map(|r| IssueRegionPayloadDto { region: r.region, preset_locked: r.preset_locked }).collect()))
+        .collect()
+}
+
+pub(super) fn missing_elevator_stops_map_dto(map: HashMap<String, Vec<IssueMissingElevatorStopsPayload>>) -> HashMap<String, Vec<IssueMissingElevatorStopsPayloadDto>> {
+    map.into_iter()
+        .map(|(k, v)| (k, v.into_iter().map(|e| IssueMissingElevatorStopsPayloadDto {
+            edges: e.edges,
+            missing: e.missing,
+            available: e.available,
+            preset_locked: e.preset_locked,
+        }).collect()))
         .collect()
 }
 

@@ -27,6 +27,7 @@ use maze_core::{
         InvalidElevatorStopGroupIssue,
         MissingElevatorsIssue,
         AreaMissingElevatorStopsIssue,
+        MissingElevatorStopCountIssue, MissingElevatorHeightIssue, ExcessiveElevatorStopGapIssue,
     },
 };
 use super::check_factory::{
@@ -43,6 +44,8 @@ use super::check_factory::{
     build_invalid_elevator_check, build_invalid_elevator_group_check, build_invalid_elevator_stop_group_check,
     build_missing_elevators_check,
     build_area_missing_elevator_stops_check,
+    build_missing_elevator_stop_count_check,
+    build_missing_elevator_height_check, build_excessive_elevator_stop_gap_check,
 };
 use super::strategy_factory::{build_strategy_erased, downcast_strategy, build_nested};
 use super::rule_params::resolve_rule_params;
@@ -185,6 +188,9 @@ qc_kind_registry! {
     InvalidElevatorStopGroup => InvalidElevatorStopGroupIssue, build_invalid_elevator_stop_group_check, ["max_elevator_stops", "max_elevator_stops_per_floor", "elevator_stops_skip", "elevator_stops_span"];
     MissingElevators => MissingElevatorsIssue, build_missing_elevators_check, ["min_elevator_count", "min_elevator_density"];
     AreaMissingElevatorStops => AreaMissingElevatorStopsIssue, build_area_missing_elevator_stops_check, ["min_elevator_stops_per_area_count", "min_elevator_stops_per_area_density"];
+    MissingElevatorStopCount => MissingElevatorStopCountIssue, build_missing_elevator_stop_count_check, ["min_elevator_stop_count"];
+    MissingElevatorHeight => MissingElevatorHeightIssue, build_missing_elevator_height_check, ["min_elevator_height"];
+    ExcessiveElevatorStopGap => ExcessiveElevatorStopGapIssue, build_excessive_elevator_stop_gap_check, ["max_elevator_stop_gap"];
 }
 
 #[cfg(test)]

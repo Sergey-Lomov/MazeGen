@@ -70,6 +70,18 @@ pub struct IssueRoutePayloadDto {
     pub preset_locked: bool,
 }
 
+/// One flagged elevator's stop-deficit — the elevator's live edge fan, how many stops are still
+/// requested, and the available floor candidates as base-graph node ids — mirrors `maze_core`'s
+/// `IssueMissingElevatorStopsPayload` (GitHub issue #402).
+#[derive(Debug, Serialize, Dto)]
+#[dto(rename_ts = "IssueMissingElevatorStopsPayload")]
+pub struct IssueMissingElevatorStopsPayloadDto {
+    pub edges: Vec<[u32; 2]>,
+    pub missing: u32,
+    pub available: Vec<u32>,
+    pub preset_locked: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum IssuePayloadDto {
@@ -168,6 +180,13 @@ pub enum IssuePayloadDto {
     /// `area_missing_elevator_stops` — see `maze_core`'s `IssuePayload::AreaDeficit`.
     AreaDeficit {
         areas: HashMap<String, Vec<Option<u32>>>,
+    },
+    /// Keyed by source check id — each entry is one flagged elevator's stop-count deficit: its live
+    /// edge fan, the requested stop count, and available floor candidates as node ids. See GitHub
+    /// issue #402. `missing_elevator_height`/`excessive_elevator_stop_gap` reuse `InvalidElevator`
+    /// instead — both leave candidate-floor selection to their own repair strategy.
+    MissingElevatorStopCount {
+        groups: HashMap<String, Vec<IssueMissingElevatorStopsPayloadDto>>,
     },
 }
 

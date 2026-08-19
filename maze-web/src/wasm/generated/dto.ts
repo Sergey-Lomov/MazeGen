@@ -58,6 +58,59 @@ export interface NavEdgeDto {
 }
 
 /**
+ * One node in the hierarchical timing tree — see GitHub issue #285. `id` is a stage id, rule id,
+ * check type id, or strategy id depending on nesting depth; `children` is empty for a leaf
+ * (check/strategy) node.
+ */
+export interface TimingNodeDto {
+  id: string;
+  total_ms: number;
+  calls: number;
+  children: TimingNodeDto[];
+}
+
+/**
+ * Hierarchical timing breakdown for one generation run — see GitHub issue #285. Only populated
+ * by `run_generate` (the only path that runs the full generate→QC→repair pipeline);
+ * analytics-only snapshots (post-edit, `compute_analytics`) have no generation pass to time, so
+ * `MazeSnapshot.timing` is `None` there.
+ */
+export interface GenerationTimingDto {
+  initial_build_ms: number;
+  /**
+   * One entry per stage that ran at least one rule — each stage node's `children` are its own
+   * rules, each rule node's `children` are its checks and (if dispatched) its strategy.
+   */
+  qc: TimingNodeDto[];
+}
+
+export interface RouteInfoDto {
+  path_length: number;
+  junction_count: number;
+  one_way_count: number;
+  split_count: number;
+  score: number | null;
+  path: number[];
+}
+
+export interface MazeSnapshot {
+  nodes: NodeDto[];
+  edges: EdgeDto[];
+  start: number | null;
+  finish: number | null;
+  issues: IssueDto[];
+  nav_nodes: NavNodeDto[];
+  nav_edges: NavEdgeDto[];
+  route_info: RouteInfoDto | null;
+  statistics: MazeStatisticsDto;
+  /**
+   * `Some` only when this snapshot came from a generation run (`run_generate`) — see
+   * `GenerationTimingDto`'s doc comment.
+   */
+  timing: GenerationTimingDto | null;
+}
+
+/**
  * Tagged payload carried by `IssueDto` — replaces the old parallel-optional-fields shape
  * (`invalid_loop_edges` / `region_needs_expansion_nodes`) with one discriminated union, tagged
  * via `#[serde(tag = "kind")]` so `serde_wasm_bindgen::Serializer::json_compatible()` emits a
@@ -123,6 +176,18 @@ export interface IssueRoutePayload {
   preset_locked: boolean;
 }
 
+/**
+ * One flagged elevator's stop-deficit — the elevator's live edge fan, how many stops are still
+ * requested, and the available floor candidates as base-graph node ids — mirrors `maze_core`'s
+ * `IssueMissingElevatorStopsPayload` (GitHub issue #402).
+ */
+export interface IssueMissingElevatorStopsPayload {
+  edges: [number, number][];
+  missing: number;
+  available: number[];
+  preset_locked: boolean;
+}
+
 export type IssuePayloadDto =
   | { kind: "none" }
   | {
@@ -173,6 +238,10 @@ export type IssuePayloadDto =
       kind: "area_deficit";
       areas: Record<string, (number | null)[]>;
     }
+  | {
+      kind: "missing_elevator_stop_count";
+      groups: Record<string, IssueMissingElevatorStopsPayload[]>;
+    }
 ;
 
 export interface IssueDto {
@@ -201,33 +270,6 @@ export interface IssueDto {
    * messages — the web UI looks them up by key via its own i18n templates per check id.
    */
   details: Record<string, Record<string, string>>;
-}
-
-/**
- * One node in the hierarchical timing tree — see GitHub issue #285. `id` is a stage id, rule id,
- * check type id, or strategy id depending on nesting depth; `children` is empty for a leaf
- * (check/strategy) node.
- */
-export interface TimingNodeDto {
-  id: string;
-  total_ms: number;
-  calls: number;
-  children: TimingNodeDto[];
-}
-
-/**
- * Hierarchical timing breakdown for one generation run — see GitHub issue #285. Only populated
- * by `run_generate` (the only path that runs the full generate→QC→repair pipeline);
- * analytics-only snapshots (post-edit, `compute_analytics`) have no generation pass to time, so
- * `MazeSnapshot.timing` is `None` there.
- */
-export interface GenerationTimingDto {
-  initial_build_ms: number;
-  /**
-   * One entry per stage that ran at least one rule — each stage node's `children` are its own
-   * rules, each rule node's `children` are its checks and (if dispatched) its strategy.
-   */
-  qc: TimingNodeDto[];
 }
 
 export interface JunctionBucket {
@@ -264,6 +306,37 @@ export interface SpatialEdgeStatsDto {
 }
 
 /**
+ * Mirrors `maze_core::generation::SplitFaceRequirement` — one node's per-face-position
+ * requirement, as reconstructed from the built graph (see `SplitGroupDto`'s doc comment).
+ */
+export type SplitFaceRequirement =
+  | { kind: "passage" }
+  | {
+      kind: "one_way";
+      direction: OneWayDirectionDto;
+    }
+  | { kind: "wall" }
+  | { kind: "unspecified" }
+;
+
+export type OneWayDirectionDto =
+  | "forward"
+  | "backward";
+
+/**
+ * One group of maze-wide split tiles sharing the same canonical topology
+ * (`maze_core::graph::split_topology::canonical_split_topology`) — the same pattern applied at
+ * any rotation/mirror, with node creation order ignored. `topology[i]` is one node's
+ * per-face-position requirement list (length = tessellation degree); the outer list is sorted
+ * (order-independent — see `SplitTopology`'s doc comment), so it also serves as a stable
+ * dedup/lookup key on the web side (e.g. for a title registry keyed by serialized topology).
+ */
+export interface SplitGroupDto {
+  topology: SplitFaceRequirement[][];
+  count: number;
+}
+
+/**
  * GitHub issue #364: every count that isn't a plain cell-shape or wall/passage fact — one-way
  * passages, teleports, and split tiles/nodes/groups — grouped so the "Elements" report section
  * doesn't need to reassemble them from three different DTOs.
@@ -297,15 +370,6 @@ export interface VerticalStatsDto {
    */
   elevator_groups: number;
   cross_floor_teleports: number;
-}
-
-export interface RouteInfoDto {
-  path_length: number;
-  junction_count: number;
-  one_way_count: number;
-  split_count: number;
-  score: number | null;
-  path: number[];
 }
 
 /**
@@ -362,34 +426,37 @@ export interface GraphStatsDto {
 }
 
 /**
- * Mirrors `maze_core::generation::SplitFaceRequirement` — one node's per-face-position
- * requirement, as reconstructed from the built graph (see `SplitGroupDto`'s doc comment).
+ * One statistic computed both maze-wide (`total`) and per-floor (`by_floor`, keyed by 0-based
+ * floor index — GitHub issue #364). `total` is an independent maze-wide computation, not the sum
+ * of `by_floor`'s entries: a maze-wide teleport pair with ends on different floors, for example,
+ * counts toward `total` but toward neither floor's own `by_floor` entry (see
+ * `maze_core::graph::stats::compute_teleport_edge_stats_scoped`'s doc comment). `by_floor` always
+ * has one entry per floor, even for a single-floor maze.
  */
-export type SplitFaceRequirement =
-  | { kind: "passage" }
-  | {
-      kind: "one_way";
-      direction: OneWayDirectionDto;
-    }
-  | { kind: "wall" }
-  | { kind: "unspecified" }
-;
-
-export type OneWayDirectionDto =
-  | "forward"
-  | "backward";
+export interface FloorScoped<T> {
+  total: T;
+  by_floor: Record<number, T>;
+}
 
 /**
- * One group of maze-wide split tiles sharing the same canonical topology
- * (`maze_core::graph::split_topology::canonical_split_topology`) — the same pattern applied at
- * any rotation/mirror, with node creation order ignored. `topology[i]` is one node's
- * per-face-position requirement list (length = tessellation degree); the outer list is sorted
- * (order-independent — see `SplitTopology`'s doc comment), so it also serves as a stable
- * dedup/lookup key on the web side (e.g. for a title registry keyed by serialized topology).
+ * Every maze statistic surfaced in the Analytics panel (GitHub issue #364), replacing the
+ * previously flat `node_stats`/`edge_stats`/`teleport_edge_stats`/`graph_analytics`/
+ * `split_analytics` fields on `MazeSnapshot`. `graph_stats` is the only maze-wide-only member —
+ * see its own doc comment for why it isn't `FloorScoped`.
  */
-export interface SplitGroupDto {
-  topology: SplitFaceRequirement[][];
-  count: number;
+export interface MazeStatisticsDto {
+  graph_stats: GraphStatsDto;
+  /**
+   * Real geometric cell count per floor — `Field::all_points()` count, deduped by point (a
+   * split point counts once, not once per its extra node) — unlike `cell_stats`' node-shape
+   * breakdown, this is derived straight from field shape, not reconstructed by summing
+   * `cell_stats`' own counts (which would count a split point's every extra node separately).
+   */
+  cell_count: FloorScoped<number>;
+  cell_stats: FloorScoped<NodeStatsDto>;
+  passage_stats: FloorScoped<SpatialEdgeStatsDto>;
+  elements_stats: FloorScoped<ElementsStatsDto>;
+  vertical_stats: VerticalStatsDto;
 }
 
 /**
@@ -534,56 +601,5 @@ export interface ComputeAnalyticsConfig {
    * (GitHub issue #359, 0-based `level_fields` index) added alongside `split_points`'s own.
    */
   preset_split_points?: [[number, number], number, number][];
-}
-
-/**
- * One statistic computed both maze-wide (`total`) and per-floor (`by_floor`, keyed by 0-based
- * floor index — GitHub issue #364). `total` is an independent maze-wide computation, not the sum
- * of `by_floor`'s entries: a maze-wide teleport pair with ends on different floors, for example,
- * counts toward `total` but toward neither floor's own `by_floor` entry (see
- * `maze_core::graph::stats::compute_teleport_edge_stats_scoped`'s doc comment). `by_floor` always
- * has one entry per floor, even for a single-floor maze.
- */
-export interface FloorScoped<T> {
-  total: T;
-  by_floor: Record<number, T>;
-}
-
-/**
- * Every maze statistic surfaced in the Analytics panel (GitHub issue #364), replacing the
- * previously flat `node_stats`/`edge_stats`/`teleport_edge_stats`/`graph_analytics`/
- * `split_analytics` fields on `MazeSnapshot`. `graph_stats` is the only maze-wide-only member —
- * see its own doc comment for why it isn't `FloorScoped`.
- */
-export interface MazeStatisticsDto {
-  graph_stats: GraphStatsDto;
-  /**
-   * Real geometric cell count per floor — `Field::all_points()` count, deduped by point (a
-   * split point counts once, not once per its extra node) — unlike `cell_stats`' node-shape
-   * breakdown, this is derived straight from field shape, not reconstructed by summing
-   * `cell_stats`' own counts (which would count a split point's every extra node separately).
-   */
-  cell_count: FloorScoped<number>;
-  cell_stats: FloorScoped<NodeStatsDto>;
-  passage_stats: FloorScoped<SpatialEdgeStatsDto>;
-  elements_stats: FloorScoped<ElementsStatsDto>;
-  vertical_stats: VerticalStatsDto;
-}
-
-export interface MazeSnapshot {
-  nodes: NodeDto[];
-  edges: EdgeDto[];
-  start: number | null;
-  finish: number | null;
-  issues: IssueDto[];
-  nav_nodes: NavNodeDto[];
-  nav_edges: NavEdgeDto[];
-  route_info: RouteInfoDto | null;
-  statistics: MazeStatisticsDto;
-  /**
-   * `Some` only when this snapshot came from a generation run (`run_generate`) — see
-   * `GenerationTimingDto`'s doc comment.
-   */
-  timing: GenerationTimingDto | null;
 }
 

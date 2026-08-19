@@ -181,6 +181,18 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.add_elevator_stop.label"] as MessageFn,
     description: m["strategy.add_elevator_stop.description"] as MessageFn,
   },
+  add_elevator_height_stop: {
+    label: m["strategy.add_elevator_height_stop.label"] as MessageFn,
+    description: m["strategy.add_elevator_height_stop.description"] as MessageFn,
+  },
+  add_elevator_stop_count: {
+    label: m["strategy.add_elevator_stop_count.label"] as MessageFn,
+    description: m["strategy.add_elevator_stop_count.description"] as MessageFn,
+  },
+  add_elevator_stop_for_gap: {
+    label: m["strategy.add_elevator_stop_for_gap.label"] as MessageFn,
+    description: m["strategy.add_elevator_stop_for_gap.description"] as MessageFn,
+  },
 };
 
 export function resolveStrategyLabel(id: string): string {

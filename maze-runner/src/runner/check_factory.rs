@@ -79,6 +79,10 @@ use maze_core::{
         ElevatorStopsSkipCheck, ELEVATOR_STOPS_SKIP_DEFAULT,
         ElevatorStopsSpanCheck, ELEVATOR_STOPS_SPAN_DEFAULT,
         InvalidElevatorStopGroupIssue,
+        MissingElevatorStopCountIssue, MissingElevatorHeightIssue, ExcessiveElevatorStopGapIssue,
+        MinElevatorStopCountCheck, MIN_ELEVATOR_STOP_COUNT_DEFAULT,
+        MinElevatorHeightCheck, MIN_ELEVATOR_HEIGHT_DEFAULT,
+        MaxElevatorStopGapCheck, MAX_ELEVATOR_STOP_GAP_DEFAULT,
     },
     RegionClass,
 };
@@ -872,6 +876,45 @@ pub(crate) fn build_area_missing_elevator_stops_check<T: Tessellation>(instance:
                 .unwrap_or(MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT);
             let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE);
             Some(Box::new(MinElevatorStopsPerAreaDensityCheck { instance_id, min_stops_ratio, floor_scope }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_missing_elevator_stop_count_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingElevatorStopCountIssue>>> {
+    match instance.type_id.as_str() {
+        "min_elevator_stop_count" => {
+            let min_stop_count = instance.params.get("min_elevator_stop_count")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MIN_ELEVATOR_STOP_COUNT_DEFAULT);
+            Some(Box::new(MinElevatorStopCountCheck { instance_id, min_stop_count }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_missing_elevator_height_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingElevatorHeightIssue>>> {
+    match instance.type_id.as_str() {
+        "min_elevator_height" => {
+            let min_height = instance.params.get("min_elevator_height")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MIN_ELEVATOR_HEIGHT_DEFAULT);
+            Some(Box::new(MinElevatorHeightCheck { instance_id, min_height }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_excessive_elevator_stop_gap_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, ExcessiveElevatorStopGapIssue>>> {
+    match instance.type_id.as_str() {
+        "max_elevator_stop_gap" => {
+            let max_stop_gap = instance.params.get("max_elevator_stop_gap")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MAX_ELEVATOR_STOP_GAP_DEFAULT);
+            Some(Box::new(MaxElevatorStopGapCheck { instance_id, max_stop_gap }))
         }
         _ => None,
     }

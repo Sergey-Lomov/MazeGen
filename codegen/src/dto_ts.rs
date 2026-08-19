@@ -290,7 +290,12 @@ fn resolve_type(ty: &Type) -> Result<String, String> {
                 "String" => Ok("string".to_string()),
                 "Vec" => {
                     let inner = generics.first().ok_or_else(|| "Vec<..> missing type argument".to_string())?;
-                    Ok(format!("{}[]", resolve_type(inner)?))
+                    let inner_ts = resolve_type(inner)?;
+                    if inner_ts.contains(" | ") {
+                        Ok(format!("({inner_ts})[]"))
+                    } else {
+                        Ok(format!("{inner_ts}[]"))
+                    }
                 }
                 "Option" => {
                     let inner = generics.first().ok_or_else(|| "Option<..> missing type argument".to_string())?;

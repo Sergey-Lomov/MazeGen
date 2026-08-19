@@ -110,6 +110,16 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const elevatorStopNodes = sourceCheck != null && issue.payload.kind === "invalid_elevator_stop"
     ? issue.payload.nodes[sourceCheck] ?? null
     : null;
+  // `missing_elevator_stop_count` (GitHub issue #402) reuses `elevatorGroups`' own highlight shape
+  // -- only the elevator's own real fan edges, drawn as region squares like `elevatorCellNodes`.
+  // Deliberately excludes each group's `available` floor nodes (candidate stops the repair
+  // strategy could add) -- those aren't part of the elevator yet, so highlighting them on hover
+  // would read as "the elevator stops here", which is false. `missing_elevator_height`/
+  // `excessive_elevator_stop_gap` reuse `InvalidElevator`'s payload shape instead and highlight
+  // via `elevatorGroups` above.
+  const missingStopGroups = sourceCheck != null && issue.payload.kind === "missing_elevator_stop_count"
+    ? issue.payload.groups[sourceCheck] ?? null
+    : null;
   // Same per-check isolation as `loopGroups` above — only this bubble's own source check's
   // flagged regions, not every contributing check's regions combined. Covers both
   // `region_needs_expansion` (undersized) and `region_needs_shrink` (oversized) — both highlight
@@ -185,6 +195,12 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const elevatorStopCellNodes = elevatorStopNodes != null
     ? elevatorStopNodes.filter(visibleGroup).map((n) => n.region)
     : null;
+  // Elevator fan edges only (same shape as `elevatorCellNodes`) -- one flat deduplicated group,
+  // same rationale as `verticalPassageCellNodes` (a node touched by two groups would otherwise
+  // double-fill/stroke). `available` candidate floor nodes are excluded, see `missingStopGroups`.
+  const missingStopCellNodes = missingStopGroups != null
+    ? [Array.from(new Set(missingStopGroups.filter(visibleGroup).flatMap((g) => g.edges.flat())))]
+    : null;
   // Renders every visible tile as its own region-highlight group (one fill+perimeter per distinct
   // tile, `RegionHighlightRenderer`'s per-point dedup) -- visibility is decided at whichever
   // granularity `TILE_GRANULARITY_CHECKS` selects (tile-level for max_split_count/max_split_density,
@@ -233,10 +249,12 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ? () => setHoveredIssueRegionGroups(elevatorStopCellNodes)
     : areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0
     ? () => setHoveredIssueRegionGroups(areaDeficitCellNodes)
+    : missingStopCellNodes != null
+    ? () => setHoveredIssueRegionGroups(missingStopCellNodes)
     : undefined;
   const handleMouseLeave = loopEdges != null || teleportEdges != null || oneWayEdges != null || splitRouteEdges != null
     ? () => setHoveredIssueLoopEdges(null)
-    : visibleRegionGroups != null || splitTileNodes != null || verticalPassageCellNodes != null || elevatorCellNodes != null || elevatorStopCellNodes != null || (areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0)
+    : visibleRegionGroups != null || splitTileNodes != null || verticalPassageCellNodes != null || elevatorCellNodes != null || elevatorStopCellNodes != null || (areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0) || missingStopCellNodes != null
     ? () => setHoveredIssueRegionGroups(null)
     : undefined;
 
@@ -268,7 +286,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ...(teleportEdges ?? []),
     ...(oneWayEdges ?? []),
     ...(splitRouteEdges?.flat() ?? []),
-  ].flat().concat((splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat(), (areaDeficitCellNodes ?? []).flat());
+  ].flat().concat((splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat(), (areaDeficitCellNodes ?? []).flat(), (missingStopCellNodes ?? []).flat());
 
   return (
     <>

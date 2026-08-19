@@ -270,6 +270,18 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     description: m["check.min_elevator_stops_per_area_density.description"] as MessageFn,
     cardLabel: m["check.min_elevator_stops_per_area_density.label"] as MessageFn,
   },
+  max_elevator_stop_gap: {
+    label: m["check.max_elevator_stop_gap.label"] as MessageFn,
+    description: m["check.max_elevator_stop_gap.description"] as MessageFn,
+  },
+  min_elevator_height: {
+    label: m["check.min_elevator_height.label"] as MessageFn,
+    description: m["check.min_elevator_height.description"] as MessageFn,
+  },
+  min_elevator_stop_count: {
+    label: m["check.min_elevator_stop_count.label"] as MessageFn,
+    description: m["check.min_elevator_stop_count.description"] as MessageFn,
+  },
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {

@@ -4,6 +4,7 @@ use maze_core_macros::Dto;
 pub use crate::dto_issues::{
     IssueEdgeGroupPayloadDto, IssueSplitTilePayloadDto, IssueSplitGroupPayloadDto,
     IssueRegionPayloadDto, IssueRouteEdgeDto, IssueRoutePayloadDto, IssuePayloadDto, IssueDto,
+    IssueMissingElevatorStopsPayloadDto,
 };
 pub use crate::dto_statistics::{
     JunctionBucket, NodeStatsDto, SpatialEdgeStatsDto, SplitFaceRequirementDto, OneWayDirectionDto,

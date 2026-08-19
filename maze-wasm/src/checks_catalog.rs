@@ -15,7 +15,8 @@ use maze_core::{
     MISSING_ELEVATORS, MIN_ELEVATOR_COUNT_DEFAULT, MIN_ELEVATOR_DENSITY_DEFAULT,
     AREA_MISSING_ELEVATOR_STOPS,
     MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE,
-    MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE},
+    MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE,
+    MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP, MIN_ELEVATOR_STOP_COUNT_DEFAULT, MIN_ELEVATOR_HEIGHT_DEFAULT, MAX_ELEVATOR_STOP_GAP_DEFAULT},
 };
 use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, split_patterns_filter_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param};
 
@@ -1056,6 +1057,48 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "elevator_stops_span",
                     label: "Max elevator span",
                     kind: ParamKindDto::Integer { default: ELEVATOR_STOPS_SPAN_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "min_elevator_stop_count",
+            label: "Minimum elevator stop count",
+            description: "Fires if an existing elevator has fewer stops than the configured minimum, offering every free floor at its point as a candidate.",
+            issue_kinds: vec![kind_str(MISSING_ELEVATOR_STOP_COUNT)],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_elevator_stop_count",
+                    label: "Min stop count",
+                    kind: ParamKindDto::Integer { default: MIN_ELEVATOR_STOP_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "min_elevator_height",
+            label: "Minimum elevator height",
+            description: "Fires if an elevator's topmost and bottommost stops sit closer together than the configured minimum.",
+            issue_kinds: vec![kind_str(MISSING_ELEVATOR_HEIGHT)],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_elevator_height",
+                    label: "Min height",
+                    kind: ParamKindDto::Integer { default: MIN_ELEVATOR_HEIGHT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
+            id: "max_elevator_stop_gap",
+            label: "Maximum elevator stop gap",
+            description: "Fires if any two consecutive stops of an elevator skip more floors than the configured maximum, requesting one more stop within that gap.",
+            issue_kinds: vec![kind_str(EXCESSIVE_ELEVATOR_STOP_GAP)],
+            params: vec![
+                ParamDescriptor {
+                    id: "max_elevator_stop_gap",
+                    label: "Max stop gap",
+                    kind: ParamKindDto::Integer { default: MAX_ELEVATOR_STOP_GAP_DEFAULT as i64, min: 0, max: 1_000_000 },
                 },
             ],
             allow_multiple_instances: false,

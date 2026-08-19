@@ -126,5 +126,16 @@ pub fn build_maze<T: Tessellation>(
     maze.meta.finish = preset_finish;
     let mut rng = MazeRng::seed_from_u64(seed);
     let (issues, timing) = qc_engine.run_full(&mut maze, &mut rng, preset_state, limits, now_ms, event_log, debug_state);
+
+    // DIAG
+    {
+        let groups = crate::quality_control::checks::elevator_core::elevator_groups(&maze);
+        for (i, g) in groups.iter().enumerate() {
+            let mut floors: Vec<usize> = g.stops.iter().filter_map(|&n| maze.field.level_index_of(n)).collect();
+            floors.sort_unstable();
+            crate::diag_log!("elevator[{i}] floors={floors:?}"); // DIAG
+        }
+    }
+
     (maze, issues, timing)
 }

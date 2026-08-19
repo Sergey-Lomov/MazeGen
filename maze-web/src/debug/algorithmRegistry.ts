@@ -100,6 +100,27 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
       return edges.length > 0 ? { kind: "cycle", edges } : null;
     }
+    case "InvalidElevator": {
+      // Reuses the "cycle" shape, same rationale as InvalidTeleport/InvalidOneWay above.
+      const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
+      return edges.length > 0 ? { kind: "cycle", edges } : null;
+    }
+    case "InvalidElevatorStop": {
+      const nodes = [...payload.nodes.values()].flat().flatMap((group) => group.region);
+      return nodes.length > 0 ? { kind: "region", nodes } : null;
+    }
+    case "MissingElevatorStopCount": {
+      // GitHub issue #402 — reuses the "region" shape over each group's real elevator fan edges
+      // only (same as Analytics' `missingStopCellNodes` in `IssuesBlock.tsx`). Excludes each
+      // group's `available` candidate floor nodes -- those aren't part of the elevator yet.
+      const nodes = [...payload.groups.values()].flat().flatMap((group) => group.edges.flat());
+      return nodes.length > 0 ? { kind: "region", nodes } : null;
+    }
+    case "AreaDeficit":
+      // No structural highlight data — a floor-level deficit has no specific node/edge set to
+      // point at (same rationale as `ExcessiveSccCount` above; mirrors Analytics'
+      // `areaDeficitCellNodes` in `IssuesBlock.tsx`, which resolves the floor separately).
+      return null;
   }
 }
 
@@ -824,6 +845,8 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.directed_vertical_passage_added"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "BidirectionalVerticalPassageAdded":
       return [{ kind: "text", text: m["debug.tree.qc.bidirectional_vertical_passage_added"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
+    case "BidirectionalElevatorAdded":
+      return [{ kind: "text", text: m["debug.tree.qc.bidirectional_elevator_added"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
     case "EdgeRemoved":
       return [{ kind: "text", text: m["debug.tree.qc.edge_removed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "EdgeRemovedBetween":
@@ -850,6 +873,8 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.directed_vertical_passage_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "BidirectionalVerticalPassageDeclined":
       return [{ kind: "text", text: m["debug.tree.qc.bidirectional_vertical_passage_declined"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
+    case "BidirectionalElevatorDeclined":
+      return [{ kind: "text", text: m["debug.tree.qc.bidirectional_elevator_declined"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
     case "EdgeRemoveDeclined":
       return [{ kind: "text", text: m["debug.tree.qc.edge_remove_declined"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "EdgeRemoveBetweenDeclined":
@@ -876,6 +901,8 @@ function narrationTokensForQc(event: QcEvent, titleLookup?: ScopeTitleLookup): T
       return [{ kind: "text", text: m["debug.tree.qc.directed_vertical_passage_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "BidirectionalVerticalPassageProposed":
       return [{ kind: "text", text: m["debug.tree.qc.bidirectional_vertical_passage_proposed"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
+    case "BidirectionalElevatorProposed":
+      return [{ kind: "text", text: m["debug.tree.qc.bidirectional_elevator_proposed"]() + " " }, { kind: "edge", from: event.a, to: event.b, bidirectional: true }];
     case "EdgeRemoveProposed":
       return [{ kind: "text", text: m["debug.tree.qc.edge_remove_proposed"]() + " " }, { kind: "edge", from: event.from, to: event.to, bidirectional: false }];
     case "EdgeRemoveBetweenProposed":

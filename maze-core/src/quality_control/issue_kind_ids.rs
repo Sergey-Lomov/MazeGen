@@ -40,6 +40,9 @@ impl IssueKind {
             IssueKind::InvalidElevatorStopGroup => "invalid_elevator_stop_group",
             IssueKind::MissingElevators => "missing_elevators",
             IssueKind::AreaMissingElevatorStops => "area_missing_elevator_stops",
+            IssueKind::MissingElevatorStopCount => "missing_elevator_stop_count",
+            IssueKind::MissingElevatorHeight => "missing_elevator_height",
+            IssueKind::ExcessiveElevatorStopGap => "excessive_elevator_stop_gap",
         }
     }
 
@@ -79,6 +82,9 @@ impl IssueKind {
             "invalid_elevator_stop_group" => Some(IssueKind::InvalidElevatorStopGroup),
             "missing_elevators" => Some(IssueKind::MissingElevators),
             "area_missing_elevator_stops" => Some(IssueKind::AreaMissingElevatorStops),
+            "missing_elevator_stop_count" => Some(IssueKind::MissingElevatorStopCount),
+            "missing_elevator_height" => Some(IssueKind::MissingElevatorHeight),
+            "excessive_elevator_stop_gap" => Some(IssueKind::ExcessiveElevatorStopGap),
             _ => None,
         }
     }
