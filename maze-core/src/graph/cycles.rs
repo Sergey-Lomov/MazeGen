@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use crate::ids::EdgeId;
+use crate::dsu::Dsu;
 use super::Graph;
 use super::nav::{NavGraph, NavNodeId, NavEdge};
 use super::gf2_basis::{GF2Basis, set_bit};
@@ -96,6 +97,8 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
         adjacency[edge.from].push((idx, edge.to));
     }
 
+    let elevator_groups = elevator_edge_groups(&edges, n);
+
     let mut cycles: Vec<Vec<usize>> = Vec::new();
     let mut basis: Vec<Vec<usize>> = Vec::new();
     let words_per_row = edges.len().div_ceil(64).max(1);
@@ -169,6 +172,7 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
             let mut block_map: std::collections::HashMap<NavNodeId, HashSet<NavNodeId>> = std::collections::HashMap::new();
             let mut path_nodes: Vec<NavNodeId> = vec![start];
             let mut path_edges: Vec<usize> = Vec::new();
+            let mut path_elevator_groups: HashSet<usize> = HashSet::new();
             blocked.insert(start);
 
             // Return value (`None` on abort) is intentionally not consumed here: the
@@ -179,6 +183,7 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
                 start, start, &adjacency, &scc_set,
                 &mut blocked, &mut block_map, &mut path_nodes, &mut path_edges, &mut cycles,
                 &edges, words_per_row, global_basis_target, &mut global_basis, &mut global_basis_count, &mut basis,
+                &elevator_groups, &mut path_elevator_groups,
             );
         }
 
@@ -199,6 +204,26 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     }
 
     CycleSearchResult::Cycles { cycles, basis }
+}
+
+/// Per nav-edge, the elevator group it belongs to (`Dsu` root over nav-node ids reached via
+/// `is_elevator` edges), or `None` for a non-elevator edge. `Elevator` fans are wired as fully-
+/// connected two-way stop clusters (`AddElevatorStrategy`, `elevator_core`'s own convention), so
+/// this is a plain connected-components pass over `is_elevator` edges — same idea as
+/// `elevator_core::elevator_groups`, but keyed on `NavNodeId`/nav-edge index rather than the base
+/// graph's `NodeId`/`EdgeId`, since that's the id space `find_all_simple_cycles` searches in.
+/// Used by `johnson_circuit` to forbid a simple cycle from using more than one edge of the same
+/// elevator fan (GitHub issue #410) — a fan's combinatorial K_N cycle count is cut at the source
+/// (a fan can contribute at most one hop per cycle) instead of being enumerated and filtered out
+/// afterward by `cycle_core`'s all-elevator-edges check.
+fn elevator_edge_groups(edges: &[&NavEdge], n: usize) -> Vec<Option<usize>> {
+    let mut dsu = Dsu::new(n);
+    for edge in edges {
+        if edge.is_elevator {
+            dsu.union_by_size(edge.from, edge.to);
+        }
+    }
+    edges.iter().map(|edge| edge.is_elevator.then(|| dsu.find(edge.from))).collect()
 }
 
 /// True if `scc` can contain a cycle: size > 1, or size == 1 with a self-loop edge.
@@ -241,6 +266,18 @@ fn is_nontrivial(scc: &[NavNodeId], adjacency: &[Vec<(usize, NavNodeId)>]) -> bo
 /// `GF2Basis`) until `scc_basis_count` reaches `basis_target`, after which insertion is skipped
 /// for the rest of this SCC (see `find_all_simple_cycles`'s early-exit comment — provably safe,
 /// not an approximation).
+///
+/// `elevator_groups`/`path_elevator_groups` forbid a simple cycle from using more than one edge
+/// of the same elevator fan (GitHub issue #410): an `Elevator` fan is wired fully-connected (every
+/// stop pair gets a two-way edge), so it is combinatorially rich in simple cycles on its own even
+/// though every hop through it is the same instantaneous elevator jump — only a cycle mixing an
+/// elevator hop with other edge kinds is a real detour. Skipping a neighbor whose edge belongs to
+/// an elevator group already used earlier in `path_edges` cuts that blowup at the source, before
+/// Johnson's even walks into it, rather than enumerating it and filtering afterward (`cycle_core`).
+/// Applied as a plain eligibility filter on candidate edges (like the existing `scc_set` check
+/// right below), not a change to blocking/unblocking bookkeeping — `found_cycle`/`blocked`/
+/// `block_map` are untouched by it, so it cannot desync Johnson's own invariant the way forbidding
+/// a `reverse_edge` step would (see this function's doc comment above).
 #[allow(clippy::too_many_arguments)]
 fn johnson_circuit(
     start: NavNodeId,
@@ -258,6 +295,8 @@ fn johnson_circuit(
     scc_basis: &mut GF2Basis,
     scc_basis_count: &mut usize,
     basis: &mut Vec<Vec<usize>>,
+    elevator_groups: &[Option<usize>],
+    path_elevator_groups: &mut HashSet<usize>,
 ) -> Option<bool> {
     let mut found_cycle = false;
     // The trivial "walk out and back" 2-cycle (an edge immediately followed by its own
@@ -279,6 +318,14 @@ fn johnson_circuit(
         if !scc_set.contains(&w) {
             continue;
         }
+        // A second edge of an already-used elevator fan is never eligible for this path,
+        // regardless of where in `path_edges` the fan's first edge sits — not just the most
+        // recent one — since a cycle mixing two hops through the same fan is still just that
+        // one fan's instantaneous jump, not a genuine detour (see this function's doc comment).
+        if let Some(group) = elevator_groups[edge_idx]
+            && path_elevator_groups.contains(&group) {
+            continue;
+        }
         if w == start {
             // Still a real closing move for Johnson's own blocking bookkeeping (`found_cycle`
             // must reflect it, or `v`/`w`'s block state desyncs and hides later genuine cycles —
@@ -298,12 +345,18 @@ fn johnson_circuit(
             blocked.insert(w);
             path_nodes.push(w);
             path_edges.push(edge_idx);
+            let group = elevator_groups[edge_idx];
+            let group_newly_inserted = group.is_some_and(|g| path_elevator_groups.insert(g));
 
             let result = johnson_circuit(
                 start, w, adjacency, scc_set, blocked, block_map, path_nodes, path_edges, cycles,
                 edges, words_per_row, basis_target, scc_basis, scc_basis_count, basis,
+                elevator_groups, path_elevator_groups,
             );
 
+            if group_newly_inserted {
+                path_elevator_groups.remove(&group.unwrap());
+            }
             path_edges.pop();
             path_nodes.pop();
 

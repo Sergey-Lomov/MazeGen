@@ -108,15 +108,12 @@ fn cycle_core(nav: &NavGraph) -> Option<(HashSet<NavNodeId>, HashSet<usize>, Vec
     // That fan is structurally a complete graph among its endpoints, which always contains cycles
     // in the graph-theoretic sense once it spans 3+ floors — but those aren't real detour loops a
     // maze-solver could walk, since every edge in the fan is the same instantaneous elevator hop.
-    // A basis cycle made entirely of `Elevator` nav-edges is exactly this: drop it before it's
-    // counted as an invalid loop. A cycle mixing `Elevator` with any other edge kind is a genuine
-    // detour and stays counted as normal.
-    let basis: Vec<Vec<usize>> = basis.into_iter()
-        .filter(|cycle| !cycle.iter().all(|&idx| edges[idx].is_elevator))
-        .collect();
-    let cycles: Vec<Vec<usize>> = cycles.into_iter()
-        .filter(|cycle| !cycle.iter().all(|&idx| edges[idx].is_elevator))
-        .collect();
+    // No filtering needed here for that: `find_all_simple_cycles` (GitHub issue #410) already
+    // forbids a simple cycle from using more than one edge of the same elevator fan, and two
+    // different elevators never share a direct edge, so no cycle returned here can ever be made
+    // entirely of `Elevator` edges — an elevator-only cycle simply cannot exist to filter out. A
+    // cycle mixing an `Elevator` hop with any other edge kind is a genuine detour and stays
+    // counted, same as before.
     // Full canonical-key dedup — a CW and CCW walk of the same physical loop are two distinct
     // entries in the raw Johnson's output but the same visual loop; `simple_cycle_count` must
     // not double-count them. Computed from a clone, since `cycles` itself intentionally keeps

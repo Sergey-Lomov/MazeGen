@@ -421,6 +421,78 @@ fn basis_early_exit_does_not_shrink_the_full_cycle_list() {
     assert_eq!(basis.len(), expected_basis_size, "basis size must equal the exact Euler-formula independent count");
 }
 
+// GitHub issue #410: elevator fans are wired fully-connected (every stop pair gets a two-way
+// edge), which is combinatorially rich in simple cycles on its own even though every hop through
+// it is the same instantaneous jump. `johnson_circuit` now forbids using more than one edge of the
+// same elevator fan per simple cycle, cutting that blowup before enumeration instead of filtering
+// it out afterward.
+
+#[test]
+fn elevator_fan_alone_contributes_no_simple_cycles() {
+    // 4-stop fully-connected elevator fan (K_4, all edges Elevator-kind) and nothing else --
+    // every fan-internal cycle must be excluded now, not just filtered post-hoc.
+    let mut g = Graph::new();
+    for id in 0..4u64 { g.add_node(id); }
+    for a in 0..4u64 {
+        for b in 0..4u64 {
+            if a != b {
+                g.add_edge(a, b, EdgeKind::Elevator);
+            }
+        }
+    }
+    let cycles = all_cycles(&g);
+    assert!(cycles.is_empty(), "a fan on its own must contribute zero simple cycles");
+}
+
+#[test]
+fn mixed_cycle_using_two_edges_of_the_same_elevator_fan_is_excluded() {
+    // Triangle-shaped detour that would need TWO edges of the same 3-stop elevator fan to close
+    // (0->1 via elevator, 1->2 via a Basic detour edge, 2->0 via elevator again) -- forbidden:
+    // both elevator hops belong to the same fan, so this is not a genuine mixed detour.
+    let mut g = Graph::new();
+    for id in 0..3u64 { g.add_node(id); }
+    g.add_edge(0, 1, EdgeKind::Elevator);
+    g.add_edge(1, 0, EdgeKind::Elevator);
+    g.add_edge(1, 2, EdgeKind::Elevator);
+    g.add_edge(2, 1, EdgeKind::Elevator);
+    g.add_edge(2, 0, EdgeKind::Elevator);
+    g.add_edge(0, 2, EdgeKind::Elevator);
+    g.add_edge(1, 2, EdgeKind::Basic); // parallel Basic detour edge alongside the elevator one
+
+    let cycles = all_cycles(&g);
+    for cycle in &cycles {
+        let nav = build_nav_graph(&g);
+        let elevator_hops = cycle.iter().filter(|&&idx| nav.edge_by_idx(idx).is_elevator).count();
+        assert!(elevator_hops <= 1, "no simple cycle may use more than one edge of the same elevator fan");
+    }
+}
+
+#[test]
+fn mixed_detour_through_two_different_stops_of_the_same_elevator_is_still_found() {
+    // A genuine detour: enter the fan via one elevator hop (0->1), leave via a non-elevator edge
+    // (1->2), and return to 0 via another non-elevator edge (2->0) -- only ONE elevator edge is
+    // used, so this must still be found as a real cycle, not swept away by the same-fan filter.
+    let mut g = Graph::new();
+    for id in 0..3u64 { g.add_node(id); }
+    g.add_edge(0, 1, EdgeKind::Elevator);
+    g.add_edge(1, 0, EdgeKind::Elevator);
+    g.add_edge(1, 2, EdgeKind::Elevator);
+    g.add_edge(2, 1, EdgeKind::Elevator);
+    g.add_edge(0, 2, EdgeKind::Elevator);
+    g.add_edge(2, 0, EdgeKind::Elevator);
+    g.add_edge(1, 2, EdgeKind::Basic);
+    g.add_edge(2, 0, EdgeKind::Basic);
+
+    let cycles = all_cycles(&g);
+    let nav = build_nav_graph(&g);
+    let has_mixed_detour = cycles.iter().any(|cycle| {
+        let elevator_hops = cycle.iter().filter(|&&idx| nav.edge_by_idx(idx).is_elevator).count();
+        let basic_hops = cycle.iter().filter(|&&idx| !nav.edge_by_idx(idx).is_elevator).count();
+        elevator_hops == 1 && basic_hops > 0
+    });
+    assert!(has_mixed_detour, "a detour using exactly one elevator hop plus other edge kinds must still be found");
+}
+
 #[test]
 fn too_many_cycles_yields_no_partial_basis() {
     const SIDE: u64 = 6;
