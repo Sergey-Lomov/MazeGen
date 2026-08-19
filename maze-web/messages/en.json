@@ -1422,6 +1422,7 @@
   "analytics.timing_total": "Total",
   "analytics.timing_initial_build": "Initial generation",
   "analytics.timing_qc_total": "Quality control",
+  "analytics.timing_snapshot": "Analytics snapshot",
   "analytics.timing_detailed_report_button": "Detailed report",
   "analytics.timing_detailed_report_title": "Timing detailed report",
   "analytics.timing_report_task": "Task",

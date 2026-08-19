@@ -99,10 +99,15 @@ impl TimingNode {
 /// it's the only caller that also runs `generate_maze` before `build_maze`. `qc` is fully
 /// populated by `build_maze`: one child `TimingNode` per stage, each holding one child per rule,
 /// each rule holding its checks' and (if any) its strategy's own leaf nodes.
+/// `snapshot_ms` is likewise left at `0.0` by `build_maze` — it only covers the analytics
+/// snapshot build (`build_analytics_snapshot`, including its unmeasured `graph_analytics`/
+/// `nav_graph` calls, GitHub issue #414), which runs after `build_maze` returns; `run_generate`
+/// fills it in the same way as `initial_build_ms`.
 #[derive(Debug, Clone, Default)]
 pub struct GenerationTiming {
     pub initial_build_ms: f64,
     pub qc: Vec<TimingNode>,
+    pub snapshot_ms: f64,
 }
 
 /// Runs the full check+repair process on an already-generated graph — see GitHub issue #106.

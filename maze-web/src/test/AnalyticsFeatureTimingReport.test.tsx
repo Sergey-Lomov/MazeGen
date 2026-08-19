@@ -10,6 +10,7 @@ import type { GenerationTimingDto } from "../wasm/types";
 // resolveTimingRowLabel functions in isolation (see AnalyticsFeatureTiming.test.ts).
 const timing: GenerationTimingDto = {
   initial_build_ms: 10,
+  snapshot_ms: 0,
   qc: [
     {
       id: "stage_1",

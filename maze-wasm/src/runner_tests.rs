@@ -718,16 +718,17 @@ mod timing_dto_tests {
     #[test]
     fn generation_timing_converts_initial_build_ms_and_qc_tree() {
         let stage = TimingNode::new("stage_1", TimingEntry { total_ms: 5.0, calls: 2 }, vec![]);
-        let timing = GenerationTiming { initial_build_ms: 42.0, qc: vec![stage] };
+        let timing = GenerationTiming { initial_build_ms: 42.0, qc: vec![stage], snapshot_ms: 7.0 };
         let dto = timing_to_dto(timing);
         assert_eq!(dto.initial_build_ms, 42.0);
         assert_eq!(dto.qc.len(), 1);
         assert_eq!(dto.qc[0].id, "stage_1");
+        assert_eq!(dto.snapshot_ms, 7.0);
     }
 
     #[test]
     fn generation_timing_with_no_stages_converts_to_empty_qc() {
-        let timing = GenerationTiming { initial_build_ms: 0.0, qc: vec![] };
+        let timing = GenerationTiming { initial_build_ms: 0.0, qc: vec![], snapshot_ms: 0.0 };
         let dto = timing_to_dto(timing);
         assert!(dto.qc.is_empty());
     }

@@ -88,6 +88,11 @@ pub struct GenerationTimingDto {
     /// One entry per stage that ran at least one rule — each stage node's `children` are its own
     /// rules, each rule node's `children` are its checks and (if dispatched) its strategy.
     pub qc: Vec<TimingNodeDto>,
+    /// Time spent building the post-generation analytics snapshot (`build_analytics_snapshot`),
+    /// including its `graph_analytics`/`nav_graph` calls — this runs after the QC timing tree
+    /// above is already closed, so it would otherwise be invisible in the reported total
+    /// (GitHub issue #414).
+    pub snapshot_ms: f64,
 }
 
 #[derive(Serialize)]

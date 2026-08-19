@@ -216,8 +216,13 @@ pub fn run_generate<T: Tessellation + 'static>(
 
     // Fresh generation has no removal history yet — a node's position within `nodes_at(point)`
     // already equals its real `i` (GitHub issue #236, `NodeDto.i` doc comment).
+    // Timed separately from `build_maze`'s own QC/repair tree (GitHub issue #414) — this call's
+    // `graph_analytics`/`nav_graph` computation (cycle enumeration on the final graph) runs
+    // entirely outside the QC pipeline and was previously invisible in the reported total.
+    let snapshot_start = maze_core::generation::pipeline::now_ms();
     let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, &repair_preset_state, true, &point_to_xy, |_, _, pos| pos as u32)
         .map_err(|e| JsValue::from_str(&e))?;
+    timing.snapshot_ms = maze_core::generation::pipeline::now_ms() - snapshot_start;
     snapshot.timing = Some(timing_to_dto(timing));
 
     // Union coordinate set (GitHub issue #271) — every node that ever existed during this run,
@@ -389,5 +394,6 @@ fn timing_to_dto(timing: maze_core::GenerationTiming) -> crate::dto::GenerationT
     crate::dto::GenerationTimingDto {
         initial_build_ms: timing.initial_build_ms,
         qc: timing.qc.into_iter().map(timing_node_to_dto).collect(),
+        snapshot_ms: timing.snapshot_ms,
     }
 }

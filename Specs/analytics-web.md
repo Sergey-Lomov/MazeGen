@@ -161,17 +161,18 @@ One row per `elements_stats.total.split_groups` entry (sorted by `count` descend
 
 Shown only when `timing != null` — see GitHub issue #285 (originally #56) and `repair.md`'s "Timing Instrumentation" section for the core data source. `timing` comes straight from the store's generation-run value (`MazeSnapshot.timing`), with **no `postEditAnalytics` fallback** — post-edit/`compute_analytics` snapshots never run the generation pipeline, so they carry no timing data; this is the one analytics block that doesn't follow the `postEditAnalytics?.x ?? state.x` pattern used everywhere else in this file.
 
-The block itself is trimmed to three top-level rows:
+The block itself is trimmed to four top-level rows:
 
 | Row | Value |
 |---|---|
-| Total | `timing.initial_build_ms` + sum of `timing.qc[*].total_ms` |
+| Total | `timing.initial_build_ms` + sum of `timing.qc[*].total_ms` + `timing.snapshot_ms` |
 | Initial generation | `timing.initial_build_ms` |
 | Quality control | sum of `timing.qc[*].total_ms` |
+| Analytics snapshot | `timing.snapshot_ms` — post-generation `build_analytics_snapshot` cost (incl. `graph_analytics`/`nav_graph`), unmeasured by the QC tree above (GitHub issue #414) |
 
 A "Detailed report" button opens `TimingDetailedReportModal`, a `size="complex"` `Modal` using `rawBody` (a fixed, non-scrolling header row above a separately-scrolling tree, so a tall report never scrolls its own column headers out of view). The table has four columns — Task, Calls, Time, % — with one row per node in the tree, recursively:
 
-- Two synthetic root rows: "Initial generation" (`timing.initial_build_ms`, a leaf) and "Quality control" (sum of `timing.qc[*].total_ms`, containing `timing.qc` as its children).
+- Three synthetic root rows: "Initial generation" (`timing.initial_build_ms`, a leaf), "Quality control" (sum of `timing.qc[*].total_ms`, containing `timing.qc` as its children), and "Analytics snapshot" (`timing.snapshot_ms`, a leaf).
 - `timing.qc`'s own nodes: one per stage, containing one child per rule, each rule containing its checks and (if dispatched) its one strategy as leaf children — the same tree `TimingNode` describes in `repair.md`.
 - Each row is prefixed by its kind, resolved via i18n templates taking the resolved name as a parameter: `"Stage: {name}"`, `"Rule: {name}"`, `"Check: {name}"`, `"Strategy: {name}"` (`analytics.timing_report_prefix_*`). Stage/rule names are resolved from the store's own `stages`/`rules` lists by id (falling back to the raw id if not found — e.g. a stage/rule since removed from the current config); check/strategy names go through `resolveCheckLabel`/`resolveStrategyLabel` (`qualityI18n.ts`), also falling back to the raw id. A leaf id is classified as a check if it's present in `availableChecks`, a strategy otherwise (`leafKind`) — the `per_check`/`per_strategy` accumulators feeding one rule's children are otherwise indistinguishable once merged into one `children` array.
 - `%` is always relative to the whole run's total time (the same `Total` row's value), at every nesting level — never to the immediate parent — so any row's contribution is directly comparable to any other row's regardless of depth.

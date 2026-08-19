@@ -100,7 +100,7 @@ export function SidesInfoModal({ onClose }: { onClose: () => void }) {
 }
 
 /** Nesting level of one `TimingNodeDto` in the report tree, used to pick the right label resolver
- *  and prefix — depth 0 is the two synthetic top rows (already-localized labels, no prefix), 1 is
+ *  and prefix — depth 0 is the three synthetic top rows (already-localized labels, no prefix), 1 is
  *  a stage id, 2 is a rule id, 3 is a check-type or strategy id. A rule's children are its own
  *  `per_check` entries plus (if dispatched) one `per_strategy` entry — `checkIds` (this run's
  *  `availableChecks` id set) is what tells the two apart at that leaf level. */
@@ -168,9 +168,10 @@ export function TimingDetailedReportModal({ timing, onClose }: { timing: Generat
   const ruleNames = React.useMemo(() => new Map(rules.map((r) => [r.id, r.name])), [rules]);
   const checkIds = React.useMemo(() => new Set(availableChecks.map((c) => c.id)), [availableChecks]);
   const qcTotalMs = timing.qc.reduce((s, n) => s + n.total_ms, 0);
-  const totalMs = timing.initial_build_ms + qcTotalMs;
+  const totalMs = timing.initial_build_ms + qcTotalMs + timing.snapshot_ms;
   const generationNode: TimingNodeDto = { id: m["analytics.timing_initial_build"](), total_ms: timing.initial_build_ms, calls: 0, children: [] };
   const qcNode: TimingNodeDto = { id: m["analytics.timing_qc_total"](), total_ms: qcTotalMs, calls: 0, children: timing.qc };
+  const snapshotNode: TimingNodeDto = { id: m["analytics.timing_snapshot"](), total_ms: timing.snapshot_ms, calls: 0, children: [] };
   return (
     <Modal
       title={m["analytics.timing_detailed_report_title"]()}
@@ -187,6 +188,7 @@ export function TimingDetailedReportModal({ timing, onClose }: { timing: Generat
           <div style={styles.timingReportScroll}>
             <TimingReportRow node={generationNode} kind="root" totalMs={totalMs} stageNames={stageNames} ruleNames={ruleNames} checkIds={checkIds} />
             <TimingReportRow node={qcNode} kind="root" totalMs={totalMs} stageNames={stageNames} ruleNames={ruleNames} checkIds={checkIds} />
+            <TimingReportRow node={snapshotNode} kind="root" totalMs={totalMs} stageNames={stageNames} ruleNames={ruleNames} checkIds={checkIds} />
           </div>
         </div>
       }

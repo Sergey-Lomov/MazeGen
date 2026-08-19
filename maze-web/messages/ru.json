@@ -1433,6 +1433,7 @@
   "analytics.timing_total": "Всего",
   "analytics.timing_initial_build": "Начальная генерация",
   "analytics.timing_qc_total": "Контроль качества",
+  "analytics.timing_snapshot": "Снимок аналитики",
   "analytics.timing_detailed_report_button": "Подробный отчёт",
   "analytics.timing_detailed_report_title": "Подробный отчёт по таймингам",
   "analytics.timing_report_task": "Задача",

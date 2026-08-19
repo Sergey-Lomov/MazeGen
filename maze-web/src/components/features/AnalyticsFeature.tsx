@@ -249,7 +249,7 @@ export function AnalyticsFeature() {
       {/* Timing block — generation runs only, see GitHub issue #56 */}
       {timing != null && (() => {
         const qcTotalMs = timing.qc.reduce((s, n) => s + n.total_ms, 0);
-        const totalMs = timing.initial_build_ms + qcTotalMs;
+        const totalMs = timing.initial_build_ms + qcTotalMs + timing.snapshot_ms;
         return (
           <>
             <div style={styles.divider} />
@@ -259,6 +259,7 @@ export function AnalyticsFeature() {
                 <StatRow label={m["analytics.timing_total"]()} valueText={formatMs(totalMs)} />
                 <StatRow label={m["analytics.timing_initial_build"]()} valueText={formatMs(timing.initial_build_ms)} />
                 <StatRow label={m["analytics.timing_qc_total"]()} valueText={formatMs(qcTotalMs)} />
+                <StatRow label={m["analytics.timing_snapshot"]()} valueText={formatMs(timing.snapshot_ms)} />
                 <button className="hoverable" style={{ ...sharedStyles.btnMuted, ...styles.patternStatsButton }} onClick={() => setTimingReportOpen(true)}>
                   {m["analytics.timing_detailed_report_button"]()}
                 </button>
