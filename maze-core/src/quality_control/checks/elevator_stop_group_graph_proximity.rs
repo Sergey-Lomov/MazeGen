@@ -2,13 +2,12 @@ use std::collections::HashSet;
 use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
-use crate::graph::distance_map::{compute_distance_map_filtered_bounded, DistanceDirection};
-use crate::graph::nav::NavEdge;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::InvalidElevatorStopGroupIssue;
 use super::elevator_core::elevator_groups;
+use super::proximity_scan_core::pairwise_graph_proximity_scan;
 
 pub const ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: u32 = 0;
 
@@ -28,10 +27,6 @@ pub const ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: u32 = 0;
 pub struct ElevatorStopGroupGraphProximityCheck {
     pub instance_id: String,
     pub distance: u32,
-}
-
-fn is_not_an_elevator_hop(edge: &NavEdge, elevator_pairs: &HashSet<(NodeId, NodeId)>) -> bool {
-    !(edge.path.len() == 2 && elevator_pairs.contains(&(edge.path[0], edge.path[1])))
 }
 
 impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue> for ElevatorStopGroupGraphProximityCheck {
@@ -59,26 +54,19 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue> for ElevatorStopGr
             return;
         }
 
-        let max_dist = self.distance as usize;
-        let mut groups: Vec<(Vec<NodeId>, u32)> = Vec::new();
-
-        for &(own_node, own_elevator, own_nav_node) in &candidates {
-            let dist_map = compute_distance_map_filtered_bounded(
-                &nav, own_nav_node, DistanceDirection::Forward,
-                |e| is_not_an_elevator_hop(e, &elevator_pairs), max_dist,
-            );
-            for &(other_node, other_elevator, other_nav_node) in &candidates {
-                if own_elevator == other_elevator {
-                    continue;
-                }
-                if dist_map.get(&other_nav_node).is_some_and(|&d| (d as u32) < self.distance) {
-                    let mut group = vec![own_node, other_node];
-                    group.sort_unstable();
-                    groups.push((group, 1));
-                    break;
-                }
-            }
-        }
+        let mut groups = pairwise_graph_proximity_scan(
+            &nav,
+            &candidates,
+            self.distance,
+            &elevator_pairs,
+            |&(_, _, nav_node)| nav_node,
+            |&(_, own_elevator, _), &(_, other_elevator, _)| own_elevator == other_elevator,
+            |&(own_node, ..), &(other_node, ..)| {
+                let mut group = vec![own_node, other_node];
+                group.sort_unstable();
+                (group, 1)
+            },
+        );
 
         if groups.is_empty() {
             return;
@@ -97,6 +85,7 @@ mod tests {
     use rand::SeedableRng;
     use crate::{Graph, IdGenerator};
     use crate::graph::EdgeKind;
+    use crate::graph::distance_map::{compute_distance_map_filtered_bounded, DistanceDirection};
     use crate::space::{Field, MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 
     const TEST_ID: &str = "elevator_stop_group_graph_proximity";

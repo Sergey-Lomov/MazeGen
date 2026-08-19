@@ -5,6 +5,7 @@ use crate::space::{Tessellation, floor_aware_distance};
 use crate::quality_control::check::Check;
 use crate::quality_control::{GeometricFloorMode, InvalidVerticalPassageGroupIssue, VerticalPassageType};
 use super::vertical_passage_count_core::vertical_passage_proximity_candidates;
+use super::proximity_scan_core::pairwise_geometric_scan;
 
 pub const VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 pub const VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
@@ -48,26 +49,19 @@ impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue> for VerticalPas
             return;
         }
 
-        let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
-
-        for &(own_id, own_level, own_point, own_type) in &candidates {
-            for &(other_id, other_level, other_point, other_type) in &candidates {
-                if other_id == own_id {
-                    continue;
-                }
-                if self.same_type_only && own_type != other_type {
-                    continue;
-                }
-                if self.floor_mode == GeometricFloorMode::SameFloorOnly && own_level != other_level {
-                    continue;
-                }
-                let dist = floor_aware_distance::<T>(own_level, own_point, other_level, other_point, self.floor_mode.include_height());
-                if dist < self.distance {
-                    groups.push((vec![own_id, other_id], 1));
-                    break;
-                }
-            }
-        }
+        let groups = pairwise_geometric_scan(
+            &candidates,
+            self.distance,
+            |&(own_id, own_level, _, own_type), &(other_id, other_level, _, other_type)| {
+                other_id == own_id
+                    || (self.same_type_only && own_type != other_type)
+                    || (self.floor_mode == GeometricFloorMode::SameFloorOnly && own_level != other_level)
+            },
+            |&(_, own_level, own_point, _), &(_, other_level, other_point, _)| {
+                floor_aware_distance::<T>(own_level, own_point, other_level, other_point, self.floor_mode.include_height())
+            },
+            |&(own_id, ..), &(other_id, ..)| (vec![own_id, other_id], 1),
+        );
 
         if groups.is_empty() {
             return;

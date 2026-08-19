@@ -5,6 +5,7 @@ use crate::space::{Tessellation, floor_aware_distance};
 use crate::quality_control::check::Check;
 use crate::quality_control::{GeometricFloorMode, InvalidElevatorStopGroupIssue};
 use super::elevator_core::elevator_groups;
+use super::proximity_scan_core::pairwise_geometric_scan;
 
 pub const ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 pub const ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode = GeometricFloorMode::SameFloorOnly;
@@ -47,25 +48,22 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue> for ElevatorStopGr
             return;
         }
 
-        let mut groups: Vec<(Vec<NodeId>, u32)> = Vec::new();
-
-        for &(own_node, own_elevator, own_level, own_point) in &candidates {
-            for &(other_node, other_elevator, other_level, other_point) in &candidates {
-                if own_elevator == other_elevator {
-                    continue;
-                }
-                if self.floor_mode == GeometricFloorMode::SameFloorOnly && own_level != other_level {
-                    continue;
-                }
-                let dist = floor_aware_distance::<T>(own_level, own_point, other_level, other_point, self.floor_mode.include_height());
-                if dist < self.distance {
-                    let mut group = vec![own_node, other_node];
-                    group.sort_unstable();
-                    groups.push((group, 1));
-                    break;
-                }
-            }
-        }
+        let mut groups = pairwise_geometric_scan(
+            &candidates,
+            self.distance,
+            |&(_, own_elevator, own_level, _), &(_, other_elevator, other_level, _)| {
+                own_elevator == other_elevator
+                    || (self.floor_mode == GeometricFloorMode::SameFloorOnly && own_level != other_level)
+            },
+            |&(_, _, own_level, own_point), &(_, _, other_level, other_point)| {
+                floor_aware_distance::<T>(own_level, own_point, other_level, other_point, self.floor_mode.include_height())
+            },
+            |&(own_node, ..), &(other_node, ..)| {
+                let mut group = vec![own_node, other_node];
+                group.sort_unstable();
+                (group, 1)
+            },
+        );
 
         if groups.is_empty() {
             return;

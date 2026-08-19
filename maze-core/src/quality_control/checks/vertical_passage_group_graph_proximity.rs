@@ -2,13 +2,12 @@ use std::collections::HashSet;
 use rand::RngCore;
 use crate::Maze;
 use crate::graph::EdgeKind;
-use crate::graph::distance_map::{compute_distance_map_filtered_bounded, DistanceDirection};
-use crate::graph::nav::NavEdge;
 use crate::ids::{EdgeId, NodeId};
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
 use crate::quality_control::{InvalidVerticalPassageGroupIssue, VerticalPassageType};
 use super::vertical_passage_count_core::vertical_passage_proximity_candidates;
+use super::proximity_scan_core::pairwise_graph_proximity_scan;
 
 pub const VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: u32 = 0;
 pub const VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
@@ -39,10 +38,6 @@ pub struct VerticalPassageGroupGraphProximityCheck {
     pub same_type_only: bool,
 }
 
-fn is_not_a_vertical_passage_hop(edge: &NavEdge, vertical_passage_pairs: &HashSet<(NodeId, NodeId)>) -> bool {
-    !(edge.path.len() == 2 && vertical_passage_pairs.contains(&(edge.path[0], edge.path[1])))
-}
-
 impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue> for VerticalPassageGroupGraphProximityCheck {
     fn check_type_id(&self) -> &'static str { "vertical_passage_group_graph_proximity" }
 
@@ -64,27 +59,17 @@ impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue> for VerticalPas
             return;
         }
 
-        let max_dist = self.distance as usize;
-        let mut groups: Vec<(Vec<EdgeId>, u32)> = Vec::new();
-
-        for &(own_id, own_nav_node, own_type) in &candidates {
-            let dist_map = compute_distance_map_filtered_bounded(
-                &nav, own_nav_node, DistanceDirection::Forward,
-                |e| is_not_a_vertical_passage_hop(e, &vertical_passage_pairs), max_dist,
-            );
-            for &(other_id, other_nav_node, other_type) in &candidates {
-                if other_id == own_id {
-                    continue;
-                }
-                if self.same_type_only && own_type != other_type {
-                    continue;
-                }
-                if dist_map.get(&other_nav_node).is_some_and(|&d| (d as u32) < self.distance) {
-                    groups.push((vec![own_id, other_id], 1));
-                    break;
-                }
-            }
-        }
+        let groups = pairwise_graph_proximity_scan(
+            &nav,
+            &candidates,
+            self.distance,
+            &vertical_passage_pairs,
+            |&(_, nav_node, _)| nav_node,
+            |&(own_id, _, own_type), &(other_id, _, other_type)| {
+                other_id == own_id || (self.same_type_only && own_type != other_type)
+            },
+            |&(own_id, ..), &(other_id, ..)| (vec![own_id, other_id], 1),
+        );
 
         if groups.is_empty() {
             return;

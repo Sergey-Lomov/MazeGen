@@ -4,6 +4,7 @@ use crate::ids::NodeId;
 use crate::space::{Tessellation, floor_aware_distance};
 use crate::quality_control::check::Check;
 use crate::quality_control::{GeometricFloorMode, InvalidSplitTileGroupIssue, SplitTileNodes};
+use super::proximity_scan_core::pairwise_geometric_scan;
 
 pub const SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 pub const SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode = GeometricFloorMode::SameFloorOnly;
@@ -51,27 +52,20 @@ impl<T: Tessellation> Check<T, InvalidSplitTileGroupIssue> for SplitGroupGeometr
             return;
         }
 
-        let mut groups: Vec<(Vec<SplitTileNodes>, u32)> = Vec::new();
-
-        for &(own_level, own_level_index, own_point, ref own_nodes) in &tiles {
-            for &(other_level, other_level_index, other_point, ref other_nodes) in &tiles {
-                if other_level == own_level && other_point == own_point {
-                    continue;
-                }
-                if self.floor_mode == GeometricFloorMode::SameFloorOnly && other_level != own_level {
-                    continue;
-                }
-                let dist = floor_aware_distance::<T>(
-                    own_level_index, own_point,
-                    other_level_index, other_point,
-                    self.floor_mode.include_height(),
-                );
-                if dist < self.distance {
-                    groups.push((vec![SplitTileNodes::new(own_nodes.clone()), SplitTileNodes::new(other_nodes.clone())], 1));
-                    break;
-                }
-            }
-        }
+        let groups = pairwise_geometric_scan(
+            &tiles,
+            self.distance,
+            |&(own_level, _, own_point, _), &(other_level, _, other_point, _)| {
+                (other_level == own_level && other_point == own_point)
+                    || (self.floor_mode == GeometricFloorMode::SameFloorOnly && other_level != own_level)
+            },
+            |&(_, own_level_index, own_point, _), &(_, other_level_index, other_point, _)| {
+                floor_aware_distance::<T>(own_level_index, own_point, other_level_index, other_point, self.floor_mode.include_height())
+            },
+            |&(.., ref own_nodes), &(.., ref other_nodes)| {
+                (vec![SplitTileNodes::new(own_nodes.clone()), SplitTileNodes::new(other_nodes.clone())], 1)
+            },
+        );
 
         if groups.is_empty() {
             return;

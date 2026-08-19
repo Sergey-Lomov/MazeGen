@@ -5,6 +5,7 @@ use crate::graph::route_protection::is_edge_on_route;
 use crate::space::{Tessellation, floor_aware_edge_distance};
 use crate::quality_control::check::Check;
 use crate::quality_control::{GeometricFloorMode, InvalidOneWayGroupIssue};
+use super::proximity_scan_core::pairwise_geometric_scan;
 
 pub const ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 pub const ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode = GeometricFloorMode::SameFloorOnly;
@@ -57,35 +58,22 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
             return;
         }
 
-        let mut groups: Vec<(Vec<crate::ids::EdgeId>, u32)> = Vec::new();
-
-        for &(own_id, own_level, own_from, own_to) in &one_ways {
-            for &(other_id, other_level, other_from, other_to) in &one_ways {
-                if other_id == own_id {
-                    continue;
-                }
-                if self.floor_mode == GeometricFloorMode::SameFloorOnly && own_level != other_level {
-                    continue;
-                }
-
-                let dist = floor_aware_edge_distance::<T>(
-                    own_level, own_from, own_to,
-                    other_level, other_from, other_to,
-                    self.floor_mode.include_height(),
-                );
-
-                if dist < self.distance {
-                    let both_route_protected = self.protect_route
-                        && is_edge_on_route(maze, own_id)
-                        && is_edge_on_route(maze, other_id);
-                    if !both_route_protected {
-                        // Fixing either edge in the pair breaks the pair -- one fix resolves it.
-                        groups.push((vec![own_id, other_id], 1));
-                        break;
-                    }
-                }
-            }
-        }
+        let groups = pairwise_geometric_scan(
+            &one_ways,
+            self.distance,
+            |&(own_id, own_level, ..), &(other_id, other_level, ..)| {
+                other_id == own_id || (self.floor_mode == GeometricFloorMode::SameFloorOnly && own_level != other_level)
+            },
+            |&(own_id, own_level, own_from, own_to), &(other_id, other_level, other_from, other_to)| {
+                let dist = floor_aware_edge_distance::<T>(own_level, own_from, own_to, other_level, other_from, other_to, self.floor_mode.include_height());
+                let both_route_protected = self.protect_route && is_edge_on_route(maze, own_id) && is_edge_on_route(maze, other_id);
+                // A route-protected pair must never register as "close" -- the scan keeps trying
+                // farther candidates for `own_id` instead of stopping on this one, same as the
+                // pre-extraction loop's own `if !both_route_protected { ...; break }` shape.
+                if both_route_protected { f64::INFINITY } else { dist }
+            },
+            |&(own_id, ..), &(other_id, ..)| (vec![own_id, other_id], 1),
+        );
 
         if groups.is_empty() {
             return;
