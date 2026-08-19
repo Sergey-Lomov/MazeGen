@@ -250,6 +250,8 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   min_elevator_stop_count: (d) => d.min_elevator_stop_count !== undefined ? m["issue.missing_elevator_stop_count.min_elevator_stop_count_label"]({ min_elevator_stop_count: d.min_elevator_stop_count }) : undefined,
   min_elevator_height: (d) => d.min_elevator_height !== undefined ? m["issue.missing_elevator_height.min_elevator_height_label"]({ min_elevator_height: d.min_elevator_height }) : undefined,
   max_elevator_stop_gap: (d) => d.max_elevator_stop_gap !== undefined ? m["issue.excessive_elevator_stop_gap.max_elevator_stop_gap_label"]({ max_elevator_stop_gap: d.max_elevator_stop_gap }) : undefined,
+  elevator_stop_group_geometric_proximity: (d) => d.distance !== undefined ? m["issue.invalid_elevator_stop_group.elevator_stop_group_geometric_proximity_label"]({ distance: d.distance }) : undefined,
+  elevator_stop_group_graph_proximity: (d) => d.distance !== undefined ? m["issue.invalid_elevator_stop_group.elevator_stop_group_graph_proximity_label"]({ distance: d.distance }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's
@@ -289,6 +291,8 @@ const DETAIL_DESCRIPTIONS: Record<string, () => string> = {
   max_vertical_passage_ratio: () => resolveCheckDescription("max_vertical_passage_ratio", ""),
   vertical_passage_group_geometric_proximity: () => resolveCheckDescription("vertical_passage_group_geometric_proximity", ""),
   vertical_passage_group_graph_proximity: () => resolveCheckDescription("vertical_passage_group_graph_proximity", ""),
+  elevator_stop_group_geometric_proximity: () => resolveCheckDescription("elevator_stop_group_geometric_proximity", ""),
+  elevator_stop_group_graph_proximity: () => resolveCheckDescription("elevator_stop_group_graph_proximity", ""),
 };
 
 /// Resolves the description for one source check within an issue — mirrors

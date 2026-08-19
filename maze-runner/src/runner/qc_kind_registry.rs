@@ -185,7 +185,7 @@ qc_kind_registry! {
     ];
     InvalidElevator => InvalidElevatorIssue, build_invalid_elevator_check, ["elevator_stop_count", "elevator_span"];
     InvalidElevatorGroup => InvalidElevatorGroupIssue, build_invalid_elevator_group_check, ["max_elevator_count", "max_elevator_density"];
-    InvalidElevatorStopGroup => InvalidElevatorStopGroupIssue, build_invalid_elevator_stop_group_check, ["max_elevator_stops", "max_elevator_stops_per_floor", "elevator_stops_skip", "elevator_stops_span"];
+    InvalidElevatorStopGroup => InvalidElevatorStopGroupIssue, build_invalid_elevator_stop_group_check, ["max_elevator_stops", "max_elevator_stops_per_floor", "elevator_stops_skip", "elevator_stops_span", "elevator_stop_group_geometric_proximity", "elevator_stop_group_graph_proximity"];
     MissingElevators => MissingElevatorsIssue, build_missing_elevators_check, ["min_elevator_count", "min_elevator_density"];
     AreaMissingElevatorStops => AreaMissingElevatorStopsIssue, build_area_missing_elevator_stops_check, ["min_elevator_stops_per_area_count", "min_elevator_stops_per_area_density"];
     MissingElevatorStopCount => MissingElevatorStopCountIssue, build_missing_elevator_stop_count_check, ["min_elevator_stop_count"];

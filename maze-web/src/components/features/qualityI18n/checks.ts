@@ -282,6 +282,16 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.min_elevator_stop_count.label"] as MessageFn,
     description: m["check.min_elevator_stop_count.description"] as MessageFn,
   },
+  elevator_stop_group_geometric_proximity: {
+    label: m["check.elevator_stop_group_geometric_proximity.short_label"] as MessageFn,
+    description: m["check.elevator_stop_group_geometric_proximity.description"] as MessageFn,
+    cardLabel: m["check.elevator_stop_group_geometric_proximity.label"] as MessageFn,
+  },
+  elevator_stop_group_graph_proximity: {
+    label: m["check.elevator_stop_group_graph_proximity.short_label"] as MessageFn,
+    description: m["check.elevator_stop_group_graph_proximity.description"] as MessageFn,
+    cardLabel: m["check.elevator_stop_group_graph_proximity.label"] as MessageFn,
+  },
 };
 
 export function resolveCheckLabel(id: string, fallback: string): string {

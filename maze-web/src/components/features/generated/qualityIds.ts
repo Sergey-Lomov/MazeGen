@@ -3,6 +3,8 @@
 export const CHECK_IDS = [
   "elevator_span",
   "elevator_stop_count",
+  "elevator_stop_group_geometric_proximity",
+  "elevator_stop_group_graph_proximity",
   "elevator_stops_skip",
   "elevator_stops_span",
   "external_escape_diversity",

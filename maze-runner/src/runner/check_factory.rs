@@ -83,6 +83,8 @@ use maze_core::{
         MinElevatorStopCountCheck, MIN_ELEVATOR_STOP_COUNT_DEFAULT,
         MinElevatorHeightCheck, MIN_ELEVATOR_HEIGHT_DEFAULT,
         MaxElevatorStopGapCheck, MAX_ELEVATOR_STOP_GAP_DEFAULT,
+        ElevatorStopGroupGeometricProximityCheck, ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
+        ElevatorStopGroupGraphProximityCheck, ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
     },
     RegionClass,
 };
@@ -949,6 +951,22 @@ pub(crate) fn build_invalid_elevator_stop_group_check<T: Tessellation>(instance:
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(ELEVATOR_STOPS_SPAN_DEFAULT);
             Some(Box::new(ElevatorStopsSpanCheck { instance_id, elevator_stops_span }))
+        }
+        "elevator_stop_group_geometric_proximity" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.max(0.0))
+                .unwrap_or(ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT);
+            let floor_mode = parse_geometric_floor_mode(instance.params.get("floor_mode"), ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE);
+            Some(Box::new(ElevatorStopGroupGeometricProximityCheck { instance_id, distance, floor_mode }))
+        }
+        "elevator_stop_group_graph_proximity" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT);
+            Some(Box::new(ElevatorStopGroupGraphProximityCheck { instance_id, distance }))
         }
         _ => None,
     }

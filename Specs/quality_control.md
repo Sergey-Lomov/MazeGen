@@ -1777,6 +1777,31 @@ Both fire `InvalidElevatorStopGroupIssue::new_from_check(instance_id, groups)` w
 
 **Same-floor stop pairs**: neither check dedups stops by floor the way `stop_floors` does (used by `ElevatorStopCountCheck`/`ElevatorSpanCheck`) — they compare raw stop nodes. Two stops of the same elevator sharing a floor (currently never generated, but not assumed impossible — see `elevator_core::stop_floors`'s doc comment) sort adjacent with gap `0`, which `ElevatorStopsSkipCheck` always flags for any `elevator_stops_skip >= 1`.
 
+### ElevatorStopGroupGeometricProximityCheck / ElevatorStopGroupGraphProximityCheck
+
+```rust
+pub struct ElevatorStopGroupGeometricProximityCheck {
+    pub instance_id: String,
+    pub distance: f64,
+    pub floor_mode: GeometricFloorMode,
+}
+
+pub struct ElevatorStopGroupGraphProximityCheck {
+    pub instance_id: String,
+    pub distance: u32,
+}
+```
+
+See GitHub issue #409, part of epic #344. Both validate proximity between stops of **different** elevators, mirroring `VerticalPassageGroupGeometricProximityCheck`/`VerticalPassageGroupGraphProximityCheck`'s pairwise-scan shape and `InvalidElevatorStopGroupIssue`/`ElevatorStopGroupKind` pair-group shape (`to_remove: 1` per flagged pair — same as `ElevatorStopsSkipCheck`/`ElevatorStopsSpanCheck` above). Unlike those two checks, this pair validates *cross*-elevator geometric/topological closeness, not gap-along-the-floor-axis within a single elevator.
+
+**Same-elevator exclusion**: every stop of every elevator in the maze is a candidate, but a pair of stops belonging to the *same* elevator is never compared in either check — those stops are already connected by an `EdgeKind::Elevator` edge, so their closeness is by design, not a proximity problem (`ElevatorStopsSkipCheck` already covers a same-elevator pair sitting too close together on the floor axis). Only pairs spanning two distinct elevators are scanned.
+
+**`ElevatorStopGroupGeometricProximityCheck`** (`check_type_id() == "elevator_stop_group_geometric_proximity"`) — measures Euclidean distance between each candidate stop's own field point, folded across floors per `floor_mode` (see `GeometricFloorMode`, shared with `TeleportGeometricLengthCheck`/`SplitGroupGeometricProximityCheck`/`OneWayGroupGeometricProximityCheck`/`VerticalPassageGroupGeometricProximityCheck`). Default `floor_mode` is `SameFloorOnly`, same as every other geometric-proximity check's own default.
+
+**`ElevatorStopGroupGraphProximityCheck`** (`check_type_id() == "elevator_stop_group_graph_proximity"`) — measures tile-hop distance via the shared nav-graph distance map (`compute_distance_map_filtered_bounded`), excluding hops through any `EdgeKind::Elevator` edge (own or otherwise) from the traversal — same "measures pedestrian proximity, not by-elevator reachability" rationale `VerticalPassageGroupGraphProximityCheck` uses for vertical-passage hops. Elevators have no type/direction concept (unlike vertical passages' `TwoWay`/`OneWayUp`/`OneWayDown`), so there is no `same_type_only`-equivalent parameter here.
+
+Both fire `InvalidElevatorStopGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "distance", distance.to_string())` chained on. Repaired by `ElevatorStopGroupSelectStrategy` (see `repair.md`), same as `ElevatorStopsSkipCheck`/`ElevatorStopsSpanCheck`.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -2074,10 +2099,12 @@ Every `*_density`/`*_ratio` param below (density/ratio checks measured as "per 1
 | `min_vertical_passage_ratio` | `missing_vertical_passages` | `min_vertical_passage_ratio: Float(default=10.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)`, `count_incoming: Bool(default=false)` | no |
 | `max_vertical_passage_count` | `invalid_vertical_passage_group` | `max_vertical_passages: Integer(default=1_000, min=0, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `count_incoming: Bool(default=false)` | no |
 | `max_vertical_passage_ratio` | `invalid_vertical_passage_group` | `max_ratio: Float(default=100.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `count_incoming: Bool(default=false)` | no |
-| `vertical_passage_group_geometric_proximity` | `invalid_vertical_passage_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `same_type_only: Bool(default=false)`, `count_incoming: Bool(default=true)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=as_coordinate)` | no |
+| `vertical_passage_group_geometric_proximity` | `invalid_vertical_passage_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `same_type_only: Bool(default=false)`, `count_incoming: Bool(default=true)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` | no |
 | `vertical_passage_group_graph_proximity` | `invalid_vertical_passage_group` | `distance: Integer(default=0, min=0, max=100_000)`, `passage_type: Enum(options=[any,two_way,one_way,one_way_down,one_way_up], default=any)`, `same_type_only: Bool(default=false)` | no |
 | `elevator_stop_count` | `invalid_elevator` | `count: Integer(default=2, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)` | no |
 | `elevator_span` | `invalid_elevator` | `span: Integer(default=10, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)` | no |
+| `elevator_stop_group_geometric_proximity` | `invalid_elevator_stop_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` | no |
+| `elevator_stop_group_graph_proximity` | `invalid_elevator_stop_group` | `distance: Integer(default=0, min=0, max=100_000)` | no |
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

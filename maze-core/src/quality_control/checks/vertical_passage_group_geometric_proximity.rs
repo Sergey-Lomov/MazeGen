@@ -9,7 +9,7 @@ use super::vertical_passage_count_core::vertical_passage_proximity_candidates;
 pub const VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
 pub const VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_TYPE: VerticalPassageType = VerticalPassageType::Any;
 pub const VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_COUNT_INCOMING: bool = true;
-pub const VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode = GeometricFloorMode::AsCoordinate;
+pub const VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE: GeometricFloorMode = GeometricFloorMode::SameFloorOnly;
 
 /// Flags a pair of `EdgeKind::VerticalPassage` entries placed too close to each other in geometric
 /// (Euclidean) space — see GitHub issue #343/#342. Distance is measured between each candidate's
@@ -300,7 +300,6 @@ mod tests {
 
         let mut coordinate_issues = Vec::new();
         let coordinate_check = check(2.0, VerticalPassageType::Any, false, false);
-        assert_eq!(coordinate_check.floor_mode, GeometricFloorMode::AsCoordinate, "AsCoordinate is the default floor_mode");
         coordinate_check.repair_check(&maze, &mut coordinate_issues, &mut rng(), ());
         assert!(coordinate_issues.is_empty(), "AsCoordinate folds the floor gap in, sqrt(1^2 + 3^2) = 3.16 > 2.0");
     }

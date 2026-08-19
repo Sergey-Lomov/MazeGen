@@ -16,7 +16,8 @@ use maze_core::{
     AREA_MISSING_ELEVATOR_STOPS,
     MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE,
     MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE,
-    MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP, MIN_ELEVATOR_STOP_COUNT_DEFAULT, MIN_ELEVATOR_HEIGHT_DEFAULT, MAX_ELEVATOR_STOP_GAP_DEFAULT},
+    MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP, MIN_ELEVATOR_STOP_COUNT_DEFAULT, MIN_ELEVATOR_HEIGHT_DEFAULT, MAX_ELEVATOR_STOP_GAP_DEFAULT,
+    ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE, ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT},
 };
 use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, split_patterns_filter_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param};
 
@@ -1103,6 +1104,35 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             allow_multiple_instances: false,
         },
+        CheckDescriptor {
+            id: "elevator_stop_group_geometric_proximity",
+            label: "Elevator stop group geometric proximity",
+            description: "Fires if a pair of elevator stops belonging to different elevators sit geometrically closer to each other (floor-folded distance) than the required minimum.",
+            issue_kinds: vec![kind_str(INVALID_ELEVATOR_STOP_GROUP)],
+            params: vec![
+                ParamDescriptor {
+                    id: "distance",
+                    label: "Distance threshold",
+                    kind: ParamKindDto::Float { default: ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
+                },
+                geometric_floor_mode_param(ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE),
+            ],
+            allow_multiple_instances: true,
+        },
+        CheckDescriptor {
+            id: "elevator_stop_group_graph_proximity",
+            label: "Elevator stop group graph proximity",
+            description: "Fires if a pair of elevator stops sit topologically closer to each other than the required minimum.",
+            issue_kinds: vec![kind_str(INVALID_ELEVATOR_STOP_GROUP)],
+            params: vec![
+                ParamDescriptor {
+                    id: "distance",
+                    label: "Distance threshold",
+                    kind: ParamKindDto::Integer { default: ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT as i64, min: 0, max: 100_000 },
+                },
+            ],
+            allow_multiple_instances: true,
+        },
     ]
 }
 
@@ -1136,6 +1166,7 @@ mod tests {
             allowing_sorted,
             vec![
                 "elevator_span", "elevator_stop_count",
+                "elevator_stop_group_geometric_proximity", "elevator_stop_group_graph_proximity",
                 "max_vertical_passage_count", "max_vertical_passage_ratio",
                 "min_elevator_stops_per_area_count", "min_elevator_stops_per_area_density",
                 "min_loop_density", "min_loops_count", "min_one_way_count", "min_one_way_ratio",
