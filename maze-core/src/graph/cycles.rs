@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use crate::ids::EdgeId;
 use crate::dsu::Dsu;
 use super::Graph;
@@ -97,12 +97,17 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
         adjacency[edge.from].push((idx, edge.to));
     }
 
-    let elevator_groups = elevator_edge_groups(&edges, n);
+    let (elevator_groups, elevator_group_count) = elevator_edge_groups(&edges, n);
 
     let mut cycles: Vec<Vec<usize>> = Vec::new();
     let mut basis: Vec<Vec<usize>> = Vec::new();
     let words_per_row = edges.len().div_ceil(64).max(1);
     let mut remaining: HashSet<NavNodeId> = (0..n).collect();
+
+    // Reused across every `strongly_connected_components` call in this function (GitHub issue
+    // #415 perf follow-up) — same rationale as `scc_mask`/`blocked`/`block_map` below: the outer
+    // loop calls it up to O(n) times, and fresh n-sized `Vec`s every call was O(n^2) total.
+    let mut scc_scratch = SccScratch::new(n);
 
     // Maintained incrementally across iterations instead of a full Tarjan rerun on every
     // outer-loop step (see issue #25 / `Specs/graph-analytics.md` complexity section).
@@ -110,7 +115,7 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     // unaffected, since a path between two nodes in different SCCs never routes through a
     // third SCC's interior (otherwise they'd already be one SCC) — so only the affected
     // SCC's subgraph needs re-running through Tarjan, not the whole remaining graph.
-    let mut sccs = strongly_connected_components(&adjacency, &remaining);
+    let mut sccs = strongly_connected_components(&adjacency, &remaining, &mut scc_scratch);
 
     // GF(2) basis over the canonical (undirected) edge universe (see `canonical_index`) — ONE
     // instance for the whole call, with a target rank computed ONCE up front from the initial
@@ -143,6 +148,18 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
     let mut global_basis = GF2Basis::new(edges.len());
     let mut global_basis_count = 0usize;
 
+    // Reused across outer-loop iterations instead of `vec![false; n]`/`vec![HashSet::new(); n]`
+    // per iteration (GitHub issue #415 perf follow-up): the outer loop can run up to O(n)
+    // iterations (one per consumed start vertex, per the SCC-splitting comment above), and each
+    // iteration's `johnson_circuit` call only ever touches nodes inside the current (often much
+    // smaller than n) SCC — allocating fresh n-sized buffers every iteration was O(n) work per
+    // iteration (O(n^2) total) even though `HashSet`/`HashMap` versions cost O(1) to create.
+    // Cleared after use by walking just `scc_set` (`O(|scc|)`), not the full `n`-sized buffer.
+    let mut scc_mask: Vec<bool> = vec![false; n];
+    let mut blocked: Vec<bool> = vec![false; n];
+    let mut block_map: Vec<HashSet<NavNodeId>> = vec![HashSet::new(); n];
+    let mut path_elevator_groups: Vec<bool> = vec![false; elevator_group_count];
+
     while !remaining.is_empty() {
         // Smallest-index nontrivial SCC first (deterministic order); also handles
         // self-loop size-1 SCCs and drops size-1-no-self-loop SCCs from `remaining`.
@@ -168,23 +185,47 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
                 }
             }
         } else {
-            let mut blocked: HashSet<NavNodeId> = HashSet::new();
-            let mut block_map: std::collections::HashMap<NavNodeId, HashSet<NavNodeId>> = std::collections::HashMap::new();
+            for &node in &scc_set { scc_mask[node] = true; }
             let mut path_nodes: Vec<NavNodeId> = vec![start];
             let mut path_edges: Vec<usize> = Vec::new();
-            let mut path_elevator_groups: HashSet<usize> = HashSet::new();
-            blocked.insert(start);
+            blocked[start] = true;
 
             // Return value (`None` on abort) is intentionally not consumed here: the
             // `cycles.len() > MAX_SIMPLE_CYCLES` check right below catches the same abort
             // condition (johnson_circuit only ever returns `None` after pushing past that
             // bound), so re-checking it from the return value would be redundant.
             johnson_circuit(
-                start, start, &adjacency, &scc_set,
+                start, start, &adjacency, &scc_mask,
                 &mut blocked, &mut block_map, &mut path_nodes, &mut path_edges, &mut cycles,
                 &edges, words_per_row, global_basis_target, &mut global_basis, &mut global_basis_count, &mut basis,
                 &elevator_groups, &mut path_elevator_groups,
             );
+
+            // Reset just the touched entries (`O(|scc|)`) instead of reallocating the buffers
+            // next iteration — `johnson_circuit` never touches a node outside `scc_set` (see
+            // `scc_mask`'s eligibility check), so this fully restores the "fresh" invariant the
+            // next SCC's call relies on. Explicit reset is required, not optional: Johnson's own
+            // blocking invariant deliberately leaves a node `blocked` when no cycle was ever
+            // found through it (see `johnson_circuit`'s doc comment) — `unblock` only clears
+            // nodes that led to a found cycle, so a dead-end branch of this SCC can still be
+            // `blocked`/have stale `block_map` entries when the top-level call returns.
+            for &node in &scc_set {
+                scc_mask[node] = false;
+                blocked[node] = false;
+                block_map[node].clear();
+            }
+            // `path_elevator_groups` is already fully unwound by `johnson_circuit`'s own
+            // recursion (every `path_elevator_groups[g] = true` it sets is paired with `= false`
+            // on the way back out, per `group_newly_inserted`), so this reset is defensive only,
+            // not load-bearing — but cheap and keeps the invariant obvious without relying on
+            // that recursive symmetry never changing.
+            for &node in &scc_set {
+                for &(edge_idx, _) in &adjacency[node] {
+                    if let Some(group) = elevator_groups[edge_idx] {
+                        path_elevator_groups[group] = false;
+                    }
+                }
+            }
         }
 
         if cycles.len() > MAX_SIMPLE_CYCLES {
@@ -198,7 +239,7 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
         // removing `start` cannot affect a node outside its own SCC.
         let mut remainder_set = scc_set;
         remainder_set.remove(&start);
-        let split_sccs = strongly_connected_components(&adjacency, &remainder_set);
+        let split_sccs = strongly_connected_components(&adjacency, &remainder_set, &mut scc_scratch);
         sccs.swap_remove(scc_pos);
         sccs.extend(split_sccs);
     }
@@ -216,14 +257,27 @@ pub(crate) fn find_all_simple_cycles(nav: &NavGraph) -> CycleSearchResult {
 /// elevator fan (GitHub issue #410) — a fan's combinatorial K_N cycle count is cut at the source
 /// (a fan can contribute at most one hop per cycle) instead of being enumerated and filtered out
 /// afterward by `cycle_core`'s all-elevator-edges check.
-fn elevator_edge_groups(edges: &[&NavEdge], n: usize) -> Vec<Option<usize>> {
+///
+/// Group ids returned here are densely packed (`0..group_count`, the second return value), not
+/// raw `Dsu` roots (which are themselves `NavNodeId`s and therefore sparse over the group space)
+/// — `johnson_circuit`'s `path_elevator_groups` indexes a `Vec<bool>` by this id, so it needs a
+/// compact range, not sparse root values.
+fn elevator_edge_groups(edges: &[&NavEdge], n: usize) -> (Vec<Option<usize>>, usize) {
     let mut dsu = Dsu::new(n);
     for edge in edges {
         if edge.is_elevator {
             dsu.union_by_size(edge.from, edge.to);
         }
     }
-    edges.iter().map(|edge| edge.is_elevator.then(|| dsu.find(edge.from))).collect()
+    let mut dense_id: HashMap<NavNodeId, usize> = HashMap::new();
+    let groups = edges.iter().map(|edge| {
+        edge.is_elevator.then(|| {
+            let root = dsu.find(edge.from);
+            let next_id = dense_id.len();
+            *dense_id.entry(root).or_insert(next_id)
+        })
+    }).collect();
+    (groups, dense_id.len())
 }
 
 /// True if `scc` can contain a cycle: size > 1, or size == 1 with a self-loop edge.
@@ -283,9 +337,9 @@ fn johnson_circuit(
     start: NavNodeId,
     v: NavNodeId,
     adjacency: &[Vec<(usize, NavNodeId)>],
-    scc_set: &HashSet<NavNodeId>,
-    blocked: &mut HashSet<NavNodeId>,
-    block_map: &mut std::collections::HashMap<NavNodeId, HashSet<NavNodeId>>,
+    scc_mask: &[bool],
+    blocked: &mut [bool],
+    block_map: &mut [HashSet<NavNodeId>],
     path_nodes: &mut Vec<NavNodeId>,
     path_edges: &mut Vec<usize>,
     cycles: &mut Vec<Vec<usize>>,
@@ -296,7 +350,7 @@ fn johnson_circuit(
     scc_basis_count: &mut usize,
     basis: &mut Vec<Vec<usize>>,
     elevator_groups: &[Option<usize>],
-    path_elevator_groups: &mut HashSet<usize>,
+    path_elevator_groups: &mut [bool],
 ) -> Option<bool> {
     let mut found_cycle = false;
     // The trivial "walk out and back" 2-cycle (an edge immediately followed by its own
@@ -315,7 +369,7 @@ fn johnson_circuit(
         if cycles.len() > MAX_SIMPLE_CYCLES {
             return None;
         }
-        if !scc_set.contains(&w) {
+        if !scc_mask[w] {
             continue;
         }
         // A second edge of an already-used elevator fan is never eligible for this path,
@@ -323,7 +377,7 @@ fn johnson_circuit(
         // recent one — since a cycle mixing two hops through the same fan is still just that
         // one fan's instantaneous jump, not a genuine detour (see this function's doc comment).
         if let Some(group) = elevator_groups[edge_idx]
-            && path_elevator_groups.contains(&group) {
+            && path_elevator_groups[group] {
             continue;
         }
         if w == start {
@@ -341,21 +395,25 @@ fn johnson_circuit(
                 path_edges.pop();
             }
             found_cycle = true;
-        } else if !blocked.contains(&w) {
-            blocked.insert(w);
+        } else if !blocked[w] {
+            blocked[w] = true;
             path_nodes.push(w);
             path_edges.push(edge_idx);
             let group = elevator_groups[edge_idx];
-            let group_newly_inserted = group.is_some_and(|g| path_elevator_groups.insert(g));
+            let group_newly_inserted = group.is_some_and(|g| {
+                let was_unused = !path_elevator_groups[g];
+                path_elevator_groups[g] = true;
+                was_unused
+            });
 
             let result = johnson_circuit(
-                start, w, adjacency, scc_set, blocked, block_map, path_nodes, path_edges, cycles,
+                start, w, adjacency, scc_mask, blocked, block_map, path_nodes, path_edges, cycles,
                 edges, words_per_row, basis_target, scc_basis, scc_basis_count, basis,
                 elevator_groups, path_elevator_groups,
             );
 
             if group_newly_inserted {
-                path_elevator_groups.remove(&group.unwrap());
+                path_elevator_groups[group.unwrap()] = false;
             }
             path_edges.pop();
             path_nodes.pop();
@@ -368,7 +426,7 @@ fn johnson_circuit(
             if got_cycle {
                 unblock(w, blocked, block_map);
             } else {
-                block_map.entry(v).or_default().insert(w);
+                block_map[v].insert(w);
             }
         }
     }
@@ -389,15 +447,44 @@ fn johnson_circuit(
 /// theoretical-only risk — see issue #24 if pathologically deep graphs ever become a concern.
 fn unblock(
     node: NavNodeId,
-    blocked: &mut HashSet<NavNodeId>,
-    block_map: &mut std::collections::HashMap<NavNodeId, HashSet<NavNodeId>>,
+    blocked: &mut [bool],
+    block_map: &mut [HashSet<NavNodeId>],
 ) {
-    blocked.remove(&node);
-    if let Some(dependents) = block_map.remove(&node) {
-        for dep in dependents {
-            if blocked.contains(&dep) {
-                unblock(dep, blocked, block_map);
-            }
+    blocked[node] = false;
+    let dependents = std::mem::take(&mut block_map[node]);
+    for dep in dependents {
+        if blocked[dep] {
+            unblock(dep, blocked, block_map);
+        }
+    }
+}
+
+/// Per-node scratch buffers for `strongly_connected_components`, owned by `find_all_simple_cycles`
+/// and reused across its repeated calls (GitHub issue #415 perf follow-up) — without this, each
+/// call allocated fresh `n`-sized (whole nav-graph) vectors even though it is invoked once per
+/// outer-loop iteration (up to O(n) times) on a `nodes` subset that shrinks as vertices are
+/// consumed, making allocation alone O(n^2) across a call. `state`/`on_stack`/`neighbor_cache`
+/// are `Vec`s indexed directly by the dense `NavNodeId` (0..n) space, not `HashMap`/`HashSet`, to
+/// avoid hashing on the hottest per-node lookups (same rationale as `blocked`/`block_map` in
+/// `johnson_circuit`). Reset to empty by `strongly_connected_components` itself before returning,
+/// touching only the nodes it actually visited (`O(|nodes|)`), not the full `n`-sized buffer.
+struct SccScratch {
+    on_stack: Vec<bool>,
+    state: Vec<Option<TarjanState>>,
+    neighbor_cache: Vec<Option<Vec<NavNodeId>>>,
+}
+
+struct TarjanState {
+    index: usize,
+    lowlink: usize,
+}
+
+impl SccScratch {
+    fn new(n: usize) -> Self {
+        Self {
+            on_stack: vec![false; n],
+            state: (0..n).map(|_| None).collect(),
+            neighbor_cache: (0..n).map(|_| None).collect(),
         }
     }
 }
@@ -407,16 +494,12 @@ fn unblock(
 fn strongly_connected_components(
     adjacency: &[Vec<(usize, NavNodeId)>],
     nodes: &HashSet<NavNodeId>,
+    scratch: &mut SccScratch,
 ) -> Vec<Vec<NavNodeId>> {
-    struct State {
-        index: usize,
-        lowlink: usize,
-    }
+    let SccScratch { on_stack, state, neighbor_cache } = scratch;
 
     let mut index_counter = 0usize;
     let mut stack: Vec<NavNodeId> = Vec::new();
-    let mut on_stack: HashSet<NavNodeId> = HashSet::new();
-    let mut state: std::collections::HashMap<NavNodeId, State> = std::collections::HashMap::new();
     let mut components: Vec<Vec<NavNodeId>> = Vec::new();
     // work frame: (node, next neighbor index)
     let mut work: Vec<(NavNodeId, usize)> = Vec::new();
@@ -424,24 +507,19 @@ fn strongly_connected_components(
     let mut sorted_nodes: Vec<NavNodeId> = nodes.iter().copied().collect();
     sorted_nodes.sort_unstable();
 
-    // Filtered neighbor list per node, computed once on first visit and reused for every
-    // subsequent `ni` step into that node — `adjacency[v]` is scanned once per node, not
-    // once per (node, step) pair (was O(degree) work repeated `degree` times per node).
-    let mut neighbor_cache: std::collections::HashMap<NavNodeId, Vec<NavNodeId>> = std::collections::HashMap::new();
-
     for &root in &sorted_nodes {
-        if state.contains_key(&root) {
+        if state[root].is_some() {
             continue;
         }
-        state.insert(root, State { index: index_counter, lowlink: index_counter });
+        state[root] = Some(TarjanState { index: index_counter, lowlink: index_counter });
         index_counter += 1;
         stack.push(root);
-        on_stack.insert(root);
+        on_stack[root] = true;
         work.push((root, 0));
 
         while !work.is_empty() {
             let (v, ni) = *work.last().unwrap();
-            let neighbors = neighbor_cache.entry(v).or_insert_with(|| {
+            let neighbors = neighbor_cache[v].get_or_insert_with(|| {
                 adjacency[v].iter()
                     .map(|&(_, to)| to)
                     .filter(|to| nodes.contains(to))
@@ -451,24 +529,24 @@ fn strongly_connected_components(
             if ni < neighbors.len() {
                 work.last_mut().unwrap().1 += 1;
                 let w = neighbors[ni];
-                if !state.contains_key(&w) {
-                    state.insert(w, State { index: index_counter, lowlink: index_counter });
+                if state[w].is_none() {
+                    state[w] = Some(TarjanState { index: index_counter, lowlink: index_counter });
                     index_counter += 1;
                     stack.push(w);
-                    on_stack.insert(w);
+                    on_stack[w] = true;
                     work.push((w, 0));
-                } else if on_stack.contains(&w) {
-                    let idx_w = state[&w].index;
-                    let s_v = state.get_mut(&v).unwrap();
+                } else if on_stack[w] {
+                    let idx_w = state[w].as_ref().unwrap().index;
+                    let s_v = state[v].as_mut().unwrap();
                     s_v.lowlink = s_v.lowlink.min(idx_w);
                 }
             } else {
-                let is_root = state[&v].lowlink == state[&v].index;
+                let is_root = { let s_v = state[v].as_ref().unwrap(); s_v.lowlink == s_v.index };
                 if is_root {
                     let mut component = Vec::new();
                     loop {
                         let w = stack.pop().unwrap();
-                        on_stack.remove(&w);
+                        on_stack[w] = false;
                         component.push(w);
                         if w == v {
                             break;
@@ -478,12 +556,22 @@ fn strongly_connected_components(
                 }
                 work.pop();
                 if let Some(&(parent, _)) = work.last() {
-                    let ll_v = state[&v].lowlink;
-                    let s_parent = state.get_mut(&parent).unwrap();
+                    let ll_v = state[v].as_ref().unwrap().lowlink;
+                    let s_parent = state[parent].as_mut().unwrap();
                     s_parent.lowlink = s_parent.lowlink.min(ll_v);
                 }
             }
         }
+    }
+
+    // Reset just the visited nodes (`O(|nodes|)`) so `scratch` is fresh for the caller's next
+    // `strongly_connected_components` call — every node in `nodes` is guaranteed visited above
+    // (the outer `for &root in &sorted_nodes` loop starts a fresh Tarjan walk from any node not
+    // already visited, covering disconnected components too), and `on_stack` is already back to
+    // all-`false` by construction (every push is matched by a pop before `work` empties).
+    for &node in &sorted_nodes {
+        state[node] = None;
+        neighbor_cache[node] = None;
     }
 
     components

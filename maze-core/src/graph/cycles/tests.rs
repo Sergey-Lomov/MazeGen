@@ -494,6 +494,30 @@ fn mixed_detour_through_two_different_stops_of_the_same_elevator_is_still_found(
 }
 
 #[test]
+fn cycle_hopping_through_two_different_elevator_fans_is_found_with_both_hops() {
+    // Two separate 2-stop elevator fans (0<->1 and 2<->3), bridged by Basic edges (1->2, 3->0)
+    // into a single 4-node cycle: 0-[elevator]->1-[basic]->2-[elevator]->3-[basic]->0. Each fan
+    // contributes exactly one hop, so this must be found -- `path_elevator_groups` tracks fan
+    // membership PER fan (a set, not a single "any elevator used" flag), so a cycle mixing hops
+    // from two distinct fans is not the same-fan-reuse case #410 forbids.
+    let mut g = Graph::new();
+    for id in 0..4u64 { g.add_node(id); }
+    g.add_bidirectional_edge(0, 1, EdgeKind::Elevator); // fan A
+    g.add_bidirectional_edge(2, 3, EdgeKind::Elevator); // fan B
+    g.add_edge(1, 2, EdgeKind::Basic);
+    g.add_edge(3, 0, EdgeKind::Basic);
+
+    let cycles = all_cycles(&g);
+    let nav = build_nav_graph(&g);
+    let has_two_fan_cycle = cycles.iter().any(|cycle| {
+        let elevator_hops = cycle.iter().filter(|&&idx| nav.edge_by_idx(idx).is_elevator).count();
+        let basic_hops = cycle.iter().filter(|&&idx| !nav.edge_by_idx(idx).is_elevator).count();
+        elevator_hops == 2 && basic_hops == 2
+    });
+    assert!(has_two_fan_cycle, "a cycle using one hop from each of two distinct elevator fans must be found");
+}
+
+#[test]
 fn too_many_cycles_yields_no_partial_basis() {
     const SIDE: u64 = 6;
     let mut g = Graph::new();
