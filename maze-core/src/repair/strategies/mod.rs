@@ -50,6 +50,7 @@ pub mod elevator_utils;
 pub mod remove_elevator_stop;
 pub mod elevator_stop_group_select;
 pub mod add_elevator;
+pub mod add_elevator_stop;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -126,6 +127,7 @@ pub use replace_elevator_with_passages::{ReplaceElevatorWithPassagesStrategy, PA
 pub use elevator_group_select::{ElevatorGroupSelectStrategy, SLOT_FIX_TARGET as ELEVATOR_GROUP_SELECT_SLOT_FIX_TARGET};
 pub use remove_elevator_stop::RemoveElevatorStopStrategy;
 pub use elevator_stop_group_select::{ElevatorStopGroupSelectStrategy, SLOT_FIX_TARGET as ELEVATOR_STOP_GROUP_SELECT_SLOT_FIX_TARGET};
+pub use add_elevator_stop::{AddElevatorStopStrategy, PARAM_EXISTING_REUSE_BALANCE as ADD_ELEVATOR_STOP_PARAM_EXISTING_REUSE_BALANCE, PARAM_ALLOW_SPAN_EXTENSION as ADD_ELEVATOR_STOP_PARAM_ALLOW_SPAN_EXTENSION, SLOT_ADD_ELEVATOR_STRATEGY as ADD_ELEVATOR_STOP_SLOT_ADD_ELEVATOR_STRATEGY};
 
 #[cfg(test)]
 pub(crate) mod test_utils {

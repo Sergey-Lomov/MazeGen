@@ -177,6 +177,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.add_elevator.label"] as MessageFn,
     description: m["strategy.add_elevator.description"] as MessageFn,
   },
+  add_elevator_stop: {
+    label: m["strategy.add_elevator_stop.label"] as MessageFn,
+    description: m["strategy.add_elevator_stop.description"] as MessageFn,
+  },
 };
 
 export function resolveStrategyLabel(id: string): string {
@@ -184,10 +188,14 @@ export function resolveStrategyLabel(id: string): string {
 }
 
 /** Label for a nested-strategy slot, chosen by the slot's own issue `kind` -- "merge" for a
- * region-expansion slot (the nested strategy merges regions), "removal" for every other kind
+ * region-expansion slot (the nested strategy merges regions), "add-elevator" for
+ * `AddElevatorStopStrategy`'s slot (GitHub issue #408 — deliberately not "removal", the nested
+ * strategy there adds a new elevator, it doesn't remove anything), "removal" for every other kind
  * (the nested strategy removes the flagged element). */
 export function resolveNestedStrategyLabel(kind: string): string {
-  return kind === "region_needs_expansion" ? m["quality.nested_strategy.merge_label"]() : m["quality.nested_strategy.removal_label"]();
+  if (kind === "region_needs_expansion") return m["quality.nested_strategy.merge_label"]();
+  if (kind === "missing_elevators") return m["quality.nested_strategy.add_elevator_label"]();
+  return m["quality.nested_strategy.removal_label"]();
 }
 
 export function resolveStrategyDescription(id: string): string {

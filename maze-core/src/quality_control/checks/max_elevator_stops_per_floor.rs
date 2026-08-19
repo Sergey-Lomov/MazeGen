@@ -1,11 +1,10 @@
-use std::collections::HashMap;
-use rand::RngCore;
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::{LevelId, Tessellation};
+use rand::RngCore;
 use crate::quality_control::check::Check;
 use crate::quality_control::InvalidElevatorStopGroupIssue;
-use super::elevator_core::elevator_groups;
+use super::elevator_core::elevator_stops_per_floor;
 
 pub const MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT: u32 = 3;
 
@@ -27,14 +26,7 @@ impl<T: Tessellation> Check<T, InvalidElevatorStopGroupIssue> for MaxElevatorSto
     fn check_type_id(&self) -> &'static str { "max_elevator_stops_per_floor" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidElevatorStopGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let mut per_floor: HashMap<LevelId, Vec<NodeId>> = HashMap::new();
-        for elevator in elevator_groups(maze) {
-            for stop in elevator.stops {
-                if let Some(level) = maze.field.level_of(stop) {
-                    per_floor.entry(level).or_default().push(stop);
-                }
-            }
-        }
+        let per_floor = elevator_stops_per_floor(maze);
 
         let mut over_budget: Vec<LevelId> = per_floor.iter()
             .filter(|&(_, stops)| stops.len() as u32 > self.max_elevator_stops_per_floor)

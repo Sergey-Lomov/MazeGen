@@ -12,7 +12,10 @@ use maze_core::{
     INVALID_ELEVATOR_GROUP, MAX_ELEVATOR_COUNT_DEFAULT, MAX_ELEVATOR_DENSITY_DEFAULT,
     INVALID_ELEVATOR_STOP_GROUP, MAX_ELEVATOR_STOPS_DEFAULT, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT,
     ELEVATOR_STOPS_SKIP_DEFAULT, ELEVATOR_STOPS_SPAN_DEFAULT,
-    MISSING_ELEVATORS, MIN_ELEVATOR_COUNT_DEFAULT, MIN_ELEVATOR_DENSITY_DEFAULT},
+    MISSING_ELEVATORS, MIN_ELEVATOR_COUNT_DEFAULT, MIN_ELEVATOR_DENSITY_DEFAULT,
+    AREA_MISSING_ELEVATOR_STOPS,
+    MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE,
+    MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE},
 };
 use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, split_patterns_filter_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param};
 
@@ -972,6 +975,36 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             allow_multiple_instances: false,
         },
         CheckDescriptor {
+            id: "min_elevator_stops_per_area_count",
+            label: "Minimum elevator stop count",
+            description: "Fires if the count of elevator stops (distinct floor-touches across every elevator) is below the configured minimum.",
+            issue_kinds: vec![kind_str(AREA_MISSING_ELEVATOR_STOPS)],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_stops",
+                    label: "Min elevator stop count",
+                    kind: ParamKindDto::Integer { default: MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                },
+                floor_scope_param(MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE),
+            ],
+            allow_multiple_instances: true,
+        },
+        CheckDescriptor {
+            id: "min_elevator_stops_per_area_density",
+            label: "Minimum elevator stop density",
+            description: "Fires if the share of elevator stops relative to field size is below the configured minimum, expressed per 100 field cells.",
+            issue_kinds: vec![kind_str(AREA_MISSING_ELEVATOR_STOPS)],
+            params: vec![
+                ParamDescriptor {
+                    id: "min_stops_ratio",
+                    label: "Min elevator stop density (per 100 cells)",
+                    kind: ParamKindDto::Float { default: MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
+                },
+                floor_scope_param(MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE),
+            ],
+            allow_multiple_instances: true,
+        },
+        CheckDescriptor {
             id: "max_elevator_stops",
             label: "Maximum stops per elevator",
             description: "Fires if a single elevator's own stop count exceeds the configured maximum.",
@@ -1047,7 +1080,8 @@ mod tests {
         // #369's double-count fix) -- stacking several instances (e.g. different floor_scope) no
         // longer over-delivers. elevator_stop_count/elevator_span (GitHub issue #397) allow
         // multiple instances too -- each instance independently flags whichever elevators cross
-        // its own threshold, no shared mutable state to double-count.
+        // its own threshold, no shared mutable state to double-count. min_elevator_stops_per_area_count/
+        // _density (GitHub issue #408) join the RemainingDeficits-backed deficit-check group above.
         let checks = available_checks_list();
         let allowing: Vec<&str> = checks.iter()
             .filter(|c| c.allow_multiple_instances)
@@ -1060,6 +1094,7 @@ mod tests {
             vec![
                 "elevator_span", "elevator_stop_count",
                 "max_vertical_passage_count", "max_vertical_passage_ratio",
+                "min_elevator_stops_per_area_count", "min_elevator_stops_per_area_density",
                 "min_loop_density", "min_loops_count", "min_one_way_count", "min_one_way_ratio",
                 "min_teleport_count", "min_teleport_ratio",
                 "min_vertical_passage_count", "min_vertical_passage_ratio",

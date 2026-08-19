@@ -38,6 +38,7 @@ pub enum IssueKind {
     InvalidElevatorStop,
     InvalidElevatorStopGroup,
     MissingElevators,
+    AreaMissingElevatorStops,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -288,6 +289,13 @@ pub const INVALID_ELEVATOR_STOP_GROUP: IssueKind = IssueKind::InvalidElevatorSto
 /// `MaxElevatorCountCheck`/`MaxElevatorDensityCheck`). Carries `MissingElevatorsIssue { missing }`
 /// — see that type's doc comment. Repaired by `AddElevatorStrategy`.
 pub const MISSING_ELEVATORS: IssueKind = IssueKind::MissingElevators;
+/// An existing elevator group has too few stops, scoped either per-floor or whole-maze — see
+/// GitHub issue #408, part of epic #344. Distinct from `MISSING_ELEVATORS`: that kind flags too
+/// few elevators (count of distinct elevator groups); this one flags too few *stops* across the
+/// elevators that already exist (an elevator with a single stop is still one elevator, but
+/// contributes zero usable vertical connections). Carries `AreaMissingElevatorStopsIssue
+/// { missing }` — see that type's doc comment. Repaired by `AddElevatorStopStrategy`.
+pub const AREA_MISSING_ELEVATOR_STOPS: IssueKind = IssueKind::AreaMissingElevatorStops;
 
 /// `as_str`/`from_str`/`Display` for `IssueKind` are generated (`codegen`'s `id_enum` module, see
 /// GitHub issue #361) into the sibling `issue_kind_ids.rs` from the variant list above — do not

@@ -3,6 +3,7 @@ use super::resolvers::*;
 use super::resolve_issue_payload;
 use super::super::issue_kinds::*;
 use super::super::issue::Issue;
+use super::super::repair_area::RepairArea;
 use crate::graph::Graph;
 use crate::graph::scc::ComponentId;
 use crate::generation::PresetState;
@@ -1356,4 +1357,96 @@ fn invalid_elevator_stop_group_issue_preset_locked_when_stop_touches_a_preset_ed
     let locked: HashMap<u32, bool> = check_regions.iter().map(|r| (r.region[0], r.preset_locked)).collect();
     assert!(locked[&1], "stop 1 touches the preset edge (1,2), must be locked");
     assert!(locked[&2], "stop 2 also touches the preset edge (1,2), must be locked");
+}
+
+// --- AreaDeficit resolver (hover-highlight follow-up to GitHub issue #408) — covers
+// missing_vertical_passages/missing_teleports/missing_elevators/area_missing_elevator_stops, the
+// four sibling RepairArea-shaped deficit issues that previously all fell through to
+// IssuePayload::None. ---
+
+/// A two-floor field with no nodes wired into any graph — these tests only need `field.levels_ordered()`
+/// positions to resolve `RepairArea::Level`, not a real graph.
+fn two_level_field() -> (MultiLevelField<crate::space::SquareTessellation>, crate::space::LevelId, crate::space::LevelId) {
+    use crate::space::{Field, SquareTessellation, square_rect};
+    let mut ids = IdGenerator::new();
+    let mut mf = MultiLevelField::<SquareTessellation>::new([]);
+    let bottom = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    let top = mf.add_level(Field::<SquareTessellation>::new(square_rect(1, 1), &mut ids).unwrap());
+    (mf, bottom, top)
+}
+
+#[test]
+fn missing_vertical_passages_issue_with_no_missing_areas_resolves_to_none() {
+    let (graph, scc) = empty_graph_and_scc();
+    let issue = MissingVerticalPassagesIssue::new_from_check("min_vertical_passage_count", vec![]);
+    assert_eq!(resolve(&issue, &graph, &scc), IssuePayload::None);
+}
+
+#[test]
+fn missing_vertical_passages_issue_resolves_whole_maze_and_level_entries_keyed_by_source_check() {
+    let (field, bottom, top) = two_level_field();
+    let (graph, scc) = empty_graph_and_scc();
+    let issue = MissingVerticalPassagesIssue::new_from_check(
+        "min_vertical_passage_count",
+        vec![(RepairArea::WholeMaze, 2), (RepairArea::Level(top), 1)],
+    );
+
+    let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty());
+    let IssuePayload::AreaDeficit { areas } = payload else { panic!("expected AreaDeficit, got {payload:?}") };
+    assert_eq!(areas.len(), 1);
+    let entries = &areas["min_vertical_passage_count"];
+    assert_eq!(entries, &vec![None, Some(1)], "WholeMaze resolves to None, Level(top) resolves to its levels_ordered() index");
+    let _ = bottom; // only used to build the two-level field
+}
+
+#[test]
+fn missing_teleports_issue_resolves_level_entry_to_its_levels_ordered_index() {
+    let (field, bottom, _top) = two_level_field();
+    let (graph, scc) = empty_graph_and_scc();
+    let issue = MissingTeleportsIssue::new_from_check("min_teleport_count", vec![(RepairArea::Level(bottom), 3)]);
+
+    let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty());
+    let IssuePayload::AreaDeficit { areas } = payload else { panic!("expected AreaDeficit, got {payload:?}") };
+    assert_eq!(areas["min_teleport_count"], vec![Some(0)]);
+}
+
+#[test]
+fn missing_elevators_issue_whole_maze_only_resolves_to_a_none_entry() {
+    // GitHub issue #401's whole-maze-only scope — no specific floor to highlight, same
+    // "no per-element highlight" precedent as ExcessiveSccCount, still routed through AreaDeficit.
+    let (graph, scc) = empty_graph_and_scc();
+    let issue = MissingElevatorsIssue::new_from_check("min_elevator_count", vec![(RepairArea::WholeMaze, 4)]);
+
+    let payload = resolve(&issue, &graph, &scc);
+    let IssuePayload::AreaDeficit { areas } = payload else { panic!("expected AreaDeficit, got {payload:?}") };
+    assert_eq!(areas["min_elevator_count"], vec![None]);
+}
+
+#[test]
+fn area_missing_elevator_stops_issue_resolves_level_entry_to_its_levels_ordered_index() {
+    let (field, _bottom, top) = two_level_field();
+    let (graph, scc) = empty_graph_and_scc();
+    let issue = AreaMissingElevatorStopsIssue::new_from_check("min_elevator_stops_per_area_count", vec![(RepairArea::Level(top), 2)]);
+
+    let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty());
+    let IssuePayload::AreaDeficit { areas } = payload else { panic!("expected AreaDeficit, got {payload:?}") };
+    assert_eq!(areas["min_elevator_stops_per_area_count"], vec![Some(1)]);
+}
+
+#[test]
+fn area_deficit_fans_the_same_area_list_to_every_source_check() {
+    // These four issue kinds don't track per-entry source-check attribution (unlike
+    // InvalidLoopIssue's invalid_sources) -- merging two checks' issues must attribute the full
+    // area list to both checks uniformly.
+    use crate::quality_control::issue::IssueMerge;
+    let (field, bottom, _top) = two_level_field();
+    let (graph, scc) = empty_graph_and_scc();
+    let mut issue = MissingTeleportsIssue::new_from_check("min_teleport_count", vec![(RepairArea::Level(bottom), 2)]);
+    issue.merge(MissingTeleportsIssue::new_from_check("min_teleport_ratio", vec![(RepairArea::Level(bottom), 5)]));
+
+    let payload = resolve_issue_payload(&issue, &graph, &field, &scc, &PresetState::empty());
+    let IssuePayload::AreaDeficit { areas } = payload else { panic!("expected AreaDeficit, got {payload:?}") };
+    assert_eq!(areas.len(), 2);
+    assert_eq!(areas["min_teleport_count"], vec![Some(0)]);
+    assert_eq!(areas["min_teleport_ratio"], vec![Some(0)], "merge keeps the larger missing count but both checks still see the same area list");
 }

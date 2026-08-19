@@ -7,7 +7,7 @@ import { resolveIssue, resolveIssueSourceLabel, resolveIssueSourceDescription, p
 import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotification";
 import { SectionHeader } from "./SectionHeader";
 import { ToggleRow } from "./ToggleRow";
-import { selectNodeLevelResolver } from "../pixi/selectors/mazeSelectors";
+import { selectNodeLevelResolver, selectNodeIdsForLevel } from "../pixi/selectors/mazeSelectors";
 import { navigateToFloor } from "../pixi/renderers/floorNavigation";
 import * as m from "~/paraglide/messages";
 import type React from "react";
@@ -50,6 +50,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const setHoveredIssueLoopEdges = useMazeStore((s) => s.setHoveredIssueLoopEdges);
   const setHoveredIssueRegionGroups = useMazeStore((s) => s.setHoveredIssueRegionGroups);
   const showFullyPresetLockedIssues = useMazeStore((s) => s.showFullyPresetLockedIssues);
+  const mazeNodes = useMazeStore((s) => s.nodes);
   const { severity } = resolveIssue(issue.kind);
   // No source check (e.g. `cycle_analysis_overflowed`, `repair_limit_reached` — neither is a
   // toggleable `Check<T>`) still checks `details` under the issue's own kind string — the only
@@ -127,6 +128,14 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const splitRoutePayload = sourceCheck != null && issue.payload.kind === "invalid_split_route"
     ? issue.payload.routes[sourceCheck] ?? null
     : null;
+  // `area_deficit` (hover-highlight follow-up to GitHub issue #408) — a floor-level deficit, not a
+  // specific node/edge set. `Some(levelIndex)` entries resolve to "every cell on that floor";
+  // `null` (`RepairArea::WholeMaze`, e.g. `missing_elevators`'s only scope) has no specific floor
+  // to highlight and contributes nothing here, same "no per-element highlight" precedent as
+  // `excessive_scc_count` above.
+  const areaDeficitEntries = sourceCheck != null && issue.payload.kind === "area_deficit"
+    ? issue.payload.areas[sourceCheck] ?? null
+    : null;
   const palette = notificationPalette(severity);
 
   // GitHub issue #245: this bubble's own source-check slice of the payload, reduced to just the
@@ -195,6 +204,14 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const visibleRegionGroups = regionNodes != null
     ? regionNodes.filter(visibleGroup).map((r) => r.region)
     : null;
+  // One region-highlight group per floor-scoped deficit entry -- `null` entries (whole-maze
+  // deficits) are dropped, not highlighted as a fallback (no per-element highlight data for them,
+  // same as `excessive_scc_count`).
+  const areaDeficitCellNodes = areaDeficitEntries != null
+    ? areaDeficitEntries
+        .filter((level): level is number => level !== null)
+        .map((level) => selectNodeIdsForLevel(mazeNodes, level))
+    : null;
 
   const handleMouseEnter = loopEdges != null
     ? () => setHoveredIssueLoopEdges(loopEdges)
@@ -214,10 +231,12 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ? () => setHoveredIssueRegionGroups(elevatorCellNodes)
     : elevatorStopCellNodes != null
     ? () => setHoveredIssueRegionGroups(elevatorStopCellNodes)
+    : areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0
+    ? () => setHoveredIssueRegionGroups(areaDeficitCellNodes)
     : undefined;
   const handleMouseLeave = loopEdges != null || teleportEdges != null || oneWayEdges != null || splitRouteEdges != null
     ? () => setHoveredIssueLoopEdges(null)
-    : visibleRegionGroups != null || splitTileNodes != null || verticalPassageCellNodes != null || elevatorCellNodes != null || elevatorStopCellNodes != null
+    : visibleRegionGroups != null || splitTileNodes != null || verticalPassageCellNodes != null || elevatorCellNodes != null || elevatorStopCellNodes != null || (areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0)
     ? () => setHoveredIssueRegionGroups(null)
     : undefined;
 
@@ -249,7 +268,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ...(teleportEdges ?? []),
     ...(oneWayEdges ?? []),
     ...(splitRouteEdges?.flat() ?? []),
-  ].flat().concat((splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat());
+  ].flat().concat((splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat(), (areaDeficitCellNodes ?? []).flat());
 
   return (
     <>

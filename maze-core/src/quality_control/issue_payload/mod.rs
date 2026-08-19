@@ -13,7 +13,7 @@ use crate::generation::PresetState;
 use crate::space::{MultiLevelField, Tessellation};
 use crate::graph::scc::ConnectedComponents;
 use super::issue::Issue;
-use super::issue_kinds::{InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidVerticalPassageIssue, InvalidVerticalPassageGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, ExcessiveSccCountIssue, InvalidElevatorIssue, InvalidElevatorGroupIssue, InvalidElevatorStopIssue, InvalidElevatorStopGroupIssue};
+use super::issue_kinds::{InvalidLoopIssue, InvalidLoopGroupIssue, RegionNeedsExpansionIssue, RegionNeedsShrinkIssue, InvalidTeleportIssue, InvalidTeleportGroupIssue, InvalidOneWayIssue, InvalidOneWayGroupIssue, InvalidVerticalPassageIssue, InvalidVerticalPassageGroupIssue, InvalidSplitTileIssue, InvalidSplitTileGroupIssue, InvalidSplitNodeIssue, InvalidSplitNodeGroupIssue, InvalidSplitNodeConnectionGroupIssue, InvalidSplitRouteIssue, ExcessiveSccCountIssue, InvalidElevatorIssue, InvalidElevatorGroupIssue, InvalidElevatorStopIssue, InvalidElevatorStopGroupIssue, MissingVerticalPassagesIssue, MissingTeleportsIssue, MissingElevatorsIssue, AreaMissingElevatorStopsIssue};
 use resolvers::{
     resolve_cycle_payload, resolve_single_edge_map, resolve_edge_group_map,
     resolve_invalid_split_tile_payload, resolve_invalid_split_tile_group_payload,
@@ -22,6 +22,7 @@ use resolvers::{
     region_preset_locked_for_expansion, excessive_scc_count_preset_locked,
     resolve_invalid_elevator_payload, resolve_elevator_group_map,
     resolve_invalid_elevator_stop_payload, resolve_elevator_stop_group_map,
+    resolve_area_deficit_map,
 };
 
 /// Resolves `issue`'s structural payload against `graph`/`scc` — extracted from
@@ -169,6 +170,38 @@ pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, 
     if let Some(InvalidElevatorStopGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidElevatorStopGroupIssue>() {
         if let Some(payload) = resolve_elevator_stop_group_map(groups, invalid_sources, preset_state) {
             return payload;
+        }
+    }
+
+    if let Some(deficit_issue) = issue.as_any().downcast_ref::<MissingVerticalPassagesIssue>() {
+        let areas = resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
+        if !areas.is_empty() {
+            return IssuePayload::AreaDeficit { areas };
+        }
+    }
+
+    if let Some(deficit_issue) = issue.as_any().downcast_ref::<MissingTeleportsIssue>() {
+        let areas = resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
+        if !areas.is_empty() {
+            return IssuePayload::AreaDeficit { areas };
+        }
+    }
+
+    // `MissingElevatorsIssue` is whole-maze-only (`RepairArea::WholeMaze` always — see its doc
+    // comment), so this always resolves to `[None, ...]` entries: no specific floor to highlight,
+    // same "no per-element highlight" precedent as `ExcessiveSccCount` above. Still routed through
+    // `AreaDeficit` for consistency with its three sibling deficit kinds.
+    if let Some(deficit_issue) = issue.as_any().downcast_ref::<MissingElevatorsIssue>() {
+        let areas = resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
+        if !areas.is_empty() {
+            return IssuePayload::AreaDeficit { areas };
+        }
+    }
+
+    if let Some(deficit_issue) = issue.as_any().downcast_ref::<AreaMissingElevatorStopsIssue>() {
+        let areas = resolve_area_deficit_map(&deficit_issue.missing, deficit_issue.source_checks(), field);
+        if !areas.is_empty() {
+            return IssuePayload::AreaDeficit { areas };
         }
     }
 

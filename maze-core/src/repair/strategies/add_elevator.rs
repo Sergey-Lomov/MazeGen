@@ -134,6 +134,18 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorsIssue> for AddElevatorSt
             let target = (missing as f64 * (1.0 + reserve_percent / 100.0)).ceil() as u32;
             let target = target.max(1);
 
+            // `RepairArea::Level(level)` means the built elevator must actually stop on `level` —
+            // resolved once per area since `levels` (hence the index) never changes mid-`apply`.
+            // A level not found on the field (stale issue data) can never be satisfied; skip the
+            // area rather than building an elevator that silently doesn't cover it.
+            let required_idx = match area {
+                RepairArea::WholeMaze => None,
+                RepairArea::Level(level) => {
+                    let Some(idx) = levels.iter().position(|&l| l == level) else { continue };
+                    Some(idx)
+                }
+            };
+
             let base_pool: Vec<NodeId> = maze.field.all_node_ids().collect();
             let mut pool = apply_src_mode(maze, base_pool, src_mode, rng);
             let mut added: u32 = 0;
@@ -149,7 +161,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorsIssue> for AddElevatorSt
 
                     if let Some(stops) = try_build_elevator(
                         maze, start, &levels, stop_count_min, stop_count_max,
-                        skip_min, skip_max, length_min, length_max, preset_state, rng,
+                        skip_min, skip_max, length_min, length_max, required_idx, preset_state, rng,
                     ) {
                         for i in 0..stops.len() {
                             for j in (i + 1)..stops.len() {
@@ -158,7 +170,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorsIssue> for AddElevatorSt
                         }
                         added += 1;
                         slot_filled = true;
-                        deficits.consume(&[RepairArea::WholeMaze]);
+                        // `area` too (not just `WholeMaze`) -- a no-op when `area` already is
+                        // `WholeMaze`, but required so a `RepairArea::Level`-scoped synthetic
+                        // issue (see `add_elevator_stop`'s add-new branch) tracks real progress
+                        // instead of looping until `attempts_limit`/pool exhaustion every time.
+                        deficits.consume(&[RepairArea::WholeMaze, area]);
                         break;
                     }
                 }
@@ -207,6 +223,7 @@ fn try_build_elevator<T: Tessellation>(
     skip_max: usize,
     length_min: usize,
     length_max: usize,
+    required_idx: Option<usize>,
     preset_state: &PresetState,
     rng: &mut dyn RngCore,
 ) -> Option<Vec<NodeId>> {
@@ -218,16 +235,29 @@ fn try_build_elevator<T: Tessellation>(
         return None;
     }
 
-    let mut lengths: Vec<usize> = (length_min..=max_len_here).collect();
+    // A length shorter than the distance from `start` to `required_idx` can never span both --
+    // skip it outright rather than let the `lo > hi` check below discard it per-base.
+    let min_len_for_required = required_idx.map_or(0, |r| start_idx.abs_diff(r) + 1);
+
+    let mut lengths: Vec<usize> = (length_min.max(min_len_for_required)..=max_len_here).collect();
     lengths.shuffle(rng);
 
     for length in lengths {
         let span = length - 1;
         let latest_start = levels.len() - 1 - span;
-        let lo = start_idx.saturating_sub(span).max(0);
-        let hi = start_idx.min(latest_start);
+        let mut lo = start_idx.saturating_sub(span).max(0);
+        let mut hi = start_idx.min(latest_start);
         if lo > hi {
             continue;
+        }
+        // Every base in `lo..=hi` must still leave `base_idx..=base_idx+span` covering
+        // `required_idx` -- narrow the base range accordingly instead of relying on chance.
+        if let Some(required_idx) = required_idx {
+            lo = lo.max(required_idx.saturating_sub(span));
+            hi = hi.min(required_idx);
+            if lo > hi {
+                continue;
+            }
         }
 
         // Each of the `stop_count - 1` floor-index steps between stops is `skip + 1` (skip=0 means
@@ -240,7 +270,14 @@ fn try_build_elevator<T: Tessellation>(
         let max_stops_by_skip_min = span / step_min + 1;
         let min_stops_by_skip_max = span.div_ceil(step_max) + 1;
         let stop_count_cap = stop_count_max.min(span + 1).min(max_stops_by_skip_min);
-        let stop_count_floor = stop_count_min.max(min_stops_by_skip_max);
+        // A required floor that lands strictly inside the span (not on either endpoint, for at
+        // least some base in `lo..=hi`) needs its own stop distinct from both endpoints, so the
+        // floor is conservatively raised to 3 whenever `required_idx` is set at all -- some bases
+        // in this length's range won't actually need the extra stop (required_idx lands on an
+        // endpoint for them), but one extra stop is always a valid solution too, never a source of
+        // failure, so this never wrongly rejects a length that could otherwise work.
+        let min_for_required = if required_idx.is_some() { 3 } else { stop_count_min };
+        let stop_count_floor = stop_count_min.max(min_stops_by_skip_max).max(min_for_required);
         if stop_count_cap < stop_count_floor {
             continue;
         }
@@ -251,7 +288,11 @@ fn try_build_elevator<T: Tessellation>(
 
         for base_idx in bases {
             let end_idx = base_idx + span;
-            let Some(floor_indices) = distribute_stops(base_idx, end_idx, stop_count, skip_min, skip_max, rng) else { continue };
+            // `required_idx` already falls within `base_idx..=end_idx` (guaranteed by the `lo`/`hi`
+            // narrowing above); the endpoints are always stops by construction, so only pass it
+            // through when it's a genuine interior floor that must additionally become a stop.
+            let required_interior = required_idx.filter(|&r| r != base_idx && r != end_idx);
+            let Some(floor_indices) = distribute_stops(base_idx, end_idx, stop_count, skip_min, skip_max, required_interior, rng) else { continue };
 
             let stops: Option<Vec<NodeId>> = floor_indices.iter()
                 .map(|&idx| maze.field.node_at(levels[idx], point))
@@ -280,7 +321,36 @@ fn try_build_elevator<T: Tessellation>(
 /// proved `stop_count` is analytically reachable for this `span`/`skip` pair.
 const MAX_BACKTRACK_RETRIES: usize = 50;
 
-fn distribute_stops(base_idx: usize, end_idx: usize, stop_count: usize, skip_min: usize, skip_max: usize, rng: &mut dyn RngCore) -> Option<Vec<usize>> {
+/// `required_interior`, when set, is a floor index strictly between `base_idx` and `end_idx` that
+/// must itself become one of the returned stops — used when an elevator is being built to satisfy
+/// a specific floor's deficit (`RepairArea::Level`), not just span the field. Implemented by
+/// splitting into two independent sub-walks (`base_idx..=required_interior`,
+/// `required_interior..=end_idx`) that share the required floor as their common endpoint, trying
+/// every way to split `stop_count` between the two legs (each leg needs at least 2 stops -- its own
+/// two endpoints) until one combination succeeds for both.
+fn distribute_stops(base_idx: usize, end_idx: usize, stop_count: usize, skip_min: usize, skip_max: usize, required_interior: Option<usize>, rng: &mut dyn RngCore) -> Option<Vec<usize>> {
+    if let Some(mid) = required_interior {
+        // Each leg needs >= 2 stops (its own two endpoints); `mid` is shared between the legs and
+        // counted once in `stop_count`, so `left_count + right_count == stop_count + 1`.
+        if stop_count < 3 {
+            return None;
+        }
+        let mut splits: Vec<usize> = (2..=stop_count - 1).collect();
+        splits.shuffle(rng);
+        for left_count in splits {
+            let right_count = stop_count + 1 - left_count;
+            if right_count < 2 {
+                continue;
+            }
+            let Some(mut left) = distribute_stops(base_idx, mid, left_count, skip_min, skip_max, None, rng) else { continue };
+            let Some(right) = distribute_stops(mid, end_idx, right_count, skip_min, skip_max, None, rng) else { continue };
+            left.pop(); // drop `mid` from the left leg's tail -- `right` already starts with it
+            left.extend(right);
+            return Some(left);
+        }
+        return None;
+    }
+
     // `skip` counts floors skipped, not the raw floor-index step -- skip=0 means adjacent floors
     // (index step 1), so the actual step is always `gap + 1`.
     let step_min = skip_min + 1;
@@ -510,7 +580,7 @@ mod tests {
         // valid, so different seeds exercise different backtracking paths through the same call.
         for seed in 0..30u64 {
             let mut rng = MazeRng::seed_from_u64(seed);
-            let indices = distribute_stops(0, 9, 4, 0, 2, &mut rng).expect("a valid placement always exists for this span/stop_count/skip combo");
+            let indices = distribute_stops(0, 9, 4, 0, 2, None, &mut rng).expect("a valid placement always exists for this span/stop_count/skip combo");
             assert_eq!(indices.len(), 4);
             assert_eq!(indices[0], 0, "first stop is always the base index");
             assert_eq!(*indices.last().unwrap(), 9, "last stop always lands exactly on the end index");
@@ -525,7 +595,7 @@ mod tests {
     fn distribute_stops_returns_none_when_the_span_is_geometrically_unreachable() {
         // step fixed at exactly 1 (skip 0..=0), but a span of 5 can't be split into 2 gaps of 1 each.
         let mut rng = MazeRng::seed_from_u64(1);
-        assert_eq!(distribute_stops(0, 5, 3, 0, 0, &mut rng), None);
+        assert_eq!(distribute_stops(0, 5, 3, 0, 0, None, &mut rng), None);
     }
 
     #[test]

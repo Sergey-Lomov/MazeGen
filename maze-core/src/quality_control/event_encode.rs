@@ -101,6 +101,10 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
             out.push(11);
             write_str_keyed_node_lists(out, nodes);
         }
+        IssuePayload::AreaDeficit { areas } => {
+            out.push(12);
+            write_str_keyed_area_deficits(out, areas);
+        }
     }
 }
 
@@ -217,6 +221,20 @@ fn write_str_keyed_bools(out: &mut Vec<u8>, map: &std::collections::HashMap<Stri
         write_str(out, key);
         out.push(*value as u8);
     }
+}
+
+/// Encodes `IssuePayload::AreaDeficit`'s `areas` field — one presence byte per entry (0 = `None`,
+/// no floor to highlight; 1 = `Some`, followed by the floor's `levels_ordered()` index as `u32` LE).
+fn write_str_keyed_area_deficits(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<Option<u32>>>) {
+    write_str_keyed_lists(out, map, |out, area: &Option<u32>| {
+        match area {
+            None => out.push(0),
+            Some(idx) => {
+                out.push(1);
+                out.extend_from_slice(&idx.to_le_bytes());
+            }
+        }
+    });
 }
 
 pub(crate) fn write_issue_kind(out: &mut Vec<u8>, kind: &IssueKind) {

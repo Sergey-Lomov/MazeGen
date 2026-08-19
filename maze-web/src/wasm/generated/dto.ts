@@ -169,6 +169,10 @@ export type IssuePayloadDto =
       kind: "invalid_elevator_stop";
       nodes: Record<string, IssueRegionPayload[]>;
     }
+  | {
+      kind: "area_deficit";
+      areas: Record<string, (number | null)[]>;
+    }
 ;
 
 export interface IssueDto {

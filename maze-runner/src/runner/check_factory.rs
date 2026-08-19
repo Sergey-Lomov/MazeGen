@@ -71,6 +71,9 @@ use maze_core::{
         MinElevatorCountCheck, MIN_ELEVATOR_COUNT_DEFAULT,
         MinElevatorDensityCheck, MIN_ELEVATOR_DENSITY_DEFAULT,
         MissingElevatorsIssue,
+        MinElevatorStopsPerAreaCountCheck, MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE,
+        MinElevatorStopsPerAreaDensityCheck, MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE,
+        AreaMissingElevatorStopsIssue,
         MaxElevatorStopsCheck, MAX_ELEVATOR_STOPS_DEFAULT,
         MaxElevatorStopsPerFloorCheck, MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT,
         ElevatorStopsSkipCheck, ELEVATOR_STOPS_SKIP_DEFAULT,
@@ -846,6 +849,29 @@ pub(crate) fn build_missing_elevators_check<T: Tessellation>(instance: &CheckIns
                 .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(MIN_ELEVATOR_DENSITY_DEFAULT);
             Some(Box::new(MinElevatorDensityCheck { instance_id, min_density }))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn build_area_missing_elevator_stops_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, AreaMissingElevatorStopsIssue>>> {
+    match instance.type_id.as_str() {
+        "min_elevator_stops_per_area_count" => {
+            let min_stops = instance.params.get("min_stops")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT);
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MinElevatorStopsPerAreaCountCheck { instance_id, min_stops, floor_scope }))
+        }
+        "min_elevator_stops_per_area_density" => {
+            let min_stops_ratio = instance.params.get("min_stops_ratio")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
+                .unwrap_or(MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT);
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE);
+            Some(Box::new(MinElevatorStopsPerAreaDensityCheck { instance_id, min_stops_ratio, floor_scope }))
         }
         _ => None,
     }

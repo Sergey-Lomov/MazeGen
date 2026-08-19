@@ -102,6 +102,7 @@ const KNOWN_ISSUES: Record<string, () => IssueInfo> = {
   invalid_elevator_stop: () => ({ label: m["issue.invalid_elevator_stop.label"](), description: m["issue.invalid_elevator_stop.description"](), severity: "warning" }),
   invalid_elevator_stop_group: () => ({ label: m["issue.invalid_elevator_stop_group.label"](), description: m["issue.invalid_elevator_stop_group.description"](), severity: "warning" }),
   missing_elevators: () => ({ label: m["issue.missing_elevators.label"](), description: m["issue.missing_elevators.description"](), severity: "warning" }),
+  area_missing_elevator_stops: () => ({ label: m["issue.area_missing_elevator_stops.label"](), description: m["issue.area_missing_elevator_stops.description"](), severity: "warning" }),
 };
 
 export function resolveIssue(kind: string): IssueInfo {
@@ -240,6 +241,8 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   elevator_stops_span: (d) => d.elevator_stops_span !== undefined ? m["issue.invalid_elevator_stop_group.elevator_stops_span_label"]({ elevator_stops_span: d.elevator_stops_span }) : undefined,
   min_elevator_count: (d) => d.missing !== undefined ? m["issue.missing_elevators.min_elevator_count_label"]({ missing: d.missing }) : undefined,
   min_elevator_density: (d) => d.missing !== undefined ? m["issue.missing_elevators.min_elevator_density_label"]({ missing: d.missing }) : undefined,
+  min_elevator_stops_per_area_count: (d) => d.missing !== undefined ? m["issue.area_missing_elevator_stops.min_elevator_stops_per_area_count_label"]({ missing: d.missing }) : undefined,
+  min_elevator_stops_per_area_density: (d) => d.missing !== undefined ? m["issue.area_missing_elevator_stops.min_elevator_stops_per_area_density_label"]({ missing: d.missing }) : undefined,
 };
 
 /// Resolves the label for one source check within an issue, falling back to the issue kind's

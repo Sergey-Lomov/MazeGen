@@ -39,6 +39,7 @@ impl IssueKind {
             IssueKind::InvalidElevatorStop => "invalid_elevator_stop",
             IssueKind::InvalidElevatorStopGroup => "invalid_elevator_stop_group",
             IssueKind::MissingElevators => "missing_elevators",
+            IssueKind::AreaMissingElevatorStops => "area_missing_elevator_stops",
         }
     }
 
@@ -77,6 +78,7 @@ impl IssueKind {
             "invalid_elevator_stop" => Some(IssueKind::InvalidElevatorStop),
             "invalid_elevator_stop_group" => Some(IssueKind::InvalidElevatorStopGroup),
             "missing_elevators" => Some(IssueKind::MissingElevators),
+            "area_missing_elevator_stops" => Some(IssueKind::AreaMissingElevatorStops),
             _ => None,
         }
     }

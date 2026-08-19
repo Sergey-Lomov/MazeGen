@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use crate::Maze;
 use crate::ids::{EdgeId, NodeId};
-use crate::space::Tessellation;
+use crate::space::{LevelId, Tessellation};
 use crate::graph::EdgeKind;
 
 /// One `Elevator` — a maximal connected component of `EdgeKind::Elevator` edges, i.e. one
@@ -82,6 +82,21 @@ pub fn stop_floors<T: Tessellation>(elevator: &Elevator, maze: &Maze<T>) -> Vec<
     floors.sort_unstable();
     floors.dedup();
     floors
+}
+
+/// Every elevator stop node grouped by the floor it sits on, across every elevator in the maze —
+/// shared by `MaxElevatorStopsPerFloorCheck` (extracted here, GitHub issue #408) and
+/// `MinElevatorStopsPerAreaCountCheck`/`MinElevatorStopsPerAreaDensityCheck`'s `PerFloor` scope.
+pub fn elevator_stops_per_floor<T: Tessellation>(maze: &Maze<T>) -> HashMap<LevelId, Vec<NodeId>> {
+    let mut per_floor: HashMap<LevelId, Vec<NodeId>> = HashMap::new();
+    for elevator in elevator_groups(maze) {
+        for stop in elevator.stops {
+            if let Some(level) = maze.field.level_of(stop) {
+                per_floor.entry(level).or_default().push(stop);
+            }
+        }
+    }
+    per_floor
 }
 
 #[cfg(test)]

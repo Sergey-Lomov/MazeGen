@@ -67,6 +67,8 @@ pub mod elevator_stops_skip;
 pub mod elevator_stops_span;
 pub mod min_elevator_count;
 pub mod min_elevator_density;
+pub mod min_elevator_stops_per_area_count;
+pub mod min_elevator_stops_per_area_density;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -120,7 +122,7 @@ pub use max_vertical_passage_count::{MaxVerticalPassageCountCheck, MAX_VERTICAL_
 pub use max_vertical_passage_ratio::{MaxVerticalPassageRatioCheck, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE, MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING};
 pub use vertical_passage_group_geometric_proximity::{VerticalPassageGroupGeometricProximityCheck, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_TYPE, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_COUNT_INCOMING, VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE};
 pub use vertical_passage_group_graph_proximity::{VerticalPassageGroupGraphProximityCheck, VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE};
-pub use elevator_core::{Elevator, elevator_groups, stop_floors};
+pub use elevator_core::{Elevator, elevator_groups, stop_floors, elevator_stops_per_floor};
 pub use elevator_stop_count::{ElevatorStopCountCheck, ELEVATOR_STOP_COUNT_DEFAULT, ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON};
 pub use elevator_span::{ElevatorSpanCheck, ELEVATOR_SPAN_DEFAULT, ELEVATOR_SPAN_DEFAULT_COMPARISON};
 pub use max_elevator_count::{MaxElevatorCountCheck, MAX_ELEVATOR_COUNT_DEFAULT};
@@ -131,3 +133,5 @@ pub use elevator_stops_skip::{ElevatorStopsSkipCheck, ELEVATOR_STOPS_SKIP_DEFAUL
 pub use elevator_stops_span::{ElevatorStopsSpanCheck, ELEVATOR_STOPS_SPAN_DEFAULT};
 pub use min_elevator_count::{MinElevatorCountCheck, MIN_ELEVATOR_COUNT_DEFAULT};
 pub use min_elevator_density::{MinElevatorDensityCheck, MIN_ELEVATOR_DENSITY_DEFAULT};
+pub use min_elevator_stops_per_area_count::{MinElevatorStopsPerAreaCountCheck, MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE};
+pub use min_elevator_stops_per_area_density::{MinElevatorStopsPerAreaDensityCheck, MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE};

@@ -455,6 +455,22 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.length_interval.label"] as MessageFn,
     description: m["param.length_interval.description"] as MessageFn,
   },
+  min_stops: {
+    label: m["param.min_stops.label"] as MessageFn,
+    description: m["param.min_stops.description"] as MessageFn,
+  },
+  min_stops_ratio: {
+    label: m["param.min_stops_ratio.label"] as MessageFn,
+    description: m["param.min_stops_ratio.description"] as MessageFn,
+  },
+  existing_reuse_balance: {
+    label: m["param.existing_reuse_balance.label"] as MessageFn,
+    description: m["param.existing_reuse_balance.description"] as MessageFn,
+  },
+  allow_span_extension: {
+    label: m["param.allow_span_extension.label"] as MessageFn,
+    description: m["param.allow_span_extension.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`

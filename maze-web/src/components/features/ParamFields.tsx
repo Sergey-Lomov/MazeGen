@@ -23,7 +23,7 @@ const PERCENT_SLIDER_PARAM_IDS = new Set(["unreachable_priority", "one_way_chanc
 
 // Float params on a [0, 1] range rendered as a 0-100% slider -- the value stored/sent is the raw
 // fraction (0..1), only the slider bounds and displayed text are scaled by 100.
-const PERCENT_FRACTION_SLIDER_PARAM_IDS = new Set(["one_way_balance", "direction_balance", "vertical_direction_balance"]);
+const PERCENT_FRACTION_SLIDER_PARAM_IDS = new Set(["one_way_balance", "direction_balance", "vertical_direction_balance", "existing_reuse_balance"]);
 
 let measureCanvasCtx: CanvasRenderingContext2D | null | undefined;
 

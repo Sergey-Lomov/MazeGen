@@ -159,6 +159,16 @@ pub enum IssuePayloadDto {
     InvalidElevatorStop {
         nodes: HashMap<String, Vec<IssueRegionPayloadDto>>,
     },
+    /// Keyed by source check id — each entry is one flagged deficit area: `Some(level_index)` for
+    /// a floor-scoped deficit (`RepairArea::Level`, the index being the floor's `levels_ordered()`
+    /// position — matches `NodeDto.level`), or `None` for a whole-maze deficit
+    /// (`RepairArea::WholeMaze`) with no specific floor to highlight — same "no per-element
+    /// highlight" precedent as `ExcessiveSccCount` above. Shared wire variant for
+    /// `missing_vertical_passages`/`missing_teleports`/`missing_elevators`/
+    /// `area_missing_elevator_stops` — see `maze_core`'s `IssuePayload::AreaDeficit`.
+    AreaDeficit {
+        areas: HashMap<String, Vec<Option<u32>>>,
+    },
 }
 
 #[derive(Serialize, Dto)]

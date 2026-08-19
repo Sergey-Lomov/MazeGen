@@ -26,6 +26,8 @@ export const CHECK_IDS = [
   "max_vertical_passage_ratio",
   "min_elevator_count",
   "min_elevator_density",
+  "min_elevator_stops_per_area_count",
+  "min_elevator_stops_per_area_density",
   "min_loop_density",
   "min_loops_count",
   "min_one_way_count",
@@ -67,6 +69,7 @@ export const CHECK_IDS = [
 
 export const STRATEGY_IDS = [
   "add_elevator",
+  "add_elevator_stop",
   "add_split",
   "add_vertical_passage",
   "elevator_group_select",
@@ -116,6 +119,7 @@ export const RULE_PARAM_IDS = [
 ] as const;
 
 export const ISSUE_KIND_IDS = [
+  "area_missing_elevator_stops",
   "excessive_scc_count",
   "invalid_elevator",
   "invalid_elevator_group",
@@ -155,6 +159,7 @@ export const PARAM_IDS = [
   "allow_lose_connections",
   "allow_out_of_interval",
   "allow_reverse",
+  "allow_span_extension",
   "alternative_count",
   "attempts_limit",
   "avg_loop_length_estimate",
@@ -176,6 +181,7 @@ export const PARAM_IDS = [
   "elevator_stops_span",
   "elevator_weight",
   "entry_pick",
+  "existing_reuse_balance",
   "floor_mode",
   "floor_scope",
   "invalid_overlap_weight",
@@ -215,6 +221,8 @@ export const PARAM_IDS = [
   "min_ratio",
   "min_region_ratio",
   "min_region_size",
+  "min_stops",
+  "min_stops_ratio",
   "min_teleport_ratio",
   "min_teleports",
   "min_vertical_passage_ratio",

@@ -97,6 +97,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             IssuePayload::ExcessiveSccCount { preset_locked } => IssuePayloadDto::ExcessiveSccCount { preset_locked },
             IssuePayload::InvalidElevator { groups } => IssuePayloadDto::InvalidElevator { groups: edge_group_map_dto(groups) },
             IssuePayload::InvalidElevatorStop { nodes } => IssuePayloadDto::InvalidElevatorStop { nodes: region_payload_map_dto(nodes) },
+            IssuePayload::AreaDeficit { areas } => IssuePayloadDto::AreaDeficit { areas },
         };
         let source_checks = issue.source_checks().iter().map(|s| s.to_string()).collect();
         let mut details: HashMap<String, HashMap<String, String>> = issue.details().iter()

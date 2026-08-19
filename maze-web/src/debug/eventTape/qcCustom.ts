@@ -35,7 +35,8 @@ export type IssuePayload =
   | { kind: "ExcessiveSccCount"; presetLocked: Map<string, boolean> }
   | { kind: "InvalidVerticalPassage"; groups: Map<string, EdgeGroup[]> }
   | { kind: "InvalidElevator"; groups: Map<string, EdgeGroup[]> }
-  | { kind: "InvalidElevatorStop"; nodes: Map<string, RegionGroup[]> };
+  | { kind: "InvalidElevatorStop"; nodes: Map<string, RegionGroup[]> }
+  | { kind: "AreaDeficit"; areas: Map<string, (number | null)[]> };
 
 /** Mirrors `IssueEdgeGroupPayload` in `maze-core/src/quality_control/issue_payload.rs` — one
  *  flagged cycle/group's base-graph edges paired with whether every one of them is
@@ -282,6 +283,35 @@ export function readDetailsMap(bytes: Uint8Array, offset: number): { value: Map<
   return { value, next: pos };
 }
 
+/** Reads the `HashMap<String, Vec<Option<u32>>>` wire shape `write_str_keyed_area_deficits`
+ *  produces (`IssuePayload::AreaDeficit`'s `areas`) — one presence byte per entry (0 = `null`, no
+ *  floor to highlight; 1 = a floor index, its `levels_ordered()` position, as a plain `number`
+ *  since it's a floor index, not a `NodeId`). */
+function readStrKeyedAreaDeficits(bytes: Uint8Array, offset: number): { value: Map<string, (number | null)[]>; next: number } {
+  const value = new Map<string, (number | null)[]>();
+  const entryCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  for (let i = 0; i < entryCount; i++) {
+    const { value: key, next: afterKey } = readStr(bytes, pos);
+    pos = afterKey;
+    const areaCount = readU32(bytes, pos);
+    pos += 4;
+    const areas: (number | null)[] = [];
+    for (let a = 0; a < areaCount; a++) {
+      const present = bytes[pos];
+      pos += 1;
+      if (present === 0) {
+        areas.push(null);
+      } else {
+        areas.push(readU32(bytes, pos));
+        pos += 4;
+      }
+    }
+    value.set(key, areas);
+  }
+  return { value, next: pos };
+}
+
 /** Reads an `IssuePayload` starting at `offset` — mirrors `write_issue_payload`. */
 export function readIssuePayload(bytes: Uint8Array, offset: number): { value: IssuePayload; next: number } {
   const tag = bytes[offset];
@@ -329,6 +359,10 @@ export function readIssuePayload(bytes: Uint8Array, offset: number): { value: Is
   if (tag === 11) {
     const { value: nodes, next } = readStrKeyedNodeLists(bytes, offset + 1);
     return { value: { kind: "InvalidElevatorStop", nodes }, next };
+  }
+  if (tag === 12) {
+    const { value: areas, next } = readStrKeyedAreaDeficits(bytes, offset + 1);
+    return { value: { kind: "AreaDeficit", areas }, next };
   }
   throw new Error(`IssuePayload: unknown tag ${tag}`);
 }
