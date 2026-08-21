@@ -539,25 +539,55 @@ fn cross_floor_teleport_prefers_matching_group_when_both_non_empty() {
     assert_eq!(result_b, vec![same_floor]);
 }
 
-// --- Frontier-empty vertical reserve-bridge (GitHub issue #337 follow-up regression test) ---
+// --- Frontier-empty vertical reserve-bridge (GitHub issue #337 follow-up, revised by #416) ---
 //
-// Before this fix, a floor that never won the ordinary per-step `vertical_chance` roll had no way
-// back into the frontier at all: `run_ordinary_step_body_for_node` only ever queued *geometric*
-// free neighbors into `reserve`, and `handle_empty_frontier`'s own `has_visited_neighbor` scan
-// only checked `field.neighbors(candidate)` (geometric), never `field.vertical_neighbors`. Once
-// floor 0's own growth finished, every node on floor 1 sat in `reserve` forever, rejected on every
-// scan pass since none of them had a *geometric* visited neighbor (their only visited neighbor, if
-// any, would be a vertical one) — the maze finished with one fully-generated floor and the rest
-// entirely disconnected/unvisited.
+// `run_ordinary_step_body_for_node` queues *geometric* free neighbors into `reserve`, and also
+// pushes each `src`'s vertical neighbors so `handle_empty_frontier`'s `has_visited_neighbor` scan
+// can find a floor whose only visited neighbor is a vertical partner. This lets a floor that never
+// won the ordinary per-step `vertical_chance` roll get pulled in by the reserve-bridge fallback —
+// but only when `vertical_chance > 0.0`. `vertical_chance == 0.0` is a hard disable (GitHub issue
+// #416): no vertical connection may ever be created, including as a reserve-bridge fallback, even
+// if that leaves a floor with no geometric bridge option unreachable.
 
 #[test]
-fn frontier_empty_reserve_bridge_reconnects_a_second_floor_even_with_vertical_chance_zero() {
-    // `vertical_chance: 0.0` means the ordinary per-step growth roll never fires a vertical
-    // connection — the only way floor 1 can ever join the maze is via the frontier-empty
-    // reserve-bridge path now considering vertical neighbors too.
+fn frontier_empty_reserve_bridge_leaves_a_second_floor_isolated_when_vertical_chance_is_zero() {
+    // `vertical_chance: 0.0` disables vertical connections entirely — floor 1 has no geometric
+    // path to floor 0, so it must stay unvisited rather than being bridged via a vertical edge.
     let (mut field, mut graph, mut ids) = multi_floor_field(3, 3, 2);
     let start = node_at(&field, 0, 0, 0);
     let elements = default_elements(); // vertical_chance defaults to 0.0
+    let params = default_params();
+
+    generate_default_split(&mut graph, &mut field, &mut ids, 1, start, &params, &elements, &empty_presets(), None);
+
+    let visited: std::collections::HashSet<NodeId> = graph.edges().flat_map(|e| [e.from, e.to]).chain([start]).collect();
+    for x in 0..3 {
+        for y in 0..3 {
+            let node = node_at(&field, 0, x, y);
+            assert!(visited.contains(&node), "node at floor 0 ({x},{y}) was never connected");
+        }
+    }
+    for x in 0..3 {
+        for y in 0..3 {
+            let node = node_at(&field, 1, x, y);
+            assert!(!visited.contains(&node), "node at floor 1 ({x},{y}) was connected despite vertical_chance == 0.0");
+        }
+    }
+    assert!(
+        !graph.edges().any(|e| e.kind == EdgeKind::VerticalPassage || e.kind == EdgeKind::Elevator),
+        "no vertical edge should ever be created when vertical_chance == 0.0",
+    );
+}
+
+#[test]
+fn frontier_empty_reserve_bridge_still_falls_back_to_vertical_on_a_missed_roll_when_chance_is_nonzero() {
+    // A low but nonzero `vertical_chance` will miss its own per-candidate roll most of the time,
+    // but the fallback (`geometric_neighbors.is_empty() && !vertical_neighbors.is_empty()`) must
+    // still fire whenever a reserve candidate's only reachable neighbor is vertical — floor 1 has
+    // no geometric neighbor on floor 0, so it can only ever join via the vertical fallback here.
+    let (mut field, mut graph, mut ids) = multi_floor_field(3, 3, 2);
+    let start = node_at(&field, 0, 0, 0);
+    let elements = ElementsConfig { vertical_chance: 0.01, ..default_elements() };
     let params = default_params();
 
     generate_default_split(&mut graph, &mut field, &mut ids, 1, start, &params, &elements, &empty_presets(), None);
@@ -567,7 +597,7 @@ fn frontier_empty_reserve_bridge_reconnects_a_second_floor_even_with_vertical_ch
         for x in 0..3 {
             for y in 0..3 {
                 let node = node_at(&field, level_idx, x, y);
-                assert!(visited.contains(&node), "node at floor {level_idx} ({x},{y}) was never connected — floor left isolated");
+                assert!(visited.contains(&node), "node at floor {level_idx} ({x},{y}) was never connected");
             }
         }
     }

@@ -216,10 +216,10 @@ fn handle_empty_frontier<T: Tessellation>(
             let has_visited_neighbor = field.neighbors(candidate)
                 .into_iter()
                 .any(|n| state.visited.contains(&n) && can_connect(n, candidate, preset_state))
-                || field.vertical_neighbors(candidate)
+                || (elements.vertical_chance > 0.0 && field.vertical_neighbors(candidate)
                     .into_iter()
                     .any(|n| state.visited.contains(&n) && can_connect(n, candidate, preset_state)
-                        && graph.edge_between(n, candidate).is_none() && graph.edge_between(candidate, n).is_none());
+                        && graph.edge_between(n, candidate).is_none() && graph.edge_between(candidate, n).is_none()));
             if has_visited_neighbor {
                 reachable.push(candidate);
             } else {
@@ -277,7 +277,7 @@ fn handle_empty_frontier<T: Tessellation>(
     let use_vertical = if vertical_hit {
         !vertical_neighbors.is_empty()
     } else {
-        geometric_neighbors.is_empty() && !vertical_neighbors.is_empty()
+        elements.vertical_chance > 0.0 && geometric_neighbors.is_empty() && !vertical_neighbors.is_empty()
     };
 
     let geometric_bridge = (!use_vertical)
