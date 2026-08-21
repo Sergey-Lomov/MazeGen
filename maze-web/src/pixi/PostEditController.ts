@@ -8,7 +8,7 @@ import type { PostEditRenderer } from "./PostEditRenderer";
 import type { NodeDto } from "../wasm/types";
 import { BaseController } from "./BaseController";
 import {
-  type PostEditEndpoint, nodeEndpoint, edgeKey, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
+  type PostEditEndpoint, nodeEndpoint, edgeKey, endpointsEqual, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint,
 } from "./postEditEndpoint";
 import { selectFloorScopedMaze, selectNodeLevelResolver } from "./selectors/mazeSelectors";
 import { activeFloorLevel } from "../store/storeHelpers";
@@ -134,9 +134,16 @@ export class PostEditController extends BaseController {
       if (!teleport) return;
       const current = this.draggingTeleportEndpoint.end === "from" ? teleport.from : teleport.to;
       const other = this.draggingTeleportEndpoint.end === "from" ? teleport.to : teleport.from;
+      const floorNodeIds = new Set(floorNodes.map((n) => n.id));
       const resolveSplit = buildSplitNodeResolver(nodeMap, recordOnLevel(state.postEditDraftSplitPoints, level));
-      const currentId = resolveEndpoint(current, resolveSplit);
-      const otherId = resolveEndpoint(other, resolveSplit);
+      // `current`/`other` come from raw `state.postEditDraftTeleports`, which can carry their
+      // original non-zero `level` — `resolveSplit` above is built from a bare-keyed, floor-scoped
+      // `nodeMap`/`splitPoints`, so resolving a level-tagged split endpoint against it silently
+      // returns `undefined` on any floor above the first (GitHub issue #425). `floorScopedEndpoint`
+      // strips `level` after confirming the endpoint belongs to this floor; an off-floor endpoint
+      // resolves to `undefined` here same as before.
+      const currentId = resolveEndpoint(floorScopedEndpoint(current, level, floorNodeIds) ?? current, resolveSplit);
+      const otherId = resolveEndpoint(floorScopedEndpoint(other, level, floorNodeIds) ?? other, resolveSplit);
       const endpointId = resolveEndpoint(endpoint, resolveSplit);
       const movedToOther = otherId !== undefined && endpointId !== undefined && otherId === endpointId;
       if (currentId !== endpointId) {
@@ -283,7 +290,19 @@ export class PostEditController extends BaseController {
         endpoint !== null && meta.start !== null && endpointsEqual(meta.start, endpoint) ? "start" :
         endpoint !== null && meta.finish !== null && endpointsEqual(meta.finish, endpoint) ? "finish" : null;
       const nodeById = this.getNodeById(floorNodes);
-      const teleportHit = pickPostEditTeleportEndpointAt(vpX, vpY, state.activeTessellationConfig, state.postEditDraftTeleports, nodeById, resolveSplit);
+      // `state.postEditDraftTeleports` is maze-wide and its endpoints can carry their original
+      // non-zero `level`, but `resolveSplit` above is built from a bare-keyed, floor-scoped
+      // `nodeMap`/`splitPoints` — resolving a level-tagged endpoint against it silently returns
+      // `undefined` on any floor above the first (GitHub issue #425). Scope each teleport's
+      // endpoints to the active floor first, same as `PostEditRenderer.floorScoped` does for
+      // rendering; an off-floor endpoint stays untouched and correctly fails to resolve below.
+      const floorNodeIds = new Set(floorNodes.map((n) => n.id));
+      const scopedTeleports = state.postEditDraftTeleports.map((t) => ({
+        ...t,
+        from: floorScopedEndpoint(t.from, level, floorNodeIds) ?? t.from,
+        to: floorScopedEndpoint(t.to, level, floorNodeIds) ?? t.to,
+      }));
+      const teleportHit = pickPostEditTeleportEndpointAt(vpX, vpY, state.activeTessellationConfig, scopedTeleports, nodeById, resolveSplit);
       // Vertical-passage endpoints can live on either floor of the pair, so hit-testing needs the
       // *unscoped* node map/level resolver — `floorNodes`/`nodeById` above only cover the active
       // floor's own nodes.

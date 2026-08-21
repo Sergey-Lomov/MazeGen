@@ -1,7 +1,10 @@
-import type { NodeDto, PostEditEndpointWasmDto } from "../../wasm/types";
+import type { NodeDto, EdgeDto, PostEditEndpointWasmDto } from "../../wasm/types";
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
-import { nodeEndpoint } from "../../pixi/postEditEndpoint";
+import { nodeEndpoint, splitEndpoint, resolverForNodeId } from "../../pixi/postEditEndpoint";
+import { deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
+import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports } from "../../pixi/postEditUtils";
 import type { MazeStore, PostEditVerticalPassageEntry } from "../storeTypes";
+import type { PostEditEdge, PostEditTeleportEntry } from "../postEditTypes";
 
 /** Groups a multi-floor `NodeDto[]` (GitHub issue #337) by `level` (`undefined` → `0`, same
  * convention `PresetEndpoint.level`/`activeFloorLevel` use) — the per-floor unit every point-keyed
@@ -59,6 +62,77 @@ export function buildMultiFloorPointNodeMap(nodes: { id: number; x: number; y: n
     else m.set(key, [n.id]);
   }
   return m;
+}
+
+/** Builds a fresh multi-floor post-edit draft (`postEditDraftEdges`/`postEditDraftTeleports`/
+ * `postEditDraftSplitPoints`, plus the `endpointFor` resolver used for `start`/`finish`) straight
+ * from a flat `nodes`/`edges` list spanning every floor at once — the one piece of logic
+ * `resetPostEdit` (rebuilding the draft from `_generatedNodes`/`_generatedEdges` on reset) and
+ * `generateConfigBuilder`'s fresh-generation path (building the initial draft from
+ * `snapshot.nodes`/`snapshot.edges`) both need identically. Every floor's own nodes/edges are
+ * processed separately (`groupNodesByLevel`) since two nodes sharing an (x, y) on different floors
+ * must not be conflated into one bogus split-point group by the point-keyed grouping below
+ * (`deriveSplitPointsFromNodes`, `buildPointNodeMap`) — each floor's own `splitEndpoint`s are
+ * stamped with that floor's `level`. A teleport whose two endpoints sit on different floors is
+ * re-derived separately from the full, unfiltered `edges` (the per-level loop drops it, since
+ * both endpoints must be in the same `levelIds` set to survive that filter) — GitHub issue #363.
+ * Previously duplicated between `resetPostEdit` and the fresh-generation path; the latter's own
+ * copy used a single global, level-unaware `pointNodeMap` across every floor's nodes combined,
+ * which silently broke every split point on any floor above the first (GitHub issue #425). */
+export function buildMultiFloorPostEditDraft(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+): {
+  draftEdges: Record<string, PostEditEdge>;
+  draftTeleports: PostEditTeleportEntry[];
+  splitPoints: Record<string, number[]>;
+  endpointFor: (id: number) => PostEditEndpoint;
+} {
+  const nodesByLevel = groupNodesByLevel(nodes);
+  const splitPoints: Record<string, number[]> = {};
+  const endpointForId = new Map<number, PostEditEndpoint>();
+  let draftEdges: Record<string, PostEditEdge> = {};
+  let draftTeleports: PostEditTeleportEntry[] = [];
+
+  for (const [level, levelNodes] of nodesByLevel) {
+    const levelIds = new Set(levelNodes.map((n) => n.id));
+    const levelEdges = edges.filter((e) => levelIds.has(e.from) && levelIds.has(e.to));
+    const levelKey = level === 0 ? undefined : level;
+    const pointNodeMap = buildPointNodeMap(levelNodes);
+    const levelSplitPoints = deriveSplitPointsFromNodes(levelNodes);
+    const rawEndpointFor = resolverForNodeId(pointNodeMap, levelSplitPoints);
+    const endpointFor = (id: number): PostEditEndpoint => {
+      const ep = rawEndpointFor(id);
+      return ep.kind === "split" ? splitEndpoint(ep.point, ep.slotId, levelKey) : ep;
+    };
+    for (const id of levelIds) endpointForId.set(id, endpointFor(id));
+
+    for (const [key, slots] of Object.entries(levelSplitPoints)) {
+      splitPoints[levelKey === undefined ? key : `${key}@${levelKey}`] = slots;
+    }
+
+    draftEdges = { ...draftEdges, ...buildPostEditDraftEdgesFromGenerated(levelEdges, endpointFor) };
+    const { teleports } = extractPostEditTeleports(levelEdges, endpointFor);
+    draftTeleports = [...draftTeleports, ...teleports];
+  }
+
+  const endpointFor = (id: number): PostEditEndpoint => endpointForId.get(id) ?? nodeEndpoint(id);
+
+  const levelForId = new Map<number, number>();
+  for (const n of nodes) levelForId.set(n.id, n.level ?? 0);
+  const crossFloorTeleportEdges = edges.filter(
+    (e) => e.kind === "teleport" && levelForId.get(e.from) !== levelForId.get(e.to),
+  );
+  if (crossFloorTeleportEdges.length > 0) {
+    const { teleports } = extractPostEditTeleports(crossFloorTeleportEdges, endpointFor);
+    draftTeleports = [...draftTeleports, ...teleports];
+  }
+
+  // Renumbered once, after every batch (per-level + cross-floor) is merged, so ids stay unique
+  // across the whole draft — each `extractPostEditTeleports` call numbers its own batch from 1.
+  draftTeleports = draftTeleports.map((t, i) => ({ ...t, id: i + 1 }));
+
+  return { draftEdges, draftTeleports, splitPoints, endpointFor };
 }
 
 /** Builds the new `PostEditVerticalPassageEntry` for a single-click placement (GitHub issue #341,

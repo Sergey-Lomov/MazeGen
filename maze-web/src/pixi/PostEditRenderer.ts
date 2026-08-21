@@ -19,7 +19,7 @@ import { canvas } from "./colorTokens";
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge, PostEditTeleportEntry } from "../store/mazeStore";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
-import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, endpointOnLevel } from "./postEditEndpoint";
+import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "./postEditEndpoint";
 import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
 
@@ -261,20 +261,40 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const postEditDraftSplitPoints = recordOnLevel(state.postEditDraftSplitPoints, level);
     const nodes = pruneRemovedSplitNodes(floorNodes, postEditDraftSplitPoints);
     const floorNodeIds = new Set(nodes.map((n) => n.id));
-    const onLevel = (ep: PostEditEndpoint) => endpointOnLevel(ep, level, floorNodeIds);
+    // `floorScopedEndpoint` (checks on-level, then strips `level`) — `postEditDraftSplitPoints`/
+    // `postEditActiveSplitNode` above are already `recordOnLevel`'d down to bare `"x,y"` keys, so
+    // an endpoint resolved through them must not still carry its original non-zero `level` (that
+    // would send `resolveSplit` looking for a `"x,y@level"` key that no longer exists in the
+    // scoped map, silently failing to resolve every split reference on any floor above the first —
+    // GitHub issue #425).
+    const onLevel = (ep: PostEditEndpoint) => floorScopedEndpoint(ep, level, floorNodeIds);
     const postEditDraftEdges: Record<string, PostEditEdge> | null = state.postEditDraftEdges === null ? null : Object.fromEntries(
-      Object.entries(state.postEditDraftEdges).filter(([, e]) => onLevel(e.from) && onLevel(e.to)),
+      Object.entries(state.postEditDraftEdges)
+        .map(([k, e]) => {
+          const from = onLevel(e.from);
+          const to = onLevel(e.to);
+          return from !== undefined && to !== undefined ? [k, { ...e, from, to }] as const : null;
+        })
+        .filter((entry): entry is readonly [string, PostEditEdge] => entry !== null),
     );
     // Kept whenever *either* endpoint is on the active floor (mirrors `selectFloorScopedMaze`'s own
     // "keeps an edge whenever `from` is on the active floor" convention for cross-floor kinds) — a
     // cross-floor teleport must stay visible/editable from both of its ends, not just the one that
     // happened to be `from` at creation time. Requiring *both* ends on-level (the pre-fix behavior)
-    // made a cross-floor teleport vanish from every floor's own draft entirely.
-    const postEditDraftTeleports: PostEditTeleportEntry[] = state.postEditDraftTeleports.filter((t) => onLevel(t.from) || onLevel(t.to));
+    // made a cross-floor teleport vanish from every floor's own draft entirely. Only the on-level
+    // endpoint is stripped of its `level` (see above) — an off-floor endpoint is left untouched, so
+    // it still fails the scoped resolver and is silently dropped, same as before this fix.
+    const postEditDraftTeleports: PostEditTeleportEntry[] = state.postEditDraftTeleports
+      .map((t) => {
+        const from = onLevel(t.from);
+        const to = onLevel(t.to);
+        return from !== undefined || to !== undefined ? { ...t, from: from ?? t.from, to: to ?? t.to } : null;
+      })
+      .filter((t): t is PostEditTeleportEntry => t !== null);
     const postEditActiveSplitNode = recordOnLevel(state.postEditActiveSplitNode, level);
     const postEditDraftMeta = state.postEditDraftMeta === null ? null : {
-      start: state.postEditDraftMeta.start !== null && onLevel(state.postEditDraftMeta.start) ? state.postEditDraftMeta.start : null,
-      finish: state.postEditDraftMeta.finish !== null && onLevel(state.postEditDraftMeta.finish) ? state.postEditDraftMeta.finish : null,
+      start: state.postEditDraftMeta.start !== null ? onLevel(state.postEditDraftMeta.start) ?? null : null,
+      finish: state.postEditDraftMeta.finish !== null ? onLevel(state.postEditDraftMeta.finish) ?? null : null,
     };
     return { nodes, edges, start, finish, postEditDraftEdges, postEditDraftTeleports, postEditDraftSplitPoints, postEditActiveSplitNode, postEditDraftMeta };
   }

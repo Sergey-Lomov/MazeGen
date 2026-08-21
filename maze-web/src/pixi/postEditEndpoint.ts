@@ -67,6 +67,38 @@ export function endpointOnLevel(ep: PostEditEndpoint, level: number | undefined,
   return ep.kind === "node" ? floorNodeIds.has(ep.id) : (ep.level ?? 0) === (level ?? 0);
 }
 
+/** Strips a `split` endpoint's own `level` field after `endpointOnLevel` has already confirmed it
+ * belongs to the active floor — mirrors `presetConnectionsOnLevel`'s inline `{ ...entry.from, level:
+ * undefined }` for the preset side. Every resolver a floor-scoped caller builds afterwards
+ * (`buildSplitNodeResolver`'s `nodeMap`/`splitPoints`, via `recordOnLevel`) is keyed by bare
+ * `"x,y"` — resolving through `resolveEndpoint` without stripping first would pass the endpoint's
+ * original non-zero `level` straight into `resolveSplit`, which then looks up a `"x,y@level"` key
+ * that doesn't exist in the already-scoped (suffix-stripped) map, silently failing to resolve every
+ * split reference on any floor above the first (GitHub issue #425). A `node` endpoint is returned
+ * unchanged (it never carries a `level` of its own). */
+export function stripEndpointLevel(ep: PostEditEndpoint): PostEditEndpoint {
+  if (ep.kind === "node") return ep;
+  return { kind: "split", point: ep.point, slotId: ep.slotId };
+}
+
+/** Combines `endpointOnLevel` + `stripEndpointLevel` into one call — returns the level-stripped
+ * endpoint when `ep` belongs to `level`, `undefined` otherwise. Prefer this over calling the two
+ * separately: every caller that resolves a maze-wide `PostEditEndpoint` against a floor-scoped
+ * (bare-keyed) resolver needs both steps together, in this order, and forgetting the strip step
+ * after checking on-level silently reintroduces GitHub issue #425's failure mode (a `split`
+ * endpoint's own non-zero `level` makes `resolveSplit` look for a `"x,y@level"` key that doesn't
+ * exist in the already-scoped map) with no compiler signal, since `stripEndpointLevel` returns the
+ * same `PostEditEndpoint` type as its input. `PostEditController.ts` and
+ * `ManageSplitNodesDialog.tsx` both had exactly this omission before being fixed to use this
+ * helper. */
+export function floorScopedEndpoint(
+  ep: PostEditEndpoint,
+  level: number | undefined,
+  floorNodeIds: ReadonlySet<number>,
+): PostEditEndpoint | undefined {
+  return endpointOnLevel(ep, level, floorNodeIds) ? stripEndpointLevel(ep) : undefined;
+}
+
 /** Stable string key for one endpoint: "n42" for a node, "s3,5:7" for a split (point "3,5",
  * slotId 7), "s3,5:7@2" when that split lives on floor index 2. The "n"/"s" prefix keeps the two
  * variants' key spaces disjoint. */

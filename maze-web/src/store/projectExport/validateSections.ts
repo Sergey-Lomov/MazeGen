@@ -104,10 +104,16 @@ export function validatePostEditEndpoint(v: unknown, path: string): PostEditEndp
     return { kind: "node", id: assertNumber(obj.id, `${path}.id`) };
   }
   if (kind === "split") {
+    let level: number | undefined;
+    if (obj.level !== undefined) {
+      level = assertNumber(obj.level, `${path}.level`);
+      if (!Number.isInteger(level) || level < 0) throw new Error(`Expected non-negative integer level at ${path}.level, got ${level}`);
+    }
     return {
       kind: "split",
       point: validateCoordPair(obj.point, `${path}.point`),
       slotId: assertNumber(obj.slotId, `${path}.slotId`),
+      ...(level !== undefined ? { level } : {}),
     };
   }
   throw new Error(`Invalid PostEditEndpoint kind at ${path}.kind: ${kind}`);

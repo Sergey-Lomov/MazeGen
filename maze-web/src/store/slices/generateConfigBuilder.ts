@@ -4,9 +4,8 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
 import { presetEndpoint, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells } from "../../pixi/tessellationCells";
-import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, postEditTeleportsToDto } from "../../pixi/postEditUtils";
-import { deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
-import { resolverForNodeId } from "../../pixi/postEditEndpoint";
+import { postEditTeleportsToDto } from "../../pixi/postEditUtils";
+import { buildMultiFloorPostEditDraft } from "./postEditSliceHelpers";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, resolveFieldAtOf, relevantRuleParams } from "../storeHelpers";
@@ -310,23 +309,14 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
     // (automatic split), with no corresponding slot ever registered on the web side — derive one
     // fresh from the snapshot itself so `ManageSplitNodesDialog`/`postEditActiveSplitNode`-based
     // resolution (and rendering) see every resulting node, not just the point's original one.
-    const generatedSplitPoints = deriveSplitPointsFromNodes(snapshot.nodes);
-    // An auto-split node's raw `NodeId` is only meaningful for *this* generate() call —
-    // `confirmPostEdit`'s `compute_analytics` rebuilds the graph from scratch on every confirm,
-    // assigning ids in its own deterministic order that generally does NOT match where this node
-    // landed mid-traversal. Every reference into `postEditDraftEdges`/`Teleports`/`Meta` must
-    // therefore address an auto-split node as `(point, slotId)`, not a plain node id — see
-    // `resolverForNodeId`'s doc comment for the full explanation (this was the root cause of split
-    // nodes silently losing their connections after a project save/load round-trip).
-    const pointNodeMap = new Map<string, number[]>();
-    for (const n of snapshot.nodes) {
-      const key = `${n.x},${n.y}`;
-      const list = pointNodeMap.get(key);
-      if (list) list.push(n.id); else pointNodeMap.set(key, [n.id]);
-    }
-    const endpointForGeneratedId = resolverForNodeId(pointNodeMap, generatedSplitPoints);
-    const { teleports: generatedTeleports, nextId: nextTeleportId } = extractPostEditTeleports(snapshot.edges, endpointForGeneratedId);
-    const draftEdges = buildPostEditDraftEdgesFromGenerated(snapshot.edges, endpointForGeneratedId);
+    // `buildMultiFloorPostEditDraft` is shared with `resetPostEdit`'s identical rebuild in
+    // `postEditSlice.ts` (GitHub issue #425 — the two used to duplicate this per-level logic, and
+    // this path's own copy used a single global, level-unaware node/point grouping across every
+    // floor combined, silently breaking every split point on any floor above the first).
+    const {
+      draftEdges, draftTeleports: generatedTeleports, splitPoints: generatedSplitPoints, endpointFor: endpointForGeneratedId,
+    } = buildMultiFloorPostEditDraft(snapshot.nodes, snapshot.edges);
+    const nextTeleportId = generatedTeleports.length + 1;
     const draftMeta = {
       start: snapshot.start !== null ? endpointForGeneratedId(snapshot.start) : null,
       finish: snapshot.finish !== null ? endpointForGeneratedId(snapshot.finish) : null,

@@ -59,6 +59,28 @@ describe("ManageSplitNodesDialog", () => {
     expect(useMazeStore.getState().postEditActiveSplitNode["2,2"]).toEqual(splitEndpoint([2, 2], 0));
   });
 
+  // GitHub issue #425: `endpointsMatch` used to resolve a level-tagged split endpoint straight
+  // against this floor's own bare-keyed `resolveSplit`, silently failing on any floor above the
+  // first. `endpointsMatch` falls back to plain `endpointsEqual` when resolution fails, so a
+  // start/finish badge on the *dialog's own* split node (same point/slotId/level, matched
+  // structurally) still worked even with the bug — but a *cross-endpoint* comparison against a
+  // resolved id (the required-links path below) would have silently failed. This test pins the
+  // start-badge path via the dialog's rendered output on floor 1; the resolution logic itself
+  // (used identically by the required-links path) is covered directly in postEditEndpoint.test.ts's
+  // "floorScopedEndpoint" suite.
+  it("recognizes the active split node as start on a non-zero floor", () => {
+    useMazeStore.setState({
+      floors: [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }],
+      activeFloorId: "floor_1",
+      nodes: [{ id: 5, x: 2, y: 2, i: 0, level: 1 }, { id: 6, x: 2, y: 2, i: 1, level: 1 }],
+      postEditDraftSplitPoints: { "2,2@1": [0] },
+      postEditDraftMeta: { start: splitEndpoint([2, 2], 0, 1), finish: null },
+    });
+    render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Node 0"));
+    expect(screen.getByText("Start")).toBeInTheDocument();
+  });
+
   it("clicking the already-active card is a no-op (not clickable)", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     fireEvent.click(screen.getByText("Original node"));

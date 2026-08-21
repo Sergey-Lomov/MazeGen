@@ -11,10 +11,11 @@ import { PureCyclesOverlay } from "./PureCyclesOverlay";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { VerticalConnectionRenderer, type VerticalConnectionStyle } from "./renderers/VerticalConnectionRenderer";
 import { postEditEdgesToDto, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportEdges, type TeleportFloorContext } from "./selectors/mazeSelectors";
-import { resolveEndpoint, buildSplitNodeResolver } from "./postEditEndpoint";
+import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "./postEditEndpoint";
 import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
 import type { Viewport } from "./renderers/types";
+import type { PostEditEdge } from "../store/mazeStore";
 import { canvas } from "./colorTokens";
 
 /** Fixed style for `VerticalConnectionRenderer` — Analytics has no settings panel of its own for
@@ -223,11 +224,32 @@ export class AnalyticsRenderer {
     }
     const resolveSplit = buildSplitNodeResolver(pointNodeMap, recordOnLevel(state.postEditDraftSplitPoints, level));
 
-    const edges  = [...postEditEdgesToDto(state.postEditEdges, resolveSplit), ...state.postEditTeleportEdges];
+    // `resolveSplit` above is built from `nodes`/`postEditDraftSplitPoints` already scoped to the
+    // active floor (bare `"x,y"` keys) — a `split` endpoint still carrying its original non-zero
+    // `level` would make `resolveSplit` look for a `"x,y@level"` key that no longer exists in that
+    // scoped map, silently failing to resolve every split reference on any floor above the first
+    // (GitHub issue #425). `floorScopedEndpoint` mirrors `PostEditRenderer.floorScoped`'s identical
+    // fix — an endpoint not on this floor is dropped rather than resolved against the wrong floor's
+    // nodes.
+    const floorNodeIds = new Set(nodes.map((n) => n.id));
+    const onLevel = (ep: PostEditEndpoint) => floorScopedEndpoint(ep, level, floorNodeIds);
+    const postEditEdges: Record<string, PostEditEdge> | null = state.postEditEdges === null ? null : Object.fromEntries(
+      Object.entries(state.postEditEdges)
+        .map(([k, e]) => {
+          const from = onLevel(e.from);
+          const to = onLevel(e.to);
+          return from !== undefined && to !== undefined ? [k, { ...e, from, to }] as const : null;
+        })
+        .filter((entry): entry is readonly [string, PostEditEdge] => entry !== null),
+    );
+
+    const edges  = [...postEditEdgesToDto(postEditEdges, resolveSplit), ...state.postEditTeleportEdges];
     const startEp  = state.postEditMeta != null ? state.postEditMeta.start : (state.start !== null ? { kind: "node" as const, id: state.start } : null);
     const finishEp = state.postEditMeta != null ? state.postEditMeta.finish : (state.finish !== null ? { kind: "node" as const, id: state.finish } : null);
-    const start  = startEp !== null ? resolveEndpoint(startEp, resolveSplit) ?? null : null;
-    const finish = finishEp !== null ? resolveEndpoint(finishEp, resolveSplit) ?? null : null;
+    const startOnLevel = startEp !== null ? onLevel(startEp) : undefined;
+    const finishOnLevel = finishEp !== null ? onLevel(finishEp) : undefined;
+    const start  = startOnLevel !== undefined ? resolveEndpoint(startOnLevel, resolveSplit) ?? null : null;
+    const finish = finishOnLevel !== undefined ? resolveEndpoint(finishOnLevel, resolveSplit) ?? null : null;
 
     // Grid — background context, independent of showMazeOverlay
     const showGrid = analyticsOpen && nodes.length > 0;

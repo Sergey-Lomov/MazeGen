@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, endpointKey, edgeKey,
-  resolveEndpoint, buildSplitNodeResolver,
+  resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint,
 } from "../../pixi/postEditEndpoint";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
@@ -83,6 +83,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   }, [nodes]);
   const levelSplitPoints = useMemo(() => recordOnLevel(splitPoints, level), [splitPoints, level]);
   const resolveSplit = useMemo(() => buildSplitNodeResolver(pointNodeMap, levelSplitPoints), [pointNodeMap, levelSplitPoints]);
+  const floorNodeIds = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes]);
   // Two endpoints are "the same link" if they resolve to the same real `NodeId` — a plain `node`
   // endpoint and a `split` endpoint can both resolve to the same id (GitHub issue #222: an
   // auto-split node already has a real id right after generation, but `draftEdges`/`draftMeta`
@@ -90,9 +91,18 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   // `buildPostEditDraftEdgesFromGenerated`). Falls back to structural equality when either side
   // doesn't resolve yet (a freshly `addSplitNode`-added slot has no real id until the next
   // confirm — see `resolveEndpoint`'s doc comment).
+  //
+  // `a`/`b` can come straight from the store (`draftEdges`/`draftTeleports`/`draftMeta`), which is
+  // maze-wide and can carry a split endpoint's original non-zero `level`, while `resolveSplit`
+  // above is built from a bare-keyed `levelSplitPoints`/`pointNodeMap` already scoped to this
+  // floor — resolving a level-tagged endpoint against it silently returns `undefined` on any floor
+  // above the first (GitHub issue #425). `floorScopedEndpoint` strips `level` after confirming the
+  // endpoint belongs to this floor; an off-floor endpoint is left as-is and correctly fails to
+  // resolve, falling back to structural equality below (which will not match a same-point
+  // different-floor endpoint, since `endpointsEqual` compares `level` too).
   const endpointsMatch = (a: PostEditEndpoint, b: PostEditEndpoint): boolean => {
-    const ra = resolveEndpoint(a, resolveSplit);
-    const rb = resolveEndpoint(b, resolveSplit);
+    const ra = resolveEndpoint(floorScopedEndpoint(a, level, floorNodeIds) ?? a, resolveSplit);
+    const rb = resolveEndpoint(floorScopedEndpoint(b, level, floorNodeIds) ?? b, resolveSplit);
     if (ra !== undefined && rb !== undefined) return ra === rb;
     return endpointsEqual(a, b);
   };

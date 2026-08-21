@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseAndValidate, serializeProject } from "../store/projectExport";
 import type { MazeState, PostEditEdge } from "../store/mazeStore";
-import { nodeEndpoint } from "../pixi/postEditEndpoint";
+import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 
@@ -233,6 +233,25 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     expect(serialized.postEdit).not.toBeNull();
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.postEdit).toEqual(serialized.postEdit);
+  });
+
+  // GitHub issue #425: a split endpoint's `level` (non-zero floor) was silently dropped by
+  // `validatePostEditEndpoint` on project load, collapsing every floor-1+ split reference onto
+  // floor 0 after a save/load round-trip even though `level` was correctly serialized.
+  it("round-trips a split post-edit endpoint's non-zero level (GitHub issue #425)", () => {
+    const edges: Record<string, PostEditEdge> = {
+      "s0": { from: splitEndpoint([0, 0], 0, 1), to: nodeEndpoint(12), kind: "basic" },
+    };
+    const state = makeState({
+      postEditDirty: true,
+      postEditDraftEdges: edges,
+      postEditDraftMeta: { start: splitEndpoint([0, 0], 0, 1), finish: nodeEndpoint(12) },
+    });
+    const serialized = serializeProject(state);
+    const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
+    expect(reparsed.postEdit).toEqual(serialized.postEdit);
+    const reparsedFrom = reparsed.postEdit?.edges.find(([k]) => k === "s0")?.[1].from;
+    expect(reparsedFrom).toEqual(splitEndpoint([0, 0], 0, 1));
   });
 
   it("round-trips dirty post-edit teleports", () => {

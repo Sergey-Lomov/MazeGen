@@ -2,7 +2,7 @@ import type { StateCreator } from "zustand";
 import { computeAnalytics } from "../../wasm/mazeService";
 import type { PostEditEdgeWasmDto } from "../../wasm/types";
 import {
-  applyPostEditEdgeTool, buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports,
+  applyPostEditEdgeTool,
   postEditTeleportsToDto, cyclePostEditTeleportDirection, removePostEditTeleport, movePostEditTeleportEndpoint,
   rotatePostEditSplitPoint, resetPostEditPoint as resetPostEditPointCore,
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
@@ -11,9 +11,9 @@ import {
 import { cellExistsAt } from "../../pixi/fieldEditUtils";
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
-  resolverForNodeId, edgeKey, resolvePostEditPartnerAt,
+  edgeKey, resolvePostEditPartnerAt,
 } from "../../pixi/postEditEndpoint";
-import { addSlot, removeSlot, cycleActive, setActive, deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
+import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
@@ -25,7 +25,7 @@ import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlic
 import { relevantRuleParams, activeFloorField, activeFloorLevel, floorTessellationOf, resolveFieldAtOf } from "../storeHelpers";
 import { configAllCells } from "../../pixi/tessellationCells";
 import {
-  groupNodesByLevel, toWasmEndpoint, buildPointNodeMap, buildMultiFloorPointNodeMap, commitPostEditVerticalPassage,
+  toWasmEndpoint, buildMultiFloorPointNodeMap, commitPostEditVerticalPassage, buildMultiFloorPostEditDraft,
 } from "./postEditSliceHelpers";
 
 export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState & PostEditActions> = (set, get) => ({
@@ -309,68 +309,13 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
       // Post-edit is now floor-aware (GitHub issue #358) — `postEditDraftEdges`/
       // `postEditDraftTeleports`/`postEditDraftSplitPoints`/`postEditActiveSplitNode` are one
       // flat, maze-wide collection covering every floor at once, mirroring how preset connections
-      // did this (GitHub issue #340, `Specs/preset-connections.md`'s "Multi-floor presets"). Every
-      // floor's own nodes/edges are processed separately (`groupNodesByLevel`) since two nodes
-      // sharing an (x, y) on different floors must not be conflated into one bogus split-point
-      // group by the point-keyed grouping below (`deriveSplitPointsFromNodes`, `buildPointNodeMap`)
-      // — each floor's own `splitEndpoint`s are stamped with that floor's `level`
-      // (`resolverForNodeId`'s output re-stamped via `withLevel`), then every floor's results are
-      // merged into the single flat collections.
-      const nodesByLevel = groupNodesByLevel(state._generatedNodes);
-
-      let draftEdges: Record<string, ReturnType<typeof buildPostEditDraftEdgesFromGenerated>[string]> = {};
-      let draftTeleports: PostEditTeleportEntry[] = [];
-      let splitPoints: Record<string, number[]> = {};
-      const endpointForId = new Map<number, PostEditEndpoint>();
-
-      for (const [level, levelNodes] of nodesByLevel) {
-        const levelIds = new Set(levelNodes.map((n) => n.id));
-        const levelEdges = state._generatedEdges.filter((e) => levelIds.has(e.from) && levelIds.has(e.to));
-        const levelKey = level === 0 ? undefined : level;
-        const pointNodeMap = buildPointNodeMap(levelNodes);
-        const levelSplitPoints = deriveSplitPointsFromNodes(levelNodes);
-        const rawEndpointFor = resolverForNodeId(pointNodeMap, levelSplitPoints);
-        const endpointFor = (id: number): PostEditEndpoint => {
-          const ep = rawEndpointFor(id);
-          return ep.kind === "split" ? splitEndpoint(ep.point, ep.slotId, levelKey) : ep;
-        };
-        for (const id of levelIds) endpointForId.set(id, endpointFor(id));
-
-        for (const [key, slots] of Object.entries(levelSplitPoints)) {
-          splitPoints[levelKey === undefined ? key : `${key}@${levelKey}`] = slots;
-        }
-
-        draftEdges = { ...draftEdges, ...buildPostEditDraftEdgesFromGenerated(levelEdges, endpointFor) };
-        const { teleports } = extractPostEditTeleports(levelEdges, endpointFor);
-        draftTeleports = [...draftTeleports, ...teleports];
-      }
-
-      const endpointFor = (id: number): PostEditEndpoint => endpointForId.get(id) ?? nodeEndpoint(id);
-
-      // Cross-floor teleports (GitHub issue #363): the per-level loop above filters
-      // `_generatedEdges` with `levelIds.has(e.from) && levelIds.has(e.to)`, which drops any edge
-      // whose two endpoints sit on different floors — a teleport is the one edge kind that can
-      // legitimately span floors (`Specs/preset-connections.md`'s "Multi-floor presets"), so it
-      // must be re-derived here from the full, unfiltered `_generatedEdges` instead, resolved via
-      // the now-complete `endpointFor` (built from every floor's `endpointForId` entries above).
-      const levelForId = new Map<number, number>();
-      for (const n of state._generatedNodes) levelForId.set(n.id, n.level ?? 0);
-      const crossFloorTeleportEdges = state._generatedEdges.filter(
-        (e) => e.kind === "teleport" && levelForId.get(e.from) !== levelForId.get(e.to),
+      // did this (GitHub issue #340, `Specs/preset-connections.md`'s "Multi-floor presets").
+      // `buildMultiFloorPostEditDraft` is shared with `generateConfigBuilder`'s fresh-generation
+      // path (GitHub issue #425 — the two used to duplicate this logic, and drifted apart).
+      const { draftEdges, draftTeleports, splitPoints, endpointFor } = buildMultiFloorPostEditDraft(
+        state._generatedNodes,
+        state._generatedEdges,
       );
-      if (crossFloorTeleportEdges.length > 0) {
-        const { teleports } = extractPostEditTeleports(crossFloorTeleportEdges, endpointFor);
-        draftTeleports = [...draftTeleports, ...teleports];
-      }
-
-      // Each `extractPostEditTeleports` call above numbers its own batch from 1 — merging batches
-      // from multiple floors (or the cross-floor batch) would otherwise produce duplicate `id`s,
-      // and every by-id lookup (`PostEditController`'s drag handling, `cyclePostEditTeleportDirection`,
-      // `removePostEditTeleport`, ...) uses `Array.find`, which silently resolves to the *first*
-      // match — a real, reachable bug once a maze has both same-floor and cross-floor teleports
-      // (exactly the scenario GitHub issue #363 restores). Renumbered once, after every batch is
-      // merged, so ids stay unique across the whole draft.
-      draftTeleports = draftTeleports.map((t, i) => ({ ...t, id: i + 1 }));
       const nextTeleportId = draftTeleports.length + 1;
 
       return {

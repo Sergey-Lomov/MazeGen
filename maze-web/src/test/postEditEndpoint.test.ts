@@ -1,8 +1,58 @@
 import { describe, it, expect } from "vitest";
 import {
   nodeEndpoint, splitEndpoint, endpointsEqual, endpointKey, edgeKey, endpointIsNode, resolveEndpoint,
-  buildSplitNodeResolver, resolvePostEditPartnerAt,
+  buildSplitNodeResolver, resolvePostEditPartnerAt, endpointOnLevel, stripEndpointLevel, floorScopedEndpoint,
 } from "../pixi/postEditEndpoint";
+
+// GitHub issue #425: PostEditController's teleport-drag/hit-testing and ManageSplitNodesDialog's
+// endpointsMatch each need to check a maze-wide PostEditEndpoint against the active floor, then
+// strip its `level` before handing it to a floor-scoped (bare-keyed) resolveSplit — skipping the
+// strip step silently breaks resolution on any floor above the first. floorScopedEndpoint is the
+// single combinator all three call sites now share; these tests pin its contract directly.
+describe("endpointOnLevel / stripEndpointLevel / floorScopedEndpoint", () => {
+  it("endpointOnLevel: a node endpoint belongs to a floor iff its id is in that floor's node set", () => {
+    const floorNodeIds = new Set([1, 2, 3]);
+    expect(endpointOnLevel(nodeEndpoint(2), 1, floorNodeIds)).toBe(true);
+    expect(endpointOnLevel(nodeEndpoint(9), 1, floorNodeIds)).toBe(false);
+  });
+
+  it("endpointOnLevel: a split endpoint belongs to a floor iff its own level matches (undefined treated as 0)", () => {
+    const floorNodeIds = new Set<number>();
+    expect(endpointOnLevel(splitEndpoint([1, 2], 0, 1), 1, floorNodeIds)).toBe(true);
+    expect(endpointOnLevel(splitEndpoint([1, 2], 0, 1), 2, floorNodeIds)).toBe(false);
+    expect(endpointOnLevel(splitEndpoint([1, 2], 0), undefined, floorNodeIds)).toBe(true);
+    expect(endpointOnLevel(splitEndpoint([1, 2], 0), 0, floorNodeIds)).toBe(true);
+  });
+
+  it("stripEndpointLevel: removes a split endpoint's level field, leaves a node endpoint unchanged", () => {
+    expect(stripEndpointLevel(splitEndpoint([1, 2], 0, 1))).toEqual(splitEndpoint([1, 2], 0));
+    expect(stripEndpointLevel(nodeEndpoint(5))).toEqual(nodeEndpoint(5));
+  });
+
+  it("floorScopedEndpoint: strips level from an on-floor split endpoint", () => {
+    const floorNodeIds = new Set<number>();
+    expect(floorScopedEndpoint(splitEndpoint([1, 2], 0, 1), 1, floorNodeIds)).toEqual(splitEndpoint([1, 2], 0));
+  });
+
+  it("floorScopedEndpoint: returns undefined for an off-floor split endpoint instead of a wrongly-scoped one", () => {
+    const floorNodeIds = new Set<number>();
+    expect(floorScopedEndpoint(splitEndpoint([1, 2], 0, 2), 1, floorNodeIds)).toBeUndefined();
+  });
+
+  it("floorScopedEndpoint: an on-floor split endpoint resolves through a bare-keyed resolver only after scoping (GitHub issue #425)", () => {
+    // Simulates the exact failure mode: `nodeMap`/`splitPoints` here are already scoped to floor 1
+    // (bare "1,2" key, no "@1" suffix) — resolving the raw, still-leveled endpoint against them
+    // must fail, while the scoped one must succeed.
+    const nodeMap = new Map([["1,2", [10, 11]]]);
+    const resolveSplit = buildSplitNodeResolver(nodeMap, { "1,2": [0] });
+    const raw = splitEndpoint([1, 2], 0, 1);
+    expect(resolveEndpoint(raw, resolveSplit)).toBeUndefined();
+    const floorNodeIds = new Set([10, 11]);
+    const scoped = floorScopedEndpoint(raw, 1, floorNodeIds);
+    expect(scoped).toBeDefined();
+    expect(resolveEndpoint(scoped!, resolveSplit)).toBe(11);
+  });
+});
 
 describe("endpointsEqual", () => {
   it("two node endpoints with the same id are equal", () => {
