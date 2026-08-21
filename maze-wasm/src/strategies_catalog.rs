@@ -297,21 +297,23 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
             id: "add_split",
             handles: MISSING_SPLIT_TILES.as_str(),
             // AddSplitStrategy's own generic StrategyParams (allow_lose/allow_add_connections,
-            // max_attempts) plus its construction-time pattern-selection config (`config`, GitHub
-            // issue #247), appended manually as one `SplitGenerationConfig`-kind param since it
-            // isn't a `StrategyParamKind` maze-core can express (no serde there to parse it) — see
-            // `maze-runner`'s `build_add_split_strategy`/`parse_split_config_param`.
+            // max_attempts) plus its own construction-time param (GitHub issue #389: no longer a
+            // `SplitGenerationConfig` — pattern topology moved to the rule-level `split_patterns`
+            // param; this strategy only owns `max_split_nodes`/`pattern_weights`), appended
+            // manually as one `AddSplitConfig`-kind param since it isn't a `StrategyParamKind`
+            // maze-core can express (no serde there to parse it) — see `maze-runner`'s
+            // `build_add_split_strategy`.
             params: {
-                let default_strategy = AddSplitStrategy { config: Default::default(), protect_route: true };
+                let default_strategy = AddSplitStrategy { split_patterns: vec![], max_split_nodes: 2, pattern_weights: vec![], protect_route: true };
                 let mut params = strategy_params_dto(<AddSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingSplitTilesIssue>>::params(&default_strategy));
                 params.push(ParamDescriptor {
                     id: "split_config",
                     label: "Split settings",
-                    kind: ParamKindDto::SplitGenerationConfig,
+                    kind: ParamKindDto::AddSplitConfig { max_split_nodes_default: default_strategy.max_split_nodes },
                 });
                 params
             },
-            experimental: <AddSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingSplitTilesIssue>>::is_experimental(&AddSplitStrategy { config: Default::default(), protect_route: true }),
+            experimental: <AddSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingSplitTilesIssue>>::is_experimental(&AddSplitStrategy { split_patterns: vec![], max_split_nodes: 2, pattern_weights: vec![], protect_route: true }),
             nested_slots: vec![],
         },
         StrategyDescriptor {

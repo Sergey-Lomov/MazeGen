@@ -67,6 +67,12 @@ interface Props {
   /** Owning strategy id, for shared params (e.g. `priority`) whose option explanations read
    * differently per strategy — see `resolveParamOptionExplanation`'s per-strategy override. */
   contextId?: string;
+  /** Rule-level `split_patterns` topology (GitHub issue #389), for an `add_split_config`-kind
+   * param — empty means the param renders as a plain `max_split_nodes` integer input, non-empty
+   * means it renders as a locked `SplitPatternListEditor` (topology from this prop, weights from
+   * the param's own JSON `number[]` value). Only `RuleStrategyPanel` has rule-level param access,
+   * so it resolves this and passes it down — see `addSplitPatternsOverride`. */
+  addSplitPatternsOverride?: SplitPattern[];
 }
 
 const SELECT_HORIZONTAL_CHROME = 4 + 18 + 2; // padding-left + padding-right + border
@@ -89,7 +95,7 @@ function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | u
   return Math.min(desired, Math.max(softCap, hardCap));
 }
 
-export function ParamFields({ params, values, getValue, onChange, getDescription, disabled, disabledIds, contextId }: Props) {
+export function ParamFields({ params, values, getValue, onChange, getDescription, disabled, disabledIds, contextId, addSplitPatternsOverride }: Props) {
   const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -186,14 +192,54 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
     }
   }
 
+  // Mirrors `parse_add_split_config_param`'s integer-first shape sniffing (GitHub issue #389) —
+  // used only in pattern mode (`addSplitPatternsOverride` non-empty), where the value is the
+  // `pattern_weights` JSON `number[]`, indexed against the rule-level topology.
+  function getPatternWeights(p: ParamDescriptor): number[] {
+    try {
+      const parsed = JSON.parse(get(p));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // Non-pattern mode's stored value can still be pattern mode's own JSON `number[]` weights --
+  // switching the rule's `split_patterns` to empty (e.g. removing all patterns) flips the
+  // control's mode without touching this param's own value, so the leftover array must fall back
+  // to displaying the kind's own default rather than the raw unparsed JSON text.
+  function getMaxSplitNodes(p: ParamDescriptor): string {
+    const raw = get(p);
+    return /^\d+$/.test(raw.trim()) ? raw : String(p.kind.type === "add_split_config" ? p.kind.max_split_nodes_default : 0);
+  }
+
+  // `add_split_config`'s single param id carries two different meanings depending on the
+  // rule-level `split_patterns` override (GitHub issue #389) — the generic `p.label` ("Split
+  // settings") is too vague for either, so this overrides it per mode, same "sibling rule state
+  // decides display" contract the control-type switch above already follows.
+  function displayLabel(p: ParamDescriptor): string {
+    if (p.kind.type !== "add_split_config") return p.label;
+    return addSplitPatternsOverride?.length ? m["quality.add_split_config.weights_label"]() : m["quality.add_split_config.node_count_label"]();
+  }
+
+  // Same override as `displayLabel` -- a caller's `getDescription(p)` (`resolveParamDescription`)
+  // resolves purely from `p.id`, with no visibility into the rule-level mode switch, so it can
+  // only ever return one of the two texts. Overridden here instead of asking every call site to
+  // special-case this one param id.
+  function displayDescription(p: ParamDescriptor): string | undefined {
+    if (!getDescription) return undefined;
+    if (p.kind.type !== "add_split_config") return getDescription(p);
+    return addSplitPatternsOverride?.length ? m["quality.add_split_config.weights_description"]() : m["quality.add_split_config.node_count_description"]();
+  }
+
   return (
     <div ref={containerRef} style={{ ...styles.fieldsWrap, gap: getDescription ? spacing.sectionGap : spacing.itemGap }}>
       {params.map((p) => {
-        const description = getDescription?.(p);
+        const description = displayDescription(p);
         return (
           <div key={p.id} style={{ ...styles.field, ...(isDisabled(p) ? styles.fieldDisabled : {}) }}>
             <Inline gap="rowGap" justify="space-between">
-              <label style={styles.label}>{p.label}</label>
+              <label style={styles.label}>{displayLabel(p)}</label>
               {/* Each control stops its own click from bubbling — not the whole row/field — so a
                   container that turns clicks into a "select this" action elsewhere (e.g.
                   `NestedStrategyPanel`'s strategy block) still catches clicks on the label or
@@ -356,6 +402,29 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                   {m["quality.split_config_edit"]()}
                 </button>
               )}
+              {p.kind.type === "add_split_config" && !addSplitPatternsOverride?.length && (
+                <input
+                  type="number"
+                  style={styles.input}
+                  value={getMaxSplitNodes(p)}
+                  min={1}
+                  step={1}
+                  disabled={isDisabled(p)}
+                  onChange={(e) => onChange(p.id, e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "." || e.key === ",") e.preventDefault(); }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              )}
+              {p.kind.type === "add_split_config" && Boolean(addSplitPatternsOverride?.length) && (
+                <button
+                  className="hoverable"
+                  style={styles.paramButton}
+                  disabled={isDisabled(p)}
+                  onClick={(e) => { e.stopPropagation(); setOpenSplitConfigParam(p.id); }}
+                >
+                  {m["quality.add_split_config.weights_edit"]()}
+                </button>
+              )}
             </Inline>
             {description && <div style={styles.description}>{description}</div>}
             {description && p.kind.type === "enum" && (
@@ -396,6 +465,23 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
             <SplitGenerationSettingsBody
               value={getSplitConfig(p)}
               onChange={(next) => onChange(p.id, JSON.stringify({ ...next, patterns: splitPatternsToCore(next.patterns, tessellationConfig) }))}
+            />
+          </Modal>
+        );
+      })()}
+      {openSplitConfigParam !== null && (() => {
+        const p = params.find((param) => param.id === openSplitConfigParam);
+        if (!p || p.kind.type !== "add_split_config" || !addSplitPatternsOverride?.length) return null;
+        const topology = addSplitPatternsOverride;
+        const weights = getPatternWeights(p);
+        const patterns = topology.map((pattern, i) => ({ ...pattern, weight: weights[i] ?? pattern.weight ?? 1.0 }));
+        return (
+          <Modal title={displayLabel(p)} onClose={() => setOpenSplitConfigParam(null)}>
+            <SplitPatternListEditor
+              patterns={patterns}
+              withWeights
+              locked
+              onChange={(next) => onChange(p.id, JSON.stringify(next.map((pattern) => pattern.weight ?? 1.0)))}
             />
           </Modal>
         );

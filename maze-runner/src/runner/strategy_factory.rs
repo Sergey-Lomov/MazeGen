@@ -24,7 +24,7 @@ use maze_core::{
     },
     quality_control::{IssueRequirement, RuleParams, rule_param_applies_to},
 };
-use crate::config::{StrategyConfig, parse_split_config_param};
+use crate::config::{StrategyConfig, parse_split_config_param, parse_add_split_config_param};
 
 /// Erased-boundary strategy factory — returns `Box<dyn ErasedRepairStrategy<T>>` (not a concrete
 /// `RepairStrategy<T, I>`) since a strategy id is resolved from a runtime string with no
@@ -97,16 +97,23 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(id: &str, params: &HashMap<
     })
 }
 
-/// Builds `AddSplitStrategy` (GitHub issue #247) from its `StrategyConfig.params` — the only
-/// registry strategy with its own construction-time field instead of pure `StrategyParams`
-/// (`allow_lose_connections`/`allow_add_connections`/`max_attempts` stay generic `StrategyParams`,
-/// resolved later via `Rule::new`; `config` can't go through that layer since `maze-core` has no
-/// serde to parse the `split_config` JSON itself). `split_config` is the exact same wire shape
-/// `GenerateConfig.split_generation` uses (`SplitGenerationConfigDto`), parsed via
-/// `parse_split_config_param`. `protect_route` (GitHub issue #253) is rule-level, not read from
+/// Builds `AddSplitStrategy` (GitHub issue #247, pattern topology unified to rule-level by #389)
+/// from its `StrategyConfig.params` — one of the few registry strategies with construction-time
+/// fields instead of pure `StrategyParams` (`allow_lose_connections`/`allow_add_connections`/
+/// `max_attempts` stay generic `StrategyParams`, resolved later via `Rule::new`; `maze-core` has
+/// no serde to parse these JSON params itself). `max_split_nodes`/`pattern_weights` share one wire
+/// slot, `params["split_config"]` (`ParamKindDto::AddSplitConfig`) — a plain integer string in
+/// non-pattern mode, or a JSON `Vec<f64>` in pattern mode, see `parse_add_split_config_param`.
+/// `split_patterns`/`protect_route` (GitHub issues #389/#253) are rule-level, not read from
 /// `params` at all.
 fn build_add_split_strategy(params: &HashMap<String, String>, rule_params: &RuleParams) -> AddSplitStrategy {
-    AddSplitStrategy { config: parse_split_config_param(params.get("split_config")), protect_route: rule_params.protect_route }
+    let (max_split_nodes, pattern_weights) = parse_add_split_config_param(params.get("split_config"));
+    AddSplitStrategy {
+        split_patterns: rule_params.split_patterns.clone(),
+        max_split_nodes,
+        pattern_weights,
+        protect_route: rule_params.protect_route,
+    }
 }
 
 /// Builds `MissingLoopsSplitStrategy` (GitHub issue #254) — same construction-time `split_config`

@@ -3,10 +3,13 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { StrategySelectDialog } from "../components/features/StrategySelectDialog";
 import { useMazeStore } from "../store/mazeStore";
 
+const addSplitConfigParam = { id: "split_config", label: "Split node count", kind: { type: "add_split_config" as const, max_split_nodes_default: 3 } };
+
 const availableStrategies = [
   { id: "random_endpoints", handles: "missing_endpoints", params: [], experimental: false, nested_slots: [] },
   { id: "farthest_endpoints", handles: "missing_endpoints", params: [], experimental: false, nested_slots: [] },
   { id: "invalid_loop_random", handles: "invalid_loop", params: [], experimental: false, nested_slots: [] },
+  { id: "add_split", handles: "isolated_node", params: [addSplitConfigParam], experimental: false, nested_slots: [] },
 ];
 
 beforeEach(() => {
@@ -52,5 +55,26 @@ describe("StrategySelectDialog", () => {
     fireEvent.click(screen.getByText("Cancel"));
     expect(onClose).toHaveBeenCalled();
     expect(useMazeStore.getState().rules[0].strategyId).toBe("random_endpoints");
+  });
+
+  describe("add_split's rule-level pattern override", () => {
+    it("renders the plain node-count input when the rule has no split_patterns", () => {
+      useMazeStore.setState({
+        rules: [{ id: "g2", name: "Rule 2", kind: "isolated_node", checks: [], nextLocalCheckId: 0, strategyId: "add_split", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+      });
+      render(<StrategySelectDialog ruleId="g2" kind="isolated_node" onClose={vi.fn()} />);
+      expect(screen.getByText("Nodes in tile")).toBeInTheDocument();
+      expect(screen.queryByText("Weight settings")).not.toBeInTheDocument();
+    });
+
+    it("renders the locked pattern-weights control when the rule has split_patterns", () => {
+      useMazeStore.setState({
+        rules: [{ id: "g2", name: "Rule 2", kind: "isolated_node", checks: [], nextLocalCheckId: 0, strategyId: "add_split", disabled: false, ruleDisabled: false, params: { split_patterns: JSON.stringify([{ node_count: 2, faces: [], weight: 1 }]) }, nestedStrategies: [], collapsed: false }],
+      });
+      render(<StrategySelectDialog ruleId="g2" kind="isolated_node" onClose={vi.fn()} />);
+      expect(screen.getByText("Pattern weights")).toBeInTheDocument();
+      expect(screen.getByText("Weight settings")).toBeInTheDocument();
+      expect(screen.queryByText("Nodes in tile")).not.toBeInTheDocument();
+    });
   });
 });

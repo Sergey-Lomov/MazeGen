@@ -92,5 +92,9 @@ function getDefaultValue(p: ParamDescriptor): string {
   // Unconstrained mode, max_split_nodes=2, no patterns -- mirrors SplitGenerationConfig::default(),
   // same JSON encoding `parse_split_config_param` round-trips.
   if (k.type === "split_generation_config") return JSON.stringify({ pattern_mode: false, max_split_nodes: 2, patterns: [] });
+  // Plain-integer shape (non-pattern mode) -- the rule-level `split_patterns` param defaults to
+  // empty (GitHub issue #389), so this is the shape that applies until a rule owner configures
+  // pattern topology at rule level.
+  if (k.type === "add_split_config") return String(k.max_split_nodes_default);
   return String(k.default);
 }

@@ -64,10 +64,18 @@ export type ParamKind =
   | { type: "pattern_list"; with_weights: boolean }
   /** A full split-generation config (pattern mode toggle, `max_split_nodes`, weighted pattern
    *  list) bundled behind one settings button opening the same dialog generation's own split
-   *  settings use (`AddSplitStrategy`'s `split_config` param, GitHub issue #247). Value
+   *  settings use (`GenerateConfig.split_generation`'s own equivalent param). Value
    *  round-trips as a JSON-serialized `SplitGenerationConfigDto` string (same wire shape
    *  `GenerateConfig.split_generation` uses; see `maze-runner`'s `parse_split_config_param`). */
-  | { type: "split_generation_config" };
+  | { type: "split_generation_config" }
+  /** `AddSplitStrategy`'s own construction-time param (GitHub issue #389) — pattern topology moved
+   *  to the rule-level `split_patterns` param; this only carries `max_split_nodes`'s default. The
+   *  control shown depends on whether the owning rule's own `split_patterns` is empty: a plain
+   *  integer input for `max_split_nodes` (value round-trips as a plain integer string) when empty,
+   *  or a locked pattern-list editor for `pattern_weights` (value round-trips as a JSON `number[]`,
+   *  indexed against `split_patterns`) when non-empty — see `maze-runner`'s
+   *  `parse_add_split_config_param` and `RuleStrategyPanel`'s own switch. */
+  | { type: "add_split_config"; max_split_nodes_default: number };
 
 export interface ParamDescriptor {
   id: string;

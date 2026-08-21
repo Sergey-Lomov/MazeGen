@@ -18,6 +18,11 @@ interface Props {
    *  pool) or just the tile preview and node count (a check's own plain membership filter — GitHub
    *  issue #247). */
   withWeights: boolean;
+  /** Locks topology to whatever `patterns` already holds (GitHub issue #389) — hides add/remove/
+   *  blueprints/edit-topology controls, leaving only each card's weight input (when `withWeights`
+   *  is also set). Used by `AddSplitStrategy`'s own `pattern_weights` param, whose topology is
+   *  owned by the rule-level `split_patterns` param, not by this strategy. */
+  locked?: boolean;
 }
 
 const ANCHOR_POINT: [number, number] = [0, 0];
@@ -47,7 +52,7 @@ function PatternPreviewTile({ pattern, degree, cfg }: { pattern: SplitPattern; d
  *  store coupling beyond the active tessellation (needed for tile geometry), so any caller can
  *  back it with whatever storage its own value lives in (generation's own store slice, or a
  *  JSON-string param round-tripped by the caller). */
-export function SplitPatternListEditor({ patterns, onChange, withWeights }: Props) {
+export function SplitPatternListEditor({ patterns, onChange, withWeights, locked = false }: Props) {
   const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const degree = degreeFor(tessellationConfig);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -111,9 +116,11 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights }: Prop
       <div style={styles.patternsSection}>
         <div style={styles.sectionHeader}>
           <span style={styles.label}>{m["generation.split_patterns"]()}</span>
-          <button className="hoverable" style={styles.iconBtn} onClick={handleAddPattern} title={m["generation.split_pattern_add"]()}>
-            <Plus size={14} />
-          </button>
+          {!locked && (
+            <button className="hoverable" style={styles.iconBtn} onClick={handleAddPattern} title={m["generation.split_pattern_add"]()}>
+              <Plus size={14} />
+            </button>
+          )}
         </div>
         {patterns.length === 0 ? (
           <div style={styles.empty}>{m["generation.split_patterns_none"]()}</div>
@@ -143,14 +150,16 @@ export function SplitPatternListEditor({ patterns, onChange, withWeights }: Prop
                   {m["generation.split_pattern_nodes"]()}: {pattern.node_count}
                 </span>
               </div>
-              <div style={styles.patternActions}>
-                <button className="hoverable" style={styles.editBtn} onClick={() => setEditingIndex(i)} title={m["generation.split_pattern_edit"]()}>✎</button>
-                <button className="hoverable" style={styles.editBtn} onClick={() => handleRemovePattern(i)} title={m["generation.split_pattern_remove"]()}>✕</button>
-              </div>
+              {!locked && (
+                <div style={styles.patternActions}>
+                  <button className="hoverable" style={styles.editBtn} onClick={() => setEditingIndex(i)} title={m["generation.split_pattern_edit"]()}>✎</button>
+                  <button className="hoverable" style={styles.editBtn} onClick={() => handleRemovePattern(i)} title={m["generation.split_pattern_remove"]()}>✕</button>
+                </div>
+              )}
             </div>
           ))
         )}
-        {blueprints.length > 0 && (
+        {!locked && blueprints.length > 0 && (
           <div style={styles.blueprintsBlock}>
             <span style={styles.label}>{m["generation.split_pattern_blueprints_label"]()}</span>
             <div style={styles.blueprintStrip}>

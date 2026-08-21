@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use maze_core::quality_control::{RuleParams, RuleParamKind, RULE_PARAM_DESCRIPTORS, VerticalPassageType};
+use crate::config::parse_split_patterns_param;
 
 /// Resolves a `QcRuleConfig.params` raw string map into a typed `RuleParams` — see GitHub issue
 /// #253. Every key must match a descriptor in `RULE_PARAM_DESCRIPTORS`; an unrecognized key
@@ -35,6 +36,13 @@ pub(crate) fn resolve_rule_params(raw: &HashMap<String, String>) -> Result<RuleP
                     .unwrap_or(default);
                 match descriptor.id {
                     maze_core::quality_control::PARAM_VERTICAL_PASSAGE_TYPE => params.vertical_passage_type = value,
+                    _ => unreachable!("RuleParamDescriptor {} has no matching RuleParams field — add one", descriptor.id),
+                }
+            }
+            RuleParamKind::PatternList => {
+                let value = parse_split_patterns_param(raw.get(descriptor.id));
+                match descriptor.id {
+                    maze_core::quality_control::PARAM_SPLIT_PATTERNS => params.split_patterns = value,
                     _ => unreachable!("RuleParamDescriptor {} has no matching RuleParams field — add one", descriptor.id),
                 }
             }
@@ -77,6 +85,24 @@ mod tests {
         map.insert("protect_rooute".to_string(), "false".to_string());
         let err = resolve_rule_params(&map).unwrap_err();
         assert!(err.contains("protect_rooute"));
+    }
+
+    #[test]
+    fn defaults_split_patterns_to_empty_when_absent() {
+        let params = resolve_rule_params(&HashMap::new()).unwrap();
+        assert!(params.split_patterns.is_empty());
+    }
+
+    #[test]
+    fn parses_split_patterns_from_json() {
+        let mut map = HashMap::new();
+        map.insert(
+            "split_patterns".to_string(),
+            r#"[{"node_count":2,"faces":[[],[]],"weight":1.0}]"#.to_string(),
+        );
+        let params = resolve_rule_params(&map).unwrap();
+        assert_eq!(params.split_patterns.len(), 1);
+        assert_eq!(params.split_patterns[0].node_count, 2);
     }
 
     /// Catalog↔struct sync invariant — every descriptor in `RULE_PARAM_DESCRIPTORS` must be

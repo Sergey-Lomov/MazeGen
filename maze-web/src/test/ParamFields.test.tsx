@@ -63,6 +63,12 @@ const enumParam: ParamDescriptor = {
   kind: { type: "enum", default: "trap", options: ["trap", "alternative"] },
 };
 
+const addSplitConfigParam: ParamDescriptor = {
+  id: "split_config",
+  label: "Split node count",
+  kind: { type: "add_split_config", max_split_nodes_default: 3 },
+};
+
 describe("ParamFields", () => {
   describe("interval param", () => {
     it("renders the min/max halves of a \"min,max\" value in two separate number inputs", () => {
@@ -253,6 +259,23 @@ describe("ParamFields", () => {
     it("a disabled control still shows its current value, just not editable", () => {
       render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={vi.fn()} disabled />);
       expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("50");
+    });
+  });
+
+  describe("add_split_config param (non-pattern mode)", () => {
+    it("shows the stored integer value as-is", () => {
+      render(<ParamFields params={[addSplitConfigParam]} values={{ split_config: "5" }} onChange={vi.fn()} />);
+      expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("5");
+    });
+
+    it("falls back to the kind's own default when the stored value is leftover pattern-mode JSON weights", () => {
+      render(<ParamFields params={[addSplitConfigParam]} values={{ split_config: "[1,2]" }} onChange={vi.fn()} />);
+      expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("3");
+    });
+
+    it("falls back to the kind's own default when the stored value is empty", () => {
+      render(<ParamFields params={[addSplitConfigParam]} values={{ split_config: "" }} onChange={vi.fn()} />);
+      expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("3");
     });
   });
 });

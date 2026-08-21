@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use rand::Rng;
 use crate::ids::{IdGenerator, NodeId};
 use crate::graph::{Graph, EdgeKind};
@@ -121,4 +122,74 @@ pub(super) fn apply_split_teleport(
         }
     }
     mark_connected(state, dst, anchor, &[], scope);
+}
+
+/// Guarantees every one of `node_count` unconstrained split nodes ends up with at least one edge,
+/// falling back to a `candidates` neighbor when `handle_non_pattern_split`'s own round-robin
+/// partition of `at`'s free geometric neighbors left some node with none (partitioning only
+/// prevents one node from starving the others — it can't manufacture a connection that doesn't
+/// exist, see GitHub issue #222's "isolated new node" follow-up).
+///
+/// This is generation-only: repair's own `split_core::plan_unconstrained_split` deliberately has no
+/// equivalent fallback — its documented contract is that it never adds or drops a connection, only
+/// redistributes `at`'s existing ones (see that function's own doc comment), so a repaired
+/// unconstrained split tile can still end up with a zero-connection node. Unifying the two was
+/// considered (GitHub issue #389 follow-up) and rejected: adding this fallback to the repair path
+/// breaks that documented "no new edges" contract and its own test
+/// (`plan_unconstrained_split_without_required_matches_original_behavior`).
+///
+/// `has_edge(i)` reports whether node index `i` already has a connection from the caller's own
+/// prior distribution. `candidates` is the caller's own geometric-neighbor pool, already filtered
+/// to whatever the caller considers eligible (here, `state.visited`) — this function only adds "not
+/// already claimed by an earlier node in this same call". Preference order within `candidates` is
+/// caller-controlled (e.g. sibling-avoidance) and preserved; this function neither shuffles nor
+/// reorders it. A node with no remaining eligible candidate at all is simply skipped — irreducible,
+/// the point never had enough neighbors to go around.
+pub(crate) fn ensure_min_connectivity(
+    node_count: usize,
+    has_edge: impl Fn(usize) -> bool,
+    mut candidates: impl FnMut(usize) -> Vec<NodeId>,
+) -> Vec<(usize, NodeId)> {
+    let mut claimed: HashSet<NodeId> = HashSet::new();
+    let mut assignments = Vec::new();
+    for i in 0..node_count {
+        if has_edge(i) {
+            continue;
+        }
+        let Some(target) = candidates(i).into_iter().find(|n| !claimed.contains(n)) else {
+            continue;
+        };
+        claimed.insert(target);
+        assignments.push((i, target));
+    }
+    assignments
+}
+
+#[cfg(test)]
+mod ensure_min_connectivity_tests {
+    use super::*;
+
+    #[test]
+    fn skips_nodes_that_already_have_an_edge() {
+        let assignments = ensure_min_connectivity(3, |i| i == 1, |_| vec![0]);
+        assert_eq!(assignments, vec![(0, 0)]);
+    }
+
+    #[test]
+    fn does_not_assign_the_same_candidate_to_two_nodes() {
+        let assignments = ensure_min_connectivity(2, |_| false, |_| vec![0, 1]);
+        assert_eq!(assignments, vec![(0, 0), (1, 1)]);
+    }
+
+    #[test]
+    fn skips_a_node_with_no_unclaimed_candidate_left() {
+        let assignments = ensure_min_connectivity(3, |_| false, |_| vec![0]);
+        assert_eq!(assignments, vec![(0, 0)]);
+    }
+
+    #[test]
+    fn preserves_candidate_order_picking_the_first_unclaimed() {
+        let assignments = ensure_min_connectivity(1, |_| false, |_| vec![5, 0, 1]);
+        assert_eq!(assignments, vec![(0, 5)]);
+    }
 }

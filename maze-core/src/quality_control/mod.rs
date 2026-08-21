@@ -59,7 +59,7 @@ pub use floor_group::{floors_of_edge, floors_of_edges, floors_of_node, floor_poi
 pub use cycle_kind::CycleKind;
 pub use apply_commands::{apply_commands, ApplyOutcome};
 pub use rule::{Rule, RuleTrait, RuleIterationOutcome};
-pub use rule_params::{RuleParams, RuleParamDescriptor, RuleParamKind, RULE_PARAM_DESCRIPTORS, PARAM_PROTECT_ROUTE, PARAM_VERTICAL_PASSAGE_TYPE, rule_param_applies_to};
+pub use rule_params::{RuleParams, RuleParamDescriptor, RuleParamKind, RULE_PARAM_DESCRIPTORS, PARAM_PROTECT_ROUTE, PARAM_VERTICAL_PASSAGE_TYPE, PARAM_SPLIT_PATTERNS, rule_param_applies_to};
 pub use stage::Stage;
 pub use engine::QualityControlEngine;
 pub use checks::{

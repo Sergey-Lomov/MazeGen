@@ -243,7 +243,7 @@ pub(crate) fn build_split_patterns(dtos: &[SplitPatternDto]) -> Vec<maze_core::g
     }).collect()
 }
 
-/// Parses a `params["patterns"]`-style value (GitHub issue #247) — a JSON array of
+/// Parses a `params["split_patterns"]`-style value (GitHub issue #389) — a JSON array of
 /// `SplitPatternDto`, the same wire shape `SplitGenerationConfigDto.patterns` uses, serialized to
 /// a string since `CheckInstanceConfig`/`StrategyConfig.params` is a flat `HashMap<String,
 /// String>`, not structured JSON. Missing key or malformed JSON both fall back to an empty list
@@ -267,6 +267,20 @@ pub(crate) fn parse_split_config_param(param: Option<&String>) -> maze_core::gen
     let Some(raw) = param else { return Default::default(); };
     let Ok(dto) = serde_json::from_str::<SplitGenerationConfigDto>(raw) else { return Default::default(); };
     build_split_generation_config(&dto)
+}
+
+/// Parses `AddSplitStrategy`'s single `params["split_config"]` value (GitHub issue #389,
+/// `ParamKindDto::AddSplitConfig`) — the wire shape depends on whether the owning rule's
+/// `split_patterns` is non-empty: a plain integer string (`max_split_nodes`, non-pattern mode) or
+/// a JSON `Vec<f64>` (`pattern_weights`, pattern mode). Tries the integer shape first since it's
+/// the simpler/cheaper parse; malformed or missing input yields `(0, vec![])` — each half is read
+/// only by the mode that's actually active, so the unused half's fallback never matters.
+pub(crate) fn parse_add_split_config_param(param: Option<&String>) -> (u32, Vec<f64>) {
+    let Some(raw) = param else { return (0, Vec::new()); };
+    if let Ok(n) = raw.trim().parse::<u32>() {
+        return (n, Vec::new());
+    }
+    (0, serde_json::from_str::<Vec<f64>>(raw).unwrap_or_default())
 }
 
 fn build_preset_endpoint(dto: &PresetEndpointDto) -> PresetEndpoint {

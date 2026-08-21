@@ -34,6 +34,18 @@ pub enum ParamKindDto {
     /// uses; see `maze-runner`'s `parse_split_config_param`), not the flat `PatternList` shape
     /// above — a `PatternList` param has no mode switch or node-count field of its own.
     SplitGenerationConfig,
+    /// `AddSplitStrategy`'s own construction-time param (GitHub issue #389) — pattern topology no
+    /// longer lives here (moved to the rule-level `split_patterns` param, see
+    /// `RuleParamDescriptorDto`), so this only carries `max_split_nodes`'s default. The web UI
+    /// decides at render time which control to show: a plain integer input for `max_split_nodes`
+    /// when the owning rule's own `split_patterns` is empty, or a locked pattern-list editor (topology
+    /// from `split_patterns`, weights from this param's own value) when it's non-empty — see
+    /// `maze-runner`'s `build_add_split_strategy`. Value round-trips as a JSON-serialized
+    /// `Vec<f64>` (the `pattern_weights` wire shape) when in pattern mode, or a plain integer
+    /// string when in non-pattern mode — same "which shape depends on sibling rule state" contract
+    /// `add_vertical_passage`'s slider overrides already follow, just for a param whose control
+    /// type itself switches, not just its value.
+    AddSplitConfig { max_split_nodes_default: u32 },
 }
 
 #[derive(Serialize)]
@@ -77,7 +89,7 @@ pub struct RuleParamDescriptorDto {
 /// anyway, resolving display text from its own i18n keyed by `id`, same as every other
 /// `ParamDescriptor.label` in this module).
 pub fn rule_params_list() -> Vec<RuleParamDescriptorDto> {
-    use maze_core::quality_control::{RULE_PARAM_DESCRIPTORS, RuleParamKind, PARAM_PROTECT_ROUTE, PARAM_VERTICAL_PASSAGE_TYPE, VerticalPassageType};
+    use maze_core::quality_control::{RULE_PARAM_DESCRIPTORS, RuleParamKind, PARAM_PROTECT_ROUTE, PARAM_VERTICAL_PASSAGE_TYPE, PARAM_SPLIT_PATTERNS, VerticalPassageType};
     RULE_PARAM_DESCRIPTORS.iter().map(|d| {
         let kind = match d.kind {
             RuleParamKind::Bool { default } => ParamKindDto::Bool { default },
@@ -85,10 +97,14 @@ pub fn rule_params_list() -> Vec<RuleParamDescriptorDto> {
                 options: VerticalPassageType::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
                 default: default.as_str(),
             },
+            // No weight input at rule-level (GitHub issue #389) — `SplitPattern::weight` here is
+            // only a fallback default for `AddSplitStrategy`'s own `pattern_weights` override.
+            RuleParamKind::PatternList => ParamKindDto::PatternList { with_weights: false },
         };
         let label = match d.id {
             id if id == PARAM_PROTECT_ROUTE => "Protect start-finish route",
             id if id == PARAM_VERTICAL_PASSAGE_TYPE => "Type",
+            id if id == PARAM_SPLIT_PATTERNS => "Split patterns",
             other => other,
         };
         RuleParamDescriptorDto { id: d.id, label, kind, applies_to: d.applies_to }
@@ -226,14 +242,3 @@ pub fn vertical_passage_count_incoming_param(default: bool) -> ParamDescriptor {
     }
 }
 
-/// Shared `patterns` param descriptor for `SplitCountCheck`/`SplitDensityCheck` (GitHub issue
-/// #247) — "all splits count" (empty list, the default) vs. "only splits matching one of these
-/// patterns". No weights: a check's pattern list is a pure membership filter, unlike
-/// `AddSplitStrategy`'s own weighted selection pool.
-pub fn split_patterns_filter_param() -> ParamDescriptor {
-    ParamDescriptor {
-        id: "patterns",
-        label: "Split patterns",
-        kind: ParamKindDto::PatternList { with_weights: false },
-    }
-}

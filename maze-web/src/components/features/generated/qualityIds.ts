@@ -124,6 +124,7 @@ export const STRATEGY_IDS = [
 export const RULE_PARAM_IDS = [
   "passage_type",
   "protect_route",
+  "split_patterns",
 ] as const;
 
 export const ISSUE_KIND_IDS = [
@@ -253,7 +254,6 @@ export const PARAM_IDS = [
   "passage_type",
   "path_count",
   "path_weight",
-  "patterns",
   "prefer_partially_connected",
   "priority",
   "protect_original",

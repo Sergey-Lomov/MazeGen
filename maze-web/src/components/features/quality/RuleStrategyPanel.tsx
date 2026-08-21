@@ -9,8 +9,23 @@ import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { NestedStrategyPanel } from "./NestedStrategyPanel";
 import { entriesForSlot } from "../../../store/storeTypes";
 import { addVerticalPassageOverrides } from "./addVerticalPassageOverrides";
+import { splitPatternsToWeb } from "../../../pixi/tessellationGeometry";
+import { activeFloorTessellationOf } from "../../../store/storeHelpers";
 import type { StrategySlotVM } from "../useQualityViewModel";
 import type { QualitySelection } from "./types";
+
+// Mirrors `getPatterns` in `ParamFields.tsx` -- a malformed or missing `split_patterns` rule
+// param reads as "no patterns" (empty topology), same "invalid falls back to empty" contract
+// `parse_split_patterns_param` follows on the Rust side (GitHub issue #389).
+function parseRuleSplitPatterns(raw: string | undefined, tessellationConfig: ReturnType<typeof activeFloorTessellationOf>) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? splitPatternsToWeb(parsed, tessellationConfig) : [];
+  } catch {
+    return [];
+  }
+}
 
 interface Props {
   slot: StrategySlotVM;
@@ -47,6 +62,11 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
     ? addVerticalPassageOverrides(slot.params.passage_type)
     : null;
   const displayValues = passageOverrides ? { ...values, ...passageOverrides.values } : values;
+
+  const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
+  const addSplitPatternsOverride = strategy?.id === "add_split"
+    ? parseRuleSplitPatterns(slot.params.split_patterns, tessellationConfig)
+    : undefined;
 
   return (
     <div style={{ ...styles.ruleStrategyPanel, ...(slot.disabled ? styles.strategyDisabled : {}) }}>
@@ -87,6 +107,7 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
             values={displayValues}
             onChange={onChange}
             disabledIds={passageOverrides?.disabledIds}
+            addSplitPatternsOverride={addSplitPatternsOverride}
           />
           {strategy.nestedSlots.map((slotDesc) => (
             <NestedStrategyPanel

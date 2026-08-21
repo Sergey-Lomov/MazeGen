@@ -8,7 +8,22 @@ import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, re
 import { ui, radius, typography, spacing, inset } from "../../styles/theme";
 import { Inline } from "../Layout";
 import * as m from "~/paraglide/messages";
-import type { ParamDescriptor } from "../../wasm/types";
+import type { ParamDescriptor, SplitPattern } from "../../wasm/types";
+import { splitPatternsToWeb } from "../../pixi/tessellationGeometry";
+import { activeFloorTessellationOf } from "../../store/storeHelpers";
+
+// Mirrors `parseRuleSplitPatterns` in `RuleStrategyPanel.tsx` -- a malformed or missing
+// `split_patterns` rule param reads as "no patterns" (empty topology), same "invalid falls back
+// to empty" contract `parse_split_patterns_param` follows on the Rust side (GitHub issue #389).
+function parseRuleSplitPatterns(raw: string | undefined, tessellationConfig: ReturnType<typeof activeFloorTessellationOf>): SplitPattern[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? splitPatternsToWeb(parsed, tessellationConfig) : [];
+  } catch {
+    return [];
+  }
+}
 
 interface Props {
   ruleId: string;
@@ -22,8 +37,13 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
   const setStrategy = useMazeStore((s) => s.setStrategy);
   const clearStrategy = useMazeStore((s) => s.clearStrategy);
 
-  const currentId = rules.find((r) => r.id === ruleId)?.strategyId ?? NO_FIX_STRATEGY_ID;
+  const rule = rules.find((r) => r.id === ruleId);
+  const currentId = rule?.strategyId ?? NO_FIX_STRATEGY_ID;
   const [selectedId, setSelectedId] = useState<string>(currentId);
+  const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
+  const addSplitPatternsOverride = selectedId === "add_split"
+    ? parseRuleSplitPatterns(rule?.params.split_patterns, tessellationConfig)
+    : undefined;
 
   const candidates = availableStrategies.filter((s) => s.handles === kind);
 
@@ -60,7 +80,7 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
         <div style={styles.paramsSection}>
           <div style={styles.paramsSeparator} />
           {selectedStrategy.params.length > 0 && (
-            <StrategyParamPanel strategyId={selectedStrategy.id} params={selectedStrategy.params} />
+            <StrategyParamPanel strategyId={selectedStrategy.id} params={selectedStrategy.params} addSplitPatternsOverride={addSplitPatternsOverride} />
           )}
           {requiredNestedSlots.map((slot) => (
             <div key={slot.slot_id} style={styles.field}>
@@ -100,7 +120,7 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
   );
 }
 
-function StrategyParamPanel({ strategyId, params }: { strategyId: string; params: ParamDescriptor[] }) {
+function StrategyParamPanel({ strategyId, params, addSplitPatternsOverride }: { strategyId: string; params: ParamDescriptor[]; addSplitPatternsOverride?: SplitPattern[] }) {
   const strategyParams = useMazeStore((s) => s.strategyParams);
   const setStrategyParam = useMazeStore((s) => s.setStrategyParam);
 
@@ -119,6 +139,7 @@ function StrategyParamPanel({ strategyId, params }: { strategyId: string; params
       values={values}
       onChange={onChange}
       getDescription={(p) => resolveParamDescription(p.id)}
+      addSplitPatternsOverride={addSplitPatternsOverride}
     />
   );
 }

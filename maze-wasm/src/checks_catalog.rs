@@ -19,7 +19,7 @@ use maze_core::{
     MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP, MIN_ELEVATOR_STOP_COUNT_DEFAULT, MIN_ELEVATOR_HEIGHT_DEFAULT, MAX_ELEVATOR_STOP_GAP_DEFAULT,
     ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE, ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT},
 };
-use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, split_patterns_filter_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param};
+use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param};
 
 // Helper to turn IssueKind into a &'static str for JSON serialization.
 fn kind_str(k: IssueKind) -> &'static str {
@@ -684,7 +684,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Min count",
                     kind: ParamKindDto::Integer { default: SPLIT_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
                 },
-                split_patterns_filter_param(),
                 floor_scope_param(SPLIT_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             // See min_teleport_count's allow_multiple_instances.
@@ -701,7 +700,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     label: "Min density (per 100 cells)",
                     kind: ParamKindDto::Float { default: SPLIT_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
                 },
-                split_patterns_filter_param(),
                 floor_scope_param(SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
             // See min_teleport_count's allow_multiple_instances.

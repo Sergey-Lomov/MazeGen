@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use rand::Rng;
+use rand::seq::SliceRandom;
 use crate::ids::{IdGenerator, NodeId};
 use crate::graph::Graph;
 use crate::space::{MultiLevelField, Tessellation};
@@ -10,7 +10,7 @@ use super::split_pattern::SplitGenerationConfig;
 use super::edge_ops::try_add_edge;
 use super::vertex_based::{VertexBasedEvent, GenState, run_ordinary_step_body_for_node, add_edge_and_detect_direction};
 use super::split_logic::StartReassignment;
-use super::split_shared::{mint_split_nodes, sync_all_nodes, maybe_reassign_start, apply_split_teleport};
+use super::split_shared::{mint_split_nodes, sync_all_nodes, maybe_reassign_start, apply_split_teleport, ensure_min_connectivity};
 
 /// Non-pattern split path: mints `max_split_nodes - 1` new nodes (total node count on the tile,
 /// including `src`, is `max_split_nodes` — an exact count, `1` is a valid no-op), then processes
@@ -91,28 +91,28 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
     // A node can still end up with zero free neighbors at all (the point simply didn't have
     // enough unvisited neighbors to go around) — partitioning the pool only prevents one node
     // from starving the others, it can't manufacture connections that don't exist. Guarantee
-    // reachability by falling back to an already-visited geometric neighbor of the point (any
-    // one, chosen at random) — preferring a neighbor no sibling of this same split event is
-    // already connected to, so distinct split nodes don't all pile onto the same ordinary node
-    // unless there's no other choice.
-    for &node in &nodes {
-        let has_edge = graph.outgoing_neighbors(node).next().is_some() || graph.incoming_neighbors(node).next().is_some();
-        if has_edge {
-            continue;
-        }
-        let visited_neighbors: Vec<NodeId> = field.neighbors(node)
-            .into_iter()
-            .filter(|n| state.visited.contains(n))
-            .collect();
-        if visited_neighbors.is_empty() {
-            continue;
-        }
-        let sibling_targets: HashSet<NodeId> = nodes.iter()
-            .flat_map(|&s| graph.outgoing_neighbors(s).chain(graph.incoming_neighbors(s)))
-            .collect();
-        let preferred: Vec<NodeId> = visited_neighbors.iter().copied().filter(|n| !sibling_targets.contains(n)).collect();
-        let pool = if preferred.is_empty() { &visited_neighbors } else { &preferred };
-        let dst = pool[state.rng.random_range(0..pool.len())];
+    // reachability by falling back to an already-visited geometric neighbor of the point (shuffled,
+    // so the pick among several candidates is still random) — preferring a neighbor no sibling of
+    // this same split event is already connected to, so distinct split nodes don't all pile onto
+    // the same ordinary node unless there's no other choice.
+    let sibling_targets: HashSet<NodeId> = nodes.iter()
+        .flat_map(|&s| graph.outgoing_neighbors(s).chain(graph.incoming_neighbors(s)))
+        .collect();
+    let assignments = ensure_min_connectivity(
+        nodes.len(),
+        |i| { let node = nodes[i]; graph.outgoing_neighbors(node).next().is_some() || graph.incoming_neighbors(node).next().is_some() },
+        |i| {
+            let mut visited_neighbors: Vec<NodeId> = field.neighbors(nodes[i])
+                .into_iter()
+                .filter(|n| state.visited.contains(n))
+                .collect();
+            visited_neighbors.shuffle(&mut state.rng);
+            let preferred: Vec<NodeId> = visited_neighbors.iter().copied().filter(|n| !sibling_targets.contains(n)).collect();
+            if preferred.is_empty() { visited_neighbors } else { preferred }
+        },
+    );
+    for (i, dst) in assignments {
+        let node = nodes[i];
         let added = add_edge_and_detect_direction(graph, node, dst, |g| {
             try_add_edge(g, node, dst, elements, preset_state, &mut state.rng)
         });
@@ -124,4 +124,61 @@ pub(super) fn handle_non_pattern_split<T: Tessellation>(
     }
 
     apply_split_teleport(graph, elements, preset_state, state, &nodes, scope);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::generation::test_utils::{default_elements, make_field_graph_ids};
+    use crate::generation::vertex_based::GenState;
+    use crate::generation::split_pattern::SplitGenerationConfig;
+    use crate::generation::GenerationParams;
+    use crate::space::SquarePoint;
+
+    /// GitHub issue #222's "isolated new node" follow-up: even after `handle_non_pattern_split`'s
+    /// round-robin partition of `src`'s free geometric neighbors, a node can still be left with no
+    /// candidate at all (partitioning only prevents one node starving the others, it can't
+    /// manufacture connections that don't exist) — `ensure_min_connectivity`'s fallback must then
+    /// give every such node at least one edge to an already-visited neighbor.
+    ///
+    /// Fixture: `src` sits at the center of a 3x3 grid (4 geometric neighbors: up/down/left/right).
+    /// Three of the four are pre-marked visited, leaving exactly one (`free`) as the free-neighbor
+    /// pool `allowed_per_node` distributes. With `max_split_nodes: 3`, round-robin assigns `free`
+    /// to node 0 only — nodes 1 and 2 get an empty allowed set and cannot connect via the ordinary
+    /// step body, so only the fallback (with three independently visited candidates to draw from)
+    /// can give them an edge.
+    #[test]
+    fn every_split_node_ends_up_with_at_least_one_edge_even_when_the_free_neighbor_pool_runs_out() {
+        let (mut field, mut graph, mut ids) = make_field_graph_ids(3, 3);
+        let level = field.levels_ordered().next().unwrap();
+        let node = |x: i32, y: i32| field.node_at(level, SquarePoint { x, y }).unwrap();
+        let src = node(1, 1);
+        let (up, down, left) = (node(1, 0), node(1, 2), node(0, 1));
+
+        let mut state = GenState::new(&graph, 1, src);
+        state.visited.insert(up);
+        state.visited.insert(down);
+        state.visited.insert(left);
+
+        let params = GenerationParams { corridor_chance: 1.0, ..GenerationParams::default() };
+        let elements = default_elements();
+        let preset_state = PresetState::empty();
+        let split_config = SplitGenerationConfig { pattern_mode: false, max_split_nodes: 3, patterns: vec![] };
+        let mut start_reassignment = None;
+
+        handle_non_pattern_split(
+            &mut graph, &mut field, &mut ids, &params, &elements, &split_config, &preset_state,
+            &mut state, src, None, src, &mut start_reassignment, None, None,
+        );
+
+        let src_point = field.point_of(src);
+        let split_nodes: Vec<NodeId> = field.all_node_ids().into_iter()
+            .filter(|n| field.point_of(*n) == src_point)
+            .collect();
+        assert_eq!(split_nodes.len(), 3, "expected exactly 3 nodes minted at src's point");
+        for node in split_nodes {
+            let has_edge = graph.outgoing_neighbors(node).next().is_some() || graph.incoming_neighbors(node).next().is_some();
+            assert!(has_edge, "node {node:?} ended up with zero connections — fallback did not fire");
+        }
+    }
 }

@@ -323,9 +323,9 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.split_density.label"] as MessageFn,
     description: m["param.split_density.description"] as MessageFn,
   },
-  patterns: {
-    label: m["param.patterns.label"] as MessageFn,
-    description: m["param.patterns.description"] as MessageFn,
+  split_patterns: {
+    label: m["param.split_patterns.label"] as MessageFn,
+    description: m["param.split_patterns.description"] as MessageFn,
   },
   allow_lose_connections: {
     label: m["param.allow_lose_connections.label"] as MessageFn,

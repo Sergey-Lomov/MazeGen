@@ -2,7 +2,7 @@ use rand::{Rng, RngCore};
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
-use crate::generation::{PresetState, SplitGenerationConfig};
+use crate::generation::{PresetState, SplitPattern};
 use crate::graph::route_protection::is_node_on_route;
 use crate::quality_control::{MissingSplitTilesIssue, RepairArea};
 use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
@@ -47,19 +47,21 @@ static PARAMS: &[StrategyParam] = &[
 /// untouched regardless of what the configured pattern required, so a pattern-mode split could end
 /// up structurally not matching the only configured pattern at all).
 ///
-/// Has its own pattern-selection configuration, independent from the producing check's own
-/// pattern-list filter (see GitHub issue #247's known limitation, tracked for a fix in #253):
-/// `config` is a plain `generation::SplitGenerationConfig` (the same type generation's own
-/// `split_generation` field carries), reused as-is rather than duplicating its
-/// `pattern_mode`/`max_split_nodes`/`patterns` fields onto this strategy directly. Each candidate
-/// mints every new node in one atomic `MutationCommand::ReplacePointNodes` (all new nodes share
-/// the same all-or-nothing feasibility outcome).
+/// **Pattern topology is a rule-level parameter** (`RuleParams::split_patterns`, GitHub issue
+/// #389) — shared with the producing `split_count`/`split_density` check's own membership filter,
+/// so a repaired tile is always one the check itself would have counted, closing the gap #247/
+/// #253 left open. When `rule_params.split_patterns` is non-empty, this strategy only picks among
+/// those patterns, honoring its own `pattern_weights` override (falling back to a pattern's own
+/// `SplitPattern::weight` for any index `pattern_weights` doesn't cover). When empty, it falls
+/// back to unconstrained mode using `max_split_nodes`. Each candidate mints every new node in one
+/// atomic `MutationCommand::ReplacePointNodes` (all new nodes share the same all-or-nothing
+/// feasibility outcome).
 ///
-/// **`pattern_mode` (via `patterns`, non-empty) — pattern-based candidate**: a candidate point is
-/// picked at random, a pattern is picked honoring `SplitPattern::weight` (see `pick_weighted_pattern`
-/// below — GitHub issue #275), and rotation/mirror are picked at random, then every one of the pattern's
-/// `node_count` new nodes — including node 0, the new slot-0 — has its own faces resolved against
-/// the point's actual neighbors (`try_pattern_adaptation` below — independent of generation's own
+/// **Pattern-based candidate** (rule-level `split_patterns` non-empty): a candidate point is
+/// picked at random, a pattern is picked honoring its resolved weight (see `resolved_patterns`
+/// below), and rotation/mirror are picked at random, then every one of the pattern's `node_count`
+/// new nodes — including node 0, the new slot-0 — has its own faces resolved against the point's
+/// actual neighbors (`try_pattern_adaptation` — independent of generation's own
 /// `enumerate_adaptations`, since there is no frontier/visited state here; every neighbor is
 /// already part of the built maze). Each of the point's existing connections is matched against
 /// whichever new node's face points that direction:
@@ -71,10 +73,10 @@ static PARAMS: &[StrategyParam] = &[
 ///   connection is preserved onto every claiming node (GitHub issue #247's design — the original
 ///   neighbor is never itself split, it simply gains one edge per claiming node).
 ///
-/// **Non-pattern (`patterns` empty) candidate**: `max_split_nodes` (at least 2) total nodes;
-/// every one of the point's existing connections is reassigned, unchanged (same direction), to
-/// one uniformly random node among all `max_split_nodes` new nodes (index 0 becoming the new
-/// slot-0, on equal footing with every other index) — `allow_lose_connections`/
+/// **Non-pattern candidate** (rule-level `split_patterns` empty): `max_split_nodes` (at least 2)
+/// total nodes; every one of the point's existing connections is reassigned, unchanged (same
+/// direction), to one uniformly random node among all `max_split_nodes` new nodes (index 0
+/// becoming the new slot-0, on equal footing with every other index) — `allow_lose_connections`/
 /// `allow_add_connections` don't apply here (no connection is ever lost or invented, only
 /// reassigned).
 ///
@@ -82,8 +84,32 @@ static PARAMS: &[StrategyParam] = &[
 /// (`maze-runner`'s `build_rule_for!`) from `RuleParams` — not a `StrategyParam` anymore, so it
 /// has no local override.
 pub struct AddSplitStrategy {
-    pub config: SplitGenerationConfig,
+    /// Rule-level pattern topology (`RuleParams::split_patterns`, GitHub issue #389), resolved
+    /// once by the factory at construction time — same convention as `protect_route` below. Empty
+    /// means non-pattern mode (`max_split_nodes` applies); non-empty means pattern mode, with each
+    /// pattern's `weight` overridden by `pattern_weights[i]` when present.
+    pub split_patterns: Vec<SplitPattern>,
+    /// Non-pattern mode only (`split_patterns` empty) — the **total** node count on a split tile,
+    /// including the pre-existing `src` node itself. Mirrors
+    /// `generation::SplitGenerationConfig::max_split_nodes`.
+    pub max_split_nodes: u32,
+    /// Pattern mode only (`split_patterns` non-empty) — per-pattern weight override, matched to
+    /// `split_patterns` by index. An index with no override, or beyond this vec's length, falls
+    /// back to that pattern's own `SplitPattern::weight`.
+    pub pattern_weights: Vec<f64>,
     pub protect_route: bool,
+}
+
+impl AddSplitStrategy {
+    /// Resolves the effective pattern pool for one `apply()` call: `split_patterns` with each
+    /// pattern's `weight` overridden by `pattern_weights[i]` when present (falls back to the
+    /// pattern's own weight otherwise).
+    fn resolved_patterns(&self) -> Vec<SplitPattern> {
+        self.split_patterns.iter().enumerate().map(|(i, p)| {
+            let weight = self.pattern_weights.get(i).copied().unwrap_or(p.weight);
+            SplitPattern { weight, ..p.clone() }
+        }).collect()
+    }
 }
 
 impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStrategy {
@@ -112,6 +138,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
             .map(|v| v.max(1.0) as u32)
             .unwrap_or(MAX_ATTEMPTS_DEFAULT);
         let protect_route = self.protect_route;
+        let resolved_patterns = self.resolved_patterns();
 
         let mut commands = Vec::new();
         let mut total_added = 0u32;
@@ -147,12 +174,12 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
                 let pick_idx = rng.random_range(0..pool.len());
                 let at = pool[pick_idx];
 
-                let outcome = if self.config.patterns.is_empty() {
-                    let node_count = self.config.max_split_nodes.max(2) as usize;
+                let outcome = if resolved_patterns.is_empty() {
+                    let node_count = self.max_split_nodes.max(2) as usize;
                     core_plan_unconstrained_split(maze, at, node_count, None, &committed, rng)
                 } else {
-                    let pattern_idx = pick_weighted_pattern(&self.config.patterns, rng);
-                    core_plan_pattern_split(maze, at, &self.config.patterns[pattern_idx], None, &committed, rng, allow_lose, allow_add)
+                    let pattern_idx = pick_weighted_pattern(&resolved_patterns, rng);
+                    core_plan_pattern_split(maze, at, &resolved_patterns[pattern_idx], None, &committed, rng, allow_lose, allow_add)
                 };
 
                 match outcome {
@@ -223,7 +250,7 @@ mod tests {
     }
 
     fn strategy_unconstrained() -> AddSplitStrategy {
-        AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] }, protect_route: true }
+        AddSplitStrategy { split_patterns: vec![], max_split_nodes: 2, pattern_weights: vec![], protect_route: true }
     }
 
     #[test]
@@ -253,7 +280,7 @@ mod tests {
         let mut maze = maze_line(3);
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(3);
-        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: false, max_split_nodes: 4, patterns: vec![] }, protect_route: true };
+        let strategy = AddSplitStrategy { split_patterns: vec![], max_split_nodes: 4, pattern_weights: vec![], protect_route: true };
         let nodes_before = maze.field.node_count();
         let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
@@ -322,7 +349,7 @@ mod tests {
         let mut maze = maze_line_with_route(3);
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(1);
-        let strategy = AddSplitStrategy { config: SplitGenerationConfig { pattern_mode: false, max_split_nodes: 2, patterns: vec![] }, protect_route: false };
+        let strategy = AddSplitStrategy { split_patterns: vec![], max_split_nodes: 2, pattern_weights: vec![], protect_route: false };
         let nodes_before = maze.field.node_count();
         let result = apply_and_commit(&strategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));

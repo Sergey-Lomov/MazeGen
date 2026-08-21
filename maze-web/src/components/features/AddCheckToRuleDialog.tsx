@@ -15,6 +15,7 @@ function defaultValue(p: ParamDescriptor): string {
   if (k.type === "interval") return `${k.default_min},${k.default_max}`;
   if (k.type === "pattern_list") return "[]";
   if (k.type === "split_generation_config") return JSON.stringify({ pattern_mode: false, max_split_nodes: 2, patterns: [] });
+  if (k.type === "add_split_config") return String(k.max_split_nodes_default);
   return String(k.default);
 }
 

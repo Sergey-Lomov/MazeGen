@@ -88,7 +88,7 @@ use maze_core::{
     },
     RegionClass,
 };
-use crate::config::{CheckInstanceConfig, parse_split_patterns_param};
+use crate::config::CheckInstanceConfig;
 
 pub(crate) fn composite_check_id(rule_id: &str, local_id: &str) -> String {
     format!("{rule_id}:{local_id}")
@@ -264,14 +264,14 @@ pub(crate) fn build_missing_loops_check<T: Tessellation>(instance: &CheckInstanc
     }
 }
 
-pub(crate) fn build_missing_split_tiles_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, _rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingSplitTilesIssue>>> {
+pub(crate) fn build_missing_split_tiles_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, MissingSplitTilesIssue>>> {
     match instance.type_id.as_str() {
         "split_count" => {
             let min_count = instance.params.get("split_count")
                 .and_then(|v| v.parse::<i64>().ok())
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(SPLIT_COUNT_DEFAULT);
-            let patterns = parse_split_patterns_param(instance.params.get("patterns"));
+            let patterns = rule_params.split_patterns.clone();
             let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), SPLIT_COUNT_DEFAULT_FLOOR_SCOPE);
             Some(Box::new(SplitCountCheck { instance_id, min_count, patterns, floor_scope }))
         }
@@ -281,7 +281,7 @@ pub(crate) fn build_missing_split_tiles_check<T: Tessellation>(instance: &CheckI
                 .filter(|v| v.is_finite())
                 .map(|v| v.clamp(0.0, 100.0))
                 .unwrap_or(SPLIT_DENSITY_DEFAULT);
-            let patterns = parse_split_patterns_param(instance.params.get("patterns"));
+            let patterns = rule_params.split_patterns.clone();
             let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE);
             Some(Box::new(SplitDensityCheck { instance_id, min_density, patterns, floor_scope }))
         }
