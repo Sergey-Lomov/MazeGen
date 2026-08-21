@@ -25,7 +25,7 @@ interface Props {
   onClose: () => void;
 }
 
-const AVAILABLE_KINDS: SplitEdgeKind[] = ["passage", "one_way"];
+const AVAILABLE_KINDS: SplitEdgeKind[] = ["passage", "one_way", "wall"];
 
 /** Post-edit adapter for `SplitNodesDialogView` (GitHub issue #221, tile+table layout added for
  * #234) — manages a split point's extra nodes and picks which one edge-tool clicks on the point's
@@ -238,7 +238,7 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
     const neighborActive = resolveActiveAt(neighbor);
     if (!neighborActive) return;
-    const tool = activeKind === "passage" ? "passage" : "one_way";
+    const tool = activeKind === "passage" ? "passage" : activeKind === "one_way" ? "one_way" : "wall";
     applyPostEditToolAt(tool, edgeKey(activeEndpoint, neighborActive), activeEndpoint, neighborActive);
   };
 

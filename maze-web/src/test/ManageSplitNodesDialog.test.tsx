@@ -201,4 +201,31 @@ describe("ManageSplitNodesDialog", () => {
     // Slots are untouched until the confirm is accepted.
     expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0, 1, 2]);
   });
+
+  // GitHub issue #426: the panel's kind switcher only offered Passage/One-way, leaving Wall
+  // reachable only via the face's right-click shortcut. This pins the left-click path once "Wall"
+  // is selected in the switcher, distinct from `handleFaceRightClick`'s always-wall behavior —
+  // asserts on the `applyPostEditToolAt` call itself (spied via the store) rather than the
+  // resulting edge state, since post-edit's "wall" tool just deletes any edge (no explicit
+  // `wall`-kind entry — see `applyPostEditEdgeTool`), making the tool argument the only direct
+  // signal that the switcher's selection actually reached the click handler.
+  it("clicking a non-boundary face applies the wall tool when the Wall switcher is active", () => {
+    useMazeStore.setState({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 5, x: 2, y: 2, i: 0 },
+        // A node at every geometric neighbor of (2,2) on the 10x10 square field — ensures the
+        // clicked face resolves to a real neighbor regardless of the tessellation's own offset
+        // order, so the test doesn't depend on `getNeighborData`'s internal ordering.
+        { id: 6, x: 3, y: 2, i: 0 }, { id: 7, x: 1, y: 2, i: 0 }, { id: 8, x: 2, y: 3, i: 0 }, { id: 9, x: 2, y: 1, i: 0 },
+      ],
+    });
+    const applyPostEditToolAt = vi.fn();
+    useMazeStore.setState({ applyPostEditToolAt });
+    render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
+    fireEvent.click(screen.getAllByText("Wall")[0]);
+    const faceGroups = document.body.querySelectorAll("svg g");
+    faceGroups.forEach((g) => fireEvent.click(g));
+    expect(applyPostEditToolAt).toHaveBeenCalled();
+    expect(applyPostEditToolAt.mock.calls.every(([tool]) => tool === "wall")).toBe(true);
+  });
 });
