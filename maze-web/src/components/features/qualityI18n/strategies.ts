@@ -193,6 +193,10 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.add_elevator_stop_for_gap.label"] as MessageFn,
     description: m["strategy.add_elevator_stop_for_gap.description"] as MessageFn,
   },
+  vertical_passage_region_merge: {
+    label: m["strategy.vertical_passage_region_merge.label"] as MessageFn,
+    description: m["strategy.vertical_passage_region_merge.description"] as MessageFn,
+  },
 };
 
 export function resolveStrategyLabel(id: string): string {

@@ -10,6 +10,7 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::MutationCommand;
 use crate::repair::nested_dispatch::dispatch_priority;
+use crate::repair::strategies::region_merge_core;
 
 /// Slot id for the nested region-merge strategies this strategy dispatches across — see
 /// `Specs/repair.md`'s nested-strategy pattern. Its own constant, not a reuse of
@@ -44,36 +45,13 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 /// **`issue.data` is mandatory for this kind**, same contract as `ExpandRegionPassageStrategy`.
 pub struct PriorityRegionMergeStrategy;
 
-/// Every `NodeId` a `MutationCommand` connects — used to find which SCC component (other than the
-/// one just dispatched) a nested strategy's proposed command actually reached, so an already-
-/// merged neighbor from the same batch can be skipped rather than re-dispatched. Same contract as
-/// `weighted_region_merge::command_endpoints`.
-fn command_endpoints(command: &MutationCommand) -> Option<(crate::ids::NodeId, crate::ids::NodeId)> {
-    match *command {
-        MutationCommand::AddDirectedEdge { from, to } => Some((from, to)),
-        MutationCommand::AddBidirectionalEdge { a, b } => Some((a, b)),
-        MutationCommand::AddDirectedTeleport { from, to } => Some((from, to)),
-        MutationCommand::AddBidirectionalTeleport { a, b } => Some((a, b)),
-        MutationCommand::AddDirectedVerticalPassage { .. }
-        | MutationCommand::AddBidirectionalVerticalPassage { .. }
-        | MutationCommand::AddBidirectionalElevator { .. }
-        | MutationCommand::RemoveEdge { .. }
-        | MutationCommand::RemoveEdgeBetween { .. }
-        | MutationCommand::RemoveEdgeWithReverse { .. }
-        | MutationCommand::RemoveTeleportWithReverse { .. }
-        | MutationCommand::RemoveVerticalPassageWithReverse { .. }
-        | MutationCommand::SetStart(_)
-        | MutationCommand::SetFinish(_)
-        | MutationCommand::RemoveNode { .. }
-        | MutationCommand::ReplacePointNodes { .. } => None,
-    }
-}
-
 /// Scans `commands` for any component index (other than `region_idx` itself) that a proposed
-/// mutation actually connects to — see `weighted_region_merge::merged_neighbor`.
+/// mutation actually connects to — see `weighted_region_merge::merged_neighbor`. Both dispatchers
+/// share `region_merge_core::mutation_command_endpoints` (GitHub issue #391 postmortem — each used
+/// to carry its own copy of this match and both missed vertical-passage commands the same way).
 fn merged_neighbor(commands: &[MutationCommand], scc: &ConnectedComponents, region_idx: usize) -> Option<usize> {
     commands.iter().find_map(|cmd| {
-        let (a, b) = command_endpoints(cmd)?;
+        let (a, b) = region_merge_core::mutation_command_endpoints(cmd)?;
         [a, b].into_iter()
             .filter_map(|node| scc.component_of(node))
             .find(|&idx| idx != region_idx)
@@ -296,6 +274,32 @@ mod tests {
         assert!(matches!(result, RepairResult::Fixed { .. }));
         assert_eq!(maze.graph.edges().count() - edges_before, 2, "exactly one bidirectional passage from the first (priority) candidate must land");
         assert!(maze.graph.edges().all(|e| e.kind != EdgeKind::Teleport), "the second candidate (teleport) must never have run");
+    }
+
+    fn maze_two_floor_singletons() -> Maze<SquareTessellation> {
+        let mut ids = IdGenerator::new();
+        let fields: Vec<_> = (0..2).map(|_| crate::space::Field::new(square_rect(1, 1), &mut ids).unwrap()).collect();
+        let field = MultiLevelField::<SquareTessellation>::new(fields);
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        Maze::new(field, g)
+    }
+
+    #[test]
+    fn apply_does_not_double_merge_a_region_via_vertical_passage_neighbor_detection() {
+        // Same GitHub issue #391 postmortem regression as weighted_region_merge's own test --
+        // priority_region_merge shares the same `merged_neighbor` detection via
+        // `region_merge_core::mutation_command_endpoints`, so it can carry the exact same bug.
+        use crate::repair::strategies::VerticalPassageRegionMergeStrategy;
+        let mut maze = maze_two_floor_singletons();
+        let scc = maze.analysis.scc(&maze.graph);
+        let invalid: Vec<usize> = (0..scc.components.len()).collect();
+        let issue = issue_for(invalid);
+        let mut rng = MazeRng::seed_from_u64(1);
+        let nested = vec![nested_with(Box::new(VerticalPassageRegionMergeStrategy))];
+        let result = apply_and_commit(&PriorityRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+        assert!(matches!(result, RepairResult::Fixed { .. }));
+        assert_eq!(maze.graph.edges().count(), 2, "exactly one bidirectional vertical passage (2 directed edges) expected, not a duplicate merge");
     }
 
     #[test]

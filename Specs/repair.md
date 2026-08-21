@@ -940,11 +940,40 @@ Same contract as `ExpandRegionPassageStrategy`: `invalid` on `RegionNeedsExpansi
 - If a chosen neighbor is already connected in both directions: `apply` returns `Fixed` immediately for that region without mutating (idempotency), same posture as `ExpandRegionPassageStrategy`'s "already a full passage" completion-aware behavior. **Defensive only, not reachable in practice**: if a directed path exists both `region -> neighbor` and `neighbor -> region` (through any edge), the two are already the same SCC by definition — `REGION_NEEDS_EXPANSION` would never name them as two separate regions to merge in the first place. No real maze state can trigger this branch; it exists purely as a safety net against a stale/inconsistent `scc` snapshot.
 - Returns `Fixed` if at least one region was successfully merged; `Failed` if none were (e.g. `invalid`'s region has no other SCC component at all — a single-component maze).
 
+### VerticalPassageRegionMergeStrategy
+
+Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #391. Merges each flagged undersized SCC region into a neighboring region on an **adjacent floor**, via a `VerticalPassage` edge (`AddDirectedVerticalPassage`/`AddBidirectionalVerticalPassage`), either a full bidirectional passage or a pair of one-way edges (`connection_mode`) — same shape as `ExpandRegionPassageStrategy`, but candidate discovery is vertical (same field point, adjacent level) instead of geometric (`field.neighbors`). Shares target-selection (`target_mode`/`prefer_partially_connected`) and merge-loop bookkeeping with `ExpandRegionPassageStrategy`/`TeleportRegionMergeStrategy` via `region_merge_core`.
+
+Same contract as `ExpandRegionPassageStrategy`: `invalid` on `RegionNeedsExpansionIssue` is the producing check's result — there is no other channel to learn it. Only meaningful on a multi-level field; fails outright on a single-level one (no adjacent floor exists for any node).
+
+**Parameters:**
+
+| id | type | default | options | description |
+|----|------|---------|---------|-------------|
+| `target_mode` | Enum | `random` | `largest`, `smallest`, `random`, `prefer_needy` | How to pick which neighboring region to merge into (`region_merge_core`) |
+| `connection_mode` | Enum | `passage` | `passage`, `one_way` | How to bridge the region into its chosen neighbor |
+| `prefer_partially_connected` | Bool | `true` | — | Prefer a neighbor that already has a one-way vertical edge to/from the flagged region over one with no connection at all (`region_merge_core`) |
+| `direction_balance` | Float | `0.5` | `[0, 1]` | Tie-break roll between an up-floor and a down-floor candidate pool, when both exist (see below) |
+
+- If `invalid` is empty: returns `Fixed` immediately.
+- **Candidate discovery is deterministic, not probabilistic**: for every node in the region, both the up-floor and the down-floor node at the same field point are checked (`adjacent_floor_node`, plain "next level in `levels_ordered`" lookup — no `rng` involved), unlike `vertical_target::resolve_vertical_target` (used elsewhere for placing a fresh vertical passage) which rolls between up/down when both exist. This guarantees every already-connected neighbor floor is found on every call — required for `prefer_partially_connected`/one-way completion to be reliable, since a vertical "neighbor" isn't a fixed relation the way `field.neighbors` is (a node has at most one geometric neighbor per direction slot, but which floor counts as "the" vertical neighbor is otherwise a per-call choice).
+- Found pairs are grouped per neighbor SCC component the same way `ExpandRegionPassageStrategy` groups by geometric neighbor: every bridging node pair, whether an outbound/inbound directed edge already exists (any pair), and which direction (`Up`/`Down`) the component sits in relative to the region.
+- A candidate pair is rejected if blocked by preset state — same strict both-directions-free contract as the other region-merge strategies.
+- **Target selection**, in order:
+  1. `prefer_partially_connected` narrows the pool to partially-connected neighbors first (`region_merge_core::narrow_to_partial`), same as `ExpandRegionPassageStrategy`.
+  2. **Direction tie-break**: if the (possibly narrowed) pool has candidates in both `Up` and `Down`, `direction_balance` rolls which direction's sub-pool to keep (`rng.random_bool(direction_balance)`, higher = more likely `Up`); if only one direction has candidates, that direction is used outright with no roll. This step runs *before* `target_mode`, not after — `direction_balance` only ever decides up-vs-down, never which specific neighbor within a direction.
+  3. `target_mode` (`largest`/`smallest`/`prefer_needy`/`random`) applies within the chosen direction's sub-pool, same semantics as `region_merge_core::pick_by_mode`.
+- **`connection_mode == passage`**: adds a full bidirectional vertical passage across a bridging pair for the chosen neighbor picked uniformly at random via `rng` (not always the first one found — a region spanning more than one cell has multiple equally-valid bridges, unlike geometric adjacency where a region typically touches a given neighbor through just one cell), completion-aware (an existing one-way edge on that pair is completed, not duplicated).
+- **`connection_mode == one_way`**: ensures both directions exist between the region and its chosen neighbor, each through its own bridging pair. **Unlike** `ExpandRegionPassageStrategy`'s `one_way` mode, placement is **not** farthest-pair/farthest-pair-combination: for a region spanning a whole floor, every bridging pair sits at the same relative offset from its neighbor, so a "maximize distance" metric has no floor-specific texture to break ties with and always converges on the same (typically diagonally-opposite) corner cells regardless of seed. Bridging pairs are instead picked uniformly at random — the missing direction's pair (when partial) among every pair not already carrying the existing edge, or both pairs (when neither direction exists yet) as two distinct indices drawn at random. If the chosen neighbor has only one bridging pair, the merge for that neighbor fails and the region is skipped for this iteration (not retried against a different neighbor).
+- If a region has no vertical neighbor at all (top/bottom floor with nothing flagged as a candidate on the only adjacent side, single-level field, or every candidate pair preset-blocked): that region is skipped, not a hard failure for the whole call.
+- Merged-away bookkeeping identical to `ExpandRegionPassageStrategy`.
+- Returns `Fixed` if at least one region was successfully merged; `Failed` if none were.
+
 ### WeightedRegionMergeStrategy
 
 Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #90. Unlike `ExpandRegionPassageStrategy`/`TeleportRegionMergeStrategy`, which each implement one specific merge mechanism, this strategy picks *which* nested region-merge strategy to actually run: it holds any number of nested strategies under one slot, each with a weight, and delegates to `dispatch_weighted` (see "Weighted nested dispatch" above) — weighted-random selection without replacement, retrying a different nested strategy if the chosen one returns `Failed`, until one succeeds or every candidate has been tried.
 
-The parent issue is passed through to the nested call **unchanged** — unlike `ReduceSccCountStrategy`, which synthesizes a new issue naming which regions to merge, this strategy only picks the merge *mechanism*; which regions need merging is already the incoming `RegionNeedsExpansionIssue.invalid`, untouched (see the `apply()` behavior list below for what this implies for a multi-region batch).
+The parent issue is passed through to each nested call as a synthetic single-region copy (unlike `ReduceSccCountStrategy`, which synthesizes a new issue naming which regions to merge for a different reason) — this strategy only picks the merge *mechanism* per region, not which regions need merging; that's already the incoming `RegionNeedsExpansionIssue.invalid` (see the `apply()` behavior list below for what this implies for a multi-region batch).
 
 Same contract as `ExpandRegionPassageStrategy`: `invalid` on `RegionNeedsExpansionIssue` is the producing check's result — there is no other channel to learn it.
 
@@ -954,10 +983,12 @@ No configurable parameters of its own — weights live per nested candidate (bel
 
 **Weight resolution** (`resolve_weight`): each nested candidate's weight is read from its own `NestedStrategyConfig.param_overrides["weight"]` — a string, parsed as `f64`. Missing, unparsable, non-finite, or `<= 0.0` all fall back to `1.0` (one fallback rule, no separate branches for NaN/∞/negative/zero/malformed text). No upper clamp — `weight` isn't a declared `StrategyParam` of the nested strategy (it lives in `param_overrides` as this dispatcher's own convention on top of whatever params the nested strategy already exposes), so there's nothing to clamp against; an arbitrarily large weight simply dominates selection, which is safe and predictable. This fallback guarantees that whenever at least one nested candidate is configured, the pool passed to `dispatch_weighted` always has a strictly positive total weight. A `debug_assert!` rejects any nested candidate that declares its own `StrategyParam` literally named `"weight"` — that would collide with this dispatcher's reserved `param_overrides` key.
 
+**One dispatch per region, not per `apply()` call** (GitHub issue #120): the original #90 design dispatched the *whole* `invalid` batch to a single weighted pick, so a low-weight candidate that happened to win controlled the outcome for every region still left in the batch, not just its own configured share — a rare 1%-odds win could still absorb most of a large batch, making the configured weight ratio not track the actual per-region merge frequency. This strategy now runs its own `invalid`-batch loop directly (`Vec::pop`, skipping any region already merged away by an earlier region's own merge in the same call), synthesizing a single-region `RegionNeedsExpansionIssue` for each `dispatch_weighted` call so a weight always governs exactly one region's outcome. A merged-away neighbor is tracked via `region_merge_core::mutation_command_endpoints` — each proposed command's endpoints resolved back to their SCC component index, computed once from a single fixed snapshot taken at the start of `apply()` (shared with `PriorityRegionMergeStrategy`, see below).
+
 - If `invalid` is empty: returns `Fixed` immediately (idempotency), without touching `rng` or `nested`.
 - Nested entries are filtered to `slot_id == SLOT_MERGE_TARGET` — a defensive runtime check, not the primary validation (`maze-runner`'s `build_nested` already guarantees this at config-build time); it only guards direct `apply()` calls made outside the runner, same posture `ReduceSccCountStrategy` takes toward its own single slot.
 - If no candidate fills the slot after filtering: returns `Failed`.
-- Otherwise wraps each filtered candidate in a `WeightedCandidate` (config + resolved weight) and delegates to `dispatch_weighted` with the **original, unmodified** `issue` — one weighted pick decides the merge mechanism for the whole `invalid` batch at once; the chosen nested strategy's own `apply()` is responsible for merging as many regions in the batch as it can (see "Known limitation, not solved here" under "Weighted nested dispatch" above for why this isn't split per-region).
+- Returns `Fixed` if at least one region in the batch was successfully merged (even if others failed); `Failed` only if every region in the batch failed every candidate.
 
 ### PriorityRegionMergeStrategy
 
@@ -986,9 +1017,9 @@ failure govern every region still left in the batch, not just decide the mechani
 region. For each region still pending (processed via `Vec::pop`, skipping any already merged away
 by an earlier region's own merge in the same call), a single-region `RegionNeedsExpansionIssue` is
 synthesized and passed to its own `dispatch_priority` call against the shared candidate list. A
-merged-away neighbor is tracked the same way `WeightedRegionMergeStrategy`/`ExpandRegionPassageStrategy`
-do — via each command's endpoints resolved back to their SCC component index, computed once from a
-single fixed snapshot at the start of `apply()`.
+merged-away neighbor is tracked the same way `WeightedRegionMergeStrategy` does — via
+`region_merge_core::mutation_command_endpoints` resolving each proposed command's endpoints back to
+their SCC component index, computed once from a single fixed snapshot at the start of `apply()`.
 
 - If `invalid` is empty: returns `Fixed` immediately (idempotency), without touching `rng` or
   `nested`.

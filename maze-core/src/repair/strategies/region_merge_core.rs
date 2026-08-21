@@ -1,6 +1,8 @@
 use rand::{Rng, RngCore};
 use std::collections::HashSet;
 use crate::graph::scc::{ComponentId, ConnectedComponents};
+use crate::ids::NodeId;
+use crate::repair::command::MutationCommand;
 
 /// Shared `target_mode` param id/values/selection logic for every strategy that merges an
 /// undersized SCC region into a neighboring region (`ExpandRegionPassageStrategy` — geometric
@@ -98,6 +100,43 @@ pub fn run_merge_loop(
     }
 
     any_fixed
+}
+
+/// Every `NodeId` a `MutationCommand` connects, if it's one of the "adds a connection between two
+/// region nodes" kinds every `merge_target`-slot nested strategy can propose — used by dispatcher
+/// strategies (`WeightedRegionMergeStrategy`, `PriorityRegionMergeStrategy`) to find which SCC
+/// component a nested strategy's proposed command actually reached, so an already-merged neighbor
+/// from the same batch can be skipped rather than re-dispatched. `SetStart`/`SetFinish`/
+/// `RemoveEdge` (by opaque `EdgeId`, endpoints not recoverable without the graph) and
+/// `AddBidirectionalElevator` (elevators aren't a `merge_target` mechanism) never arise from a
+/// `merge_target` candidate, so they return `None` — same as every other command kind not listed.
+///
+/// Centralized here (GitHub issue #391 postmortem) after `WeightedRegionMergeStrategy` and
+/// `PriorityRegionMergeStrategy` each carried their own copy of this match and both missed
+/// `AddDirectedVerticalPassage`/`AddBidirectionalVerticalPassage` when
+/// `VerticalPassageRegionMergeStrategy` was added to the `merge_target` slot's candidate pool —
+/// the omission silently broke merged-away detection for vertical passages in *both* copies at
+/// once, since neither could return an endpoint for those command kinds. A single shared function
+/// means a future new merge mechanism's command kind only needs to be added once.
+pub fn mutation_command_endpoints(command: &MutationCommand) -> Option<(NodeId, NodeId)> {
+    match *command {
+        MutationCommand::AddDirectedEdge { from, to } => Some((from, to)),
+        MutationCommand::AddBidirectionalEdge { a, b } => Some((a, b)),
+        MutationCommand::AddDirectedTeleport { from, to } => Some((from, to)),
+        MutationCommand::AddBidirectionalTeleport { a, b } => Some((a, b)),
+        MutationCommand::AddDirectedVerticalPassage { from, to } => Some((from, to)),
+        MutationCommand::AddBidirectionalVerticalPassage { a, b } => Some((a, b)),
+        MutationCommand::AddBidirectionalElevator { .. }
+        | MutationCommand::RemoveEdge { .. }
+        | MutationCommand::RemoveEdgeBetween { .. }
+        | MutationCommand::RemoveEdgeWithReverse { .. }
+        | MutationCommand::RemoveTeleportWithReverse { .. }
+        | MutationCommand::RemoveVerticalPassageWithReverse { .. }
+        | MutationCommand::SetStart(_)
+        | MutationCommand::SetFinish(_)
+        | MutationCommand::RemoveNode { .. }
+        | MutationCommand::ReplacePointNodes { .. } => None,
+    }
 }
 
 /// Direct unit tests for `region_merge_core`'s pure logic — no `Maze`/`Graph`/`Field` setup
@@ -251,5 +290,28 @@ mod tests {
         let seen = seen.into_inner();
         assert_eq!(seen[0], (2, vec![0, 1]), "region 2's needy set is every other flagged region");
         assert_eq!(seen[1], (0, vec![2]), "region 1 is now merged_away and excluded, but region 2 (not merged_away itself) still counts as needy");
+    }
+
+    #[test]
+    fn mutation_command_endpoints_extracts_both_nodes_for_every_connecting_command_kind() {
+        assert_eq!(mutation_command_endpoints(&MutationCommand::AddDirectedEdge { from: 1, to: 2 }), Some((1, 2)));
+        assert_eq!(mutation_command_endpoints(&MutationCommand::AddBidirectionalEdge { a: 1, b: 2 }), Some((1, 2)));
+        assert_eq!(mutation_command_endpoints(&MutationCommand::AddDirectedTeleport { from: 1, to: 2 }), Some((1, 2)));
+        assert_eq!(mutation_command_endpoints(&MutationCommand::AddBidirectionalTeleport { a: 1, b: 2 }), Some((1, 2)));
+        assert_eq!(mutation_command_endpoints(&MutationCommand::AddDirectedVerticalPassage { from: 1, to: 2 }), Some((1, 2)));
+        assert_eq!(mutation_command_endpoints(&MutationCommand::AddBidirectionalVerticalPassage { a: 1, b: 2 }), Some((1, 2)));
+    }
+
+    #[test]
+    fn mutation_command_endpoints_returns_none_for_every_non_connecting_command_kind() {
+        assert_eq!(mutation_command_endpoints(&MutationCommand::AddBidirectionalElevator { a: 1, b: 2 }), None);
+        assert_eq!(mutation_command_endpoints(&MutationCommand::RemoveEdge { id: 7 }), None);
+        assert_eq!(mutation_command_endpoints(&MutationCommand::RemoveEdgeBetween { from: 1, to: 2 }), None);
+        assert_eq!(mutation_command_endpoints(&MutationCommand::RemoveEdgeWithReverse { id: 7 }), None);
+        assert_eq!(mutation_command_endpoints(&MutationCommand::RemoveTeleportWithReverse { id: 7 }), None);
+        assert_eq!(mutation_command_endpoints(&MutationCommand::RemoveVerticalPassageWithReverse { id: 7 }), None);
+        assert_eq!(mutation_command_endpoints(&MutationCommand::SetStart(1)), None);
+        assert_eq!(mutation_command_endpoints(&MutationCommand::SetFinish(1)), None);
+        assert_eq!(mutation_command_endpoints(&MutationCommand::RemoveNode { node: 1 }), None);
     }
 }

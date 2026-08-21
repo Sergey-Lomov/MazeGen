@@ -1042,6 +1042,8 @@
   "strategy.add_elevator_height_stop.description": "Extends an elevator upward and downward until it reaches the required height.",
   "strategy.add_elevator_stop_for_gap.label": "Add stop in gap",
   "strategy.add_elevator_stop_for_gap.description": "Adds a stop between an elevator's two farthest-apart stops to close an excessive gap.",
+  "strategy.vertical_passage_region_merge.label": "Vertical passage region merge",
+  "strategy.vertical_passage_region_merge.description": "Merges an undersized region into a neighboring floor via a vertical passage, either a full two-way passage or a pair of one-way edges.",
   "param.redistribute.label": "Redistribute connections",
   "param.redistribute.description": "If enabled, the removed split node's connections are reconnected to the original node instead of simply disappearing with it.",
   "param.entry_pick.label": "Entry pick",

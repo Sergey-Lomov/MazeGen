@@ -119,6 +119,7 @@ export const STRATEGY_IDS = [
   "teleport_group_select",
   "teleport_region_merge",
   "vertical_passage_group_select",
+  "vertical_passage_region_merge",
   "weighted_region_merge",
 ] as const;
 

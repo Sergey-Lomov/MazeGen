@@ -10,6 +10,7 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::MutationCommand;
 use crate::repair::nested_dispatch::{dispatch_weighted, WeightedCandidate};
+use crate::repair::strategies::region_merge_core;
 
 /// `param_overrides` key a nested candidate's selection weight is read from — see
 /// `resolve_weight` below. Not a declared `StrategyParam` of the nested strategy itself (it's a
@@ -77,40 +78,13 @@ fn resolve_weight(param_overrides: &std::collections::HashMap<String, String>) -
 /// `invalid` is the producing check's result — there is no other channel to learn it.
 pub struct WeightedRegionMergeStrategy;
 
-/// Every `NodeId` a `MutationCommand` connects — used to find which SCC component (other than the
-/// one just dispatched) a nested strategy's proposed command actually reached, so an already-
-/// merged neighbor from the same batch can be skipped rather than re-dispatched. `SetStart`/
-/// `SetFinish`/`RemoveEdge` (by opaque `EdgeId`, endpoints not recoverable without the graph)
-/// never arise here — every `merge_target` nested strategy only ever proposes an
-/// edge/teleport-adding command between two region nodes.
-fn command_endpoints(command: &MutationCommand) -> Option<(crate::ids::NodeId, crate::ids::NodeId)> {
-    match *command {
-        MutationCommand::AddDirectedEdge { from, to } => Some((from, to)),
-        MutationCommand::AddBidirectionalEdge { a, b } => Some((a, b)),
-        MutationCommand::AddDirectedTeleport { from, to } => Some((from, to)),
-        MutationCommand::AddBidirectionalTeleport { a, b } => Some((a, b)),
-        MutationCommand::AddDirectedVerticalPassage { .. }
-        | MutationCommand::AddBidirectionalVerticalPassage { .. }
-        | MutationCommand::AddBidirectionalElevator { .. }
-        | MutationCommand::RemoveEdge { .. }
-        | MutationCommand::RemoveEdgeBetween { .. }
-        | MutationCommand::RemoveEdgeWithReverse { .. }
-        | MutationCommand::RemoveTeleportWithReverse { .. }
-        | MutationCommand::RemoveVerticalPassageWithReverse { .. }
-        | MutationCommand::SetStart(_)
-        | MutationCommand::SetFinish(_)
-        | MutationCommand::RemoveNode { .. }
-        | MutationCommand::ReplacePointNodes { .. } => None,
-    }
-}
-
 /// Scans `commands` for any component index (other than `region_idx` itself) that a proposed
 /// mutation actually connects to — that neighbor, if it's also a still-pending region in this
 /// batch, has effectively been merged away by this dispatch and must not be separately
 /// dispatched later in the same `apply()` call's loop.
 fn merged_neighbor(commands: &[MutationCommand], scc: &ConnectedComponents, region_idx: usize) -> Option<usize> {
     commands.iter().find_map(|cmd| {
-        let (a, b) = command_endpoints(cmd)?;
+        let (a, b) = region_merge_core::mutation_command_endpoints(cmd)?;
         [a, b].into_iter()
             .filter_map(|node| scc.component_of(node))
             .find(|&idx| idx != region_idx)
@@ -314,6 +288,39 @@ mod tests {
         // (2 directed edges) between geometrically-adjacent nodes — two regions merged means two
         // such passages, not one.
         assert_eq!(maze.graph.edges().count() - edges_before, 4, "both regions in the batch must have been merged, not just the first");
+    }
+
+    /// 1x1 point replicated on 2 floors, no edges -> 2 singleton SCC regions, each other's only
+    /// vertical neighbor.
+    fn maze_two_floor_singletons() -> Maze<SquareTessellation> {
+        let mut ids = IdGenerator::new();
+        let fields: Vec<_> = (0..2).map(|_| crate::space::Field::new(square_rect(1, 1), &mut ids).unwrap()).collect();
+        let field = MultiLevelField::<SquareTessellation>::new(fields);
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        Maze::new(field, g)
+    }
+
+    #[test]
+    fn apply_does_not_double_merge_a_region_via_vertical_passage_neighbor_detection() {
+        // Both floor-0 and floor-1 regions are undersized (`invalid: vec![0, 1]`) and each
+        // other's only vertical neighbor. A single VerticalPassageRegionMergeStrategy dispatch on
+        // either one must bridge them both at once — GitHub issue #391's
+        // VerticalPassageRegionMergeStrategy proposes AddDirectedVerticalPassage/
+        // AddBidirectionalVerticalPassage commands, which `command_endpoints` must recognize so
+        // the merged-away neighbor is skipped on the batch loop's next iteration. Before that fix,
+        // the neighbor went undetected and got dispatched again, adding a second, spurious
+        // vertical-passage connection between the very same two regions.
+        use crate::repair::strategies::VerticalPassageRegionMergeStrategy;
+        let mut maze = maze_two_floor_singletons();
+        let scc = maze.analysis.scc(&maze.graph);
+        let invalid: Vec<usize> = (0..scc.components.len()).collect();
+        let issue = issue_for(invalid);
+        let mut rng = MazeRng::seed_from_u64(1);
+        let nested = vec![nested_with(Box::new(VerticalPassageRegionMergeStrategy), None)];
+        let result = apply_and_commit(&WeightedRegionMergeStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+        assert!(matches!(result, RepairResult::Fixed { .. }));
+        assert_eq!(maze.graph.edges().count(), 2, "exactly one bidirectional vertical passage (2 directed edges) expected, not a duplicate merge");
     }
 
     #[test]

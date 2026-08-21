@@ -167,7 +167,11 @@ interface EntryRowProps {
   onSelect: (s: QualitySelection) => void;
 }
 
-// Two indentation levels per entry, `depth` being the first:
+// Two indentation levels per entry, `depth` being the first. `depth === 1` (the slot directly
+// under a rule's top-level strategy) gets zero extra `marginLeft` here — it must sit flush with
+// the parent strategy's own `ParamFields` row, which carries no indent of its own (both rely on
+// `ruleStrategyParams`'s shared left padding). Deeper nesting adds one `indent.tree` per level,
+// via the child-slot wrapper below, not via this row's own margin.
 //   depth      — "Weight"/"Priority" label + input/rank + "N%"/up-down buttons + remove button,
 //                and (same level, no extra indent — a nested strategy stands in for its parent's
 //                own param row) the "Merge strategy" label + name + edit (✎) button, hover/
@@ -200,7 +204,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
   });
 
   return (
-    <div style={{ ...styles.entryStack, marginLeft: depth * indent.tree }}>
+    <div style={{ ...styles.entryStack, marginLeft: (depth - 1) * indent.tree }}>
       {showWeight && (
         <Inline gap="rowGap" justify="flex-start" style={{ borderRadius: 3 }}>
           <label style={styles.weightLabel}>{m["quality.nested_strategy.weight_label"]()}</label>
