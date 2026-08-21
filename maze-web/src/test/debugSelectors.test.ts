@@ -633,6 +633,75 @@ describe("selectDebugMazeView", () => {
     expect(afterReplace?.edges.some((e) => e.from === 3 || e.to === 3)).toBe(false);
   });
 
+  // --- QC vertical passage / elevator repair (GitHub issue #427 regression) ---
+  // `applyQc`'s switch had no cases for these four mutating QC event kinds — they fell through to
+  // `default: break` and never entered the edge accumulator, so a vertical passage/elevator added
+  // by a QC repair strategy (e.g. the per-area elevator stop deficit repair, #408) silently
+  // vanished from the debug view even though generation's own live (non-debug) view showed it fine.
+
+  // root (0) -> DirectedVerticalPassageAdded(1,2) -> BidirectionalVerticalPassageAdded(2,3) ->
+  //   BidirectionalElevatorAdded(3,4) -> VerticalPassageRemovedWithReverse(1,2,reverseRemoved=false)
+  function buildQcVerticalArenaTape(): ParsedTape {
+    const records: { parent: number; firstChild: number; nextSibling: number; tag: number; bytes: Uint8Array }[] = [
+      { parent: NO_NODE, firstChild: 1, nextSibling: NO_NODE, tag: TAG_SCOPE, bytes: new TextEncoder().encode("root") },
+      { parent: 0, firstChild: NO_NODE, nextSibling: 2, tag: QC_EVENT_TAG.DIRECTED_VERTICAL_PASSAGE_ADDED, bytes: concatBytes([u64le(1n), u64le(2n)]) },
+      { parent: 0, firstChild: NO_NODE, nextSibling: 3, tag: QC_EVENT_TAG.BIDIRECTIONAL_VERTICAL_PASSAGE_ADDED, bytes: concatBytes([u64le(2n), u64le(3n)]) },
+      { parent: 0, firstChild: NO_NODE, nextSibling: 4, tag: QC_EVENT_TAG.BIDIRECTIONAL_ELEVATOR_ADDED, bytes: concatBytes([u64le(3n), u64le(4n)]) },
+      { parent: 0, firstChild: NO_NODE, nextSibling: NO_NODE, tag: QC_EVENT_TAG.VERTICAL_PASSAGE_REMOVED_WITH_REVERSE, bytes: concatBytes([u64le(1n), u64le(2n), new Uint8Array([0])]) },
+    ];
+    const offsets: number[] = [];
+    let cursor = 0;
+    for (const r of records) {
+      offsets.push(cursor);
+      cursor += r.bytes.byteLength;
+    }
+    const payload = concatBytes(records.map((r) => r.bytes));
+    const nodeTable = new Uint8Array(records.length * 22);
+    const dv = new DataView(nodeTable.buffer);
+    records.forEach((r, i) => {
+      const base = i * 22;
+      dv.setUint32(base + 0, r.parent, true);
+      dv.setUint32(base + 4, r.firstChild, true);
+      dv.setUint32(base + 8, r.nextSibling, true);
+      dv.setUint16(base + 12, r.tag, true);
+      dv.setUint32(base + 14, offsets[i], true);
+      dv.setUint32(base + 18, r.bytes.byteLength, true);
+    });
+    return parseTape(nodeTable, payload);
+  }
+
+  it("QC-added vertical passage/elevator edges reach view.edges with their real kind, and a reverse-gated removal retracts only the confirmed leg (GitHub issue #427)", () => {
+    const tape = buildQcVerticalArenaTape();
+    const verticalNodes: NodeDto[] = [
+      { id: 1, x: 0, y: 0, i: 0 }, { id: 2, x: 0, y: 0, i: 1 },
+      { id: 3, x: 0, y: 0, i: 2 }, { id: 4, x: 0, y: 0, i: 3 },
+    ];
+    const arena: DebugArenaHandle = {
+      tape, algorithmKind: "quality_control",
+      sources: [{ scopeName: "quality_control", kind: "quality_control", nodeIndex: 0, startStep: 0, endStep: 4, checkpointFroms: [] }],
+      nodes: verticalNodes, allNodes: verticalNodes, totalSteps: 4,
+      debugValueNames: [],
+    };
+
+    // step 2 = all three Added events applied — directed passage, bidirectional passage (both
+    // legs), bidirectional elevator (both legs), each carrying its own real EdgeDto.kind rather
+    // than defaulting to "basic".
+    const afterAdds = selectDebugMazeView(arena, 2);
+    expect(afterAdds?.edges).toContainEqual({ from: 1, to: 2, kind: "vertical_passage" });
+    expect(afterAdds?.edges).toContainEqual({ from: 2, to: 3, kind: "vertical_passage" });
+    expect(afterAdds?.edges).toContainEqual({ from: 3, to: 2, kind: "vertical_passage" });
+    expect(afterAdds?.edges).toContainEqual({ from: 3, to: 4, kind: "elevator" });
+    expect(afterAdds?.edges).toContainEqual({ from: 4, to: 3, kind: "elevator" });
+
+    // step 3 = VerticalPassageRemovedWithReverse(1,2,reverseRemoved=false) applied — only the (1,2)
+    // leg is retracted; (2,3)/(3,2)/(3,4)/(4,3) from the earlier steps are untouched, and no phantom
+    // (2,1) removal happens since reverseRemoved is false.
+    const afterRemoval = selectDebugMazeView(arena, 3);
+    expect(afterRemoval?.edges.some((e) => e.from === 1 && e.to === 2)).toBe(false);
+    expect(afterRemoval?.edges).toContainEqual({ from: 2, to: 3, kind: "vertical_passage" });
+    expect(afterRemoval?.edges).toContainEqual({ from: 3, to: 4, kind: "elevator" });
+  });
+
   // --- Kruskal dispatch (GitHub issue #146) ---
 
   it("dispatches Kruskal arenas to applyKruskal, populating edges and dsuGroups", () => {

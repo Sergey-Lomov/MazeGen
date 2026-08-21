@@ -71,7 +71,8 @@ export interface QcApplyResult {
  *  reported — `removedEdges` therefore only ever needs to reach into an *earlier* source's
  *  contribution (e.g. generation's own edge list), never cancel this same call's own `edges`.
  *
- *  `EdgeRemoved`/`EdgeRemovedWithReverse`/`TeleportRemovedWithReverse` carry the removed edge's `(from, to)` (GitHub issue
+ *  `EdgeRemoved`/`EdgeRemovedWithReverse`/`TeleportRemovedWithReverse`/`VerticalPassageRemovedWithReverse`
+ *  carry the removed edge's `(from, to)` (GitHub issue
  *  #171's follow-up fix — resolved on the Rust side from the graph immediately before removal,
  *  since the wire's own `EdgeId` alone is meaningless off-graph) and participate in the keyed
  *  accumulator exactly like `EdgeRemovedBetween`. */
@@ -109,7 +110,7 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
   let start: bigint | null = from?.start ?? null;
   let finish: bigint | null = from?.finish ?? null;
 
-  const add = (from: bigint, to: bigint, kind: "basic" | "teleport") => {
+  const add = (from: bigint, to: bigint, kind: "basic" | "teleport" | "vertical_passage" | "elevator") => {
     const key = `${from}:${to}`;
     net.set(key, { from, to, kind });
     removedFromEarlierSources.delete(key);
@@ -139,12 +140,24 @@ export function applyQc(tape: ParsedTape, targetStep: number, from?: QcApplyResu
         add(event.a, event.b, "teleport");
         add(event.b, event.a, "teleport");
         break;
+      case "DirectedVerticalPassageAdded":
+        add(event.from, event.to, "vertical_passage");
+        break;
+      case "BidirectionalVerticalPassageAdded":
+        add(event.a, event.b, "vertical_passage");
+        add(event.b, event.a, "vertical_passage");
+        break;
+      case "BidirectionalElevatorAdded":
+        add(event.a, event.b, "elevator");
+        add(event.b, event.a, "elevator");
+        break;
       case "EdgeRemovedBetween":
       case "EdgeRemoved":
         remove(event.from, event.to);
         break;
       case "EdgeRemovedWithReverse":
       case "TeleportRemovedWithReverse":
+      case "VerticalPassageRemovedWithReverse":
         // Carries only the primary direction's `(from, to)` (GitHub issue #171's "primary id
         // only" convention) — the reverse direction is always the same node pair swapped, so
         // it's cleared from the accumulator too, but ONLY when `reverseRemoved` (GitHub issue
