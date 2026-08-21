@@ -310,14 +310,12 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
           * badges' own deliberately fixed bg/text contrast -- `hoverable-tint-counter` cancels it
           * back out (inverse brightness, filters compose multiplicatively) so the badges stay
           * exactly as dark/light regardless of the parent bubble's hover state. */}
-        {touchedNodeIds.length > 0 && (
-          <IssueFloorBadges
-            nodeIds={touchedNodeIds}
-            bg={darken(palette.text, 0.2)}
-            text={palette.bg}
-            className={description ? "hoverable-tint-counter" : undefined}
-          />
-        )}
+        <IssueFloorBadges
+          nodeIds={touchedNodeIds}
+          bg={darken(palette.text, 0.2)}
+          text={palette.bg}
+          className={description ? "hoverable-tint-counter" : undefined}
+        />
       </div>
       {open && (
         <Modal title={label} onClose={() => setOpen(false)}>
@@ -335,15 +333,18 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   );
 }
 
-/// Row of solid `L{n}` badges inside a bubble whose flagged elements span more than one floor
-/// (GitHub issue #365) -- a floor-scoped canvas highlight only shows the active floor's own
-/// entities, so this is the one place a user can discover "this problem also exists on floor 3"
-/// without switching floors themselves. `color` matches the parent bubble's own text color (same
-/// as the label/info-icon), not a fixed hue. Distinct floor *indices* (`NodeDto.level ?? 0`, the
-/// same convention `selectNodeLevelResolver`/`navigateToFloor` already use), not floor ids --
+/// Row of solid `L{n}` badges inside a bubble, shown whenever the maze itself has more than one
+/// floor (GitHub issue #365, extended by #423 to match the Preset Connections orphan-split-node
+/// warning's always-show-on-multi-floor behavior) -- a floor-scoped canvas highlight only shows
+/// the active floor's own entities, so this is the one place a user can discover "this problem
+/// also exists on floor 3" without switching floors themselves, even when the bubble's own
+/// elements happen to sit on a single floor. `color` matches the parent bubble's own text color
+/// (same as the label/info-icon), not a fixed hue. Distinct floor *indices* (`NodeDto.level ?? 0`,
+/// the same convention `selectNodeLevelResolver`/`navigateToFloor` already use), not floor ids --
 /// sorted ascending so the row always reads bottom-to-top regardless of `nodeIds`' own order.
-/// Renders nothing for a single-floor span (including a maze with only one floor at all), same as
-/// every other cross-floor indicator in the app.
+/// Renders nothing on a single-floor maze, same as every other cross-floor indicator in the app.
+/// Also renders nothing when `nodeIds` resolves to zero floors (e.g. a whole-maze issue with no
+/// per-element highlight data) -- there is nothing to badge in that case.
 function IssueFloorBadges({ nodeIds, bg, text, className }: { nodeIds: number[]; bg: string; text: string; className?: string }) {
   const nodes = useMazeStore((s) => s.nodes);
   const floors = useMazeStore((s) => s.floors);
@@ -353,7 +354,7 @@ function IssueFloorBadges({ nodeIds, bg, text, className }: { nodeIds: number[];
   // would be wasted work at scale (many issue bubbles x many nodes).
   const resolveNodeLevel = useMemo(() => selectNodeLevelResolver(nodes), [nodes]);
   const levels = Array.from(new Set(nodeIds.map((id) => resolveNodeLevel(id)).filter((l): l is number => l !== undefined))).sort((a, b) => a - b);
-  if (levels.length <= 1) return null;
+  if (floors.length <= 1 || levels.length === 0) return null;
   return (
     <div className={className} style={issueStyles.floorBadgeRow}>
       {levels.map((level) => (

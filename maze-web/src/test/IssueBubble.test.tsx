@@ -6,6 +6,7 @@ import type { IssueDto } from "../wasm/types";
 import {
   invalidLoopIssue, invalidTeleportIssue, invalidOneWayIssue, invalidVerticalPassageIssue,
   regionNeedsExpansionIssue, invalidElevatorStopIssue, invalidSplitTileIssue, invalidSplitNodeGroupIssue,
+  excessiveSccCountIssue,
 } from "./issuesBlockFixtures";
 
 // GitHub issue #195's review finding: IssuesBlock/IssueBubble had no test file at all -- the
@@ -39,7 +40,7 @@ describe("IssueBubble floor badges (GitHub issue #365)", () => {
     expect(screen.getAllByText("Loop validation").length).toBe(1);
   });
 
-  it("a bubble whose edges stay on a single floor shows no floor badges", () => {
+  it("on a single-floor maze, a bubble shows no floor badges even though its edges technically span nodes", () => {
     const floor0 = { id: "floor_0", title: "Floor 1" };
     useMazeStore.setState({
       floors: [floor0],
@@ -53,6 +54,42 @@ describe("IssueBubble floor badges (GitHub issue #365)", () => {
     render(<IssueBubble issue={issue} sourceCheck="loop_length" />);
 
     expect(screen.queryByText("L1")).not.toBeInTheDocument();
+  });
+
+  it("GitHub issue #423: on a multi-floor maze, a bubble whose own edges stay on a single floor still shows that floor's badge", () => {
+    const floor0 = { id: "floor_0", title: "Floor 1" };
+    const floor1 = { id: "floor_1", title: "Floor 2" };
+    useMazeStore.setState({
+      floors: [floor0, floor1],
+      activeFloorId: floor0.id,
+      nodes: [
+        { id: 1, x: 0, y: 0, i: 0, level: 0 },
+        { id: 2, x: 0, y: 0, i: 0, level: 0 },
+      ],
+    });
+    const issue = invalidLoopIssue("loop_length");
+    render(<IssueBubble issue={issue} sourceCheck="loop_length" />);
+
+    expect(screen.getByText("L1")).toBeInTheDocument();
+    expect(screen.queryByText("L2")).not.toBeInTheDocument();
+  });
+
+  it("a bubble with no per-element highlight data (excessive_scc_count) shows no floor badges even on a multi-floor maze", () => {
+    const floor0 = { id: "floor_0", title: "Floor 1" };
+    const floor1 = { id: "floor_1", title: "Floor 2" };
+    useMazeStore.setState({
+      floors: [floor0, floor1],
+      activeFloorId: floor0.id,
+      nodes: [
+        { id: 1, x: 0, y: 0, i: 0, level: 0 },
+        { id: 2, x: 0, y: 0, i: 0, level: 1 },
+      ],
+    });
+    const issue = excessiveSccCountIssue("scc_count", false);
+    render(<IssueBubble issue={issue} sourceCheck="scc_count" />);
+
+    expect(screen.queryByText("L1")).not.toBeInTheDocument();
+    expect(screen.queryByText("L2")).not.toBeInTheDocument();
   });
 });
 
