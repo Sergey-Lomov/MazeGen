@@ -110,10 +110,12 @@ export interface SplitNodeConnectors {
   lines: SplitConnectorLine[];
 }
 
-/** Computes every face's per-node segment layout (division of the shared edge among connected
- *  nodes, in node-index order, with the active node's own segment always sorted last within its
- *  face so it draws on top) — GitHub issue #234 follow-up ("active node always on top"). Faces are
- *  addressed by array index, matching `faces[i]`/`kindsByFace[i]` 1:1. */
+/** Computes every face's per-node segment layout — division of the shared edge among connected
+ *  nodes is always in stable node-index order (GitHub issue #422: geometry must not depend on
+ *  which node is active, or switching the active node reshuffles every other node's segment
+ *  position too), with the returned `segments` array itself additionally reordered so the active
+ *  node's own entry comes last (drawn on top) — GitHub issue #234 follow-up ("active node always
+ *  on top"). Faces are addressed by array index, matching `faces[i]`/`kindsByFace[i]` 1:1. */
 export function computeSplitFaceLayouts(
   faces: SplitFaceInput[],
   kindsByFace: SplitNodeFaceKind[][],
@@ -125,15 +127,14 @@ export function computeSplitFaceLayouts(
     const connected = allKinds.filter((k) => !NO_OWN_SEGMENT_KINDS.has(k.kind));
     if (connected.length === 0) return { segments: [], allWall };
 
-    // Active node last (drawn on top) — stable otherwise (node-index order).
-    const ordered = [...connected].sort((a, b) => {
-      const aActive = a.nodeIndex === activeIndex ? 1 : 0;
-      const bActive = b.nodeIndex === activeIndex ? 1 : 0;
-      return aActive - bActive || a.nodeIndex - b.nodeIndex;
-    });
-
-    const n = ordered.length;
-    const segments = ordered.map((entry, i) => {
+    // Geometric division is always by stable node-index order — which node's sub-segment sits
+    // where along the face must not depend on which node is currently active, or picking a
+    // different active node reshuffles every other node's segment position too (GitHub issue
+    // #422). Active-last is a separate, draw-order-only concern applied after the geometry is
+    // fixed, so switching the active node only changes z-order, not layout.
+    const byNodeIndex = [...connected].sort((a, b) => a.nodeIndex - b.nodeIndex);
+    const n = byNodeIndex.length;
+    const segmentsByNodeIndex = byNodeIndex.map((entry, i) => {
       const t0 = i / n, t1 = (i + 1) / n;
       return {
         nodeIndex: entry.nodeIndex,
@@ -143,6 +144,14 @@ export function computeSplitFaceLayouts(
         atFaceStart: i === 0,
         atFaceEnd: i === n - 1,
       };
+    });
+
+    // Active node's own segment last (drawn on top) — reorders only the returned draw sequence,
+    // never the geometry computed above.
+    const segments = [...segmentsByNodeIndex].sort((a, b) => {
+      const aActive = a.nodeIndex === activeIndex ? 1 : 0;
+      const bActive = b.nodeIndex === activeIndex ? 1 : 0;
+      return aActive - bActive || a.nodeIndex - b.nodeIndex;
     });
     return { segments, allWall };
   });

@@ -82,6 +82,22 @@ describe("computeSplitFaceLayouts", () => {
     expect(layouts[0].segments.at(-1)?.nodeIndex).toBe(1);
   });
 
+  it("switching which node is active reorders draw order only — every node's own geometry (v0/v1/atFaceStart/atFaceEnd) stays identical (GitHub issue #422)", () => {
+    const kinds: SplitNodeFaceKind[][] = [[
+      { nodeIndex: 0, kind: "passage" },
+      { nodeIndex: 1, kind: "passage" },
+      { nodeIndex: 2, kind: "passage" },
+    ]];
+    const geometryByNode = (segments: ReturnType<typeof computeSplitFaceLayouts>[number]["segments"]) =>
+      new Map(segments.map((s) => [s.nodeIndex, { v0: s.v0, v1: s.v1, atFaceStart: s.atFaceStart, atFaceEnd: s.atFaceEnd }]));
+
+    const noActive = geometryByNode(computeSplitFaceLayouts([face], kinds, null)[0].segments);
+    for (const activeIndex of [0, 1, 2]) {
+      const withActive = geometryByNode(computeSplitFaceLayouts([face], kinds, activeIndex)[0].segments);
+      expect(withActive).toEqual(noActive);
+    }
+  });
+
   it("undefined kind still gets its own segment (not folded into the neutral no-connection case)", () => {
     const kinds: SplitNodeFaceKind[][] = [[{ nodeIndex: 0, kind: "undefined" }]];
     const layouts = computeSplitFaceLayouts([face], kinds, null);
