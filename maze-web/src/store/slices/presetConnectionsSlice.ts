@@ -288,12 +288,12 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     const level = activeFloorLevel(state);
     const { splitPoints, slotId } = addSlot(state.presetSplitPoints, point, level);
     const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
-    return {
+    return withRecomputedAutoLock(state, {
+      presetConnections: state.presetConnections,
       presetSplitPoints: splitPoints,
       presetActiveSplitNode: { ...state.presetActiveSplitNode, [key]: presetEndpoint(point, slotId, level) },
       presetsDirty: true,
-      debugStale: debugStaleOf(state),
-    };
+    });
   }),
 
   removePresetSplitNode: (point, slotId) => {
