@@ -2,12 +2,12 @@ import type { NodeLockKind } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { WallEdge, MarkerData, LockEntry, EdgeHL, PassageKind } from "../renderers/types";
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
-import type { PresetConnectionEntry, FieldEdge } from "../fieldEditUtils";
+import type { PresetConnectionEntry, PresetTeleportEntry, FieldEdge } from "../fieldEditUtils";
 import { edgeKey, computeInvalidKeysFromCells } from "../fieldEditUtils";
 import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
 import { buildSplitPassagesCore, type SplitPassageNode, type SplitPassagesResult } from "./mazeSelectors";
-import { presetEndpoint, presetEndpointKey, type PresetEndpoint } from "../presetEndpoint";
+import { presetEndpoint, presetEndpointKey, presetEndpointIsSplit, type PresetEndpoint } from "../presetEndpoint";
 import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
 
@@ -244,6 +244,58 @@ export function buildIsolatedCellHighlights(
     });
     if (hasPassage) continue;
     result.push([x, y]);
+  }
+  return result;
+}
+
+/** Every declared split node (`presetSplitPoints`) referenced by nothing — GitHub issue #231, split
+ *  out from `PresetConnectionsFeature`'s own `orphanSplitCount` so the same "is this slot referenced"
+ *  logic drives both the warning's count/floor badges and its hover highlight (GitHub issue #420).
+ *  Level-agnostic (spans every floor, mirroring the feature's own count) — keys are `"x,y"` (floor 0)
+ *  or `"x,y@level"` (GitHub issue #340), the `@level` suffix stripped before parsing coordinates. */
+export function computeOrphanSplitPoints(
+  presetSplitPoints: Record<string, number[]>,
+  presetConnections: Map<string, PresetConnectionEntry>,
+  presetTeleports: PresetTeleportEntry[],
+  presetStart: PresetEndpoint | null,
+  presetFinish: PresetEndpoint | null,
+  presetGenSource: PresetEndpoint | null,
+): PresetEndpoint[] {
+  const result: PresetEndpoint[] = [];
+  for (const [key, slots] of Object.entries(presetSplitPoints)) {
+    const [pointPart, levelPart] = key.split("@");
+    const [x, y] = pointPart.split(",").map(Number);
+    const level = levelPart === undefined ? undefined : Number(levelPart);
+    for (const slotId of slots) {
+      const target = { point: [x, y] as [number, number], slotId };
+      const referenced =
+        Array.from(presetConnections.values()).some(e => presetEndpointIsSplit(e.from, target) || presetEndpointIsSplit(e.to, target))
+        || presetTeleports.some(t => presetEndpointIsSplit(t.from, target) || presetEndpointIsSplit(t.to, target))
+        || (presetStart != null && presetEndpointIsSplit(presetStart, target))
+        || (presetFinish != null && presetEndpointIsSplit(presetFinish, target))
+        || (presetGenSource != null && presetEndpointIsSplit(presetGenSource, target));
+      if (!referenced) result.push(presetEndpoint([x, y], slotId, level));
+    }
+  }
+  return result;
+}
+
+/** Active-floor cells for the orphan-split-node warning's hover highlight (GitHub issue #420) —
+ *  `orphanPoints` spans every floor (see `computeOrphanSplitPoints`), filtered here to just `level`,
+ *  same "only the active floor lights up" convention `buildIsolatedCellHighlights` follows. Dedups
+ *  by point — several orphaned slots at the same point highlight as one cell, not a stacked fill. */
+export function buildOrphanSplitCellHighlights(
+  orphanPoints: PresetEndpoint[],
+  level: number | undefined,
+): [number, number][] {
+  const seen = new Set<string>();
+  const result: [number, number][] = [];
+  for (const ep of orphanPoints) {
+    if ((ep.level ?? 0) !== (level ?? 0)) continue;
+    const key = `${ep.point[0]},${ep.point[1]}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(ep.point);
   }
   return result;
 }

@@ -18,6 +18,10 @@ export interface PresetConnectionsState {
   presetGenSource: PresetEndpoint | null;
   highlightInvalidPresets: boolean;
   highlightIsolatedNodes: boolean;
+  /** Whether the "N split node(s) unused" warning bubble is currently hovered (GitHub issue #420) —
+   *  mirrors `highlightIsolatedNodes` above, driving the same kind of canvas highlight for orphan
+   *  split nodes instead. */
+  highlightOrphanSplitNodes: boolean;
   showPresetOrigin: boolean;
   /** Locked nodes: key = "x,y[:level]", value = lock kind */
   lockedNodes: Map<string, NodeLockKind>;
@@ -112,6 +116,7 @@ export interface PresetConnectionsActions {
   setDefaultEdgeState: (s: "undefined" | "wall" | "passage") => void;
   setHighlightInvalidPresets: (highlight: boolean) => void;
   setHighlightIsolatedNodes: (highlight: boolean) => void;
+  setHighlightOrphanSplitNodes: (highlight: boolean) => void;
   setShowPresetOrigin: (show: boolean) => void;
   setLockedNode: (x: number, y: number, kind: NodeLockKind) => void;
   removeLockedNode: (x: number, y: number) => void;

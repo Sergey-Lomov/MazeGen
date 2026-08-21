@@ -2,16 +2,21 @@ import React, { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidSplitPoints, presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../pixi/fieldEditUtils";
-import { presetEndpointIsSplit, presetEndpointLevelLabel } from "../../pixi/presetEndpoint";
+import { computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
+import { presetEndpointLevelLabel, type PresetEndpoint } from "../../pixi/presetEndpoint";
+import type { FloorState } from "../../store/floorsTypes";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
+import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import { buttonStyle } from "../../styles/shared";
 import { ui, typography, muted, spacing } from "../../styles/theme";
+import { darken } from "../../styles/palette";
 import { ConfirmModal } from "../ConfirmModal";
 import { SectionHeader } from "../SectionHeader";
 import { Switch } from "../Switch";
 import { Stack, Grid } from "../Layout";
 import { StatusTag } from "../StatusTag";
 import { WarningBubble } from "../WarningBubble";
+import { notificationPalette } from "../EmbeddedNotification";
 import { PresetSplitNodesDialog } from "./PresetSplitNodesDialog";
 import { PresetElevatorFloorDialog } from "../dialogs/PresetElevatorFloorDialog";
 import { PresetVerticalDirectionDialog } from "../dialogs/PresetVerticalDirectionDialog";
@@ -71,6 +76,7 @@ export function PresetConnectionsFeature() {
   const lockedNodes = useMazeStore((s) => s.lockedNodes);
   const clearLockedNodes = useMazeStore((s) => s.clearLockedNodes);
   const setHighlightIsolatedNodes = useMazeStore((s) => s.setHighlightIsolatedNodes);
+  const setHighlightOrphanSplitNodes = useMazeStore((s) => s.setHighlightOrphanSplitNodes);
   const showPresetOrigin = useMazeStore((s) => s.showPresetOrigin);
   const setShowPresetOrigin = useMazeStore((s) => s.setShowPresetOrigin);
   const autoLock = useMazeStore((s) => s.autoLock);
@@ -130,30 +136,18 @@ export function PresetConnectionsFeature() {
   }, [lockedNodes, autoLockedNodes, presetConnections, floors, activeFloorId]);
 
   // Orphan split nodes: declared in presetSplitPoints but referenced by nothing (GitHub issue
-  // #231) — created regardless, but likely forgotten by the user, so surfaced as a warning
-  // (same style as isolatedNodes above), not blocking generation. Counted across every floor
-  // (not just the active one) — `presetEndpointIsSplit` is deliberately level-agnostic (point+slot
-  // only, see its own doc comment), so a point's orphan status doesn't depend on which floor is
-  // active. Keys are `"x,y"` (floor 0) or `"x,y@level"` (GitHub issue #340) — the `@level` suffix
-  // must be stripped before parsing coordinates, or `Number("y@2")` silently yields `NaN` and every
-  // split point on a non-floor-0 floor is misreported as orphaned.
-  const orphanSplitCount = useMemo(() => {
-    let count = 0;
-    for (const [key, slots] of Object.entries(presetSplitPoints)) {
-      const [x, y] = key.split("@")[0].split(",").map(Number);
-      for (const slotId of slots) {
-        const target = { point: [x, y] as [number, number], slotId };
-        const referenced =
-          Array.from(presetConnections.values()).some(e => presetEndpointIsSplit(e.from, target) || presetEndpointIsSplit(e.to, target))
-          || presetTeleports.some(t => presetEndpointIsSplit(t.from, target) || presetEndpointIsSplit(t.to, target))
-          || (presetStart && presetEndpointIsSplit(presetStart, target))
-          || (presetFinish && presetEndpointIsSplit(presetFinish, target))
-          || (presetGenSource && presetEndpointIsSplit(presetGenSource, target));
-        if (!referenced) count++;
-      }
-    }
-    return count;
-  }, [presetSplitPoints, presetConnections, presetTeleports, presetStart, presetFinish, presetGenSource]);
+  // #231) — created regardless, but likely forgotten by the user, so surfaced as a warning (same
+  // style as isolatedNodes above), not blocking generation. Computed across every floor (not just
+  // the active one) — `presetEndpointIsSplit` is deliberately level-agnostic (point+slot only, see
+  // its own doc comment), so a point's orphan status doesn't depend on which floor is active. The
+  // hover highlight (GitHub issue #420) only lights up the active floor's own orphan cells
+  // (`buildOrphanSplitCellHighlights`, wired in `PresetConnectionsRenderer`), same convention as
+  // `isolatedNodes` above — the floor badges below are what surfaces "this also exists elsewhere".
+  const orphanPoints = useMemo(
+    () => computeOrphanSplitPoints(presetSplitPoints, presetConnections, presetTeleports, presetStart, presetFinish, presetGenSource),
+    [presetSplitPoints, presetConnections, presetTeleports, presetStart, presetFinish, presetGenSource],
+  );
+  const orphanSplitCount = orphanPoints.length;
 
   const resolveFieldAt = useMemo(
     () => resolveFieldAtOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation }),
@@ -212,7 +206,11 @@ export function PresetConnectionsFeature() {
                   message={orphanSplitCount === 1
                     ? m["preset.split_orphan"]({ count: orphanSplitCount })
                     : m["preset.split_orphan_plural"]({ count: orphanSplitCount })}
-                />
+                  onMouseEnter={() => setHighlightOrphanSplitNodes(true)}
+                  onMouseLeave={() => setHighlightOrphanSplitNodes(false)}
+                >
+                  <OrphanSplitFloorBadges orphanPoints={orphanPoints} floors={floors} />
+                </WarningBubble>
               )}
             </Stack>
           )}
@@ -394,6 +392,53 @@ export function PresetConnectionsFeature() {
   );
 }
 
+
+/** Row of solid `L{n}` badges for the orphan-split-node warning bubble (GitHub issue #420) —
+ *  preset-stage counterpart of `IssuesBlock`'s `IssueFloorBadges`, but keyed directly off each
+ *  orphan point's own `level` instead of resolving through generated `NodeId`s (presets run before
+ *  generation, so there's no node snapshot to look levels up in). Unlike `IssueFloorBadges` (which
+ *  hides for a single-floor *span*, since a resolved maze's issue could in principle touch any
+ *  floor), this shows whenever the project itself has more than one floor — orphan split points are
+ *  declared per-floor by the user, so even a single-floor span is worth pinning down on a
+ *  multi-floor project. */
+function OrphanSplitFloorBadges({ orphanPoints, floors }: { orphanPoints: PresetEndpoint[]; floors: FloorState[] }) {
+  const palette = notificationPalette("warning");
+  const levels = Array.from(new Set(orphanPoints.map((ep) => ep.level ?? 0))).sort((a, b) => a - b);
+  if (floors.length <= 1) return null;
+  return (
+    <div style={warningFloorBadgeStyles.row}>
+      {levels.map((level) => (
+        <button
+          key={level}
+          type="button"
+          style={{ ...warningFloorBadgeStyles.badge, background: darken(palette.text, 0.2), color: palette.bg }}
+          onClick={(e) => { e.stopPropagation(); navigateToFloor(level); }}
+          disabled={!floors[level]}
+        >
+          {`L${level + 1}`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const warningFloorBadgeStyles: Record<string, React.CSSProperties> = {
+  row: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: spacing.itemGap / 2,
+    flexShrink: 0,
+  },
+  badge: {
+    ...typography.body,
+    fontSize: "0.75em",
+    lineHeight: 1,
+    padding: "2px 6px",
+    borderRadius: 999,
+    border: "none",
+    cursor: "pointer",
+  },
+};
 
 const styles: Record<string, React.CSSProperties> = {
   sectionLabel: {

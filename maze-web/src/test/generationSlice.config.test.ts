@@ -84,12 +84,13 @@ describe("mazeStore generation misc actions", () => {
   });
 
   it("setOpenCard switches card and clears preset highlights when leaving preset_connections", () => {
-    useMazeStore.setState({ openCard: "preset_connections", highlightInvalidPresets: true, highlightIsolatedNodes: true });
+    useMazeStore.setState({ openCard: "preset_connections", highlightInvalidPresets: true, highlightIsolatedNodes: true, highlightOrphanSplitNodes: true });
     useMazeStore.getState().setOpenCard("generation");
     const s = useMazeStore.getState();
     expect(s.openCard).toBe("generation");
     expect(s.highlightInvalidPresets).toBe(false);
     expect(s.highlightIsolatedNodes).toBe(false);
+    expect(s.highlightOrphanSplitNodes).toBe(false);
   });
 
   it("setOpenCard keeps highlights when not leaving preset_connections", () => {

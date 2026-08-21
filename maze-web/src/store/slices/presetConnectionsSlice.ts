@@ -19,6 +19,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetGenSource: null,
   highlightInvalidPresets: false,
   highlightIsolatedNodes: false,
+  highlightOrphanSplitNodes: false,
   showPresetOrigin: false,
   lockedNodes: new Map<string, NodeLockKind>(),
   autoLock: true,
@@ -143,6 +144,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   }),
   setHighlightInvalidPresets: (highlight) => set({ highlightInvalidPresets: highlight }),
   setHighlightIsolatedNodes: (highlight) => set({ highlightIsolatedNodes: highlight }),
+  setHighlightOrphanSplitNodes: (highlight) => set({ highlightOrphanSplitNodes: highlight }),
   setShowPresetOrigin: (show) => set({ showPresetOrigin: show }),
 
   setLockedNode: (x, y, kind) => set((state) => {

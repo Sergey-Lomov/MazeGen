@@ -180,7 +180,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   setOpenCard: (card) => set((state) => ({
     openCard: card,
     ...(state.openCard === "preset_connections" && card !== "preset_connections"
-      ? { highlightInvalidPresets: false, highlightIsolatedNodes: false }
+      ? { highlightInvalidPresets: false, highlightIsolatedNodes: false, highlightOrphanSplitNodes: false }
       : {}),
   })),
 

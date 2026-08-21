@@ -21,6 +21,8 @@ import {
   buildPresetMarkers,
   buildLocks,
   buildIsolatedCellHighlights,
+  computeOrphanSplitPoints,
+  buildOrphanSplitCellHighlights,
   buildInvalidEdgeHighlights,
   buildHoverEdgeHighlight,
   buildPresetSplitPassages,
@@ -80,6 +82,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly originContainer: Container;
   private readonly genSourceContainer: Container;
   private readonly isolatedHLContainer: Container;
+  private readonly orphanHLContainer: Container;
   private readonly invalidHLContainer: Container;
   private readonly invalidTeleportHLContainer: Container;
   private readonly hoverContainer: Container;
@@ -105,6 +108,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly origin: OriginRenderer;
   private readonly genSource: GenSourceRenderer;
   private readonly isolatedHL: CellFillRenderer;
+  private readonly orphanHL: CellFillRenderer;
   private readonly invalidHL: EdgeHighlightRenderer;
   private readonly invalidTeleportHL: Graphics;
   private readonly hover: EdgeHighlightRenderer;
@@ -133,6 +137,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.originContainer         = new Container();
     this.genSourceContainer      = new Container();
     this.isolatedHLContainer     = new Container();
+    this.orphanHLContainer       = new Container();
     this.invalidHLContainer      = new Container();
     this.invalidTeleportHLContainer = new Container();
     this.hoverContainer          = new Container();
@@ -153,6 +158,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.originContainer);
     this.root.addChild(this.genSourceContainer);
     this.root.addChild(this.isolatedHLContainer);
+    this.root.addChild(this.orphanHLContainer);
     this.root.addChild(this.invalidHLContainer);
     this.root.addChild(this.invalidTeleportHLContainer);
     this.root.addChild(this.hoverContainer);
@@ -173,6 +179,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.origin         = new OriginRenderer(this.originContainer);
     this.genSource      = new GenSourceRenderer(this.genSourceContainer);
     this.isolatedHL     = new CellFillRenderer(this.isolatedHLContainer);
+    this.orphanHL       = new CellFillRenderer(this.orphanHLContainer);
     this.invalidHL      = new EdgeHighlightRenderer(this.invalidHLContainer);
     this.invalidTeleportHL = new Graphics();
     this.invalidTeleportHLContainer.addChild(this.invalidTeleportHL);
@@ -300,6 +307,10 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       this.redrawIsolatedHL(state);
     }
 
+    if (state.highlightOrphanSplitNodes !== prev.highlightOrphanSplitNodes) {
+      this.redrawOrphanHL(state);
+    }
+
     if (state.presetHoveredLink !== prev.presetHoveredLink) {
       this.redrawLinkHover(state);
     }
@@ -370,6 +381,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.redrawOrigin(state.showPresetOrigin);
     this.redrawGenSource(presetGenSource?.point ?? null);
     this.redrawIsolatedHL(state);
+    this.redrawOrphanHL(state);
 
     if (state.highlightInvalidPresets) {
       const edgeHighlights = buildInvalidEdgeHighlights(invalidKeys, presetConnections, cfg);
@@ -413,6 +425,20 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       presetConnectionsOnLevel(state.presetConnections, level),
     );
     this.isolatedHL.render({ cells, color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
+  }
+
+  private redrawOrphanHL(state: MazeState): void {
+    if (!this.cfg) return;
+    if (!state.highlightOrphanSplitNodes) {
+      this.orphanHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
+      return;
+    }
+    const level = activeFloorLevel(state);
+    const orphanPoints = computeOrphanSplitPoints(
+      state.presetSplitPoints, state.presetConnections, state.presetTeleports, state.presetStart, state.presetFinish, state.presetGenSource,
+    );
+    const cells = buildOrphanSplitCellHighlights(orphanPoints, level);
+    this.orphanHL.render({ cells, color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
   }
 
   private redrawInvalidHL(state: MazeState): void {
@@ -551,6 +577,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.originContainer.destroy();
     this.genSourceContainer.destroy();
     this.isolatedHLContainer.destroy();
+    this.orphanHLContainer.destroy();
     this.invalidHLContainer.destroy();
     this.invalidTeleportHLContainer.destroy();
     this.hoverContainer.destroy();

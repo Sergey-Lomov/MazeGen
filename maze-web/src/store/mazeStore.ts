@@ -191,6 +191,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       // clear transient UI flags
       highlightInvalidPresets: false,
       highlightIsolatedNodes: false,
+      highlightOrphanSplitNodes: false,
       error: null,
       // image export (GitHub issue #295) — buildResetMazeState() above resets these to their
       // defaults; restore the saved values on top.
