@@ -124,12 +124,12 @@ export class SplitJunctionRenderer {
     // own node-identity *color* stays fixed (GitHub issue #304: width was previously hardcoded to
     // `WALL_THICKNESS`, ignoring the caller's wall style entirely).
     //
-    // `cap: "butt"` by default (GitHub issue #304 follow-up) — a connector's outer end always sits
-    // on a shared point (a face-division boundary or the hub point several other nodes' own
-    // connectors also meet at), same reasoning as the special-shape fix (GitHub issue #294): a
-    // round or square cap would protrude past it into the neighboring segment. A wallSegment end
-    // can instead be a genuine free end (GitHub issue #317, see `freeEndCap` below) with nothing to
-    // protrude into, in which case it follows the caller's own cap instead.
+    // `cap: "butt"` by default (GitHub issue #304 follow-up) — a connector's `to` end always sits
+    // on a shared face-division point, same reasoning as the special-shape fix (GitHub issue #294):
+    // a round or square cap would protrude past it into the neighboring segment. Its `from` end can
+    // instead be a genuine free hub point (GitHub issue #421, see `hasHub` below) or a wallSegment
+    // end can be a genuine free end (GitHub issue #317, see `freeEndCap` below) — both follow the
+    // caller's own cap since there's nothing to protrude into there.
     const passageStrokeBase = {
       width: wallFaceStyleOverride?.width ?? WALL_THICKNESS,
       cap: "butt",
@@ -159,12 +159,29 @@ export class SplitJunctionRenderer {
       // color.
       const disabledColor = disabledOfNumber(passage.color);
 
+      // A connector's `to` end always sits on a shared face-division point (another node's own
+      // share may butt against it, or the face's own boundary is handled by wallSegments instead)
+      // — always `"butt"`. Its `from` end is a hub point only when the node fans out from one
+      // (`connectors.length > 1`, GitHub issue #421) — a genuine free end with nothing to butt
+      // against (the hub itself is never drawn). Unlike a wallSegment's free end, this end can have
+      // several other connectors of the *same* node converging on it at arbitrary angles — a
+      // per-connector square-cap patch there overlaps its neighbors and pokes out as a visible
+      // star/spike (GitHub issue #421 follow-up). A round patch never has that problem (it never
+      // extends past its own radius no matter how many lines share the point), so the hub end
+      // always gets a round patch, ignoring the caller's own free-end cap style. The 2-share
+      // straight-line case (`connectors.length === 1`) has no hub — both ends are division points,
+      // `"butt"` throughout, unchanged.
+      const hasHub = passage.connectors.length > 1;
       for (const connector of passage.connectors) {
         const color = connector.isUndefined ? disabledColor : passage.color;
         this.g
           .moveTo(connector.from.x, connector.from.y)
           .lineTo(connector.to.x, connector.to.y)
           .stroke({ ...passageStrokeBase, color });
+
+        if (hasHub) {
+          this.g.circle(connector.from.x, connector.from.y, passageStrokeBase.width / 2).fill(color);
+        }
 
         if (connector.oneWayOut !== undefined) {
           const dx = connector.to.x - connector.from.x, dy = connector.to.y - connector.from.y;

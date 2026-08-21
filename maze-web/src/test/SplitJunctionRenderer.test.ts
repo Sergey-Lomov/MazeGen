@@ -152,13 +152,15 @@ describe("SplitJunctionRenderer.render special shapes", () => {
     expect(strokeCalls[0].args[0]).toMatchObject({ color: 0xabcdef, width: 5, join: "miter", cap: "butt" });
   });
 
-  it("a caller-supplied wallFaceStyleOverride's width applies to ordinary passages (segment and connector); color stays the node's own; connector cap is always forced to 'butt', wallSegment cap follows the caller since its lone share spans the whole (free-ended) face", () => {
+  it("a caller-supplied wallFaceStyleOverride's width applies to ordinary passages (segment and connector); color stays the node's own; a single (no-hub) connector's cap is always 'butt', wallSegment cap follows the caller since its lone share spans the whole (free-ended) face", () => {
     // GitHub issue #304: width was previously hardcoded to WALL_THICKNESS for ordinary
     // (non-special) passages, ignoring the caller's wall style entirely. GitHub issue #317: a
     // wallSegment end landing on the face's own real boundary (`atFaceStart`/`atFaceEnd`, both true
     // here since this node is alone on the face) has no neighboring sub-segment to butt against, so
-    // it follows the caller's own cap instead of always "butt". The connector still has no such
-    // concept (its outer end is always a hub or a shared face-division point) — always "butt".
+    // it follows the caller's own cap instead of always "butt". This passage has exactly one
+    // connector (the 2-share straight-line case, no hub) — both its ends are division points, so
+    // it stays "butt" always. See the hub-fan-out test below (GitHub issue #421) for the case where
+    // a connector's hub end follows the caller's cap instead.
     const renderer = new SplitJunctionRenderer(new Container());
     renderer.render(
       { passages: [passage("9,9", 0xaaaaaa)], wallFaces: [] },
@@ -169,6 +171,65 @@ describe("SplitJunctionRenderer.render special shapes", () => {
     const [connectorStroke, segmentStroke] = strokeCalls;
     expect(connectorStroke.args[0]).toMatchObject({ color: 0xaaaaaa, width: 7, cap: "butt" });
     expect(segmentStroke.args[0]).toMatchObject({ color: 0xaaaaaa, width: 7, cap: "square" });
+  });
+
+  it("GitHub issue #421: a hub fan-out connector's hub end always gets a round cap patch, while the stroke itself still draws 'butt' (its division-point end always stays butt)", () => {
+    // A node with 3+ shares (or 0/1, or exactly 2 but not both plain passages) fans out from a hub
+    // point never drawn on its own — `connectors.length > 1` is exactly this case. Each connector's
+    // `from` is the hub (a genuine free end, nothing to butt against) and `to` is a shared
+    // face-division point (still needs "butt"). Previously the hub end was always forced to "butt"
+    // too, creating a visible sharp cut even when the caller's style was "round".
+    const hubPassage = {
+      color: 0xaaaaaa,
+      pointKey: "4,4",
+      center: { x: 5, y: 5 },
+      wallSegments: [],
+      connectors: [
+        { from: { x: 5, y: 5 }, to: { x: 0, y: 0 }, isUndefined: false },
+        { from: { x: 5, y: 5 }, to: { x: 10, y: 0 }, isUndefined: false },
+        { from: { x: 5, y: 5 }, to: { x: 5, y: 10 }, isUndefined: false },
+      ],
+    };
+    const renderer = new SplitJunctionRenderer(new Container());
+    renderer.render({ passages: [hubPassage], wallFaces: [] }, { width: 7, cap: "round" });
+    const calls = graphicsOf(renderer).calls;
+    const strokeCalls = calls.filter((c) => c.fn === "stroke");
+    expect(strokeCalls).toHaveLength(3);
+    for (const call of strokeCalls) expect(call.args[0]).toMatchObject({ cap: "butt" });
+
+    const circleCalls = calls.filter((c) => c.fn === "circle");
+    expect(circleCalls).toHaveLength(3);
+    for (const call of circleCalls) expect(call.args).toEqual([5, 5, 3.5]);
+  });
+
+  it("GitHub issue #421 follow-up: with a 'square' caller cap, a hub fan-out connector's hub end still gets a round patch, not square — several connectors of the same node converge on the hub at arbitrary angles, and independent square patches there overlap into a visible star", () => {
+    const hubPassage = {
+      color: 0xaaaaaa,
+      pointKey: "4,4",
+      center: { x: 5, y: 5 },
+      wallSegments: [],
+      connectors: [
+        { from: { x: 5, y: 5 }, to: { x: 0, y: 0 }, isUndefined: false },
+        { from: { x: 5, y: 5 }, to: { x: 10, y: 0 }, isUndefined: false },
+      ],
+    };
+    const renderer = new SplitJunctionRenderer(new Container());
+    renderer.render({ passages: [hubPassage], wallFaces: [] }, { width: 7, cap: "square" });
+    const calls = graphicsOf(renderer).calls;
+    expect(calls.filter((c) => c.fn === "closePath")).toHaveLength(0);
+    const circleCalls = calls.filter((c) => c.fn === "circle");
+    expect(circleCalls).toHaveLength(2);
+    for (const call of circleCalls) expect(call.args).toEqual([5, 5, 3.5]);
+  });
+
+  it("GitHub issue #421: a single (no-hub) connector never gets a hub-end cap patch, even with a round caller cap", () => {
+    const renderer = new SplitJunctionRenderer(new Container());
+    renderer.render({ passages: [passage("9,9", 0xaaaaaa)], wallFaces: [] }, { width: 7, cap: "round" });
+    const calls = graphicsOf(renderer).calls;
+    // This fixture's lone wallSegment is free-ended on both sides (drawn with the real cap
+    // directly, no separate patch) — a circle here would only come from a (wrongly) patched
+    // no-hub connector.
+    expect(calls.filter((c) => c.fn === "circle")).toHaveLength(0);
   });
 
   it("a node's own two wallSegments meeting at a shared angled vertex chain into one stroked path with the caller's join, instead of leaving a gap at butt-capped independent strokes", () => {
