@@ -98,6 +98,7 @@ pub use checks::{
     TeleportSplitIntersectionCheck, TeleportSplitEdgeSelector,
     SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT_COMPARISON,
     SplitTeleportIntersectionCheck, SplitTeleportDirection,
+    SplitPatternShapeCheck,
     MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE,
     MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE,
     SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,

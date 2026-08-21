@@ -199,7 +199,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
 
   it("StrategyFailed narrates the strategy's resolved display label", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({ kind: "StrategyFailed", strategyId: "remove_split" });
-    expect(tokens).toEqual([{ kind: "text", text: 'Strategy "Split node removal" failed' }]);
+    expect(tokens).toEqual([{ kind: "text", text: 'Strategy "Split tile removal" failed' }]);
   });
 
   it("an InvalidLoop payload with no actual edges (empty map) resolves to a null highlight target, not an empty-array target", () => {

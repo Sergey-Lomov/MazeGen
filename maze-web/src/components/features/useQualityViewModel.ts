@@ -114,10 +114,10 @@ export function compositeCheckId(ruleId: string, localId: number): string {
   return `${ruleId}:${localId}`;
 }
 
-function localizeParams(params: ParamDescriptor[]): ParamDescriptor[] {
+function localizeParams(params: ParamDescriptor[], contextId?: string): ParamDescriptor[] {
   return params.map((p) => ({
     ...p,
-    label: resolveParamLabel(p.id, p.label),
+    label: resolveParamLabel(p.id, p.label, contextId),
   }));
 }
 
@@ -136,7 +136,7 @@ export function useQualityViewModel(): QualityViewModel {
         id: d.id,
         label: resolveStrategyLabel(d.id),
         handles: d.handles,
-        params: localizeParams(d.params),
+        params: localizeParams(d.params, d.id),
         experimental: d.experimental,
         nestedSlots: d.nested_slots.map((s) => ({ slotId: s.slot_id, kind: s.kind, min: s.min, max: s.max, dispatchKind: s.dispatch_kind })),
       };
@@ -156,7 +156,7 @@ export function useQualityViewModel(): QualityViewModel {
           return {
             slotId: n.slotId,
             strategy: buildStrategyVM(d),
-            params: localizeParams(d.params),
+            params: localizeParams(d.params, d.id),
             nested: buildNested(n.nested, depth + 1),
           };
         })

@@ -1245,6 +1245,21 @@ Scans `Field::all_points()` (deduped via a seen-points set, same as `SplitDistan
 
 `RemoveSplitStrategy` (see `repair.md`) is the registered `RepairStrategy` for `INVALID_SPLIT_TILE` — no new strategy for this check, it reuses the same one `SplitDistanceFromWaypointCheck` does.
 
+### SplitPatternShapeCheck
+
+```rust
+pub struct SplitPatternShapeCheck {
+    pub instance_id: String,
+    pub patterns: Vec<SplitPattern>,
+}
+```
+
+GitHub issue #382, part of epic #246. A split tile can be minted matching a configured pattern (by `AddSplitStrategy`, or by generation's own pattern path), then have one of its nodes/connections removed by a later, independent repair strategy in the same pass (e.g. `RemoveSplitNodeStrategy`, `SplitRouteCutStrategy`, `RemoveSplitNodeConnectionStrategy`) — the tile is still nominally valid at that point (`nodes_at(point).len() >= 2`), so no other split check catches the resulting malformed shape, and it lingers in the graph. This check re-validates every split tile's *current* shape against `patterns` each pass, flagging any tile that no longer structurally matches (any rotation/mirror, `quality_control::split_pattern_match::split_tile_matches_any`) — the same matching machinery `SplitCountCheck`/`SplitDensityCheck` use to filter tiles by pattern membership.
+
+`patterns` is this check's **own** `PatternList` param (`params["patterns"]`, parsed by `parse_split_patterns_param`) — unlike `SplitCountCheck.patterns`/`SplitDensityCheck.patterns`, it is *not* sourced from the rule-level `split_patterns` parameter, since this check can be the only split-related member of its rule (no `split_count`/`split_density`/`add_split` alongside it to share a rule-level list with). Empty by default, producing no issues at all in that case — there is no declared shape to validate against.
+
+Scans `Field::all_points_with_level()` (deduped via a seen-points set, same as `SplitCountCheck`/`SplitDensityCheck`), keeps points with `nodes_at(point).len() >= 2`, and flags the whole tile (`SplitTileNodes`) if it matches none of `patterns`. Fires `InvalidSplitTileIssue::new_from_check(instance_id, invalid)` — no `.with_detail` call. `RemoveSplitStrategy` is the registered `RepairStrategy` for `INVALID_SPLIT_TILE` — no new strategy needed.
+
 ### Split tiles vs. split nodes — slot-0 is not special (GitHub epic #246, GitHub issue #281)
 
 **Hard constraint across every strategy in this epic: none of them may remove a point's *last remaining* node.** This replaced the epic's original "never remove slot-0" rule (GitHub issue #281) — slot-0 has no removal-eligibility standing of its own anymore; whichever node happens to be the sole node left at a point is what's protected, regardless of which one that is. `RemoveNode`/`remove_node_feasible` (`generation::node_ops`) enforce this at the field/graph layer; `ReplacePointNodes` has no such restriction at all, since it replaces a point's whole node set atomically rather than shrinking it by one. Outside removal-eligibility, slot-0 is an equal member of a split tile for every purpose — size/volume, connectivity/degree, distance — any metric a check or repair-priority computes over "a split tile's nodes" must include slot-0, not just the extra nodes.
@@ -2087,6 +2102,7 @@ Every `*_density`/`*_ratio` param below (density/ratio checks measured as "per 1
 | `max_one_way_count` | `invalid_one_way_group` | `max_one_ways: Integer(default=1_000, min=0, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
 | `max_one_way_ratio` | `invalid_one_way_group` | `max_ratio: Float(default=100.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
 | `split_distance_from_waypoint` | `invalid_split_tile` | `distance: Integer(default=0, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)`, `waypoint: Enum(options=[start,finish,any], default=any)` | no |
+| `split_pattern_shape` | `invalid_split_tile` | `patterns: PatternList(with_weights=false)` (own param, not rule-level `split_patterns`) | no |
 | `max_split_count` | `invalid_split_tile_group` | `max_split_count: Integer(default=20, min=0, max=1_000_000)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=whole_maze)` | no |
 | `max_split_density` | `invalid_split_tile_group` | `max_split_density: Float(default=30.0, min=0.0, max=100.0)`, `floor_scope: Enum(options=[whole_maze,per_floor], default=per_floor)` | no |
 | `split_group_geometric_proximity` | `invalid_split_tile_group` | `split_group_geometric_proximity_distance: Float(default=0.0, min=0.0, max=100_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` | no |

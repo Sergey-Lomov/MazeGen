@@ -122,7 +122,7 @@ export function resolveIssue(kind: string): IssueInfo {
 /// tell a check with nothing to render apart from one whose entry was simply forgotten, since that
 /// requires tracing `.with_detail` calls through shared check-core helpers, not a plain text scan
 /// -- is satisfied by a single explicit list rather than scattered no-op closures.
-const NO_DETAIL_CHECKS = ["missing_endpoints", "unreachable_finish", "teleport_duplicates_connection"] as const;
+const NO_DETAIL_CHECKS = ["missing_endpoints", "unreachable_finish", "teleport_duplicates_connection", "split_pattern_shape"] as const;
 
 /// Per-source-check label override, filled in with that check's raw detail values (see
 /// `IssueDto.details`). Lets one `kind` (e.g. `invalid_loop`) read differently depending on

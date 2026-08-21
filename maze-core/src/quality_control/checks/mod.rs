@@ -75,6 +75,7 @@ pub mod min_elevator_height;
 pub mod max_elevator_stop_gap;
 pub mod elevator_stop_group_geometric_proximity;
 pub mod elevator_stop_group_graph_proximity;
+pub mod split_pattern_shape;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -114,6 +115,7 @@ pub use split_teleport_intersection::{SplitTeleportIntersectionCheck, SplitTelep
 pub use max_split_count::{MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE};
 pub use max_split_density::{MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE};
 pub use split_group_geometric_proximity::{SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE};
+pub use split_pattern_shape::SplitPatternShapeCheck;
 pub use split_group_graph_proximity::{SplitGroupGraphProximityCheck, SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT};
 pub use split_count::{SplitCountCheck, SPLIT_COUNT_DEFAULT, SPLIT_COUNT_DEFAULT_FLOOR_SCOPE};
 pub use split_density::{SplitDensityCheck, SPLIT_DENSITY_DEFAULT, SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE};

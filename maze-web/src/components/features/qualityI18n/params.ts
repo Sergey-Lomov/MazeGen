@@ -327,6 +327,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.split_patterns.label"] as MessageFn,
     description: m["param.split_patterns.description"] as MessageFn,
   },
+  patterns: {
+    label: m["param.patterns.label"] as MessageFn,
+    description: m["param.patterns.description"] as MessageFn,
+  },
   allow_lose_connections: {
     label: m["param.allow_lose_connections.label"] as MessageFn,
     description: m["param.allow_lose_connections.description"] as MessageFn,
@@ -695,8 +699,16 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "selection.merge": m["param.selection.option.merge.explanation"] as MessageFn,
 };
 
-export function resolveParamLabel(id: string, fallback: string): string {
-  return paramI18n[id]?.label() ?? fallback;
+// Per-strategy override for a shared param's label (e.g. `selection`, reused by strategies that
+// each keep a different node) — checked before the generic `paramI18n` entry. `contextId` is the
+// owning strategy's id.
+const paramLabelOverrideI18n: Record<string, MessageFn> = {
+  "selection.remove_split": m["param.selection.remove_split.label"] as MessageFn,
+};
+
+export function resolveParamLabel(id: string, fallback: string, contextId?: string): string {
+  const override = contextId ? paramLabelOverrideI18n[`${id}.${contextId}`] : undefined;
+  return override?.() ?? paramI18n[id]?.label() ?? fallback;
 }
 
 // Per-strategy override for a shared param's description (e.g. `priority`, reused by

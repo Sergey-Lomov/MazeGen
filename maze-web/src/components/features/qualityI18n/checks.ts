@@ -144,6 +144,10 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["check.split_teleport_intersection.label"] as MessageFn,
     description: m["check.split_teleport_intersection.description"] as MessageFn,
   },
+  split_pattern_shape: {
+    label: m["check.split_pattern_shape.label"] as MessageFn,
+    description: m["check.split_pattern_shape.description"] as MessageFn,
+  },
   max_split_count: {
     label: m["check.max_split_count.label"] as MessageFn,
     description: m["check.max_split_count.description"] as MessageFn,

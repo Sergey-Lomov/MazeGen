@@ -35,6 +35,7 @@ use maze_core::{
         TeleportSplitIntersectionCheck, TeleportSplitEdgeSelector,
         SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT,
         SplitTeleportIntersectionCheck, SplitTeleportDirection,
+        SplitPatternShapeCheck,
         MaxSplitCountCheck, MAX_SPLIT_COUNT_DEFAULT, MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE,
         MaxSplitDensityCheck, MAX_SPLIT_DENSITY_DEFAULT, MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE,
         SplitGroupGeometricProximityCheck, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
@@ -88,7 +89,7 @@ use maze_core::{
     },
     RegionClass,
 };
-use crate::config::CheckInstanceConfig;
+use crate::config::{CheckInstanceConfig, parse_split_patterns_param};
 
 pub(crate) fn composite_check_id(rule_id: &str, local_id: &str) -> String {
     format!("{rule_id}:{local_id}")
@@ -594,6 +595,10 @@ pub(crate) fn build_invalid_split_tile_check<T: Tessellation>(instance: &CheckIn
         "split_teleport_intersection" => {
             let direction = parse_split_teleport_direction(instance.params.get("split_teleport_direction"));
             Some(Box::new(SplitTeleportIntersectionCheck { instance_id, direction }))
+        }
+        "split_pattern_shape" => {
+            let patterns = parse_split_patterns_param(instance.params.get("patterns"));
+            Some(Box::new(SplitPatternShapeCheck { instance_id, patterns }))
         }
         _ => None,
     }

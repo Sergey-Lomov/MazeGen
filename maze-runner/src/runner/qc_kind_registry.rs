@@ -164,7 +164,7 @@ qc_kind_registry! {
     MissingOneWays => MissingOneWaysIssue, build_missing_one_ways_check, ["min_one_way_count", "min_one_way_ratio"];
     MissingTeleports => MissingTeleportsIssue, build_missing_teleports_check, ["min_teleport_count", "min_teleport_ratio"];
     InvalidSplitTile => InvalidSplitTileIssue, build_invalid_split_tile_check, [
-        "split_distance_from_waypoint", "split_teleport_intersection"
+        "split_distance_from_waypoint", "split_teleport_intersection", "split_pattern_shape"
     ];
     InvalidSplitTileGroup => InvalidSplitTileGroupIssue, build_split_group_check, [
         "max_split_count", "max_split_density", "split_group_geometric_proximity", "split_group_graph_proximity"

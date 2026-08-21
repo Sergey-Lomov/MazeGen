@@ -612,6 +612,20 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             allow_multiple_instances: false,
         },
         CheckDescriptor {
+            id: "split_pattern_shape",
+            label: "Split pattern shape",
+            description: "Fires if a split tile's current shape no longer structurally matches any pattern in this check's own pattern list (e.g. after a later repair strategy removed one of its nodes/connections).",
+            issue_kinds: vec![kind_str(INVALID_SPLIT_TILE)],
+            params: vec![
+                ParamDescriptor {
+                    id: "patterns",
+                    label: "Patterns",
+                    kind: ParamKindDto::PatternList { with_weights: false },
+                },
+            ],
+            allow_multiple_instances: false,
+        },
+        CheckDescriptor {
             id: "max_split_count",
             label: "Maximum split count",
             description: "Fires if the total count of extra split nodes on the field exceeds the configured maximum.",
