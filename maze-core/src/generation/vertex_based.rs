@@ -107,10 +107,12 @@ pub fn generate<T: Tessellation>(
     }
 }
 
-/// Bridges a new node into the maze when the frontier is empty — either via a teleport roll (a
-/// hit replaces the step's entire mechanism: bridges via teleport instead of geometric adjacency)
-/// or by popping a reachable candidate off `reserve`. Returns `false` when generation is done
-/// (nothing left to bring in either way), `true` to keep looping.
+/// Brings a new node into the maze when the frontier is empty — via a teleport roll (a hit
+/// replaces the step's entire mechanism: bridges via teleport instead of geometric adjacency), by
+/// popping a reachable candidate off `reserve`, or — when neither finds a candidate but unvisited
+/// nodes remain elsewhere on the field — by restarting growth from a random unvisited node as a
+/// new, unbridged component (GitHub issue #417). Returns `false` only when no unvisited node
+/// remains anywhere in the field, `true` to keep looping.
 #[allow(clippy::too_many_arguments)]
 fn handle_empty_frontier<T: Tessellation>(
     graph: &mut Graph,
@@ -261,7 +263,24 @@ fn handle_empty_frontier<T: Tessellation>(
         }
         result
     };
-    let Some(src) = src else { return false; };
+    let Some(src) = src else {
+        // Reserve exhausted and no reachable candidate found — but unvisited nodes may still
+        // exist in a disconnected region that no visited node's neighbor pool ever reached
+        // (GitHub issue #417). Rather than ending generation, start a fresh growth component
+        // from a random unvisited node: mark it visited and push it to the frontier with no
+        // parent/bridge edge, mirroring the run's own `start` (`GenState::new`/`StartVisited`).
+        let unvisited: Vec<NodeId> = state.all_nodes.iter().copied()
+            .filter(|n| !state.visited.contains(n))
+            .collect();
+        if unvisited.is_empty() { return false; }
+        let new_root = unvisited[state.rng.random_range(0..unvisited.len())];
+        state.visited.insert(new_root);
+        add_to_frontier(new_root, None, &mut state.frontier, &mut state.in_frontier);
+        if let Some(log) = scope.as_deref_mut() {
+            log.emit(VertexBasedEvent::StartVisited { node: new_root });
+        }
+        return true;
+    };
     let geometric_neighbors: Vec<NodeId> = field.neighbors(src)
         .into_iter()
         .filter(|&n| state.visited.contains(&n) && can_connect(n, src, preset_state))

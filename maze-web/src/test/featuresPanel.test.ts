@@ -172,13 +172,28 @@ describe("computeGenerationCard", () => {
     expect(result.status).toBe("set");
   });
 
-  it("is critical when floor count > 1 and the method isn't custom_vertex_based (GitHub issue #337)", () => {
+  it("is critical when floor count > 1 and the method is custom_edge_based (GitHub issues #337/#417)", () => {
     const result = computeGenerationCard(true, "custom_edge_based", false, 0.0, 0, 2);
     expect(result.status).toBe("critical");
   });
 
   it("is not critical for custom_vertex_based even with multiple floors", () => {
     const result = computeGenerationCard(true, "custom_vertex_based", false, 0.0, 0, 2);
+    expect(result.status).toBe("set");
+  });
+
+  it("is not critical for recursive_backtracker with multiple floors (GitHub issue #417)", () => {
+    const result = computeGenerationCard(true, "recursive_backtracker", false, 0.0, 0, 2);
+    expect(result.status).toBe("set");
+  });
+
+  it("is not critical for wilson_algorithm with multiple floors (GitHub issue #417)", () => {
+    const result = computeGenerationCard(true, "wilson_algorithm", false, 0.0, 0, 2);
+    expect(result.status).toBe("set");
+  });
+
+  it("is not critical for kruskal_algorithm with multiple floors", () => {
+    const result = computeGenerationCard(true, "kruskal_algorithm", false, 0.0, 0, 2);
     expect(result.status).toBe("set");
   });
 

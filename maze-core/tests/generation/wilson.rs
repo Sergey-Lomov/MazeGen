@@ -105,6 +105,46 @@ fn wilson_terminates_and_generates_the_reachable_portion_when_one_node_is_perman
 }
 
 #[test]
+fn wilson_restarts_from_a_geometrically_disconnected_cluster() {
+    // GitHub issue #417's extension to Wilson: the second cluster shares no neighbor with
+    // `start`'s cluster, so no walk started there could ever reach `visited` (the precomputed
+    // component check in `compute_components` must recognize this and seed a node directly,
+    // rather than attempting — and, if the cluster had no dead end, hanging on — a walk).
+    let (mut graph, field, start, second_a, second_b, _ids) = build_with_two_disconnected_clusters();
+    generate_wilson(&mut graph, &field, 42, start, &empty_preset(), None);
+
+    assert!(
+        graph.edge_between(start, field.neighbors(start)[0]).is_some() || graph.edge_between(field.neighbors(start)[0], start).is_some(),
+        "start's own cluster must still generate normally"
+    );
+    assert!(
+        graph.edge_between(second_a, second_b).is_some() || graph.edge_between(second_b, second_a).is_some(),
+        "the disconnected second cluster must be filled in as its own component after a restart"
+    );
+    assert!(
+        graph.edge_between(start, second_a).is_none() && graph.edge_between(second_a, start).is_none()
+            && graph.edge_between(start, second_b).is_none() && graph.edge_between(second_b, start).is_none(),
+        "the restarted component must never be bridged back to the original one — no shared edge exists to make that possible"
+    );
+}
+
+#[test]
+fn wilson_restart_seeds_a_new_root_directly_without_a_walk_scope() {
+    // The restart path (GitHub issue #417) must emit `StartVisited`, not a `WalkStartPicked` +
+    // walk scope — it never attempts a walk for a node it already knows is unreachable.
+    let (mut graph, field, start, second_a, second_b, _ids) = build_with_two_disconnected_clusters();
+    let mut log: EventLog<WilsonEvent> = EventLog::new();
+    generate_wilson(&mut graph, &field, 42, start, &empty_preset(), Some(&mut log));
+    let tape = log.finish();
+
+    let start_visited_count = tape.iter().filter(|e| matches!(e, WilsonEvent::StartVisited(_))).count();
+    assert_eq!(start_visited_count, 2, "one StartVisited for the original start, one for the restarted cluster's root");
+
+    let restarted_root_visited_directly = tape.iter().any(|e| matches!(e, WilsonEvent::StartVisited(n) if *n == second_a || *n == second_b));
+    assert!(restarted_root_visited_directly, "the new component's root must be one of the second cluster's nodes");
+}
+
+#[test]
 fn wilson_is_deterministic() {
     let (mut g1, mut f1, s1, mut ids1) = build_with_ids(4, 4);
     let (mut g2, mut f2, s2, mut ids2) = build_with_ids(4, 4);
@@ -285,13 +325,17 @@ fn wilson_tree_nesting_is_walk_scopes_containing_search_and_commit_scopes() {
     let root = tape.root();
     let mut root_children = root.children();
 
-    // `StartVisited` is the one event allowed directly under root — the algorithm's first
-    // operation, emitted before any walk scope exists.
+    // `StartVisited` is the algorithm's first operation, emitted before any walk scope exists. On
+    // a fully-connected field (this fixture) it appears exactly once; on a field with a
+    // geometrically disconnected region, the restart path (GitHub issue #417) emits a further
+    // `StartVisited` directly under root each time a new component is seeded — see
+    // `wilson_restart_seeds_a_new_root_directly_without_a_walk_scope` for that case.
     let start_visited = root_children.next().expect("expected StartVisited before any walk scope");
     assert!(matches!(start_visited.payload(), NodePayload::Event(WilsonEvent::StartVisited(_))));
 
     for walk in root_children {
         match walk.payload() {
+            NodePayload::Event(WilsonEvent::StartVisited(_)) => {}
             NodePayload::Scope(name) => {
                 assert!(name.starts_with("walk "), "every root-level scope must be a \"walk N\" scope, got {name}");
                 let walk_children: Vec<_> = walk.children().collect();
@@ -319,9 +363,33 @@ fn wilson_tree_nesting_is_walk_scopes_containing_search_and_commit_scopes() {
                     }
                 }
             }
-            NodePayload::Event(_) => panic!("no events expected directly under root after StartVisited"),
+            NodePayload::Event(e) => panic!("no events other than a restart's StartVisited expected directly under root, got {e:?}"),
         }
     }
+}
+
+#[test]
+fn wilson_restart_start_visited_can_appear_directly_under_root_alongside_walk_scopes() {
+    // Exercises the nesting shape `wilson_tree_nesting_is_walk_scopes_containing_search_and_commit_scopes`
+    // otherwise never sees on its fully-connected fixture: a restart's `StartVisited` (GitHub
+    // issue #417) sits directly under root as a bare event, side by side with "walk N" scopes.
+    let (mut graph, field, start, _second_a, _second_b, _ids) = build_with_two_disconnected_clusters();
+    let mut log: EventLog<WilsonEvent> = EventLog::new();
+    generate_wilson(&mut graph, &field, 42, start, &empty_preset(), Some(&mut log));
+    let tape = log.finish();
+
+    let mut start_visited_count = 0;
+    let mut saw_walk_scope = false;
+    for child in tape.root().children() {
+        match child.payload() {
+            NodePayload::Event(WilsonEvent::StartVisited(_)) => start_visited_count += 1,
+            NodePayload::Scope(name) if name.starts_with("walk ") => saw_walk_scope = true,
+            NodePayload::Scope(name) => panic!("unexpected root scope {name}"),
+            NodePayload::Event(e) => panic!("unexpected root event {e:?}"),
+        }
+    }
+    assert_eq!(start_visited_count, 2, "expected two StartVisited events directly under root: the original start and the restarted cluster's root");
+    assert!(saw_walk_scope, "expected at least one walk scope for the ordinary growth within each cluster");
 }
 
 #[test]

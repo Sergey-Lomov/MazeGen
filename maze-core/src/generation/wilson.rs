@@ -142,6 +142,54 @@ pub fn debug_value_names() -> &'static [(&'static str, DebugValueKind)] {
     ]
 }
 
+/// Groups every node into a field-geometric connected component (geometric `split_aware_neighbors`
+/// plus preset-teleport edges in both directions, mirroring the search-phase candidate pool the
+/// walk itself uses) computed once up front, before any walk runs. A loop-erased random walk can
+/// only ever reach `visited` by stepping through candidates from this same pool — a walk started
+/// inside a component with no visited node yet would wander forever if that component happens to
+/// have no dead end (GitHub issue #417's restart problem applies to Wilson too, but naively
+/// seeding an arbitrary unvisited node and letting the ordinary walk loop retry is not safe here
+/// the way it is for `CustomVertexBased`/`RecursiveBacktracker`: nothing bounds how long a walk
+/// inside an unreachable, dead-end-free component would run). Precomputing components lets the
+/// main loop tell "still-reachable, just not yet walked" apart from "genuinely a separate
+/// component" without ever starting a doomed walk.
+fn compute_components<T: Tessellation>(
+    graph: &Graph,
+    field: &MultiLevelField<T>,
+    all_nodes: &[NodeId],
+    preset_state: &PresetState,
+) -> HashMap<NodeId, usize> {
+    let mut teleport_srcs: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+    for (&src, dsts) in &preset_state.preset_teleports {
+        for &dst in dsts {
+            teleport_srcs.entry(dst).or_default().push(src);
+        }
+    }
+
+    let mut component_of: HashMap<NodeId, usize> = HashMap::new();
+    let mut next_component = 0usize;
+    for &root in all_nodes {
+        if component_of.contains_key(&root) { continue; }
+        let mut stack = vec![root];
+        component_of.insert(root, next_component);
+        while let Some(node) = stack.pop() {
+            let teleport_dsts = preset_state.preset_teleports.get(&node).map(Vec::as_slice).unwrap_or(&[]);
+            let teleport_reverse_srcs = teleport_srcs.get(&node).map(Vec::as_slice).unwrap_or(&[]);
+            let neighbors = split_aware_neighbors(field, graph, node)
+                .into_iter()
+                .chain(teleport_dsts.iter().copied())
+                .chain(teleport_reverse_srcs.iter().copied());
+            for n in neighbors {
+                if component_of.contains_key(&n) { continue; }
+                component_of.insert(n, next_component);
+                stack.push(n);
+            }
+        }
+        next_component += 1;
+    }
+    component_of
+}
+
 pub fn generate<T: Tessellation>(
     graph: &mut Graph,
     field: &MultiLevelField<T>,
@@ -151,6 +199,7 @@ pub fn generate<T: Tessellation>(
     mut event_log: Option<&mut EventLog<WilsonEvent>>,
 ) {
     let all_nodes: Vec<NodeId> = graph.nodes().map(|n| n.id).collect();
+    let component_of = compute_components(graph, field, &all_nodes, preset_state);
     let mut visited: HashSet<NodeId> = HashSet::new();
     let mut rng = MazeRng::seed_from_u64(seed);
 
@@ -180,11 +229,37 @@ pub fn generate<T: Tessellation>(
     }
 
     let mut unvisited: Vec<NodeId> = all_nodes.iter().copied().filter(|&n| !visited.contains(&n)).collect();
+    let mut visited_components: HashSet<usize> = visited.iter().filter_map(|n| component_of.get(n).copied()).collect();
 
     while !unvisited.is_empty() {
-        // Pick a random unvisited node to start a random walk from.
-        let pick_idx = rng.random_range(0..unvisited.len());
-        let walk_start = unvisited[pick_idx];
+        // Only a node whose component already contains a visited node can safely be walked from —
+        // the walk can only ever stop by reaching `visited`, so a walk started in a
+        // not-yet-reachable component would never terminate if that component has no dead end (see
+        // `compute_components`'s doc comment). Pick randomly among such candidates; if none exist,
+        // every remaining unvisited node belongs to a genuinely separate component — seed one
+        // directly into `visited` (GitHub issue #417's restart, mirroring `CustomVertexBased`'s
+        // `StartVisited` reuse) instead of attempting a walk, which makes its whole component
+        // walkable from then on.
+        //
+        // `walkable` scans all of `unvisited` — already the same order of cost as the pre-existing
+        // `unvisited.retain(...)` below (each successful walk already did an O(n) scan to drop its
+        // visited nodes), so this doesn't change the loop's asymptotic behavior, only its constant.
+        let walkable: Vec<usize> = unvisited.iter().enumerate()
+            .filter(|(_, n)| component_of.get(n).is_some_and(|c| visited_components.contains(c)))
+            .map(|(i, _)| i)
+            .collect();
+        let walk_start = if walkable.is_empty() {
+            let pick_idx = rng.random_range(0..unvisited.len());
+            let new_root = unvisited.swap_remove(pick_idx);
+            visited.insert(new_root);
+            if let Some(c) = component_of.get(&new_root) { visited_components.insert(*c); }
+            if let Some(log) = event_log.as_deref_mut() {
+                log.emit(WilsonEvent::StartVisited(new_root));
+            }
+            continue;
+        } else {
+            unvisited[walkable[rng.random_range(0..walkable.len())]]
+        };
 
         let mut walk_scope = event_log.as_deref_mut().map(|log| log.enter_numbered("walk"));
         if let Some(g) = walk_scope.as_mut() {

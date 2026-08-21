@@ -552,7 +552,10 @@ fn cross_floor_teleport_prefers_matching_group_when_both_non_empty() {
 #[test]
 fn frontier_empty_reserve_bridge_leaves_a_second_floor_isolated_when_vertical_chance_is_zero() {
     // `vertical_chance: 0.0` disables vertical connections entirely — floor 1 has no geometric
-    // path to floor 0, so it must stay unvisited rather than being bridged via a vertical edge.
+    // path to floor 0, so it can never be *bridged* to floor 0's component via a vertical edge.
+    // Since GitHub issue #417, floor 1's nodes still end up visited: once the reserve/bridge
+    // mechanism is exhausted, generation restarts growth from a random unvisited node (here,
+    // necessarily on floor 1) as a brand-new, disconnected component — no vertical edge involved.
     let (mut field, mut graph, mut ids) = multi_floor_field(3, 3, 2);
     let start = node_at(&field, 0, 0, 0);
     let elements = default_elements(); // vertical_chance defaults to 0.0
@@ -567,16 +570,16 @@ fn frontier_empty_reserve_bridge_leaves_a_second_floor_isolated_when_vertical_ch
             assert!(visited.contains(&node), "node at floor 0 ({x},{y}) was never connected");
         }
     }
-    for x in 0..3 {
-        for y in 0..3 {
-            let node = node_at(&field, 1, x, y);
-            assert!(!visited.contains(&node), "node at floor 1 ({x},{y}) was connected despite vertical_chance == 0.0");
-        }
-    }
     assert!(
         !graph.edges().any(|e| e.kind == EdgeKind::VerticalPassage || e.kind == EdgeKind::Elevator),
         "no vertical edge should ever be created when vertical_chance == 0.0",
     );
+    for x in 0..3 {
+        for y in 0..3 {
+            let node = node_at(&field, 1, x, y);
+            assert!(visited.contains(&node), "node at floor 1 ({x},{y}) should now be visited as a new, disconnected component (GitHub issue #417)");
+        }
+    }
 }
 
 #[test]
@@ -695,7 +698,11 @@ fn handle_empty_frontier_reserve_bridge_skips_a_vertical_neighbor_already_edge_c
         &mut state, src, &mut start_reassignment, None, None,
     );
 
-    assert!(!keep_going, "bridge is already edge-connected to src, so the reserve holds no reachable candidate — generation must report done, not manufacture a redundant edge");
+    // `bridge` is already edge-connected to `src`, so the reserve holds no reachable candidate —
+    // but `bridge` is itself unvisited, so it now seeds a fresh growth component (GitHub issue
+    // #417) instead of generation reporting done, and no redundant edge is added for it.
+    assert!(keep_going, "bridge is unvisited, so generation must restart growth from it as a new component");
+    assert!(state.visited.contains(&bridge), "bridge must become the new component's root");
     let vertical_edge_count = graph.edges().filter(|e| e.kind == EdgeKind::VerticalPassage).count();
     assert_eq!(vertical_edge_count, 2, "the pre-existing bidirectional edge must be untouched — no extra VerticalPassage added on top of it");
 }

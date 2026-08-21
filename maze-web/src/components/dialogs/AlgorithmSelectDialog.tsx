@@ -13,8 +13,13 @@ interface Props {
   onClose: () => void;
 }
 
-/** GitHub issue #337: every algorithm besides `custom_vertex_based` is geometry/edge-based and
- * has no notion of floors, so it cannot connect them — disabled once more than one floor exists. */
+/** GitHub issue #337 / #417: `custom_edge_based` is edge-based and has no notion of floors, so it
+ * cannot connect them — disabled once more than one floor exists. The other algorithms
+ * (`custom_vertex_based`, `recursive_backtracker`, `wilson_algorithm`, `kruskal_algorithm`) are
+ * vertex-based and handle multi-floor fields without erroring, though only `custom_vertex_based`
+ * can actually connect floors (via vertical passages/elevators) — the rest treat each floor as
+ * its own disconnected component (one spanning tree per floor for RB/Wilson via the #417 restart,
+ * one MST per floor for Kruskal). */
 function getAlgorithms(multiFloor: boolean) {
   return [
     { id: "custom_vertex_based",   label: m["algorithm.custom_vertex_based"](),   description: m["algorithm.desc.custom_vertex_based"]() },
@@ -22,7 +27,7 @@ function getAlgorithms(multiFloor: boolean) {
     { id: "recursive_backtracker", label: m["algorithm.recursive_backtracker"](), description: m["algorithm.desc.recursive_backtracker"]() },
     { id: "wilson_algorithm",      label: m["algorithm.wilson_algorithm"](),      description: m["algorithm.desc.wilson_algorithm"]() },
     { id: "kruskal_algorithm",     label: m["algorithm.kruskal_algorithm"](),     description: m["algorithm.desc.kruskal_algorithm"]() },
-  ].map((a) => ({ ...a, disabled: a.id !== "custom_vertex_based" && multiFloor }));
+  ].map((a) => ({ ...a, disabled: a.id === "custom_edge_based" && multiFloor }));
 }
 
 export function getAlgorithmLabel(id: string): string {

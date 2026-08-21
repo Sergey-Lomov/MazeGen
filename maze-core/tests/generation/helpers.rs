@@ -26,6 +26,27 @@ pub fn build_with_ids(width: usize, height: usize) -> (Graph, MultiLevelField<Sq
 
 pub fn empty_preset() -> PresetState { PresetState::empty() }
 
+/// Two geometrically disconnected 2-node clusters on the same level — `(0,0)`-`(1,0)` and
+/// `(20,0)`-`(21,0)`, far enough apart that they share no neighbor. Regression fixture for
+/// GitHub issue #417's extension to RecursiveBacktracker/Wilson: `start` is in the first cluster,
+/// so the second cluster's nodes can only ever be reached via a restart, never via ordinary
+/// growth/walk. Returns `(graph, field, start, second_a, second_b, ids)`.
+pub fn build_with_two_disconnected_clusters() -> (Graph, MultiLevelField<SquareTessellation>, NodeId, NodeId, NodeId, IdGenerator) {
+    let mut ids = IdGenerator::new();
+    let points = vec![
+        SquarePoint { x: 0, y: 0 }, SquarePoint { x: 1, y: 0 },
+        SquarePoint { x: 20, y: 0 }, SquarePoint { x: 21, y: 0 },
+    ];
+    let field = MultiLevelField::single_level(points, &mut ids).unwrap();
+    let level = field.single_level_id();
+    let mut graph = Graph::new();
+    for node in field.all_node_ids() { graph.add_node(node); }
+    let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 })[0];
+    let second_a = field.nodes_at(level, SquarePoint { x: 20, y: 0 })[0];
+    let second_b = field.nodes_at(level, SquarePoint { x: 21, y: 0 })[0];
+    (graph, field, start, second_a, second_b, ids)
+}
+
 /// Builds a 1x4 field where `node_at(1,0)`<->`node_at(2,0)` geometric adjacency is walled off,
 /// so the only way to cross from the first half to the second is a preset two-way `Teleport` edge
 /// planted directly in the graph between those same two nodes (mirrors what `build_preset_state`

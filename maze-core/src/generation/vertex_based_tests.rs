@@ -77,6 +77,76 @@ fn handle_empty_frontier_finds_the_lone_reachable_candidate_behind_several_unrea
     }
 }
 
+/// GitHub issue #417: when the reserve scan finds nothing reachable but unvisited nodes remain,
+/// `handle_empty_frontier` must restart growth from one of them as a new, unbridged component
+/// instead of ending generation. `x3`/`x4`/`x5` are never queued into the reserve at all — the
+/// spec change explicitly covers this case ("regardless of whether it was ever queued into the
+/// reserve"), so the fix must search `all_nodes`, not just `reserve`.
+#[test]
+fn handle_empty_frontier_restarts_from_an_unvisited_node_when_the_reserve_is_fully_exhausted() {
+    for seed in 0..50 {
+        let (mut field, mut graph, mut ids) = make_field_graph_ids(6, 1);
+        let level = field.levels_ordered().next().unwrap();
+        let node = |x: i32| field.node_at(level, crate::space::SquarePoint { x, y: 0 }).unwrap();
+        let (x0, x3, x4, x5) = (node(0), node(3), node(4), node(5));
+
+        let mut state = GenState::new(&graph, seed, x0);
+        // Reserve holds only unreachable-from-visited candidates (no edge from x0's side reaches
+        // them) — the scan must find nothing, forcing the restart path.
+        state.reserve = vec![node(1), node(2)];
+        state.in_reserve = [node(1), node(2)].into_iter().collect();
+        state.visited = [x0, node(1), node(2)].into_iter().collect();
+        state.frontier.clear();
+        state.in_frontier.clear();
+
+        let params = default_params();
+        let elements = default_elements();
+        let preset_state = empty_presets();
+        let mut start_reassignment = None;
+
+        let keep_going = handle_empty_frontier(
+            &mut graph, &mut field, &mut ids, &params, &elements, &no_split(), &preset_state,
+            &mut state, x0, &mut start_reassignment, None, None,
+        );
+
+        assert!(keep_going, "seed {seed}: x3/x4/x5 are unvisited — generation must restart, not stop");
+        let new_root = [x3, x4, x5].into_iter().find(|n| state.visited.contains(n));
+        assert!(new_root.is_some(), "seed {seed}: exactly one of x3/x4/x5 must have been picked as the new component's root");
+        let new_root = new_root.unwrap();
+        assert!(state.in_frontier.contains(&new_root), "seed {seed}: the new root must be pushed to the frontier");
+        assert!(state.frontier.iter().any(|e| e.node == new_root && e.parent.is_none()),
+            "seed {seed}: the new root must have no parent — it isn't bridged to the already-visited set");
+        assert!(graph.edges().count() == 0, "seed {seed}: no edge should be added when restarting a new component");
+    }
+}
+
+#[test]
+fn handle_empty_frontier_reports_done_when_no_unvisited_node_remains_anywhere() {
+    let (mut field, mut graph, mut ids) = make_field_graph_ids(2, 1);
+    let level = field.levels_ordered().next().unwrap();
+    let node = |x: i32| field.node_at(level, crate::space::SquarePoint { x, y: 0 }).unwrap();
+    let (x0, x1) = (node(0), node(1));
+
+    let mut state = GenState::new(&graph, 0, x0);
+    state.visited = [x0, x1].into_iter().collect();
+    state.reserve.clear();
+    state.in_reserve.clear();
+    state.frontier.clear();
+    state.in_frontier.clear();
+
+    let params = default_params();
+    let elements = default_elements();
+    let preset_state = empty_presets();
+    let mut start_reassignment = None;
+
+    let keep_going = handle_empty_frontier(
+        &mut graph, &mut field, &mut ids, &params, &elements, &no_split(), &preset_state,
+        &mut state, x0, &mut start_reassignment, None, None,
+    );
+
+    assert!(!keep_going, "every node is already visited — generation must actually end");
+}
+
 // ─── add_to_frontier / choose_from_frontier ───────────────
 
 #[test]

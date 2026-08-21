@@ -97,6 +97,7 @@ pub fn generate<T: Tessellation>(
     preset_state: &PresetState,
     mut event_log: Option<&mut EventLog<RecursiveBacktrackerEvent>>,
 ) {
+    let all_nodes: Vec<NodeId> = graph.nodes().map(|n| n.id).collect();
     let mut visited: HashSet<NodeId> = HashSet::new();
     let mut rng = MazeRng::seed_from_u64(seed);
 
@@ -104,7 +105,25 @@ pub fn generate<T: Tessellation>(
 
     let mut stack: Vec<NodeId> = vec![start];
 
-    while let Some(&current) = stack.last() {
+    loop {
+        // The DFS stack unwound completely — either the whole reachable region is done, or (GitHub
+        // issue #417) a geometrically disconnected region was never reached because it shares no
+        // neighbor with anything on this side. Rather than ending generation with unvisited cells
+        // left over, restart from a random unvisited node as a new, unbridged component — mirrors
+        // `CustomVertexBased`'s restart (`vertex_based.rs`'s `handle_empty_frontier`). No event is
+        // narrated for the new root's own visit, same as the original `start` above: this algorithm
+        // has no dedicated "start"/root-visited event (unlike `VertexBasedEvent::StartVisited`/
+        // `WilsonEvent::StartVisited`) — a node's visit is only narrated when something else chose
+        // it as `chosen` (`CandidateChosen`/`VertexVisited`/`VertexPushed`), which doesn't apply to
+        // either root.
+        if stack.is_empty() {
+            let unvisited: Vec<NodeId> = all_nodes.iter().copied().filter(|n| !visited.contains(n)).collect();
+            if unvisited.is_empty() { break; }
+            let new_root = unvisited[rng.random_range(0..unvisited.len())];
+            visited.insert(new_root);
+            stack.push(new_root);
+        }
+        let &current = stack.last().unwrap();
         let mut step_guard = event_log.as_deref_mut().map(|log| log.enter_numbered("step"));
         if let Some(g) = step_guard.as_mut() { g.emit(RecursiveBacktrackerEvent::VertexSelected(current)); }
 

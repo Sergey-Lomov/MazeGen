@@ -621,3 +621,28 @@ fn vertex_based_wired_into_generate_maze_with_events() {
         ]
     );
 }
+
+/// GitHub issue #417: the restart branch in `handle_empty_frontier` must narrate its new root the
+/// same way the run's own `start` is narrated — a second `StartVisited` event, not a silent
+/// mutation. Regression for a gap where every existing restart test passed `None` for the event
+/// log, so a dropped/wrong `emit` in that branch would have gone unnoticed.
+#[test]
+fn vertex_based_restart_emits_a_second_start_visited_for_the_new_root() {
+    let (mut graph, mut field, start, second_a, second_b, mut ids) = build_with_two_disconnected_clusters();
+    let params = no_randomness_params();
+    let elements = no_one_way_elements();
+    let mut log: EventLog<VertexBasedEvent> = EventLog::new();
+    generate_vertex_based_default_split(&mut graph, &mut field, &mut ids, 42, start, &params, &elements, &empty_preset(), Some(&mut log));
+    let tape = log.finish();
+
+    let start_visited: Vec<NodeId> = tape.iter().filter_map(|e| match e {
+        VertexBasedEvent::StartVisited { node } => Some(*node),
+        _ => None,
+    }).collect();
+    assert_eq!(start_visited.len(), 2, "one StartVisited for the original start, one for the restarted cluster's root");
+    assert_eq!(start_visited[0], start, "the first StartVisited must be the run's own start");
+    assert!(
+        start_visited[1] == second_a || start_visited[1] == second_b,
+        "the second StartVisited must be the restarted component's root, from the disconnected cluster"
+    );
+}

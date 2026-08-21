@@ -113,6 +113,30 @@ fn recursive_backtracker_never_narrates_an_edge_add_when_bidirectional_add_would
 }
 
 #[test]
+fn recursive_backtracker_restarts_from_a_geometrically_disconnected_cluster() {
+    // GitHub issue #417's extension to RecursiveBacktracker: the second cluster shares no
+    // neighbor with `start`'s cluster, so the DFS stack unwinds completely (both its nodes become
+    // dead ends immediately) without ever visiting it — must restart from there instead of ending
+    // generation with two unvisited cells left over.
+    let (mut graph, field, start, second_a, second_b, _ids) = build_with_two_disconnected_clusters();
+    generate_recursive_backtracker(&mut graph, &field, 42, start, &empty_preset(), None);
+
+    assert!(
+        graph.edge_between(start, field.neighbors(start)[0]).is_some() || graph.edge_between(field.neighbors(start)[0], start).is_some(),
+        "start's own cluster must still generate normally"
+    );
+    assert!(
+        graph.edge_between(second_a, second_b).is_some() || graph.edge_between(second_b, second_a).is_some(),
+        "the disconnected second cluster must be filled in as its own component after a restart"
+    );
+    assert!(
+        graph.edge_between(start, second_a).is_none() && graph.edge_between(second_a, start).is_none()
+            && graph.edge_between(start, second_b).is_none() && graph.edge_between(second_b, start).is_none(),
+        "the restarted component must never be bridged back to the original one — no shared edge exists to make that possible"
+    );
+}
+
+#[test]
 fn recursive_backtracker_is_deterministic() {
     let (mut g1, mut f1, s1, mut ids1) = build_with_ids(4, 4);
     let (mut g2, mut f2, s2, mut ids2) = build_with_ids(4, 4);

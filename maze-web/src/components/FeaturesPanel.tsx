@@ -122,9 +122,12 @@ export interface GenerationCardData {
 /// Pattern mode on + a positive split chance + no patterns defined is a dead-weight config —
 /// splitting is enabled but has nothing to draw from, so it silently never fires. Only
 /// `custom_vertex_based` even has pattern mode (see `GenerationFeature.tsx`'s `isVertexBased`).
-/// `floorCount > 1` with a non-`custom_vertex_based` method (GitHub issue #337) is a harder
-/// block than the split-patterns warning — only `custom_vertex_based` can connect floors at all,
-/// so it takes priority and is reported as `critical`, not just `warning`.
+/// `floorCount > 1` with `custom_edge_based` (GitHub issues #337/#417) is a harder block than the
+/// split-patterns warning — `custom_edge_based` has no vertical-connection support and no restart
+/// mechanism, so extra floors would be silently skipped — it takes priority and is reported as
+/// `critical`, not just `warning`. Every other algorithm handles multi-floor fields fine (either
+/// via `CustomVertexBased`'s vertical connections, or via the #417 restart producing one
+/// disjoint component per floor for `RecursiveBacktracker`/`WilsonAlgorithm`/`KruskalAlgorithm`).
 export function computeGenerationCard(
   tessellationConfirmed: boolean,
   method: string,
@@ -135,7 +138,7 @@ export function computeGenerationCard(
 ): GenerationCardData {
   if (!tessellationConfirmed) return { status: "unavailable", comment: m["status.confirm_tessellation_first"]() };
 
-  const algorithmFloorIncompatible = floorCount > 1 && method !== "custom_vertex_based";
+  const algorithmFloorIncompatible = floorCount > 1 && method === "custom_edge_based";
   if (algorithmFloorIncompatible) return { status: "critical", comment: m["status.algorithm_floor_incompatible"]() };
 
   const splitPatternsMissing = method === "custom_vertex_based" && splitPatternMode && splitChance > 0 && patternCount === 0;
@@ -343,7 +346,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   const { status: generationStatus, comment: generationComment } = computeGenerationCard(
     tessellationConfirmed, initialConfig.method, splitPatternMode, elementsConfig.split_chance ?? 0, splitPatterns.length, floors.length,
   );
-  const algorithmFloorIncompatible = floors.length > 1 && initialConfig.method !== "custom_vertex_based";
+  const algorithmFloorIncompatible = floors.length > 1 && initialConfig.method === "custom_edge_based";
 
   return (
     <div style={styles.panel}>
