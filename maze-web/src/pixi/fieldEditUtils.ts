@@ -87,11 +87,15 @@ const TELEPORT_ENDPOINT_HIT_RADIUS = TILE_SIZE * 0.3;
  * living entirely on `level` — both endpoints on the same floor. Used by the renderer, which only
  * ever draws one floor's own edges/wall groups/split passages at a time; a future cross-floor
  * entry (vertical passage/elevator) needs its own dedicated rendering path, not this generic
- * "belongs to one floor" filter. Re-keys each surviving entry via the plain, level-agnostic
- * `edgeKey` (dropping `presetConnections`' own `presetEdgeKey`, which folds `level` into the
- * string) — `presetSelectors.ts`'s wall-group/split-passage builders look entries up by
- * `edgeKey([x,y],[nx,ny])`, so a level-suffixed key here would silently never match on any floor
- * but 0, reading every non-floor-0 preset as undecided despite the entry being present and correct. */
+ * "belongs to one floor" filter. Re-keys each surviving entry via a level-free version of
+ * `presetEdgeKey` (dropping just the `@level` suffix, keeping the slot-aware part) —
+ * `presetSelectors.ts`'s wall-group builder looks up plain (non-split) edges by
+ * `edgeKey([x,y],[nx,ny])`, which this produces unchanged when neither endpoint has a `slotId`, so
+ * a level-suffixed key wouldn't match on any floor but 0 (reading every non-floor-0 preset as
+ * undecided despite the entry being present and correct). A level-agnostic but slot-*unaware* key
+ * (plain `edgeKey`, pre-GitHub-issue-418 fix) collided a split point's original-node and slot-node
+ * entries toward the same geometric neighbor into one map slot, silently dropping whichever was
+ * inserted first — this stayed slot-aware to keep them distinct. */
 export function presetConnectionsOnLevel(
   presetConnections: Map<string, PresetConnectionEntry>,
   level: number | undefined,
@@ -99,7 +103,7 @@ export function presetConnectionsOnLevel(
   const result = new Map<string, PresetConnectionEntry>();
   for (const entry of presetConnections.values()) {
     if ((entry.from.level ?? 0) === (level ?? 0) && (entry.to.level ?? 0) === (level ?? 0)) {
-      result.set(edgeKey(entry.from.point, entry.to.point), entry);
+      result.set(presetEdgeKey({ ...entry.from, level: undefined }, { ...entry.to, level: undefined }), entry);
     }
   }
   return result;
