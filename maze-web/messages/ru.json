@@ -436,6 +436,7 @@
   "field.cells": "{count} ячеек",
   "field.copy_floor": "Скопировать этаж",
   "field.copy_floor_title": "Скопировать этаж",
+  "field.different_shapes": "Разные формы этажей",
   "check.add": "Добавить",
   "check.add_continue": "Добавить и продолжить",
   "check.details_title": "Детали проверки",

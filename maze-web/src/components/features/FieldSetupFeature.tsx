@@ -273,24 +273,33 @@ function cellsLabel(count: number): string {
   return count === 1 ? m["field.cell"]({ count }) : m["field.cells"]({ count });
 }
 
-export function fieldSetupSubtitle(
-  kind: TessellationKind,
-  squareShape: SquareShape,
-  hexShape: HexShape,
-  triangleShape: TriangleShape,
-  fieldEditMode: "default" | "custom",
-  fieldPoints: Set<number>,
-  tessellationConfig: TessellationConfig,
-): string {
-  if (fieldEditMode === "custom") {
-    const n = fieldPoints.size;
-    return `${m["field.custom"]()} · ${cellsLabel(n)}`;
-  }
-  const shape = shapeLabel(kind, squareShape, hexShape, triangleShape);
-  const size = configSizeLabel(tessellationConfig);
-  const count = configCellCount(tessellationConfig);
-  const countStr = count > 0 ? ` · ${cellsLabel(count)}` : "";
-  return size ? `${shape} · ${size}${countStr}` : `${shape}${countStr}`;
+interface FloorFieldSummary {
+  fieldEditMode: "default" | "custom";
+  fieldPoints: Set<number>;
+  squareShape: SquareShape;
+  hexShape: HexShape;
+  triangleShape: TriangleShape;
+  tessellationConfig: TessellationConfig;
+}
+
+function floorCellCount(field: FloorFieldSummary): number {
+  return field.fieldEditMode === "custom" ? field.fieldPoints.size : configCellCount(field.tessellationConfig);
+}
+
+function floorShapeLabel(kind: TessellationKind, field: FloorFieldSummary): string {
+  if (field.fieldEditMode === "custom") return m["field.custom"]();
+  const shape = shapeLabel(kind, field.squareShape, field.hexShape, field.triangleShape);
+  const size = configSizeLabel(field.tessellationConfig);
+  return size ? `${shape} · ${size}` : shape;
+}
+
+export function fieldSetupSubtitle(kind: TessellationKind, floorFields: FloorFieldSummary[]): string {
+  const totalCount = floorFields.reduce((sum, f) => sum + floorCellCount(f), 0);
+  const countStr = totalCount > 0 ? ` · ${cellsLabel(totalCount)}` : "";
+
+  const labels = new Set(floorFields.map((f) => floorShapeLabel(kind, f)));
+  const shape = labels.size === 1 ? [...labels][0] : m["field.different_shapes"]();
+  return `${shape}${countStr}`;
 }
 
 export function configCellCount(cfg: TessellationConfig): number {

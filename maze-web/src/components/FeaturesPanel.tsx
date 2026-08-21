@@ -29,13 +29,14 @@ import * as m from "~/paraglide/messages";
 
 export function computeFieldStatus(
   tessellationConfirmed: boolean,
-  fieldEditMode: "default" | "custom",
-  fieldPoints: Set<number>,
-  tessellationConfig: TessellationConfig,
+  floorFields: { fieldEditMode: "default" | "custom"; fieldPoints: Set<number>; tessellationConfig: TessellationConfig }[],
 ): FeatureStatus {
   if (!tessellationConfirmed) return "unavailable";
-  const count = fieldEditMode === "custom" ? fieldPoints.size : configCellCount(tessellationConfig);
-  if (count === 0) return "critical";
+  const totalCount = floorFields.reduce(
+    (sum, f) => sum + (f.fieldEditMode === "custom" ? f.fieldPoints.size : configCellCount(f.tessellationConfig)),
+    0,
+  );
+  if (totalCount === 0) return "critical";
   return "set";
 }
 
@@ -174,12 +175,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   const tessellationKind = useMazeStore((s) => s.tessellationKind);
   const hexOrientation = useMazeStore((s) => s.hexOrientation);
   const triOrientation = useMazeStore((s) => s.triOrientation);
-  const squareShape = useMazeStore((s) => s.floorFields[s.activeFloorId].squareShape);
-  const hexShape = useMazeStore((s) => s.floorFields[s.activeFloorId].hexShape);
-  const triangleShape = useMazeStore((s) => s.floorFields[s.activeFloorId].triangleShape);
-  const tessellationConfig = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
-  const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
-  const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
+  const floorFields = useMazeStore((s) => s.floorFields);
   const syncPreviewToConfirmed = useMazeStore((s) => s.syncPreviewToConfirmed);
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetStart = useMazeStore((s) => s.presetStart);
@@ -272,14 +268,15 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
 
   const floorsCard = computeFloorsCard(floors);
 
-  const fieldStatus = computeFieldStatus(tessellationConfirmed, fieldEditMode, fieldPoints, tessellationConfig);
+  const orderedFloorFields = useMemo(() => floors.map((f) => floorFields[f.id]), [floors, floorFields]);
+
+  const fieldStatus = computeFieldStatus(tessellationConfirmed, orderedFloorFields);
   const fieldSetupComment = fieldStatus === "unavailable"
     ? m["status.confirm_tessellation_first"]()
     : fieldStatus === "critical"
     ? m["status.field_no_nodes"]()
     : m["status.field_configured"]();
 
-  const floorFields = useMazeStore((s) => s.floorFields);
   const resolveFieldAt = useMemo(
     () => resolveFieldAtOf({ floors, floorFields, tessellationKind, hexOrientation, triOrientation }),
     [floors, floorFields, tessellationKind, hexOrientation, triOrientation],
@@ -376,7 +373,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
         status={fieldStatus}
         comment={fieldSetupComment}
         subtitle={tessellationConfirmed
-          ? fieldSetupSubtitle(tessellationKind, squareShape, hexShape, triangleShape, fieldEditMode, fieldPoints, tessellationConfig)
+          ? fieldSetupSubtitle(tessellationKind, orderedFloorFields)
           : undefined}
         expanded={openCard === "field_setup"}
         onOpen={() => handleToggle("field_setup")}

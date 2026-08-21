@@ -14,25 +14,45 @@ import type { FieldConfig } from "../fieldConfig";
 const squareConfig: FieldConfig = { type: "square", width: 3, height: 3 };
 const emptySquareConfig: FieldConfig = { type: "square", width: 0, height: 0 };
 
+function floorField(fieldEditMode: "default" | "custom", fieldPoints: Set<number>, tessellationConfig: FieldConfig) {
+  return { fieldEditMode, fieldPoints, tessellationConfig };
+}
+
 describe("computeFieldStatus", () => {
   it("returns unavailable when tessellation not confirmed", () => {
-    expect(computeFieldStatus(false, "default", new Set(), squareConfig)).toBe("unavailable");
+    expect(computeFieldStatus(false, [floorField("default", new Set(), squareConfig)])).toBe("unavailable");
   });
 
   it("returns critical when default mode has zero cells", () => {
-    expect(computeFieldStatus(true, "default", new Set(), emptySquareConfig)).toBe("critical");
+    expect(computeFieldStatus(true, [floorField("default", new Set(), emptySquareConfig)])).toBe("critical");
   });
 
   it("returns critical when custom mode has zero points", () => {
-    expect(computeFieldStatus(true, "custom", new Set(), squareConfig)).toBe("critical");
+    expect(computeFieldStatus(true, [floorField("custom", new Set(), squareConfig)])).toBe("critical");
   });
 
   it("returns set when default mode has cells", () => {
-    expect(computeFieldStatus(true, "default", new Set(), squareConfig)).toBe("set");
+    expect(computeFieldStatus(true, [floorField("default", new Set(), squareConfig)])).toBe("set");
   });
 
   it("returns set when custom mode has points", () => {
-    expect(computeFieldStatus(true, "custom", new Set([1, 2]), squareConfig)).toBe("set");
+    expect(computeFieldStatus(true, [floorField("custom", new Set([1, 2]), squareConfig)])).toBe("set");
+  });
+
+  it("returns set when total cell count across floors is nonzero, even if one floor is empty", () => {
+    const floors = [
+      floorField("default", new Set(), emptySquareConfig),
+      floorField("default", new Set(), squareConfig),
+    ];
+    expect(computeFieldStatus(true, floors)).toBe("set");
+  });
+
+  it("returns critical only when every floor has zero cells", () => {
+    const floors = [
+      floorField("default", new Set(), emptySquareConfig),
+      floorField("custom", new Set(), squareConfig),
+    ];
+    expect(computeFieldStatus(true, floors)).toBe("critical");
   });
 });
 

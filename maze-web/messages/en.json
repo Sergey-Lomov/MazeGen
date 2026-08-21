@@ -425,6 +425,7 @@
   "field.cells": "{count} cells",
   "field.copy_floor": "Copy floor",
   "field.copy_floor_title": "Copy floor",
+  "field.different_shapes": "Different floor shapes",
   "check.add": "Add",
   "check.add_continue": "Add and continue",
   "check.details_title": "Check details",
