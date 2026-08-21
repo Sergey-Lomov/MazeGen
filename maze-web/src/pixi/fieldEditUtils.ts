@@ -95,7 +95,11 @@ const TELEPORT_ENDPOINT_HIT_RADIUS = TILE_SIZE * 0.3;
  * undecided despite the entry being present and correct). A level-agnostic but slot-*unaware* key
  * (plain `edgeKey`, pre-GitHub-issue-418 fix) collided a split point's original-node and slot-node
  * entries toward the same geometric neighbor into one map slot, silently dropping whichever was
- * inserted first — this stayed slot-aware to keep them distinct. */
+ * inserted first — this stayed slot-aware to keep them distinct. The stored entry's own
+ * `from`/`to` are level-stripped too (GitHub issue #424), not just the map key — leaving `.level`
+ * set on the value made `presetEndpointKey(entry.from/.to)` disagree with every other level-free id
+ * on this floor (declared split nodes, `edgeKey` lookups), fabricating phantom split nodes and
+ * broken face-partner matches on any floor above 0. */
 export function presetConnectionsOnLevel(
   presetConnections: Map<string, PresetConnectionEntry>,
   level: number | undefined,
@@ -103,7 +107,9 @@ export function presetConnectionsOnLevel(
   const result = new Map<string, PresetConnectionEntry>();
   for (const entry of presetConnections.values()) {
     if ((entry.from.level ?? 0) === (level ?? 0) && (entry.to.level ?? 0) === (level ?? 0)) {
-      result.set(presetEdgeKey({ ...entry.from, level: undefined }, { ...entry.to, level: undefined }), entry);
+      const from = { ...entry.from, level: undefined };
+      const to = { ...entry.to, level: undefined };
+      result.set(presetEdgeKey(from, to), { ...entry, from, to });
     }
   }
   return result;

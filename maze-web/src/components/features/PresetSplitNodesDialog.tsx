@@ -173,7 +173,7 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
       // issue #243 follow-up): a split neighbor may have its real decided connection on a node
       // other than whichever one currently happens to be active in its own panel.
       const neighborPartner = resolvePresetPartnerAt(
-        [endpoint], neighbor, presetConnections, useMazeStore.getState().presetSplitPoints, useMazeStore.getState().presetActiveSplitNode,
+        [endpoint], neighbor, presetConnections, useMazeStore.getState().presetSplitPoints, useMazeStore.getState().presetActiveSplitNode, level,
       );
       const entry = presetConnections.get(presetEdgeKey(endpoint, neighborPartner));
       let kind: TileFaceKind = "undefined";

@@ -239,6 +239,20 @@ describe("presetConnectionsOnLevel", () => {
     const onLevel = presetConnectionsOnLevel(connections, undefined);
     expect(onLevel.get(edgeKey([0, 0], [1, 0]))?.state).toBe("passage");
   });
+
+  it("strips level from the stored entry's own from/to, not just the map key", () => {
+    // Regression for GitHub issue #424: leaving `.level` set on the returned entry's from/to
+    // made presetEndpointKey(entry.from/.to) disagree with every other level-free id computed
+    // on this floor (declared split nodes, edgeKey lookups) -- buildPresetSplitPassages then
+    // registered the still-leveled endpoint as a brand-new phantom node, fanning stray
+    // connector lines from nodes that don't exist in "Manage split nodes".
+    const e = levelEntry(0, 0, 1, 0, 1);
+    const connections = new Map([[presetEdgeKey(e.from, e.to), e]]);
+    const onLevel = presetConnectionsOnLevel(connections, 1);
+    const result = onLevel.get(edgeKey([0, 0], [1, 0]));
+    expect(result?.from.level).toBeUndefined();
+    expect(result?.to.level).toBeUndefined();
+  });
 });
 
 // --- computeAutoLockedNodes ---
