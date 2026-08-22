@@ -20,12 +20,24 @@ import {
  * source of truth every dependent field's own default is derived from below (`applyVectorBy*
  * SharedStyle`), rather than each field separately hardcoding the same number. Changing a value
  * here changes every dependent field's default in lockstep. */
+/** `twoWayPassage`/`oneWayPassage`/`elevator` start pre-overridden in every group (GitHub issue
+ * #347 follow-up) — unlike `startMarker`/`finishMarker` (which intentionally start out following
+ * the shared style), the three vertical-connection markers' own defaults (`DEFAULT_VERTICAL_
+ * SETTINGS`) are pinned to match `GenerationRenderer`'s fixed `DEFAULT_VERTICAL_STYLE` look
+ * instead, so they must not be silently overwritten by `applyVectorByWallsSharedStyle` right
+ * after. The user is still free to pull them back onto the shared value via the panel's own
+ * per-field reset button. */
 export const DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE: VectorByWallsSharedStyle = {
   cornerStyle: "round",
   markerSize: 0.16,
   markerBorderWidth: 3,
   gapWidth: 3,
-  overrides: {},
+  overrides: {
+    cornerStyle: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+    markerSize: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+    markerBorderWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+    gapWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+  },
 };
 
 export const DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE: VectorByCorridorsSharedStyle = {
@@ -66,18 +78,42 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
 
 /** Shared by `VectorByWallsSettings` and `projectExport/validate.ts`'s recovery defaults, same
  * extraction rationale as `DEFAULT_TELEPORT_SETTINGS`/`DEFAULT_ONE_WAY_SETTINGS` (GitHub issue
- * #347). `verticalPassageMarker`/`elevatorMarker` get distinct default shape/color so the two edge
- * kinds read apart on the map with no configuration needed — square/blue for `VerticalPassage`,
- * hexagon/purple for `Elevator` (an elevator's own fully-connected multi-floor fan reads as "more
- * connected" than a single adjacent-floor passage, loosely mirroring a hexagon's extra sides).
- * `verticalPassageDisplayStyle` defaults to `"marker"` (not `"decorative"`) — a plain opening
- * marker is the one style that's also correct for a physical single-sheet two-floor build, per the
- * issue's own rationale; `"decorative"` is an opt-in choice for a purely visual/print export. */
+ * #347, three-section split GitHub issue #347 follow-up). Defaults match `GenerationRenderer`'s
+ * own fixed `DEFAULT_VERTICAL_STYLE` (circle for `VerticalPassage`, diamond for `Elevator`, border
+ * width 2, size 0.22), the same "exported image looks identical to the editor view until changed"
+ * rationale every other "Vector by walls" section's own defaults follow. `verticalStyle` defaults
+ * to `"abstract"` (not `"decorative"`) — a plain opening marker is the one style that's also
+ * correct for a physical single-sheet two-floor build, per the issue's own rationale;
+ * `"decorative"` is an opt-in choice for a purely visual/print export. A two-way passage/elevator
+ * marker draws solid (`filled: true`), so its own `fillColor` defaults to `canvas.vertical.default`
+ * same as its border; a one-way passage marker (GitHub issue #347 fourth follow-up redesign) reads
+ * as a dark-accented variant of that same look at both ends — its own `fillColor` defaults to
+ * `canvas.vertical.default` too (the "primary" color, the arrival end's ordinary fill), while
+ * `oneWayAccentColor` (the "secondary" color) defaults to a fixed dark accent
+ * (`ONE_WAY_ACCENT_DARK`) driving both the arrival-end border and the departure-end's entire fill.
+ * Every section's own `*ArrowColor` defaults to `canvas.floor.default` (GitHub issue #347 fifth
+ * follow-up — `oneWayArrowColor` moved off `canvas.vertical.default` to match the other two
+ * sections), so the arrow reads as a floor-colored cutout against the marker's own fill. */
+const ONE_WAY_ACCENT_DARK = 0x196c64;
+
 export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
-  verticalPassageDisplayStyle: "marker",
-  verticalPassageMarker: { shape: "square", cornerStyle: "round", fillColor: 0x33bbff, borderColor: 0x33bbff, borderWidth: 0, gapWidth: 3, size: 0.2 },
-  elevatorMarker: { shape: "hexagon", cornerStyle: "round", fillColor: 0x9955ff, borderColor: 0x9955ff, borderWidth: 0, gapWidth: 3, size: 0.2 },
-  oneWayArrowColor: canvas.stage.background,
+  verticalStyle: "abstract",
+  twoWayPassageMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: 3, gapWidth: 3, size: 0.22 },
+  oneWayPassageMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: 3, gapWidth: 3, size: 0.22 },
+  elevatorMarker: { shape: "diamond", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: 3, gapWidth: 3, size: 0.22 },
+  twoWayArrowColor: canvas.floor.default,
+  twoWayArrowSize: 0.75,
+  twoWayArrowStyle: "triangle",
+  twoWayArrowCornerStyle: "round",
+  oneWayArrowColor: canvas.floor.default,
+  oneWayArrowSize: 0.75,
+  oneWayArrowStyle: "triangle",
+  oneWayArrowCornerStyle: "round",
+  oneWayAccentColor: ONE_WAY_ACCENT_DARK,
+  elevatorArrowColor: canvas.floor.default,
+  elevatorArrowSize: 0.75,
+  elevatorArrowStyle: "triangle",
+  elevatorArrowCornerStyle: "round",
 };
 
 /** Shared with `projectExport/validate.ts`'s recovery defaults for old/malformed project files

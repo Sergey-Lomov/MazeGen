@@ -105,15 +105,45 @@ export function validateTeleportSettingsFields(obj: Record<string, unknown> | nu
   };
 }
 
-/** `VectorByWallsSettings`' own "Vertical connections" fields (GitHub issue #347) — same
- * lenient-recovery convention as `validateTeleportSettingsFields`. */
+/** `VectorByWallsSettings`' own "Vertical connections" fields (GitHub issue #347, three-style
+ * follow-up, three-section split follow-up) — same lenient-recovery convention as
+ * `validateTeleportSettingsFields`. `verticalStyle` reads the current field name first; a project
+ * file saved before the three-style follow-up (`verticalPassageDisplayStyle: "marker" |
+ * "decorative"`) still loads correctly via the fallback, with `"marker"` mapped onto its renamed
+ * equivalent, `"abstract"`. `twoWayPassageMarker`/`oneWayPassageMarker` (split from one shared
+ * `verticalPassageMarker`, GitHub issue #347 three-section follow-up) both fall back to the legacy
+ * single field when their own current field is absent, so a pre-split project file's one style
+ * seeds both new sections identically on first load (matching how it actually rendered before the
+ * split — same marker for every `VerticalPassage`, one-way or not). */
 export function validateVerticalSettingsFields(obj: Record<string, unknown> | null, path: string, d: VerticalSettingsFields): VerticalSettingsFields {
-  const displayStyle = obj?.["verticalPassageDisplayStyle"];
+  const style = obj?.["verticalStyle"];
+  const legacyStyle = obj?.["verticalPassageDisplayStyle"];
+  const legacyMarker = obj?.["verticalPassageMarker"];
   return {
-    verticalPassageDisplayStyle: displayStyle === "marker" || displayStyle === "decorative" ? displayStyle : d.verticalPassageDisplayStyle,
-    verticalPassageMarker: validateMarkerSettings(obj?.verticalPassageMarker, `${path}.verticalPassageMarker`, d.verticalPassageMarker),
+    verticalStyle:
+      style === "abstract" || style === "decorative" || style === "realistic"
+        ? style
+        : legacyStyle === "marker"
+          ? "abstract"
+          : legacyStyle === "decorative"
+            ? "decorative"
+            : d.verticalStyle,
+    twoWayPassageMarker: validateMarkerSettings(obj?.twoWayPassageMarker ?? legacyMarker, `${path}.twoWayPassageMarker`, d.twoWayPassageMarker),
+    oneWayPassageMarker: validateMarkerSettings(obj?.oneWayPassageMarker ?? legacyMarker, `${path}.oneWayPassageMarker`, d.oneWayPassageMarker),
     elevatorMarker: validateMarkerSettings(obj?.elevatorMarker, `${path}.elevatorMarker`, d.elevatorMarker),
+    twoWayArrowColor: optNumber(obj, "twoWayArrowColor", d.twoWayArrowColor),
+    twoWayArrowSize: optNumber(obj, "twoWayArrowSize", d.twoWayArrowSize),
+    twoWayArrowStyle: optOneWayPattern(obj, "twoWayArrowStyle", d.twoWayArrowStyle),
+    twoWayArrowCornerStyle: optJoin(obj, "twoWayArrowCornerStyle", d.twoWayArrowCornerStyle),
     oneWayArrowColor: optNumber(obj, "oneWayArrowColor", d.oneWayArrowColor),
+    oneWayArrowSize: optNumber(obj, "oneWayArrowSize", d.oneWayArrowSize),
+    oneWayArrowStyle: optOneWayPattern(obj, "oneWayArrowStyle", d.oneWayArrowStyle),
+    oneWayArrowCornerStyle: optJoin(obj, "oneWayArrowCornerStyle", d.oneWayArrowCornerStyle),
+    oneWayAccentColor: optNumber(obj, "oneWayAccentColor", d.oneWayAccentColor),
+    elevatorArrowColor: optNumber(obj, "elevatorArrowColor", d.elevatorArrowColor),
+    elevatorArrowSize: optNumber(obj, "elevatorArrowSize", d.elevatorArrowSize),
+    elevatorArrowStyle: optOneWayPattern(obj, "elevatorArrowStyle", d.elevatorArrowStyle),
+    elevatorArrowCornerStyle: optJoin(obj, "elevatorArrowCornerStyle", d.elevatorArrowCornerStyle),
   };
 }
 

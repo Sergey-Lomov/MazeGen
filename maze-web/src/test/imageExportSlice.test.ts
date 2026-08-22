@@ -240,6 +240,66 @@ describe("mazeStore vectorByWallsSettings", () => {
     expect(settings.startMarker.fillColor).toBe(canvas.node.start);
   });
 
+  it("setVectorByWallsTwoWayPassageMarker* setters update only the two-way marker and mark cornerStyle/markerBorderWidth/gapWidth/markerSize overridden for 'twoWayPassage'", () => {
+    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerShape("diamond");
+    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerFillColor(0x111111);
+    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerBorderColor(0x222222);
+    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerCornerStyle("sharp");
+    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerBorderWidth(7);
+    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerGapWidth(6);
+    useMazeStore.getState().setVectorByWallsTwoWayPassageMarkerSize(0.5);
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.twoWayPassageMarker).toEqual({ shape: "diamond", cornerStyle: "sharp", fillColor: 0x111111, borderColor: 0x222222, borderWidth: 7, gapWidth: 6, size: 0.5 });
+    // Untouched sibling marker groups stay at their own defaults (elevator defaults to "diamond"
+    // itself, so only oneWayPassage — default "circle" — is a safe non-collision check here).
+    expect(settings.oneWayPassageMarker.shape).not.toBe("diamond");
+    // The four Shared-style-backed fields (GitHub issue #347 follow-up) must record themselves as
+    // overridden under "twoWayPassage" specifically — these three groups already start
+    // pre-overridden by default (their own defaults don't follow "Shared style"), so this only
+    // proves the call reaches the right branch, not that siblings are left alone (see the
+    // "reconcileVectorByWallsSharedStyle" helper tests for that isolation).
+    expect(settings.sharedStyle.overrides.cornerStyle?.twoWayPassage).toBe(true);
+    expect(settings.sharedStyle.overrides.markerBorderWidth?.twoWayPassage).toBe(true);
+    expect(settings.sharedStyle.overrides.gapWidth?.twoWayPassage).toBe(true);
+    expect(settings.sharedStyle.overrides.markerSize?.twoWayPassage).toBe(true);
+  });
+
+  it("setVectorByWallsOneWayPassageMarker* setters update only the one-way marker and mark cornerStyle/markerBorderWidth/gapWidth/markerSize overridden for 'oneWayPassage'", () => {
+    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerShape("square");
+    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerFillColor(0x333333);
+    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerBorderColor(0x444444);
+    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerCornerStyle("sharp");
+    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerBorderWidth(8);
+    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerGapWidth(1);
+    useMazeStore.getState().setVectorByWallsOneWayPassageMarkerSize(0.4);
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.oneWayPassageMarker).toEqual({ shape: "square", cornerStyle: "sharp", fillColor: 0x333333, borderColor: 0x444444, borderWidth: 8, gapWidth: 1, size: 0.4 });
+    expect(settings.twoWayPassageMarker.shape).not.toBe("square");
+    expect(settings.elevatorMarker.shape).not.toBe("square");
+    expect(settings.sharedStyle.overrides.cornerStyle?.oneWayPassage).toBe(true);
+    expect(settings.sharedStyle.overrides.markerBorderWidth?.oneWayPassage).toBe(true);
+    expect(settings.sharedStyle.overrides.gapWidth?.oneWayPassage).toBe(true);
+    expect(settings.sharedStyle.overrides.markerSize?.oneWayPassage).toBe(true);
+  });
+
+  it("setVectorByWallsElevatorMarker* setters update only the elevator marker and mark cornerStyle/markerBorderWidth/gapWidth/markerSize overridden for 'elevator'", () => {
+    useMazeStore.getState().setVectorByWallsElevatorMarkerShape("star");
+    useMazeStore.getState().setVectorByWallsElevatorMarkerFillColor(0x555555);
+    useMazeStore.getState().setVectorByWallsElevatorMarkerBorderColor(0x666666);
+    useMazeStore.getState().setVectorByWallsElevatorMarkerCornerStyle("sharp");
+    useMazeStore.getState().setVectorByWallsElevatorMarkerBorderWidth(9);
+    useMazeStore.getState().setVectorByWallsElevatorMarkerGapWidth(2);
+    useMazeStore.getState().setVectorByWallsElevatorMarkerSize(0.6);
+    const settings = useMazeStore.getState().vectorByWallsSettings;
+    expect(settings.elevatorMarker).toEqual({ shape: "star", cornerStyle: "sharp", fillColor: 0x555555, borderColor: 0x666666, borderWidth: 9, gapWidth: 2, size: 0.6 });
+    expect(settings.twoWayPassageMarker.shape).not.toBe("star");
+    expect(settings.oneWayPassageMarker.shape).not.toBe("star");
+    expect(settings.sharedStyle.overrides.cornerStyle?.elevator).toBe(true);
+    expect(settings.sharedStyle.overrides.markerBorderWidth?.elevator).toBe(true);
+    expect(settings.sharedStyle.overrides.gapWidth?.elevator).toBe(true);
+    expect(settings.sharedStyle.overrides.markerSize?.elevator).toBe(true);
+  });
+
   it("setVectorByWallsSplitNodeColor sets a slot directly adjacent to the current array end", () => {
     useMazeStore.getState().setVectorByWallsSplitNodeColor(0, 0xaaaaaa);
     expect(useMazeStore.getState().vectorByWallsSettings.splitNodeColors).toEqual([0xaaaaaa]);

@@ -25,19 +25,34 @@ import { activeFloorLevel } from "../store/storeHelpers";
 
 type MazeState = ReturnType<typeof useMazeStore.getState>;
 
+/** Dark accent for a one-way passage marker's entry border / exit fill (GitHub issue #347 fourth
+ *  follow-up) — mirrors `DEFAULT_VERTICAL_SETTINGS`'s own `ONE_WAY_ACCENT_DARK` (`imageExportDefaults.ts`),
+ *  kept as a separate copy per `maze-web/CLAUDE.md`'s feature-renderer ownership rule. */
+const ONE_WAY_ACCENT_DARK = 0x196c64;
+
 /** Fixed style for `VerticalConnectionRenderer` (GitHub issue #359 follow-up to #337/#347) — post-
  *  edit has no settings panel of its own for this, so it always uses this one look, mirroring
  *  `GenerationRenderer`'s own `DEFAULT_VERTICAL_STYLE` — kept as a separate copy per
  *  `maze-web/CLAUDE.md`'s feature-renderer ownership rule (no shared renderer instances/constants
  *  across features). */
 const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = {
-  displayStyle: "marker",
-  verticalPassageMarker: {
+  style: "abstract",
+  twoWayPassageMarker: {
     shape: "circle",
     cornerStyle: "round",
     fillColor: canvas.vertical.default,
     borderColor: canvas.vertical.default,
-    borderWidth: 2,
+    borderWidth: 3,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  oneWayPassageMarker: {
+    shape: "circle",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 3,
     gapWidth: 3,
     gapColor: canvas.floor.default,
     size: 0.22,
@@ -47,12 +62,24 @@ const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = {
     cornerStyle: "round",
     fillColor: canvas.vertical.default,
     borderColor: canvas.vertical.default,
-    borderWidth: 2,
+    borderWidth: 3,
     gapWidth: 3,
     gapColor: canvas.floor.default,
     size: 0.22,
   },
-  arrowColor: canvas.vertical.default,
+  twoWayArrowColor: canvas.floor.default,
+  twoWayArrowSize: 0.75,
+  twoWayArrowStyle: "triangle",
+  twoWayArrowCornerStyle: "round",
+  oneWayArrowColor: canvas.floor.default,
+  oneWayArrowSize: 0.75,
+  oneWayArrowStyle: "triangle",
+  oneWayArrowCornerStyle: "round",
+  oneWayAccentColor: ONE_WAY_ACCENT_DARK,
+  elevatorArrowColor: canvas.floor.default,
+  elevatorArrowSize: 0.75,
+  elevatorArrowStyle: "triangle",
+  elevatorArrowCornerStyle: "round",
 };
 
 export class PostEditRenderer extends BaseFieldRenderer {

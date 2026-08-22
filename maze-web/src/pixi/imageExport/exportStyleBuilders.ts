@@ -93,10 +93,23 @@ function buildVerticalMarkerStyle(settings: MarkerSettings, floorColor: number):
  *  param" rationale as `buildTeleportLineStyle`. */
 export function buildVerticalConnectionStyle(settings: VerticalSettingsFields, floorColor: number): VerticalConnectionStyle {
   return {
-    displayStyle: settings.verticalPassageDisplayStyle,
-    verticalPassageMarker: buildVerticalMarkerStyle(settings.verticalPassageMarker, floorColor),
+    style: settings.verticalStyle,
+    twoWayPassageMarker: buildVerticalMarkerStyle(settings.twoWayPassageMarker, floorColor),
+    oneWayPassageMarker: buildVerticalMarkerStyle(settings.oneWayPassageMarker, floorColor),
     elevatorMarker: buildVerticalMarkerStyle(settings.elevatorMarker, floorColor),
-    arrowColor: settings.oneWayArrowColor,
+    twoWayArrowColor: settings.twoWayArrowColor,
+    twoWayArrowSize: settings.twoWayArrowSize,
+    twoWayArrowStyle: settings.twoWayArrowStyle,
+    twoWayArrowCornerStyle: settings.twoWayArrowCornerStyle,
+    oneWayArrowColor: settings.oneWayArrowColor,
+    oneWayArrowSize: settings.oneWayArrowSize,
+    oneWayArrowStyle: settings.oneWayArrowStyle,
+    oneWayArrowCornerStyle: settings.oneWayArrowCornerStyle,
+    oneWayAccentColor: settings.oneWayAccentColor,
+    elevatorArrowColor: settings.elevatorArrowColor,
+    elevatorArrowSize: settings.elevatorArrowSize,
+    elevatorArrowStyle: settings.elevatorArrowStyle,
+    elevatorArrowCornerStyle: settings.elevatorArrowCornerStyle,
   };
 }
 

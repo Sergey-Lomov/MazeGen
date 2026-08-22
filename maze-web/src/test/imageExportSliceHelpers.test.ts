@@ -14,7 +14,10 @@ import type { VectorByWallsSettings, VectorByCorridorsSettings } from "../store/
 
 // `DEFAULT_VECTOR_BY_WALLS_SETTINGS`/`DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS` are themselves already
 // produced via `applyVectorBy*SharedStyle` (GitHub issue #322) — every dependent field starts
-// exactly equal to its shared value, so these fixtures are a valid "nothing overridden" baseline.
+// exactly equal to its shared value, so these fixtures are a valid "nothing overridden" baseline,
+// except `VectorByWallsSettings`' own `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker`
+// (GitHub issue #347 follow-up), which start pre-overridden in every group by design — see
+// `VERTICAL_PRE_OVERRIDDEN`.
 function wallsSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS, ...overrides };
 }
@@ -127,10 +130,21 @@ describe("forceVectorByWallsSharedStyle / forceVectorByCorridorsSharedStyle", ()
   });
 });
 
+const VERTICAL_PRE_OVERRIDDEN = {
+  cornerStyle: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+  markerSize: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+  markerBorderWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+  gapWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+};
+
 describe("reconcileVectorByWallsSharedStyle", () => {
-  it("marks nothing overridden when every dependent field already matches the shared values", () => {
+  it("marks nothing overridden beyond the vertical markers' own always-overridden defaults when every other dependent field already matches the shared values", () => {
+    // `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` intentionally default to
+    // `GenerationRenderer`'s own fixed look (not the shared style), so
+    // `DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle.overrides`
+    // already pins them overridden — reconcile is expected to leave that as-is here.
     const next = reconcileVectorByWallsSharedStyle(wallsSettings());
-    expect(next.sharedStyle.overrides).toEqual({});
+    expect(next.sharedStyle.overrides).toEqual(VERTICAL_PRE_OVERRIDDEN);
   });
 
   it("marks a dependent field overridden when its loaded value disagrees with the shared value — the loadProject/pre-#322-file case", () => {
@@ -150,7 +164,15 @@ describe("reconcileVectorByWallsSharedStyle", () => {
       sharedStyle: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle, overrides: { markerSize: { startMarker: true } } },
     });
     const next = reconcileVectorByWallsSharedStyle(settings);
-    expect(next.sharedStyle.overrides).toEqual({ markerSize: { startMarker: true } });
+    // The vertical markers' own `size` still mismatches the shared style here too (its default
+    // doesn't follow it, unlike `cornerStyle`/`gapWidth`, which happen to match the shared
+    // default's own round/3 values) — reconcile marks that on top of the caller's own `markerSize`.
+    // `borderWidth` (GitHub issue #347 sixth/seventh follow-up: all three vertical passage
+    // markers' own default raised 2 -> 3) now matches the shared style's own default `3` for
+    // `twoWayPassage`/`oneWayPassage`/`elevator`, so no `markerBorderWidth` mismatch remains.
+    expect(next.sharedStyle.overrides).toEqual({
+      markerSize: { startMarker: true, twoWayPassage: true, oneWayPassage: true, elevator: true },
+    });
   });
 
   it("detects a wallJoin/oneWayJoin mismatch via the sharp/round <-> miter/round mapping", () => {
@@ -173,6 +195,21 @@ describe("reconcileVectorByWallsSharedStyle", () => {
     expect(next.sharedStyle.overrides.markerBorderWidth?.teleportEdge).toBe(true);
     expect(next.sharedStyle.overrides.gapWidth?.teleportConnector).toBe(true);
   });
+
+  it("detects startMarker/finishMarker mismatches independently for cornerStyle/size/borderWidth/gapWidth", () => {
+    const settings = wallsSettings({
+      startMarker: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.startMarker, cornerStyle: "sharp", borderWidth: 9, gapWidth: 9 },
+      finishMarker: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.finishMarker, cornerStyle: "sharp", borderWidth: 9, gapWidth: 9 },
+    });
+    const next = reconcileVectorByWallsSharedStyle(settings);
+    expect(next.sharedStyle.overrides.cornerStyle?.startMarker).toBe(true);
+    expect(next.sharedStyle.overrides.cornerStyle?.finishMarker).toBe(true);
+    expect(next.sharedStyle.overrides.markerBorderWidth?.startMarker).toBe(true);
+    expect(next.sharedStyle.overrides.markerBorderWidth?.finishMarker).toBe(true);
+    expect(next.sharedStyle.overrides.gapWidth?.startMarker).toBe(true);
+    expect(next.sharedStyle.overrides.gapWidth?.finishMarker).toBe(true);
+  });
+
 });
 
 describe("reconcileVectorByCorridorsSharedStyle", () => {
@@ -195,15 +232,20 @@ describe("reconcileVectorByCorridorsSharedStyle", () => {
 });
 
 describe("withOverride / withoutOverride", () => {
+  // Uses an empty-overrides base (not `DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle.overrides`,
+  // which starts with the vertical markers' own always-overridden `cornerStyle` group pre-populated
+  // — see `VERTICAL_PRE_OVERRIDDEN`) so these assertions only exercise `startMarker`/`finishMarker`.
+  const emptyOverrides: typeof DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle.overrides = {};
+
   it("withOverride marks a field true without disturbing other fields in the same group", () => {
-    const overrides = withOverride(DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle.overrides, "cornerStyle", "startMarker");
+    const overrides = withOverride(emptyOverrides, "cornerStyle", "startMarker");
     const overrides2 = withOverride(overrides, "cornerStyle", "finishMarker");
     expect(overrides2.cornerStyle).toEqual({ startMarker: true, finishMarker: true });
   });
 
   it("withoutOverride clears one field, leaving sibling fields in the same group intact", () => {
     const overrides = withOverride(
-      withOverride(DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle.overrides, "cornerStyle", "startMarker"),
+      withOverride(emptyOverrides, "cornerStyle", "startMarker"),
       "cornerStyle",
       "finishMarker",
     );
@@ -212,7 +254,7 @@ describe("withOverride / withoutOverride", () => {
   });
 
   it("withoutOverride on a field that was never set is a no-op", () => {
-    const cleared = withoutOverride(DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle.overrides, "cornerStyle", "startMarker");
+    const cleared = withoutOverride(emptyOverrides, "cornerStyle", "startMarker");
     expect(cleared.cornerStyle).toEqual({});
   });
 });

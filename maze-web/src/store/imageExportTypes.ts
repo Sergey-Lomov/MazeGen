@@ -83,24 +83,68 @@ export interface PngExportSettings {
  *  drawn point — the `to` node lives on a different floor, off this image entirely, see
  *  `selectFloorScopedMaze`). Two independent marker styles, `MarkerSettings`-shaped (same
  *  shape/cornerStyle/fillColor/borderColor/borderWidth/gapWidth/size fields the start/finish
- *  markers use) since both are always drawn as a plain marker shape here, never a connector:
- *  `verticalPassageMarker` for `VerticalPassage` and `elevatorMarker` for `Elevator` — distinct
- *  defaults (shape/color) so the two kinds read apart on the map without the user configuring
- *  anything. `verticalPassageDisplayStyle` switches `VerticalPassage` between `"marker"` (a plain
- *  opening marker — the only mode that reads correctly as "cut an opening here" for a physical
- *  two-floor build, see the issue's own build-vs-print rationale) and `"decorative"` (a small
- *  stairs illustration instead of the plain marker shape, meaningful only when the maze is printed
- *  as a set of separate per-floor images the viewer mentally connects). `Elevator` has no
- *  decorative treatment of its own (no natural "decorative elevator" illustration) and always
- *  renders as `elevatorMarker`, regardless of `verticalPassageDisplayStyle`. `oneWayArrowColor`
- *  colors the small direction arrow drawn on top of a one-way `VerticalPassage`'s own marker/stairs
- *  (`vertical_up_down_balance`-rolled direction, `Specs/generation.md`) — a two-way `VerticalPassage`
- *  and every `Elevator` draw no arrow at all. */
+ *  markers use) since both are always drawn as a plain marker shape here, never a connector. Three
+ *  independent panel sections/marker settings (GitHub issue #347 follow-up), split by how the
+ *  marker actually reads on the map, not just by `EdgeDto.kind`: `twoWayPassageMarker` for a
+ *  two-way `VerticalPassage` (`direction` set but `filled: true` — no departure/arrival
+ *  distinction), `oneWayPassageMarker` for a one-way `VerticalPassage` (`filled: false` — reads as
+ *  a dark-accented variant of the ordinary marker at both ends, GitHub issue #347 fourth/fifth
+ *  follow-up redesign: the arrival end draws the ordinary ("primary") fill with a `oneWayAccentColor`
+ *  ("secondary") border, the departure end draws its entire fill in that same accent), and
+ *  `elevatorMarker` for every `Elevator` (always two-way by construction, but visually distinct from
+ *  a two-way `VerticalPassage` — its own shape/color, own section). Each has distinct defaults
+ *  (shape/color) so all three read apart on the map without the user configuring anything;
+ *  `cornerStyle`/`size`/`borderWidth`/`gapWidth` on all three follow "Shared style" (GitHub issue
+ *  #322 follow-up) the same way `startMarker`/`finishMarker` do. `verticalStyle` picks one of three
+ *  drawing treatments: `"abstract"` (the plain marker shape above — same look every other
+ *  live-canvas renderer uses via its own fixed `VerticalConnectionStyle`, matching the issue's own
+ *  "cut an opening here" build-marker rationale for a physical two-floor build), `"decorative"` (a
+ *  small stairs illustration instead of the plain marker shape for `VerticalPassage`, meaningful
+ *  only when the maze is printed as a set of separate per-floor images the viewer mentally
+ *  connects), or `"realistic"` (reserved — no drawing implemented yet, falls back to `"abstract"`
+ *  wherever a caller must actually render something). `Elevator` has no decorative treatment of its
+ *  own (no natural "decorative elevator" illustration) and always renders as `elevatorMarker`,
+ *  regardless of `verticalStyle`. Every marker draws a direction arrow on top of its own
+ *  shape/stairs — `direction` is set for two-way markers too (GitHub issue #337/#347 design
+ *  follow-up: a two-way connection still has a real "which floor(s)" to point at), drawn in the
+ *  marker's own gap color so it reads as a cutout against the solid `filled: true` circle; a one-way
+ *  `VerticalPassage`'s arrow now draws solid on both ends (GitHub issue #347 fourth follow-up —
+ *  the old outline-only arrival arrow is redundant with `oneWayAccentColor`'s own border/fill
+ *  distinction). Each
+ *  section's own `*ArrowColor`/`*ArrowSize` (the latter a fraction of the marker's own radius, 0-1)
+ *  colors/scales that section's own arrow independently. */
 export interface VerticalSettingsFields {
-  verticalPassageDisplayStyle: "marker" | "decorative";
-  verticalPassageMarker: MarkerSettings;
+  verticalStyle: "abstract" | "decorative" | "realistic";
+  twoWayPassageMarker: MarkerSettings;
+  oneWayPassageMarker: MarkerSettings;
   elevatorMarker: MarkerSettings;
+  twoWayArrowColor: number;
+  twoWayArrowSize: number;
+  /** Direction-arrow shape (GitHub issue #347 third follow-up) — same three patterns as the
+   *  wall one-way indicator (`oneWayPattern`): `"arrow"` (line + arrowhead), `"triangle"`
+   *  (filled), `"chevron"` (open `>` stroke). Reuses `drawOneWayArrow`/`drawOneWayTriangle`/
+   *  `drawOneWayChevron` (`wallUtils.ts`) directly — the arrival end's outline look (previously a
+   *  bespoke stroked-triangle draw) is now achieved the same way for all three patterns: the same
+   *  shape drawn twice, a larger pass in the arrow color underneath, a smaller pass in the gap/
+   *  floor color on top, reading as a colored outline without any real stroke-only draw path. */
+  twoWayArrowStyle: OneWayPattern;
+  /** Corner style for `twoWayArrowStyle` — `"round"`/`"miter"`, same convention as `oneWayJoin`:
+   *  drives the filled triangle's own corner rounding, or the chevron/arrow's stroke join. */
+  twoWayArrowCornerStyle: "round" | "miter";
   oneWayArrowColor: number;
+  oneWayArrowSize: number;
+  oneWayArrowStyle: OneWayPattern;
+  oneWayArrowCornerStyle: "round" | "miter";
+  /** One-way passage's "secondary" accent color (GitHub issue #347 fifth follow-up, simplified from
+   *  the fourth follow-up's separate `oneWayEntryColor`/`oneWayExitColor`, which always meant the
+   *  same accent anyway): the arrival end draws the ordinary ("primary") fill with its border
+   *  recolored to this accent; the departure end draws its entire fill in this same accent, no
+   *  separate border color. The "primary" color is just `oneWayPassageMarker.fillColor` itself. */
+  oneWayAccentColor: number;
+  elevatorArrowColor: number;
+  elevatorArrowSize: number;
+  elevatorArrowStyle: OneWayPattern;
+  elevatorArrowCornerStyle: "round" | "miter";
 }
 
 export interface TeleportSettingsFields {
@@ -172,10 +216,10 @@ export interface MarkerSettings {
  *  `TeleportGroupOverride`'s own sparse-optional-field convention, but keyed by dependent-field
  *  identity rather than by teleport group. */
 export interface VectorByWallsSharedStyleOverrides {
-  cornerStyle?: { wallJoin?: true; oneWayJoin?: true; startMarker?: true; finishMarker?: true; teleportLine?: true };
-  markerSize?: { startMarker?: true; finishMarker?: true; teleportLine?: true };
-  markerBorderWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true };
-  gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true };
+  cornerStyle?: { wallJoin?: true; oneWayJoin?: true; startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
+  markerSize?: { startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
+  markerBorderWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
+  gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
 }
 
 /** "Vector by walls" mode's centralized marker/corner-style settings (GitHub issue #322) — one
@@ -533,16 +577,43 @@ export interface ImageExportActions {
   setVectorByWallsFinishMarkerBorderWidth: (v: number) => void;
   setVectorByWallsFinishMarkerGapWidth: (v: number) => void;
   setVectorByWallsFinishMarkerSize: (v: number) => void;
-  /** `verticalPassageDisplayStyle`/`oneWayArrowColor` — see `VerticalSettingsFields`'s own doc
-   *  comment (GitHub issue #347). */
-  patchVectorByWallsVerticalSettings: (patch: Partial<Pick<VerticalSettingsFields, "verticalPassageDisplayStyle" | "oneWayArrowColor">>) => void;
-  setVectorByWallsVerticalPassageMarkerShape: (shape: MarkerShape) => void;
-  setVectorByWallsVerticalPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
-  setVectorByWallsVerticalPassageMarkerFillColor: (color: number) => void;
-  setVectorByWallsVerticalPassageMarkerBorderColor: (color: number) => void;
-  setVectorByWallsVerticalPassageMarkerBorderWidth: (v: number) => void;
-  setVectorByWallsVerticalPassageMarkerGapWidth: (v: number) => void;
-  setVectorByWallsVerticalPassageMarkerSize: (v: number) => void;
+  /** `verticalStyle`/`oneWayArrowColor` — see `VerticalSettingsFields`'s own doc comment (GitHub
+   *  issue #347). */
+  patchVectorByWallsVerticalSettings: (
+    patch: Partial<
+      Pick<
+        VerticalSettingsFields,
+        | "verticalStyle"
+        | "twoWayArrowColor"
+        | "twoWayArrowSize"
+        | "twoWayArrowStyle"
+        | "twoWayArrowCornerStyle"
+        | "oneWayArrowColor"
+        | "oneWayArrowSize"
+        | "oneWayArrowStyle"
+        | "oneWayArrowCornerStyle"
+        | "oneWayAccentColor"
+        | "elevatorArrowColor"
+        | "elevatorArrowSize"
+        | "elevatorArrowStyle"
+        | "elevatorArrowCornerStyle"
+      >
+    >,
+  ) => void;
+  setVectorByWallsTwoWayPassageMarkerShape: (shape: MarkerShape) => void;
+  setVectorByWallsTwoWayPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByWallsTwoWayPassageMarkerFillColor: (color: number) => void;
+  setVectorByWallsTwoWayPassageMarkerBorderColor: (color: number) => void;
+  setVectorByWallsTwoWayPassageMarkerBorderWidth: (v: number) => void;
+  setVectorByWallsTwoWayPassageMarkerGapWidth: (v: number) => void;
+  setVectorByWallsTwoWayPassageMarkerSize: (v: number) => void;
+  setVectorByWallsOneWayPassageMarkerShape: (shape: MarkerShape) => void;
+  setVectorByWallsOneWayPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByWallsOneWayPassageMarkerFillColor: (color: number) => void;
+  setVectorByWallsOneWayPassageMarkerBorderColor: (color: number) => void;
+  setVectorByWallsOneWayPassageMarkerBorderWidth: (v: number) => void;
+  setVectorByWallsOneWayPassageMarkerGapWidth: (v: number) => void;
+  setVectorByWallsOneWayPassageMarkerSize: (v: number) => void;
   setVectorByWallsElevatorMarkerShape: (shape: MarkerShape) => void;
   setVectorByWallsElevatorMarkerCornerStyle: (style: TeleportCornerStyle) => void;
   setVectorByWallsElevatorMarkerFillColor: (color: number) => void;

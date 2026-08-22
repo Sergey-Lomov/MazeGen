@@ -866,9 +866,10 @@ describe("buildMazeMarkers", () => {
       cornerStyle: "round", gapWidth: 3, gapColor: 0x333,
     });
     expect(markers[0].radius).toBe(0.5 * 40);
-    // finishStyle omitted — falls back to the default borderless sharp circle, unaffected by
-    // startStyle's own custom fields.
-    expect(markers[1]).toMatchObject({ shape: "circle", cornerStyle: "sharp", gapWidth: 0 });
+    // finishStyle omitted — falls back to the default circle (GitHub issue #347 follow-up:
+    // matches "Vector by walls"' own Shared style default), unaffected by startStyle's own
+    // custom fields.
+    expect(markers[1]).toMatchObject({ shape: "circle", cornerStyle: "round", gapWidth: 3 });
   });
 });
 
