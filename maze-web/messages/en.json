@@ -1480,7 +1480,7 @@
   "analytics.timing_report_prefix_check": "Check: {name}",
   "analytics.timing_report_prefix_strategy": "Strategy: {name}",
   "status.no_maze": "Generate maze first",
-  "status.analytics_available": "Analytics available",
+  "status.analytics_no_issues": "No issues",
   "post_edit.title": "Post-Edit",
   "post_edit.wall": "Wall",
   "post_edit.passage": "Passage",

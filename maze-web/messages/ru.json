@@ -1491,7 +1491,7 @@
   "analytics.timing_report_prefix_check": "Проверка: {name}",
   "analytics.timing_report_prefix_strategy": "Стратегия: {name}",
   "status.no_maze": "Сначала сгенерируйте лабиринт",
-  "status.analytics_available": "Аналитика доступна",
+  "status.analytics_no_issues": "Нет проблем",
   "post_edit.title": "Постобработка",
   "post_edit.wall": "Стена",
   "post_edit.passage": "Проход",
