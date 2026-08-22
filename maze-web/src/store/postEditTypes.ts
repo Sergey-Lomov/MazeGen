@@ -3,7 +3,7 @@ import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 
 export type PostEditEdgeKind = "wall" | "basic" | "one_way_forward" | "one_way_backward";
 
-export type PostEditTool = "wall" | "passage" | "reset" | "one_way" | "set_start" | "set_finish" | "teleport_one_way" | "teleport_two_way" | "vertical_passage_one_way" | "vertical_passage_two_way" | "elevator" | "manage_split_nodes";
+export type PostEditTool = "wall" | "passage" | "reset" | "delete" | "one_way" | "set_start" | "set_finish" | "teleport_one_way" | "teleport_two_way" | "vertical_passage_one_way" | "vertical_passage_two_way" | "elevator" | "manage_split_nodes";
 
 export interface PostEditEdge {
   from: PostEditEndpoint;

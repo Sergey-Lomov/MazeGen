@@ -438,6 +438,85 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     }
   },
 
+  /** Delete tool (GitHub issue #386) — removes every generation-placed non-edge piece of content
+   * touching `point`'s nodes (start/finish marker, teleport links, vertical passages, elevators),
+   * regardless of split state (every one of the point's nodes loses its content in one click, per
+   * the issue's own scope decision — not just the currently active split node). Unlike
+   * `resetPostEditPoint`, this never restores anything from `_generatedEdges` — it's a pure removal,
+   * and it never touches `postEditDraftEdges`/split points at all (the `wall`/`reset` tools already
+   * own basic-edge removal).
+   *
+   * A generation-time vertical passage/elevator has no draft entry to filter out — it's resent
+   * verbatim from `_generatedEdges` by `confirmPostEdit` unless suppressed (see
+   * `postEditSuppressedElevatorPairs`/`postEditSuppressedVerticalPassagePairs`'s own doc comment),
+   * so deleting one needs to suppress its pair(s) the same way an edit does, or it would keep
+   * reappearing on every confirm. An elevator's suppression covers its *entire* generation-time
+   * connected component (BFS over `_generatedEdges`' own `elevator` edges), same reasoning
+   * `resetPostEditPoint`'s own un-suppress branch gives — a component can span floors that never
+   * name this point's own node directly. */
+  deletePostEditPoint: (point) => {
+    set((state) => {
+      const level = activeFloorLevel(state);
+      const bareKey = `${point[0]},${point[1]}`;
+      const key = level === undefined ? bareKey : `${bareKey}@${level}`;
+
+      const pointNodeIds = new Set(
+        state.nodes
+          .filter((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0))
+          .map((n) => n.id),
+      );
+      const draftTargets: PostEditEndpoint[] = [
+        ...[...pointNodeIds].map((id) => nodeEndpoint(id)),
+        ...(state.postEditDraftSplitPoints[key] ?? []).map((slotId) => splitEndpoint(point, slotId, level)),
+      ];
+      const endpointRefsTarget = (ep: PostEditEndpoint) => draftTargets.some((t) => endpointsEqual(ep, t));
+      const refsTarget = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
+        endpointRefsTarget(e.from) || endpointRefsTarget(e.to);
+
+      const meta = state.postEditDraftMeta ?? {
+        start: state.start !== null ? nodeEndpoint(state.start) : null,
+        finish: state.finish !== null ? nodeEndpoint(state.finish) : null,
+      };
+      const nextMeta = { ...meta };
+      if (nextMeta.start !== null && draftTargets.some((t) => endpointsEqual(t, nextMeta.start!))) nextMeta.start = null;
+      if (nextMeta.finish !== null && draftTargets.some((t) => endpointsEqual(t, nextMeta.finish!))) nextMeta.finish = null;
+
+      const postEditDraftTeleports = state.postEditDraftTeleports.filter((t) => !refsTarget(t));
+      const postEditDraftVerticalPassages = state.postEditDraftVerticalPassages.filter((p) => !refsTarget(p));
+      const postEditDraftElevators = state.postEditDraftElevators.filter((e) => !e.floors.some(endpointRefsTarget));
+
+      const postEditSuppressedVerticalPassagePairs = new Set(state.postEditSuppressedVerticalPassagePairs);
+      for (const e of state._generatedEdges) {
+        if (e.kind !== "vertical_passage") continue;
+        if (!pointNodeIds.has(e.from) && !pointNodeIds.has(e.to)) continue;
+        const [a, b] = e.from < e.to ? [e.from, e.to] : [e.to, e.from];
+        postEditSuppressedVerticalPassagePairs.add(`${a},${b}`);
+      }
+
+      const elevatorComponentIds = elevatorComponent(state._generatedEdges, pointNodeIds);
+      const postEditSuppressedElevatorPairs = new Set(state.postEditSuppressedElevatorPairs);
+      for (const e of state._generatedEdges) {
+        if (e.kind !== "elevator") continue;
+        if (!elevatorComponentIds.has(e.from) && !elevatorComponentIds.has(e.to)) continue;
+        const [a, b] = e.from < e.to ? [e.from, e.to] : [e.to, e.from];
+        postEditSuppressedElevatorPairs.add(`${a},${b}`);
+      }
+
+      return {
+        postEditDraftMeta: nextMeta,
+        postEditDraftTeleports,
+        postEditDraftVerticalPassages,
+        postEditDraftElevators,
+        postEditSuppressedVerticalPassagePairs,
+        postEditSuppressedElevatorPairs,
+        postEditDirty: true,
+      };
+    });
+    if (get().postEditAutoConfirm) {
+      void get().confirmPostEdit();
+    }
+  },
+
   setPostEditEndpoint: (kind, endpoint) => {
     set((state) => ({
       postEditDraftMeta: {

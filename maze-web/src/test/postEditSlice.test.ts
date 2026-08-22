@@ -645,6 +645,90 @@ describe("mazeStore post-edit actions", () => {
     useMazeStore.getState().resetPostEditPoint([0, 0]);
     expect(useMazeStore.getState().postEditSuppressedElevatorPairs).toEqual(new Set());
   });
+
+  it("deletePostEditPoint clears start/finish, teleports, vertical passages and elevators touching the point, but leaves draft edges untouched (GitHub issue #386)", () => {
+    useMazeStore.setState({
+      postEditDraftEdges: { [key01]: { from: n(0), to: n(1), kind: "basic" } },
+      postEditDraftMeta: { start: n(0), finish: n(1) },
+      postEditDraftTeleports: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
+      postEditDraftVerticalPassages: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
+      postEditDraftElevators: [{ id: 1, floors: [n(0), n(1)] }],
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().deletePostEditPoint([0, 0]);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftMeta?.start).toBeNull();
+    expect(s.postEditDraftMeta?.finish).toEqual(n(1));
+    expect(s.postEditDraftTeleports).toHaveLength(0);
+    expect(s.postEditDraftVerticalPassages).toHaveLength(0);
+    expect(s.postEditDraftElevators).toHaveLength(0);
+    expect(s.postEditDraftEdges?.[key01]).toEqual({ from: n(0), to: n(1), kind: "basic" });
+    expect(s.postEditDirty).toBe(true);
+  });
+
+  it("deletePostEditPoint clears finish alone when only finish addresses the point", () => {
+    useMazeStore.setState({
+      postEditDraftMeta: { start: n(1), finish: n(0) },
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().deletePostEditPoint([0, 0]);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftMeta?.start).toEqual(n(1));
+    expect(s.postEditDraftMeta?.finish).toBeNull();
+  });
+
+  it("deletePostEditPoint suppresses a generation-time vertical passage/elevator touching the point, so it isn't resent on confirm", () => {
+    useMazeStore.setState({
+      _generatedEdges: [
+        { from: 0, to: 1, kind: "basic" },
+        { from: 0, to: 5, kind: "vertical_passage" },
+        { from: 0, to: 6, kind: "elevator" }, { from: 6, to: 0, kind: "elevator" },
+      ],
+      postEditSuppressedVerticalPassagePairs: new Set<string>(),
+      postEditSuppressedElevatorPairs: new Set<string>(),
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().deletePostEditPoint([0, 0]);
+    const s = useMazeStore.getState();
+    expect(s.postEditSuppressedVerticalPassagePairs).toEqual(new Set(["0,5"]));
+    expect(s.postEditSuppressedElevatorPairs).toEqual(new Set(["0,6"]));
+  });
+
+  it("deletePostEditPoint normalizes a suppressed pair the same way regardless of which side the generated edge names first (reversed from/to)", () => {
+    useMazeStore.setState({
+      _generatedEdges: [
+        { from: 5, to: 0, kind: "vertical_passage" },
+        { from: 6, to: 0, kind: "elevator" },
+      ],
+      postEditSuppressedVerticalPassagePairs: new Set<string>(),
+      postEditSuppressedElevatorPairs: new Set<string>(),
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().deletePostEditPoint([0, 0]);
+    const s = useMazeStore.getState();
+    expect(s.postEditSuppressedVerticalPassagePairs).toEqual(new Set(["0,5"]));
+    expect(s.postEditSuppressedElevatorPairs).toEqual(new Set(["0,6"]));
+  });
+
+  it("deletePostEditPoint clears content on an unconfirmed split slot too, not just the point's live nodes (GitHub issue #221's unresolved-endpoint window)", () => {
+    const slot0 = splitEndpoint([0, 0], 0);
+    useMazeStore.setState({
+      postEditDraftSplitPoints: { "0,0": [0] },
+      postEditDraftTeleports: [{ id: 1, from: n(1), to: slot0, direction: "forward" }],
+      postEditDraftMeta: { start: slot0, finish: null },
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().deletePostEditPoint([0, 0]);
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftTeleports).toHaveLength(0);
+    expect(s.postEditDraftMeta?.start).toBeNull();
+  });
+
+  it("deletePostEditPoint calls confirmPostEdit when postEditAutoConfirm is true", () => {
+    useMazeStore.setState({ postEditAutoConfirm: true });
+    useMazeStore.getState().deletePostEditPoint([0, 0]);
+    expect(computeAnalytics).toHaveBeenCalled();
+  });
 });
 
 describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #341)", () => {
