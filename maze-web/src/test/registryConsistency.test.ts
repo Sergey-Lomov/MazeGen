@@ -21,6 +21,7 @@ const CHECK_IDS_WITH_WITH_DETAIL_CALLS = [
   "one_way_waypoint_distance", "one_way_group_geometric_proximity", "one_way_group_graph_proximity",
   "one_way_group_super_hub", "min_one_way_count", "min_one_way_ratio", "max_one_way_count",
   "max_one_way_ratio", "min_teleport_count", "min_teleport_ratio",
+  "max_teleport_count", "max_teleport_density",
   "split_distance_from_waypoint",
 ];
 

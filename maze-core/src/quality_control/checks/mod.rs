@@ -76,6 +76,8 @@ pub mod max_elevator_stop_gap;
 pub mod elevator_stop_group_geometric_proximity;
 pub mod elevator_stop_group_graph_proximity;
 pub mod split_pattern_shape;
+pub mod max_teleport_count;
+pub mod max_teleport_density;
 
 pub use missing_endpoints::MissingEndpointsCheck;
 pub use unreachable_finish::UnreachableFinishCheck;
@@ -108,6 +110,8 @@ pub use min_one_way_ratio::{MinOneWayRatioCheck, MIN_ONE_WAY_RATIO_DEFAULT, MIN_
 pub use max_one_way_count::{MaxOneWayCountCheck, MAX_ONE_WAY_COUNT_DEFAULT, MAX_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE};
 pub use max_one_way_ratio::{MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE};
 pub use min_teleport_count::{MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE};
+pub use max_teleport_count::{MaxTeleportCountCheck, MAX_TELEPORT_COUNT_DEFAULT, MAX_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE, MAX_TELEPORT_COUNT_DEFAULT_DIRECTION, MAX_TELEPORT_COUNT_DEFAULT_FLOOR_KIND};
+pub use max_teleport_density::{MaxTeleportDensityCheck, MAX_TELEPORT_DENSITY_DEFAULT, MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_SCOPE, MAX_TELEPORT_DENSITY_DEFAULT_DIRECTION, MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_KIND};
 pub use min_teleport_ratio::{MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE};
 pub use teleport_split_intersection::{TeleportSplitIntersectionCheck, TeleportSplitEdgeSelector};
 pub use split_distance_from_waypoint::{SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT_COMPARISON};

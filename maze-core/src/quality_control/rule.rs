@@ -105,6 +105,17 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         // Built once, only when narration is actually on — `resolve_issue_payload` is the only
         // consumer, and most issue kinds don't even need it (see its own doc comment).
         let scc = event_log.is_some().then(|| crate::graph::scc::build_scc(&maze.graph));
+        // Instance id -> type id, exposed to the frontend via `IssueDto::source_check_types` (see
+        // `maze-wasm/src/analytics/snapshot.rs`) and needed by `resolve_issue_payload`'s
+        // `resolve_edge_group_map` (via `resolvers::is_batch_edge_group_type`) to tell a batch
+        // check (e.g. `max_teleport_count`) apart from a proximity/pair-style one sharing the same
+        // resolver — only this rule's own checks (their type id is only known here, via
+        // `Check::check_type_id`), same lazy-build rationale as `scc` above.
+        let check_types: Option<HashMap<String, String>> = event_log.is_some().then(|| {
+            self.checks.iter()
+                .map(|(local_id, check)| (format!("{}:{}", self.id, local_id), check.check_type_id().to_string()))
+                .collect()
+        });
 
         let mut merged: Option<I> = None;
         let mut contributing_checks = 0u32;
@@ -125,7 +136,7 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
             let check_issue = issues.into_iter().reduce(|mut acc, issue| { acc.merge(issue); acc });
             if let Some(log) = event_log.as_mut() {
                 let payload = check_issue.as_ref().map(|issue| {
-                    let payload = super::issue_payload::resolve_issue_payload(issue, &maze.graph, &maze.field, scc.as_ref().unwrap(), preset_state);
+                    let payload = super::issue_payload::resolve_issue_payload(issue, &maze.graph, &maze.field, scc.as_ref().unwrap(), preset_state, check_types.as_ref());
                     let details = issue.details().get(instance_id.as_str()).cloned().unwrap_or_default();
                     (I::KIND, payload, details)
                 });
@@ -142,7 +153,7 @@ impl<T: Tessellation, I: IssueRequirement + IssueMerge> Rule<T, I> {
         if contributing_checks > 1 {
             if let Some(log) = event_log.as_mut() {
                 let payload = merged.as_ref()
-                    .map(|issue| super::issue_payload::resolve_issue_payload(issue, &maze.graph, &maze.field, scc.as_ref().unwrap(), preset_state))
+                    .map(|issue| super::issue_payload::resolve_issue_payload(issue, &maze.graph, &maze.field, scc.as_ref().unwrap(), preset_state, check_types.as_ref()))
                     .unwrap_or_default();
                 let details = merged.as_ref().map(|issue| issue.details().clone()).unwrap_or_default();
                 log.emit(QcEvent::IssuesMerged { issue_kind: I::KIND, payload, details });

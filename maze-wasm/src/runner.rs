@@ -223,7 +223,6 @@ pub fn run_generate<T: Tessellation + 'static>(
     let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, &repair_preset_state, true, &point_to_xy, |_, _, pos| pos as u32)
         .map_err(|e| JsValue::from_str(&e))?;
     timing.snapshot_ms = maze_core::generation::pipeline::now_ms() - snapshot_start;
-    maze_core::diag_log!("analytics snapshot took {}ms", timing.snapshot_ms); // DIAG
     snapshot.timing = Some(timing_to_dto(timing));
 
     // Union coordinate set (GitHub issue #271) — every node that ever existed during this run,

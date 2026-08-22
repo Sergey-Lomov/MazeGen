@@ -174,9 +174,9 @@ export function useQualityViewModel(): QualityViewModel {
             ruleId: r.id,
             localId: check.localId,
             typeId: check.typeId,
-            label: resolveCheckLabel(descriptor.id, descriptor.label),
-            cardLabel: resolveCheckCardLabel(descriptor.id, descriptor.label),
-            description: resolveCheckDescription(descriptor.id, descriptor.description),
+            label: resolveCheckLabel(descriptor.id, descriptor.label, check.params),
+            cardLabel: resolveCheckCardLabel(descriptor.id, descriptor.label, check.params),
+            description: resolveCheckDescription(descriptor.id, descriptor.description, check.params),
             params: localizeParams(descriptor.params),
             disabled: check.disabled,
           };

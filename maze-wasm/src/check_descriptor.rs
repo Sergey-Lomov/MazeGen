@@ -1,6 +1,6 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
-use maze_core::quality_control::{Comparison, CycleKind, GeometricFloorMode, FloorScope, VerticalPassageType};
+use maze_core::quality_control::{Comparison, CycleKind, GeometricFloorMode, FloorScope, VerticalPassageType, TeleportDirectionFilter, TeleportFloorKindFilter};
 use maze_core::RegionClass;
 
 #[derive(Serialize)]
@@ -210,6 +210,28 @@ pub fn vertical_passage_type_param(default: VerticalPassageType) -> ParamDescrip
         label: "Type",
         kind: ParamKindDto::Enum {
             options: VerticalPassageType::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
+            default: default.as_str(),
+        },
+    }
+}
+
+pub fn teleport_direction_param(default: TeleportDirectionFilter) -> ParamDescriptor {
+    ParamDescriptor {
+        id: "teleport_direction",
+        label: "Direction",
+        kind: ParamKindDto::Enum {
+            options: TeleportDirectionFilter::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
+            default: default.as_str(),
+        },
+    }
+}
+
+pub fn teleport_floor_kind_param(default: TeleportFloorKindFilter) -> ParamDescriptor {
+    ParamDescriptor {
+        id: "teleport_floor_kind",
+        label: "Floor kind",
+        kind: ParamKindDto::Enum {
+            options: TeleportFloorKindFilter::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
             default: default.as_str(),
         },
     }

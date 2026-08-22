@@ -27,6 +27,7 @@ pub struct MaxVerticalPassageRatioCheck {
 
 impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue> for MaxVerticalPassageRatioCheck {
     fn check_type_id(&self) -> &'static str { "max_vertical_passage_ratio" }
+    fn is_batch_edge_group(&self) -> bool { true }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidVerticalPassageGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         let max_ratio = self.max_ratio;

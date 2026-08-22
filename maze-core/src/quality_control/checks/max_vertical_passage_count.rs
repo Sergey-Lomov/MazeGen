@@ -30,6 +30,7 @@ pub struct MaxVerticalPassageCountCheck {
 
 impl<T: Tessellation> Check<T, InvalidVerticalPassageGroupIssue> for MaxVerticalPassageCountCheck {
     fn check_type_id(&self) -> &'static str { "max_vertical_passage_count" }
+    fn is_batch_edge_group(&self) -> bool { true }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidVerticalPassageGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         let (group, to_remove) = match self.floor_scope {

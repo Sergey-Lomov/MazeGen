@@ -66,24 +66,67 @@ pub(super) fn resolve_single_edge_map(invalid: &[crate::ids::EdgeId], invalid_so
     groups
 }
 
+/// Check ids whose `resolve_edge_group_map` "group" is actually an aggregate excess *batch*
+/// (every over-budget teleport/one-way/vertical-passage on the maze or floor, bundled into one
+/// group purely so a single repair strategy call can pick which ones to remove) rather than a
+/// genuinely interdependent unit. For these, `preset_locked` must be computed per individual edge
+/// — see GitHub issue #379's follow-up: reporting the whole batch as one all-or-nothing element
+/// severely undercounts "instances set by presets" whenever a batch mixes preset and non-preset
+/// edges (only fully-preset batches would ever count). Every other `resolve_edge_group_map`
+/// consumer (proximity pairs, super-hub groups, `split_node_connection_per_neighbor`/`_per_face`
+/// groups) is a small, semantically interdependent unit where "the whole group is unfixable" is
+/// the intended, correct semantics (see `IssuesBlock.tsx`'s doc comment on `dedupTeleportGroups`)
+/// — those must keep the original whole-group `all_preset_locked` behavior unchanged. Mirrors
+/// `resolve_elevator_group_map`'s already-correct per-element iteration (`max_elevator_count`/
+/// `max_elevator_density` never shared this bug, since elevator groups are always batches).
+///
+/// This list must agree with each check's own `Check::is_batch_edge_group()` (see its doc comment)
+/// — a plain string match, not a live trait-method call, because callers here (and
+/// `maze-wasm/src/analytics/snapshot.rs`, the more commonly exercised path) only ever have a type
+/// id string, never a constructed check instance. `issue_payload::tests` pins every one of these
+/// checks' own `is_batch_edge_group()` against this list so the two can't silently drift.
+pub(super) fn is_batch_edge_group_type(type_id: &str) -> bool {
+    matches!(type_id,
+        "max_teleport_count" | "max_teleport_density" |
+        "max_one_way_count" | "max_one_way_ratio" |
+        "max_vertical_passage_count" | "max_vertical_passage_ratio"
+    )
+}
+
 /// Resolves every flagged edge group (teleport or one-way proximity/super-hub/count-excess) into
 /// base-graph edge pairs, keyed by the specific check(s) that flagged *that* group
 /// (`invalid_sources`, canonical-group-key-keyed) — shared by `InvalidTeleportGroupIssue`/
 /// `InvalidOneWayGroupIssue`/`InvalidSplitNodeConnectionGroupIssue`'s resolve paths below.
 /// `to_remove` (the group's fix-count) carries no highlight meaning and is dropped here — every
-/// edge in the group is highlighted regardless.
-pub(super) fn resolve_edge_group_map(groups: &[(Vec<crate::ids::EdgeId>, u32)], invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>, graph: &Graph, preset_state: &PresetState) -> HashMap<String, Vec<IssueEdgeGroupPayload>> {
+/// edge in the group is highlighted regardless. For a source whose `check_types`-resolved type id
+/// is batch-shaped per `is_batch_edge_group_type`, the group is split into one payload per edge
+/// (each with its own `preset_locked`); every other source keeps the original one-payload-per-group
+/// whole-group `preset_locked`. `source` here is a check *instance* id (e.g. `"rule_1:0"`), not the
+/// type id `is_batch_edge_group_type` expects — `check_types` (`None` in most tests, always `Some`
+/// from real rule/analytics callers) resolves instance to type.
+pub(super) fn resolve_edge_group_map(groups: &[(Vec<crate::ids::EdgeId>, u32)], invalid_sources: &HashMap<Vec<crate::ids::EdgeId>, Vec<String>>, graph: &Graph, preset_state: &PresetState, check_types: Option<&HashMap<String, String>>) -> HashMap<String, Vec<IssueEdgeGroupPayload>> {
     let mut out: HashMap<String, Vec<IssueEdgeGroupPayload>> = HashMap::new();
     for (group, _to_remove) in groups {
-        let edge_pairs: Vec<[u32; 2]> = group.iter().filter_map(|&eid| edge_pair(graph, eid)).collect();
-        // `preset_locked` ignores `to_remove` — even a group whose fix only requires removing
-        // some of its edges is truly unfixable if every edge is preset-protected, since each
-        // individual removal attempt refuses regardless of how many total removals were needed.
-        let preset_locked = all_preset_locked(group, graph, preset_state);
         let mut key = group.clone();
         key.sort_unstable();
         for source in invalid_sources.get(&key).into_iter().flatten() {
-            out.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edge_pairs.clone(), preset_locked });
+            let type_id = check_types.and_then(|m| m.get(source)).map(String::as_str).unwrap_or(source.as_str());
+            let is_batch = is_batch_edge_group_type(type_id);
+            if is_batch {
+                for &eid in group {
+                    let Some(pair) = edge_pair(graph, eid) else { continue };
+                    let edge_locked = all_preset_locked(&[eid], graph, preset_state);
+                    out.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: vec![pair], preset_locked: edge_locked });
+                }
+            } else {
+                let edge_pairs: Vec<[u32; 2]> = group.iter().filter_map(|&eid| edge_pair(graph, eid)).collect();
+                // `preset_locked` ignores `to_remove` — even a group whose fix only requires
+                // removing some of its edges is truly unfixable if every edge is
+                // preset-protected, since each individual removal attempt refuses regardless of
+                // how many total removals were needed.
+                let preset_locked = all_preset_locked(group, graph, preset_state);
+                out.entry(source.clone()).or_default().push(IssueEdgeGroupPayload { edges: edge_pairs, preset_locked });
+            }
         }
     }
     out

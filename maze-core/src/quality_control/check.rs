@@ -10,6 +10,19 @@ pub trait Check<T: Tessellation, I: IssueRequirement> {
     /// instances, since two instances of the same type (GitHub issue #60) should report under one type.
     fn check_type_id(&self) -> &'static str;
 
+    /// True for a check whose `repair_check` groups are independent aggregate-excess batches
+    /// (e.g. `MaxTeleportCountCheck`: N teleports over budget, each removable on its own) rather
+    /// than a single interdependent unit (e.g. a proximity/pair check, where the whole group must
+    /// stay together) — see GitHub issue #379. Defaults to `false` (whole-group semantics, the
+    /// common case). This value must be kept in sync with
+    /// `issue_payload::resolvers::is_batch_edge_group_type` (matched there by type id string,
+    /// since the payload-resolution layer never holds a live check instance) — a completeness
+    /// test in `issue_payload::tests` pins every known check's `is_batch_edge_group()` against
+    /// that function so the two can't silently drift. A new check using the aggregate-excess
+    /// `repair_check` shape must override this to `true` *and* add itself to
+    /// `is_batch_edge_group_type`, or the completeness test will fail.
+    fn is_batch_edge_group(&self) -> bool { false }
+
     /// Detection for the repair fixpoint loop — may bundle every flagged problem instance into
     /// one merged issue per call (e.g. `MinLoopLengthCheck` bundles all short cycles into one
     /// `InvalidLoopIssue`), since the loop dispatches one repair strategy call per rule against
