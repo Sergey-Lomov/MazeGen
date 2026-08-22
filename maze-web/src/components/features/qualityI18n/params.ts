@@ -519,6 +519,14 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.max_teleports.label"] as MessageFn,
     description: m["param.max_teleports.description"] as MessageFn,
   },
+  cross_floor_balance: {
+    label: m["param.cross_floor_balance.label"] as MessageFn,
+    description: m["param.cross_floor_balance.description"] as MessageFn,
+  },
+  cross_floor_mode: {
+    label: m["param.cross_floor_mode.label"] as MessageFn,
+    description: m["param.cross_floor_mode.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -535,11 +543,6 @@ export const nestedSlotI18n: Record<string, { description: MessageFn }> = {
 
 // Labels for individual option values of Enum-kind params, keyed by `${paramId}.${value}`.
 export const paramOptionI18n: Record<string, MessageFn> = {
-  "expand_elevator.forbidden": m["param.expand_elevator.option.forbidden"] as MessageFn,
-  "expand_elevator.discouraged": m["param.expand_elevator.option.discouraged"] as MessageFn,
-  "expand_elevator.indifferent": m["param.expand_elevator.option.indifferent"] as MessageFn,
-  "expand_elevator.preferred": m["param.expand_elevator.option.preferred"] as MessageFn,
-  "expand_elevator.required": m["param.expand_elevator.option.required"] as MessageFn,
   "target_mode.largest": m["param.target_mode.option.largest"] as MessageFn,
   "target_mode.smallest": m["param.target_mode.option.smallest"] as MessageFn,
   "target_mode.random": m["param.target_mode.option.random"] as MessageFn,
@@ -607,6 +610,9 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "floor_scope.per_floor": m["param.floor_scope.option.per_floor"] as MessageFn,
   "entry_pick.random": m["param.entry_pick.option.random"] as MessageFn,
   "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random"] as MessageFn,
+  "cross_floor_mode.forbidden": m["param.cross_floor_mode.option.forbidden"] as MessageFn,
+  "cross_floor_mode.natural": m["param.cross_floor_mode.option.natural"] as MessageFn,
+  "cross_floor_mode.manual": m["param.cross_floor_mode.option.manual"] as MessageFn,
   "direction.incoming": m["param.direction.option.incoming"] as MessageFn,
   "direction.outgoing": m["param.direction.option.outgoing"] as MessageFn,
   "direction.bidirectional": m["param.direction.option.bidirectional"] as MessageFn,
@@ -635,6 +641,11 @@ export const paramOptionI18n: Record<string, MessageFn> = {
 // Explanations for individual option values of Enum-kind params, shown under the param's
 // own description in expanded detail views. Keyed the same way as `paramOptionI18n`.
 export const paramOptionExplanationI18n: Record<string, MessageFn> = {
+  "unreachable_priority.forbidden": m["param.unreachable_priority.option.forbidden.explanation"] as MessageFn,
+  "unreachable_priority.discouraged": m["param.unreachable_priority.option.discouraged.explanation"] as MessageFn,
+  "unreachable_priority.indifferent": m["param.unreachable_priority.option.indifferent.explanation"] as MessageFn,
+  "unreachable_priority.preferred": m["param.unreachable_priority.option.preferred.explanation"] as MessageFn,
+  "unreachable_priority.required": m["param.unreachable_priority.option.required.explanation"] as MessageFn,
   "expand_elevator.forbidden": m["param.expand_elevator.option.forbidden.explanation"] as MessageFn,
   "expand_elevator.discouraged": m["param.expand_elevator.option.discouraged.explanation"] as MessageFn,
   "expand_elevator.indifferent": m["param.expand_elevator.option.indifferent.explanation"] as MessageFn,
@@ -713,6 +724,9 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "floor_scope.per_floor": m["param.floor_scope.option.per_floor.explanation"] as MessageFn,
   "entry_pick.random": m["param.entry_pick.option.random.explanation"] as MessageFn,
   "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random.explanation"] as MessageFn,
+  "cross_floor_mode.forbidden": m["param.cross_floor_mode.option.forbidden.explanation"] as MessageFn,
+  "cross_floor_mode.natural": m["param.cross_floor_mode.option.natural.explanation"] as MessageFn,
+  "cross_floor_mode.manual": m["param.cross_floor_mode.option.manual.explanation"] as MessageFn,
   "direction.incoming": m["param.direction.option.incoming.explanation"] as MessageFn,
   "direction.outgoing": m["param.direction.option.outgoing.explanation"] as MessageFn,
   "direction.bidirectional": m["param.direction.option.bidirectional.explanation"] as MessageFn,
@@ -754,6 +768,21 @@ export function resolveParamDescription(id: string, contextId?: string): string 
 
 export function resolveParamOptionLabel(paramId: string, value: string): string {
   return paramOptionI18n[`${paramId}.${value}`]?.() ?? value;
+}
+
+// One shared label per `priority`-kind value (GitHub issue #381 follow-up) -- every
+// `PriorityLevel` param (`unreachable_priority`, `expand_elevator`, and future ones) renders these
+// same 5 labels instead of each param needing its own `paramOptionI18n` entries.
+const priorityOptionI18n: Record<string, MessageFn> = {
+  forbidden: m["priority.option.forbidden"] as MessageFn,
+  discouraged: m["priority.option.discouraged"] as MessageFn,
+  indifferent: m["priority.option.indifferent"] as MessageFn,
+  preferred: m["priority.option.preferred"] as MessageFn,
+  required: m["priority.option.required"] as MessageFn,
+};
+
+export function resolvePriorityOptionLabel(value: string): string {
+  return priorityOptionI18n[value]?.() ?? value;
 }
 
 // Per-strategy override for a shared param's option explanations, same rationale as

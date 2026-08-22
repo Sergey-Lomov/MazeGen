@@ -6,7 +6,7 @@ use crate::space::{LevelId, Tessellation};
 use crate::quality_control::MissingElevatorStopCountIssue;
 use crate::generation::PresetState;
 use crate::generation::edge_ops::bidirectional_edge_feasible;
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
+use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams, PriorityLevel};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
@@ -14,25 +14,11 @@ use super::elevator_utils::find_elevator_by_stop;
 
 pub const PARAM_EXPAND_ELEVATOR: &str = "expand_elevator";
 
-pub const EXPAND_ELEVATOR_FORBIDDEN: &str = "forbidden";
-pub const EXPAND_ELEVATOR_DISCOURAGED: &str = "discouraged";
-pub const EXPAND_ELEVATOR_INDIFFERENT: &str = "indifferent";
-pub const EXPAND_ELEVATOR_PREFERRED: &str = "preferred";
-pub const EXPAND_ELEVATOR_REQUIRED: &str = "required";
-
-pub const EXPAND_ELEVATOR_OPTIONS: &[&str] = &[
-    EXPAND_ELEVATOR_FORBIDDEN,
-    EXPAND_ELEVATOR_DISCOURAGED,
-    EXPAND_ELEVATOR_INDIFFERENT,
-    EXPAND_ELEVATOR_PREFERRED,
-    EXPAND_ELEVATOR_REQUIRED,
-];
-
 static PARAMS: &[StrategyParam] = &[
     StrategyParam {
         id: PARAM_EXPAND_ELEVATOR,
         label: "Expand elevator",
-        kind: StrategyParamKind::Enum { options: EXPAND_ELEVATOR_OPTIONS, default: EXPAND_ELEVATOR_INDIFFERENT },
+        kind: StrategyParamKind::Priority { default: PriorityLevel::Indifferent },
     },
 ];
 
@@ -55,13 +41,14 @@ static PARAMS: &[StrategyParam] = &[
 /// adds fewer stops than requested (but at least one) still counts toward `Fixed`; only a complete
 /// failure to add any stop, across every entry, is `Failed`.
 ///
-/// `expand_elevator` (default `indifferent`) controls whether new stops are picked from floors
-/// strictly between the elevator's current bottom and top stop ("inside") or beyond either end
-/// ("outside"): `forbidden` only adds inside, skipping the whole entry if that alone can't satisfy
-/// `count`; `discouraged`/`preferred` try one zone first and fall back to the other only for
-/// floors still needed after the first zone is exhausted; `indifferent` (default) ignores the
-/// distinction and shuffles every candidate together; `required` only adds outside, failing the
-/// entry if that alone can't satisfy `count`.
+/// `expand_elevator` (a `PriorityLevel`, default `Indifferent`) controls whether new stops are
+/// picked from floors strictly between the elevator's current bottom and top stop ("inside",
+/// `PriorityLevel`'s "other" group) or beyond either end ("outside", the "preferred" group) — see
+/// `PriorityLevel::order_zones`. `Forbidden` only adds inside, skipping the whole entry if that
+/// alone can't satisfy `count`; `Discouraged`/`Preferred` try one zone first and fall back to the
+/// other only for floors still needed after the first zone is exhausted; `Indifferent` (default)
+/// ignores the distinction and shuffles every candidate together; `Required` only adds outside,
+/// failing the entry if that alone can't satisfy `count`.
 pub struct AddElevatorStopCountStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, MissingElevatorStopCountIssue> for AddElevatorStopCountStrategy {
@@ -80,10 +67,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorStopCountIssue> for AddEl
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
-        let expand_elevator = match params.get(PARAM_EXPAND_ELEVATOR) {
-            Some(StrategyParamValue::Enum(v)) => v.as_str(),
-            _ => EXPAND_ELEVATOR_INDIFFERENT,
-        };
+        let expand_elevator = params.get(PARAM_EXPAND_ELEVATOR).and_then(|v| v.as_priority()).unwrap_or(PriorityLevel::Indifferent);
 
         let mut commands = Vec::new();
         let mut total_added: u32 = 0;
@@ -114,18 +98,9 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorStopCountIssue> for AddEl
             inside.shuffle(rng);
             outside.shuffle(rng);
 
-            let ordered_zones: Vec<Vec<LevelId>> = match expand_elevator {
-                EXPAND_ELEVATOR_FORBIDDEN => vec![inside],
-                EXPAND_ELEVATOR_REQUIRED => vec![outside],
-                EXPAND_ELEVATOR_DISCOURAGED => vec![inside, outside],
-                EXPAND_ELEVATOR_PREFERRED => vec![outside, inside],
-                _ => {
-                    let mut all = inside;
-                    all.extend(outside);
-                    all.shuffle(rng);
-                    vec![all]
-                }
-            };
+            // `outside` is the "preferred" group (`PriorityLevel::Preferred`/`Required` favor it),
+            // `inside` is "other" -- see `PriorityLevel`.
+            let ordered_zones = expand_elevator.order_zones(outside, inside, rng);
 
             let mut entry_commands = Vec::new();
             let mut added_here: u32 = 0;
@@ -149,7 +124,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorStopCountIssue> for AddEl
                 }
             }
 
-            let zone_locked = matches!(expand_elevator, EXPAND_ELEVATOR_FORBIDDEN | EXPAND_ELEVATOR_REQUIRED);
+            let zone_locked = matches!(expand_elevator, PriorityLevel::Forbidden | PriorityLevel::Required);
             if zone_locked && added_here < *count {
                 continue;
             }
@@ -319,7 +294,7 @@ mod tests {
             vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[1], floors[2], floors[3], floors[5], floors[6]])],
         );
         let mut rng = MazeRng::seed_from_u64(10);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with(EXPAND_ELEVATOR_FORBIDDEN), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with("forbidden"), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let indices: Vec<usize> = elevator_groups(&maze)[0].stops.iter().filter_map(|&n| maze.field.level_index_of(n)).collect();
         for i in &indices {
@@ -336,7 +311,7 @@ mod tests {
             vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[1], floors[3], floors[4]])],
         );
         let mut rng = MazeRng::seed_from_u64(11);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with(EXPAND_ELEVATOR_FORBIDDEN), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with("forbidden"), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Failed));
         assert_eq!(maze.graph.edges().count(), 2, "entry skipped entirely, nothing added");
     }
@@ -349,7 +324,7 @@ mod tests {
             vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[1], floors[2], floors[3], floors[5], floors[6]])],
         );
         let mut rng = MazeRng::seed_from_u64(12);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with(EXPAND_ELEVATOR_REQUIRED), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with("required"), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let indices: Vec<usize> = elevator_groups(&maze)[0].stops.iter().filter_map(|&n| maze.field.level_index_of(n)).collect();
         assert!(indices.contains(&5) && indices.contains(&6), "required must add both outside floors 5,6");
@@ -363,7 +338,7 @@ mod tests {
             vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[1], floors[2], floors[3]])],
         );
         let mut rng = MazeRng::seed_from_u64(13);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with(EXPAND_ELEVATOR_REQUIRED), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with("required"), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Failed));
         assert_eq!(maze.graph.edges().count(), 2, "no outside floors exist at all, entry skipped");
     }
@@ -377,7 +352,7 @@ mod tests {
             vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[1], floors[3], floors[4], floors[5], floors[6]])],
         );
         let mut rng = MazeRng::seed_from_u64(14);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with(EXPAND_ELEVATOR_DISCOURAGED), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with("discouraged"), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let indices: Vec<usize> = elevator_groups(&maze)[0].stops.iter().filter_map(|&n| maze.field.level_index_of(n)).collect();
         assert!(indices.contains(&1), "the one inside floor must be used first");
@@ -393,7 +368,7 @@ mod tests {
             vec![(ElevatorNodes::new(nodes.clone()), 2, vec![floors[1], floors[2], floors[3], floors[6]])],
         );
         let mut rng = MazeRng::seed_from_u64(15);
-        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with(EXPAND_ELEVATOR_PREFERRED), &PresetState::empty(), &[]);
+        let result = apply_and_commit(&AddElevatorStopCountStrategy, &issue, &mut maze, &mut rng, &params_with("preferred"), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         let indices: Vec<usize> = elevator_groups(&maze)[0].stops.iter().filter_map(|&n| maze.field.level_index_of(n)).collect();
         assert!(indices.contains(&6), "the one outside floor must be used first");

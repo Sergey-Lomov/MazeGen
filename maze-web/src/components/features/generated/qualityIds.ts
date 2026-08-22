@@ -185,6 +185,8 @@ export const PARAM_IDS = [
   "connection_mode",
   "count",
   "count_incoming",
+  "cross_floor_balance",
+  "cross_floor_mode",
   "cycle_kind",
   "desired_length",
   "direction",

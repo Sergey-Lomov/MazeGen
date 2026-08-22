@@ -18,6 +18,11 @@ pub enum ParamKindDto {
     Bool { default: bool },
     Enum { options: Vec<&'static str>, default: &'static str },
     Interval { default_min: f64, default_max: f64, min: f64, max: f64 },
+    /// A fixed 5-value priority enum between two candidate groups — see
+    /// `maze_core::repair::PriorityLevel`'s own doc comment. Rendered by the web UI with one
+    /// shared, hardcoded-once set of labels/explanations (`priority.*` i18n keys), not per-param
+    /// entries the way a plain `Enum` needs (GitHub issue #381 follow-up).
+    Priority { default: &'static str },
     /// A split-pattern list (GitHub issue #247) — signals the web UI to render the dedicated
     /// pattern-list dialog instead of a generic input. Value is carried as a JSON-serialized
     /// `Vec<SplitPatternDto>` string in the check/strategy's own `params` map (the same wire shape

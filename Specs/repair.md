@@ -33,6 +33,11 @@ pub enum StrategyParamKind {
     // desired_length, GitHub issue #212). default_min/default_max seed the UI slider's own
     // starting range; min/max bound what a config override may set either endpoint to.
     Interval { default_min: f64, default_max: f64, min: f64, max: f64 },
+    // A fixed 5-value priority enum (PriorityLevel) between two candidate groups (GitHub issue
+    // #381 follow-up). Distinct from a plain Enum so the web UI renders every occurrence with one
+    // shared, hardcoded-once set of 5 labels/explanations instead of each param needing its own
+    // i18n entries.
+    Priority { default: PriorityLevel },
 }
 
 pub enum StrategyParamValue {
@@ -40,6 +45,7 @@ pub enum StrategyParamValue {
     Bool(bool),
     Enum(String),
     Interval(f64, f64),
+    Priority(PriorityLevel),
 }
 
 pub type StrategyParams = HashMap<&'static str, StrategyParamValue>;
@@ -50,7 +56,37 @@ pub type StrategyParams = HashMap<&'static str, StrategyParamValue>;
 - Bool: `"true"` / `"1"` → `true`, `"false"` / `"0"` → `false`; anything else → default.
 - Enum: accepted only if the value is in `options`; otherwise → default.
 - Interval: raw string is `"min,max"` (matches the web UI's own two-input serialization); each half parsed with `str::parse::<f64>` and clamped to `[min, max]` independently; a non-finite endpoint, a missing comma, or a parsed `lo > hi` all fall back to the whole param's default (`default_min`, `default_max`) — never silently swapped or clamped into a degenerate range.
+- Priority: accepted only if the raw string is one of `PriorityLevel`'s 5 `as_str()` values (`"required"`, `"preferred"`, `"indifferent"`, `"discouraged"`, `"forbidden"`); otherwise → default.
 - Keys in `overrides` that don't match any descriptor are ignored.
+
+#### PriorityLevel (shared, not a strategy)
+
+How strongly a repair strategy should prefer one of two candidate groups ("preferred" vs.
+"other") over the other when picking among feasible candidates. Which group is "preferred" and
+which is "other" is decided per call site (documented in each param's own doc comment) — the type
+itself is agnostic to that mapping.
+
+```rust
+pub enum PriorityLevel {
+    Required,    // only "preferred" is tried; the whole attempt fails if it's empty
+    Preferred,   // "preferred" first, falls back to "other" only if it's empty
+    Indifferent, // both merged into one zone and shuffled, no preference
+    Discouraged, // "other" first, falls back to "preferred" only if it's empty
+    Forbidden,   // only "other" is tried; the whole attempt fails if it's empty
+}
+```
+
+`order_zones(self, preferred: Vec<T>, other: Vec<T>, rng: &mut dyn RngCore) -> Vec<Vec<T>>` turns
+the two candidate groups into the ordered list of zones a caller should try in turn (first zone
+that yields a usable candidate wins). `Required`/`Forbidden` return a single-zone list with no
+fallback zone at all — an empty result means the whole attempt fails, not that the other group
+gets tried. `Indifferent` merges both groups into one zone and shuffles it (so a caller that
+consumes zone entries in order, not just picking one random element per zone, doesn't get a hidden
+preferred-then-other bias).
+
+Two current users, both migrated from bespoke 5-value string enums to this shared type: `MissingTeleportsStrategy`'s `unreachable_priority` ("unreachable" is preferred, "in_interval" is other — see below) and `AddElevatorStopCountStrategy`'s `expand_elevator` (floors outside the elevator's current stop range are preferred, floors inside are other).
+
+On the web side, `ParamKindDto::Priority`/TS `{ type: "priority" }` mirrors this 1:1. All `priority`-kind params share one hardcoded set of 5 labels (`resolvePriorityOptionLabel`, `priority.option.*` i18n keys in `qualityI18n/params.ts`) instead of each param needing its own `paramOptionI18n` label entries — only the per-value *explanation* text stays per-param (`paramOptionExplanationI18n`, keyed `${paramId}.${value}`), since the same priority level can mean something different in different strategies' contexts.
 
 ### RepairStrategy trait
 
@@ -1235,19 +1271,21 @@ Handles `MISSING_TELEPORTS` (see GitHub issue #211/#212) by adding the whole com
 | id | type | default | description |
 |----|------|---------|-------------|
 | `entry_pick` | Enum (`random`, `farthest_from_random`) | `random` | How a teleport's entry node is chosen — `farthest_from_random` hops from a random node to the farthest node forward-reachable from it (`farthest_reachable::farthest_from`, over the corridor-compressed `NavGraph`), same helper `FarthestEndpointsStrategy` uses. |
-| `unreachable_priority` | Float (0–100) | `1.0` | Chance (%) of preferring an exit currently unreachable from entry over one in the desired interval — see the three-set fallback below. |
+| `unreachable_priority` | Priority (`PriorityLevel`) | `indifferent` | How strongly to prefer an exit currently unreachable from entry over one in the desired interval — see the zone fallback below and `PriorityLevel` above (GitHub issue #381 follow-up; the "unreachable" set is the "preferred" group, "in_interval" is "other"). |
 | `desired_length` | Interval | `0..1000` | Tile-hop distance band (plain BFS over the raw `Graph`, **not** the `NavGraph`) an exit should fall within, measured from entry. |
 | `allow_out_of_interval` | Bool | `true` | If neither the desired-interval set nor the unreachable set yields a candidate, allow falling back to a reachable exit outside the interval instead of failing this entry. |
 | `one_way_chance` | Float (0–100) | `50.0` | Chance the reverse edge is *not* added, leaving the teleport one-directional. |
 | `attempts_limit` | Float (rounded to `usize`, min `1`) | `3.0` | How many entry candidates to try, per teleport slot, before giving up on that one slot and moving to the next (whatever was added so far still stands). |
 | `reserve_percent` | Float | `50.0` | Mirrors `MissingLoopsRandomStrategy`'s own param — target count is `ceil(missing * (1 + reserve_percent/100))`, not the strict `missing` value. |
+| `cross_floor_mode` | Enum (`forbidden`, `natural`, `manual`) | `natural` | Cross-floor policy for the exit pick (GitHub issue #381) — `forbidden` restricts every candidate set to entry's own floor; `natural` ignores floor entirely; `manual` applies `cross_floor_balance`'s own-floor/other-floor roll within whichever zone is picked. |
+| `cross_floor_balance` | Float (0.0–1.0) | `0.5` | Under `cross_floor_mode: manual` only — chance of preferring an other-floor exit over a same-floor one; `0.0`/`1.0` are hard preferences (same-floor-only / other-floor-only), no fallback to the opposite group even if it's the only one populated. |
 
 **Entry/exit selection.** For each teleport slot, an entry node is picked per `entry_pick`, then a plain forward BFS (`bfs_distances`, tile-hops, not the `NavGraph`) partitions every other feasible node into three disjoint sets:
 1. reachable, outside `[desired_min, desired_max]`
 2. reachable, inside `[desired_min, desired_max]`
 3. unreachable from entry entirely (e.g. a separate strongly-connected component upstream of entry)
 
-`unreachable_priority` rolls which of sets 2/3 is tried first; the roll's loser is tried if the winner is empty; if both are empty, set 1 is tried only when `allow_out_of_interval` is set — otherwise this entry attempt fails outright. A candidate is feasible if it isn't `entry` itself, has no existing edge from `entry`, wasn't already proposed earlier this `apply()` call, and is `directed_edge_feasible` under `preset_state`. The teleport is always oriented `entry -> exit`, regardless of which set `exit` came from — this is what lets the strategy bridge across SCCs (set 3): even an exit currently unreachable from entry becomes reachable the instant this very teleport lands.
+`unreachable_priority.order_zones(unreachable, in_interval, rng)` (set 3 preferred, set 2 other — see `PriorityLevel` above) turns sets 2/3 into an ordered zone list; each zone is tried in turn via `pick_from_set` (which also applies `cross_floor_mode`/`cross_floor_balance`'s own-floor/other-floor roll under `manual`), first zone yielding a candidate wins. If every zone from `order_zones` is exhausted with nothing picked, set 1 is tried only when `allow_out_of_interval` is set — otherwise this entry attempt fails outright. A candidate is feasible if it isn't `entry` itself, has no existing edge from `entry`, wasn't already proposed earlier this `apply()` call, is `directed_edge_feasible` under `preset_state`, and (under `cross_floor_mode: forbidden`) shares entry's floor. The teleport is always oriented `entry -> exit`, regardless of which set `exit` came from — this is what lets the strategy bridge across SCCs (set 3): even an exit currently unreachable from entry becomes reachable the instant this very teleport lands.
 
 **Reverse-direction feasibility.** `one_way_chance` decides whether the reverse (`exit -> entry`) is also requested, but that request is only honored if `directed_edge_feasible(preset_state, exit, entry)` holds — otherwise the strategy falls back to a directed-only `AddDirectedTeleport`, rather than proposing an `AddBidirectionalTeleport` whose reverse leg `preset_state` would block, which `apply_commands` would then drop as a whole (see the mutation-command contract above) without the strategy's own `added` count reflecting the loss.
 

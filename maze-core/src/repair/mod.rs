@@ -6,7 +6,7 @@ pub mod nested_dispatch;
 pub mod command;
 pub mod draft;
 
-pub use params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
+pub use params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams, PriorityLevel};
 pub use result::RepairResult;
 pub use strategy::{RepairStrategy, ErasedRepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 pub use nested_dispatch::{dispatch_weighted, WeightedCandidate, dispatch_priority};
@@ -33,6 +33,6 @@ RemoveElevatorStopStrategy,
 ElevatorStopGroupSelectStrategy, ELEVATOR_STOP_GROUP_SELECT_SLOT_FIX_TARGET,
 AddElevatorStrategy,
 AddElevatorStopStrategy, ADD_ELEVATOR_STOP_PARAM_EXISTING_REUSE_BALANCE, ADD_ELEVATOR_STOP_PARAM_ALLOW_SPAN_EXTENSION, ADD_ELEVATOR_STOP_SLOT_ADD_ELEVATOR_STRATEGY,
-AddElevatorStopCountStrategy, ADD_ELEVATOR_STOP_COUNT_PARAM_EXPAND_ELEVATOR, EXPAND_ELEVATOR_FORBIDDEN, EXPAND_ELEVATOR_DISCOURAGED, EXPAND_ELEVATOR_INDIFFERENT, EXPAND_ELEVATOR_PREFERRED, EXPAND_ELEVATOR_REQUIRED, EXPAND_ELEVATOR_OPTIONS,
+AddElevatorStopCountStrategy, ADD_ELEVATOR_STOP_COUNT_PARAM_EXPAND_ELEVATOR,
 AddElevatorHeightStopStrategy, ADD_ELEVATOR_HEIGHT_STOP_PARAM_BALANCED_GROWTH, ADD_ELEVATOR_HEIGHT_STOP_PARAM_ALLOW_INCOMPLETE, ADD_ELEVATOR_HEIGHT_STOP_PARAM_MAX_COMPACTNESS, AddElevatorStopForGapStrategy,
 VerticalPassageRegionMergeStrategy, VERTICAL_PASSAGE_REGION_MERGE_PARAM_CONNECTION_MODE, VERTICAL_PASSAGE_REGION_MERGE_PARAM_DIRECTION_BALANCE};

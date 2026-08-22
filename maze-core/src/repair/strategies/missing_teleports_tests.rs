@@ -118,7 +118,7 @@
         let mut overrides = HashMap::new();
         overrides.insert("desired_length".to_string(), "3,3".to_string());
         overrides.insert("allow_out_of_interval".to_string(), "false".to_string());
-        overrides.insert("unreachable_priority".to_string(), "0".to_string());
+        overrides.insert("unreachable_priority".to_string(), "forbidden".to_string());
         overrides.insert("reserve_percent".to_string(), "0".to_string());
         let params = build_params(
             <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
@@ -133,7 +133,7 @@
         let teleport = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).expect("one teleport must have been added");
         let dist = bfs_distances(&maze, teleport.from);
         // Since the graph was already fully connected before the teleport was added, entry can
-        // reach everything -- so unreachable_priority=0 always routes through the interval set,
+        // reach everything -- so unreachable_priority=forbidden always routes through the interval set,
         // never the unreachable/out-of-interval fallback branches.
         let dist_before_teleport = dist.get(&teleport.to).copied();
         assert!(dist_before_teleport.is_some());
@@ -359,7 +359,7 @@
     #[test]
     fn allow_out_of_interval_falls_back_to_an_out_of_range_exit_when_nothing_else_qualifies() {
         // 1x5 corridor, desired_length pinned to an interval no node can ever satisfy (min=max=99
-        // on a graph whose farthest possible tile-hop distance is 4) and unreachable_priority=0
+        // on a graph whose farthest possible tile-hop distance is 4) and unreachable_priority=forbidden
         // on a single connected component (so the unreachable set is always empty too) -- the
         // only way apply() can still succeed is by falling through to set 1 (out_of_interval),
         // which requires allow_out_of_interval=true.
@@ -377,7 +377,7 @@
         let mut overrides = HashMap::new();
         overrides.insert("desired_length".to_string(), "99,99".to_string());
         overrides.insert("allow_out_of_interval".to_string(), "true".to_string());
-        overrides.insert("unreachable_priority".to_string(), "0".to_string());
+        overrides.insert("unreachable_priority".to_string(), "forbidden".to_string());
         overrides.insert("reserve_percent".to_string(), "0".to_string());
         let params = build_params(
             <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
@@ -410,7 +410,7 @@
         let mut overrides = HashMap::new();
         overrides.insert("desired_length".to_string(), "99,99".to_string());
         overrides.insert("allow_out_of_interval".to_string(), "false".to_string());
-        overrides.insert("unreachable_priority".to_string(), "0".to_string());
+        overrides.insert("unreachable_priority".to_string(), "forbidden".to_string());
         overrides.insert("reserve_percent".to_string(), "0".to_string());
         let params = build_params(
             <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
@@ -428,7 +428,7 @@
     fn unreachable_priority_bridges_a_separate_strongly_connected_component() {
         // Two disjoint 1x3 corridors (component A: nodes 0-2, component B: nodes 3-5), no edges
         // between them at all -- this is exactly the scenario MissingTeleportsStrategy's own doc
-        // comment describes as its purpose (bridging separate SCCs). unreachable_priority=100
+        // comment describes as its purpose (bridging separate SCCs). unreachable_priority=required
         // forces every pick_exit call to always try the unreachable set first; since it's never
         // empty here (the other component's 3 nodes are always unreachable from any entry), the
         // resulting teleport must land on a node in the OTHER component from its entry.
@@ -447,7 +447,7 @@
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
         let mut overrides = HashMap::new();
-        overrides.insert("unreachable_priority".to_string(), "100".to_string());
+        overrides.insert("unreachable_priority".to_string(), "required".to_string());
         overrides.insert("reserve_percent".to_string(), "0".to_string());
         let params = build_params(
             <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
@@ -467,4 +467,123 @@
         let from_in_b = component_b.contains(&teleport.from);
         let to_in_a = component_a.contains(&teleport.to);
         assert!((from_in_a && to_in_b) || (from_in_b && to_in_a), "teleport must cross between the two separate components, not land within the entry's own component");
+    }
+
+    #[test]
+    fn unreachable_priority_preferred_falls_back_to_in_interval_when_unreachable_is_empty() {
+        // Fully-connected grid -- every node is BFS-reachable from any entry, so the "unreachable"
+        // set `PriorityLevel::Preferred` favors is always empty and `pick_exit` must fall back to
+        // the "in_interval" set on every attempt, exercising `order_zones`'s `[preferred, other]`
+        // fallback ordering end-to-end (only unit-tested in isolation in `params.rs` otherwise).
+        let mut maze = maze_grid(5);
+        let mut overrides = HashMap::new();
+        overrides.insert("unreachable_priority".to_string(), "preferred".to_string());
+        overrides.insert("reserve_percent".to_string(), "0".to_string());
+        let params = build_params(
+            <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
+            Some(&overrides),
+        );
+
+        let issue = missing_issue(3);
+        let mut rng = MazeRng::seed_from_u64(5);
+        let result = apply_and_commit(&MissingTeleportsStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }), "must succeed via the in_interval fallback, since no node is ever unreachable on a fully-connected grid");
+        assert!(maze.graph.edges().any(|e| e.kind == EdgeKind::Teleport));
+    }
+
+    fn two_level_maze() -> (Maze<SquareTessellation>, crate::space::LevelId, crate::space::LevelId) {
+        let mut ids = IdGenerator::new();
+        let field_a = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let field_b = crate::space::Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let mut mf: MultiLevelField<SquareTessellation> = MultiLevelField::new([field_a]);
+        let level_a = mf.levels_ordered().next().unwrap();
+        let level_b = mf.add_level(field_b);
+        let mut g = Graph::new();
+        for node in mf.all_node_ids() { g.add_node(node); }
+        (Maze::new(mf, g), level_a, level_b)
+    }
+
+    #[test]
+    fn cross_floor_mode_forbidden_never_crosses_floors() {
+        let (mut maze, level_a, level_b) = two_level_maze();
+        let issue = MissingTeleportsIssue::new_from_check("min_teleport_count", vec![(RepairArea::WholeMaze, 10)]);
+        let mut overrides = HashMap::new();
+        overrides.insert("cross_floor_mode".to_string(), "forbidden".to_string());
+        overrides.insert("reserve_percent".to_string(), "0".to_string());
+        let params = build_params(
+            <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
+            Some(&overrides),
+        );
+        let mut rng = MazeRng::seed_from_u64(9);
+        let result = apply_and_commit(&MissingTeleportsStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert!(maze.graph.edges().any(|e| e.kind == EdgeKind::Teleport));
+        for edge in maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport) {
+            let from_level = maze.field.level_of(edge.from);
+            let to_level = maze.field.level_of(edge.to);
+            assert_eq!(from_level, to_level, "forbidden mode must never place a teleport across floors");
+            assert!(from_level == Some(level_a) || from_level == Some(level_b));
+        }
+    }
+
+    #[test]
+    fn cross_floor_mode_manual_balance_zero_behaves_like_forbidden() {
+        let (mut maze, _level_a, _level_b) = two_level_maze();
+        let issue = MissingTeleportsIssue::new_from_check("min_teleport_count", vec![(RepairArea::WholeMaze, 10)]);
+        let mut overrides = HashMap::new();
+        overrides.insert("cross_floor_mode".to_string(), "manual".to_string());
+        overrides.insert("cross_floor_balance".to_string(), "0".to_string());
+        overrides.insert("reserve_percent".to_string(), "0".to_string());
+        let params = build_params(
+            <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
+            Some(&overrides),
+        );
+        let mut rng = MazeRng::seed_from_u64(13);
+        let result = apply_and_commit(&MissingTeleportsStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert!(maze.graph.edges().any(|e| e.kind == EdgeKind::Teleport));
+        for edge in maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport) {
+            assert_eq!(maze.field.level_of(edge.from), maze.field.level_of(edge.to), "balance=0 must behave as a hard same-floor-only preference, never falling back cross-floor");
+        }
+    }
+
+    #[test]
+    fn cross_floor_mode_manual_balance_one_always_crosses_floors() {
+        let (mut maze, _level_a, _level_b) = two_level_maze();
+        let issue = MissingTeleportsIssue::new_from_check("min_teleport_count", vec![(RepairArea::WholeMaze, 10)]);
+        let mut overrides = HashMap::new();
+        overrides.insert("cross_floor_mode".to_string(), "manual".to_string());
+        overrides.insert("cross_floor_balance".to_string(), "1".to_string());
+        overrides.insert("reserve_percent".to_string(), "0".to_string());
+        let params = build_params(
+            <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
+            Some(&overrides),
+        );
+        let mut rng = MazeRng::seed_from_u64(17);
+        let result = apply_and_commit(&MissingTeleportsStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert!(maze.graph.edges().any(|e| e.kind == EdgeKind::Teleport));
+        for edge in maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport) {
+            assert_ne!(maze.field.level_of(edge.from), maze.field.level_of(edge.to), "balance=1 must behave as a hard other-floor-only preference, never falling back same-floor");
+        }
+    }
+
+    #[test]
+    fn cross_floor_mode_natural_ignores_floor_entirely() {
+        // Not a strict behavioral assertion beyond "it still works" -- natural is the pre-existing
+        // default behavior (floor never consulted), this just pins that the new param plumbing
+        // doesn't accidentally change it.
+        let (mut maze, _level_a, _level_b) = two_level_maze();
+        let issue = MissingTeleportsIssue::new_from_check("min_teleport_count", vec![(RepairArea::WholeMaze, 4)]);
+        let mut overrides = HashMap::new();
+        overrides.insert("cross_floor_mode".to_string(), "natural".to_string());
+        overrides.insert("reserve_percent".to_string(), "0".to_string());
+        let params = build_params(
+            <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
+            Some(&overrides),
+        );
+        let mut rng = MazeRng::seed_from_u64(21);
+        let result = apply_and_commit(&MissingTeleportsStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert!(maze.graph.edges().any(|e| e.kind == EdgeKind::Teleport));
     }

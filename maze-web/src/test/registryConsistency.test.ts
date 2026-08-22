@@ -121,6 +121,27 @@ describeIfWasmBuilt("wasm registry vs web i18n consistency", () => {
     }
   });
 
+  // `priority`-kind params (GitHub issue #381 follow-up) share one hardcoded label set
+  // (`resolvePriorityOptionLabel`) instead of per-param `paramOptionI18n` entries, but each
+  // param's own explanation text is still per-param -- this is the `priority`-kind analogue of
+  // the `enum`-kind completeness check above.
+  const PRIORITY_LEVELS = ["required", "preferred", "indifferent", "discouraged", "forbidden"];
+  it("every priority-kind param has a paramOptionExplanationI18n entry for all 5 levels", () => {
+    for (const [ownerKind, entity] of [
+      ...checks.map((c) => ["check", c] as const),
+      ...strategies.map((s) => ["strategy", s] as const),
+    ]) {
+      for (const param of entity.params) {
+        if (param.kind.type !== "priority") continue;
+        for (const level of PRIORITY_LEVELS) {
+          const key = `${param.id}.${level}`;
+          expect(paramOptionExplanationI18n[key], `missing paramOptionExplanationI18n entry for "${key}" (${ownerKind} "${entity.id}")`).toBeDefined();
+          expect(paramOptionExplanationI18n[key]().length).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
   // Regression guard for `resolveParamDescription`/`resolveParamOptionExplanation`'s per-strategy
   // override registries (`paramDescriptionOverrideI18n`/`paramOptionExplanationOverrideI18n` in
   // qualityI18n.ts) -- a typo in an override key, or a strategy id rename on the Rust side without
