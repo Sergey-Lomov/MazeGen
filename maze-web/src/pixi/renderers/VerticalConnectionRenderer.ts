@@ -21,17 +21,26 @@ export type VerticalMarkerStyle = {
   size: number;
 };
 
+/** Same field shape as `DecorativeLineStyle` (`imageExportTypes.ts`), kept as its own type for the
+ *  same "no store-layer dependency" reason as `VerticalMarkerStyle` (GitHub issue #428). A
+ *  decorative pictogram's stroke — no fill/border/gap/shape concept, unlike a marker. */
+export type VerticalDecorativeLineStyle = {
+  lineColor: number;
+  lineWidth: number;
+  size: number;
+};
+
 /** Style knobs for `VerticalConnectionRenderer.render` — see `VerticalSettingsFields`'s own doc
  *  comment (`storeTypes.ts`, GitHub issue #347) for the settings this is built from. Three
  *  independent marker/arrow styles (GitHub issue #347 three-section follow-up), by how a marker
  *  actually reads on the map: `twoWayPassageMarker` for a two-way `VerticalPassage`
  *  (`marker.filled === true`), `oneWayPassageMarker` for a one-way `VerticalPassage`
  *  (`marker.filled === false`, both ends), `elevatorMarker` for every `Elevator` (always two-way by
- *  construction, but its own separate section/look). `Elevator` always draws as `elevatorMarker`
- *  regardless of `style` — no decorative treatment of its own, per the issue's own rationale (no
- *  natural "decorative elevator" illustration); its own `"decorative"`/`"realistic"` treatment is a
- *  follow-up. `"realistic"` has no drawing of its own yet (reserved enum value) and falls back to
- *  the same plain marker shape `"abstract"` draws. */
+ *  construction, but its own separate section/look). `"realistic"` has no drawing of its own yet
+ *  (reserved enum value) and falls back to the same plain marker shape `"abstract"` draws.
+ *  `"decorative"` (GitHub issue #428) draws `decorativeStairsTwoWay`/`decorativeStairsOneWay`/
+ *  `decorativeElevator` instead — a separate, line-only style surface (see
+ *  `VerticalDecorativeLineStyle`), replacing the marker-shaped fields above for that style only. */
 export type VerticalConnectionStyle = {
   style: "abstract" | "decorative" | "realistic";
   twoWayPassageMarker: VerticalMarkerStyle;
@@ -58,6 +67,14 @@ export type VerticalConnectionStyle = {
   elevatorArrowSize: number;
   elevatorArrowStyle: OneWayPattern;
   elevatorArrowCornerStyle: "round" | "miter";
+  decorativeStairsTwoWay: VerticalDecorativeLineStyle;
+  decorativeStairsOneWay: VerticalDecorativeLineStyle;
+  decorativeElevator: VerticalDecorativeLineStyle;
+  decorativeStairsArrowColor: number;
+  /** Direction-arrow size, as a fraction of the stairs icon's own half-width (0-1) — same
+   *  convention as `twoWayArrowSize`. */
+  decorativeStairsArrowSize: number;
+  decorativeStairsAccentColor: number;
 };
 
 /** Each pattern's own tip reach, as a fraction of its `size` param (`wallUtils.ts`) — none of the
@@ -146,26 +163,131 @@ function patternMidpointOffset(pattern: OneWayPattern): number {
   return 0;
 }
 
-/** Draws a small flight-of-stairs pictogram centered at `(cx, cy)`, radius `r` — the "decorative"
- *  treatment for a `VerticalPassage` (GitHub issue #347): four ascending step rectangles read as
- *  actual stairs on a printed floor image the viewer mentally connects to the adjacent floor's own
- *  print, as opposed to the plain "cut an opening here" marker meant for a physical single-sheet
- *  build. Drawn as one filled path (a staircase silhouette), not four separate rectangles, so a
- *  single fill color/gap ring treats it exactly like any other marker shape. */
-function drawStairsIcon(g: Graphics, cx: number, cy: number, r: number): void {
-  const steps = 4;
-  const w = (r * 2) / steps;
-  const h = (r * 2) / steps;
+/** Number of ascending steps a decorative stairs pictogram draws — shared by the icon itself and
+ *  `drawStairsArrow` (GitHub issue #428), which needs the same step geometry to lay its own
+ *  parallel line along the stairs' own diagonal run. */
+const STAIRS_STEPS = 3;
+
+/** Returns the corner points of a stairs zigzag centered at `(cx, cy)`, half-width/height `r` — an
+ *  *open* polyline (GitHub issue #428: "no bottom closing edge", a real stroke-only zigzag instead of
+ *  a closed poly) that starts on a vertical riser segment (GitHub issue #428 fourth follow-up
+ *  reverted the third follow-up's horizontal-start shape back to this — a vertical riser at the
+ *  start reads better than a short horizontal landing stub at the marker's own scale); the *end*
+ *  segment is horizontal (`STAIRS_STEPS` risers interleaved with `STAIRS_STEPS - 1` horizontal
+ *  shelves nets one more riser than shelf, so the last drawn segment is a shelf, not a riser — this
+ *  asymmetry is intentional, not a bug). Shared by `drawStairsIcon` (stroking the returned path) and
+ *  `drawStairsArrow` (deriving the diagonal run's own direction from the same left/bottom/step
+ *  geometry) so the two never drift apart. */
+function stairsZigzagPoints(cx: number, cy: number, r: number): number[] {
+  const w = (r * 2) / STAIRS_STEPS;
+  const h = (r * 2) / STAIRS_STEPS;
   const left = cx - r;
   const bottom = cy + r;
   const points: number[] = [left, bottom];
-  for (let i = 0; i < steps; i++) {
+  for (let i = 0; i < STAIRS_STEPS; i++) {
     const x = left + i * w;
     const yTop = bottom - (i + 1) * h;
     points.push(x, yTop, x + w, yTop);
   }
-  points.push(left + steps * w, bottom);
-  g.poly(points);
+  return points;
+}
+
+/** Draws the decorative stairs pictogram as an open stroked zigzag, `(cx, cy)`-centered, half-size
+ *  `r` (GitHub issue #428) — see `stairsZigzagPoints`. `lineWidth`/`color` are the caller's own
+ *  `decorativeStairsTwoWay`/`decorativeStairsOneWay` line style; stroke only, no fill and no closing
+ *  edge back along the bottom (unlike the pre-#428 filled-silhouette version). */
+function drawStairsIcon(g: Graphics, cx: number, cy: number, r: number, lineWidth: number, color: number): void {
+  const points = stairsZigzagPoints(cx, cy, r);
+  g.moveTo(points[0], points[1]);
+  for (let i = 2; i < points.length; i += 2) g.lineTo(points[i], points[i + 1]);
+  g.stroke({ color, width: lineWidth, join: "round", cap: "round" });
+}
+
+/** Draws the decorative elevator pictogram, `(cx, cy)`-centered, half-size `r` (GitHub issue #428):
+ *  a stroked square shaft outline, a vertical doors-split line through its center, and two short
+ *  cable strokes above its top edge — all in the caller's own `decorativeElevator` line style, no
+ *  fill (an elevator has no natural "decorative" illustration beyond this schematic, mirrored from
+ *  the issue's own no-decorative-elevator rationale for the marker-shaped treatment — see
+ *  `VerticalConnectionStyle`'s doc comment). Never gets a direction arrow — see `render`. */
+function drawElevatorIcon(g: Graphics, cx: number, cy: number, r: number, lineWidth: number, color: number): void {
+  const top = cy - r;
+  const bottom = cy + r;
+  const left = cx - r;
+  g.rect(left, top, r * 2, r * 2);
+  g.moveTo(cx, top).lineTo(cx, bottom);
+  const cableSpread = r * 0.4;
+  const cableTop = top - r * 0.6;
+  g.moveTo(cx - cableSpread, cableTop).lineTo(cx - cableSpread, top);
+  g.moveTo(cx + cableSpread, cableTop).lineTo(cx + cableSpread, top);
+  g.stroke({ color, width: lineWidth, join: "round", cap: "round" });
+}
+
+/** Draws the decorative stairs' own direction arrow (GitHub issue #428) — a dedicated primitive, not
+ *  `OneWayPattern` (an arrowhead pattern reads as a point indicator; this needs to read as
+ *  "direction of travel along the stairs' own diagonal run" instead): a straight line drawn parallel
+ *  to the stairs' own diagonal run (bottom-left to top-right, same overall run `stairsZigzagPoints`
+ *  traces), offset above it (screen-up from the line itself), with a small arrowhead at whichever end
+ *  `pointsUp` selects — mirroring `marker.direction` (GitHub issue #428 third follow-up: "the arrow
+ *  must point toward the *other* floor this marker's own connection leads to", the same up/down
+ *  reasoning `render`'s own marker-shape branch already applies via `dys`/`marker.direction`, not
+ *  always the diagonal's own "up" end as the very first decorative-style version did). `crossedOut`
+ *  (GitHub issue #428, one-way arrival end) still draws the ordinary arrowhead at the tip — GitHub
+ *  issue #428 fifth follow-up: "the crossed-out arrow was missing its own head entirely" — plus a
+ *  short perpendicular tick placed just past the tip, in the direction the head itself points
+ *  (`"->|"`, GitHub issue #428 seventh follow-up moved this from just short of the tip, where it
+ *  read as sitting at the head's own base) — mirrors `oneWayAccentColor`'s own from/to visual
+ *  distinction, adapted to a line icon that has no fill/border to split. */
+function drawStairsArrow(g: Graphics, cx: number, cy: number, r: number, size: number, color: number, lineWidth: number, crossedOut: boolean, pointsUp: boolean): void {
+  // Offset large enough to clear the stairs icon's own top-most riser (not just nudge past its
+  // centerline) — GitHub issue #428 fourth follow-up: "arrow currently runs right over the steps,
+  // needs to sit clearly above them".
+  const offset = r * 1.1;
+  const halfLen = r * size;
+  // The stairs' own diagonal runs bottom-left to top-right at 45°-equivalent slope `dy/dx = -1`
+  // over its own bounding box (`stairsZigzagPoints`'s first/last points) — normalized here since
+  // the box itself may be non-square in principle (r is shared for both axes today, kept general).
+  const dx = 1 / Math.SQRT2;
+  const dy = -1 / Math.SQRT2;
+  // Perpendicular unit vector pointing screen-up (negative Y): of the two unit vectors
+  // perpendicular to `(dx, dy)` — `(-dy, dx)` and `(dy, -dx)` — only `(dy, -dx)` has a negative Y
+  // component here (evaluates to `(-0.707, -0.707)`, up-and-left); the previous `(-dy, dx)` pointed
+  // down-right instead, which combined with too-small `offset` was why the arrow used to run right
+  // through the steps instead of clearing them (GitHub issue #428 fourth follow-up fix).
+  const px = dy;
+  const py = -dx;
+  const ox = cx + px * offset;
+  const oy = cy + py * offset;
+  const x0 = ox - dx * halfLen;
+  const y0 = oy - dy * halfLen;
+  const x1 = ox + dx * halfLen;
+  const y1 = oy + dy * halfLen;
+  g.moveTo(x0, y0).lineTo(x1, y1);
+  // The head sits at the diagonal's "up" end (`x1, y1`) when `pointsUp`, at its "down" end (`x0, y0`)
+  // otherwise — `hx, hy` the tip, `hdx, hdy` the direction pointing away from the line's own body
+  // toward that tip, so the back-vector math below reads correctly for either end.
+  const hx = pointsUp ? x1 : x0;
+  const hy = pointsUp ? y1 : y0;
+  const hdx = pointsUp ? dx : -dx;
+  const hdy = pointsUp ? dy : -dy;
+  const headLen = halfLen * 0.7;
+  const headAngle = Math.PI / 6;
+  const back1x = hx - (hdx * Math.cos(headAngle) - hdy * Math.sin(headAngle)) * headLen;
+  const back1y = hy - (hdy * Math.cos(headAngle) + hdx * Math.sin(headAngle)) * headLen;
+  const back2x = hx - (hdx * Math.cos(headAngle) + hdy * Math.sin(headAngle)) * headLen;
+  const back2y = hy - (hdy * Math.cos(headAngle) - hdx * Math.sin(headAngle)) * headLen;
+  g.moveTo(hx, hy).lineTo(back1x, back1y);
+  g.moveTo(hx, hy).lineTo(back2x, back2y);
+  if (crossedOut) {
+    // Sits just past the tip, in the direction the arrowhead itself points (GitHub issue #428
+    // seventh follow-up: "->|" — the tick is what the arrow runs *into*, not a mark back at the
+    // head's own base) — a small step forward from `hx, hy` along the shaft direction.
+    const tickGap = halfLen * 0.25;
+    const tickCx = hx + hdx * tickGap;
+    const tickCy = hy + hdy * tickGap;
+    const tickLen = halfLen * 0.5;
+    g.moveTo(tickCx - px * tickLen, tickCy - py * tickLen).lineTo(tickCx + px * tickLen, tickCy + py * tickLen);
+  }
+  g.stroke({ color, width: lineWidth, join: "round", cap: "round" });
 }
 
 /** Renders `VerticalPassage`/`Elevator` markers for one mode renderer (GitHub issue #347) — its own
@@ -178,9 +300,10 @@ function drawStairsIcon(g: Graphics, cx: number, cy: number, r: number): void {
  *  arrow on top pointing at the other floor this connection leads to (`marker.direction`,
  *  screen-up/down — there's no geometric "up/down" in a single 2D floor image, so the arrow always
  *  points straight up or down on screen regardless of the marker's own shape/rotation). `filled`
- *  distinguishes a one-way `VerticalPassage`'s departure end (solid fill + solid arrow) from its
- *  arrival-only end (empty/floor-colored fill + outline-only arrow) — see `VerticalConnectionMarker`'s
- *  own doc comment. */
+ *  distinguishes a two-way `VerticalPassage`/`Elevator` (`filled: true`, ordinary marker look) from a
+ *  one-way `VerticalPassage`'s two ends (`filled: false` on both) — see the `oneWay` branch further
+ *  down for the departure/arrival accent-color treatment those two ends actually get, and
+ *  `VerticalConnectionMarker`'s own doc comment for the `arrowFilled` field that tells them apart. */
 export class VerticalConnectionRenderer {
   private readonly g: Graphics;
 
@@ -222,6 +345,14 @@ export class VerticalConnectionRenderer {
     }
 
     for (const marker of data.markers) {
+      const decorative = data.style.style === "decorative";
+      const group = groupByPos.get(`${marker.pos[0]},${marker.pos[1]}`)!;
+
+      if (decorative) {
+        this.renderDecorativeMarker(marker, group, data.style, data.interactive);
+        continue;
+      }
+
       const settings =
         marker.kind === "elevator" ? data.style.elevatorMarker : marker.filled ? data.style.twoWayPassageMarker : data.style.oneWayPassageMarker;
       const [arrowColor, arrowSizeFraction, arrowStyle, arrowCornerStyle] =
@@ -230,8 +361,6 @@ export class VerticalConnectionRenderer {
           : marker.filled
             ? [data.style.twoWayArrowColor, data.style.twoWayArrowSize, data.style.twoWayArrowStyle, data.style.twoWayArrowCornerStyle] as const
             : [data.style.oneWayArrowColor, data.style.oneWayArrowSize, data.style.oneWayArrowStyle, data.style.oneWayArrowCornerStyle] as const;
-      const decorative = marker.kind === "vertical_passage" && data.style.style === "decorative";
-      const group = groupByPos.get(`${marker.pos[0]},${marker.pos[1]}`)!;
       const radius = settings.size * TILE_SIZE;
       let cx = marker.pos[0];
       const cy = marker.pos[1];
@@ -245,22 +374,24 @@ export class VerticalConnectionRenderer {
       const gapWidth = settings.gapWidth ?? 0;
 
       const drawShape = (r: number) => {
-        if (decorative) drawStairsIcon(this.g, cx, cy, r);
-        else drawMarkerShape(this.g, settings.shape, cx, cy, r, rounded);
+        drawMarkerShape(this.g, settings.shape, cx, cy, r, rounded);
       };
 
       // A one-way `VerticalPassage`'s two ends (`filled: false`, GitHub issue #337/#347/fourth-fifth
-      // follow-up redesign) now read as a *tinted* variant of the two-way/elevator look instead of
-      // an empty outline-only circle: the arrival end (`arrowFilled: false`) draws the ordinary
-      // ("primary") fill with its border recolored to `oneWayAccentColor` ("secondary", a dark
-      // accent marking "you can enter here"); the departure end (`arrowFilled: true`) draws its
-      // *entire* fill in that same secondary color, no separate border color, so a one-way
-      // passage's exit reads as a solid dark twin of the ordinary marker. Both ends' arrows are now
-      // always solid-filled — the old outline-arrow-on-arrival treatment is redundant with the new
-      // border-color distinction.
+      // follow-up redesign, sixth follow-up swapped which end gets which treatment — see below) now
+      // read as a *tinted* variant of the two-way/elevator look instead of an empty outline-only
+      // circle: the departure end (`arrowFilled: true`, "from" — where you leave this floor) draws
+      // the ordinary ("primary") fill with its border recolored to `oneWayAccentColor` ("secondary",
+      // a dark accent marking "you can leave from here"); the arrival end (`arrowFilled: false`,
+      // "to" — where you'd arrive, but this floor has no way back out) draws its *entire* fill in
+      // that same secondary color, no separate border color, so a one-way passage's arrival-only end
+      // reads as a solid dark twin of the ordinary marker — sealed off, matching the sixth follow-up's
+      // "arrival end fully darkened, departure end light with a border" correction. Both ends' arrows
+      // are now always solid-filled — the old outline-arrow-on-arrival treatment is redundant with the
+      // new border-color distinction.
       const oneWay = marker.kind === "vertical_passage" && !marker.filled;
       const accentColor = data.style.oneWayAccentColor;
-      const fillColor = oneWay && marker.arrowFilled ? accentColor : settings.fillColor;
+      const fillColor = oneWay && !marker.arrowFilled ? accentColor : settings.fillColor;
       const borderColor = oneWay ? accentColor : (settings.borderColor ?? settings.fillColor);
 
       if (gapWidth > 0) {
@@ -329,16 +460,78 @@ export class VerticalConnectionRenderer {
         }
       }
 
-      const markerInteractive = typeof data.interactive === "function" ? data.interactive(marker) : (data.interactive ?? false);
-      if (markerInteractive && marker.targetFloorIndex !== undefined) {
-        const targetFloorIndex = marker.targetFloorIndex;
-        const hit = new Graphics().circle(cx, cy, radius + borderWidth + gapWidth).fill({ color: 0, alpha: 0 });
-        hit.eventMode = "static";
-        hit.cursor = "pointer";
-        hit.on("pointertap", () => navigateToFloor(targetFloorIndex));
-        this.g.addChild(hit);
-      }
+      this.wireInteractivity(marker, data.interactive, cx, cy, radius + borderWidth + gapWidth);
     }
+  }
+
+  /** Wires the same click-to-switch-floor hit area both the marker-shape and decorative branches of
+   *  `render` need (GitHub issue #428 factored this out of the marker-shape branch's own inline copy)
+   *  — see `render`'s own `interactive` param doc comment for the gating rules. */
+  private wireInteractivity(
+    marker: VerticalConnectionMarker,
+    interactive: boolean | ((marker: VerticalConnectionMarker) => boolean) | undefined,
+    cx: number,
+    cy: number,
+    hitRadius: number,
+  ): void {
+    const markerInteractive = typeof interactive === "function" ? interactive(marker) : (interactive ?? false);
+    if (!markerInteractive || marker.targetFloorIndex === undefined) return;
+    const targetFloorIndex = marker.targetFloorIndex;
+    const hit = new Graphics().circle(cx, cy, hitRadius).fill({ color: 0, alpha: 0 });
+    hit.eventMode = "static";
+    hit.cursor = "pointer";
+    hit.on("pointertap", () => navigateToFloor(targetFloorIndex));
+    this.g.addChild(hit);
+  }
+
+  /** Renders one marker in the "decorative" style (GitHub issue #428) — a line-only pictogram
+   *  (`drawStairsIcon`/`drawElevatorIcon`) instead of the marker-shape branch's filled shape, using
+   *  `decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator`'s own `lineColor`/
+   *  `lineWidth`/`size` fields (no fill/border/gap/shape concept for a stroke-only icon). Only a
+   *  `VerticalPassage` draws a direction arrow (`drawStairsArrow`) — a two-way passage draws it in
+   *  `decorativeStairsArrowColor`; a one-way passage draws it in `decorativeStairsAccentColor` at
+   *  both ends, crossed-out at the arrival (`arrowFilled: false`) end. `Elevator` never draws an
+   *  arrow, decorative or not (see `VerticalConnectionStyle`'s own doc comment). Position-grouping
+   *  (same-cell spread) mirrors the marker-shape branch's own logic, sized off each icon's own
+   *  `size` instead of a marker's `borderWidth`/`gapWidth` (neither exists here). */
+  private renderDecorativeMarker(
+    marker: VerticalConnectionMarker,
+    group: VerticalConnectionMarker[],
+    style: VerticalConnectionStyle,
+    interactive: boolean | ((marker: VerticalConnectionMarker) => boolean) | undefined,
+  ): void {
+    const lineStyle =
+      marker.kind === "elevator" ? style.decorativeElevator : marker.filled ? style.decorativeStairsTwoWay : style.decorativeStairsOneWay;
+    const radius = lineStyle.size * TILE_SIZE;
+    let cx = marker.pos[0];
+    const cy = marker.pos[1];
+    if (group.length > 1) {
+      const slot = group.indexOf(marker);
+      cx += (slot - (group.length - 1) / 2) * radius * 2.2;
+    }
+
+    if (marker.kind === "elevator") {
+      drawElevatorIcon(this.g, cx, cy, radius, lineStyle.lineWidth, lineStyle.lineColor);
+      this.wireInteractivity(marker, interactive, cx, cy, radius);
+      return;
+    }
+
+    drawStairsIcon(this.g, cx, cy, radius, lineStyle.lineWidth, lineStyle.lineColor);
+
+    if (marker.direction) {
+      const oneWay = !marker.filled;
+      const arrowColor = oneWay ? style.decorativeStairsAccentColor : style.decorativeStairsArrowColor;
+      const crossedOut = oneWay && !marker.arrowFilled;
+      // `marker.direction` is the floor this marker's own connection leads to (GitHub issue #428
+      // third follow-up) — same up/down reasoning `render`'s own marker-shape branch already applies
+      // (`dys`, above): `"up"` points the arrowhead at the diagonal's own "up" end, `"down"` at its
+      // "down" end. `"both"` never reaches a `VerticalPassage` marker (only `Elevator`, which draws
+      // no decorative arrow at all — see this method's own doc comment), so it's not handled here.
+      const pointsUp = marker.direction === "up";
+      drawStairsArrow(this.g, cx, cy, radius, style.decorativeStairsArrowSize, arrowColor, lineStyle.lineWidth, crossedOut, pointsUp);
+    }
+
+    this.wireInteractivity(marker, interactive, cx, cy, radius);
   }
 
   destroy(): void {

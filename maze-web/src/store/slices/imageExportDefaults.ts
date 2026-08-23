@@ -114,6 +114,22 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
   elevatorArrowSize: 0.75,
   elevatorArrowStyle: "triangle",
   elevatorArrowCornerStyle: "round",
+  // `decorative*` fields (GitHub issue #428) — the "decorative" style's own line-only pictogram
+  // settings, independent of the marker-shaped fields above. Same `canvas.vertical.default` line
+  // color for the two stairs sections and the elevator, same "matches the editor's own default look
+  // until changed" rationale as every other section's own defaults.
+  // Line width 2 (GitHub issue #428 fifth follow-up, lowered from 3) — a thinner default reads
+  // better for a stroke-only pictogram than the marker-shape sub-groups' own default border width.
+  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
+  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
+  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
+  // Two-way arrow defaults to the same color as the stairs line itself (GitHub issue #428 fourth
+  // follow-up: "two-way arrow should default to the stairs' own color", not a separate gray) — the
+  // one-way arrow still uses the dedicated accent color (`decorativeStairsAccentColor`) below, since
+  // that distinction is the whole point of the one-way from/to treatment.
+  decorativeStairsArrowColor: canvas.vertical.default,
+  decorativeStairsArrowSize: 0.75,
+  decorativeStairsAccentColor: ONE_WAY_ACCENT_DARK,
 };
 
 /** Shared with `projectExport/validate.ts`'s recovery defaults for old/malformed project files

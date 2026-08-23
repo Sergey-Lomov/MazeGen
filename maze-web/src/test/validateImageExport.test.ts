@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateVerticalSettingsFields } from "../store/projectExport/validateImageExport";
+import { validateVerticalSettingsFields, validateDecorativeLineStyle } from "../store/projectExport/validateImageExport";
 import { DEFAULT_VERTICAL_SETTINGS } from "../store/slices/imageExportDefaults";
 
 describe("validateVerticalSettingsFields", () => {
@@ -83,5 +83,67 @@ describe("validateVerticalSettingsFields", () => {
     const result = validateVerticalSettingsFields({}, "path", DEFAULT_VERTICAL_SETTINGS);
     expect(result.twoWayPassageMarker).toEqual(DEFAULT_VERTICAL_SETTINGS.twoWayPassageMarker);
     expect(result.oneWayPassageMarker).toEqual(DEFAULT_VERTICAL_SETTINGS.oneWayPassageMarker);
+  });
+
+  // Decorative line style fields (GitHub issue #428)
+  it("reads decorativeStairsTwoWay/decorativeStairsOneWay/decorativeElevator as-is when valid", () => {
+    const decorative = { lineColor: 0xabcdef, lineWidth: 4, size: 0.3 };
+    const result = validateVerticalSettingsFields(
+      { decorativeStairsTwoWay: decorative, decorativeStairsOneWay: decorative, decorativeElevator: decorative },
+      "path",
+      DEFAULT_VERTICAL_SETTINGS,
+    );
+    expect(result.decorativeStairsTwoWay).toEqual(decorative);
+    expect(result.decorativeStairsOneWay).toEqual(decorative);
+    expect(result.decorativeElevator).toEqual(decorative);
+  });
+
+  it("falls back to the default decorative line styles when the fields are absent", () => {
+    const result = validateVerticalSettingsFields({}, "path", DEFAULT_VERTICAL_SETTINGS);
+    expect(result.decorativeStairsTwoWay).toEqual(DEFAULT_VERTICAL_SETTINGS.decorativeStairsTwoWay);
+    expect(result.decorativeStairsOneWay).toEqual(DEFAULT_VERTICAL_SETTINGS.decorativeStairsOneWay);
+    expect(result.decorativeElevator).toEqual(DEFAULT_VERTICAL_SETTINGS.decorativeElevator);
+  });
+
+  it("reads decorativeStairsArrowColor/decorativeStairsArrowSize/decorativeStairsAccentColor as-is when present", () => {
+    const result = validateVerticalSettingsFields(
+      { decorativeStairsArrowColor: 0x123123, decorativeStairsArrowSize: 0.9, decorativeStairsAccentColor: 0x321321 },
+      "path",
+      DEFAULT_VERTICAL_SETTINGS,
+    );
+    expect(result.decorativeStairsArrowColor).toBe(0x123123);
+    expect(result.decorativeStairsArrowSize).toBe(0.9);
+    expect(result.decorativeStairsAccentColor).toBe(0x321321);
+  });
+
+  it("falls back to the default arrow color/size/accent color when the fields are absent", () => {
+    const result = validateVerticalSettingsFields({}, "path", DEFAULT_VERTICAL_SETTINGS);
+    expect(result.decorativeStairsArrowColor).toBe(DEFAULT_VERTICAL_SETTINGS.decorativeStairsArrowColor);
+    expect(result.decorativeStairsArrowSize).toBe(DEFAULT_VERTICAL_SETTINGS.decorativeStairsArrowSize);
+    expect(result.decorativeStairsAccentColor).toBe(DEFAULT_VERTICAL_SETTINGS.decorativeStairsAccentColor);
+  });
+});
+
+describe("validateDecorativeLineStyle", () => {
+  const fallback = { lineColor: 0x111111, lineWidth: 2, size: 0.22 };
+
+  it("reads a valid object's fields as-is", () => {
+    const result = validateDecorativeLineStyle({ lineColor: 0xff0000, lineWidth: 5, size: 0.4 }, "path", fallback);
+    expect(result).toEqual({ lineColor: 0xff0000, lineWidth: 5, size: 0.4 });
+  });
+
+  it("falls back to the given default when the value is null/undefined", () => {
+    expect(validateDecorativeLineStyle(null, "path", fallback)).toEqual(fallback);
+    expect(validateDecorativeLineStyle(undefined, "path", fallback)).toEqual(fallback);
+  });
+
+  it("falls back to the given default when the value isn't an object", () => {
+    expect(validateDecorativeLineStyle("not an object", "path", fallback)).toEqual(fallback);
+    expect(validateDecorativeLineStyle(42, "path", fallback)).toEqual(fallback);
+  });
+
+  it("fills in individually-missing fields from the fallback instead of discarding the whole object", () => {
+    const result = validateDecorativeLineStyle({ lineColor: 0xff0000 }, "path", fallback);
+    expect(result).toEqual({ lineColor: 0xff0000, lineWidth: fallback.lineWidth, size: fallback.size });
   });
 });

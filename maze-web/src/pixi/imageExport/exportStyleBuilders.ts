@@ -110,6 +110,12 @@ export function buildVerticalConnectionStyle(settings: VerticalSettingsFields, f
     elevatorArrowSize: settings.elevatorArrowSize,
     elevatorArrowStyle: settings.elevatorArrowStyle,
     elevatorArrowCornerStyle: settings.elevatorArrowCornerStyle,
+    decorativeStairsTwoWay: settings.decorativeStairsTwoWay,
+    decorativeStairsOneWay: settings.decorativeStairsOneWay,
+    decorativeElevator: settings.decorativeElevator,
+    decorativeStairsArrowColor: settings.decorativeStairsArrowColor,
+    decorativeStairsArrowSize: settings.decorativeStairsArrowSize,
+    decorativeStairsAccentColor: settings.decorativeStairsAccentColor,
   };
 }
 

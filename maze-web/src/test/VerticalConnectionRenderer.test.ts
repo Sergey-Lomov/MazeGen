@@ -12,7 +12,7 @@ vi.mock("../pixi/renderers/floorNavigation", () => ({
 // this session added (same-cell spread, arrow side-by-side offset) is only observable through the
 // exact coordinates each draw call receives, unlike most other mocked-pixi tests in this repo that
 // only assert *that* something was drawn.
-type Call = { method: "circle" | "poly" | "roundPoly" | "moveTo"; args: number[] };
+type Call = { method: "circle" | "poly" | "roundPoly" | "moveTo" | "lineTo"; args: number[] };
 type StrokeCall = { width?: number; color?: number; cap?: string; join?: string; alignment?: number };
 interface FakeGraphics {
   clear: () => FakeGraphics;
@@ -20,6 +20,7 @@ interface FakeGraphics {
   circle: (x: number, y: number, r: number) => FakeGraphics;
   poly: (points: number[]) => FakeGraphics;
   roundPoly: (x: number, y: number, radius: number, sides: number, corner: number) => FakeGraphics;
+  rect: (x: number, y: number, w: number, h: number) => FakeGraphics;
   moveTo: (x: number, y: number) => FakeGraphics;
   lineTo: (x: number, y: number) => FakeGraphics;
   fill: (arg: unknown) => FakeGraphics;
@@ -50,8 +51,9 @@ function installFakeGraphics(target: FakeGraphics): void {
   target.circle = (x, y, r) => { target.calls.push({ method: "circle", args: [x, y, r] }); return target; };
   target.poly = (points) => { target.calls.push({ method: "poly", args: points }); return target; };
   target.roundPoly = (x, y, radius, sides, corner) => { target.calls.push({ method: "roundPoly", args: [x, y, radius, sides, corner] }); return target; };
+  target.rect = () => target;
   target.moveTo = (x, y) => { target.calls.push({ method: "moveTo", args: [x, y] }); return target; };
-  target.lineTo = () => target;
+  target.lineTo = (x, y) => { target.calls.push({ method: "lineTo", args: [x, y] }); return target; };
   target.fillCalls = [];
   target.fill = (arg) => { target.fillCalls.push(arg as number); return target; };
   target.strokeCalls = [];
@@ -101,6 +103,12 @@ function baseStyle(overrides: Partial<VerticalConnectionStyle> = {}): VerticalCo
     elevatorArrowSize: 0.6,
     elevatorArrowStyle: "triangle",
     elevatorArrowCornerStyle: "round",
+    decorativeStairsTwoWay: { lineColor: 0x111111, lineWidth: 3, size: 0.22 },
+    decorativeStairsOneWay: { lineColor: 0x111111, lineWidth: 3, size: 0.22 },
+    decorativeElevator: { lineColor: 0x111111, lineWidth: 3, size: 0.22 },
+    decorativeStairsArrowColor: 0x444444,
+    decorativeStairsArrowSize: 0.6,
+    decorativeStairsAccentColor: 0x2a2a2a,
     ...overrides,
   };
 }
@@ -427,7 +435,7 @@ describe("VerticalConnectionRenderer", () => {
     },
   );
 
-  it("style 'decorative' draws a VerticalPassage as a stairs pictogram (poly, not circle) centered at its own position", () => {
+  it("style 'decorative' draws a VerticalPassage as a stairs zigzag (open polyline, not circle/poly) centered at its own position", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
     const g = (renderer as unknown as { g: FakeGraphics }).g;
@@ -438,15 +446,74 @@ describe("VerticalConnectionRenderer", () => {
     });
 
     expect(g.calls.some((c) => c.method === "circle")).toBe(false);
-    const polyCalls = g.calls.filter((c) => c.method === "poly");
-    expect(polyCalls).toHaveLength(1);
-    // drawStairsIcon: start point + 4 steps * (x, yTop, x+w, yTop) + closing point = 2 + 16 + 2.
-    expect(polyCalls[0].args).toHaveLength(20);
-    // First/last points sit on the marker's own horizontal center line (cy), matching cx±r.
-    expect(polyCalls[0].args[1]).toBeCloseTo(polyCalls[0].args[19]);
+    expect(g.calls.some((c) => c.method === "poly")).toBe(false);
+    // drawStairsIcon: one moveTo (start point) followed by lineTo segments — no fill, a stroke call.
+    const moveToCalls = g.calls.filter((c) => c.method === "moveTo");
+    expect(moveToCalls.length).toBeGreaterThan(0);
+    expect(g.fillCalls).toHaveLength(0);
+    expect(g.strokeCalls.length).toBeGreaterThan(0);
   });
 
-  it("style 'decorative' still draws an Elevator as its ordinary marker shape (no stairs treatment, per the renderer's own doc comment)", () => {
+  it("style 'decorative' spreads two same-cell markers apart sideways instead of overlapping at the same position", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [
+        marker({ pos: [50, 60], kind: "vertical_passage", fromNode: 0, direction: undefined }),
+        marker({ pos: [50, 60], kind: "vertical_passage", fromNode: 1, direction: undefined }),
+      ],
+      style: baseStyle({ style: "decorative" }),
+    });
+
+    // No `direction` on either marker means each draws only `drawStairsIcon`'s own single moveTo
+    // (the icon's `left = cx - r` start point) — one moveTo per marker, so the two calls' own X
+    // directly show each icon's own shifted `cx`. `renderDecorativeMarker`'s
+    // `(slot - (group.length - 1) / 2) * radius * 2.2` spread must land them symmetrically apart,
+    // straddling the shared `pos[0]` (50), not both drawing on top of each other at 50.
+    const moveToCalls = g.calls.filter((c) => c.method === "moveTo");
+    expect(moveToCalls).toHaveLength(2);
+    const [xA, xB] = moveToCalls.map((c) => c.args[0]);
+    // Both markers share the same `left = cx - r` offset from their own `cx`, and the spread shifts
+    // the two `cx`s symmetrically around the shared `pos[0]` (50) — so the two start-Xs must differ
+    // from each other but average back to the same `50 - r` a lone marker's own start-X would be.
+    expect(xA).not.toBeCloseTo(xB);
+    const soloRender = new VerticalConnectionRenderer(container as never);
+    const soloG = (soloRender as unknown as { g: FakeGraphics }).g;
+    render(soloRender, { markers: [marker({ pos: [50, 60], kind: "vertical_passage", direction: undefined })], style: baseStyle({ style: "decorative" }) });
+    const soloX = soloG.calls.find((c) => c.method === "moveTo")!.args[0];
+    expect((xA + xB) / 2).toBeCloseTo(soloX);
+  });
+
+  it("stairs zigzag has 3 steps (7 points: vert-horiz-vert-horiz-vert-horiz-vert), starting and ending on a vertical riser", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [50, 60], kind: "vertical_passage" })],
+      style: baseStyle({ style: "decorative" }),
+    });
+
+    // 1 moveTo (first point) + 6 lineTo (remaining points) = 7 points total = 3 risers interleaved
+    // with 2 horizontal shelves, both ends vertical (GitHub issue #428 fourth follow-up reverted the
+    // third follow-up's horizontal-start/end shape back to a vertical start/end).
+    const moveToCalls = g.calls.filter((c) => c.method === "moveTo");
+    const lineToCalls = g.calls.filter((c) => c.method === "lineTo");
+    expect(moveToCalls).toHaveLength(1);
+    expect(lineToCalls).toHaveLength(6);
+
+    const points = [moveToCalls[0].args, ...lineToCalls.map((c) => c.args)];
+    // First segment (point 0 -> 1) is a riser: same X, different Y.
+    expect(points[0][0]).toBeCloseTo(points[1][0]);
+    expect(points[0][1]).not.toBeCloseTo(points[1][1]);
+    // Second segment (point 1 -> 2) is horizontal: same Y, different X.
+    expect(points[1][1]).toBeCloseTo(points[2][1]);
+    expect(points[1][0]).not.toBeCloseTo(points[2][0]);
+  });
+
+  it("style 'decorative' draws an Elevator as its own line pictogram (box + doors line + cables), not the marker shape or stairs zigzag", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
     const g = (renderer as unknown as { g: FakeGraphics }).g;
@@ -456,11 +523,121 @@ describe("VerticalConnectionRenderer", () => {
       style: baseStyle({ style: "decorative" }),
     });
 
-    expect(g.calls.some((c) => c.method === "circle")).toBe(true);
+    expect(g.calls.some((c) => c.method === "circle")).toBe(false);
     expect(g.calls.some((c) => c.method === "poly")).toBe(false);
+    expect(g.fillCalls).toHaveLength(0);
+    expect(g.strokeCalls.length).toBeGreaterThan(0);
   });
 
-  it("a one-way passage's arrival end draws the primary fill with a secondary-accent border, and departure end draws entirely in the secondary accent (GitHub issue #347 fifth follow-up redesign)", () => {
+  it("style 'decorative' never draws a direction arrow for an Elevator, even when `direction` is set", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [50, 60], kind: "elevator", direction: "both" })],
+      style: baseStyle({ style: "decorative" }),
+    });
+
+    // Elevator icon: rect (via a `rect` call the fake doesn't track) + one vertical moveTo/lineTo +
+    // two cable moveTo/lineTo pairs = 3 moveTo calls total; a stairs arrow would add more.
+    const moveToCalls = g.calls.filter((c) => c.method === "moveTo");
+    expect(moveToCalls).toHaveLength(3);
+  });
+
+  it("style 'decorative' draws a two-way VerticalPassage's arrow in the primary arrow color, not the accent color", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [50, 60], kind: "vertical_passage", filled: true, direction: "up" })],
+      style: baseStyle({ style: "decorative", decorativeStairsArrowColor: 0xaaaaaa, decorativeStairsAccentColor: 0xbbbbbb }),
+    });
+
+    const arrowStroke = g.strokeCalls[g.strokeCalls.length - 1];
+    expect(arrowStroke.color).toBe(0xaaaaaa);
+  });
+
+  it("style 'decorative' draws a one-way VerticalPassage's arrow in the accent color at both ends", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [50, 60], kind: "vertical_passage", filled: false, arrowFilled: true, direction: "up" })],
+      style: baseStyle({ style: "decorative", decorativeStairsArrowColor: 0xaaaaaa, decorativeStairsAccentColor: 0xbbbbbb }),
+    });
+
+    const arrowStroke = g.strokeCalls[g.strokeCalls.length - 1];
+    expect(arrowStroke.color).toBe(0xbbbbbb);
+  });
+
+  it("crossed-out (arrival end) arrow still draws an arrowhead, plus a tick just past the tip (GitHub issue #428 fifth follow-up: crossed-out arrow was missing its own head)", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    // arrival end: filled: false, arrowFilled: false -> crossedOut: true
+    render(renderer, {
+      markers: [marker({ pos: [50, 60], kind: "vertical_passage", filled: false, arrowFilled: false, direction: "up" })],
+      style: baseStyle({ style: "decorative" }),
+    });
+
+    // Stairs icon: 1 moveTo. Arrow shaft: 1 moveTo. Arrowhead: 2 moveTo (one per back-wing lineTo).
+    // Tick: 1 moveTo. Total 5.
+    const moveToCalls = g.calls.filter((c) => c.method === "moveTo");
+    expect(moveToCalls).toHaveLength(5);
+  });
+
+  it("style 'decorative' draws a two-way VerticalPassage's own direction arrow too (not just one-way), adding extra moveTo calls beyond the stairs icon alone", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [50, 60], kind: "vertical_passage", filled: true, direction: "up" })],
+      style: baseStyle({ style: "decorative" }),
+    });
+    const withArrow = g.calls.filter((c) => c.method === "moveTo").length;
+
+    g.calls.length = 0;
+    render(renderer, {
+      markers: [marker({ pos: [50, 60], kind: "vertical_passage", filled: true, direction: undefined })],
+      style: baseStyle({ style: "decorative" }),
+    });
+    const withoutArrow = g.calls.filter((c) => c.method === "moveTo").length;
+
+    expect(withArrow).toBeGreaterThan(withoutArrow);
+  });
+
+  it("style 'decorative' mirrors the stairs arrow's arrowhead end to marker.direction: 'up' points at the diagonal's up end, 'down' at its down end", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [50, 60], kind: "vertical_passage", filled: true, direction: "up" })],
+      style: baseStyle({ style: "decorative" }),
+    });
+    // The arrowhead's own two back-wing lineTo calls are the last two lineTo calls emitted (stairs
+    // icon draws first, then the arrow line, then the head) — their shared origin (`moveTo`) is the
+    // arrowhead tip. "up" -> tip at the diagonal's own top-right (higher X, lower Y, in screen space).
+    const upTipMoveTo = g.calls.filter((c) => c.method === "moveTo").at(-1)!;
+
+    g.calls.length = 0;
+    render(renderer, {
+      markers: [marker({ pos: [50, 60], kind: "vertical_passage", filled: true, direction: "down" })],
+      style: baseStyle({ style: "decorative" }),
+    });
+    const downTipMoveTo = g.calls.filter((c) => c.method === "moveTo").at(-1)!;
+
+    // "up" tip sits further right (higher X) and higher on screen (lower Y) than "down" tip.
+    expect(upTipMoveTo.args[0]).toBeGreaterThan(downTipMoveTo.args[0] as number);
+    expect(upTipMoveTo.args[1]).toBeLessThan(downTipMoveTo.args[1] as number);
+  });
+
+  it("a one-way passage's departure end draws the primary fill with a secondary-accent border, and arrival end draws entirely in the secondary accent (GitHub issue #347 fifth follow-up redesign, sixth follow-up swapped which end gets which treatment)", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
     const g = (renderer as unknown as { g: FakeGraphics }).g;
@@ -470,16 +647,16 @@ describe("VerticalConnectionRenderer", () => {
       oneWayAccentColor: 0x2a2a2a,
     });
 
-    const arrival = marker({ pos: [0, 0], kind: "vertical_passage", filled: false, arrowFilled: false });
-    render(renderer, { markers: [arrival], style });
+    const departure = marker({ pos: [0, 0], kind: "vertical_passage", filled: false, arrowFilled: true });
+    render(renderer, { markers: [departure], style });
     expect(g.strokeCalls.at(-1)?.color).toBe(0x2a2a2a);
     expect(g.fillCalls.at(-1)).toBe(0x555555);
 
     g.calls.length = 0;
     g.strokeCalls.length = 0;
     g.fillCalls.length = 0;
-    const departure = marker({ pos: [0, 0], kind: "vertical_passage", filled: false, arrowFilled: true });
-    render(renderer, { markers: [departure], style });
+    const arrival = marker({ pos: [0, 0], kind: "vertical_passage", filled: false, arrowFilled: false });
+    render(renderer, { markers: [arrival], style });
     expect(g.strokeCalls.at(-1)?.color).toBe(0x2a2a2a);
     expect(g.fillCalls.at(-1)).toBe(0x2a2a2a);
   });

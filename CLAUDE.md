@@ -59,6 +59,12 @@ Use Grep/Glob/Explore only if:
 - To find all diagnostic logs: search for `// DIAG`
 - Remove all `// DIAG` logs before committing
 
+## i18n (paraglide)
+
+Compile with: `npx paraglide-js compile --project ./project.inlang --outdir ./generated/paraglide --output-structure locale-modules` (run from `maze-web`).
+
+**Always include `--output-structure locale-modules`.** Without it, the CLI defaults to `message-modules` (one file per message key, ~1700+ files) — Vite has to process every one on dev-server start, making page load very slow. `locale-modules` produces ~10 files. Sanity check after compiling: `find generated/paraglide -type f | wc -l` should be ~10, not 1000+.
+
 ## Specs
 
 `Specs/` — markdown descriptions of systems and data structures, authoritative source of intent. Check before implementing or modifying a feature.

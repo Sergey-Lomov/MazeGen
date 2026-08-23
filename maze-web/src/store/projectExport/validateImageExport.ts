@@ -1,5 +1,5 @@
 import {
-  type MarkerSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type VectorByWallsSharedStyle, type VectorByCorridorsSharedStyle, type TeleportSettingsFields, type VerticalSettingsFields, type MarkerWidenShape, type PngExportSettings,
+  type MarkerSettings, type DecorativeLineStyle, type VectorByWallsSettings, type VectorByCorridorsSettings, type VectorByWallsSharedStyle, type VectorByCorridorsSharedStyle, type TeleportSettingsFields, type VerticalSettingsFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
@@ -105,6 +105,23 @@ export function validateTeleportSettingsFields(obj: Record<string, unknown> | nu
   };
 }
 
+/** `DecorativeLineStyle` validation (GitHub issue #428) — same lenient-recovery convention as
+ * `validateMarkerSettings`. */
+export function validateDecorativeLineStyle(v: unknown, path: string, fallback: DecorativeLineStyle): DecorativeLineStyle {
+  if (v == null) return fallback;
+  let obj: Record<string, unknown> | null;
+  try {
+    obj = assertObject(v, path);
+  } catch {
+    return fallback;
+  }
+  return {
+    lineColor: optNumber(obj, "lineColor", fallback.lineColor),
+    lineWidth: optNumber(obj, "lineWidth", fallback.lineWidth),
+    size: optNumber(obj, "size", fallback.size),
+  };
+}
+
 /** `VectorByWallsSettings`' own "Vertical connections" fields (GitHub issue #347, three-style
  * follow-up, three-section split follow-up) — same lenient-recovery convention as
  * `validateTeleportSettingsFields`. `verticalStyle` reads the current field name first; a project
@@ -144,6 +161,12 @@ export function validateVerticalSettingsFields(obj: Record<string, unknown> | nu
     elevatorArrowSize: optNumber(obj, "elevatorArrowSize", d.elevatorArrowSize),
     elevatorArrowStyle: optOneWayPattern(obj, "elevatorArrowStyle", d.elevatorArrowStyle),
     elevatorArrowCornerStyle: optJoin(obj, "elevatorArrowCornerStyle", d.elevatorArrowCornerStyle),
+    decorativeStairsTwoWay: validateDecorativeLineStyle(obj?.decorativeStairsTwoWay, `${path}.decorativeStairsTwoWay`, d.decorativeStairsTwoWay),
+    decorativeStairsOneWay: validateDecorativeLineStyle(obj?.decorativeStairsOneWay, `${path}.decorativeStairsOneWay`, d.decorativeStairsOneWay),
+    decorativeElevator: validateDecorativeLineStyle(obj?.decorativeElevator, `${path}.decorativeElevator`, d.decorativeElevator),
+    decorativeStairsArrowColor: optNumber(obj, "decorativeStairsArrowColor", d.decorativeStairsArrowColor),
+    decorativeStairsArrowSize: optNumber(obj, "decorativeStairsArrowSize", d.decorativeStairsArrowSize),
+    decorativeStairsAccentColor: optNumber(obj, "decorativeStairsAccentColor", d.decorativeStairsAccentColor),
   };
 }
 

@@ -1740,6 +1740,8 @@
   "image_export.vector_by_walls.vertical_subsection_marker": "Marker",
   "image_export.vector_by_walls.vertical_subsection_arrows": "Arrow",
   "image_export.vector_by_walls.vertical_style_not_customizable": "This display style has no marker/arrow settings yet.",
+  "image_export.vector_by_walls.decorative_line_color": "Line color",
+  "image_export.vector_by_walls.decorative_line_width": "Line width",
   "image_export.vector_by_walls.section_warnings": "Warnings ({count})",
   "image_export.vector_by_walls.warning_teleport_marker_invisible": "Teleport exit marker is invisible",
   "image_export.vector_by_walls.warning_teleport_marker_invisible_description": "A one-way teleport's exit-only endpoint draws with a floor-colored fill instead of its edge color, so with the border width set to 0 it has nothing to draw at all.",

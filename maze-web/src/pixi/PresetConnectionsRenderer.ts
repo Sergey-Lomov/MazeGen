@@ -91,6 +91,14 @@ const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = {
   elevatorArrowSize: 0.75,
   elevatorArrowStyle: "triangle",
   elevatorArrowCornerStyle: "round",
+  // `style: "abstract"` above means these decorative fields (GitHub issue #428) are never actually
+  // read — filled in only to satisfy `VerticalConnectionStyle`'s type.
+  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
+  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
+  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
+  decorativeStairsArrowColor: canvas.floor.default,
+  decorativeStairsArrowSize: 0.75,
+  decorativeStairsAccentColor: ONE_WAY_ACCENT_DARK,
 };
 
 export class PresetConnectionsRenderer extends BaseFieldRenderer {

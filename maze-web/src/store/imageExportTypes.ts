@@ -77,6 +77,16 @@ export interface PngExportSettings {
  *  the old standalone `"grouped"` pattern's look. `teleportGroupOverrides` holds those overrides,
  *  keyed by `TeleportGroup.key` (stable across renders, not across a maze regenerate/reload —
  *  entries for groups no longer present are simply never looked up again, not pruned). */
+/** One decorative-style vertical-connection pictogram's line appearance (GitHub issue #428) — a
+ *  stroke-only icon (stairs zigzag or elevator shaft box), no fill/border/gap concept the way
+ *  `MarkerSettings` has. `size` is a fraction of the tile size (0-1), same convention as
+ *  `MarkerSettings.size`. */
+export interface DecorativeLineStyle {
+  lineColor: number;
+  lineWidth: number;
+  size: number;
+}
+
 /** "Vertical connections" section fields (GitHub issue #347) — `VerticalPassage`/`Elevator` edges
  *  (`Specs/generation.md`'s "Vertical Connections", GitHub issue #337) both draw as a single
  *  point-anchored marker on the edge's `from` node's own cell (never a connector line to another
@@ -112,12 +122,39 @@ export interface PngExportSettings {
  *  the old outline-only arrival arrow is redundant with `oneWayAccentColor`'s own border/fill
  *  distinction). Each
  *  section's own `*ArrowColor`/`*ArrowSize` (the latter a fraction of the marker's own radius, 0-1)
- *  colors/scales that section's own arrow independently. */
+ *  colors/scales that section's own arrow independently.
+ *
+ *  `"decorative"` (GitHub issue #428) draws a line-based pictogram instead of the plain marker
+ *  shape above, for `VerticalPassage` (a stairs zigzag, open polyline — no marker `shape`/fill/gap
+ *  concept applies) and `Elevator` (a shaft box with a center doors-split line and two cable
+ *  strokes above it) alike — unlike `"decorative"`'s effect on `VerticalConnectionRenderer`'s
+ *  *older* single-shared-style draw (`drawStairsIcon`, pre-#428), `Elevator` now gets its own
+ *  decorative look too since a line icon reads fine without a literal illustration the way a filled
+ *  shape didn't (see the older no-decorative-elevator rationale above, which only ever applied to
+ *  the filled-shape treatment). `decorative*` fields are a separate, line-oriented settings surface
+ *  (`lineColor`/`lineWidth`/`size`) — deliberately not reusing `MarkerSettings`' fill/border/gap/
+ *  shape fields, which have no meaning for an open stroke. Only the stairs pictogram draws a
+ *  direction arrow (a dedicated "line parallel to the stairs" primitive, not `OneWayPattern` — an
+ *  arrowhead pattern reads as a point indicator, not a direction-of-travel-along-a-line one): a
+ *  two-way `VerticalPassage` draws it in `decorativeStairsArrowColor`; a one-way `VerticalPassage`
+ *  draws it in `decorativeStairsAccentColor` at both ends, crossed-out at the arrival (`to`) end
+ *  (mirrors `oneWayAccentColor`'s own from/to distinction, but as one shared color instead of a
+ *  fill/border split — there's no fill to split here). The elevator pictogram never draws an arrow
+ *  of its own, decorative or not. */
 export interface VerticalSettingsFields {
   verticalStyle: "abstract" | "decorative" | "realistic";
   twoWayPassageMarker: MarkerSettings;
   oneWayPassageMarker: MarkerSettings;
   elevatorMarker: MarkerSettings;
+  decorativeStairsTwoWay: DecorativeLineStyle;
+  decorativeStairsOneWay: DecorativeLineStyle;
+  decorativeElevator: DecorativeLineStyle;
+  decorativeStairsArrowColor: number;
+  decorativeStairsArrowSize: number;
+  /** One-way stairs arrow color, both ends (GitHub issue #428) — mirrors `oneWayAccentColor`'s own
+   *  from/to distinction but as one shared color, not a fill/border split (there's no fill on a
+   *  line icon to split). */
+  decorativeStairsAccentColor: number;
   twoWayArrowColor: number;
   twoWayArrowSize: number;
   /** Direction-arrow shape (GitHub issue #347 third follow-up) — same three patterns as the
@@ -597,8 +634,19 @@ export interface ImageExportActions {
         | "elevatorArrowSize"
         | "elevatorArrowStyle"
         | "elevatorArrowCornerStyle"
+        | "decorativeStairsArrowColor"
+        | "decorativeStairsArrowSize"
+        | "decorativeStairsAccentColor"
       >
     >,
+  ) => void;
+  /** Patches one `DecorativeLineStyle` sub-object (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/
+   *  `decorativeElevator`) — GitHub issue #428, same "one setter per patchable sub-object" convention
+   *  as the marker setters below, but a single patch call instead of one setter per field since a
+   *  line style has no per-field "Shared style" override to track. */
+  patchVectorByWallsDecorativeLineStyle: (
+    section: "decorativeStairsTwoWay" | "decorativeStairsOneWay" | "decorativeElevator",
+    patch: Partial<DecorativeLineStyle>,
   ) => void;
   setVectorByWallsTwoWayPassageMarkerShape: (shape: MarkerShape) => void;
   setVectorByWallsTwoWayPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
