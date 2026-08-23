@@ -482,14 +482,14 @@ describe("resolveBubbleFloor", () => {
 
   it("issue target with a cycle payload resolves the shared floor of every endpoint", () => {
     const target: HoveredDebugRef = {
-      kind: "issue", issueKind: "x", target: { kind: "cycle", edges: [[1n, 2n], [2n, 1n]] }, reasons: [],
+      kind: "issue", issueKind: "x", target: { kind: "cycle", edges: [[1n, 2n], [2n, 1n]], asWall: false }, reasons: [],
     };
     expect(resolveBubbleFloor(target, coords, 5)).toBe(0);
   });
 
   it("issue target with a cycle payload spanning floors stays put", () => {
     const target: HoveredDebugRef = {
-      kind: "issue", issueKind: "x", target: { kind: "cycle", edges: [[1n, 3n]] }, reasons: [],
+      kind: "issue", issueKind: "x", target: { kind: "cycle", edges: [[1n, 3n]], asWall: false }, reasons: [],
     };
     expect(resolveBubbleFloor(target, coords, 5)).toBeNull();
   });

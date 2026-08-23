@@ -1,4 +1,4 @@
-import { Container } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { HoveredDebugRef } from "../store/storeTypes";
@@ -8,6 +8,7 @@ import { NodeEdgeHighlightRenderer, type NodeEdgeHighlight } from "./renderers/N
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { buildNodePositions } from "./tessellationGeometry";
 import type { Pos } from "./tessellationGeometry";
+import { drawOneWayWallHighlight } from "./renderers/wallUtils";
 
 const HIGHLIGHT_WIDTH = 3;
 const HIGHLIGHT_ALPHA = 1;
@@ -44,22 +45,29 @@ export interface DebugRefHighlightData {
 export class DebugRefHighlightOverlay {
   private readonly edgeContainer: Container;
   private readonly regionContainer: Container;
+  private readonly wallContainer: Container;
 
   private readonly edgeRenderer: NodeEdgeHighlightRenderer;
   private readonly regionRenderer: RegionHighlightRenderer;
+  private readonly wallGraphics: Graphics;
 
   constructor(container: Container) {
     this.edgeContainer = new Container();
     this.regionContainer = new Container();
+    this.wallContainer = new Container();
     container.addChild(this.edgeContainer);
     container.addChild(this.regionContainer);
+    container.addChild(this.wallContainer);
 
     this.edgeRenderer = new NodeEdgeHighlightRenderer(this.edgeContainer);
     this.regionRenderer = new RegionHighlightRenderer(this.regionContainer);
+    this.wallGraphics = new Graphics();
+    this.wallContainer.addChild(this.wallGraphics);
   }
 
   render(data: DebugRefHighlightData): void {
     const { nodes, allNodes, edges, ref, cfg } = data;
+    this.wallGraphics.clear();
 
     if (!ref || nodes.length === 0) {
       this.edgeRenderer.render([]);
@@ -116,7 +124,29 @@ export class DebugRefHighlightOverlay {
           break;
         }
         if (ref.target.kind === "cycle") {
-          const highlights = this.edgeHighlightsFor(ref.target.edges, posOf, undefined, canvas.debug.issueHighlight);
+          // A single flagged one-way (GitHub issue #377, `asWall`) draws as the shared wall
+          // between its two cells instead of a line — same treatment as Analytics'
+          // `IssueHighlightOverlay`. Falls back to a line for any edge whose endpoints aren't
+          // tessellation-adjacent (no shared wall to draw).
+          const lookupNodes = [...nodes, ...allNodes];
+          const nodeById = new Map<number, NodeDto>();
+          for (const n of lookupNodes) nodeById.set(n.id, n);
+          const lineEdges: [bigint, bigint][] = [];
+          if (ref.target.asWall) {
+            for (const [from, to] of ref.target.edges) {
+              const a = nodeById.get(Number(from));
+              const b = nodeById.get(Number(to));
+              if (!a || !b) {
+                lineEdges.push([from, to]);
+                continue;
+              }
+              const drew = drawOneWayWallHighlight(this.wallGraphics, [a.x, a.y], [b.x, b.y], cfg, canvas.debug.issueHighlight, HIGHLIGHT_WIDTH, HIGHLIGHT_ALPHA);
+              if (!drew) lineEdges.push([from, to]);
+            }
+          } else {
+            lineEdges.push(...ref.target.edges);
+          }
+          const highlights = this.edgeHighlightsFor(lineEdges, posOf, undefined, canvas.debug.issueHighlight);
           this.edgeRenderer.render(highlights);
           this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
         } else {
@@ -152,12 +182,15 @@ export class DebugRefHighlightOverlay {
   clear(): void {
     this.edgeRenderer.clear();
     this.regionRenderer.clear();
+    this.wallGraphics.clear();
   }
 
   destroy(): void {
     this.edgeRenderer.destroy();
     this.regionRenderer.destroy();
+    this.wallGraphics.destroy();
     this.edgeContainer.destroy();
     this.regionContainer.destroy();
+    this.wallContainer.destroy();
   }
 }

@@ -71,6 +71,9 @@ export interface ProjectFileImageExport {
 export interface ProjectFileFloors {
   floors: { id: string; title: string }[];
   nextFloorNumber: number;
+  /** Active floor selection (GitHub issue #354) — absent in project files saved before this
+   * issue, defaulting to `floors[0].id` on load (see `validateFloors` in validatePrimitives.ts). */
+  activeFloorId: string;
 }
 
 /** One floor's own field-shape state — GitHub issue #338. Mirrors `FloorFieldConfig`

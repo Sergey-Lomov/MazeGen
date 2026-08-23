@@ -1,4 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+
+// `getCartesian` (cartesianCache.ts) delegates to wasm, unavailable in this unit-test environment
+// — same mock `tessellationGeometry.test.ts` uses, canonical (unit-tile-scale) square formula.
+vi.mock("../pixi/cartesianCache", () => ({
+  getCartesian: (x: number, y: number): [number, number] => [x, y],
+}));
 
 vi.mock("pixi.js", () => {
   class FakeGraphics {
@@ -13,7 +20,7 @@ vi.mock("pixi.js", () => {
   return { Graphics: FakeGraphics };
 });
 
-const { drawDirectionArrow, drawOneWayTriangle, drawOneWayChevron, drawOneWayChevronRow, chevronRowStep, drawOneWayArrow } = await import("../pixi/renderers/wallUtils");
+const { drawDirectionArrow, drawOneWayTriangle, drawOneWayChevron, drawOneWayChevronRow, chevronRowStep, drawOneWayArrow, drawOneWayWallHighlight, MAP_ONE_WAY_SIZE } = await import("../pixi/renderers/wallUtils");
 const { Graphics } = await import("pixi.js");
 
 type FakeG = InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] };
@@ -240,5 +247,40 @@ describe("drawDirectionArrow", () => {
     drawDirectionArrow(g, 0, 0, 1, 0, 10, 0x123456, 0.4);
     const [fillCall] = g.calls.filter((c) => c.fn === "fill");
     expect(fillCall.args[0]).toEqual({ color: 0x123456, alpha: 0.4 });
+  });
+});
+
+describe("drawOneWayWallHighlight", () => {
+  const cfg: TessellationConfig = { type: "square", width: 5, height: 5 };
+
+  it("returns true and strokes the shared wall plus a gapless triangle for tessellation-adjacent cells", () => {
+    const g = newG();
+    const drew = drawOneWayWallHighlight(g, [0, 0], [1, 0], cfg, 0xff0000, 3, 0.9);
+
+    expect(drew).toBe(true);
+    const strokeCall = g.calls.find((c) => c.fn === "stroke");
+    expect(strokeCall!.args[0]).toMatchObject({ width: 3, color: 0xff0000, alpha: 0.9 });
+    const fillCall = g.calls.find((c) => c.fn === "fill");
+    expect(fillCall!.args[0]).toBe(0xff0000); // drawOneWayTriangle's own no-gap fill call shape
+    // No gap stroke pass — only the one wall-line stroke above, none from drawOneWayTriangle
+    // itself (it only adds a stroke when `gapWidth` is set, which this caller never passes).
+    expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(1);
+  });
+
+  it("uses the map's own one-way indicator size (MAP_ONE_WAY_SIZE), not the smaller generic default", () => {
+    const g = newG();
+    drawOneWayWallHighlight(g, [0, 0], [1, 0], cfg, 0xff0000, 3, 0.9);
+    const [roundPolyCall] = g.calls.filter((c) => c.fn === "roundPoly");
+    const [, , radius] = roundPolyCall.args as [number, number, number];
+    // radius = (2/3) * size (drawOneWayTriangle's own relation, size = MAP_ONE_WAY_SIZE here).
+    expect(radius).toBeCloseTo((2 / 3) * MAP_ONE_WAY_SIZE, 5);
+  });
+
+  it("returns false and draws nothing for two cells that aren't tessellation-adjacent", () => {
+    const g = newG();
+    const drew = drawOneWayWallHighlight(g, [0, 0], [4, 4], cfg, 0xff0000, 3, 0.9);
+
+    expect(drew).toBe(false);
+    expect(g.calls).toHaveLength(0);
   });
 });

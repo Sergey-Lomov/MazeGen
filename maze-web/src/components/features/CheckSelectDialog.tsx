@@ -84,7 +84,7 @@ export function CheckSelectDialog({ kind, onBack, onNext, onClose }: Props) {
             params={selectedCheck.params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }))}
             getValue={(p) => paramOverrides[selectedId]?.[p.id] ?? defaultValue(p)}
             onChange={handleParamChange}
-            getDescription={(p) => resolveParamDescription(p.id)}
+            getDescription={(p) => resolveParamDescription(p.id, selectedCheck.id)}
           />
         </div>
       )}

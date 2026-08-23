@@ -88,8 +88,9 @@ export function optSection(parent: Record<string, unknown>, key: string, path: s
  * entry is dropped individually rather than failing the whole load, same leniency
  * `validateSplitGeneration`'s pattern list applies; an empty result after dropping falls back to
  * the single-floor default too (floors must never end up empty). */
-export function validateFloors(v: unknown, path: string): { floors: { id: string; title: string }[]; nextFloorNumber: number } {
-  const fallback = { floors: [{ id: `floor_${crypto.randomUUID()}`, title: "Floor 1" }], nextFloorNumber: 2 };
+export function validateFloors(v: unknown, path: string): { floors: { id: string; title: string }[]; nextFloorNumber: number; activeFloorId: string } {
+  const fallbackFloor = { id: `floor_${crypto.randomUUID()}`, title: "Floor 1" };
+  const fallback = { floors: [fallbackFloor], nextFloorNumber: 2, activeFloorId: fallbackFloor.id };
   if (v == null) return fallback;
   let obj: Record<string, unknown>;
   try {
@@ -115,7 +116,14 @@ export function validateFloors(v: unknown, path: string): { floors: { id: string
   }
   if (floors.length === 0) return fallback;
   const nextFloorNumber = Math.max(1, Math.trunc(optNumber(obj, "nextFloorNumber", floors.length + 1)));
-  return { floors, nextFloorNumber };
+  // Active floor selection (GitHub issue #354) — absent in files saved before this issue, or
+  // naming a floor that got dropped above, falls back to the bottom floor, same convention
+  // `activeFloorId` itself uses everywhere else (e.g. removeFloor's fallback in floorsSlice.ts).
+  const rawActiveFloorId = obj.activeFloorId;
+  const activeFloorId = typeof rawActiveFloorId === "string" && floors.some((f) => f.id === rawActiveFloorId)
+    ? rawActiveFloorId
+    : floors[0].id;
+  return { floors, nextFloorNumber, activeFloorId };
 }
 
 /** Validates `generation.splitGeneration` (GitHub issue #222) — absent in project files saved

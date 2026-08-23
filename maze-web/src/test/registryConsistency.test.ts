@@ -164,6 +164,19 @@ describeIfWasmBuilt("wasm registry vs web i18n consistency", () => {
     }
   });
 
+  // Same regression guard as above, for `one_way_group_super_hub`'s `max_connections` override
+  // (GitHub issue #377 follow-up) -- the shared `max_connections` param's generic description is
+  // worded for the teleport super-hub check ("... vertex of the teleport ..."), wrong for the
+  // one-way super-hub check, which doesn't involve a teleport at all.
+  it("one_way_group_super_hub's max_connections param override actually overrides the generic text", () => {
+    expect(checks.some((c) => c.id === "one_way_group_super_hub"), "\"one_way_group_super_hub\" is not a registered wasm check id").toBe(true);
+
+    const generic = resolveParamDescription("max_connections");
+    const overridden = resolveParamDescription("max_connections", "one_way_group_super_hub");
+    expect(overridden).toBeDefined();
+    expect(overridden).not.toBe(generic);
+  });
+
   // Same regression guard as above, for `resolveParamLabel`'s `paramLabelOverrideI18n` (qualityI18n
   // params.ts) -- `remove_split`'s own "Kept node" label must win over the generic `selection`
   // label ("Node selection method") shared by `split_node_group_select`/

@@ -75,7 +75,7 @@ Shared panel docked top-center over the canvas (`App.tsx`'s `canvasColumn`, abso
 
 Shown for every feature card except `basic_config`, `floors`, and `quality` (`FLOOR_SWITCHER_HIDDEN_CARDS` in `App.tsx`) — tessellation is floor-independent by definition, "Floors" configures the floor set itself, and QC spans the whole maze rather than one floor. Also hidden whenever `floors.length <= 1` — with a single floor there is nothing to switch between.
 
-**State** — `activeFloorId: string` (`FloorsState`, `floorsSlice.ts`), a purely client-side, non-persisted UI cursor into `floors`. Not written to the project file: reset to `floors[0].id` on every `loadProject`, and whenever `removeFloor` removes the currently active floor. Always a valid id into `floors`; `setActiveFloorId` no-ops for an unknown id.
+**State** — `activeFloorId: string` (`FloorsState`, `floorsSlice.ts`), a client-side UI cursor into `floors`. Persisted in the project file as part of `floors` (`ProjectFileFloors.activeFloorId`, GitHub issue #354) — restored on `loadProject`; falls back to `floors[0].id` when the section is missing (files saved before this issue) or names an id that got dropped during floor validation (`validateFloors`, `validatePrimitives.ts`). Also reset to `floors[0].id` whenever `removeFloor` removes the currently active floor. Always a valid id into `floors`; `setActiveFloorId` no-ops for an unknown id.
 
 **Adjacent-floor direction mapping** mirrors `FloorsFeature`'s own inversion: `floors` is stored bottom-to-top, so the switcher's up arrow ("go to the floor above") moves `activeFloorId` toward the *end* of the array, and the down arrow moves it toward the start. Arrows disable at either array end.
 

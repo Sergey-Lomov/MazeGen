@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveIssue, isIssueEntirelyHidden, presetLockElementsFor } from "../components/issueRegistry";
+import { resolveIssue, isIssueEntirelyHidden, presetLockElementsFor, resolveIssueSourceDescription } from "../components/issueRegistry";
 import type { IssueDto } from "../wasm/types";
 
 describe("resolveIssue", () => {
@@ -56,6 +56,22 @@ describe("resolveIssue", () => {
 
   it("defaults unknown kinds to warning severity, not critical", () => {
     expect(resolveIssue("some_future_issue_kind").severity).toBe("warning");
+  });
+});
+
+describe("resolveIssueSourceDescription", () => {
+  it("uses the one_way_group_super_hub check's own description, not invalid_one_way_group's generic proximity-check text", () => {
+    // Regression: before the DETAIL_DESCRIPTIONS override was added, this fell through to
+    // invalid_one_way_group's generic description, worded for the geometric/graph-proximity
+    // checks and wrong for a super-hub warning.
+    const description = resolveIssueSourceDescription("invalid_one_way_group", "one_way_group_super_hub");
+    expect(description).not.toBe(resolveIssue("invalid_one_way_group").description);
+    expect(description.length).toBeGreaterThan(0);
+  });
+
+  it("falls back to the issue kind's generic description when the check has no DETAIL_DESCRIPTIONS override", () => {
+    const description = resolveIssueSourceDescription("invalid_one_way_group", "one_way_group_geometric_proximity");
+    expect(description).toBe(resolveIssue("invalid_one_way_group").description);
   });
 });
 

@@ -12,6 +12,19 @@ import type {
   PostEditAnalytics,
 } from "./postEditTypes";
 
+/** One hovered issue's base-graph edge, plus how it should be drawn (GitHub issue #377). Loop/
+ *  teleport-group/split-route edges (`asWall: false`) form a connected path or group and stay
+ *  drawn as a straight line between node centers — breaking one into a wall segment would read as
+ *  disconnected stubs instead of a path. A single-edge issue like `invalid_one_way` (`asWall:
+ *  true`) has no such path to preserve, and its two endpoint cells are always tessellation
+ *  neighbors, so it draws as the shared wall between them instead — clearer than a line since a
+ *  one-way problem *is* about that wall/passage, not about traversing between the cells. */
+export interface IssueHighlightEdge {
+  from: number;
+  to: number;
+  asWall: boolean;
+}
+
 export interface AnalyticsOverlayState {
   showMazeOverlay: boolean;
   showComponentsOverlay: boolean;
@@ -22,8 +35,9 @@ export interface AnalyticsOverlayState {
   showRegionClassesOverlay: boolean;
   /** Whether the region-class legend modal is open. */
   regionClassLegendOpen: boolean;
-  /** Base-graph [from, to] edges of the issue loops currently hovered in IssuesBlock. */
-  hoveredIssueLoopEdges: [number, number][] | null;
+  /** Base-graph edges of the issue currently hovered in IssuesBlock, each carrying its own
+   *  line-vs-wall draw mode — see `IssueHighlightEdge`. */
+  hoveredIssueLoopEdges: IssueHighlightEdge[] | null;
   /** Undersized SCC region(s) currently hovered in IssuesBlock, each as its own list of maze
    * node ids — kept as separate groups (not one flat list) so adjacent-in-id-space but disjoint
    * regions don't merge into one shared outline. The renderer derives each region's perimeter
@@ -48,7 +62,7 @@ export interface AnalyticsOverlayActions {
   setShowRouteOverlay: (v: boolean) => void;
   setShowRegionClassesOverlay: (v: boolean) => void;
   setRegionClassLegendOpen: (v: boolean) => void;
-  setHoveredIssueLoopEdges: (edges: [number, number][] | null) => void;
+  setHoveredIssueLoopEdges: (edges: IssueHighlightEdge[] | null) => void;
   setHoveredIssueRegionGroups: (groups: number[][] | null) => void;
   setAnalyticsSectionExpanded: (id: string, expanded: boolean) => void;
   setShowFullyPresetLockedIssues: (v: boolean) => void;

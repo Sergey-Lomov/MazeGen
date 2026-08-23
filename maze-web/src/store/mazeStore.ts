@@ -64,7 +64,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
         fieldDirty: file.dirtyFlags.field,
       };
     }
-    const activeFloorId = file.floors.floors[0].id;
+    const activeFloorId = file.floors.activeFloorId;
     const activeField = floorFields[activeFloorId];
     const cfg = activeField.tessellationConfig;
 
@@ -205,7 +205,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       // floors
       floors: file.floors.floors,
       nextFloorNumber: file.floors.nextFloorNumber,
-      activeFloorId: file.floors.floors[0].id,
+      activeFloorId,
     });
 
     // Generate maze with saved seed (deterministic) — generateWithSeed reads debugMode from store.

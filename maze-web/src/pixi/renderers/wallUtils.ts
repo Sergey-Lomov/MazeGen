@@ -1,6 +1,8 @@
 import type { Graphics } from "pixi.js";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
+import { getSharedEdgeSegment, getCellCenter } from "../tessellationGeometry";
+import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 
 /** Shared style knobs for every one-way indicator pattern (`drawOneWayTriangle`/`Chevron`/`Arrow`)
  *  — GitHub issue #292 (renamed border->gap in #302 follow-up, consistent with the marker/connector
@@ -29,6 +31,11 @@ export type OneWayDrawStyle = {
    *  unaffected. Only read by `drawOneWayChevron`. */
   width?: number;
 };
+
+// The normal map's own one-way indicator size (`WallRenderer`'s default, no override) — shared
+// so any caller wanting to visually match the map's marker (e.g. the wall-highlight overlays)
+// reads the same constant instead of re-hardcoding `TILE_SIZE * 0.3`.
+export const MAP_ONE_WAY_SIZE = TILE_SIZE * 0.3;
 
 function resolvedSize(style?: OneWayDrawStyle): number {
   return style?.size ?? TILE_SIZE * 0.18;
@@ -102,6 +109,40 @@ export function drawOneWayTriangle(
       alignment: 0,
     });
   }
+}
+
+/** Draws a hovered one-way issue's wall highlight — the shared wall segment between `from`/`to`
+ *  (cell coords) plus the map's own gapless direction triangle on top (GitHub issue #377 follow-
+ *  up) — shared by `IssueHighlightOverlay` and `DebugRefHighlightOverlay`, which otherwise
+ *  duplicated this exact stroke+triangle sequence. Returns `false` (drawing nothing) when the two
+ *  cells aren't tessellation-adjacent, so the caller can fall back to a plain line. */
+export function drawOneWayWallHighlight(
+  g: Graphics,
+  from: [number, number],
+  to: [number, number],
+  cfg: TessellationConfig,
+  color: number,
+  width: number,
+  alpha: number,
+): boolean {
+  const seg = getSharedEdgeSegment(from, to, cfg);
+  if (!seg) return false;
+
+  g.moveTo(seg.v0.x, seg.v0.y);
+  g.lineTo(seg.v1.x, seg.v1.y);
+  g.stroke({ width, color, alpha });
+
+  const fromCenter = getCellCenter(from[0], from[1], cfg);
+  const toCenter = getCellCenter(to[0], to[1], cfg);
+  const tdx = toCenter.x - fromCenter.x;
+  const tdy = toCenter.y - fromCenter.y;
+  const len = Math.sqrt(tdx * tdx + tdy * tdy);
+  if (len > 0) {
+    const cx = (seg.v0.x + seg.v1.x) / 2;
+    const cy = (seg.v0.y + seg.v1.y) / 2;
+    drawOneWayTriangle(g, cx, cy, tdx / len, tdy / len, { color, size: MAP_ONE_WAY_SIZE });
+  }
+  return true;
 }
 
 // Draws a "chevron" one-way indicator (two open strokes forming a shallow `>` shape) centered at

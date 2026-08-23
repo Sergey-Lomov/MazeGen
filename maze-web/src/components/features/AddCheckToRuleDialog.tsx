@@ -83,7 +83,7 @@ export function AddCheckToRuleDialog({ ruleId, kind, candidates, onClose }: Prop
             params={selected.params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }))}
             getValue={(p) => paramOverrides[selectedId]?.[p.id] ?? defaultValue(p)}
             onChange={handleParamChange}
-            getDescription={(p) => resolveParamDescription(p.id)}
+            getDescription={(p) => resolveParamDescription(p.id, selected.typeId)}
           />
         </div>
       )}
