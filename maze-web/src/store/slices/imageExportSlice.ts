@@ -393,6 +393,13 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     })),
   patchVectorByWallsVerticalSettings: (patch) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, ...patch } })),
+  patchVectorByWallsDecorativeLineStyle: (section, patch) =>
+    set((s) => ({
+      vectorByWallsSettings: {
+        ...s.vectorByWallsSettings,
+        [section]: { ...s.vectorByWallsSettings[section], ...patch },
+      },
+    })),
   setVectorByWallsTwoWayPassageMarkerShape: (shape) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, shape } } })),
   setVectorByWallsTwoWayPassageMarkerCornerStyle: (style) =>

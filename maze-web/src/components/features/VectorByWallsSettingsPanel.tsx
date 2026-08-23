@@ -15,6 +15,7 @@ import { computeVectorByWallsWarnings } from "../../pixi/selectors/exportWarning
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
 import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
+import { DecorativeLineStyleGroup } from "./DecorativeLineStyleGroup";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, sharedStyleFieldReset } from "./SharedStyleSection";
 import * as m from "~/paraglide/messages";
@@ -72,6 +73,7 @@ export function VectorByWallsSettingsPanel() {
   const setFinishMarkerGapWidth = useMazeStore((s) => s.setVectorByWallsFinishMarkerGapWidth);
   const setFinishMarkerSize = useMazeStore((s) => s.setVectorByWallsFinishMarkerSize);
   const patchVerticalSettings = useMazeStore((s) => s.patchVectorByWallsVerticalSettings);
+  const patchDecorativeLineStyle = useMazeStore((s) => s.patchVectorByWallsDecorativeLineStyle);
   const setTwoWayPassageMarkerShape = useMazeStore((s) => s.setVectorByWallsTwoWayPassageMarkerShape);
   const setTwoWayPassageMarkerCornerStyle = useMazeStore((s) => s.setVectorByWallsTwoWayPassageMarkerCornerStyle);
   const setTwoWayPassageMarkerFillColor = useMazeStore((s) => s.setVectorByWallsTwoWayPassageMarkerFillColor);
@@ -439,8 +441,83 @@ export function VectorByWallsSettingsPanel() {
                 onChange={(verticalStyle) => patchVerticalSettings({ verticalStyle })}
               />
 
-              {settings.verticalStyle !== "abstract" && (
+              {settings.verticalStyle === "realistic" && (
                 <div style={typography.caption}>{m["image_export.vector_by_walls.vertical_style_not_customizable"]()}</div>
+              )}
+
+              {settings.verticalStyle === "decorative" && hasTwoWayPassages && (
+                <div style={styles.subGroupWrap}>
+                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_two_way")}>
+                    {isExpanded("vertical_two_way") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
+                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.two_way_passage_marker"]()}</div>
+                  </div>
+                  {isExpanded("vertical_two_way") && (
+                  <div style={styles.subGroup}>
+                    <DecorativeLineStyleGroup
+                      settings={settings.decorativeStairsTwoWay}
+                      onChange={(patch) => patchDecorativeLineStyle("decorativeStairsTwoWay", patch)}
+                    />
+                    <div style={styles.subGroupWrap}>
+                      <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
+                      <div style={styles.subGroup}>
+                        <ColorRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
+                          color={settings.decorativeStairsArrowColor}
+                          onChange={(decorativeStairsArrowColor) => patchVerticalSettings({ decorativeStairsArrowColor })}
+                        />
+                        <SliderRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
+                          value={settings.decorativeStairsArrowSize}
+                          onChange={(decorativeStairsArrowSize) => patchVerticalSettings({ decorativeStairsArrowSize })}
+                          min={0.2}
+                          max={1}
+                          step={0.05}
+                          format={(v) => v.toFixed(2)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  )}
+                </div>
+              )}
+
+              {settings.verticalStyle === "decorative" && hasOneWayPassages && (
+                <div style={styles.subGroupWrap}>
+                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_one_way")}>
+                    {isExpanded("vertical_one_way") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
+                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.one_way_passage_marker"]()}</div>
+                  </div>
+                  {isExpanded("vertical_one_way") && (
+                  <div style={styles.subGroup}>
+                    <DecorativeLineStyleGroup
+                      settings={settings.decorativeStairsOneWay}
+                      onChange={(patch) => patchDecorativeLineStyle("decorativeStairsOneWay", patch)}
+                    />
+                    <ColorRow
+                      label={m["image_export.vector_by_walls.one_way_accent_color"]()}
+                      color={settings.decorativeStairsAccentColor}
+                      onChange={(decorativeStairsAccentColor) => patchVerticalSettings({ decorativeStairsAccentColor })}
+                    />
+                  </div>
+                  )}
+                </div>
+              )}
+
+              {settings.verticalStyle === "decorative" && hasElevators && (
+                <div style={styles.subGroupWrap}>
+                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_elevator")}>
+                    {isExpanded("vertical_elevator") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
+                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.elevator_marker"]()}</div>
+                  </div>
+                  {isExpanded("vertical_elevator") && (
+                  <div style={styles.subGroup}>
+                    <DecorativeLineStyleGroup
+                      settings={settings.decorativeElevator}
+                      onChange={(patch) => patchDecorativeLineStyle("decorativeElevator", patch)}
+                    />
+                  </div>
+                  )}
+                </div>
               )}
 
               {settings.verticalStyle === "abstract" && hasTwoWayPassages && (

@@ -1752,6 +1752,8 @@
   "image_export.vector_by_walls.vertical_subsection_marker": "Маркер",
   "image_export.vector_by_walls.vertical_subsection_arrows": "Стрелка",
   "image_export.vector_by_walls.vertical_style_not_customizable": "Для этого стиля отображения пока нет настроек маркеров и стрелок.",
+  "image_export.vector_by_walls.decorative_line_color": "Цвет линии",
+  "image_export.vector_by_walls.decorative_line_width": "Толщина линии",
   "image_export.vector_by_walls.section_warnings": "Предупреждения ({count})",
   "image_export.vector_by_walls.warning_teleport_marker_invisible": "Маркер выхода телепорта невидим",
   "image_export.vector_by_walls.warning_teleport_marker_invisible_description": "Точка выхода одностороннего телепорта рисуется заливкой цвета пола, а не цветом телепорта, поэтому при толщине рамки 0 её нечем отрисовать.",

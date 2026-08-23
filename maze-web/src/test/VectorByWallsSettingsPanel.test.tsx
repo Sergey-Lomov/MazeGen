@@ -600,7 +600,7 @@ describe("VectorByWallsSettingsPanel", () => {
       expect(screen.getByText(m["image_export.vector_by_walls.one_way_passage_marker"]())).toBeInTheDocument();
     });
 
-    it("hides all marker/arrow sub-groups and shows the hint when verticalStyle isn't 'abstract'", () => {
+    it("hides the marker-shaped sub-groups and shows the hint when verticalStyle is 'realistic' (no drawing implemented yet)", () => {
       useMazeStore.setState({
         nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
         edges: [
@@ -608,11 +608,32 @@ describe("VectorByWallsSettingsPanel", () => {
           { from: 1, to: 0, kind: "vertical_passage" as const },
         ],
         vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, vertical: true },
-        vectorByWallsSettings: { ...useMazeStore.getState().vectorByWallsSettings, verticalStyle: "decorative" },
+        vectorByWallsSettings: { ...useMazeStore.getState().vectorByWallsSettings, verticalStyle: "realistic" },
       });
       render(<VectorByWallsSettingsPanel />);
       expect(screen.queryByText(m["image_export.vector_by_walls.two_way_passage_marker"]())).not.toBeInTheDocument();
       expect(screen.getByText(m["image_export.vector_by_walls.vertical_style_not_customizable"]())).toBeInTheDocument();
+    });
+
+    it("shows the decorative-style sub-groups (line color/width/size) instead of the marker-shaped ones when verticalStyle is 'decorative'", () => {
+      useMazeStore.setState({
+        nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
+        edges: [
+          { from: 0, to: 1, kind: "vertical_passage" as const },
+          { from: 1, to: 0, kind: "vertical_passage" as const },
+        ],
+        vectorByWallsSectionsExpanded: {
+          ...useMazeStore.getState().vectorByWallsSectionsExpanded,
+          vertical: true,
+          vertical_two_way: true,
+        },
+        vectorByWallsSettings: { ...useMazeStore.getState().vectorByWallsSettings, verticalStyle: "decorative" },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.queryByText(m["image_export.vector_by_walls.vertical_style_not_customizable"]())).not.toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.two_way_passage_marker"]())).toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.decorative_line_color"]())).toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.decorative_line_width"]())).toBeInTheDocument();
     });
 
     it("the two-way passage sub-group starts collapsed and expands on header click", () => {

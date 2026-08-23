@@ -236,16 +236,16 @@ export type TeleportEdge = { from: [number, number]; to: [number, number]; oneWa
  *  level could be resolved. Set for every marker now (two-way included), not just one-way ones,
  *  since a two-way connection still has a real "which floor(s)" to point at (GitHub issue #337/#347
  *  design follow-up: a two-way passage/elevator with no arrow at all gave no visual cue where it
- *  led). `filled` is the marker circle's own fill — `true` for a two-way `VerticalPassage` or an
- *  `Elevator` (both traversable from either end, so there's nothing to distinguish), `false` for
- *  *either* end of a one-way `VerticalPassage` (both its departure and arrival-only markers draw
- *  empty/floor-colored — only the arrow tells them apart, see `arrowFilled`). `arrowFilled`
- *  distinguishes a one-way `VerticalPassage`'s two ends — `true` (the traversable-from end, i.e.
- *  this marker's own node is the edge's `from`) draws a solid arrow; `false` (the arrival-only end,
- *  this marker's own node is the edge's `to`, rendered as an extra marker on the *other* floor's
- *  own view) draws an outline-only arrow — visually distinguishing "you can enter here" from "you
- *  only arrive here". Always `true` for a two-way `VerticalPassage` or an `Elevator` (matches
- *  `filled`, since there's no empty variant to distinguish from). */
+ *  led). `filled` distinguishes a two-way `VerticalPassage`/`Elevator` (`true`, ordinary marker
+ *  look) from a one-way `VerticalPassage`'s two ends (`false` on both — the two ends are told apart
+ *  from each other by `arrowFilled` instead, not by `filled`). `arrowFilled` distinguishes a
+ *  one-way `VerticalPassage`'s two ends — `true` (the departure end, this marker's own node is the
+ *  edge's `from`) vs. `false` (the arrival-only end, this marker's own node is the edge's `to`,
+ *  rendered as an extra marker on the *other* floor's own view); how each renderer actually draws
+ *  the two apart is its own concern (`VerticalConnectionRenderer.ts`'s `oneWay` branch for the
+ *  abstract style's accent-color/border split, `renderDecorativeMarker` for the decorative style's
+ *  crossed-out arrow, GitHub issue #428). Always `true` for a two-way `VerticalPassage` or an
+ *  `Elevator` (matches `filled`, since there's no empty variant to distinguish from). */
 export type VerticalConnectionMarker = {
   pos: [number, number];
   fromNode: number;
