@@ -100,7 +100,7 @@ describe("IssueBubble", () => {
 
     const bubble = screen.getByText("Loop validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([[1, 2]]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 1, to: 2, asWall: false }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
   });
@@ -111,18 +111,18 @@ describe("IssueBubble", () => {
 
     const bubble = screen.getByText("Teleport validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([[3, 4]]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
   });
 
-  it("hovering an invalid_one_way bubble sets hoveredIssueLoopEdges (shared edge-highlight path) to this check's flattened groups; leaving clears it", () => {
+  it("hovering an invalid_one_way bubble sets hoveredIssueLoopEdges (shared edge-highlight path, drawn as a wall — GitHub issue #377) to this check's flattened groups; leaving clears it", () => {
     const issue = invalidOneWayIssue("one_way_waypoint_distance");
     render(<IssueBubble issue={issue} sourceCheck="one_way_waypoint_distance" />);
 
     const bubble = screen.getByText("One-way validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([[3, 4]]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: true }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
   });

@@ -717,6 +717,7 @@ export function resolveParamLabel(id: string, fallback: string, contextId?: stri
 const paramDescriptionOverrideI18n: Record<string, MessageFn> = {
   "priority.split_route_cut": m["param.priority.split_route_cut.description"] as MessageFn,
   "selection.remove_split": m["param.selection.remove_split.description"] as MessageFn,
+  "max_connections.one_way_group_super_hub": m["param.max_connections.one_way_group_super_hub.description"] as MessageFn,
 };
 
 export function resolveParamDescription(id: string, contextId?: string): string | undefined {

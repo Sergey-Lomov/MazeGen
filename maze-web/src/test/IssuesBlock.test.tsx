@@ -27,12 +27,30 @@ describe("IssuesBlock", () => {
     expect(bubbles.length).toBe(2);
 
     fireEvent.mouseEnter(bubbles[0]);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([[1, 2]]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 1, to: 2, asWall: false }]);
     fireEvent.mouseLeave(bubbles[0]);
 
     fireEvent.mouseEnter(bubbles[1]);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([[3, 4]]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false }]);
     fireEvent.mouseLeave(bubbles[1]);
+  });
+
+  it("highlights a hovered invalid_one_way bubble's edges as walls (asWall: true), not lines", () => {
+    // GitHub issue #377: a single-edge one-way problem is drawn as the wall between its two
+    // cells, unlike a loop/teleport/split-route's connected-line edges.
+    const issue: IssueDto = {
+      kind: "invalid_one_way",
+      payload: { kind: "invalid_one_way", groups: { one_way_group_super_hub: [{ edges: [[5, 6]], preset_locked: false }] } },
+      source_checks: ["one_way_group_super_hub"],
+      source_check_types: { one_way_group_super_hub: "one_way_group_super_hub" },
+      details: {},
+    };
+    render(<IssueBubble issue={issue} sourceCheck="one_way_group_super_hub" />);
+
+    const bubble = screen.getByText("One-way validation");
+    fireEvent.mouseEnter(bubble);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 5, to: 6, asWall: true }]);
+    fireEvent.mouseLeave(bubble);
   });
 
   it("with showFullyPresetLockedIssues off, a surviving mixed bubble only highlights its non-preset-locked elements on hover", () => {
@@ -58,7 +76,7 @@ describe("IssuesBlock", () => {
 
     const bubble = screen.getByText("Loop validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([[3, 4]]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false }]);
     fireEvent.mouseLeave(bubble);
 
     useMazeStore.getState().setShowFullyPresetLockedIssues(true);
@@ -296,7 +314,7 @@ describe("IssuesBlock", () => {
 
     const bubble = screen.getByText("Split-tile traversal route validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([[3, 4]]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false }]);
     fireEvent.mouseLeave(bubble);
 
     useMazeStore.getState().setShowFullyPresetLockedIssues(true);

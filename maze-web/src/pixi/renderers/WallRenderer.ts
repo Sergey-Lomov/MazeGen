@@ -2,10 +2,9 @@ import { Container, Graphics } from "pixi.js";
 import type { WallEdge, WallStyleOverride, OneWayStyleOverride } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellVertices, getNeighborData } from "../tessellationGeometry";
-import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow } from "./wallUtils";
+import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow, MAP_ONE_WAY_SIZE } from "./wallUtils";
 import { WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
-import { TILE_SIZE } from "../constants";
 
 const WALL_STYLES = {
   solid:      { color: canvas.wall.default,     cap: "round" as const, join: "round" as const },
@@ -152,7 +151,7 @@ export class WallRenderer {
       // Default look (GenerationRenderer/PostEditRenderer/PresetConnectionsRenderer/
       // MazeOverlayRenderer, none of which pass an override): a triangle gapped in the floor
       // color — GitHub issue #292 follow-up.
-      drawOneWayTriangle(this.g, cx, cy, dx, dy, { gapColor: canvas.floor.default, gapWidth: 3, size: TILE_SIZE * 0.3 });
+      drawOneWayTriangle(this.g, cx, cy, dx, dy, { gapColor: canvas.floor.default, gapWidth: 3, size: MAP_ONE_WAY_SIZE });
       return;
     }
     const style = {

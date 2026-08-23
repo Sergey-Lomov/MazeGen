@@ -46,7 +46,7 @@ export type Token =
  *  edge/node data (mirrors `IssuePayload::None`). Reuses the same shape `cycle`/`region` tokens
  *  already carry rather than inventing a third representation. */
 export type IssueHighlightTarget =
-  | { kind: "cycle"; edges: [bigint, bigint][] }
+  | { kind: "cycle"; edges: [bigint, bigint][]; asWall: boolean }
   | { kind: "region"; nodes: bigint[] };
 
 /** Flattens an `IssuePayload` (per-source-check-keyed) into one combined highlight target — used
@@ -59,7 +59,7 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       return null;
     case "InvalidLoop": {
       const edges = [...payload.edges.values()].flat().flatMap((group) => group.edges);
-      return edges.length > 0 ? { kind: "cycle", edges } : null;
+      return edges.length > 0 ? { kind: "cycle", edges, asWall: false } : null;
     }
     case "RegionNeedsExpansion":
     case "RegionNeedsShrink": {
@@ -70,12 +70,13 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       // Reuses the "cycle" shape — a teleport group's edges are highlighted exactly like a
       // cycle's edges (see `IssueHighlightTarget`'s doc comment).
       const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
-      return edges.length > 0 ? { kind: "cycle", edges } : null;
+      return edges.length > 0 ? { kind: "cycle", edges, asWall: false } : null;
     }
     case "InvalidOneWay": {
-      // Reuses the "cycle" shape, same rationale as InvalidTeleport above.
+      // Each flagged one-way is an independent single-edge problem between two adjacent cells
+      // (GitHub issue #377) — highlighted as the wall between them rather than a line.
       const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
-      return edges.length > 0 ? { kind: "cycle", edges } : null;
+      return edges.length > 0 ? { kind: "cycle", edges, asWall: true } : null;
     }
     case "InvalidSplitTile": {
       // Reuses the "region" shape — `RegionHighlightRenderer`'s per-group perimeter reads as a
@@ -90,7 +91,7 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       // route's own edge order and per-edge split-tile flag only matter to the repair strategy's
       // candidate filtering, not to highlighting the whole path on hover.
       const edges = [...payload.routes.values()].flat(2).map(([from, to]) => [from, to] as [bigint, bigint]);
-      return edges.length > 0 ? { kind: "cycle", edges } : null;
+      return edges.length > 0 ? { kind: "cycle", edges, asWall: false } : null;
     }
     case "ExcessiveSccCount":
       // No structural highlight data — this issue never points at specific regions on the canvas.
@@ -98,12 +99,12 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
     case "InvalidVerticalPassage": {
       // Reuses the "cycle" shape, same rationale as InvalidTeleport/InvalidOneWay above.
       const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
-      return edges.length > 0 ? { kind: "cycle", edges } : null;
+      return edges.length > 0 ? { kind: "cycle", edges, asWall: false } : null;
     }
     case "InvalidElevator": {
       // Reuses the "cycle" shape, same rationale as InvalidTeleport/InvalidOneWay above.
       const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
-      return edges.length > 0 ? { kind: "cycle", edges } : null;
+      return edges.length > 0 ? { kind: "cycle", edges, asWall: false } : null;
     }
     case "InvalidElevatorStop": {
       const nodes = [...payload.nodes.values()].flat().flatMap((group) => group.region);

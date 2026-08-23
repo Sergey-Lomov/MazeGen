@@ -4,11 +4,13 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import type { Pos } from "./tessellationGeometry";
 import { buildNodePositions } from "./tessellationGeometry";
+import { drawOneWayWallHighlight } from "./renderers/wallUtils";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { touchedNodeIds } from "./renderers/edgeUtils";
 import { canvas } from "./colorTokens";
 import { BaseGraphRenderer, buildCrossFloorMarkers } from "./BaseGraphRenderer";
 import type { NodeCellResolver } from "./BaseGraphRenderer";
+import type { IssueHighlightEdge } from "../store/postEditFullTypes";
 
 const HIGHLIGHT_COLOR = canvas.debug.issueHighlight;
 const HIGHLIGHT_WIDTH = 3;
@@ -16,9 +18,10 @@ const HIGHLIGHT_ALPHA = 0.9;
 
 export interface IssueHighlightData {
   nodes: NodeDto[];
-  /** Base-graph [from, to] edges to highlight — typically the loops of a hovered issue, or (GitHub
-   * issue #195) a hovered invalid-teleport/teleport-group issue's flagged teleport edge(s). */
-  edges: [number, number][] | null;
+  /** Base-graph edges to highlight — typically the loops of a hovered issue, or (GitHub issue
+   * #195) a hovered invalid-teleport/teleport-group issue's flagged teleport edge(s). Each edge's
+   * own `asWall` (GitHub issue #377) picks line-vs-wall drawing — see `IssueHighlightEdge`. */
+  edges: IssueHighlightEdge[] | null;
   /** The maze's full edge list (`state.edges`, not the highlighted subset above) — drives
    *  shape-aware split node-point positioning (GitHub issue #318), see `buildNodePositions`'s own
    *  doc comment. `[]` falls back to the generic hub position. */
@@ -67,11 +70,40 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
 
     if (!hasEdges || nodes.length === 0) return;
 
+    // Wall edges (GitHub issue #377 — e.g. a single flagged invalid_one_way) draw as the shared
+    // wall between their two cells instead of a line — no node/cross-floor markers, since the
+    // wall segment itself is the marker. Falls back to a line if the two endpoints turn out not
+    // to be tessellation-adjacent (no shared wall to draw, e.g. a cross-floor edge whose other
+    // endpoint isn't resolvable to a cell here).
+    const nodeById = new Map<number, NodeDto>();
+    for (const node of nodes) nodeById.set(node.id, node);
+
+    const wallG = new Graphics();
+    const lineEdges: IssueHighlightEdge[] = [];
+    for (const edge of edges) {
+      if (!edge.asWall) {
+        lineEdges.push(edge);
+        continue;
+      }
+      const from = nodeById.get(edge.from);
+      const to = nodeById.get(edge.to);
+      if (!from || !to) {
+        lineEdges.push(edge);
+        continue;
+      }
+      const drew = drawOneWayWallHighlight(wallG, [from.x, from.y], [to.x, to.y], cfg, HIGHLIGHT_COLOR, HIGHLIGHT_WIDTH, HIGHLIGHT_ALPHA);
+      if (!drew) lineEdges.push(edge);
+    }
+    this.edgesContainer.addChild(wallG);
+
+    if (lineEdges.length === 0) return;
+
     const directedPairs = allEdges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
     const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg, directedPairs);
+    const linePairs: [number, number][] = lineEdges.map((e) => [e.from, e.to]);
 
     const g = new Graphics();
-    for (const [from, to] of edges) {
+    for (const [from, to] of linePairs) {
       const a = nodePos.get(from);
       const b = nodePos.get(to);
       if (!a || !b) continue;
@@ -82,12 +114,12 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
     this.edgesContainer.addChild(g);
 
     if (resolveNodeLevel && resolveNodeCell && activeFloorIndex !== undefined) {
-      const markers = buildCrossFloorMarkers(edges.map(([from, to]) => ({ from, to })), nodePos, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, NODE_RADIUS);
+      const markers = buildCrossFloorMarkers(linePairs.map(([from, to]) => ({ from, to })), nodePos, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, NODE_RADIUS);
       this.renderCrossFloorMarkers(markers, NODE_RADIUS, HIGHLIGHT_COLOR, HIGHLIGHT_COLOR, HIGHLIGHT_COLOR);
     }
 
     const nodesG = new Graphics();
-    for (const nodeId of touchedNodeIds(edges)) {
+    for (const nodeId of touchedNodeIds(linePairs)) {
       const pos = nodePos.get(nodeId);
       if (!pos) continue;
       nodesG.circle(pos.x, pos.y, NODE_RADIUS);

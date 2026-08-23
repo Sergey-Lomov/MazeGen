@@ -12,6 +12,7 @@ import { navigateToFloor } from "../pixi/renderers/floorNavigation";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 import type { IssueDto, IssueEdgeGroupPayload } from "../wasm/types";
+import type { IssueHighlightEdge } from "../store/postEditFullTypes";
 
 /// Whether every element in `elements` (this bubble's own source-check slice, from
 /// `presetLockElementsFor`) is `preset_locked` -- GitHub issue #245. `null`/empty resolves
@@ -174,9 +175,24 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   // asymmetry). `RegionHighlightRenderer` draws each group independently with no positional
   // contract, so filtering out locked regions before mapping to `.region` is safe.
   const visibleGroup = (e: { preset_locked: boolean }) => showFullyPresetLockedIssues || !e.preset_locked;
-  const loopEdges = loopGroups?.filter(visibleGroup).flatMap((g) => g.edges) ?? null;
-  const teleportEdges = teleportGroups?.filter(visibleGroup).flatMap((g) => g.edges) ?? null;
-  const oneWayEdges = oneWayGroups?.filter(visibleGroup).flatMap((g) => g.edges) ?? null;
+  const asHighlightEdges = (pairs: [number, number][], asWall: boolean): IssueHighlightEdge[] =>
+    pairs.map(([from, to]) => ({ from, to, asWall }));
+  // Loop edges form a cycle -- drawn as connected lines, never as walls (see
+  // `IssueHighlightEdge`'s doc comment).
+  const loopEdges = loopGroups != null
+    ? asHighlightEdges(loopGroups.filter(visibleGroup).flatMap((g) => g.edges), false)
+    : null;
+  // Teleport edges don't connect tessellation-adjacent cells -- no shared wall to draw, stays a
+  // line.
+  const teleportEdges = teleportGroups != null
+    ? asHighlightEdges(teleportGroups.filter(visibleGroup).flatMap((g) => g.edges), false)
+    : null;
+  // Each flagged one-way is an independent single-edge problem between two adjacent cells (GitHub
+  // issue #377) -- highlighted as the wall between them instead of a line, which reads ambiguous
+  // between two adjacent node dots.
+  const oneWayEdges = oneWayGroups != null
+    ? asHighlightEdges(oneWayGroups.filter(visibleGroup).flatMap((g) => g.edges), true)
+    : null;
   // Unlike teleport/one-way (thin directed edges, highlighted as lines), a vertical passage
   // connects two floors at the same x-y point -- a line between its endpoints reads as a stray
   // diagonal rather than "these cells". Highlighted as region squares instead, one flat
@@ -217,6 +233,9 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const splitRouteEdges = splitRoutePayload != null
     ? [splitRoutePayload.filter(visibleGroup).flatMap((r) => r.edges).map((e) => [e.from, e.to] as [number, number])]
     : null;
+  const splitRouteHighlightEdges = splitRouteEdges != null
+    ? asHighlightEdges(splitRouteEdges.flat(), false)
+    : null;
   const visibleRegionGroups = regionNodes != null
     ? regionNodes.filter(visibleGroup).map((r) => r.region)
     : null;
@@ -235,8 +254,8 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ? () => setHoveredIssueLoopEdges(teleportEdges)
     : oneWayEdges != null
     ? () => setHoveredIssueLoopEdges(oneWayEdges)
-    : splitRouteEdges != null
-    ? () => setHoveredIssueLoopEdges(splitRouteEdges.flat())
+    : splitRouteHighlightEdges != null
+    ? () => setHoveredIssueLoopEdges(splitRouteHighlightEdges)
     : visibleRegionGroups != null
     ? () => setHoveredIssueRegionGroups(visibleRegionGroups)
     : splitTileNodes != null
@@ -285,8 +304,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ...(loopEdges ?? []),
     ...(teleportEdges ?? []),
     ...(oneWayEdges ?? []),
-    ...(splitRouteEdges?.flat() ?? []),
-  ].flat().concat((splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat(), (areaDeficitCellNodes ?? []).flat(), (missingStopCellNodes ?? []).flat());
+  ].flatMap((e) => [e.from, e.to]).concat((splitRouteEdges?.flat() ?? []).flat(), (splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat(), (areaDeficitCellNodes ?? []).flat(), (missingStopCellNodes ?? []).flat());
 
   return (
     <>

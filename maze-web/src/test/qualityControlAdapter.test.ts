@@ -101,7 +101,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "invalid_loop", target: { kind: "cycle", edges: [[1n, 2n]] }, reasons: ["Loop validation"] },
+      { kind: "issue", issueKind: "invalid_loop", target: { kind: "cycle", edges: [[1n, 2n]], asWall: false }, reasons: ["Loop validation"] },
     ]);
   });
 
@@ -136,7 +136,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "invalid_teleport", target: { kind: "cycle", edges: [[1n, 2n]] }, reasons: ["Teleport validation"] },
+      { kind: "issue", issueKind: "invalid_teleport", target: { kind: "cycle", edges: [[1n, 2n]], asWall: false }, reasons: ["Teleport validation"] },
     ]);
   });
 
@@ -160,7 +160,7 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     });
     expect(tokens).toEqual([
       { kind: "text", text: 'Check "check1": issue found ' },
-      { kind: "issue", issueKind: "invalid_one_way", target: { kind: "cycle", edges: [[1n, 2n]] }, reasons: ["One-way validation"] },
+      { kind: "issue", issueKind: "invalid_one_way", target: { kind: "cycle", edges: [[1n, 2n]], asWall: true }, reasons: ["One-way validation"] },
     ]);
   });
 

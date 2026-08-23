@@ -84,6 +84,8 @@ export type HoveredDebugRef =
   | { kind: "region"; nodes: bigint[] }
   | {
       kind: "issue"; issueKind: string;
-      target: { kind: "cycle"; edges: [bigint, bigint][] } | { kind: "region"; nodes: bigint[] } | null;
+      /** `cycle.asWall` (GitHub issue #377) picks line-vs-wall drawing in `DebugRefHighlightOverlay`
+       *  — see `IssueHighlightEdge` in `postEditFullTypes.ts`. */
+      target: { kind: "cycle"; edges: [bigint, bigint][]; asWall: boolean } | { kind: "region"; nodes: bigint[] } | null;
       reasons: string[];
     };

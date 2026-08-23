@@ -285,6 +285,7 @@ const DETAIL_DESCRIPTIONS: Record<string, () => string> = {
   teleport_split_intersection: () => m["issue.invalid_teleport.teleport_split_intersection_description"](),
   teleport_waypoint_distance: () => resolveCheckDescription("teleport_waypoint_distance", ""),
   teleport_super_hub_avoidance: () => resolveCheckDescription("teleport_super_hub_avoidance", ""),
+  one_way_group_super_hub: () => resolveCheckDescription("one_way_group_super_hub", ""),
   split_distance_from_waypoint: () => resolveCheckDescription("split_distance_from_waypoint", ""),
   split_teleport_intersection: () => resolveCheckDescription("split_teleport_intersection", ""),
   max_vertical_passage_count: () => resolveCheckDescription("max_vertical_passage_count", ""),
