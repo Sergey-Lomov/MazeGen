@@ -96,6 +96,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     pngExportSettings: DEFAULT_PNG_EXPORT_SETTINGS,
     floors: [{ id: "floor_1", title: "Floor 1" }],
     nextFloorNumber: 2,
+    activeFloorId: "floor_1",
   };
   return { ...base, ...overrides } as unknown as MazeState;
 }
@@ -540,7 +541,7 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
   it("round-trips floors", () => {
     const data = valid_without_optional_sections();
     const result = parseAndValidate(data);
-    expect(result.floors).toEqual({ floors: [{ id: "floor_1", title: "Floor 1" }], nextFloorNumber: 2 });
+    expect(result.floors).toEqual({ floors: [{ id: "floor_1", title: "Floor 1" }], nextFloorNumber: 2, activeFloorId: "floor_1" });
   });
 
   it("drops a malformed floor entry (missing title) and keeps the rest", () => {
@@ -573,6 +574,20 @@ describe("parseAndValidate — legacy files missing optional sections", () => {
       { id: "floor_1", title: "Floor 1" },
       { id: "floor_2", title: "Floor 2" },
     ]);
+  });
+
+  it("falls back to floors[0].id when activeFloorId names an unknown/dropped floor", () => {
+    const data = valid_without_optional_sections();
+    (data.floors as Record<string, unknown>).activeFloorId = "floor_does_not_exist";
+    const result = parseAndValidate(data);
+    expect(result.floors.activeFloorId).toBe("floor_1");
+  });
+
+  it("falls back to floors[0].id when activeFloorId is absent (pre-#354 file)", () => {
+    const data = valid_without_optional_sections();
+    delete (data.floors as Record<string, unknown>).activeFloorId;
+    const result = parseAndValidate(data);
+    expect(result.floors.activeFloorId).toBe("floor_1");
   });
 
   function valid_without_optional_sections(): Record<string, unknown> {

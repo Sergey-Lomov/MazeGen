@@ -268,6 +268,19 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded).toEqual({ cells: true });
   });
 
+  it("loadProject restores the saved activeFloorId (GitHub issue #354)", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [] });
+    useMazeStore.getState().addFloor();
+    const secondFloorId = useMazeStore.getState().floors[1].id;
+    useMazeStore.getState().setActiveFloorId(secondFloorId);
+    const file = serializeProject(useMazeStore.getState());
+    expect(file.floors.activeFloorId).toBe(secondFloorId);
+
+    useMazeStore.getState().loadProject(file);
+    expect(useMazeStore.getState().activeFloorId).toBe(secondFloorId);
+  });
+
   it("setError sets and clears the error message", () => {
     useMazeStore.getState().setError("boom");
     expect(useMazeStore.getState().error).toBe("boom");

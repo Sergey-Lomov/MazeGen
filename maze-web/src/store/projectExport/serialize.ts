@@ -117,6 +117,7 @@ export function serializeProject(state: MazeState): ProjectFile {
     floors: {
       floors: state.floors,
       nextFloorNumber: state.nextFloorNumber,
+      activeFloorId: state.activeFloorId,
     },
   };
 }
