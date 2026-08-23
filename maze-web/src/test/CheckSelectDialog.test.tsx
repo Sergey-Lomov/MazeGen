@@ -60,4 +60,23 @@ describe("CheckSelectDialog", () => {
     expect(onBack).toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  describe("multi-floor-only checks", () => {
+    const withFloorOnlyCheck = [
+      ...availableChecks,
+      { id: "min_vertical_passage_count", label: "Min count", description: "", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false, visibility: { type: "multi_floor_only" as const } },
+    ];
+
+    it("hides a multi-floor-only check on a single floor", () => {
+      useMazeStore.setState({ availableChecks: withFloorOnlyCheck, rules: [], floors: [{ id: "f1", title: "Floor 1" }] });
+      render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={vi.fn()} />);
+      expect(screen.queryByText("Min count")).not.toBeInTheDocument();
+    });
+
+    it("shows it again with 2+ floors", () => {
+      useMazeStore.setState({ availableChecks: withFloorOnlyCheck, rules: [], floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }] });
+      render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={vi.fn()} />);
+      expect(screen.getByText("Min count")).toBeInTheDocument();
+    });
+  });
 });

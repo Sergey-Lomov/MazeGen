@@ -1925,6 +1925,12 @@ struct CheckDescriptor {
     issue_kinds: Vec<&'static str>, // IssueKind::as_str() values this check may produce
     params: Vec<ParamDescriptor>,
     allow_multiple_instances: bool, // see below
+    // `None` = always offered. Same `EntityVisibility` tag as `ParamDescriptor.visibility`, but
+    // gates the whole check's presence in the *selection* dialogs only (`IssueSelectDialog`,
+    // `CheckSelectDialog`, `AddCheckToRuleDialog` via `RulesColumn.candidatesFor`) — a rule already
+    // built on a now-hidden check stays exactly as configured, visible on its own card, and still
+    // runs at generation time. See `quality-feature.md`'s "Conditional entity visibility" section.
+    visibility: Option<EntityVisibility>,
 }
 ```
 
@@ -1965,6 +1971,11 @@ struct ParamDescriptor {
     id: &'static str,
     label: &'static str,
     kind: ParamKindDto,
+    // `None` = always visible. A pure UI hint (GitHub issue #349) — core/wasm never branch on
+    // this; the web client resolves it against live maze state. See `quality-feature.md`'s
+    // "Conditional entity visibility" section for the full mechanism and `EntityVisibility`'s own
+    // variants.
+    visibility: Option<EntityVisibility>,
 }
 
 #[serde(tag = "type", rename_all = "snake_case")]

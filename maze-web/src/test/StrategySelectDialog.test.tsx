@@ -57,6 +57,25 @@ describe("StrategySelectDialog", () => {
     expect(useMazeStore.getState().rules[0].strategyId).toBe("random_endpoints");
   });
 
+  describe("multi-floor-only strategies", () => {
+    const withFloorOnlyStrategy = [
+      ...availableStrategies,
+      { id: "add_vertical_passage", handles: "missing_endpoints", params: [], experimental: false, nested_slots: [], visibility: { type: "multi_floor_only" as const } },
+    ];
+
+    it("hides a multi-floor-only strategy on a single floor", () => {
+      useMazeStore.setState({ availableStrategies: withFloorOnlyStrategy, floors: [{ id: "f1", title: "Floor 1" }] });
+      render(<StrategySelectDialog ruleId="g1" kind="missing_endpoints" onClose={vi.fn()} />);
+      expect(screen.queryByText("Random vertical passage")).not.toBeInTheDocument();
+    });
+
+    it("shows it again with 2+ floors", () => {
+      useMazeStore.setState({ availableStrategies: withFloorOnlyStrategy, floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }] });
+      render(<StrategySelectDialog ruleId="g1" kind="missing_endpoints" onClose={vi.fn()} />);
+      expect(screen.getByText("Random vertical passage")).toBeInTheDocument();
+    });
+  });
+
   describe("add_split's rule-level pattern override", () => {
     it("renders the plain node-count input when the rule has no split_patterns", () => {
       useMazeStore.setState({

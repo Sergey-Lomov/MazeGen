@@ -201,6 +201,23 @@ describe("RulesColumn dialogs and rule management", () => {
     ]);
   });
 
+  it("excludes multi-floor-only checks from the add-to-rule candidates on a single floor", () => {
+    useMazeStore.setState({
+      availableChecks: [
+        { id: "c1", label: "Check One", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false },
+        { id: "c2", label: "Check Two", description: "", issue_kinds: ["k1"], params: [], allow_multiple_instances: false, visibility: { type: "multi_floor_only" } },
+      ],
+      rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
+      floors: [{ id: "f1", title: "Floor 1" }],
+    });
+    const slots: StrategySlotVM[] = [
+      { ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false },
+    ];
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={vi.fn()} />);
+    fireEvent.click(screen.getByText("+ Add check"));
+    expect(screen.getByText("All checks compatible with this rule are already added.")).toBeInTheDocument();
+  });
+
   it("shows an alert instead of an empty picker when no candidate checks are available", () => {
     useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];

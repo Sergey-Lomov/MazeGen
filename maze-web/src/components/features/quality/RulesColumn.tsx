@@ -21,6 +21,7 @@ import type { StrategySlotVM, QualityStageVM, CheckVM } from "../useQualityViewM
 import type { CheckCandidateVM } from "../AddCheckToRuleDialog";
 import type { QualitySelection } from "./types";
 import { isTypeAlreadyActive } from "../../../store/slices/generationSlice";
+import { isEntityVisible } from "../ParamFields";
 
 // Three-step "Add new rule" flow: pick an issue kind, then a check of that kind,
 // then a fix strategy for the new rule — nothing commits to the store until step 3 confirms
@@ -61,6 +62,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   const availableChecks = useMazeStore((s) => s.availableChecks);
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const rules = useMazeStore((s) => s.rules);
+  const floorCount = useMazeStore((s) => s.floors.length);
   const removeCheck = useMazeStore((s) => s.removeCheck);
   const createRule = useMazeStore((s) => s.createRule);
   const toggleRuleDisabled = useMazeStore((s) => s.toggleRuleDisabled);
@@ -96,6 +98,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   function candidatesFor(slot: StrategySlotVM): CheckCandidateVM[] {
     return availableChecks
       .filter((c) => c.issue_kinds[0] === slot.kind)
+      .filter((c) => isEntityVisible(c.visibility, floorCount))
       .filter((c) => c.allow_multiple_instances || !isTypeAlreadyActive(rules, c.id))
       .map((c) => ({
         typeId: c.id,

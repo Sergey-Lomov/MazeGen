@@ -19,7 +19,7 @@ use maze_core::{
     MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP, MIN_ELEVATOR_STOP_COUNT_DEFAULT, MIN_ELEVATOR_HEIGHT_DEFAULT, MAX_ELEVATOR_STOP_GAP_DEFAULT,
     ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE, ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT},
 };
-use crate::check_descriptor::{CheckDescriptor, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param, teleport_direction_param, teleport_floor_kind_param};
+use crate::check_descriptor::{CheckDescriptor, EntityVisibility, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param, teleport_direction_param, teleport_floor_kind_param};
 
 // Helper to turn IssueKind into a &'static str for JSON serialization.
 fn kind_str(k: IssueKind) -> &'static str {
@@ -40,6 +40,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             issue_kinds: vec![kind_str(MISSING_ENDPOINTS)],
             params: vec![],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "unreachable_finish",
@@ -48,6 +49,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             issue_kinds: vec![kind_str(UNREACHABLE_FINISH)],
             params: vec![],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "teleport_duplicates_connection",
@@ -56,6 +58,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             issue_kinds: vec![kind_str(INVALID_TELEPORT)],
             params: vec![],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "teleport_waypoint_distance",
@@ -67,23 +70,27 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "distance",
                     label: "Distance threshold",
                     kind: ParamKindDto::Integer { default: TELEPORT_WAYPOINT_DISTANCE_DEFAULT as i64, min: 0, max: 100_000 },
+                visibility: None,
                 },
                 comparison_param(Comparison::Lt),
                 ParamDescriptor {
                     id: "waypoint",
                     label: "Waypoint",
                     kind: ParamKindDto::Enum { options: vec!["start", "finish", "any"], default: "any" },
+                visibility: None,
                 },
                 ParamDescriptor {
                     id: "edge",
                     label: "Edge",
                     kind: ParamKindDto::Enum { options: vec!["entry_only", "entry_or_exit"], default: "entry_or_exit" },
+                visibility: None,
                 },
             ],
             // Multiple instances with different waypoint/edge/distance combinations are a
             // legitimate common configuration (e.g. "entry far from start" AND separately "exit
             // far from finish") — same rationale as min_region_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "teleport_geometric_length",
@@ -95,11 +102,13 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "length",
                     label: "Length threshold (tiles)",
                     kind: ParamKindDto::Float { default: TELEPORT_GEOMETRIC_LENGTH_DEFAULT, min: 0.0, max: 1_000_000.0 },
+                visibility: None,
                 },
                 comparison_param(Comparison::Lt),
                 geometric_floor_mode_param(TELEPORT_GEOMETRIC_LENGTH_DEFAULT_FLOOR_MODE),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "teleport_graph_distance",
@@ -111,10 +120,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "distance",
                     label: "Distance threshold (tiles)",
                     kind: ParamKindDto::Integer { default: TELEPORT_GRAPH_DISTANCE_DEFAULT as i64, min: 0, max: 100_000 },
+                visibility: None,
                 },
                 comparison_param(Comparison::Lt),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "teleport_super_hub_avoidance",
@@ -126,14 +137,17 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_connections",
                     label: "Max connections",
                     kind: ParamKindDto::Integer { default: TELEPORT_SUPER_HUB_MAX_CONNECTIONS_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
                 ParamDescriptor {
                     id: "edge_hub",
                     label: "Edge",
                     kind: ParamKindDto::Enum { options: vec!["entry", "exit", "entry_or_exit"], default: "entry_or_exit" },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "teleport_split_intersection",
@@ -145,9 +159,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "edge_split",
                     label: "Edge",
                     kind: ParamKindDto::Enum { options: vec!["entry", "exit", "entry_or_exit"], default: "entry_or_exit" },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "teleport_group_proximity",
@@ -159,16 +175,19 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "distance",
                     label: "Distance threshold",
                     kind: ParamKindDto::Float { default: TELEPORT_GROUP_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
+                visibility: None,
                 },
                 ParamDescriptor {
                     id: "own_edge",
                     label: "This teleport's end",
                     kind: ParamKindDto::Enum { options: vec!["entry", "exit", "entry_or_exit"], default: "entry_or_exit" },
+                visibility: None,
                 },
                 ParamDescriptor {
                     id: "other_edge",
                     label: "Other teleport's end",
                     kind: ParamKindDto::Enum { options: vec!["entry", "exit", "entry_or_exit"], default: "entry_or_exit" },
+                visibility: None,
                 },
             ],
             // Multiple instances with different own_edge/other_edge/distance combinations are a
@@ -176,6 +195,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // separately "exits close to each other") -- same rationale as
             // teleport_waypoint_distance's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "min_teleport_count",
@@ -187,6 +207,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_teleports",
                     label: "Min teleport count",
                     kind: ParamKindDto::Integer { default: MIN_TELEPORT_COUNT_DEFAULT as i64, min: 1, max: 1_000_000 },
+                visibility: None,
                 },
                 floor_scope_param(MIN_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
@@ -195,6 +216,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // legitimate configuration -- same rationale as min_region_count's
             // allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "min_teleport_ratio",
@@ -206,11 +228,13 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_teleport_ratio",
                     label: "Min teleport count (per 100 cells)",
                     kind: ParamKindDto::Float { default: MIN_TELEPORT_RATIO_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 floor_scope_param(MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
             // See min_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "max_teleport_count",
@@ -222,6 +246,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_teleports",
                     label: "Max teleport count",
                     kind: ParamKindDto::Integer { default: MAX_TELEPORT_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
                 floor_scope_param(MAX_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE),
                 teleport_direction_param(MAX_TELEPORT_COUNT_DEFAULT_DIRECTION),
@@ -231,6 +256,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // configuration (e.g. "at most N bidirectional" AND separately "at most M
             // inter-floor") -- same rationale as min_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "max_teleport_density",
@@ -242,6 +268,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_teleport_density",
                     label: "Max teleport density (per 100 cells)",
                     kind: ParamKindDto::Float { default: MAX_TELEPORT_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 floor_scope_param(MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_SCOPE),
                 teleport_direction_param(MAX_TELEPORT_DENSITY_DEFAULT_DIRECTION),
@@ -249,6 +276,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See max_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "min_one_way_count",
@@ -260,11 +288,13 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_one_ways",
                     label: "Min one-way count",
                     kind: ParamKindDto::Integer { default: MIN_ONE_WAY_COUNT_DEFAULT as i64, min: 1, max: 1_000_000 },
+                visibility: None,
                 },
                 floor_scope_param(MIN_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             // See min_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "min_one_way_ratio",
@@ -276,11 +306,13 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_ratio",
                     label: "Min one-way count (per 100 cells)",
                     kind: ParamKindDto::Float { default: MIN_ONE_WAY_RATIO_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 floor_scope_param(MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
             // See min_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "one_way_waypoint_distance",
@@ -292,18 +324,21 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "distance",
                     label: "Distance threshold",
                     kind: ParamKindDto::Integer { default: ONE_WAY_WAYPOINT_DISTANCE_DEFAULT as i64, min: 0, max: 100_000 },
+                visibility: None,
                 },
                 comparison_param(Comparison::Lt),
                 ParamDescriptor {
                     id: "waypoint",
                     label: "Waypoint",
                     kind: ParamKindDto::Enum { options: vec!["start", "finish", "any"], default: "any" },
+                visibility: None,
                 },
             ],
             // Multiple instances with different waypoint/distance combinations are a legitimate
             // simultaneous configuration -- same rationale as teleport_waypoint_distance's
             // allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "one_way_group_geometric_proximity",
@@ -315,12 +350,14 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "distance",
                     label: "Distance threshold",
                     kind: ParamKindDto::Float { default: ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
+                visibility: None,
                 },
                 geometric_floor_mode_param(ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE),
             ],
             // Multiple instances with different distance thresholds are a legitimate simultaneous
             // configuration -- same rationale as teleport_group_proximity's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "one_way_group_graph_proximity",
@@ -332,9 +369,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "distance",
                     label: "Distance threshold",
                     kind: ParamKindDto::Float { default: ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "one_way_group_super_hub",
@@ -346,9 +385,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_connections",
                     label: "Max connections",
                     kind: ParamKindDto::Integer { default: ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "max_one_way_count",
@@ -360,10 +401,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_one_ways",
                     label: "Max one-way count",
                     kind: ParamKindDto::Integer { default: MAX_ONE_WAY_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
                 floor_scope_param(MAX_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "max_one_way_ratio",
@@ -375,10 +418,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_ratio",
                     label: "Max one-way count (per 100 cells)",
                     kind: ParamKindDto::Float { default: MAX_ONE_WAY_RATIO_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 floor_scope_param(MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "min_loops_count",
@@ -390,11 +435,13 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_loops",
                     label: "Min loop count",
                     kind: ParamKindDto::Integer { default: MIN_LOOPS_DEFAULT as i64, min: 1, max: 1_000_000 },
+                visibility: None,
                 },
                 floor_scope_param(MIN_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             // See min_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "min_loop_density",
@@ -406,16 +453,19 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_density",
                     label: "Min loop density (per 100 cells)",
                     kind: ParamKindDto::Float { default: MIN_LOOP_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 ParamDescriptor {
                     id: "avg_loop_length_estimate",
                     label: "Average loop length estimate",
                     kind: ParamKindDto::Integer { default: AVG_LOOP_LENGTH_ESTIMATE_DEFAULT as i64, min: 1, max: 100_000 },
+                visibility: None,
                 },
                 floor_scope_param(MIN_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
             // See min_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "loop_length",
@@ -427,11 +477,13 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "length",
                     label: "Length threshold",
                     kind: ParamKindDto::Integer { default: LOOP_LENGTH_DEFAULT as i64, min: 1, max: 100_000 },
+                visibility: None,
                 },
                 comparison_param(Comparison::Lt),
                 cycle_kind_param(),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "external_escape_diversity",
@@ -443,10 +495,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_distinct_exits",
                     label: "Min distinct exits",
                     kind: ParamKindDto::Integer { default: EXTERNAL_ESCAPE_DIVERSITY_DEFAULT as i64, min: 0, max: 1_000 },
+                visibility: None,
                 },
                 cycle_kind_param(),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "loop_distance_from_start",
@@ -458,10 +512,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_distance_from_start",
                     label: "Min distance from start",
                     kind: ParamKindDto::Integer { default: LOOP_DISTANCE_FROM_START_DEFAULT as i64, min: 0, max: 100_000 },
+                visibility: None,
                 },
                 cycle_kind_param(),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "loop_distance_from_finish",
@@ -473,10 +529,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_distance_from_finish",
                     label: "Min distance from finish",
                     kind: ParamKindDto::Integer { default: LOOP_DISTANCE_FROM_FINISH_DEFAULT as i64, min: 0, max: 100_000 },
+                visibility: None,
                 },
                 cycle_kind_param(),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "max_loop_density",
@@ -488,10 +546,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_density",
                     label: "Max loop density (per 100 cells)",
                     kind: ParamKindDto::Float { default: MAX_LOOP_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 floor_scope_param(MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "max_loops_count",
@@ -503,10 +563,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_loops_count",
                     label: "Max loop count",
                     kind: ParamKindDto::Integer { default: MAX_LOOPS_COUNT_DEFAULT as i64, min: 0, max: 100_000 },
+                visibility: None,
                 },
                 floor_scope_param(MAX_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "scc_count",
@@ -517,8 +579,10 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 id: "max_scc_count",
                 label: "Max SCC region count",
                 kind: ParamKindDto::Integer { default: MAX_SCC_COUNT_DEFAULT as i64, min: 1, max: 1_000_000 },
+            visibility: None,
             }],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "min_region_size",
@@ -530,10 +594,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_region_size",
                     label: "Min region size (tiles)",
                     kind: ParamKindDto::Integer { default: MIN_REGION_SIZE_DEFAULT as i64, min: 1, max: 1_000_000 },
+                visibility: None,
                 },
                 region_class_filter_param(),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "min_region_ratio",
@@ -545,10 +611,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_region_ratio",
                     label: "Min region ratio (per 100 cells)",
                     kind: ParamKindDto::Float { default: MIN_REGION_RATIO_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 region_class_filter_param(),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "max_region_size",
@@ -560,10 +628,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_region_size",
                     label: "Max region size (tiles)",
                     kind: ParamKindDto::Integer { default: MAX_REGION_SIZE_DEFAULT as i64, min: 1, max: 1_000_000 },
+                visibility: None,
                 },
                 region_class_filter_param(),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "max_region_ratio",
@@ -575,10 +645,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_region_ratio",
                     label: "Max region ratio (per 100 cells)",
                     kind: ParamKindDto::Float { default: MAX_REGION_RATIO_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 region_class_filter_param(),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "min_region_count",
@@ -590,27 +662,32 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "path_count",
                     label: "Min Path region count",
                     kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
                 ParamDescriptor {
                     id: "alternative_count",
                     label: "Min Alternative region count",
                     kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
                 ParamDescriptor {
                     id: "unreachable_count",
                     label: "Min Unreachable region count",
                     kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
                 ParamDescriptor {
                     id: "trap_count",
                     label: "Min Trap region count",
                     kind: ParamKindDto::Integer { default: MIN_REGION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             // A single instance now evaluates all four classes at once (see GitHub issue #60's
             // multi-instance design, retired — `MinRegionCountCheck` no longer needs more than
             // one active instance to express "different minimums per class").
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "split_distance_from_waypoint",
@@ -622,18 +699,21 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "distance",
                     label: "Distance threshold",
                     kind: ParamKindDto::Integer { default: SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT as i64, min: 0, max: 100_000 },
+                visibility: None,
                 },
                 comparison_param(Comparison::Lt),
                 ParamDescriptor {
                     id: "waypoint",
                     label: "Waypoint",
                     kind: ParamKindDto::Enum { options: vec!["start", "finish", "any"], default: "any" },
+                visibility: None,
                 },
             ],
             // Multiple instances with different waypoint/distance combinations are a legitimate
             // simultaneous configuration -- same rationale as teleport_waypoint_distance's
             // allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "split_teleport_intersection",
@@ -645,9 +725,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "split_teleport_direction",
                     label: "Teleport shape",
                     kind: ParamKindDto::Enum { options: vec!["incoming", "outgoing", "bidirectional", "any"], default: "any" },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "split_pattern_shape",
@@ -659,9 +741,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "patterns",
                     label: "Patterns",
                     kind: ParamKindDto::PatternList { with_weights: false },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "max_split_count",
@@ -673,10 +757,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_split_count",
                     label: "Max split count",
                     kind: ParamKindDto::Integer { default: MAX_SPLIT_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
                 floor_scope_param(MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "max_split_density",
@@ -688,10 +774,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_split_density",
                     label: "Max split density (per 100 cells)",
                     kind: ParamKindDto::Float { default: MAX_SPLIT_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 floor_scope_param(MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "split_group_geometric_proximity",
@@ -703,6 +791,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "split_group_geometric_proximity_distance",
                     label: "Distance threshold",
                     kind: ParamKindDto::Float { default: SPLIT_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
+                visibility: None,
                 },
                 geometric_floor_mode_param(SPLIT_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE),
             ],
@@ -710,6 +799,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // configuration -- same rationale as one_way_group_geometric_proximity's
             // allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "split_group_graph_proximity",
@@ -721,9 +811,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "split_group_graph_proximity_distance",
                     label: "Distance threshold",
                     kind: ParamKindDto::Float { default: SPLIT_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "split_count",
@@ -735,11 +827,13 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "split_count",
                     label: "Min count",
                     kind: ParamKindDto::Integer { default: SPLIT_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
                 floor_scope_param(SPLIT_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             // See min_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "split_density",
@@ -751,11 +845,13 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "split_density",
                     label: "Min density (per 100 cells)",
                     kind: ParamKindDto::Float { default: SPLIT_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 floor_scope_param(SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
             // See min_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "split_node_connection_count",
@@ -767,18 +863,21 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "count",
                     label: "Connection count threshold",
                     kind: ParamKindDto::Integer { default: SPLIT_NODE_CONNECTION_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
                 comparison_param(Comparison::Gt),
                 ParamDescriptor {
                     id: "direction",
                     label: "Connection direction",
                     kind: ParamKindDto::Enum { options: vec!["incoming", "outgoing", "bidirectional", "any"], default: "any" },
+                visibility: None,
                 },
             ],
             // Multiple instances with different count/direction combinations are a legitimate
             // simultaneous configuration -- same rationale as split_distance_from_waypoint's
             // allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "split_node_connection_per_neighbor",
@@ -790,9 +889,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max",
                     label: "Max connections per neighbor",
                     kind: ParamKindDto::Integer { default: SPLIT_NODE_CONNECTION_PER_NEIGHBOR_MAX_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "split_node_connection_per_face",
@@ -804,9 +905,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max",
                     label: "Max connections per face",
                     kind: ParamKindDto::Integer { default: SPLIT_NODE_CONNECTION_PER_FACE_MAX_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "split_node_connection_traversal_distance",
@@ -818,9 +921,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_detour",
                     label: "Minimum detour length",
                     kind: ParamKindDto::Integer { default: SPLIT_NODE_CONNECTION_TRAVERSAL_DISTANCE_MIN_DETOUR_DEFAULT as i64, min: 1, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: true,
+            visibility: None,
         },
         CheckDescriptor {
             id: "max_split_tile_node_count",
@@ -832,9 +937,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max",
                     label: "Max node count",
                     kind: ParamKindDto::Integer { default: MAX_SPLIT_TILE_NODE_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: None,
         },
         CheckDescriptor {
             id: "min_vertical_passage_count",
@@ -846,12 +953,14 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_vertical_passages",
                     label: "Min vertical passage count",
                     kind: ParamKindDto::Integer { default: MIN_VERTICAL_PASSAGE_COUNT_DEFAULT as i64, min: 1, max: 1_000_000 },
+                visibility: None,
                 },
                 floor_scope_param(MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE),
                 vertical_passage_count_incoming_param(MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING),
             ],
             // See min_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "min_vertical_passage_ratio",
@@ -863,12 +972,14 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_vertical_passage_ratio",
                     label: "Min vertical passage count (per 100 cells)",
                     kind: ParamKindDto::Float { default: MIN_VERTICAL_PASSAGE_RATIO_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 floor_scope_param(MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE),
                 vertical_passage_count_incoming_param(MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING),
             ],
             // See min_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "max_vertical_passage_count",
@@ -880,6 +991,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_vertical_passages",
                     label: "Max vertical passage count",
                     kind: ParamKindDto::Integer { default: MAX_VERTICAL_PASSAGE_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
                 floor_scope_param(MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE),
                 vertical_passage_type_param(MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE),
@@ -887,6 +999,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "max_vertical_passage_ratio",
@@ -898,6 +1011,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_ratio",
                     label: "Max vertical passage count (per 100 cells)",
                     kind: ParamKindDto::Float { default: MAX_VERTICAL_PASSAGE_RATIO_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 floor_scope_param(MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE),
                 vertical_passage_type_param(MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE),
@@ -905,6 +1019,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // See min_teleport_count's allow_multiple_instances.
             allow_multiple_instances: true,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "vertical_passage_group_geometric_proximity",
@@ -916,6 +1031,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "distance",
                     label: "Distance threshold",
                     kind: ParamKindDto::Float { default: VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
+                visibility: None,
                 },
                 vertical_passage_type_param(VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_TYPE),
                 vertical_passage_same_type_only_param(),
@@ -923,6 +1039,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 geometric_floor_mode_param(VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE),
             ],
             allow_multiple_instances: true,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "vertical_passage_group_graph_proximity",
@@ -934,11 +1051,13 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "distance",
                     label: "Distance threshold",
                     kind: ParamKindDto::Integer { default: VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT as i64, min: 0, max: 100_000 },
+                visibility: None,
                 },
                 vertical_passage_type_param(VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE),
                 vertical_passage_same_type_only_param(),
             ],
             allow_multiple_instances: true,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "elevator_stop_count",
@@ -950,10 +1069,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "count",
                     label: "Stop count threshold",
                     kind: ParamKindDto::Integer { default: ELEVATOR_STOP_COUNT_DEFAULT as i64, min: 0, max: 100_000 },
+                visibility: None,
                 },
                 comparison_param(ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON),
             ],
             allow_multiple_instances: true,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "elevator_span",
@@ -965,10 +1086,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "span",
                     label: "Span threshold",
                     kind: ParamKindDto::Integer { default: ELEVATOR_SPAN_DEFAULT as i64, min: 0, max: 100_000 },
+                visibility: None,
                 },
                 comparison_param(ELEVATOR_SPAN_DEFAULT_COMPARISON),
             ],
             allow_multiple_instances: true,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "min_elevator_count",
@@ -980,9 +1103,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_elevator_count",
                     label: "Min elevator count",
                     kind: ParamKindDto::Integer { default: MIN_ELEVATOR_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "min_elevator_density",
@@ -994,9 +1119,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_elevator_density",
                     label: "Min elevator density (per 100 cells)",
                     kind: ParamKindDto::Float { default: MIN_ELEVATOR_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "max_elevator_count",
@@ -1008,9 +1135,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_elevator_count",
                     label: "Max elevator count",
                     kind: ParamKindDto::Integer { default: MAX_ELEVATOR_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "max_elevator_density",
@@ -1022,9 +1151,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_elevator_density",
                     label: "Max elevator density (per 100 cells)",
                     kind: ParamKindDto::Float { default: MAX_ELEVATOR_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "min_elevator_stops_per_area_count",
@@ -1036,10 +1167,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_stops",
                     label: "Min elevator stop count",
                     kind: ParamKindDto::Integer { default: MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
                 floor_scope_param(MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
             allow_multiple_instances: true,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "min_elevator_stops_per_area_density",
@@ -1051,10 +1184,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_stops_ratio",
                     label: "Min elevator stop density (per 100 cells)",
                     kind: ParamKindDto::Float { default: MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT, min: 0.0, max: 100.0 },
+                visibility: None,
                 },
                 floor_scope_param(MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
             allow_multiple_instances: true,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "max_elevator_stops",
@@ -1066,9 +1201,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_elevator_stops",
                     label: "Max stops per elevator",
                     kind: ParamKindDto::Integer { default: MAX_ELEVATOR_STOPS_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "max_elevator_stops_per_floor",
@@ -1080,9 +1217,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_elevator_stops_per_floor",
                     label: "Max elevator stops per floor",
                     kind: ParamKindDto::Integer { default: MAX_ELEVATOR_STOPS_PER_FLOOR_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "elevator_stops_skip",
@@ -1094,9 +1233,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "elevator_stops_skip",
                     label: "Min elevator skip",
                     kind: ParamKindDto::Integer { default: ELEVATOR_STOPS_SKIP_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "elevator_stops_span",
@@ -1108,9 +1249,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "elevator_stops_span",
                     label: "Max elevator span",
                     kind: ParamKindDto::Integer { default: ELEVATOR_STOPS_SPAN_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "min_elevator_stop_count",
@@ -1122,9 +1265,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_elevator_stop_count",
                     label: "Min stop count",
                     kind: ParamKindDto::Integer { default: MIN_ELEVATOR_STOP_COUNT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "min_elevator_height",
@@ -1136,9 +1281,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "min_elevator_height",
                     label: "Min height",
                     kind: ParamKindDto::Integer { default: MIN_ELEVATOR_HEIGHT_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "max_elevator_stop_gap",
@@ -1150,9 +1297,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "max_elevator_stop_gap",
                     label: "Max stop gap",
                     kind: ParamKindDto::Integer { default: MAX_ELEVATOR_STOP_GAP_DEFAULT as i64, min: 0, max: 1_000_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: false,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "elevator_stop_group_geometric_proximity",
@@ -1164,10 +1313,12 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "distance",
                     label: "Distance threshold",
                     kind: ParamKindDto::Float { default: ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 100_000.0 },
+                visibility: None,
                 },
                 geometric_floor_mode_param(ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE),
             ],
             allow_multiple_instances: true,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
             id: "elevator_stop_group_graph_proximity",
@@ -1179,9 +1330,11 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     id: "distance",
                     label: "Distance threshold",
                     kind: ParamKindDto::Integer { default: ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT as i64, min: 0, max: 100_000 },
+                visibility: None,
                 },
             ],
             allow_multiple_instances: true,
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
     ]
 }
@@ -1234,5 +1387,60 @@ mod tests {
             ],
             "unexpected set of checks allowing multiple instances: {allowing:?}"
         );
+    }
+
+    // GitHub issue #349 follow-up: every check that only makes sense with vertical passages/
+    // elevators (which don't exist on a single-floor maze) is hidden from the selection dialogs
+    // there. Pinned as an explicit id list rather than a structural predicate (e.g. "issue_kinds
+    // contains a vertical-passage/elevator kind") so a newly added check must deliberately opt in
+    // here, rather than silently inheriting visibility from an unrelated property.
+    #[test]
+    fn only_vertical_passage_and_elevator_checks_are_multi_floor_only() {
+        let checks = available_checks_list();
+        let hidden: Vec<&str> = checks.iter()
+            .filter(|c| c.visibility == Some(EntityVisibility::MultiFloorOnly))
+            .map(|c| c.id)
+            .collect();
+        let mut hidden_sorted = hidden.clone();
+        hidden_sorted.sort();
+        assert_eq!(
+            hidden_sorted,
+            vec![
+                "elevator_span", "elevator_stop_count", "elevator_stop_group_geometric_proximity",
+                "elevator_stop_group_graph_proximity", "elevator_stops_skip", "elevator_stops_span",
+                "max_elevator_count", "max_elevator_density", "max_elevator_stop_gap",
+                "max_elevator_stops", "max_elevator_stops_per_floor", "max_vertical_passage_count",
+                "max_vertical_passage_ratio", "min_elevator_count", "min_elevator_density",
+                "min_elevator_height", "min_elevator_stop_count", "min_elevator_stops_per_area_count",
+                "min_elevator_stops_per_area_density", "min_vertical_passage_count",
+                "min_vertical_passage_ratio", "vertical_passage_group_geometric_proximity",
+                "vertical_passage_group_graph_proximity",
+            ],
+            "unexpected set of multi-floor-only checks: {hidden:?}"
+        );
+    }
+
+    // GitHub issue #349 follow-up: `floor_scope`/`floor_mode`/`teleport_floor_kind` params are
+    // meaningless with 1 floor -- every entity trivially collapses to "same floor"/"whole maze",
+    // so `floor_scope_param`/`geometric_floor_mode_param`/`teleport_floor_kind_param` stamp
+    // `MultiFloorOnly` themselves. Checked as an invariant against the actual params present,
+    // rather than a pinned id list, since this must hold for every current and future caller of
+    // those three constructors, not just today's set.
+    #[test]
+    fn floor_scope_and_floor_mode_and_teleport_floor_kind_params_are_multi_floor_only() {
+        let checks = available_checks_list();
+        let mut checked_any = false;
+        for check in &checks {
+            for param in &check.params {
+                if param.id == "floor_scope" || param.id == "floor_mode" || param.id == "teleport_floor_kind" {
+                    checked_any = true;
+                    assert_eq!(
+                        param.visibility, Some(EntityVisibility::MultiFloorOnly),
+                        "check {} param {} should be MultiFloorOnly", check.id, param.id
+                    );
+                }
+            }
+        }
+        assert!(checked_any, "no check exposed floor_scope/floor_mode/teleport_floor_kind -- test is vacuous");
     }
 }

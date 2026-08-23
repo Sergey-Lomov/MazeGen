@@ -49,6 +49,8 @@ export interface CheckDescriptor {
    * sets this `true` (`min_region_count` now evaluates all four region classes in one instance
    * instead of needing one instance per class). */
   allow_multiple_instances: boolean;
+  /** `undefined` means always offered — see `EntityVisibility`. */
+  visibility?: EntityVisibility;
 }
 
 export type ParamKind =
@@ -81,10 +83,27 @@ export type ParamKind =
    *  `parse_add_split_config_param` and `RuleStrategyPanel`'s own switch. */
   | { type: "add_split_config"; max_split_nodes_default: number };
 
+/** Conditional-visibility tag (GitHub issue #349) — shared by `ParamDescriptor`, `CheckDescriptor`
+ *  and `StrategyDescriptor`. On a param, the UI hides that param's whole row (label + control)
+ *  when the condition doesn't hold, leaving its stored value untouched (so e.g. re-adding a floor
+ *  doesn't force the user to reconfigure it). On a check/strategy, the UI omits it from the
+ *  *selection* dialogs only (`IssueSelectDialog`/`CheckSelectDialog`/`StrategySelectDialog`/
+ *  `AddCheckToRuleDialog`/`NestedStrategySelectDialog`/`NewRuleStrategyDialog`) — a rule already built on a now-hidden
+ *  check/strategy stays exactly as configured, visible on its own card, and still runs at
+ *  generation time; only the ability to newly pick it is gated. See `isEntityVisible`. */
+export type EntityVisibility =
+  /** Hidden whenever the maze has fewer than 2 floors. First consumers: `scored_endpoints`'s
+   *  `vertical_passage_weight`/`elevator_weight` params (GitHub issue #390), and every check/
+   *  strategy that only makes sense with vertical passages/elevators, which don't exist on a
+   *  single-floor maze (GitHub issue #349 follow-up). */
+  { type: "multi_floor_only" };
+
 export interface ParamDescriptor {
   id: string;
   label: string;
   kind: ParamKind;
+  /** `undefined` means always visible — see `EntityVisibility`. */
+  visibility?: EntityVisibility;
 }
 
 /** A rule-level parameter descriptor (GitHub issue #253) — same shape as `ParamDescriptor` plus
@@ -123,6 +142,8 @@ export interface StrategyDescriptor {
   /** Nested-strategy slots this strategy accepts, if any — empty for every strategy without
    * nested slots (the overwhelming majority). */
   nested_slots: NestedSlotDescriptor[];
+  /** `undefined` means always offered — see `EntityVisibility`. */
+  visibility?: EntityVisibility;
 }
 
 export interface StrategyConfig {

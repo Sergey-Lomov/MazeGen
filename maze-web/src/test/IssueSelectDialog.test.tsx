@@ -37,4 +37,23 @@ describe("IssueSelectDialog", () => {
     expect(onClose).toHaveBeenCalled();
     expect(onSelect).not.toHaveBeenCalled();
   });
+
+  describe("multi-floor-only kinds", () => {
+    const withFloorOnlyKind = [
+      ...availableChecks,
+      { id: "min_vertical_passage_count", label: "Minimum vertical passage count", description: "", issue_kinds: ["missing_vertical_passages"], params: [], allow_multiple_instances: false, visibility: { type: "multi_floor_only" as const } },
+    ];
+
+    it("hides a kind whose every check is multi-floor-only on a single floor", () => {
+      useMazeStore.setState({ availableChecks: withFloorOnlyKind, floors: [{ id: "f1", title: "Floor 1" }] });
+      render(<IssueSelectDialog onSelect={vi.fn()} onClose={vi.fn()} />);
+      expect(screen.queryByText("Vertical passages")).not.toBeInTheDocument();
+    });
+
+    it("shows the kind again with 2+ floors", () => {
+      useMazeStore.setState({ availableChecks: withFloorOnlyKind, floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }] });
+      render(<IssueSelectDialog onSelect={vi.fn()} onClose={vi.fn()} />);
+      expect(screen.getByText("Vertical passages")).toBeInTheDocument();
+    });
+  });
 });

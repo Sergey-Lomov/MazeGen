@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
+import { isEntityVisible } from "./ParamFields";
 import { resolveIssueLabel, resolveIssueDescription, resolveIssueSection, resolveIssueShortLabel } from "./qualityI18n";
 import { ui, radius, typography, disabled, spacing, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
@@ -35,7 +36,12 @@ const ISSUE_KIND_ORDER = [
 /** Step 1 of "Add new rule": pick the issue kind first, narrowing the check list shown in
  * step 2 (CheckSelectDialog with a `kind` filter) to checks of that kind. */
 export function IssueSelectDialog({ onSelect, onClose }: Props) {
-  const availableChecks = useMazeStore((s) => s.availableChecks);
+  const allChecks = useMazeStore((s) => s.availableChecks);
+  const floorCount = useMazeStore((s) => s.floors.length);
+  // A kind survives here if at least one check offering it is currently visible -- a kind whose
+  // every check is `MultiFloorOnly` (e.g. vertical-passage/elevator kinds on a single floor)
+  // disappears entirely rather than leading to an empty step-2 dialog.
+  const availableChecks = allChecks.filter((c) => isEntityVisible(c.visibility, floorCount));
 
   const kinds = Array.from(new Set(availableChecks.map((c) => c.issue_kinds[0]))).sort((a, b) => {
     const ia = ISSUE_KIND_ORDER.indexOf(a);

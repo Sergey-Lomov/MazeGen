@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import type { ParamDescriptor, SplitPattern } from "../../wasm/types";
+import type { ParamDescriptor, EntityVisibility, SplitPattern } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
 import { typography, font, spacing, ui, radius } from "../../styles/theme";
 import { resolveParamOptionLabel, resolveParamOptionExplanation, resolvePriorityOptionLabel } from "./qualityI18n";
@@ -12,6 +12,19 @@ import { splitPatternsToCore, splitPatternsToWeb } from "../../pixi/tessellation
 import { useMazeStore } from "../../store/mazeStore";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import * as m from "~/paraglide/messages";
+
+// Resolves an `EntityVisibility` condition against current maze state (GitHub issue #349) — the
+// single interpreter for every visibility tag, shared by params (this file's own row filtering)
+// and whole checks/strategies (the selection dialogs' candidate filtering), so a new tag is a new
+// match arm here, not a new bespoke check scattered across call sites. `undefined` (no tag) is
+// always visible.
+export function isEntityVisible(visibility: EntityVisibility | undefined, floorCount: number): boolean {
+  if (!visibility) return true;
+  switch (visibility.type) {
+    case "multi_floor_only":
+      return floorCount >= 2;
+  }
+}
 
 const OPTION_WIDTH_BUFFER = 10;
 const SELECT_MAX_WIDTH_RATIO = 0.4;
@@ -102,6 +115,8 @@ function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | u
 
 export function ParamFields({ params, values, getValue, onChange, getDescription, disabled, disabledIds, contextId, addSplitPatternsOverride }: Props) {
   const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
+  const floorCount = useMazeStore((s) => s.floors.length);
+  const visibleParams = params.filter((p) => isEntityVisible(p.visibility, floorCount));
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [openPatternListParam, setOpenPatternListParam] = useState<string | null>(null);
@@ -117,7 +132,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
     return () => observer.disconnect();
   }, []);
 
-  if (params.length === 0) return null;
+  if (visibleParams.length === 0) return null;
 
   function get(p: ParamDescriptor): string {
     if (getValue) return getValue(p);
@@ -239,7 +254,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
 
   return (
     <div ref={containerRef} style={{ ...styles.fieldsWrap, gap: getDescription ? spacing.sectionGap : spacing.itemGap }}>
-      {params.map((p) => {
+      {visibleParams.map((p) => {
         const description = displayDescription(p);
         return (
           <div key={p.id} style={{ ...styles.field, ...(isDisabled(p) ? styles.fieldDisabled : {}) }}>
