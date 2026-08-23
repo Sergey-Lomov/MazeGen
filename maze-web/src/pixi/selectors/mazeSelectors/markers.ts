@@ -3,7 +3,6 @@ import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
 import type { MarkerData, MarkerShape, TeleportCornerStyle } from "../../renderers/types";
 import { buildNodePositions } from "../../tessellationGeometry";
 import { TILE_SIZE } from "../../constants";
-import { NODE_RADIUS } from "../../renderConstants";
 import { canvas } from "../../colorTokens";
 
 /** Same field shape as `MarkerSettings` (`storeTypes.ts`) by design — kept as its own type since
@@ -29,10 +28,13 @@ export interface MarkerStyle {
   gapColor: number;
 }
 
-const DEFAULT_MARKER_SIZE = (NODE_RADIUS * 1.5) / TILE_SIZE;
-
-const DEFAULT_START_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, size: DEFAULT_MARKER_SIZE, cornerStyle: "sharp", gapWidth: 0, gapColor: 0 };
-const DEFAULT_FINISH_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, size: DEFAULT_MARKER_SIZE, cornerStyle: "sharp", gapWidth: 0, gapColor: 0 };
+/** Matches "Vector by walls"' own export-panel default for `startMarker`/`finishMarker` (GitHub
+ *  issue #347 follow-up) — those follow the "Shared style" (#322) `markerSize`/`markerBorderWidth`/
+ *  `gapWidth`/`cornerStyle` defaults (0.16/3/3/round) rather than this module's own
+ *  once-separate `DEFAULT_MARKER_SIZE`, so every marker-drawing feature (Generation, post-edit,
+ *  overlay, export) renders the same start/finish look out of the box. */
+const DEFAULT_START_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 3, size: 0.16, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default };
+const DEFAULT_FINISH_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 3, size: 0.16, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default };
 
 /** A start/finish marker on a split point (GitHub issue #223) anchors to that node's own hub
  *  point (`buildNodePositions`), not the tile's plain center — `nodeById`'s full value set

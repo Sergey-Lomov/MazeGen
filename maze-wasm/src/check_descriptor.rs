@@ -1,6 +1,6 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
-use maze_core::quality_control::{Comparison, CycleKind, GeometricFloorMode, FloorScope, VerticalPassageType};
+use maze_core::quality_control::{Comparison, CycleKind, GeometricFloorMode, FloorScope, VerticalPassageType, TeleportDirectionFilter, TeleportFloorKindFilter};
 use maze_core::RegionClass;
 
 #[derive(Serialize)]
@@ -18,6 +18,11 @@ pub enum ParamKindDto {
     Bool { default: bool },
     Enum { options: Vec<&'static str>, default: &'static str },
     Interval { default_min: f64, default_max: f64, min: f64, max: f64 },
+    /// A fixed 5-value priority enum between two candidate groups — see
+    /// `maze_core::repair::PriorityLevel`'s own doc comment. Rendered by the web UI with one
+    /// shared, hardcoded-once set of labels/explanations (`priority.*` i18n keys), not per-param
+    /// entries the way a plain `Enum` needs (GitHub issue #381 follow-up).
+    Priority { default: &'static str },
     /// A split-pattern list (GitHub issue #247) — signals the web UI to render the dedicated
     /// pattern-list dialog instead of a generic input. Value is carried as a JSON-serialized
     /// `Vec<SplitPatternDto>` string in the check/strategy's own `params` map (the same wire shape
@@ -210,6 +215,28 @@ pub fn vertical_passage_type_param(default: VerticalPassageType) -> ParamDescrip
         label: "Type",
         kind: ParamKindDto::Enum {
             options: VerticalPassageType::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
+            default: default.as_str(),
+        },
+    }
+}
+
+pub fn teleport_direction_param(default: TeleportDirectionFilter) -> ParamDescriptor {
+    ParamDescriptor {
+        id: "teleport_direction",
+        label: "Direction",
+        kind: ParamKindDto::Enum {
+            options: TeleportDirectionFilter::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
+            default: default.as_str(),
+        },
+    }
+}
+
+pub fn teleport_floor_kind_param(default: TeleportFloorKindFilter) -> ParamDescriptor {
+    ParamDescriptor {
+        id: "teleport_floor_kind",
+        label: "Floor kind",
+        kind: ParamKindDto::Enum {
+            options: TeleportFloorKindFilter::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
             default: default.as_str(),
         },
     }

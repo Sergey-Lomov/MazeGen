@@ -34,8 +34,8 @@ const intervalParam: ParamDescriptor = {
 };
 
 const percentSliderParam: ParamDescriptor = {
-  id: "unreachable_priority",
-  label: "Unreachable area priority",
+  id: "one_way_chance",
+  label: "One-way teleport chance",
   kind: { type: "float", default: 1, min: 0, max: 100 },
 };
 
@@ -194,7 +194,7 @@ describe("ParamFields", () => {
 
   describe("percent-slider param", () => {
     it("renders an allowlisted float param as a range input with a rounded percent label", () => {
-      render(<ParamFields params={[percentSliderParam]} values={{ unreachable_priority: "37.4" }} onChange={vi.fn()} />);
+      render(<ParamFields params={[percentSliderParam]} values={{ one_way_chance: "37.4" }} onChange={vi.fn()} />);
       const slider = screen.getByRole("slider") as HTMLInputElement;
       expect(slider.min).toBe("0");
       expect(slider.max).toBe("100");
@@ -210,9 +210,9 @@ describe("ParamFields", () => {
 
     it("moving the slider fires onChange with the raw string value", () => {
       const onChange = vi.fn();
-      render(<ParamFields params={[percentSliderParam]} values={{ unreachable_priority: "1" }} onChange={onChange} />);
+      render(<ParamFields params={[percentSliderParam]} values={{ one_way_chance: "1" }} onChange={onChange} />);
       fireEvent.change(screen.getByRole("slider"), { target: { value: "80" } });
-      expect(onChange).toHaveBeenCalledWith("unreachable_priority", "80");
+      expect(onChange).toHaveBeenCalledWith("one_way_chance", "80");
     });
   });
 
@@ -242,7 +242,7 @@ describe("ParamFields", () => {
     });
 
     it("disables the percent-slider range input", () => {
-      render(<ParamFields params={[percentSliderParam]} values={{ unreachable_priority: "37" }} onChange={vi.fn()} disabled />);
+      render(<ParamFields params={[percentSliderParam]} values={{ one_way_chance: "37" }} onChange={vi.fn()} disabled />);
       expect(screen.getByRole("slider")).toBeDisabled();
     });
 

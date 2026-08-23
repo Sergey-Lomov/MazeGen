@@ -10,6 +10,7 @@ import {
 } from "../components/FeaturesPanel";
 import { resolveIssue } from "../components/issueRegistry";
 import type { FieldConfig } from "../fieldConfig";
+import * as m from "~/paraglide/messages";
 
 const squareConfig: FieldConfig = { type: "square", width: 3, height: 3 };
 const emptySquareConfig: FieldConfig = { type: "square", width: 0, height: 0 };
@@ -96,24 +97,28 @@ describe("computeAnalyticsCard", () => {
   it("returns unavailable when no nodes", () => {
     const card = computeAnalyticsCard(false, []);
     expect(card.status).toBe("unavailable");
-    expect(card.subtitle).toBeUndefined();
   });
 
-  it("returns warning with subtitle when warnings present", () => {
+  it("returns warning status when warnings present", () => {
     const card = computeAnalyticsCard(true, ["missing_endpoints", "unreachable_finish"]);
     expect(card.status).toBe("warning");
-    expect(card.subtitle).toBeDefined();
   });
 
-  it("comment is the title of the first warning issue", () => {
+  it("comment reports the issue count, not an issue title", () => {
     const card = computeAnalyticsCard(true, ["missing_endpoints", "unreachable_finish"]);
-    expect(card.comment).toBe(resolveIssue("missing_endpoints").label);
+    expect(card.comment).not.toBe(resolveIssue("missing_endpoints").label);
+    expect(card.comment).not.toBe(resolveIssue("unreachable_finish").label);
   });
 
-  it("returns set with no subtitle when no warnings", () => {
+  it("returns set with 'no issues' comment when no issues", () => {
     const card = computeAnalyticsCard(true, []);
     expect(card.status).toBe("set");
-    expect(card.subtitle).toBeUndefined();
+    expect(card.comment).toBe(m["status.analytics_no_issues"]());
+  });
+
+  it("uses singular issue count wording for exactly one issue", () => {
+    const card = computeAnalyticsCard(true, ["missing_endpoints"]);
+    expect(card.comment).toBe(m["status.analytics_issues"]({ count: 1 }));
   });
 
   it("returns critical when cycle analysis overflowed, even with warnings present", () => {
@@ -121,14 +126,9 @@ describe("computeAnalyticsCard", () => {
     expect(card.status).toBe("critical");
   });
 
-  it("critical card still has a subtitle with the total issue count", () => {
+  it("critical card's comment reports the total issue count, not an issue title", () => {
     const card = computeAnalyticsCard(true, ["missing_endpoints", "cycle_analysis_overflowed"]);
-    expect(card.subtitle).toBeDefined();
-  });
-
-  it("comment is the title of the critical issue, not the warning", () => {
-    const card = computeAnalyticsCard(true, ["missing_endpoints", "cycle_analysis_overflowed"]);
-    expect(card.comment).toBe(resolveIssue("cycle_analysis_overflowed").label);
+    expect(card.comment).toBe(m["status.analytics_issues_plural"]({ count: 2 }));
   });
 });
 

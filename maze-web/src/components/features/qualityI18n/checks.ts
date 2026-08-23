@@ -2,7 +2,15 @@ import * as m from "~/paraglide/messages";
 
 type MessageFn = () => string;
 
-export const checkI18n: Record<string, { label: MessageFn; description: MessageFn; cardLabel?: MessageFn }> = {
+/// Picks a check's label based on its instance params, for the (rare) check whose displayed name
+/// should reflect a configured option instead of staying fixed — e.g. `max_teleport_count` reads
+/// "Кол-во телепортов на этаж" once `floor_scope` is set to `per_floor`, since the plain "Макс.
+/// количество телепортов" label doesn't convey the per-floor evaluation. `params` is the check
+/// instance's raw `Record<string, string>` (`CheckInstance.params`); absent for callers with no
+/// instance in scope (falls through to `label`).
+type ParamLabelFn = (params?: Record<string, string>) => string;
+
+export const checkI18n: Record<string, { label: ParamLabelFn; description: ParamLabelFn; cardLabel?: ParamLabelFn }> = {
   missing_endpoints: {
     label: m["check.missing_endpoints.label"] as MessageFn,
     description: m["check.missing_endpoints.description"] as MessageFn,
@@ -296,10 +304,27 @@ export const checkI18n: Record<string, { label: MessageFn; description: MessageF
     description: m["check.elevator_stop_group_graph_proximity.description"] as MessageFn,
     cardLabel: m["check.elevator_stop_group_graph_proximity.label"] as MessageFn,
   },
+  max_teleport_count: {
+    label: (params) => params?.floor_scope === "per_floor"
+      ? (m["check.max_teleport_count.label_per_floor"] as MessageFn)()
+      : (m["check.max_teleport_count.label"] as MessageFn)(),
+    description: (params) => params?.floor_scope === "per_floor"
+      ? (m["check.max_teleport_count.description_per_floor"] as MessageFn)()
+      : (m["check.max_teleport_count.description"] as MessageFn)(),
+  },
+  max_teleport_density: {
+    label: (params) => params?.floor_scope === "per_floor"
+      ? (m["check.max_teleport_density.label_per_floor"] as MessageFn)()
+      : (m["check.max_teleport_density.label"] as MessageFn)(),
+    description: (params) => params?.floor_scope === "per_floor"
+      ? (m["check.max_teleport_density.description_per_floor"] as MessageFn)()
+      : (m["check.max_teleport_density.description"] as MessageFn)(),
+  },
 };
 
-export function resolveCheckLabel(id: string, fallback: string): string {
-  return checkI18n[id]?.label() ?? fallback;
+export function resolveCheckLabel(id: string, fallback: string, params?: Record<string, string>): string {
+  const label = checkI18n[id]?.label;
+  return label ? label(params) : fallback;
 }
 
 /// Full/unambiguous label for a check already added to a rule (`RuleCheckRow`'s card) — falls
@@ -307,10 +332,12 @@ export function resolveCheckLabel(id: string, fallback: string): string {
 /// unambiguous on its own; only a check whose short label reads oddly out of its list context
 /// (e.g. `split_distance_from_waypoint`'s "Distance from waypoint", missing the "split-tile" it's
 /// about) needs a `cardLabel` override here.
-export function resolveCheckCardLabel(id: string, fallback: string): string {
-  return checkI18n[id]?.cardLabel?.() ?? resolveCheckLabel(id, fallback);
+export function resolveCheckCardLabel(id: string, fallback: string, params?: Record<string, string>): string {
+  const cardLabel = checkI18n[id]?.cardLabel;
+  return cardLabel ? cardLabel(params) : resolveCheckLabel(id, fallback, params);
 }
 
-export function resolveCheckDescription(id: string, fallback: string): string {
-  return checkI18n[id]?.description() ?? fallback;
+export function resolveCheckDescription(id: string, fallback: string, params?: Record<string, string>): string {
+  const description = checkI18n[id]?.description;
+  return description ? description(params) : fallback;
 }

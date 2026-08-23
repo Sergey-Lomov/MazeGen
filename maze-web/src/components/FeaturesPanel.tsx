@@ -90,29 +90,25 @@ export function getTessellationKindLabel(kind: TessellationKind): string {
 export interface AnalyticsCardData {
   status: FeatureStatus;
   comment: string;
-  subtitle?: string;
 }
 
-/// Universal rule: card status mirrors the worst issue severity present, and the comment is
-/// that issue's title (not a generic "has issues" message) — critical beats warning, and
-/// within a severity the first matching issue (in `issueKinds` order) wins. No issues -> "set".
+/// Universal rule: card status mirrors the worst issue severity present — critical beats
+/// warning — and the comment always reports the issue count, not any single issue's title.
 export function computeAnalyticsCard(hasNodes: boolean, issueKinds: string[]): AnalyticsCardData {
   if (!hasNodes) return { status: "unavailable", comment: m["status.no_maze"]() };
 
   const issues = issueKinds.map(resolveIssue);
-  const subtitleFor = (count: number) => count === 1
-    ? m["status.analytics_issues"]({ count })
-    : m["status.analytics_issues_plural"]({ count });
+  const comment = issues.length === 0
+    ? m["status.analytics_no_issues"]()
+    : issues.length === 1
+      ? m["status.analytics_issues"]({ count: issues.length })
+      : m["status.analytics_issues_plural"]({ count: issues.length });
 
   const critical = issues.find((issue) => issue.severity === "critical");
-  if (critical != null) {
-    return { status: "critical", comment: critical.label, subtitle: subtitleFor(issues.length) };
-  }
+  if (critical != null) return { status: "critical", comment };
   const warning = issues.find((issue) => issue.severity === "warning");
-  if (warning != null) {
-    return { status: "warning", comment: warning.label, subtitle: subtitleFor(issues.length) };
-  }
-  return { status: "set", comment: m["status.analytics_available"]() };
+  if (warning != null) return { status: "warning", comment };
+  return { status: "set", comment };
 }
 
 export interface GenerationCardData {
@@ -426,7 +422,6 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
         title={m["analytics.title"]()}
         status={analyticsCard.status}
         comment={analyticsCard.comment}
-        subtitle={analyticsCard.subtitle}
         expanded={openCard === "analytics"}
         onOpen={() => handleToggle("analytics")}
       >

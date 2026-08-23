@@ -203,6 +203,7 @@ Teleport-editing actions (`addPostEditTeleport`, `cyclePostEditTeleportDirection
 | `passage` | Ensures both directions exist as `"basic"` in `postEditDraftEdges`. |
 | `one_way` | Toggles direction: if `fwd` exists → replace with `bwd`; otherwise → replace with `fwd`. Wall/passage not affected. |
 | `reset` | Unified Management-section tool (GitHub issue #327), hover-sensitive to both edges and cells — see "Reset Tool Detail" below. |
+| `delete` | Management-section tool (GitHub issue #386), cell-only — see "Delete Tool Detail" below. |
 | `set_start` | Click on empty node — sets `postEditDraftMeta.start`, calls `confirmPostEdit` if `autoConfirm`. |
 | `set_finish` | Click on empty node — sets `postEditDraftMeta.finish`, calls `confirmPostEdit` if `autoConfirm`. |
 | `teleport_one_way` | Two-click placement of a one-way (`"forward"`) teleport link. |
@@ -269,6 +270,40 @@ hover uses):
 - Right/middle click has no reset-tool meaning beyond the shared middle-click pan.
 
 **Danger styling:** the Reset button uses the `toggle-danger`/`toggle-danger-active` `buttonStyle` variants (red border/text, red fill when selected — `ui.text.error`) instead of the ordinary `toggle`/`toggle-active` accent styling, and its canvas hover highlight (edge or cell) renders in `canvas.fieldEditor.danger` (red) instead of `canvas.fieldEditor.hover` — `PostEditRenderer.updateHover`/`.updateCellHover` take an optional `danger` flag for this, set whenever `postEditTool === "reset"`. Both cues exist so a destructive tool reads as destructive before the user commits to a click.
+
+### `delete` Tool Detail (GitHub issue #386)
+
+Removes generation-placed *non-edge* content from a cell — the counterpart to `wall`/`reset` (which
+only ever touch `postEditDraftEdges`). Lives in the Management section, always cell-only (no
+near-edge/edge-branch distinction — clicking anywhere near a cell targets the whole point, mirroring
+the vertex tools'/`manage_split_nodes`' own cell-hover branch rather than `reset`'s dual-mode
+dispatch).
+
+A left click on any in-field cell calls `deletePostEditPoint(point)`, which removes, for **every**
+node currently at that point (original plus every declared split slot — not just the active one):
+
+- `postEditDraftMeta.start`/`.finish`, if either currently addresses one of the point's nodes (same
+  effect as `clearPostEditEndpoint`, applied to both markers uniformly).
+- Every `postEditDraftTeleports` entry with an endpoint on one of the point's nodes.
+- Every `postEditDraftVerticalPassages`/`postEditDraftElevators` entry with an endpoint on one of
+  the point's nodes.
+- Any generation-time vertical passage/elevator pair touching one of the point's nodes gets added to
+  `postEditSuppressedVerticalPassagePairs`/`postEditSuppressedElevatorPairs` (same suppression
+  mechanism an edit uses, `Specs/floors.md`'s "Post-edit vertical-passage/elevator editing") — without
+  this the old generation-time edge would keep being resent from `_generatedEdges` on every confirm,
+  silently undoing the deletion. An elevator's suppression covers its *entire* generation-time
+  connected component (BFS over `_generatedEdges`' own `elevator` edges, mirroring
+  `resetPostEditPoint`'s own un-suppress BFS) — a multi-floor elevator's mesh can include pairs that
+  never name this point's own node directly.
+
+`postEditDraftEdges`/`postEditDraftSplitPoints` are never touched — a point's basic edges (walls/
+passages/one-ways) and its split-node structure survive a delete untouched; only `wall`/`reset`/
+"Manage split nodes" edit those. Unlike `reset`, delete never restores anything from
+`_generatedNodes`/`_generatedEdges` — it's a pure removal, so a piece of content created entirely in
+post-edit (no generation-time counterpart) is simply gone, same as one that did have one.
+
+Uses the same danger styling as `reset` (`toggle-danger`/`toggle-danger-active`, red cell hover via
+`updateCellHover`'s `danger` flag).
 
 ## Auto-Confirm
 

@@ -38,6 +38,7 @@ pub struct MaxOneWayRatioCheck {
 
 impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayRatioCheck {
     fn check_type_id(&self) -> &'static str { "max_one_way_ratio" }
+    fn is_batch_edge_group(&self) -> bool { true }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         // Same kind-filtered reverse lookup as MaxOneWayCountCheck/MinOneWayRatioCheck.

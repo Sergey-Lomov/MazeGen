@@ -1,4 +1,5 @@
 /target
+*.profraw
 maze-web/generated/
 maze-web/coverage/
 node_modules/

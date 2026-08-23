@@ -571,6 +571,133 @@ describe("VectorByWallsSettingsPanel", () => {
     });
   });
 
+  describe("Vertical connections section", () => {
+    it("shows the two-way passage sub-group when the maze has a forward+reverse edge pair (GitHub issue #347 follow-up)", () => {
+      // A bidirectional VerticalPassage is stored as two directed edges (a->b, b->a) — the presence
+      // check must run against unscoped `edges`, not per-floor-scoped data, or the reverse-pair
+      // match can never succeed (see `VectorByWallsSettingsPanel.tsx`'s own doc comment on
+      // `hasTwoWayPassages`).
+      useMazeStore.setState({
+        nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
+        edges: [
+          { from: 0, to: 1, kind: "vertical_passage" as const },
+          { from: 1, to: 0, kind: "vertical_passage" as const },
+        ],
+        vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, vertical: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.two_way_passage_marker"]())).toBeInTheDocument();
+    });
+
+    it("hides the two-way passage sub-group when only a one-way edge (no reverse pair) exists", () => {
+      useMazeStore.setState({
+        nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
+        edges: [{ from: 0, to: 1, kind: "vertical_passage" as const }],
+        vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, vertical: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.queryByText(m["image_export.vector_by_walls.two_way_passage_marker"]())).not.toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.one_way_passage_marker"]())).toBeInTheDocument();
+    });
+
+    it("hides all marker/arrow sub-groups and shows the hint when verticalStyle isn't 'abstract'", () => {
+      useMazeStore.setState({
+        nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
+        edges: [
+          { from: 0, to: 1, kind: "vertical_passage" as const },
+          { from: 1, to: 0, kind: "vertical_passage" as const },
+        ],
+        vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, vertical: true },
+        vectorByWallsSettings: { ...useMazeStore.getState().vectorByWallsSettings, verticalStyle: "decorative" },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.queryByText(m["image_export.vector_by_walls.two_way_passage_marker"]())).not.toBeInTheDocument();
+      expect(screen.getByText(m["image_export.vector_by_walls.vertical_style_not_customizable"]())).toBeInTheDocument();
+    });
+
+    it("the two-way passage sub-group starts collapsed and expands on header click", () => {
+      useMazeStore.setState({
+        nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
+        edges: [
+          { from: 0, to: 1, kind: "vertical_passage" as const },
+          { from: 1, to: 0, kind: "vertical_passage" as const },
+        ],
+        vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, vertical: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      const header = screen.getByText(m["image_export.vector_by_walls.two_way_passage_marker"]());
+      // The "Marker"/"Arrows" sub-subsections are plain indented labels, not collapsible — only
+      // the outer sub-group's own header click toggles visibility of everything under it.
+      // `vertical_arrow_style`'s own label ("Style") isn't unique on the page (shared with
+      // `wall_join`'s always-visible "Tiles" row), and `vertical_subsection_arrows`'s own label
+      // ("Arrow") collides with the arrow-style `<select>`'s own "Arrow" pattern `<option>` — assert
+      // on the arrow-style select's own default display value instead, same as the "changing the
+      // two-way arrow style" test below.
+      expect(screen.queryByDisplayValue(m["image_export.vector_by_walls.one_way_pattern_triangle"]())).not.toBeInTheDocument();
+      fireEvent.click(header);
+      expect(screen.getByDisplayValue(m["image_export.vector_by_walls.one_way_pattern_triangle"]())).toBeInTheDocument();
+      expect(useMazeStore.getState().vectorByWallsSectionsExpanded.vertical_two_way).toBe(true);
+      fireEvent.click(header);
+      expect(screen.queryByDisplayValue(m["image_export.vector_by_walls.one_way_pattern_triangle"]())).not.toBeInTheDocument();
+    });
+
+    it("changing the two-way arrow style updates the store", () => {
+      useMazeStore.setState({
+        nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
+        edges: [
+          { from: 0, to: 1, kind: "vertical_passage" as const },
+          { from: 1, to: 0, kind: "vertical_passage" as const },
+        ],
+        vectorByWallsSectionsExpanded: {
+          ...useMazeStore.getState().vectorByWallsSectionsExpanded,
+          vertical: true,
+          vertical_two_way: true,
+          vertical_two_way_arrows: true,
+        },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      const select = screen.getByDisplayValue(m["image_export.vector_by_walls.one_way_pattern_triangle"]());
+      fireEvent.change(select, { target: { value: "chevron" } });
+      expect(useMazeStore.getState().vectorByWallsSettings.twoWayArrowStyle).toBe("chevron");
+    });
+
+    it("one-way sub-group shows the secondary accent color and hides the marker's own border color (GitHub issue #347 fifth follow-up redesign)", () => {
+      useMazeStore.setState({
+        nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
+        edges: [{ from: 0, to: 1, kind: "vertical_passage" as const }],
+        vectorByWallsSectionsExpanded: {
+          ...useMazeStore.getState().vectorByWallsSectionsExpanded,
+          vertical: true,
+          vertical_one_way: true,
+          vertical_one_way_marker: true,
+        },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.one_way_accent_color"]())).toBeInTheDocument();
+      // "Border color" still appears for the always-rendered Start/Finish markers section — only
+      // the one-way sub-group's own `MarkerSettingsGroup` (`hideBorderColor`) must drop it.
+      expect(screen.getAllByText(m["image_export.vector_by_walls.marker_border_color"]())).toHaveLength(2);
+    });
+
+    it("changing the one-way accent color updates the store", () => {
+      useMazeStore.setState({
+        nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
+        edges: [{ from: 0, to: 1, kind: "vertical_passage" as const }],
+        vectorByWallsSectionsExpanded: {
+          ...useMazeStore.getState().vectorByWallsSectionsExpanded,
+          vertical: true,
+          vertical_one_way: true,
+          vertical_one_way_marker: true,
+        },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      const accentInput = screen.getByText(m["image_export.vector_by_walls.one_way_accent_color"]())
+        .parentElement!.querySelector('input[type="color"]') as HTMLInputElement;
+      fireEvent.change(accentInput, { target: { value: "#112233" } });
+      expect(useMazeStore.getState().vectorByWallsSettings.oneWayAccentColor).toBe(0x112233);
+    });
+  });
+
   describe("Splits section", () => {
     it("is hidden entirely when the current maze has no split points", () => {
       render(<VectorByWallsSettingsPanel />);

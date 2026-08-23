@@ -21,6 +21,7 @@ const CHECK_IDS_WITH_WITH_DETAIL_CALLS = [
   "one_way_waypoint_distance", "one_way_group_geometric_proximity", "one_way_group_graph_proximity",
   "one_way_group_super_hub", "min_one_way_count", "min_one_way_ratio", "max_one_way_count",
   "max_one_way_ratio", "min_teleport_count", "min_teleport_ratio",
+  "max_teleport_count", "max_teleport_density",
   "split_distance_from_waypoint",
 ];
 
@@ -113,6 +114,27 @@ describeIfWasmBuilt("wasm registry vs web i18n consistency", () => {
           // comparison options (lt/gt/le/ge/eq) are self-explanatory from their label alone —
           // no separate explanation entry is kept for them.
           if (param.id === "comparison") continue;
+          expect(paramOptionExplanationI18n[key], `missing paramOptionExplanationI18n entry for "${key}" (${ownerKind} "${entity.id}")`).toBeDefined();
+          expect(paramOptionExplanationI18n[key]().length).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  // `priority`-kind params (GitHub issue #381 follow-up) share one hardcoded label set
+  // (`resolvePriorityOptionLabel`) instead of per-param `paramOptionI18n` entries, but each
+  // param's own explanation text is still per-param -- this is the `priority`-kind analogue of
+  // the `enum`-kind completeness check above.
+  const PRIORITY_LEVELS = ["required", "preferred", "indifferent", "discouraged", "forbidden"];
+  it("every priority-kind param has a paramOptionExplanationI18n entry for all 5 levels", () => {
+    for (const [ownerKind, entity] of [
+      ...checks.map((c) => ["check", c] as const),
+      ...strategies.map((s) => ["strategy", s] as const),
+    ]) {
+      for (const param of entity.params) {
+        if (param.kind.type !== "priority") continue;
+        for (const level of PRIORITY_LEVELS) {
+          const key = `${param.id}.${level}`;
           expect(paramOptionExplanationI18n[key], `missing paramOptionExplanationI18n entry for "${key}" (${ownerKind} "${entity.id}")`).toBeDefined();
           expect(paramOptionExplanationI18n[key]().length).toBeGreaterThan(0);
         }

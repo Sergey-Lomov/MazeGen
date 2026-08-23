@@ -8,6 +8,7 @@ pub use types::{
     IssueRouteEdge, IssueRoutePayload, IssueRegionPayload, IssueMissingElevatorStopsPayload,
 };
 
+use std::collections::HashMap;
 use crate::graph::Graph;
 use crate::generation::PresetState;
 use crate::space::{MultiLevelField, Tessellation};
@@ -31,7 +32,14 @@ use resolvers::{
 /// `maze-wasm/src/analytics.rs`'s `build_analytics_snapshot` (GitHub issue #147) so the same
 /// downcast/resolve logic backs both the JSON analytics report and the binary QC event tape,
 /// instead of two independently-maintained copies.
-pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, field: &MultiLevelField<T>, scc: &ConnectedComponents, preset_state: &PresetState) -> IssuePayload {
+///
+/// `check_types` maps each check *instance* id (the `source`/`invalid_sources` key every group is
+/// attributed to, e.g. `"rule_1:0"`) to its check *type* id (e.g. `"max_teleport_count"`) — needed
+/// by `resolve_edge_group_map` to tell a batch/aggregate-excess check apart from a proximity/
+/// pair-style one sharing the same resolver (see `is_batch_edge_group_type`'s doc comment); an
+/// instance id absent from the map (or a `None` map, e.g. in tests with no rule context) is never
+/// treated as a batch check.
+pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, field: &MultiLevelField<T>, scc: &ConnectedComponents, preset_state: &PresetState, check_types: Option<&HashMap<String, String>>) -> IssuePayload {
     if let Some(InvalidLoopIssue { all, invalid, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidLoopIssue>() {
         let cycles = invalid.iter().filter_map(|&idx| all.get(idx));
         if let Some(payload) = resolve_cycle_payload(cycles, invalid_sources, graph, preset_state) {
@@ -69,7 +77,7 @@ pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, 
     }
 
     if let Some(InvalidTeleportGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidTeleportGroupIssue>() {
-        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state);
+        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state, check_types);
         if !groups.is_empty() {
             return IssuePayload::InvalidTeleport { groups };
         }
@@ -83,7 +91,7 @@ pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, 
     }
 
     if let Some(InvalidOneWayGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidOneWayGroupIssue>() {
-        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state);
+        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state, check_types);
         if !groups.is_empty() {
             return IssuePayload::InvalidOneWay { groups };
         }
@@ -97,7 +105,7 @@ pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, 
     }
 
     if let Some(InvalidVerticalPassageGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidVerticalPassageGroupIssue>() {
-        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state);
+        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state, check_types);
         if !groups.is_empty() {
             return IssuePayload::InvalidVerticalPassage { groups };
         }
@@ -133,7 +141,7 @@ pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, 
     // the web side already narrows on `payload.kind === "invalid_one_way"` for this reused kind,
     // not on `issue.kind` (which stays `"invalid_split_node_connection_group"`).
     if let Some(InvalidSplitNodeConnectionGroupIssue { groups, invalid_sources, .. }) = issue.as_any().downcast_ref::<InvalidSplitNodeConnectionGroupIssue>() {
-        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state);
+        let groups = resolve_edge_group_map(groups, invalid_sources, graph, preset_state, check_types);
         if !groups.is_empty() {
             return IssuePayload::InvalidOneWay { groups };
         }

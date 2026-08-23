@@ -151,6 +151,14 @@ export function PostEditFeature() {
         </button>
 
         <button
+          className={tool === "delete" ? "hoverable-danger" : "hoverable"}
+          style={buttonStyle(tool === "delete" ? "toggle-danger-active" : "toggle-danger")}
+          onClick={() => setTool("delete")}
+        >
+          {m["post_edit.delete"]()}
+        </button>
+
+        <button
           className="hoverable-danger"
           style={{ ...buttonStyle("destructive"), width: "100%" }}
           onClick={() => setConfirmReset(true)}

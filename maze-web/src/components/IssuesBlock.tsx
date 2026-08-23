@@ -66,7 +66,7 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const label = resolveIssueSourceLabel(issue.kind, typeId, details);
   // Per-check description override (GitHub issue #257's teleport_split_intersection, whose
   // behavior diverges from invalid_teleport's generic wording) — same rationale as `label` above.
-  const description = resolveIssueSourceDescription(issue.kind, typeId);
+  const description = resolveIssueSourceDescription(issue.kind, typeId, details);
   // Only this bubble's own source check's cycles — not every contributing check's cycles
   // combined (see `IssuePayloadDto`'s doc comment). Each element also carries `preset_locked`
   // (GitHub issue #245) — whether every edge of that specific cycle/group is a user-placed

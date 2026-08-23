@@ -32,6 +32,9 @@ use maze_core::{
         MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE,
         MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE,
         MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE,
+        MaxTeleportCountCheck, MAX_TELEPORT_COUNT_DEFAULT, MAX_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE, MAX_TELEPORT_COUNT_DEFAULT_DIRECTION, MAX_TELEPORT_COUNT_DEFAULT_FLOOR_KIND,
+        MaxTeleportDensityCheck, MAX_TELEPORT_DENSITY_DEFAULT, MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_SCOPE, MAX_TELEPORT_DENSITY_DEFAULT_DIRECTION, MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_KIND,
+        TeleportDirectionFilter, TeleportFloorKindFilter,
         TeleportSplitIntersectionCheck, TeleportSplitEdgeSelector,
         SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT,
         SplitTeleportIntersectionCheck, SplitTeleportDirection,
@@ -210,6 +213,18 @@ fn parse_same_type_only(param: Option<&String>) -> bool {
 /// `default`.
 fn parse_vertical_passage_type(param: Option<&String>, default: VerticalPassageType) -> VerticalPassageType {
     param.and_then(|v| VerticalPassageType::from_str(v)).unwrap_or(default)
+}
+
+/// GitHub issue #379 follow-up: `direction` is shared by `max_teleport_count`/`max_teleport_density`
+/// — missing or unparseable falls back to `default`.
+fn parse_teleport_direction_filter(param: Option<&String>, default: TeleportDirectionFilter) -> TeleportDirectionFilter {
+    param.and_then(|v| TeleportDirectionFilter::from_str(v)).unwrap_or(default)
+}
+
+/// GitHub issue #379 follow-up: `floor_kind` is shared by `max_teleport_count`/`max_teleport_density`
+/// — missing or unparseable falls back to `default`.
+fn parse_teleport_floor_kind_filter(param: Option<&String>, default: TeleportFloorKindFilter) -> TeleportFloorKindFilter {
+    param.and_then(|v| TeleportFloorKindFilter::from_str(v)).unwrap_or(default)
 }
 
 /// GitHub issue #343 follow-up: `count_incoming` is shared by the 4 min/max vertical-passage
@@ -506,6 +521,27 @@ pub(crate) fn build_teleport_group_proximity_check<T: Tessellation>(instance: &C
             let own_edge = parse_teleport_proximity_edge(instance.params.get("own_edge"));
             let other_edge = parse_teleport_proximity_edge(instance.params.get("other_edge"));
             Some(Box::new(TeleportGroupProximityCheck { instance_id, distance, own_edge, other_edge, protect_route: rule_params.protect_route }))
+        }
+        "max_teleport_count" => {
+            let max_teleports = instance.params.get("max_teleports")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(MAX_TELEPORT_COUNT_DEFAULT);
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE);
+            let direction = parse_teleport_direction_filter(instance.params.get("teleport_direction"), MAX_TELEPORT_COUNT_DEFAULT_DIRECTION);
+            let floor_kind = parse_teleport_floor_kind_filter(instance.params.get("teleport_floor_kind"), MAX_TELEPORT_COUNT_DEFAULT_FLOOR_KIND);
+            Some(Box::new(MaxTeleportCountCheck { instance_id, max_teleports, floor_scope, direction, floor_kind }))
+        }
+        "max_teleport_density" => {
+            let max_density = instance.params.get("max_teleport_density")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.clamp(0.0, 100.0))
+                .unwrap_or(MAX_TELEPORT_DENSITY_DEFAULT);
+            let floor_scope = parse_floor_scope(instance.params.get("floor_scope"), MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_SCOPE);
+            let direction = parse_teleport_direction_filter(instance.params.get("teleport_direction"), MAX_TELEPORT_DENSITY_DEFAULT_DIRECTION);
+            let floor_kind = parse_teleport_floor_kind_filter(instance.params.get("teleport_floor_kind"), MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_KIND);
+            Some(Box::new(MaxTeleportDensityCheck { instance_id, max_density, floor_scope, direction, floor_kind }))
         }
         _ => None,
     }

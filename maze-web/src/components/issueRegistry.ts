@@ -124,6 +124,18 @@ export function resolveIssue(kind: string): IssueInfo {
 /// -- is satisfied by a single explicit list rather than scattered no-op closures.
 const NO_DETAIL_CHECKS = ["missing_endpoints", "unreachable_finish", "teleport_duplicates_connection", "split_pattern_shape"] as const;
 
+/// `max_teleport_count`/`max_teleport_density` allow multiple simultaneous instances with
+/// different `teleport_direction`/`teleport_floor_kind` filters (GitHub issue #379 follow-up) --
+/// without surfacing the active filter, two such instances' issue bubbles would read identically.
+/// Only present in `details` when the check's own filter isn't `Any` (see `MaxTeleportCountCheck`/
+/// `MaxTeleportDensityCheck`'s `with_detail` calls), so the suffix is empty when both are `Any`.
+function teleportFiltersSuffix(d: Record<string, string>): string {
+  const filters: string[] = [];
+  if (d.teleport_direction !== undefined) filters.push(resolveParamOptionLabel("teleport_direction", d.teleport_direction));
+  if (d.teleport_floor_kind !== undefined) filters.push(resolveParamOptionLabel("teleport_floor_kind", d.teleport_floor_kind));
+  return filters.length > 0 ? m["issue.invalid_teleport_group.teleport_filters_suffix"]({ filters: filters.join(", ") }) : "";
+}
+
 /// Per-source-check label override, filled in with that check's raw detail values (see
 /// `IssueDto.details`). Lets one `kind` (e.g. `invalid_loop`) read differently depending on
 /// which check actually produced it -- "Loop shorter than 5 tiles" vs "Loop longer than 100
@@ -214,6 +226,16 @@ export const DETAIL_LABELS: Record<string, (details: Record<string, string>) => 
   max_one_way_ratio: (d) => d.max_ratio !== undefined ? m["issue.invalid_one_way_group.max_one_way_ratio_label"]({ max_ratio: d.max_ratio }) : undefined,
   min_teleport_count: (d) => d.missing !== undefined ? m["issue.missing_teleports.min_teleport_count_label"]({ missing: d.missing }) : undefined,
   min_teleport_ratio: (d) => d.missing !== undefined ? m["issue.missing_teleports.min_teleport_ratio_label"]({ missing: d.missing }) : undefined,
+  max_teleport_count: (d) => d.max_teleport_count !== undefined
+    ? (d.floor_scope === "per_floor"
+      ? m["issue.invalid_teleport_group.max_teleport_count_per_floor_label"]({ max_teleport_count: d.max_teleport_count })
+      : m["issue.invalid_teleport_group.max_teleport_count_label"]({ max_teleport_count: d.max_teleport_count })) + teleportFiltersSuffix(d)
+    : undefined,
+  max_teleport_density: (d) => d.max_teleport_density !== undefined
+    ? (d.floor_scope === "per_floor"
+      ? m["issue.invalid_teleport_group.max_teleport_density_per_floor_label"]({ max_teleport_density: d.max_teleport_density })
+      : m["issue.invalid_teleport_group.max_teleport_density_label"]({ max_teleport_density: d.max_teleport_density })) + teleportFiltersSuffix(d)
+    : undefined,
   split_distance_from_waypoint: (d) => d.distance !== undefined ? m["issue.invalid_split_tile.split_distance_from_waypoint_label"]({ distance: d.distance }) : undefined,
   // No detail values at all (a pure structural teleport-shape test, mirrors
   // `teleport_split_intersection` above) -- always returns the same static label regardless of `d`.
@@ -280,7 +302,7 @@ export function resolveIssueSourceLabel(kind: string, typeId: string, details: R
 /// phrased as "what the check does", no "why" — exactly what an issue-modal description needs, no
 /// separate copy to keep in sync) — `teleport_split_intersection` uses its own dedicated
 /// `issue.*` text instead, worded for the issue-modal context specifically.
-const DETAIL_DESCRIPTIONS: Record<string, () => string> = {
+const DETAIL_DESCRIPTIONS: Record<string, (details: Record<string, string>) => string> = {
   ...Object.fromEntries(NO_DETAIL_CHECKS.map((id) => [id, () => resolveCheckDescription(id, "")])),
   teleport_split_intersection: () => m["issue.invalid_teleport.teleport_split_intersection_description"](),
   teleport_waypoint_distance: () => resolveCheckDescription("teleport_waypoint_distance", ""),
@@ -290,6 +312,11 @@ const DETAIL_DESCRIPTIONS: Record<string, () => string> = {
   split_teleport_intersection: () => resolveCheckDescription("split_teleport_intersection", ""),
   max_vertical_passage_count: () => resolveCheckDescription("max_vertical_passage_count", ""),
   max_vertical_passage_ratio: () => resolveCheckDescription("max_vertical_passage_ratio", ""),
+  // `floor_scope` (present in `details` only when `PerFloor`, see `MaxTeleportCountCheck`'s own
+  // `with_detail` call) picks the per-floor-worded description, same gate as `DETAIL_LABELS`'s own
+  // `max_teleport_count` entry uses for the bubble's title.
+  max_teleport_count: (d) => resolveCheckDescription("max_teleport_count", "", d),
+  max_teleport_density: (d) => resolveCheckDescription("max_teleport_density", "", d),
   vertical_passage_group_geometric_proximity: () => resolveCheckDescription("vertical_passage_group_geometric_proximity", ""),
   vertical_passage_group_graph_proximity: () => resolveCheckDescription("vertical_passage_group_graph_proximity", ""),
   elevator_stop_group_geometric_proximity: () => resolveCheckDescription("elevator_stop_group_geometric_proximity", ""),
@@ -299,6 +326,6 @@ const DETAIL_DESCRIPTIONS: Record<string, () => string> = {
 /// Resolves the description for one source check within an issue — mirrors
 /// `resolveIssueSourceLabel`, falling back to the issue kind's generic description when the check
 /// has no override in `DETAIL_DESCRIPTIONS`.
-export function resolveIssueSourceDescription(kind: string, typeId: string): string {
-  return DETAIL_DESCRIPTIONS[typeId]?.() ?? resolveIssue(kind).description;
+export function resolveIssueSourceDescription(kind: string, typeId: string, details: Record<string, string> | undefined): string {
+  return DETAIL_DESCRIPTIONS[typeId]?.(details ?? {}) ?? resolveIssue(kind).description;
 }

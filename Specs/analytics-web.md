@@ -5,9 +5,19 @@ The Analytics feature card is the last card in `FeaturesPanel`. It displays maze
 ## Availability
 
 - Card status `"unavailable"` (non-expandable) when `nodes.length === 0`
-- Card status `"set"` after a maze has been generated
+- Card status otherwise mirrors the worst-severity analytics issue present: `"critical"` if any issue is critical, `"warning"` if any (non-critical) issue is a warning, `"set"` if there are none
 
 Opening the Analytics card sets `analyticsOpen = true` in the store; closing it sets `analyticsOpen = false`. The flag drives all overlay visibility in `AnalyticsRenderer`.
+
+### Card comment
+
+`computeAnalyticsCard` (`FeaturesPanel.tsx`) always reports the analytics issue count, regardless of status — never a specific issue's title:
+
+- No maze generated: "Generate maze first"
+- No issues: "No issues"
+- Issues present: "N issue(s)" (singular/plural), independent of severity mix
+
+Per-issue detail (title, severity) is shown inside the expanded card's Issues block, not in the collapsed card's comment.
 
 ## Feature Card Content
 

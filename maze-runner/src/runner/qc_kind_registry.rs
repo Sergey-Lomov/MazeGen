@@ -155,7 +155,9 @@ qc_kind_registry! {
         "teleport_duplicates_connection", "teleport_waypoint_distance", "teleport_geometric_length",
         "teleport_graph_distance", "teleport_super_hub_avoidance", "teleport_split_intersection"
     ];
-    InvalidTeleportGroup => InvalidTeleportGroupIssue, build_teleport_group_proximity_check, ["teleport_group_proximity"];
+    InvalidTeleportGroup => InvalidTeleportGroupIssue, build_teleport_group_proximity_check, [
+        "teleport_group_proximity", "max_teleport_count", "max_teleport_density"
+    ];
     InvalidOneWay => InvalidOneWayIssue, build_invalid_one_way_check, ["one_way_waypoint_distance"];
     InvalidOneWayGroup => InvalidOneWayGroupIssue, build_one_way_group_proximity_check, [
         "one_way_group_geometric_proximity", "one_way_group_graph_proximity", "one_way_group_super_hub",

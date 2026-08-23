@@ -57,6 +57,10 @@ export type ParamKind =
   | { type: "bool"; default: boolean }
   | { type: "enum"; options: string[]; default: string }
   | { type: "interval"; default_min: number; default_max: number; min: number; max: number }
+  /** A fixed 5-value priority enum between two candidate groups (GitHub issue #381 follow-up) —
+   *  see `maze_core::repair::PriorityLevel`'s own doc comment. Rendered with one shared, hardcoded
+   *  set of `priority.*` i18n labels/explanations, not per-param entries like a plain `enum`. */
+  | { type: "priority"; default: string }
   /** A split-pattern list (GitHub issue #247) — value round-trips as a JSON-serialized
    *  `SplitPattern[]` string (same wire shape `SplitGenerationConfigDto.patterns` uses; see
    *  `maze-runner`'s `parse_split_patterns_param`). `with_weights` distinguishes a check's own

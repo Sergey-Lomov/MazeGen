@@ -198,7 +198,7 @@ export class PostEditController extends BaseController {
       this.renderer.updateTeleportPreview(null, 0, 0);
     }
 
-    if (state.postEditTool === "manage_split_nodes" || VERTEX_TOOLS.has(state.postEditTool)) {
+    if (state.postEditTool === "manage_split_nodes" || state.postEditTool === "delete" || VERTEX_TOOLS.has(state.postEditTool)) {
       // Vertex tools (set start/finish, teleports) and manage_split_nodes all target a whole
       // point, not one of its faces — highlight the cell under the cursor, not a wall/edge (see
       // GitHub issue #221's follow-up for manage_split_nodes; issue #326 extends this to every
@@ -206,7 +206,7 @@ export class PostEditController extends BaseController {
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeMap = this.getNodeMap(floorNodes);
-      this.renderer.updateCellHover(nodeMap.has(`${cell.x},${cell.y}`) ? [cell.x, cell.y] : null);
+      this.renderer.updateCellHover(nodeMap.has(`${cell.x},${cell.y}`) ? [cell.x, cell.y] : null, state.postEditTool === "delete");
       this.renderer.updateHover(null);
       return;
     }
@@ -273,6 +273,17 @@ export class PostEditController extends BaseController {
       const cell = proj.screenToGrid(vpX, vpY);
       const key = `${cell.x},${cell.y}`;
       useMazeStore.getState().setPostEditFocusedPoint(nodeMap.has(key) ? [cell.x, cell.y] : null);
+      return;
+    }
+
+    if (tool === "delete") {
+      if (button !== 0) return;
+      const proj = makeProjection(state.activeTessellationConfig);
+      const cell = proj.screenToGrid(vpX, vpY);
+      const key = `${cell.x},${cell.y}`;
+      if (nodeMap.has(key)) {
+        useMazeStore.getState().deletePostEditPoint([cell.x, cell.y]);
+      }
       return;
     }
 

@@ -81,7 +81,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
 
     let issues: Vec<IssueDto> = raw_issues.iter().map(|issue| {
         let issue = issue.as_ref();
-        let payload = match resolve_issue_payload(issue, &maze.graph, &maze.field, &scc, preset_state) {
+        let payload = match resolve_issue_payload(issue, &maze.graph, &maze.field, &scc, preset_state, Some(check_types)) {
             IssuePayload::None => IssuePayloadDto::None,
             // Grouped by source check id (not one flat list) so a merged issue rendered as
             // several bubbles (one per `source_checks` entry) highlights only the cycles *that

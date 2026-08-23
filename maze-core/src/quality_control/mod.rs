@@ -17,6 +17,8 @@ pub mod engine;
 pub mod checks;
 pub mod split_pattern_match;
 pub mod vertical_passage_type;
+pub mod teleport_direction_filter;
+pub mod teleport_floor_kind_filter;
 
 pub use issue::{Issue, IssueKindConst, IssueMerge, IssueRequirement, IssueMeta, IssueKind, MISSING_ENDPOINTS, UNREACHABLE_FINISH, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, CYCLE_ANALYSIS_OVERFLOWED, REPAIR_LIMIT_REACHED, EXCESSIVE_SCC_COUNT, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, MISSING_VERTICAL_PASSAGES, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, MISSING_ELEVATORS, AREA_MISSING_ELEVATOR_STOPS, MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP};
 pub use issue_payload::{IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRouteEdge, IssueRoutePayload, IssueRegionPayload, IssueMissingElevatorStopsPayload, resolve_issue_payload};
@@ -54,6 +56,8 @@ pub use comparison::Comparison;
 pub use geometric_floor_mode::GeometricFloorMode;
 pub use floor_scope::FloorScope;
 pub use vertical_passage_type::VerticalPassageType;
+pub use teleport_direction_filter::TeleportDirectionFilter;
+pub use teleport_floor_kind_filter::TeleportFloorKindFilter;
 pub use repair_area::RepairArea;
 pub use floor_group::{floors_of_edge, floors_of_edges, floors_of_node, floor_point_count};
 pub use cycle_kind::CycleKind;
@@ -95,6 +99,8 @@ pub use checks::{
     MaxOneWayRatioCheck, MAX_ONE_WAY_RATIO_DEFAULT, MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE,
     MinTeleportCountCheck, MIN_TELEPORT_COUNT_DEFAULT, MIN_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE,
     MinTeleportRatioCheck, MIN_TELEPORT_RATIO_DEFAULT, MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE,
+    MaxTeleportCountCheck, MAX_TELEPORT_COUNT_DEFAULT, MAX_TELEPORT_COUNT_DEFAULT_FLOOR_SCOPE, MAX_TELEPORT_COUNT_DEFAULT_DIRECTION, MAX_TELEPORT_COUNT_DEFAULT_FLOOR_KIND,
+    MaxTeleportDensityCheck, MAX_TELEPORT_DENSITY_DEFAULT, MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_SCOPE, MAX_TELEPORT_DENSITY_DEFAULT_DIRECTION, MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_KIND,
     TeleportSplitIntersectionCheck, TeleportSplitEdgeSelector,
     SplitDistanceFromWaypointCheck, SplitWaypoint, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT, SPLIT_DISTANCE_FROM_WAYPOINT_DEFAULT_COMPARISON,
     SplitTeleportIntersectionCheck, SplitTeleportDirection,

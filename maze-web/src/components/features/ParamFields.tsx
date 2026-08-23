@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import type { ParamDescriptor, SplitPattern } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
 import { typography, font, spacing, ui, radius } from "../../styles/theme";
-import { resolveParamOptionLabel, resolveParamOptionExplanation } from "./qualityI18n";
+import { resolveParamOptionLabel, resolveParamOptionExplanation, resolvePriorityOptionLabel } from "./qualityI18n";
 import { Switch } from "../Switch";
 import { Inline } from "../Layout";
 import { Modal } from "../Modal";
@@ -16,14 +16,17 @@ import * as m from "~/paraglide/messages";
 const OPTION_WIDTH_BUFFER = 10;
 const SELECT_MAX_WIDTH_RATIO = 0.4;
 
+// Mirrors `maze_core::repair::PriorityLevel::ALL`'s own order.
+const PRIORITY_LEVELS = ["required", "preferred", "indifferent", "discouraged", "forbidden"];
+
 // Float params rendered as a 0-100 percent slider instead of the default number input — an
 // explicit id allowlist rather than a blanket "every Float is a slider" rule, since most Float
 // params (reserve_percent, min_distance, etc.) are edited as exact numbers elsewhere in the app.
-const PERCENT_SLIDER_PARAM_IDS = new Set(["unreachable_priority", "one_way_chance", "loop_one_way_chance", "vertical_loop_one_way_chance"]);
+const PERCENT_SLIDER_PARAM_IDS = new Set(["one_way_chance", "loop_one_way_chance", "vertical_loop_one_way_chance"]);
 
 // Float params on a [0, 1] range rendered as a 0-100% slider -- the value stored/sent is the raw
 // fraction (0..1), only the slider bounds and displayed text are scaled by 100.
-const PERCENT_FRACTION_SLIDER_PARAM_IDS = new Set(["one_way_balance", "direction_balance", "vertical_direction_balance", "existing_reuse_balance"]);
+const PERCENT_FRACTION_SLIDER_PARAM_IDS = new Set(["one_way_balance", "direction_balance", "vertical_direction_balance", "existing_reuse_balance", "cross_floor_balance"]);
 
 let measureCanvasCtx: CanvasRenderingContext2D | null | undefined;
 
@@ -79,8 +82,10 @@ const SELECT_HORIZONTAL_CHROME = 4 + 18 + 2; // padding-left + padding-right + b
 const ROW_GAP = 10; // styles.row's `gap`
 
 function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | undefined {
-  if (p.kind.type !== "enum") return undefined;
-  const labels = p.kind.options.map((opt) => resolveParamOptionLabel(p.id, opt));
+  if (p.kind.type !== "enum" && p.kind.type !== "priority") return undefined;
+  const labels = p.kind.type === "enum"
+    ? p.kind.options.map((opt) => resolveParamOptionLabel(p.id, opt))
+    : PRIORITY_LEVELS.map((opt) => resolvePriorityOptionLabel(opt));
   const textWidth = widestOptionWidth(labels);
   const desired = Math.ceil(textWidth + OPTION_WIDTH_BUFFER + SELECT_HORIZONTAL_CHROME);
   if (containerWidth <= 0) return desired;
@@ -382,6 +387,19 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                   ))}
                 </select>
               )}
+              {p.kind.type === "priority" && (
+                <select
+                  style={{ ...styles.select, width: enumSelectWidth(p, containerWidth) }}
+                  value={get(p)}
+                  disabled={isDisabled(p)}
+                  onChange={(e) => onChange(p.id, e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {PRIORITY_LEVELS.map((opt) => (
+                    <option key={opt} value={opt}>{resolvePriorityOptionLabel(opt)}</option>
+                  ))}
+                </select>
+              )}
               {p.kind.type === "pattern_list" && (
                 <button
                   className="hoverable"
@@ -435,6 +453,19 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                   return (
                     <li key={opt}>
                       <strong>{resolveParamOptionLabel(p.id, opt)}</strong> — {explanation}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {description && p.kind.type === "priority" && (
+              <ul style={styles.optionList}>
+                {PRIORITY_LEVELS.map((opt) => {
+                  const explanation = resolveParamOptionExplanation(p.id, opt, contextId);
+                  if (!explanation) return null;
+                  return (
+                    <li key={opt}>
+                      <strong>{resolvePriorityOptionLabel(opt)}</strong> — {explanation}
                     </li>
                   );
                 })}

@@ -37,18 +37,33 @@ type MazeState = ReturnType<typeof useMazeStore.getState>;
 
 const ISOLATED_HL_ALPHA = 0.35;
 
+/** Dark accent for a one-way passage marker's entry border / exit fill (GitHub issue #347 fourth
+ *  follow-up) — mirrors `DEFAULT_VERTICAL_SETTINGS`'s own `ONE_WAY_ACCENT_DARK` (`imageExportDefaults.ts`),
+ *  kept as a separate copy per `maze-web/CLAUDE.md`'s feature-renderer ownership rule. */
+const ONE_WAY_ACCENT_DARK = 0x196c64;
+
 /** Same fixed look `GenerationRenderer`'s own `DEFAULT_VERTICAL_STYLE` uses for resolved
  *  `VerticalPassage`/`Elevator` edges — presets must read identically to how the same connection
  *  looks after generation, not like a teleport (GitHub issue #357 follow-up: the preset stage
  *  originally reused `TeleportRenderer`'s diamond/badge look, which read as a plain teleport). */
 const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = {
-  displayStyle: "marker",
-  verticalPassageMarker: {
+  style: "abstract",
+  twoWayPassageMarker: {
     shape: "circle",
     cornerStyle: "round",
     fillColor: canvas.vertical.default,
     borderColor: canvas.vertical.default,
-    borderWidth: 2,
+    borderWidth: 3,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  oneWayPassageMarker: {
+    shape: "circle",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 3,
     gapWidth: 3,
     gapColor: canvas.floor.default,
     size: 0.22,
@@ -58,12 +73,24 @@ const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = {
     cornerStyle: "round",
     fillColor: canvas.vertical.default,
     borderColor: canvas.vertical.default,
-    borderWidth: 2,
+    borderWidth: 3,
     gapWidth: 3,
     gapColor: canvas.floor.default,
     size: 0.22,
   },
-  arrowColor: canvas.vertical.default,
+  twoWayArrowColor: canvas.floor.default,
+  twoWayArrowSize: 0.75,
+  twoWayArrowStyle: "triangle",
+  twoWayArrowCornerStyle: "round",
+  oneWayArrowColor: canvas.floor.default,
+  oneWayArrowSize: 0.75,
+  oneWayArrowStyle: "triangle",
+  oneWayArrowCornerStyle: "round",
+  oneWayAccentColor: ONE_WAY_ACCENT_DARK,
+  elevatorArrowColor: canvas.floor.default,
+  elevatorArrowSize: 0.75,
+  elevatorArrowStyle: "triangle",
+  elevatorArrowCornerStyle: "round",
 };
 
 export class PresetConnectionsRenderer extends BaseFieldRenderer {

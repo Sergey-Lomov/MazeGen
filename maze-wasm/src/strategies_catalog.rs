@@ -69,6 +69,8 @@ fn param_kind_dto(kind: &maze_core::repair::StrategyParamKind) -> ParamKindDto {
             ParamKindDto::Enum { options: options.to_vec(), default },
         maze_core::repair::StrategyParamKind::Interval { default_min, default_max, min, max } =>
             ParamKindDto::Interval { default_min: *default_min, default_max: *default_max, min: *min, max: *max },
+        maze_core::repair::StrategyParamKind::Priority { default } =>
+            ParamKindDto::Priority { default: default.as_str() },
     }
 }
 

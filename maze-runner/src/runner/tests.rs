@@ -398,7 +398,7 @@ mod build_check_tests {
         "one_way_waypoint_distance",
         "one_way_group_geometric_proximity", "one_way_group_graph_proximity", "one_way_group_super_hub",
         "max_one_way_count", "max_one_way_ratio", "min_one_way_count", "min_one_way_ratio",
-        "min_teleport_count", "min_teleport_ratio",
+        "min_teleport_count", "min_teleport_ratio", "max_teleport_count", "max_teleport_density",
         "split_count", "split_density",
         "split_distance_from_waypoint", "split_teleport_intersection",
         "split_node_connection_count",

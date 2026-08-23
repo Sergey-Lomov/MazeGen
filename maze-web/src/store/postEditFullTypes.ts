@@ -189,6 +189,11 @@ export interface PostEditActions {
    * edges/teleports/split-slots/start-finish back to generation-time state. See
    * `resetPostEditPoint` (postEditUtils.ts). */
   resetPostEditPoint: (point: [number, number]) => void;
+  /** Delete tool (GitHub issue #386) — removes every generation-placed non-edge piece of content
+   * touching `point`'s nodes: start/finish marker, teleport links, vertical passages, elevators.
+   * Basic edges are untouched (see `wall`/`reset`). See `deletePostEditPoint`'s own doc comment in
+   * `postEditSlice.ts` for the suppression details. */
+  deletePostEditPoint: (point: [number, number]) => void;
   addSplitNode: (point: [number, number]) => void;
   removeSplitNode: (point: [number, number], slotId: number) => void;
   cycleActiveSplitNode: (point: [number, number]) => void;

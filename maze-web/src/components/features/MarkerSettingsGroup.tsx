@@ -28,7 +28,7 @@ export const MARKER_SHAPE_OPTIONS: { value: MarkerShape; label: () => string }[]
  *  show-border/show-gap toggle for either. Shared by `VectorByWallsSettingsPanel` and
  *  `VectorByCorridorsSettingsPanel` (GitHub issue #311) — both modes' waypoint settings mirror
  *  each other exactly, only the underlying store setters differ. */
-export function MarkerSettingsGroup({ title, settings, onChange, resetButtons }: {
+export function MarkerSettingsGroup({ title, settings, onChange, resetButtons, hideBorderColor }: {
   title: string;
   settings: MarkerSettings;
   onChange: (patch: Partial<MarkerSettings>) => void;
@@ -36,11 +36,16 @@ export function MarkerSettingsGroup({ title, settings, onChange, resetButtons }:
    *  trailing reset control, same as before that issue. Built by the caller (`SharedStyleSection`'s
    *  `sharedStyleFieldReset`) since this component stays agnostic of the shared-style mechanism. */
   resetButtons?: { cornerStyle?: React.ReactNode; size?: React.ReactNode; borderWidth?: React.ReactNode; gapWidth?: React.ReactNode };
+  /** Hides the "Border color" row (GitHub issue #347 fourth follow-up) — a one-way passage marker's
+   *  own `borderColor` field is no longer read by the renderer (its border/fill colors are driven
+   *  entirely by `oneWayAccentColor` instead, see `VerticalConnectionRenderer`), so showing it here
+   *  would be a dead control. */
+  hideBorderColor?: boolean;
 }) {
   return (
     <div style={styles.markerGroupWrap}>
-      <div style={typography.body}>{title}</div>
-      <div style={styles.markerGroup}>
+      {title && <div style={typography.body}>{title}</div>}
+      <div style={title ? styles.markerGroup : styles.markerGroupNoIndent}>
         <SelectRow
           label={m["image_export.vector_by_walls.marker_shape"]()}
           value={settings.shape}
@@ -68,7 +73,9 @@ export function MarkerSettingsGroup({ title, settings, onChange, resetButtons }:
           resetButton={resetButtons?.size}
         />
         <ColorRow label={m["image_export.vector_by_walls.marker_fill_color"]()} color={settings.fillColor} onChange={(fillColor) => onChange({ fillColor })} />
-        <ColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} />
+        {!hideBorderColor && (
+          <ColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} />
+        )}
         <SliderRow
           label={m["image_export.vector_by_walls.marker_border_width"]()}
           value={settings.borderWidth}
@@ -97,4 +104,5 @@ export function MarkerSettingsGroup({ title, settings, onChange, resetButtons }:
 const styles: Record<string, React.CSSProperties> = {
   markerGroupWrap: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   markerGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
+  markerGroupNoIndent: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
 };
