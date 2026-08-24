@@ -131,19 +131,56 @@ Shows details for the current selection:
 | Check | Label, description, param fields (via `useParamEditor`, through `ParamizedDetail`) |
 | Strategy | Label, description, param fields (via `useParamEditor`, through `ParamizedDetail`) |
 | `"no_fix"` ("logging") | Static label/description for `strategy.no_fix` — no param fields, since there's no strategy instance to configure |
+| Param | Label + description only, read-only, no value control — see "Per-param selection" below |
 
 `QualitySelection` (the union type driving this):
 
 ```typescript
+type ParamOwner =
+  | { kind: "check"; checkId: string }
+  | { kind: "strategy"; ruleId: string }
+  | { kind: "nested_strategy"; ruleId: string; path: PathSegment[] }
+  | { kind: "rule"; ruleId: string };
+
 type QualitySelection =
   | { type: "check"; id: string }
   | { type: "strategy"; ruleId: string; strategyId: string }
   | { type: "logging"; ruleId: string }
   | { type: "nested_strategy"; ruleId: string; path: PathSegment[] }
+  | { type: "param"; owner: ParamOwner; paramId: string }
   | null;
 ```
 
 `nested_strategy` selects one nested-strategy entry, anywhere in the nesting chain under a rule's top-level strategy — see "Nested strategies (UI)" below for `PathSegment` and how the detail panel renders this case (same `ParamizedDetail` machinery as `strategy`, plus that entry's own further-nested slots).
+
+#### Per-param selection (GitHub issue #375)
+
+Every param row rendered by `ParamFields` — check params, strategy params, nested-strategy params,
+and rule-level params (`RuleParamsSection`) — shows an inline `ℹ` info icon right after its label
+(only when the caller passes `onSelectParam`; the detail panel's own `ParamFields` instance never
+does, since it's already showing one entity's full description). Clicking the icon, or anywhere
+else in the row (except an actual value control, which stops propagation the same way row-level
+selection already does for nested-strategy entries — see "Nested strategies (UI)" below), calls
+`onSelectParam(paramId)`, which the caller wraps into `onSelect({ type: "param", owner, paramId })`
+with a `ParamOwner` identifying which entity the param belongs to. `selectedParamId` (also passed
+to `ParamFields`) highlights the matching row's background when its id equals the current
+selection's `paramId` for the same owner.
+
+`QualityDetailPanel`'s `"param"` branch resolves the `ParamDescriptor` for `(owner, paramId)`
+against the relevant source — `vm.checks`/`vm.strategySlots` for check/strategy/nested_strategy
+owners, `availableRuleParams` (with `resolveParamLabel` for the fallback label) for a `"rule"`
+owner — and renders only its (possibly `contextId`-resolved) label and description as plain text,
+no `ParamizedDetail`/`useParamEditor`/edit control; a param that no longer resolves (its owning
+entity was removed or the param id no longer exists) renders an empty panel.
+
+Callers threading `onSelectParam`/`selectedParamId` through to `ParamFields`: `RuleCheckRow`,
+`RuleStrategyPanel`, `RuleParamsSection`. `NestedStrategyPanel` does not — its own params sit
+inside a block that already selects the *whole* nested-strategy entry on click, so per-param
+selection is not wired there. Each caller flushes its own `useParamEditor`'s `flushRef` before
+calling `onSelectParam`, same as every other selection-changing action in that row (see "Inline
+param editing" above). `RulesColumn`'s `selectionBelongsToRule`/check-removal handler both treat a
+`"param"` selection whose owner resolves inside the rule/check being removed as belonging to it,
+clearing the selection so it never dangles on a since-removed check or rule.
 
 `QualityCanvas` holds a `flushRef` it passes into `QualityDetailPanel` (via `ParamizedDetail`) and calls before every selection change, so an in-flight debounced edit in the detail panel is never lost when switching selection. This is separate from — and does not cover — the inline editors in `RuleCheckRow`/`RuleStrategyPanel` (see above).
 
@@ -405,6 +442,78 @@ useParamEditor(options: {
 - `flushRef.current()` — immediately commits all pending values, cancels debounce timer. The caller is responsible for calling this before any action that could discard the pending edit (selection change, remove, toggle, navigating away) — see "Inline param editing" above for where each of the three editor instances (`ParamizedDetail`/detail panel, `RuleCheckRow`, `RuleStrategyPanel`) does this.
 - On `entityId` change: `useEffect` resets `values` from `storeValues` (no flush — caller is responsible for flushing first).
 - **Unmount does not flush** — the cleanup effect only clears the pending debounce timer. A caller that unmounts the editor (e.g. removing the check/rule) without calling `flushRef.current()` first silently drops the pending edit.
+
+## Conditional entity visibility (GitHub issue #349)
+
+`EntityVisibility` (`maze-web/src/wasm/types.ts`, mirroring the wasm-side enum in
+`maze-wasm/src/check_descriptor.rs`) is a declarative tag saying a param, check, or strategy should
+be hidden under some condition. `maze-core`/`maze-wasm` never compute anything from this tag
+themselves — it's a pure UI hint stamped once on the descriptor; resolving it against live maze
+state is entirely the web client's job.
+
+```ts
+type EntityVisibility = { type: "multi_floor_only" };
+```
+
+- `MultiFloorOnly` — hidden whenever the maze has fewer than 2 floors. First consumer:
+  `scored_endpoints`'s `vertical_passage_weight`/`elevator_weight` params (issue #390), meaningless
+  on a single-floor maze. Extended (issue #349 follow-up) to:
+  - Every param built from `floor_scope_param`/`geometric_floor_mode_param`/
+    `teleport_floor_kind_param` (`check_descriptor.rs`) — `floor_scope` (WholeMaze vs PerFloor),
+    `floor_mode` (geometric cross-floor distance handling), and `teleport_floor_kind`
+    (any/inter-floor/same-floor) all collapse to a single trivial value with 1 floor, so the tag is
+    stamped once inside each shared constructor rather than at every one of their ~27 call sites.
+  - Whole checks/strategies that only make sense with vertical passages/elevators — entity types
+    that don't exist on a single-floor maze — covering every check/strategy operating on
+    `VerticalPassage`/elevator/elevator-stop entities.
+  - `TeleportDirectionFilter` (`teleport_direction_param`) was evaluated and deliberately excluded:
+    it concerns one-way vs two-way portals, not floor topology, and applies equally on a single
+    floor.
+
+The tag lives on three descriptor levels, with two different scopes of effect:
+
+- `ParamDescriptor.visibility?: EntityVisibility` — hides that param's whole row (label + control)
+  wherever its owning check/strategy is shown, including on an already-configured rule's own card.
+  Stamped in `maze-wasm/src/strategies_catalog.rs` via a small `(param_id, EntityVisibility)`
+  override list passed into `strategy_params_dto`, rather than as a field on `maze-core`'s own
+  UI-agnostic `StrategyParam` — core/wasm compute nothing from it, wasm is just where
+  `ParamDescriptor` (the UI-facing DTO) already lives.
+- `CheckDescriptor.visibility?: EntityVisibility` / `StrategyDescriptor.visibility?: EntityVisibility`
+  — omits the whole check/strategy from the *selection* dialogs only: `IssueSelectDialog`,
+  `CheckSelectDialog`, `StrategySelectDialog`, `AddCheckToRuleDialog` (via `RulesColumn.candidatesFor`),
+  `NestedStrategySelectDialog`, `NewRuleStrategyDialog`. A rule already built on a now-hidden check/strategy is **not**
+  affected — it stays exactly as configured, visible on its own card in `RulesColumn`, and still
+  runs at generation time. Only the ability to newly *pick* it is gated. This differs from
+  param-level visibility because a check/strategy assignment is a discrete choice already made and
+  displayed, whereas a param's value silently persists regardless of whether its row is shown.
+  Stamped directly on each `CheckDescriptor`/`StrategyDescriptor` literal in
+  `maze-wasm/src/checks_catalog.rs`/`strategies_catalog.rs` as an explicit, hard-coded id list (see
+  each file's own `only_..._are_multi_floor_only` test) — a newly added check/strategy must
+  deliberately opt in, rather than silently inheriting visibility from an unrelated property (e.g.
+  "operates on a `VerticalPassage`").
+
+`isEntityVisible(visibility, floorCount)` (`ParamFields.tsx`) is the single interpreter for every
+tag, shared by both scopes — `undefined` (no tag) is always visible; adding a new tag means adding a
+new match arm here, not a new bespoke check at each call site.
+
+- `ParamFields` filters `params` down to the visible subset before rendering: a hidden param's label
+  *and* control are both omitted from the DOM entirely (not just disabled/grayed), and the whole
+  component renders nothing if every param ends up hidden.
+- Each of the 5 selection dialogs filters its own candidate list by `isEntityVisible` against
+  `floors.length` before rendering — `IssueSelectDialog` filters `availableChecks` first and derives
+  its issue-kind list from the filtered set (so a kind whose every check is hidden disappears
+  entirely, not just leaves an empty step-2 dialog); the other four filter their own
+  check/strategy candidate arrays directly. `StrategySelectDialog`'s always-available
+  `NO_FIX_STRATEGY_ID` entry has no descriptor and is never filtered.
+
+**Hiding never touches stored state.** A param's entry in `values`/the store, and a rule's
+already-configured check/strategy assignment, are left exactly as-is while hidden — e.g. removing a
+floor and later re-adding one does not reset `vertical_passage_weight`/`elevator_weight`, and
+removing floors down to 1 does not drop an already-configured vertical-passage rule from
+`RulesColumn`. Only visibility in the *selection* UI is conditional; the underlying config
+round-trips unchanged regardless of floor count. (A `forceShowHidden`-style store flag, checked
+first in `isEntityVisible`, would be a trivial way to add a "show hidden anyway" toggle later,
+precisely because nothing is ever reset when hidden.)
 
 ## Store: rule-related state and actions
 

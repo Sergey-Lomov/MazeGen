@@ -108,6 +108,8 @@ export function RuleStrategyPanel({ slot, selected, selection, onSelect, onEdit 
             onChange={onChange}
             disabledIds={passageOverrides?.disabledIds}
             addSplitPatternsOverride={addSplitPatternsOverride}
+            onSelectParam={(paramId) => { flushRef.current(); onSelect({ type: "param", owner: { kind: "strategy", ruleId: slot.ruleId }, paramId }); }}
+            selectedParamId={selection?.type === "param" && selection.owner.kind === "strategy" && selection.owner.ruleId === slot.ruleId ? selection.paramId : null}
           />
           {strategy.nestedSlots.map((slotDesc) => (
             <NestedStrategyPanel

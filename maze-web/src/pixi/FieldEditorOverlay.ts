@@ -1,8 +1,8 @@
 import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { makeProjection } from "./tessellationProjection";
+import { TILE_SIZE, VIEWPORT_FIT_PADDING } from "./constants";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { fitViewportToCenters } from "./viewportFit";
 import { configAllCells } from "./tessellationCells";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { OriginRenderer } from "./renderers/OriginRenderer";
@@ -139,13 +139,48 @@ export function configScreenCenter(cfg: TessellationConfig): { x: number; y: num
   return { x: sx / cells.length, y: sy / cells.length };
 }
 
+function fieldBounds(cfg: TessellationConfig): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  const cells = configAllCells(cfg);
+  if (cells.length === 0) return null;
+  const proj = makeProjection(cfg);
+  const centers = cells.map(([col, row]) => proj.gridToScreen(col, row));
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const c of centers) {
+    if (c.x < minX) minX = c.x;
+    if (c.y < minY) minY = c.y;
+    if (c.x > maxX) maxX = c.x;
+    if (c.y > maxY) maxY = c.y;
+  }
+  return { minX: minX - TILE_SIZE, minY: minY - TILE_SIZE, maxX: maxX + TILE_SIZE, maxY: maxY + TILE_SIZE };
+}
+
+/** Computes the viewport transform that fits `activeCfg`'s field onto the screen (GitHub issue
+ * #373). Unifies the auto-fit rule across every field-showing feature: the target scale is driven
+ * by the *largest* floor's own bounding box (max width, max height independently — possibly from
+ * two different floors), not by the active floor's own size, so switching floors or features never
+ * changes the zoom level, only what's centered. `allCfgs` must carry every floor's own
+ * `TessellationConfig` (including `activeCfg` itself). The viewport is centered on `activeCfg`'s
+ * own bbox center. */
 export function fitFieldViewport(
-  cfg: TessellationConfig,
+  activeCfg: TessellationConfig,
+  allCfgs: TessellationConfig[],
   screenW: number,
   screenH: number,
 ): { x: number; y: number; scale: number } {
-  const cells = configAllCells(cfg);
-  const proj = makeProjection(cfg);
-  const centers = cells.map(([col, row]) => proj.gridToScreen(col, row));
-  return fitViewportToCenters(centers, screenW, screenH);
+  const activeBounds = fieldBounds(activeCfg);
+  if (!activeBounds) return { x: screenW / 2, y: screenH / 2, scale: 1 };
+
+  let maxW = 0, maxH = 0;
+  for (const cfg of allCfgs) {
+    const bounds = fieldBounds(cfg);
+    if (!bounds) continue;
+    maxW = Math.max(maxW, bounds.maxX - bounds.minX);
+    maxH = Math.max(maxH, bounds.maxY - bounds.minY);
+  }
+  if (maxW <= 0 || maxH <= 0) return { x: screenW / 2, y: screenH / 2, scale: 1 };
+
+  const scale = Math.min(VIEWPORT_FIT_PADDING * screenW / maxW, VIEWPORT_FIT_PADDING * screenH / maxH);
+  const cx = (activeBounds.minX + activeBounds.maxX) / 2;
+  const cy = (activeBounds.minY + activeBounds.maxY) / 2;
+  return { x: screenW / 2 - scale * cx, y: screenH / 2 - scale * cy, scale };
 }

@@ -115,10 +115,9 @@ fn elevator_fan_does_not_suppress_a_genuine_cycle_elsewhere() {
 
 /// A cycle that mixes an `Elevator` edge with ordinary geometric edges is a genuine detour (the
 /// elevator hop is only part of the loop) — must stay counted, unlike an elevator-only cycle.
-/// Uses a 3-node triangle (not a 2-node back-and-forth) so the mixed cycle doesn't degenerate
-/// into a same-pair-different-kind 2-cycle — a case `count_core_edges` mishandles independent of
-/// this filter (both edges lack `reverse_edge`, so it collapses them into one undirected pair
-/// instead of counting two parallel one-way corridors), tracked separately, not part of #372.
+/// Uses a 3-node triangle (not a 2-node back-and-forth); the same-pair-different-kind 2-cycle
+/// case is covered separately by
+/// `two_one_way_edges_of_different_kind_between_same_pair_form_a_pure_2_cycle` (issue #396).
 #[test]
 fn cycle_mixing_elevator_and_basic_edges_still_counts() {
     let mut g = Graph::new();
@@ -300,6 +299,26 @@ fn parallel_corridors_between_same_junction_pair_compress_to_two_nav_edges() {
     assert_eq!(analytics.edge_count, 4, "A-B direct, A-B detour, A-branchA, B-branchB are 4 distinct corridors");
     assert_eq!(analytics.pure_cycle_nav_nodes.len(), 2, "detour nodes 4,5 compress away, only A,B survive as junctions");
     assert_eq!(analytics.cycle_count, 1, "direct edge + detour = one independent cycle");
+}
+
+#[test]
+fn two_one_way_edges_of_different_kind_between_same_pair_form_a_pure_2_cycle() {
+    // A=0, B=1: a Basic edge A->B and an Elevator edge B->A. Different kind means
+    // link_reverse_edges deliberately leaves them unlinked (issue #197), so this is a
+    // genuine 2-cycle made of two distinct one-way corridors, not a single bidirectional
+    // one. Branch nodes 2,3 keep A,B at degree>=3 so they survive as their own nav-nodes
+    // instead of corridor-compressing away. Regression for issue #396: count_core_edges
+    // used to dedup unpaired edges by bare node-pair, undercounting this to E_core=1.
+    let mut g = Graph::new();
+    for id in 0..4 { g.add_node(id); }
+    g.add_edge(0, 1, EdgeKind::Basic); // A -> B, one-way
+    g.add_edge(1, 0, EdgeKind::Elevator); // B -> A, one-way, different kind
+    g.add_bidirectional_edge(0, 2, EdgeKind::Basic); // branch off A
+    g.add_bidirectional_edge(1, 3, EdgeKind::Basic); // branch off B
+    let analytics = analyze(&g);
+
+    assert_eq!(analytics.pure_cycle_nav_nodes.len(), 2, "A,B both lie on the 2-cycle");
+    assert_eq!(analytics.cycle_count, 1, "Basic A->B plus Elevator B->A is one independent cycle");
 }
 
 #[test]

@@ -5,9 +5,16 @@ import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { resolveParamLabel } from "../qualityI18n";
 import { relevantRuleParams } from "../../../store/storeHelpers";
 import type { StrategySlotVM } from "../useQualityViewModel";
+import type { QualitySelection } from "./types";
 
 interface Props {
   slot: StrategySlotVM;
+  /** Current whole-canvas selection — used only to compute which of this rule's own rule-level
+   * params (if any) is currently selected (GitHub issue #375). */
+  selection: QualitySelection;
+  /** Selects one of this rule's rule-level params — forwarded to `ParamFields` as
+   * `onSelectParam`. */
+  onSelectParam: (s: QualitySelection) => void;
 }
 
 // Rule-level parameters (e.g. `protect_route`) — shared by every check/strategy in this rule
@@ -17,7 +24,7 @@ interface Props {
 // parameter set — a param only shows up here when at least one of this rule's own checks or its
 // strategy is in that param's `applies_to` list (e.g. `protect_route` is meaningless for a
 // `min_region_count` rule, so it's filtered out for such rules).
-export function RuleParamsSection({ slot }: Props) {
+export function RuleParamsSection({ slot, selection, onSelectParam }: Props) {
   const availableRuleParams = useMazeStore((s) => s.availableRuleParams);
   const setRuleParam = useMazeStore((s) => s.setRuleParam);
 
@@ -27,7 +34,7 @@ export function RuleParamsSection({ slot }: Props) {
     slot.strategy?.id ?? null,
   ).map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }));
 
-  const { values: editorValues, onChange } = useParamEditor({
+  const { values: editorValues, onChange, flushRef } = useParamEditor({
     entityId: slot.ruleId,
     params: relevantParams,
     storeValues: slot.params,
@@ -38,7 +45,13 @@ export function RuleParamsSection({ slot }: Props) {
 
   return (
     <div style={styles.ruleParamsSection}>
-      <ParamFields params={relevantParams} values={editorValues} onChange={onChange} />
+      <ParamFields
+        params={relevantParams}
+        values={editorValues}
+        onChange={onChange}
+        onSelectParam={(paramId) => { flushRef.current(); onSelectParam({ type: "param", owner: { kind: "rule", ruleId: slot.ruleId }, paramId }); }}
+        selectedParamId={selection?.type === "param" && selection.owner.kind === "rule" && selection.owner.ruleId === slot.ruleId ? selection.paramId : null}
+      />
     </div>
   );
 }

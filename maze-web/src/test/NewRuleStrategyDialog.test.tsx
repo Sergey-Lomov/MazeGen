@@ -68,4 +68,23 @@ describe("NewRuleStrategyDialog", () => {
     expect(onClose).toHaveBeenCalled();
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  describe("multi-floor-only strategies", () => {
+    const withFloorOnlyStrategy = [
+      ...availableStrategies,
+      { id: "s4", handles: "k1", params: [], experimental: false, nested_slots: [], visibility: { type: "multi_floor_only" as const } },
+    ];
+
+    it("hides a multi-floor-only strategy on a single floor", () => {
+      useMazeStore.setState({ availableStrategies: withFloorOnlyStrategy, floors: [{ id: "f1", title: "Floor 1" }] });
+      render(<NewRuleStrategyDialog kind="k1" onBack={vi.fn()} onConfirm={vi.fn()} onClose={vi.fn()} />);
+      expect(screen.queryByText("s4")).not.toBeInTheDocument();
+    });
+
+    it("shows it again with 2+ floors", () => {
+      useMazeStore.setState({ availableStrategies: withFloorOnlyStrategy, floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }] });
+      render(<NewRuleStrategyDialog kind="k1" onBack={vi.fn()} onConfirm={vi.fn()} onClose={vi.fn()} />);
+      expect(screen.getByText("s4")).toBeInTheDocument();
+    });
+  });
 });

@@ -87,7 +87,7 @@ Besides the switcher itself, `activeFloorId` now also drives the debug panel's m
 
 ## Grid visibility while the Floors card is open
 
-`TessellationRenderer` (the sole owner of `GridRenderer` for the tessellation feature — see `maze-web/CLAUDE.md`'s feature-renderer ownership rule) shows its grid while `openCard` is `"basic_config"` **or** `"floors"`. Floors doesn't edit tessellation, so it always draws the confirmed `tessellationConfig`, never `previewTessellationConfig` (that preview-vs-confirmed split is `basic_config`-only, both in `TessellationRenderer` and in `MazeScene.refit`'s own `fieldCfg` selection).
+`TessellationRenderer` (the sole owner of `GridRenderer` for the tessellation feature — see `maze-web/CLAUDE.md`'s feature-renderer ownership rule) shows its grid while `openCard` is `"basic_config"` **or** `"floors"`. Floors doesn't edit tessellation, so it always draws the confirmed `tessellationConfig`, never `previewTessellationConfig` (that preview-vs-confirmed split is `basic_config`-only, both in `TessellationRenderer` and in `MazeScene.refit`'s own field-config selection passed to `fitFieldViewport`).
 
 ## Cross-floor rendering in `GenerationRenderer` (GitHub issue #337 follow-up)
 

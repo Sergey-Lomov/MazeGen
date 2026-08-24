@@ -21,6 +21,7 @@ import type { StrategySlotVM, QualityStageVM, CheckVM } from "../useQualityViewM
 import type { CheckCandidateVM } from "../AddCheckToRuleDialog";
 import type { QualitySelection } from "./types";
 import { isTypeAlreadyActive } from "../../../store/slices/generationSlice";
+import { isEntityVisible } from "../ParamFields";
 
 // Three-step "Add new rule" flow: pick an issue kind, then a check of that kind,
 // then a fix strategy for the new rule — nothing commits to the store until step 3 confirms
@@ -33,14 +34,20 @@ type NewRuleStep =
   | { stage: "strategy"; kind: string; checkIds: string[]; paramOverrides: Record<string, Record<string, string>>; targetStageId: string }
   | null;
 
-// True when `selection` refers to something inside `ruleId` — any of the four `QualitySelection`
-// variants can be scoped to a rule (`check` via its composite id's owning check, the rest via
-// their own `ruleId` field directly), so a caller clearing selection on rule removal must check
-// all four, not just the ones it happened to think of first (`"nested_strategy"` was originally
-// missed here, along with `"check"` — both left a selection dangling on a since-removed rule).
+// True when `selection` refers to something inside `ruleId` — every `QualitySelection` variant
+// can be scoped to a rule (`check` via its composite id's owning check, `param` via its `owner`,
+// the rest via their own `ruleId` field directly), so a caller clearing selection on rule removal
+// must check all of them, not just the ones it happened to think of first (`"nested_strategy"` was
+// originally missed here, along with `"check"` — both left a selection dangling on a since-removed
+// rule).
 function selectionBelongsToRule(selection: QualitySelection, ruleId: string, checks: CheckVM[]): boolean {
   if (!selection) return false;
   if (selection.type === "check") return checks.some((c) => c.id === selection.id && c.ruleId === ruleId);
+  if (selection.type === "param") {
+    const owner = selection.owner;
+    if (owner.kind === "check") return checks.some((c) => c.id === owner.checkId && c.ruleId === ruleId);
+    return owner.ruleId === ruleId;
+  }
   return selection.ruleId === ruleId;
 }
 
@@ -61,6 +68,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   const availableChecks = useMazeStore((s) => s.availableChecks);
   const availableStrategies = useMazeStore((s) => s.availableStrategies);
   const rules = useMazeStore((s) => s.rules);
+  const floorCount = useMazeStore((s) => s.floors.length);
   const removeCheck = useMazeStore((s) => s.removeCheck);
   const createRule = useMazeStore((s) => s.createRule);
   const toggleRuleDisabled = useMazeStore((s) => s.toggleRuleDisabled);
@@ -96,6 +104,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
   function candidatesFor(slot: StrategySlotVM): CheckCandidateVM[] {
     return availableChecks
       .filter((c) => c.issue_kinds[0] === slot.kind)
+      .filter((c) => isEntityVisible(c.visibility, floorCount))
       .filter((c) => c.allow_multiple_instances || !isTypeAlreadyActive(rules, c.id))
       .map((c) => ({
         typeId: c.id,
@@ -301,20 +310,26 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                       </div>
                       {!slot.collapsed && (
                       <>
-                      <RuleParamsSection slot={slot} />
+                      <RuleParamsSection slot={slot} selection={selection} onSelectParam={onSelect} />
                       <div style={styles.ruleCardBody}>
                         <div style={styles.ruleChecksList}>
                           {slot.producedBy.map((check) => {
                             const checkSelected = selection?.type === "check" && selection.id === check.id;
+                            // A selected param owned by this check also needs clearing on removal
+                            // — same dangling-selection risk `selectionBelongsToRule` guards against
+                            // for whole-rule removal, just scoped to one check instead.
+                            const checkParamSelected = selection?.type === "param" && selection.owner.kind === "check" && selection.owner.checkId === check.id;
                             return (
                               <RuleCheckRow
                                 key={check.id}
                                 check={check}
                                 selected={checkSelected}
+                                selection={selection}
                                 hovered={hoveredCheckId === check.id}
                                 onSelect={() => onSelect({ type: "check", id: check.id })}
+                                onSelectParam={onSelect}
                                 onRemove={() => {
-                                  if (checkSelected) onSelect(null);
+                                  if (checkSelected || checkParamSelected) onSelect(null);
                                   removeCheck(check.ruleId, check.localId);
                                 }}
                                 onHoverChange={(h) => setHoveredCheckId(h ? check.id : null)}

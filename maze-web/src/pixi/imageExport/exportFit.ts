@@ -43,7 +43,7 @@ function addUniform(margin: ExportMargin, extra: number): ExportMargin {
 
 /** Computes the export canvas's pixel size and the viewport transform that fits the whole maze
  * (every node's bounding box, not the current on-screen viewport/zoom/pan) into it — `scale` is a
- * multiplier of `TILE_SIZE`, not a screen-fit ratio like `fitMazeViewport`'s own `FIT_PADDING`, so
+ * multiplier of `TILE_SIZE`, not a screen-fit ratio like `fitMazeViewport`'s own `VIEWPORT_FIT_PADDING`, so
  * line/marker thickness stays visually consistent relative to a tile regardless of overall maze
  * size.
  *

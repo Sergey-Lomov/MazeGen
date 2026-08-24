@@ -4,6 +4,7 @@ import type { ExportMargin } from "./exportMargins";
 import type { PrintExportSettings } from "../../store/storeTypes";
 import { PAPER_SIZES_MM } from "./paperSizes";
 import { placeInBox } from "./exportFit";
+import { VIEWPORT_FIT_PADDING } from "../constants";
 
 const MM_PER_INCH = 25.4;
 
@@ -120,15 +121,15 @@ export function computePrintExportFit(
   };
 }
 
-const SHEET_SCREEN_PADDING = 0.85;
-
 /** Fits the sheet's own aspect ratio (`sheetWidthPx`×`sheetHeightPx`, from `computePrintExportFit`)
  * into the given screen size with padding, centered — a different concept from `computePrintExportFit`
  * itself (which fits maze *content* into the sheet): this fits the *sheet* into the *screen*, for
  * the on-canvas print-mode frame overlay, which is fixed in screen space and never zooms/pans with
- * the maze underneath it. */
+ * the maze underneath it. Uses the same `VIEWPORT_FIT_PADDING` as every other "fit to screen"
+ * computation (GitHub issue #373 follow-up) so every auto-fit feature lands at the same zoom
+ * percentage. */
 export function computeSheetScreenLayout(sheetWidthPx: number, sheetHeightPx: number, screenW: number, screenH: number): { x: number; y: number; w: number; h: number } {
-  const scale = SHEET_SCREEN_PADDING * Math.min(screenW / sheetWidthPx, screenH / sheetHeightPx);
+  const scale = VIEWPORT_FIT_PADDING * Math.min(screenW / sheetWidthPx, screenH / sheetHeightPx);
   const w = sheetWidthPx * scale;
   const h = sheetHeightPx * scale;
   return { x: (screenW - w) / 2, y: (screenH - h) / 2, w, h };

@@ -76,7 +76,7 @@ function defaultRules() {
 }
 
 beforeEach(() => {
-  useMazeStore.setState({ rules: defaultRules(), availableChecks: [], availableStrategies: [] });
+  useMazeStore.setState({ rules: defaultRules(), availableChecks: [], availableStrategies: [], availableRuleParams: [] });
 });
 
 // For tests that remove a check/rule via a click and then assert on store state, `slots` must
@@ -167,6 +167,32 @@ describe("RulesColumn", () => {
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={onSelect} />);
     fireEvent.click(screen.getByText("Check One"));
     expect(onSelect).toHaveBeenCalledWith({ type: "check", id: "g1:0" });
+  });
+
+  it("clicking a check param's info icon selects that param, scoped to the owning check", () => {
+    const onSelect = vi.fn();
+    const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkWithParams], params: {}, nestedStrategies: [], collapsed: false }];
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={onSelect} />);
+    fireEvent.click(screen.getByText("ℹ"));
+    expect(onSelect).toHaveBeenCalledWith({ type: "param", owner: { kind: "check", checkId: "g1:0" }, paramId: "threshold" });
+  });
+
+  it("clicking a rule-level param's info icon selects that param, scoped to the owning rule", () => {
+    const onSelect = vi.fn();
+    useMazeStore.setState({ availableRuleParams: [{ id: "protect_route", label: "Protect route", kind: { type: "bool", default: false }, applies_to: ["c1"] }] });
+    const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
+    render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={onSelect} />);
+    fireEvent.click(screen.getByText("ℹ"));
+    expect(onSelect).toHaveBeenCalledWith({ type: "param", owner: { kind: "rule", ruleId: "g1" }, paramId: "protect_route" });
+  });
+
+  it("removing the check owning a selected param clears the selection", () => {
+    useMazeStore.setState({ rules: [{ id: "g1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: "s1", disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }] });
+    const onSelect = vi.fn();
+    const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkWithParams], params: {}, nestedStrategies: [], collapsed: false }];
+    render(<LiveSlots slots={slots} selection={{ type: "param", owner: { kind: "check", checkId: "g1:0" }, paramId: "threshold" }} onSelect={onSelect} />);
+    fireEvent.click(screen.getByTitle("Remove"));
+    expect(onSelect).toHaveBeenCalledWith(null);
   });
 
   it("removing a check clears its selection, calls store removeCheck, and leaves the empty rule in place", () => {

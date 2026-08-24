@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
 import { WarningBubble } from "../WarningBubble";
-import { ParamFields } from "./ParamFields";
+import { ParamFields, isEntityVisible } from "./ParamFields";
 import { useParamEditor } from "./useParamEditor";
 import { resolveStrategyLabel, resolveStrategyDescription, resolveParamLabel, resolveParamDescription, resolveNestedSlotDescription, resolveNestedStrategyLabel, NO_FIX_STRATEGY_ID } from "./qualityI18n";
 import { ui, radius, typography, spacing, inset } from "../../styles/theme";
@@ -41,11 +41,14 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
   const currentId = rule?.strategyId ?? NO_FIX_STRATEGY_ID;
   const [selectedId, setSelectedId] = useState<string>(currentId);
   const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
+  const floorCount = useMazeStore((s) => s.floors.length);
   const addSplitPatternsOverride = selectedId === "add_split"
     ? parseRuleSplitPatterns(rule?.params.split_patterns, tessellationConfig)
     : undefined;
 
-  const candidates = availableStrategies.filter((s) => s.handles === kind);
+  const candidates = availableStrategies
+    .filter((s) => s.handles === kind)
+    .filter((s) => isEntityVisible(s.visibility, floorCount));
 
   function handleSelect() {
     if (selectedId === NO_FIX_STRATEGY_ID) {

@@ -5,7 +5,7 @@ use maze_core::{
     quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, MISSING_VERTICAL_PASSAGES, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, MISSING_ELEVATORS, AREA_MISSING_ELEVATOR_STOPS, MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP},
     repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, VerticalPassageRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy, MissingLoopsVerticalStrategy, RemoveElevatorStrategy, ReplaceElevatorWithPassagesStrategy, ElevatorGroupSelectStrategy, RemoveElevatorStopStrategy, ElevatorStopGroupSelectStrategy, AddElevatorStrategy, AddElevatorStopStrategy, AddElevatorStopCountStrategy, AddElevatorHeightStopStrategy, AddElevatorStopForGapStrategy},
 };
-use crate::check_descriptor::{ParamDescriptor, ParamKindDto};
+use crate::check_descriptor::{EntityVisibility, ParamDescriptor, ParamKindDto};
 
 #[derive(Serialize)]
 pub struct StrategyDescriptor {
@@ -20,6 +20,9 @@ pub struct StrategyDescriptor {
     /// majority). The web UI resolves candidate nested strategies for a slot as
     /// `availableStrategies.filter(s => s.handles === slot.kind)`.
     pub nested_slots: Vec<NestedSlotDto>,
+    /// `None` means always offered — see `EntityVisibility`'s own doc comment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<EntityVisibility>,
 }
 
 /// Mirrors `maze_core::repair::NestedDispatchKind` — see its doc comment for what each variant
@@ -74,11 +77,17 @@ fn param_kind_dto(kind: &maze_core::repair::StrategyParamKind) -> ParamKindDto {
     }
 }
 
-fn strategy_params_dto(params: &[maze_core::repair::StrategyParam]) -> Vec<ParamDescriptor> {
+/// `visibility_overrides` stamps `EntityVisibility` onto specific param ids by name (GitHub issue
+/// #349) — `StrategyParam` itself carries no visibility (core stays UI-agnostic, see
+/// `EntityVisibility`'s own doc comment), so this is the one place a wasm-side catalog entry can
+/// attach it to a param that otherwise comes straight from `RepairStrategy::params()`. Empty for
+/// every strategy without a conditionally-visible param.
+fn strategy_params_dto(params: &[maze_core::repair::StrategyParam], visibility_overrides: &[(&str, EntityVisibility)]) -> Vec<ParamDescriptor> {
     params.iter().map(|p| ParamDescriptor {
         id: p.id,
         label: p.label,
         kind: param_kind_dto(&p.kind),
+        visibility: visibility_overrides.iter().find(|(id, _)| *id == p.id).map(|(_, v)| *v),
     }).collect()
 }
 
@@ -96,58 +105,66 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
         StrategyDescriptor {
             id: "random_endpoints",
             handles: MISSING_ENDPOINTS.as_str(),
-            params: strategy_params_dto(<RandomEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::params(&RandomEndpointsStrategy)),
+            params: strategy_params_dto(<RandomEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::params(&RandomEndpointsStrategy), &[]),
             experimental: <RandomEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::is_experimental(&RandomEndpointsStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "farthest_endpoints",
             handles: MISSING_ENDPOINTS.as_str(),
-            params: strategy_params_dto(<FarthestEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::params(&FarthestEndpointsStrategy)),
+            params: strategy_params_dto(<FarthestEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::params(&FarthestEndpointsStrategy), &[]),
             experimental: <FarthestEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::is_experimental(&FarthestEndpointsStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "scored_endpoints",
             handles: MISSING_ENDPOINTS.as_str(),
-            params: strategy_params_dto(<ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy)),
+            params: strategy_params_dto(<ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy), &[("vertical_passage_weight", EntityVisibility::MultiFloorOnly), ("elevator_weight", EntityVisibility::MultiFloorOnly)]),
             experimental: <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingEndpointsIssue>>::is_experimental(&ScoredEndpointsStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "invalid_loop_random",
             handles: INVALID_LOOP.as_str(),
-            params: strategy_params_dto(<InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::params(&InvalidLoopRandomStrategy)),
+            params: strategy_params_dto(<InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::params(&InvalidLoopRandomStrategy), &[]),
             experimental: <InvalidLoopRandomStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::is_experimental(&InvalidLoopRandomStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "invalid_loop_scored",
             handles: INVALID_LOOP.as_str(),
-            params: strategy_params_dto(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::params(&InvalidLoopScoredStrategy)),
+            params: strategy_params_dto(<InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::params(&InvalidLoopScoredStrategy), &[]),
             experimental: <InvalidLoopScoredStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopIssue>>::is_experimental(&InvalidLoopScoredStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "invalid_loop_group_select",
             handles: INVALID_LOOP_GROUP.as_str(),
-            params: strategy_params_dto(<InvalidLoopGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopGroupIssue>>::params(&InvalidLoopGroupSelectStrategy)),
+            params: strategy_params_dto(<InvalidLoopGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopGroupIssue>>::params(&InvalidLoopGroupSelectStrategy), &[]),
             experimental: <InvalidLoopGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopGroupIssue>>::is_experimental(&InvalidLoopGroupSelectStrategy),
             nested_slots: nested_slots_dto(<InvalidLoopGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidLoopGroupIssue>>::expected_nested(&InvalidLoopGroupSelectStrategy)),
+            visibility: None,
         },
         StrategyDescriptor {
             id: "missing_loops_random",
             handles: MISSING_LOOPS.as_str(),
-            params: strategy_params_dto(<MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::params(&MissingLoopsRandomStrategy)),
+            params: strategy_params_dto(<MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::params(&MissingLoopsRandomStrategy), &[]),
             experimental: <MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::is_experimental(&MissingLoopsRandomStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "missing_loops_vertical",
             handles: MISSING_LOOPS.as_str(),
-            params: strategy_params_dto(<MissingLoopsVerticalStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::params(&MissingLoopsVerticalStrategy)),
+            params: strategy_params_dto(<MissingLoopsVerticalStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::params(&MissingLoopsVerticalStrategy), &[]),
             experimental: <MissingLoopsVerticalStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::is_experimental(&MissingLoopsVerticalStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "missing_loops_split",
@@ -158,149 +175,173 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
             // (see `maze-runner`'s `build_add_split_strategy`/`parse_split_config_param`).
             params: {
                 let default_strategy = MissingLoopsSplitStrategy { config: Default::default() };
-                let mut params = strategy_params_dto(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::params(&default_strategy));
+                let mut params = strategy_params_dto(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::params(&default_strategy), &[]);
                 params.push(ParamDescriptor {
                     id: "split_config",
                     label: "Split settings",
                     kind: ParamKindDto::SplitGenerationConfig,
+                visibility: None,
                 });
                 params
             },
             experimental: <MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::is_experimental(&MissingLoopsSplitStrategy { config: Default::default() }),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "priority_missing_loops",
             handles: MISSING_LOOPS.as_str(),
-            params: strategy_params_dto(<PriorityMissingLoopsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::params(&PriorityMissingLoopsStrategy)),
+            params: strategy_params_dto(<PriorityMissingLoopsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::params(&PriorityMissingLoopsStrategy), &[]),
             experimental: <PriorityMissingLoopsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::is_experimental(&PriorityMissingLoopsStrategy),
             nested_slots: nested_slots_dto(<PriorityMissingLoopsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingLoopsIssue>>::expected_nested(&PriorityMissingLoopsStrategy)),
+            visibility: None,
         },
         StrategyDescriptor {
             id: "expand_region_passage",
             handles: REGION_NEEDS_EXPANSION.as_str(),
-            params: strategy_params_dto(<ExpandRegionPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&ExpandRegionPassageStrategy)),
+            params: strategy_params_dto(<ExpandRegionPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&ExpandRegionPassageStrategy), &[]),
             experimental: <ExpandRegionPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::is_experimental(&ExpandRegionPassageStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "vertical_passage_region_merge",
             handles: REGION_NEEDS_EXPANSION.as_str(),
-            params: strategy_params_dto(<VerticalPassageRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&VerticalPassageRegionMergeStrategy)),
+            params: strategy_params_dto(<VerticalPassageRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&VerticalPassageRegionMergeStrategy), &[]),
             experimental: <VerticalPassageRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::is_experimental(&VerticalPassageRegionMergeStrategy),
             nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "teleport_region_merge",
             handles: REGION_NEEDS_EXPANSION.as_str(),
-            params: strategy_params_dto(<TeleportRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&TeleportRegionMergeStrategy)),
+            params: strategy_params_dto(<TeleportRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&TeleportRegionMergeStrategy), &[]),
             experimental: <TeleportRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::is_experimental(&TeleportRegionMergeStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "region_shrink_split",
             handles: REGION_NEEDS_SHRINK.as_str(),
-            params: strategy_params_dto(<RegionShrinkSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsShrinkIssue>>::params(&RegionShrinkSplitStrategy { protect_route: true })),
+            params: strategy_params_dto(<RegionShrinkSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsShrinkIssue>>::params(&RegionShrinkSplitStrategy { protect_route: true }), &[]),
             experimental: <RegionShrinkSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsShrinkIssue>>::is_experimental(&RegionShrinkSplitStrategy { protect_route: true }),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "missing_regions",
             handles: MISSING_REGIONS.as_str(),
-            params: strategy_params_dto(<MissingRegionsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingRegionsIssue>>::params(&MissingRegionsStrategy)),
+            params: strategy_params_dto(<MissingRegionsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingRegionsIssue>>::params(&MissingRegionsStrategy), &[]),
             experimental: <MissingRegionsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingRegionsIssue>>::is_experimental(&MissingRegionsStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "reduce_scc_count",
             handles: EXCESSIVE_SCC_COUNT.as_str(),
-            params: strategy_params_dto(<ReduceSccCountStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::ExcessiveSccCountIssue>>::params(&ReduceSccCountStrategy)),
+            params: strategy_params_dto(<ReduceSccCountStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::ExcessiveSccCountIssue>>::params(&ReduceSccCountStrategy), &[]),
             experimental: <ReduceSccCountStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::ExcessiveSccCountIssue>>::is_experimental(&ReduceSccCountStrategy),
             nested_slots: nested_slots_dto(<ReduceSccCountStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::ExcessiveSccCountIssue>>::expected_nested(&ReduceSccCountStrategy)),
+            visibility: None,
         },
         StrategyDescriptor {
             id: "remove_teleport",
             handles: INVALID_TELEPORT.as_str(),
-            params: strategy_params_dto(<RemoveTeleportStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportIssue>>::params(&RemoveTeleportStrategy)),
+            params: strategy_params_dto(<RemoveTeleportStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportIssue>>::params(&RemoveTeleportStrategy), &[]),
             experimental: <RemoveTeleportStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportIssue>>::is_experimental(&RemoveTeleportStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "teleport_group_select",
             handles: INVALID_TELEPORT_GROUP.as_str(),
-            params: strategy_params_dto(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::params(&TeleportGroupSelectStrategy { protect_route: true })),
+            params: strategy_params_dto(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::params(&TeleportGroupSelectStrategy { protect_route: true }), &[]),
             experimental: <TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::is_experimental(&TeleportGroupSelectStrategy { protect_route: true }),
             nested_slots: nested_slots_dto(<TeleportGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidTeleportGroupIssue>>::expected_nested(&TeleportGroupSelectStrategy { protect_route: true })),
+            visibility: None,
         },
         StrategyDescriptor {
             id: "one_way_to_passage",
             handles: INVALID_ONE_WAY.as_str(),
-            params: strategy_params_dto(<OneWayToPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayIssue>>::params(&OneWayToPassageStrategy)),
+            params: strategy_params_dto(<OneWayToPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayIssue>>::params(&OneWayToPassageStrategy), &[]),
             experimental: <OneWayToPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayIssue>>::is_experimental(&OneWayToPassageStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "one_way_to_wall",
             handles: INVALID_ONE_WAY.as_str(),
-            params: strategy_params_dto(<OneWayToWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayIssue>>::params(&OneWayToWallStrategy)),
+            params: strategy_params_dto(<OneWayToWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayIssue>>::params(&OneWayToWallStrategy), &[]),
             experimental: <OneWayToWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayIssue>>::is_experimental(&OneWayToWallStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "one_way_group_select",
             handles: INVALID_ONE_WAY_GROUP.as_str(),
-            params: strategy_params_dto(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::params(&OneWayGroupSelectStrategy { protect_route: true })),
+            params: strategy_params_dto(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::params(&OneWayGroupSelectStrategy { protect_route: true }), &[]),
             experimental: <OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::is_experimental(&OneWayGroupSelectStrategy { protect_route: true }),
             nested_slots: nested_slots_dto(<OneWayGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidOneWayGroupIssue>>::expected_nested(&OneWayGroupSelectStrategy { protect_route: true })),
+            visibility: None,
         },
         StrategyDescriptor {
             id: "weighted_region_merge",
             handles: REGION_NEEDS_EXPANSION.as_str(),
-            params: strategy_params_dto(<WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&WeightedRegionMergeStrategy)),
+            params: strategy_params_dto(<WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&WeightedRegionMergeStrategy), &[]),
             experimental: <WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::is_experimental(&WeightedRegionMergeStrategy),
             nested_slots: nested_slots_dto(<WeightedRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::expected_nested(&WeightedRegionMergeStrategy)),
+            visibility: None,
         },
         StrategyDescriptor {
             id: "priority_region_merge",
             handles: REGION_NEEDS_EXPANSION.as_str(),
-            params: strategy_params_dto(<PriorityRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&PriorityRegionMergeStrategy)),
+            params: strategy_params_dto(<PriorityRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&PriorityRegionMergeStrategy), &[]),
             experimental: <PriorityRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::is_experimental(&PriorityRegionMergeStrategy),
             nested_slots: nested_slots_dto(<PriorityRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::expected_nested(&PriorityRegionMergeStrategy)),
+            visibility: None,
         },
         StrategyDescriptor {
             id: "missing_one_ways_from_passage",
             handles: MISSING_ONE_WAYS.as_str(),
-            params: strategy_params_dto(<MissingOneWaysFromPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::params(&MissingOneWaysFromPassageStrategy)),
+            params: strategy_params_dto(<MissingOneWaysFromPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::params(&MissingOneWaysFromPassageStrategy), &[]),
             experimental: <MissingOneWaysFromPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::is_experimental(&MissingOneWaysFromPassageStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "missing_one_ways_from_wall",
             handles: MISSING_ONE_WAYS.as_str(),
-            params: strategy_params_dto(<MissingOneWaysFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::params(&MissingOneWaysFromWallStrategy)),
+            params: strategy_params_dto(<MissingOneWaysFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::params(&MissingOneWaysFromWallStrategy), &[]),
             experimental: <MissingOneWaysFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::is_experimental(&MissingOneWaysFromWallStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "missing_teleports",
             handles: MISSING_TELEPORTS.as_str(),
-            params: strategy_params_dto(<MissingTeleportsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportsIssue>>::params(&MissingTeleportsStrategy)),
+            // `cross_floor_mode`/`cross_floor_balance` (GitHub issue #381) only matter when a
+            // teleport can actually land on a different floor -- meaningless with 1 floor (GitHub
+            // issue #349 follow-up).
+            params: strategy_params_dto(<MissingTeleportsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportsIssue>>::params(&MissingTeleportsStrategy), &[("cross_floor_mode", EntityVisibility::MultiFloorOnly), ("cross_floor_balance", EntityVisibility::MultiFloorOnly)]),
             experimental: <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportsIssue>>::is_experimental(&MissingTeleportsStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "remove_split",
             handles: INVALID_SPLIT_TILE.as_str(),
-            params: strategy_params_dto(<RemoveSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitTileIssue>>::params(&RemoveSplitStrategy)),
+            params: strategy_params_dto(<RemoveSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitTileIssue>>::params(&RemoveSplitStrategy), &[]),
             experimental: <RemoveSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitTileIssue>>::is_experimental(&RemoveSplitStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "split_group_select",
             handles: INVALID_SPLIT_TILE_GROUP.as_str(),
-            params: strategy_params_dto(<SplitGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitTileGroupIssue>>::params(&SplitGroupSelectStrategy)),
+            params: strategy_params_dto(<SplitGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitTileGroupIssue>>::params(&SplitGroupSelectStrategy), &[]),
             experimental: <SplitGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitTileGroupIssue>>::is_experimental(&SplitGroupSelectStrategy),
             nested_slots: nested_slots_dto(<SplitGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitTileGroupIssue>>::expected_nested(&SplitGroupSelectStrategy)),
+            visibility: None,
         },
         StrategyDescriptor {
             id: "add_split",
@@ -314,142 +355,234 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
             // `build_add_split_strategy`.
             params: {
                 let default_strategy = AddSplitStrategy { split_patterns: vec![], max_split_nodes: 2, pattern_weights: vec![], protect_route: true };
-                let mut params = strategy_params_dto(<AddSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingSplitTilesIssue>>::params(&default_strategy));
+                let mut params = strategy_params_dto(<AddSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingSplitTilesIssue>>::params(&default_strategy), &[]);
                 params.push(ParamDescriptor {
                     id: "split_config",
                     label: "Split settings",
                     kind: ParamKindDto::AddSplitConfig { max_split_nodes_default: default_strategy.max_split_nodes },
+                visibility: None,
                 });
                 params
             },
             experimental: <AddSplitStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingSplitTilesIssue>>::is_experimental(&AddSplitStrategy { split_patterns: vec![], max_split_nodes: 2, pattern_weights: vec![], protect_route: true }),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "remove_split_node",
             handles: INVALID_SPLIT_NODE.as_str(),
-            params: strategy_params_dto(<RemoveSplitNodeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeIssue>>::params(&RemoveSplitNodeStrategy)),
+            params: strategy_params_dto(<RemoveSplitNodeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeIssue>>::params(&RemoveSplitNodeStrategy), &[]),
             experimental: <RemoveSplitNodeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeIssue>>::is_experimental(&RemoveSplitNodeStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "remove_split_node_connection",
             handles: INVALID_SPLIT_NODE_CONNECTION.as_str(),
-            params: strategy_params_dto(<RemoveSplitNodeConnectionStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeConnectionIssue>>::params(&RemoveSplitNodeConnectionStrategy)),
+            params: strategy_params_dto(<RemoveSplitNodeConnectionStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeConnectionIssue>>::params(&RemoveSplitNodeConnectionStrategy), &[]),
             experimental: <RemoveSplitNodeConnectionStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeConnectionIssue>>::is_experimental(&RemoveSplitNodeConnectionStrategy),
             nested_slots: vec![],
+            visibility: None,
         },
         StrategyDescriptor {
             id: "split_node_connection_group_select",
             handles: INVALID_SPLIT_NODE_CONNECTION_GROUP.as_str(),
-            params: strategy_params_dto(<SplitNodeConnectionGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeConnectionGroupIssue>>::params(&SplitNodeConnectionGroupSelectStrategy)),
+            params: strategy_params_dto(<SplitNodeConnectionGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeConnectionGroupIssue>>::params(&SplitNodeConnectionGroupSelectStrategy), &[]),
             experimental: <SplitNodeConnectionGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeConnectionGroupIssue>>::is_experimental(&SplitNodeConnectionGroupSelectStrategy),
             nested_slots: nested_slots_dto(<SplitNodeConnectionGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeConnectionGroupIssue>>::expected_nested(&SplitNodeConnectionGroupSelectStrategy)),
+            visibility: None,
         },
         StrategyDescriptor {
             id: "split_node_group_select",
             handles: INVALID_SPLIT_NODE_GROUP.as_str(),
-            params: strategy_params_dto(<SplitNodeGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeGroupIssue>>::params(&SplitNodeGroupSelectStrategy)),
+            params: strategy_params_dto(<SplitNodeGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeGroupIssue>>::params(&SplitNodeGroupSelectStrategy), &[]),
             experimental: <SplitNodeGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeGroupIssue>>::is_experimental(&SplitNodeGroupSelectStrategy),
             nested_slots: nested_slots_dto(<SplitNodeGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitNodeGroupIssue>>::expected_nested(&SplitNodeGroupSelectStrategy)),
+            visibility: None,
         },
         StrategyDescriptor {
             id: "split_route_cut",
             handles: INVALID_SPLIT_ROUTE.as_str(),
-            params: strategy_params_dto(<SplitRouteCutStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitRouteIssue>>::params(&SplitRouteCutStrategy)),
+            params: strategy_params_dto(<SplitRouteCutStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitRouteIssue>>::params(&SplitRouteCutStrategy), &[]),
             experimental: <SplitRouteCutStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitRouteIssue>>::is_experimental(&SplitRouteCutStrategy),
             nested_slots: nested_slots_dto(<SplitRouteCutStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidSplitRouteIssue>>::expected_nested(&SplitRouteCutStrategy)),
+            visibility: None,
         },
         StrategyDescriptor {
             id: "add_vertical_passage",
             handles: MISSING_VERTICAL_PASSAGES.as_str(),
-            params: strategy_params_dto(<AddVerticalPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingVerticalPassagesIssue>>::params(&AddVerticalPassageStrategy { passage_type: maze_core::quality_control::VerticalPassageType::Any })),
+            params: strategy_params_dto(<AddVerticalPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingVerticalPassagesIssue>>::params(&AddVerticalPassageStrategy { passage_type: maze_core::quality_control::VerticalPassageType::Any }), &[]),
             experimental: <AddVerticalPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingVerticalPassagesIssue>>::is_experimental(&AddVerticalPassageStrategy { passage_type: maze_core::quality_control::VerticalPassageType::Any }),
             nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "remove_vertical_passage",
             handles: INVALID_VERTICAL_PASSAGE.as_str(),
-            params: strategy_params_dto(<RemoveVerticalPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidVerticalPassageIssue>>::params(&RemoveVerticalPassageStrategy)),
+            params: strategy_params_dto(<RemoveVerticalPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidVerticalPassageIssue>>::params(&RemoveVerticalPassageStrategy), &[]),
             experimental: <RemoveVerticalPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidVerticalPassageIssue>>::is_experimental(&RemoveVerticalPassageStrategy),
             nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "vertical_passage_group_select",
             handles: INVALID_VERTICAL_PASSAGE_GROUP.as_str(),
-            params: strategy_params_dto(<VerticalPassageGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidVerticalPassageGroupIssue>>::params(&VerticalPassageGroupSelectStrategy)),
+            params: strategy_params_dto(<VerticalPassageGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidVerticalPassageGroupIssue>>::params(&VerticalPassageGroupSelectStrategy), &[]),
             experimental: <VerticalPassageGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidVerticalPassageGroupIssue>>::is_experimental(&VerticalPassageGroupSelectStrategy),
             nested_slots: nested_slots_dto(<VerticalPassageGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidVerticalPassageGroupIssue>>::expected_nested(&VerticalPassageGroupSelectStrategy)),
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "add_elevator",
             handles: MISSING_ELEVATORS.as_str(),
-            params: strategy_params_dto(<AddElevatorStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorsIssue>>::params(&AddElevatorStrategy)),
+            params: strategy_params_dto(<AddElevatorStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorsIssue>>::params(&AddElevatorStrategy), &[]),
             experimental: <AddElevatorStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorsIssue>>::is_experimental(&AddElevatorStrategy),
             nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "add_elevator_stop",
             handles: AREA_MISSING_ELEVATOR_STOPS.as_str(),
-            params: strategy_params_dto(<AddElevatorStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::AreaMissingElevatorStopsIssue>>::params(&AddElevatorStopStrategy)),
+            params: strategy_params_dto(<AddElevatorStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::AreaMissingElevatorStopsIssue>>::params(&AddElevatorStopStrategy), &[]),
             experimental: <AddElevatorStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::AreaMissingElevatorStopsIssue>>::is_experimental(&AddElevatorStopStrategy),
             nested_slots: nested_slots_dto(<AddElevatorStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::AreaMissingElevatorStopsIssue>>::expected_nested(&AddElevatorStopStrategy)),
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "add_elevator_stop_count",
             handles: MISSING_ELEVATOR_STOP_COUNT.as_str(),
-            params: strategy_params_dto(<AddElevatorStopCountStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorStopCountIssue>>::params(&AddElevatorStopCountStrategy)),
+            params: strategy_params_dto(<AddElevatorStopCountStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorStopCountIssue>>::params(&AddElevatorStopCountStrategy), &[]),
             experimental: <AddElevatorStopCountStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorStopCountIssue>>::is_experimental(&AddElevatorStopCountStrategy),
             nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "add_elevator_height_stop",
             handles: MISSING_ELEVATOR_HEIGHT.as_str(),
-            params: strategy_params_dto(<AddElevatorHeightStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorHeightIssue>>::params(&AddElevatorHeightStopStrategy)),
+            params: strategy_params_dto(<AddElevatorHeightStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorHeightIssue>>::params(&AddElevatorHeightStopStrategy), &[]),
             experimental: <AddElevatorHeightStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingElevatorHeightIssue>>::is_experimental(&AddElevatorHeightStopStrategy),
             nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "add_elevator_stop_for_gap",
             handles: EXCESSIVE_ELEVATOR_STOP_GAP.as_str(),
-            params: strategy_params_dto(<AddElevatorStopForGapStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::ExcessiveElevatorStopGapIssue>>::params(&AddElevatorStopForGapStrategy)),
+            params: strategy_params_dto(<AddElevatorStopForGapStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::ExcessiveElevatorStopGapIssue>>::params(&AddElevatorStopForGapStrategy), &[]),
             experimental: <AddElevatorStopForGapStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::ExcessiveElevatorStopGapIssue>>::is_experimental(&AddElevatorStopForGapStrategy),
             nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "remove_elevator",
             handles: INVALID_ELEVATOR.as_str(),
-            params: strategy_params_dto(<RemoveElevatorStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorIssue>>::params(&RemoveElevatorStrategy)),
+            params: strategy_params_dto(<RemoveElevatorStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorIssue>>::params(&RemoveElevatorStrategy), &[]),
             experimental: <RemoveElevatorStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorIssue>>::is_experimental(&RemoveElevatorStrategy),
             nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "replace_elevator_with_passages",
             handles: INVALID_ELEVATOR.as_str(),
-            params: strategy_params_dto(<ReplaceElevatorWithPassagesStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorIssue>>::params(&ReplaceElevatorWithPassagesStrategy)),
+            params: strategy_params_dto(<ReplaceElevatorWithPassagesStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorIssue>>::params(&ReplaceElevatorWithPassagesStrategy), &[]),
             experimental: <ReplaceElevatorWithPassagesStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorIssue>>::is_experimental(&ReplaceElevatorWithPassagesStrategy),
             nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "elevator_group_select",
             handles: INVALID_ELEVATOR_GROUP.as_str(),
-            params: strategy_params_dto(<ElevatorGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorGroupIssue>>::params(&ElevatorGroupSelectStrategy)),
+            params: strategy_params_dto(<ElevatorGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorGroupIssue>>::params(&ElevatorGroupSelectStrategy), &[]),
             experimental: <ElevatorGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorGroupIssue>>::is_experimental(&ElevatorGroupSelectStrategy),
             nested_slots: nested_slots_dto(<ElevatorGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorGroupIssue>>::expected_nested(&ElevatorGroupSelectStrategy)),
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "remove_elevator_stop",
             handles: INVALID_ELEVATOR_STOP.as_str(),
-            params: strategy_params_dto(<RemoveElevatorStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorStopIssue>>::params(&RemoveElevatorStopStrategy)),
+            params: strategy_params_dto(<RemoveElevatorStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorStopIssue>>::params(&RemoveElevatorStopStrategy), &[]),
             experimental: <RemoveElevatorStopStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorStopIssue>>::is_experimental(&RemoveElevatorStopStrategy),
             nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         StrategyDescriptor {
             id: "elevator_stop_group_select",
             handles: INVALID_ELEVATOR_STOP_GROUP.as_str(),
-            params: strategy_params_dto(<ElevatorStopGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorStopGroupIssue>>::params(&ElevatorStopGroupSelectStrategy)),
+            params: strategy_params_dto(<ElevatorStopGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorStopGroupIssue>>::params(&ElevatorStopGroupSelectStrategy), &[]),
             experimental: <ElevatorStopGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorStopGroupIssue>>::is_experimental(&ElevatorStopGroupSelectStrategy),
             nested_slots: nested_slots_dto(<ElevatorStopGroupSelectStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::InvalidElevatorStopGroupIssue>>::expected_nested(&ElevatorStopGroupSelectStrategy)),
+            visibility: Some(EntityVisibility::MultiFloorOnly),
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // GitHub issue #349: `scored_endpoints`'s vertical_passage_weight/elevator_weight are
+    // meaningless on a single-floor maze, so the web UI hides them via this tag — pins the
+    // wiring between the strategy's own param ids and the visibility override list, since a
+    // typo in either id would silently leave the param always-visible with no compiler signal.
+    #[test]
+    fn scored_endpoints_marks_floor_weights_multi_floor_only() {
+        let strategies = available_strategies_list();
+        let scored = strategies.iter().find(|s| s.id == "scored_endpoints").unwrap();
+        for id in ["vertical_passage_weight", "elevator_weight"] {
+            let param = scored.params.iter().find(|p| p.id == id).unwrap();
+            assert_eq!(param.visibility, Some(EntityVisibility::MultiFloorOnly));
+        }
+    }
+
+    // GitHub issue #381/#349 follow-up: `missing_teleports`'s cross-floor mode/balance only
+    // matter when a teleport can actually land on a different floor.
+    #[test]
+    fn missing_teleports_marks_cross_floor_params_multi_floor_only() {
+        let strategies = available_strategies_list();
+        let strategy = strategies.iter().find(|s| s.id == "missing_teleports").unwrap();
+        for id in ["cross_floor_mode", "cross_floor_balance"] {
+            let param = strategy.params.iter().find(|p| p.id == id).unwrap();
+            assert_eq!(param.visibility, Some(EntityVisibility::MultiFloorOnly));
+        }
+    }
+
+    #[test]
+    fn every_other_param_is_always_visible() {
+        for strategy in available_strategies_list() {
+            for param in strategy.params {
+                if strategy.id == "scored_endpoints" && (param.id == "vertical_passage_weight" || param.id == "elevator_weight") {
+                    continue;
+                }
+                if strategy.id == "missing_teleports" && (param.id == "cross_floor_mode" || param.id == "cross_floor_balance") {
+                    continue;
+                }
+                assert_eq!(param.visibility, None, "strategy {} param {} should be always-visible", strategy.id, param.id);
+            }
+        }
+    }
+
+    // GitHub issue #349 follow-up: every strategy that only makes sense with vertical passages/
+    // elevators (which don't exist on a single-floor maze) is hidden from the selection dialogs
+    // there — mirrors `only_vertical_passage_and_elevator_checks_are_multi_floor_only` in
+    // `checks_catalog.rs`.
+    #[test]
+    fn only_vertical_passage_and_elevator_strategies_are_multi_floor_only() {
+        let strategies = available_strategies_list();
+        let hidden: Vec<&str> = strategies.iter()
+            .filter(|s| s.visibility == Some(EntityVisibility::MultiFloorOnly))
+            .map(|s| s.id)
+            .collect();
+        let mut hidden_sorted = hidden.clone();
+        hidden_sorted.sort();
+        assert_eq!(
+            hidden_sorted,
+            vec![
+                "add_elevator", "add_elevator_height_stop", "add_elevator_stop",
+                "add_elevator_stop_count", "add_elevator_stop_for_gap", "add_vertical_passage",
+                "elevator_group_select", "elevator_stop_group_select", "remove_elevator",
+                "remove_elevator_stop", "remove_vertical_passage", "replace_elevator_with_passages",
+                "vertical_passage_group_select", "vertical_passage_region_merge",
+            ],
+            "unexpected set of multi-floor-only strategies: {hidden:?}"
+        );
+    }
 }

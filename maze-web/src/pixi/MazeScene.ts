@@ -401,12 +401,23 @@ export class MazeScene {
 
   refit(): void {
     this.app.resize();
-    const { nodes, activeTessellationConfig, previewTessellationConfig, openCard, floorFields, activeFloorId } = useMazeStore.getState();
+    const { nodes, previewTessellationConfig, openCard, floors, floorFields, activeFloorId } = useMazeStore.getState();
     const showsMaze = (openCard === "generation" || openCard === "post_edit" || openCard === "analytics" || openCard === "image_export") && nodes.length > 0;
-    const fieldCfg = openCard === "basic_config" ? previewTessellationConfig : floorFields[activeFloorId].tessellationConfig;
+    const activeFloorIndex = Math.max(floors.findIndex((f) => f.id === activeFloorId), 0);
     const { x, y, scale } = showsMaze
-      ? fitMazeViewport(activeTessellationConfig, nodes, this.app.screen.width, this.app.screen.height)
-      : fitFieldViewport(fieldCfg, this.app.screen.width, this.app.screen.height);
+      ? fitMazeViewport(
+        floors.map((f) => floorFields[f.id].tessellationConfig),
+        nodes,
+        activeFloorIndex,
+        this.app.screen.width,
+        this.app.screen.height,
+      )
+      : fitFieldViewport(
+        openCard === "basic_config" ? previewTessellationConfig : floorFields[activeFloorId].tessellationConfig,
+        openCard === "basic_config" ? [previewTessellationConfig] : floors.map((f) => floorFields[f.id].tessellationConfig),
+        this.app.screen.width,
+        this.app.screen.height,
+      );
     this.viewport.scale.set(scale);
     this.viewport.x = x;
     this.viewport.y = y;

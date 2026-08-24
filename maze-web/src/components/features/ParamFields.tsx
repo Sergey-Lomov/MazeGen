@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import type { ParamDescriptor, SplitPattern } from "../../wasm/types";
+import type { ParamDescriptor, EntityVisibility, SplitPattern } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
 import { typography, font, spacing, ui, radius } from "../../styles/theme";
 import { resolveParamOptionLabel, resolveParamOptionExplanation, resolvePriorityOptionLabel } from "./qualityI18n";
@@ -12,6 +12,19 @@ import { splitPatternsToCore, splitPatternsToWeb } from "../../pixi/tessellation
 import { useMazeStore } from "../../store/mazeStore";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import * as m from "~/paraglide/messages";
+
+// Resolves an `EntityVisibility` condition against current maze state (GitHub issue #349) — the
+// single interpreter for every visibility tag, shared by params (this file's own row filtering)
+// and whole checks/strategies (the selection dialogs' candidate filtering), so a new tag is a new
+// match arm here, not a new bespoke check scattered across call sites. `undefined` (no tag) is
+// always visible.
+export function isEntityVisible(visibility: EntityVisibility | undefined, floorCount: number): boolean {
+  if (!visibility) return true;
+  switch (visibility.type) {
+    case "multi_floor_only":
+      return floorCount >= 2;
+  }
+}
 
 const OPTION_WIDTH_BUFFER = 10;
 const SELECT_MAX_WIDTH_RATIO = 0.4;
@@ -76,6 +89,14 @@ interface Props {
    * the param's own JSON `number[]` value). Only `RuleStrategyPanel` has rule-level param access,
    * so it resolves this and passes it down — see `addSplitPatternsOverride`. */
   addSplitPatternsOverride?: SplitPattern[];
+  /** Selects this param row (GitHub issue #375) — clicking the row or its info icon shows the
+   * param's label/description (read-only) in the quality detail panel. Only compact rule-card
+   * views pass this (RuleCheckRow/RuleStrategyPanel/RuleParamsSection/NestedStrategyPanel); the
+   * detail panel's own `ParamFields` instance (`ParamizedDetail`, already showing one entity's
+   * full description) has no need for it. */
+  onSelectParam?: (paramId: string) => void;
+  /** The currently-selected param's id, for this same owner — highlights that one row. */
+  selectedParamId?: string | null;
 }
 
 const SELECT_HORIZONTAL_CHROME = 4 + 18 + 2; // padding-left + padding-right + border
@@ -100,8 +121,10 @@ function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | u
   return Math.min(desired, Math.max(softCap, hardCap));
 }
 
-export function ParamFields({ params, values, getValue, onChange, getDescription, disabled, disabledIds, contextId, addSplitPatternsOverride }: Props) {
+export function ParamFields({ params, values, getValue, onChange, getDescription, disabled, disabledIds, contextId, addSplitPatternsOverride, onSelectParam, selectedParamId }: Props) {
   const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
+  const floorCount = useMazeStore((s) => s.floors.length);
+  const visibleParams = params.filter((p) => isEntityVisible(p.visibility, floorCount));
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [openPatternListParam, setOpenPatternListParam] = useState<string | null>(null);
@@ -117,7 +140,7 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
     return () => observer.disconnect();
   }, []);
 
-  if (params.length === 0) return null;
+  if (visibleParams.length === 0) return null;
 
   function get(p: ParamDescriptor): string {
     if (getValue) return getValue(p);
@@ -239,12 +262,34 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
 
   return (
     <div ref={containerRef} style={{ ...styles.fieldsWrap, gap: getDescription ? spacing.sectionGap : spacing.itemGap }}>
-      {params.map((p) => {
+      {visibleParams.map((p) => {
         const description = displayDescription(p);
+        const selected = onSelectParam && selectedParamId === p.id;
         return (
-          <div key={p.id} style={{ ...styles.field, ...(isDisabled(p) ? styles.fieldDisabled : {}) }}>
+          <div
+            key={p.id}
+            style={{
+              ...styles.field,
+              ...(isDisabled(p) ? styles.fieldDisabled : {}),
+              ...(onSelectParam ? styles.fieldSelectable : {}),
+              ...(selected ? styles.fieldSelected : {}),
+            }}
+            onClick={onSelectParam ? () => onSelectParam(p.id) : undefined}
+          >
             <Inline gap="rowGap" justify="space-between">
-              <label style={styles.label}>{displayLabel(p)}</label>
+              <span style={styles.labelWrap}>
+                <label style={styles.label}>{displayLabel(p)}</label>
+                {onSelectParam && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="hoverable"
+                    style={styles.infoIcon}
+                    onClick={(e) => { e.stopPropagation(); onSelectParam(p.id); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); onSelectParam(p.id); } }}
+                  >ℹ</span>
+                )}
+              </span>
               {/* Each control stops its own click from bubbling — not the whole row/field — so a
                   container that turns clicks into a "select this" action elsewhere (e.g.
                   `NestedStrategyPanel`'s strategy block) still catches clicks on the label or
@@ -534,11 +579,34 @@ const styles: Record<string, React.CSSProperties> = {
   fieldDisabled: {
     opacity: 0.5,
   },
+  fieldSelectable: {
+    cursor: "default",
+    borderRadius: radius.sm,
+    margin: `0 -${spacing.elementsGap}px`,
+    padding: `${spacing.elementsGap}px`,
+  },
+  fieldSelected: {
+    background: ui.bg.panelAlt,
+  },
   // `typography.message` — the theme's own "label"-weight token (body size, secondary color) —
   // see theme.ts's own guidance against composing fontSize/color ad hoc.
   label: {
     ...typography.message,
+  },
+  labelWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.rowGap,
     flex: 1,
+    minWidth: 0,
+  },
+  infoIcon: {
+    ...typography.icon,
+    lineHeight: 1,
+    flexShrink: 0,
+    cursor: "default",
+    borderRadius: 3,
+    color: ui.text.tertiary,
   },
   description: {
     ...typography.caption,

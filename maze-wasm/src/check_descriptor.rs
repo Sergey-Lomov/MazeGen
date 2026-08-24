@@ -3,11 +3,34 @@ use wasm_bindgen::prelude::*;
 use maze_core::quality_control::{Comparison, CycleKind, GeometricFloorMode, FloorScope, VerticalPassageType, TeleportDirectionFilter, TeleportFloorKindFilter};
 use maze_core::RegionClass;
 
+/// Conditional-visibility tag (GitHub issue #349) — shared by `ParamDescriptor`, `CheckDescriptor`
+/// and `StrategyDescriptor`. On a param, the web UI hides that param's whole row (label + control)
+/// when the condition doesn't hold, leaving its stored value untouched (so re-adding a floor
+/// doesn't force the user to reconfigure it). On a check/strategy, the web UI omits it from the
+/// *selection* dialogs only (`IssueSelectDialog`/`CheckSelectDialog`/`StrategySelectDialog`/
+/// `AddCheckToRuleDialog`/`NestedStrategySelectDialog`/`NewRuleStrategyDialog`) — a rule already built on a
+/// now-hidden check/strategy stays exactly as configured, visible on its own card, and still
+/// runs at generation time; only the ability to newly pick it is gated. Purely a UI hint in every
+/// case: core/wasm never branch on this themselves, and a hidden entity still crosses the wasm
+/// boundary and is still applied by generation — only rendering is affected.
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum EntityVisibility {
+    /// Hidden whenever the maze has fewer than 2 floors. First consumers: `ScoredEndpointsStrategy`'s
+    /// `vertical_passage_weight`/`elevator_weight` params (GitHub issue #390), and every check/
+    /// strategy that only makes sense with vertical passages/elevators, which don't exist on a
+    /// single-floor maze (GitHub issue #349 follow-up).
+    MultiFloorOnly,
+}
+
 #[derive(Serialize)]
 pub struct ParamDescriptor {
     pub id: &'static str,
     pub label: &'static str,
     pub kind: ParamKindDto,
+    /// `None` means always visible — see `EntityVisibility`'s own doc comment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<EntityVisibility>,
 }
 
 #[derive(Serialize)]
@@ -70,6 +93,9 @@ pub struct CheckDescriptor {
     /// `generationSlice.ts`) — wasm/core themselves don't reject a duplicate, since nothing
     /// downstream of this flag depends on it being correct for repair/QC to function.
     pub allow_multiple_instances: bool,
+    /// `None` means always offered — see `EntityVisibility`'s own doc comment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<EntityVisibility>,
 }
 
 /// Rule-level parameter descriptor (GitHub issue #253) — same shape as `ParamDescriptor` plus
@@ -137,6 +163,7 @@ pub fn region_class_filter_param() -> ParamDescriptor {
             ],
             default: "all",
         },
+        visibility: None,
     }
 }
 
@@ -153,6 +180,7 @@ pub fn comparison_param(default: Comparison) -> ParamDescriptor {
             options: Comparison::ALL.iter().map(|c| c.as_str()).collect(),
             default: default.as_str(),
         },
+        visibility: None,
     }
 }
 
@@ -170,6 +198,9 @@ pub fn geometric_floor_mode_param(default: GeometricFloorMode) -> ParamDescripto
             options: GeometricFloorMode::ALL.iter().map(|m| m.as_str()).collect(),
             default: default.as_str(),
         },
+        // Meaningless with 1 floor -- every pair is trivially same-floor, so the mode has nothing
+        // to distinguish (GitHub issue #349 follow-up).
+        visibility: Some(EntityVisibility::MultiFloorOnly),
     }
 }
 
@@ -186,6 +217,7 @@ pub fn cycle_kind_param() -> ParamDescriptor {
             options: CycleKind::ALL.iter().map(|k| k.as_str()).collect(),
             default: CycleKind::Any.as_str(),
         },
+        visibility: None,
     }
 }
 
@@ -203,6 +235,9 @@ pub fn floor_scope_param(default: FloorScope) -> ParamDescriptor {
             options: FloorScope::ALL.iter().map(|s| s.as_str()).collect(),
             default: default.as_str(),
         },
+        // WholeMaze and PerFloor collapse to the same behavior with 1 floor (GitHub issue #349
+        // follow-up).
+        visibility: Some(EntityVisibility::MultiFloorOnly),
     }
 }
 
@@ -217,6 +252,7 @@ pub fn vertical_passage_type_param(default: VerticalPassageType) -> ParamDescrip
             options: VerticalPassageType::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
             default: default.as_str(),
         },
+        visibility: None,
     }
 }
 
@@ -228,6 +264,7 @@ pub fn teleport_direction_param(default: TeleportDirectionFilter) -> ParamDescri
             options: TeleportDirectionFilter::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
             default: default.as_str(),
         },
+        visibility: None,
     }
 }
 
@@ -239,6 +276,9 @@ pub fn teleport_floor_kind_param(default: TeleportFloorKindFilter) -> ParamDescr
             options: TeleportFloorKindFilter::ALL_VALUES.iter().map(|t| t.as_str()).collect(),
             default: default.as_str(),
         },
+        // Every teleport collapses to SameFloor with 1 floor -- the filter has nothing to
+        // distinguish (GitHub issue #349 follow-up).
+        visibility: Some(EntityVisibility::MultiFloorOnly),
     }
 }
 
@@ -250,6 +290,7 @@ pub fn vertical_passage_same_type_only_param() -> ParamDescriptor {
         id: "same_type_only",
         label: "Same type only",
         kind: ParamKindDto::Bool { default: false },
+        visibility: None,
     }
 }
 
@@ -266,6 +307,7 @@ pub fn vertical_passage_count_incoming_param(default: bool) -> ParamDescriptor {
         id: "count_incoming",
         label: "Count incoming",
         kind: ParamKindDto::Bool { default },
+        visibility: None,
     }
 }
 

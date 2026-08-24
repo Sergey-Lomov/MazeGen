@@ -7,7 +7,7 @@ pub use snapshot::build_analytics_snapshot;
 use wasm_bindgen::prelude::*;
 use serde::Serialize;
 use maze_core::{space::Tessellation, space::{SquarePoint, HexPoint, TriPoint}, Maze, graph::Graph};
-use crate::dto::ComputeAnalyticsConfig;
+use crate::dto::{ComputeAnalyticsConfig, MazeSnapshot};
 use crate::generation_config::{self, GenerateConfig, TessellationType};
 use post_edit::{apply_split_points, build_graph_from_post_edit_edges, build_field_from_nodes, preset_edges_for_post_edit, resolve_preset_nodes_for_post_edit, restore_vertical_edges};
 
@@ -45,7 +45,7 @@ fn dispatch_compute_analytics(cfg: ComputeAnalyticsConfig) -> Result<JsValue, Js
 }
 
 /// Wraps each analytics-only rule group in its own synthetic rule — see the call site's doc
-/// comment in `run_compute_analytics` for why. Split out so the wrapping itself (one synthetic
+/// comment in `run_compute_analytics_core` for why. Split out so the wrapping itself (one synthetic
 /// rule per group, distinct ids, no strategy) can be unit-tested without going through `JsValue`.
 // Wraps every active rule group in its own singleton rule, all under one synthetic stage — this
 // path never dispatches repair (analytics-only, `QualityControlEngine::run_check_only`, see
@@ -81,15 +81,35 @@ fn run_compute_analytics<T: Tessellation + 'static>(
 where
     T::Point: Copy,
 {
+    let snapshot = run_compute_analytics_core::<T>(cfg, point_to_xy, xy_to_point)
+        .map_err(|e| JsValue::from_str(&e))?;
+
+    snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// Pure core of `compute_analytics` — builds `Field`/`Graph`, resolves split points/edges, runs
+/// QC and assembles the snapshot, with no `JsValue`/wasm dependency. Split out (see GitHub issue
+/// #360) so this branching logic (empty-`nodes`/`level_fields` guards, QC engine build errors,
+/// happy-path assembly) is exercisable by native `cargo test`, mirroring the
+/// `build_field_from_nodes`/`apply_split_points`/`build_graph_from_post_edit_edges` split in
+/// `post_edit.rs` and `runner.rs`'s `run_initial_generation`.
+fn run_compute_analytics_core<T: Tessellation + 'static>(
+    cfg: ComputeAnalyticsConfig,
+    point_to_xy: impl Fn(T::Point) -> (i32, i32),
+    xy_to_point: impl Fn([i32; 2]) -> Option<T::Point>,
+) -> Result<MazeSnapshot, String>
+where
+    T::Point: Copy,
+{
     if cfg.nodes.is_empty() {
-        return Err(JsValue::from_str("nodes must not be empty"));
+        return Err("nodes must not be empty".to_string());
     }
     if cfg.level_fields.is_empty() {
-        return Err(JsValue::from_str("level_fields must not be empty"));
+        return Err("level_fields must not be empty".to_string());
     }
 
-    let (field, existing_by_index, index_by_node, level_ids) = build_field_from_nodes::<T>(&cfg.nodes, cfg.level_fields.len(), &xy_to_point)
-        .map_err(|e| JsValue::from_str(&e))?;
+    let (field, existing_by_index, index_by_node, level_ids) = build_field_from_nodes::<T>(&cfg.nodes, cfg.level_fields.len(), &xy_to_point)?;
 
     let mut graph = Graph::new();
     for node in field.all_node_ids() { graph.add_node(node); }
@@ -98,11 +118,9 @@ where
 
     // Split points must exist before edges are resolved — some edges may address a split node
     // by (point, slot_id, level) that only comes into being here (GitHub issue #221/#359).
-    let split_map = apply_split_points(&mut maze, xy_to_point, &cfg.split_points, &existing_by_index, &level_ids)
-        .map_err(|e| JsValue::from_str(&e))?;
+    let split_map = apply_split_points(&mut maze, xy_to_point, &cfg.split_points, &existing_by_index, &level_ids)?;
 
-    build_graph_from_post_edit_edges(&mut maze.graph, &cfg.edges, &split_map)
-        .map_err(|e| JsValue::from_str(&e))?;
+    build_graph_from_post_edit_edges(&mut maze.graph, &cfg.edges, &split_map)?;
     restore_vertical_edges(&mut maze.graph, &cfg.vertical_edges);
 
     maze.meta.start  = cfg.start.map(|id| id as u64);
@@ -120,8 +138,7 @@ where
         stages,
         ..GenerateConfig::default()
     };
-    let (qc_engine, check_types) = crate::runner::build_qc_and_repair_with_types::<T>(&qc_config)
-        .map_err(|e| JsValue::from_str(&e))?;
+    let (qc_engine, check_types) = crate::runner::build_qc_and_repair_with_types::<T>(&qc_config)?;
 
     // Reuses each node's real `i` from the client's own `cfg.nodes` where known (GitHub issue
     // #236) — falls back to position only for a node not in `cfg.nodes` at all, i.e. a split node
@@ -142,12 +159,8 @@ where
     preset_state.preset_declared_nodes = resolve_preset_nodes_for_post_edit(&cfg.preset_split_points, &existing_by_index, &split_map);
     // `compute_analytics` is genuinely multi-level as of GitHub issue #359 — every floor's own
     // nodes/edges are surfaced, not just floor 0's.
-    let snapshot = build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, &preset_state, true, point_to_xy,
+    build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, &preset_state, true, point_to_xy,
         |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32))
-        .map_err(|e| JsValue::from_str(&e))?;
-
-    snapshot.serialize(&serde_wasm_bindgen::Serializer::json_compatible())
-        .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 #[cfg(test)]
@@ -161,6 +174,146 @@ mod tests {
 
     fn check(type_id: &str) -> generation_config::CheckInstanceConfig {
         generation_config::CheckInstanceConfig { local_id: type_id.to_string(), type_id: type_id.to_string(), params: HashMap::new() }
+    }
+
+    // `run_compute_analytics_core` tests (GitHub issue #360) — this core is what native
+    // `cargo test` can actually exercise, unlike `run_compute_analytics` itself which ends in a
+    // `JsValue` serialize that panics outside a real wasm runtime.
+    mod run_compute_analytics_core_tests {
+        use super::*;
+        use maze_core::space::{SquarePoint, SquareTessellation};
+        use crate::dto::NodeDto;
+
+        fn xy_to_point(p: [i32; 2]) -> Option<SquarePoint> { Some(SquarePoint { x: p[0], y: p[1] }) }
+        fn point_to_xy(p: SquarePoint) -> (i32, i32) { (p.x, p.y) }
+
+        fn base_cfg() -> ComputeAnalyticsConfig {
+            ComputeAnalyticsConfig {
+                tessellation: generation_config::TessellationConfig::default(),
+                level_fields: vec![vec![[0, 0], [1, 0]]],
+                nodes: vec![
+                    NodeDto { id: 1, x: 0, y: 0, i: 0, level: 0 },
+                    NodeDto { id: 2, x: 1, y: 0, i: 0, level: 0 },
+                ],
+                edges: vec![],
+                vertical_edges: vec![],
+                split_points: vec![],
+                start: None,
+                finish: None,
+                rule_groups: vec![],
+                preset_connections: vec![],
+                preset_split_points: vec![],
+            }
+        }
+
+        fn run(cfg: ComputeAnalyticsConfig) -> Result<MazeSnapshot, String> {
+            run_compute_analytics_core::<SquareTessellation>(cfg, point_to_xy, xy_to_point)
+        }
+
+        #[test]
+        fn empty_nodes_is_rejected() {
+            let mut cfg = base_cfg();
+            cfg.nodes = vec![];
+            let Err(err) = run(cfg) else { panic!("empty nodes must be rejected") };
+            assert_eq!(err, "nodes must not be empty");
+        }
+
+        #[test]
+        fn empty_level_fields_is_rejected() {
+            let mut cfg = base_cfg();
+            cfg.level_fields = vec![];
+            let Err(err) = run(cfg) else { panic!("empty level_fields must be rejected") };
+            assert_eq!(err, "level_fields must not be empty");
+        }
+
+        #[test]
+        fn duplicate_local_id_within_a_rule_group_fails_qc_engine_build() {
+            let mut cfg = base_cfg();
+            cfg.rule_groups = vec![group(vec![check("missing_endpoints"), check("missing_endpoints")], HashMap::new())];
+            let Err(err) = run(cfg) else { panic!("duplicate local_id within a rule group must fail QC engine build") };
+            assert!(err.contains("duplicate local_id"), "error should name the duplicate local_id problem, got: {err}");
+        }
+
+        #[test]
+        fn happy_path_assembles_snapshot_with_nodes_and_edges() {
+            let mut cfg = base_cfg();
+            cfg.edges = vec![crate::dto::PostEditEdgeDto {
+                from: crate::dto::PostEditEndpointDto::Node { id: 1 },
+                to: crate::dto::PostEditEndpointDto::Node { id: 2 },
+                kind: "basic".to_string(),
+            }];
+            cfg.start = Some(1);
+            cfg.finish = Some(2);
+
+            let Ok(snapshot) = run(cfg) else { panic!("happy-path config must assemble a snapshot") };
+            assert_eq!(snapshot.nodes.len(), 2);
+            assert!(snapshot.edges.iter().any(|e| e.from == 1 && e.to == 2), "the configured passage edge must reach the snapshot");
+        }
+
+        #[test]
+        fn node_referencing_an_unknown_level_propagates_build_field_from_nodes_error() {
+            let mut cfg = base_cfg();
+            cfg.nodes[0].level = 7; // only level_fields[0] exists
+            let Err(err) = run(cfg) else { panic!("a node referencing an unknown level must propagate build_field_from_nodes's error") };
+            assert!(err.contains("level"), "error should mention the unknown level, got: {err}");
+        }
+
+        #[test]
+        fn split_point_referencing_an_unknown_point_propagates_apply_split_points_error() {
+            let mut cfg = base_cfg();
+            cfg.split_points = vec![([99, 99], 0, 0)]; // not a point in level_fields[0]
+            let Err(err) = run(cfg) else { panic!("a split point referencing an unknown point must propagate apply_split_points's error") };
+            assert!(err.contains("99"), "error should mention the unresolvable point, got: {err}");
+        }
+
+        #[test]
+        fn unknown_edge_kind_propagates_build_graph_from_post_edit_edges_error() {
+            let mut cfg = base_cfg();
+            cfg.edges = vec![crate::dto::PostEditEdgeDto {
+                from: crate::dto::PostEditEndpointDto::Node { id: 1 },
+                to: crate::dto::PostEditEndpointDto::Node { id: 2 },
+                kind: "not_a_real_kind".to_string(),
+            }];
+            let Err(err) = run(cfg) else { panic!("an unknown edge kind must propagate build_graph_from_post_edit_edges's error") };
+            assert!(err.contains("not_a_real_kind"), "error should name the offending edge kind, got: {err}");
+        }
+
+        // Proves the core's own preset_connections/preset_split_points wiring (not just
+        // preset_edges_for_post_edit/resolve_preset_nodes_for_post_edit in isolation, already
+        // covered by post_edit_split_node_preset_locked_integration_tests) runs without error —
+        // preset_locked marking itself (which additionally requires a flagged QC issue) is
+        // covered by that integration test.
+        #[test]
+        fn preset_connections_and_preset_split_points_reach_build_analytics_snapshot() {
+            let mut cfg = base_cfg();
+            // Node 2 gets walled off from node 1 so its only connection is the preset edge below,
+            // matching the shape unreachable_finish flags.
+            cfg.edges = vec![crate::dto::PostEditEdgeDto {
+                from: crate::dto::PostEditEndpointDto::Node { id: 1 },
+                to: crate::dto::PostEditEndpointDto::Node { id: 2 },
+                kind: "basic".to_string(),
+            }];
+            cfg.preset_connections = vec![crate::generation_config::PresetConnectionDto {
+                from: maze_runner::config::PresetEndpointDto { point: [0, 0], slot: None, level: None },
+                to: maze_runner::config::PresetEndpointDto { point: [1, 0], slot: None, level: None },
+                state: maze_runner::config::PresetConnectionStateDto::Passage,
+            }];
+
+            let Ok(_) = run(cfg) else { panic!("preset-connections config must still assemble a snapshot") };
+        }
+
+        // Proves the core's own restore_vertical_edges call (not just restore_vertical_edges +
+        // build_analytics_snapshot wired manually, already covered by
+        // restore_vertical_edges_reaches_the_snapshot_tests) actually runs inside run_compute_analytics_core.
+        #[test]
+        fn vertical_edges_reach_the_snapshot_through_the_core_entry_point() {
+            let mut cfg = base_cfg();
+            cfg.vertical_edges = vec![crate::dto::VerticalEdgeDto { from: 1, to: 2, kind: "vertical_passage".to_string() }];
+
+            let Ok(snapshot) = run(cfg) else { panic!("vertical-edges config must still assemble a snapshot") };
+            assert!(snapshot.edges.iter().any(|e| e.from == 1 && e.to == 2 && matches!(e.kind, crate::dto::EdgeKindDto::VerticalPassage)),
+                "the configured vertical_passage edge must reach the snapshot via run_compute_analytics_core");
+        }
     }
 
     #[test]
@@ -286,7 +439,7 @@ mod tests {
     }
 
     // GitHub issue #358 follow-up: full-chain integration test proving `restore_vertical_edges`'s
-    // output actually survives into the DTO snapshot `run_compute_analytics` returns — not just
+    // output actually survives into the DTO snapshot `run_compute_analytics_core` returns — not just
     // that `restore_vertical_edges` builds correct `Graph` edges in isolation (already covered by
     // `post_edit.rs`'s own unit tests) or that `build_analytics_snapshot`'s edge-kind match arm is
     // correct in isolation, but that the two links actually connect end to end.
