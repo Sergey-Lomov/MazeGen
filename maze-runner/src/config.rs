@@ -22,11 +22,9 @@ pub struct GenerateConfig {
     pub tessellation: TessellationConfig,
     /// Each level's own field points (GitHub issue #338 — per-floor field shape). The number of
     /// levels to generate across (GitHub issue #337) is `level_fields.len()` — there is no
-    /// separate count field on the wire, so the two can never disagree. Only `generate_maze`/the
-    /// wasm dispatch consult this; everything downstream (QC/repair/routing/analytics/post-edit)
-    /// still only ever sees the first level, via `MultiLevelField::single_level_id()` — see that
-    /// method's doc comment. `#[serde(default)]` falls back to a single 10x10 square level so
-    /// configs/fixtures predating this field still deserialize.
+    /// separate count field on the wire, so the two can never disagree. `#[serde(default)]` falls
+    /// back to a single 10x10 square level so configs/fixtures predating this field still
+    /// deserialize.
     #[serde(default = "default_level_fields")]
     pub level_fields: Vec<Vec<[i32; 2]>>,
     #[serde(default)]

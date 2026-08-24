@@ -121,11 +121,9 @@ impl<T: Tessellation> MultiLevelField<T> {
 
     /// The aggregator's first level (by `levels_ordered()` position) — panics only if there are
     /// no levels at all, which never happens for a live `MultiLevelField` (every constructor adds
-    /// at least one). Used by every not-yet-multi-floor-aware call site (QC/repair/routing/
-    /// analytics/post-edit — GitHub issue #333 epic) as a deliberate "always the ground floor"
-    /// stand-in until each of those is migrated to iterate `levels_ordered()` itself; generation
-    /// (GitHub issue #337) is the first caller that doesn't use this and instead handles every
-    /// level.
+    /// at least one). QC/repair/routing/analytics/post-edit are all multi-floor-aware as of the
+    /// GitHub issue #333 epic; the only remaining caller is `io::render_ascii`, a debug/example
+    /// tool that only ever renders one floor by design.
     pub fn single_level_id(&self) -> LevelId {
         self.level_order[0]
     }

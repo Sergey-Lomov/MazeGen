@@ -220,7 +220,7 @@ pub fn run_generate<T: Tessellation + 'static>(
     // `graph_analytics`/`nav_graph` computation (cycle enumeration on the final graph) runs
     // entirely outside the QC pipeline and was previously invisible in the reported total.
     let snapshot_start = maze_core::generation::pipeline::now_ms();
-    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, &repair_preset_state, true, &point_to_xy, |_, _, pos| pos as u32)
+    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, &repair_preset_state, &point_to_xy, |_, _, pos| pos as u32)
         .map_err(|e| JsValue::from_str(&e))?;
     timing.snapshot_ms = maze_core::generation::pipeline::now_ms() - snapshot_start;
     snapshot.timing = Some(timing_to_dto(timing));

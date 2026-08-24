@@ -36,13 +36,6 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     // node/edge list, never from `PresetConnection`s) via `preset_edges_for_post_edit`/
     // `resolve_preset_nodes_for_post_edit`, resolved fresh against the rebuilt field each call.
     preset_state: &PresetState,
-    // Whether `nodes`/`edges` cover every floor or only the first (GitHub issue #337). Generation
-    // (`runner.rs`) passes `true` — it's the one path that actually builds a multi-level field.
-    // Every other caller (post-edit/analytics-recompute) passes `false`: those rebuild `maze.field`
-    // from the client's own node/edge list, which is still single-floor-only (no per-floor field
-    // editing UI exists yet — see the #333 epic), so restricting to the first floor here is a
-    // no-op for them today, not a behavior change.
-    all_levels: bool,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
     // Node's stable per-point index (GitHub issue #236, `NodeDto.i` doc comment) — `0` is always
     // the point's original node. A fresh maze (generation) has no removal history yet, so a node's
@@ -135,17 +128,13 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     // `nodes_at(p)` isn't flat-mapped once per repeat, which would emit a split point's node list
     // N times over (GitHub issue #223 surfaced this once split-junction rendering started reading
     // every node of a point instead of just one).
-    let levels: Vec<maze_core::space::LevelId> = if all_levels {
-        maze.field.levels_ordered().collect()
-    } else {
-        vec![maze.field.single_level_id()]
-    };
+    let levels: Vec<maze_core::space::LevelId> = maze.field.levels_ordered().collect();
     let mut nodes: Vec<NodeDto> = Vec::new();
     for (level_index, &level) in levels.iter().enumerate() {
         let mut seen_points: std::collections::HashSet<T::Point> = std::collections::HashSet::new();
         let points: Vec<T::Point> = maze.field
             .field_of(level)
-            .expect("levels_ordered/single_level_id always resolve")
+            .expect("levels_ordered always resolves")
             .all_points()
             .filter(|p| seen_points.insert(*p))
             .collect();
@@ -159,13 +148,8 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         }
     }
 
-    // When `all_levels` is false, edges are restricted to the single surfaced floor — `nodes`
-    // above only covers that floor (GitHub issue #333 epic: post-edit/analytics-recompute aren't
-    // multi-level-aware yet, see `single_level_id`'s doc comment), so an edge reaching another
-    // level would otherwise reference a node id the web client's `nodes` list never received.
     let edges: Vec<EdgeDto> = maze.graph
         .edges()
-        .filter(|e| all_levels || (maze.field.level_of(e.from) == Some(levels[0]) && maze.field.level_of(e.to) == Some(levels[0])))
         .filter_map(|e| {
             let kind = match e.kind {
                 maze_core::graph::EdgeKind::Basic => EdgeKindDto::Basic,
@@ -242,11 +226,6 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         region_classes,
     };
 
-    // Per-floor stats are computed over every floor the field actually has, independent of
-    // `all_levels`/`levels` above (which only restricts what `nodes`/`edges` serialize for
-    // callers not yet multi-level-aware — see their own doc comment).
-    let all_field_levels: Vec<maze_core::space::LevelId> = maze.field.levels_ordered().collect();
-
     // Real geometric cell count — `Field::all_points()`, deduped by point (mirrors
     // `split_totals_scoped`'s own `seen_points` dedup), not reconstructed from `cell_stats`
     // (which would double-count a split point's every extra node).
@@ -257,8 +236,8 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         })
     };
     let cell_count = FloorScoped {
-        total: all_field_levels.iter().map(|&l| level_cell_count(l)).sum(),
-        by_floor: all_field_levels.iter().enumerate()
+        total: levels.iter().map(|&l| level_cell_count(l)).sum(),
+        by_floor: levels.iter().enumerate()
             .map(|(idx, &level)| (idx.to_string(), level_cell_count(level)))
             .collect(),
     };
@@ -271,7 +250,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     };
     let cell_stats = FloorScoped {
         total: node_stats_dto(compute_node_stats_scoped(&maze.graph, &maze.field, None)),
-        by_floor: all_field_levels.iter().enumerate()
+        by_floor: levels.iter().enumerate()
             .map(|(idx, &level)| (idx.to_string(), node_stats_dto(compute_node_stats_scoped(&maze.graph, &maze.field, Some(level)))))
             .collect(),
     };
@@ -286,7 +265,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     // `compute_spatial_edge_stats_scoped` result, which is not free to recompute (walks
     // `adjacency_pairs` and every node's `classify_node` shape).
     let raw_edge_stats_total = compute_spatial_edge_stats_scoped(&maze.graph, &maze.field, None);
-    let raw_edge_stats_by_floor: Vec<maze_core::graph::stats::SpatialEdgeStats> = all_field_levels.iter()
+    let raw_edge_stats_by_floor: Vec<maze_core::graph::stats::SpatialEdgeStats> = levels.iter()
         .map(|&level| compute_spatial_edge_stats_scoped(&maze.graph, &maze.field, Some(level)))
         .collect();
 
@@ -324,7 +303,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     };
     let elements_stats = FloorScoped {
         total: elements_stats_dto(None, &raw_edge_stats_total),
-        by_floor: all_field_levels.iter().zip(raw_edge_stats_by_floor.iter()).enumerate()
+        by_floor: levels.iter().zip(raw_edge_stats_by_floor.iter()).enumerate()
             .map(|(idx, (&level, raw))| (idx.to_string(), elements_stats_dto(Some(level), raw)))
             .collect(),
     };
@@ -396,7 +375,7 @@ mod tests {
         }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         assert!(snapshot.statistics.graph_stats.cycle_analysis_overflowed);
         assert!(snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
@@ -414,7 +393,7 @@ mod tests {
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         assert!(!snapshot.statistics.graph_stats.cycle_analysis_overflowed);
         assert!(!snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
@@ -433,7 +412,7 @@ mod tests {
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
         let stats = &snapshot.statistics;
 
         assert_eq!(stats.cell_count.total, 3);
@@ -466,7 +445,7 @@ mod tests {
         g.add_node(extra);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         let at_split_point: Vec<_> = snapshot.nodes.iter().filter(|n| n.x == 1 && n.y == 0).collect();
         assert_eq!(at_split_point.len(), 2, "split point's node list must appear exactly once, not once per its own node count");
@@ -489,7 +468,7 @@ mod tests {
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         // Neither start nor finish set.
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         assert!(snapshot.statistics.graph_stats.region_classes.is_empty());
     }
@@ -510,7 +489,7 @@ mod tests {
         maze.meta.start = Some(a);
         maze.meta.finish = Some(c);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         // Fully bidirectional 3-node line collapses into a single SCC — start and finish share
         // a region, which is always "path" by definition.

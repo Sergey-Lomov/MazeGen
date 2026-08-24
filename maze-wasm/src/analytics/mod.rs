@@ -159,7 +159,7 @@ where
     preset_state.preset_declared_nodes = resolve_preset_nodes_for_post_edit(&cfg.preset_split_points, &existing_by_index, &split_map);
     // `compute_analytics` is genuinely multi-level as of GitHub issue #359 — every floor's own
     // nodes/edges are surfaced, not just floor 0's.
-    build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, &preset_state, true, point_to_xy,
+    build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, &preset_state, point_to_xy,
         |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32))
 }
 
@@ -423,7 +423,7 @@ mod tests {
             );
             let qc = QualityControlEngine::new(vec![Stage::new("stage_1".to_string(), "Stage 1".to_string(), vec![Box::new(rule) as Box<dyn RuleTrait<SquareTessellation>>])]);
 
-            let snapshot = build_analytics_snapshot(&mut maze, Some(&qc), None, &HashMap::new(), &preset_state, true, point_to_xy,
+            let snapshot = build_analytics_snapshot(&mut maze, Some(&qc), None, &HashMap::new(), &preset_state, point_to_xy,
                 |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32)).unwrap();
 
             let issue_dto = snapshot.issues.iter().find(|i| i.kind == "invalid_split_node")
@@ -470,7 +470,7 @@ mod tests {
             ]);
 
             let preset_state = maze_core::generation::PresetState::empty();
-            let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &preset_state, true, point_to_xy,
+            let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &preset_state, point_to_xy,
                 |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32)).unwrap();
 
             assert!(snapshot.edges.iter().any(|e| e.from == 1 && e.to == 2 && matches!(e.kind, crate::dto::EdgeKindDto::VerticalPassage)),
