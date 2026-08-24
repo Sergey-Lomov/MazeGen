@@ -131,19 +131,56 @@ Shows details for the current selection:
 | Check | Label, description, param fields (via `useParamEditor`, through `ParamizedDetail`) |
 | Strategy | Label, description, param fields (via `useParamEditor`, through `ParamizedDetail`) |
 | `"no_fix"` ("logging") | Static label/description for `strategy.no_fix` — no param fields, since there's no strategy instance to configure |
+| Param | Label + description only, read-only, no value control — see "Per-param selection" below |
 
 `QualitySelection` (the union type driving this):
 
 ```typescript
+type ParamOwner =
+  | { kind: "check"; checkId: string }
+  | { kind: "strategy"; ruleId: string }
+  | { kind: "nested_strategy"; ruleId: string; path: PathSegment[] }
+  | { kind: "rule"; ruleId: string };
+
 type QualitySelection =
   | { type: "check"; id: string }
   | { type: "strategy"; ruleId: string; strategyId: string }
   | { type: "logging"; ruleId: string }
   | { type: "nested_strategy"; ruleId: string; path: PathSegment[] }
+  | { type: "param"; owner: ParamOwner; paramId: string }
   | null;
 ```
 
 `nested_strategy` selects one nested-strategy entry, anywhere in the nesting chain under a rule's top-level strategy — see "Nested strategies (UI)" below for `PathSegment` and how the detail panel renders this case (same `ParamizedDetail` machinery as `strategy`, plus that entry's own further-nested slots).
+
+#### Per-param selection (GitHub issue #375)
+
+Every param row rendered by `ParamFields` — check params, strategy params, nested-strategy params,
+and rule-level params (`RuleParamsSection`) — shows an inline `ℹ` info icon right after its label
+(only when the caller passes `onSelectParam`; the detail panel's own `ParamFields` instance never
+does, since it's already showing one entity's full description). Clicking the icon, or anywhere
+else in the row (except an actual value control, which stops propagation the same way row-level
+selection already does for nested-strategy entries — see "Nested strategies (UI)" below), calls
+`onSelectParam(paramId)`, which the caller wraps into `onSelect({ type: "param", owner, paramId })`
+with a `ParamOwner` identifying which entity the param belongs to. `selectedParamId` (also passed
+to `ParamFields`) highlights the matching row's background when its id equals the current
+selection's `paramId` for the same owner.
+
+`QualityDetailPanel`'s `"param"` branch resolves the `ParamDescriptor` for `(owner, paramId)`
+against the relevant source — `vm.checks`/`vm.strategySlots` for check/strategy/nested_strategy
+owners, `availableRuleParams` (with `resolveParamLabel` for the fallback label) for a `"rule"`
+owner — and renders only its (possibly `contextId`-resolved) label and description as plain text,
+no `ParamizedDetail`/`useParamEditor`/edit control; a param that no longer resolves (its owning
+entity was removed or the param id no longer exists) renders an empty panel.
+
+Callers threading `onSelectParam`/`selectedParamId` through to `ParamFields`: `RuleCheckRow`,
+`RuleStrategyPanel`, `RuleParamsSection`. `NestedStrategyPanel` does not — its own params sit
+inside a block that already selects the *whole* nested-strategy entry on click, so per-param
+selection is not wired there. Each caller flushes its own `useParamEditor`'s `flushRef` before
+calling `onSelectParam`, same as every other selection-changing action in that row (see "Inline
+param editing" above). `RulesColumn`'s `selectionBelongsToRule`/check-removal handler both treat a
+`"param"` selection whose owner resolves inside the rule/check being removed as belonging to it,
+clearing the selection so it never dangles on a since-removed check or rule.
 
 `QualityCanvas` holds a `flushRef` it passes into `QualityDetailPanel` (via `ParamizedDetail`) and calls before every selection change, so an in-flight debounced edit in the detail panel is never lost when switching selection. This is separate from — and does not cover — the inline editors in `RuleCheckRow`/`RuleStrategyPanel` (see above).
 

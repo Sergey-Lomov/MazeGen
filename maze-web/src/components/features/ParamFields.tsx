@@ -89,6 +89,14 @@ interface Props {
    * the param's own JSON `number[]` value). Only `RuleStrategyPanel` has rule-level param access,
    * so it resolves this and passes it down — see `addSplitPatternsOverride`. */
   addSplitPatternsOverride?: SplitPattern[];
+  /** Selects this param row (GitHub issue #375) — clicking the row or its info icon shows the
+   * param's label/description (read-only) in the quality detail panel. Only compact rule-card
+   * views pass this (RuleCheckRow/RuleStrategyPanel/RuleParamsSection/NestedStrategyPanel); the
+   * detail panel's own `ParamFields` instance (`ParamizedDetail`, already showing one entity's
+   * full description) has no need for it. */
+  onSelectParam?: (paramId: string) => void;
+  /** The currently-selected param's id, for this same owner — highlights that one row. */
+  selectedParamId?: string | null;
 }
 
 const SELECT_HORIZONTAL_CHROME = 4 + 18 + 2; // padding-left + padding-right + border
@@ -113,7 +121,7 @@ function enumSelectWidth(p: ParamDescriptor, containerWidth: number): number | u
   return Math.min(desired, Math.max(softCap, hardCap));
 }
 
-export function ParamFields({ params, values, getValue, onChange, getDescription, disabled, disabledIds, contextId, addSplitPatternsOverride }: Props) {
+export function ParamFields({ params, values, getValue, onChange, getDescription, disabled, disabledIds, contextId, addSplitPatternsOverride, onSelectParam, selectedParamId }: Props) {
   const tessellationConfig = useMazeStore((s) => activeFloorTessellationOf(s));
   const floorCount = useMazeStore((s) => s.floors.length);
   const visibleParams = params.filter((p) => isEntityVisible(p.visibility, floorCount));
@@ -256,10 +264,32 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
     <div ref={containerRef} style={{ ...styles.fieldsWrap, gap: getDescription ? spacing.sectionGap : spacing.itemGap }}>
       {visibleParams.map((p) => {
         const description = displayDescription(p);
+        const selected = onSelectParam && selectedParamId === p.id;
         return (
-          <div key={p.id} style={{ ...styles.field, ...(isDisabled(p) ? styles.fieldDisabled : {}) }}>
+          <div
+            key={p.id}
+            style={{
+              ...styles.field,
+              ...(isDisabled(p) ? styles.fieldDisabled : {}),
+              ...(onSelectParam ? styles.fieldSelectable : {}),
+              ...(selected ? styles.fieldSelected : {}),
+            }}
+            onClick={onSelectParam ? () => onSelectParam(p.id) : undefined}
+          >
             <Inline gap="rowGap" justify="space-between">
-              <label style={styles.label}>{displayLabel(p)}</label>
+              <span style={styles.labelWrap}>
+                <label style={styles.label}>{displayLabel(p)}</label>
+                {onSelectParam && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="hoverable"
+                    style={styles.infoIcon}
+                    onClick={(e) => { e.stopPropagation(); onSelectParam(p.id); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); onSelectParam(p.id); } }}
+                  >ℹ</span>
+                )}
+              </span>
               {/* Each control stops its own click from bubbling — not the whole row/field — so a
                   container that turns clicks into a "select this" action elsewhere (e.g.
                   `NestedStrategyPanel`'s strategy block) still catches clicks on the label or
@@ -549,11 +579,34 @@ const styles: Record<string, React.CSSProperties> = {
   fieldDisabled: {
     opacity: 0.5,
   },
+  fieldSelectable: {
+    cursor: "default",
+    borderRadius: radius.sm,
+    margin: `0 -${spacing.elementsGap}px`,
+    padding: `${spacing.elementsGap}px`,
+  },
+  fieldSelected: {
+    background: ui.bg.panelAlt,
+  },
   // `typography.message` — the theme's own "label"-weight token (body size, secondary color) —
   // see theme.ts's own guidance against composing fontSize/color ad hoc.
   label: {
     ...typography.message,
+  },
+  labelWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.rowGap,
     flex: 1,
+    minWidth: 0,
+  },
+  infoIcon: {
+    ...typography.icon,
+    lineHeight: 1,
+    flexShrink: 0,
+    cursor: "default",
+    borderRadius: 3,
+    color: ui.text.tertiary,
   },
   description: {
     ...typography.caption,

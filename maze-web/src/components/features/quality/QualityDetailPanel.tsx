@@ -2,7 +2,7 @@ import React from "react";
 import { useMazeStore } from "../../../store/mazeStore";
 import { ParamizedDetail } from "./ParamizedDetail";
 import { NestedStrategyPanel, findRawNested } from "./NestedStrategyPanel";
-import { resolveStrategyDescription } from "../qualityI18n";
+import { resolveStrategyDescription, resolveParamLabel, resolveParamDescription } from "../qualityI18n";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { spacing } from "../../../styles/theme";
@@ -10,6 +10,7 @@ import { entriesForSlot, type PathSegment } from "../../../store/storeTypes";
 import { addVerticalPassageOverrides } from "./addVerticalPassageOverrides";
 import type { useQualityViewModel, NestedStrategyVM } from "../useQualityViewModel";
 import type { QualitySelection } from "./types";
+import type { ParamDescriptor } from "../../../wasm/types";
 
 interface Props {
   selection: QualitySelection;
@@ -40,6 +41,7 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
   const strategyParams = useMazeStore((s) => s.strategyParams);
   const setStrategyParam = useMazeStore((s) => s.setStrategyParam);
   const setNestedStrategyParam = useMazeStore((s) => s.setNestedStrategyParam);
+  const availableRuleParams = useMazeStore((s) => s.availableRuleParams);
 
   if (!selection) {
     return (
@@ -157,6 +159,37 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
           </div>
         )}
       </ParamizedDetail>
+    );
+  }
+
+  if (selection.type === "param") {
+    const { owner, paramId } = selection;
+    let param: ParamDescriptor | undefined;
+    let contextId: string | undefined;
+
+    if (owner.kind === "check") {
+      const check = vm.checks.find((c) => c.id === owner.checkId);
+      param = check?.params.find((p) => p.id === paramId);
+    } else if (owner.kind === "strategy") {
+      const strategy = vm.strategySlots.find((s) => s.ruleId === owner.ruleId)?.strategy;
+      param = strategy?.params.find((p) => p.id === paramId);
+      contextId = strategy?.id;
+    } else if (owner.kind === "nested_strategy") {
+      const slot = vm.strategySlots.find((s) => s.ruleId === owner.ruleId);
+      const node = slot ? resolveNestedStrategyVM(slot.nestedStrategies, owner.path) : undefined;
+      param = node?.params.find((p) => p.id === paramId);
+      contextId = node?.strategy.id;
+    } else {
+      const descriptor = availableRuleParams.find((p) => p.id === paramId);
+      param = descriptor ? { id: descriptor.id, label: resolveParamLabel(descriptor.id, descriptor.label), kind: descriptor.kind } : undefined;
+    }
+
+    if (!param) return <div style={styles.detailPanel} />;
+    return (
+      <div style={styles.detailPanel}>
+        <span style={styles.detailTitle}>{param.label}</span>
+        <p style={styles.detailDesc}>{resolveParamDescription(param.id, contextId)}</p>
+      </div>
     );
   }
 

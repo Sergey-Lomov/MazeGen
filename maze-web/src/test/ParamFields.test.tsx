@@ -326,4 +326,55 @@ describe("ParamFields", () => {
       expect((screen.getByRole("spinbutton") as HTMLInputElement).value).toBe("3");
     });
   });
+
+  describe("param selection (onSelectParam/selectedParamId, GitHub issue #375)", () => {
+    it("shows no info icon and no row click handler when onSelectParam is not passed", () => {
+      render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={vi.fn()} />);
+      expect(screen.queryByText("ℹ")).not.toBeInTheDocument();
+    });
+
+    it("clicking the info icon calls onSelectParam with that param's id", () => {
+      const onSelectParam = vi.fn();
+      render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={vi.fn()} onSelectParam={onSelectParam} />);
+      fireEvent.click(screen.getByText("ℹ"));
+      expect(onSelectParam).toHaveBeenCalledWith("reserve_percent");
+    });
+
+    it("pressing Enter on the info icon calls onSelectParam", () => {
+      const onSelectParam = vi.fn();
+      render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={vi.fn()} onSelectParam={onSelectParam} />);
+      fireEvent.keyDown(screen.getByText("ℹ"), { key: "Enter" });
+      expect(onSelectParam).toHaveBeenCalledWith("reserve_percent");
+    });
+
+    it("clicking anywhere else in the row also calls onSelectParam with that param's id", () => {
+      const onSelectParam = vi.fn();
+      render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={vi.fn()} onSelectParam={onSelectParam} />);
+      fireEvent.click(screen.getByText("Reserve percent"));
+      expect(onSelectParam).toHaveBeenCalledWith("reserve_percent");
+    });
+
+    it("clicking the value control itself does not call onSelectParam (stops propagation)", () => {
+      const onSelectParam = vi.fn();
+      render(<ParamFields params={[boolParam]} values={{ protect_route: "true" }} onChange={vi.fn()} onSelectParam={onSelectParam} />);
+      fireEvent.click(screen.getByRole("checkbox"));
+      expect(onSelectParam).not.toHaveBeenCalled();
+    });
+
+    it("only the row matching selectedParamId gets a highlight background", () => {
+      render(
+        <ParamFields
+          params={[plainFloatParam, plainIntegerParam]}
+          values={{ reserve_percent: "50", max_attempts: "5" }}
+          onChange={vi.fn()}
+          onSelectParam={vi.fn()}
+          selectedParamId="max_attempts"
+        />
+      );
+      const selectedRow = screen.getByText("Max attempts").closest("label")!.closest("span")!.parentElement!.parentElement as HTMLElement;
+      const unselectedRow = screen.getByText("Reserve percent").closest("label")!.closest("span")!.parentElement!.parentElement as HTMLElement;
+      expect(selectedRow.style.background).not.toBe("");
+      expect(unselectedRow.style.background).toBe("");
+    });
+  });
 });

@@ -19,6 +19,11 @@ const check: CheckVM = {
   disabled: false,
 };
 
+const checkWithParams: CheckVM = {
+  ...check,
+  params: [{ id: "threshold", label: "Threshold", kind: { type: "float", default: 1, min: 0, max: 10 } }],
+};
+
 function makeVm(overrides: Partial<QualityViewModel> = {}): QualityViewModel {
   const slots = [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy: null, disabled: false, ruleDisabled: false, producedBy: [check], params: {}, nestedStrategies: [], collapsed: false }];
   return {
@@ -38,6 +43,7 @@ beforeEach(() => {
   useMazeStore.setState({
     rules: [],
     strategyParams: {},
+    availableRuleParams: [],
   } as Partial<ReturnType<typeof useMazeStore.getState>>);
 });
 
@@ -134,5 +140,58 @@ describe("QualityDetailPanel", () => {
     });
     render(<Harness selection={{ type: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] }} vm={vm} />);
     expect(screen.queryByText("Strategy One")).not.toBeInTheDocument();
+  });
+
+  it("renders a check param's label read-only, with no editable control", () => {
+    const vm = makeVm({ checks: [checkWithParams] });
+    render(<Harness selection={{ type: "param", owner: { kind: "check", checkId: "g1:0" }, paramId: "threshold" }} vm={vm} />);
+    expect(screen.getByText("Threshold")).toBeInTheDocument();
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+  });
+
+  it("renders a strategy param's label when a strategy param is selected", () => {
+    const strategyWithParams: StrategyVM = {
+      ...strategy,
+      params: [{ id: "weight", label: "Weight", kind: { type: "float", default: 1, min: 0, max: 10 } }],
+    };
+    const vm = makeVm({
+      strategySlots: [{ ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy: strategyWithParams, disabled: false, ruleDisabled: false, producedBy: [check], params: {}, nestedStrategies: [], collapsed: false }],
+    });
+    render(<Harness selection={{ type: "param", owner: { kind: "strategy", ruleId: "g1" }, paramId: "weight" }} vm={vm} />);
+    expect(screen.getByText("Weight")).toBeInTheDocument();
+  });
+
+  it("renders a nested strategy param's label when a nested strategy param is selected", () => {
+    const nestedStrategy: StrategyVM = {
+      id: "n1", label: "Nested One", handles: "k2", experimental: false, nestedSlots: [],
+      params: [{ id: "p1", label: "Param One", kind: { type: "float", default: 1, min: 0, max: 10 } }],
+    };
+    const topLevel: StrategyVM = {
+      id: "s1", label: "Strategy One", handles: "i1", params: [], experimental: false,
+      nestedSlots: [{ slotId: "slot_a", kind: "k2", min: 1, max: 1, dispatchKind: "unordered" }],
+    };
+    const vm = makeVm({
+      strategySlots: [{
+        ruleId: "g1", name: "Rule 1", kind: "i1", label: "Issue One", strategy: topLevel,
+        disabled: false, ruleDisabled: false, producedBy: [check],
+        params: {}, nestedStrategies: [{ slotId: "slot_a", strategy: nestedStrategy, params: nestedStrategy.params, nested: [] }], collapsed: false,
+      }],
+    });
+    render(<Harness selection={{ type: "param", owner: { kind: "nested_strategy", ruleId: "g1", path: [{ slotId: "slot_a", index: 0 }] }, paramId: "p1" }} vm={vm} />);
+    expect(screen.getByText("Param One")).toBeInTheDocument();
+  });
+
+  it("renders a rule-level param's label from availableRuleParams when selected", () => {
+    useMazeStore.setState({ availableRuleParams: [{ id: "not_a_real_param_id", label: "Fallback Label", kind: { type: "bool", default: false }, applies_to: ["c1"] }] });
+    const vm = makeVm();
+    render(<Harness selection={{ type: "param", owner: { kind: "rule", ruleId: "g1" }, paramId: "not_a_real_param_id" }} vm={vm} />);
+    expect(screen.getByText("Fallback Label")).toBeInTheDocument();
+  });
+
+  it("renders empty panel when the selected param no longer resolves", () => {
+    const vm = makeVm();
+    render(<Harness selection={{ type: "param", owner: { kind: "check", checkId: "missing" }, paramId: "threshold" }} vm={vm} />);
+    expect(screen.queryByText("Threshold")).not.toBeInTheDocument();
   });
 });
