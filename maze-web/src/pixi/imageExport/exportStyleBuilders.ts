@@ -116,6 +116,7 @@ export function buildVerticalConnectionStyle(settings: VerticalSettingsFields, f
     decorativeStairsArrowColor: settings.decorativeStairsArrowColor,
     decorativeStairsArrowSize: settings.decorativeStairsArrowSize,
     decorativeStairsAccentColor: settings.decorativeStairsAccentColor,
+    elevatorBadges: settings.elevatorBadges,
   };
 }
 

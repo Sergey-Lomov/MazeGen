@@ -257,6 +257,12 @@ export type VerticalConnectionMarker = {
    *  unambiguous click target — clicking an Elevator marker is intentionally not wired up) and for
    *  any marker whose target floor couldn't be resolved. */
   targetFloorIndex?: number;
+  /** Every floor this `Elevator` marker's own node reaches (GitHub issue #430, "floor badges"),
+   *  sorted ascending, deduplicated — `targetFloorIndex` only ever holds one floor (`VerticalPassage`)
+   *  or `undefined` (`Elevator`'s ambiguous single-click target), but a floor badge ring needs the
+   *  whole fan. `undefined` for `vertical_passage` (redundant with `targetFloorIndex`) and for an
+   *  `elevator` marker whose reachable floors couldn't be resolved at all. */
+  targetFloorIndices?: number[];
   filled: boolean;
   arrowFilled: boolean;
 };
@@ -267,6 +273,10 @@ export type VerticalConnectionMarker = {
  *  `drawMarkerShape`'s `rounded` param); `circle` has no corners, `star`/`cross` have no
  *  regular-polygon equivalent to round. */
 export type TeleportCornerStyle = "sharp" | "round";
+
+/** Weight of an elevator floor-number badge's own label text (GitHub issue #430 follow-up) — maps
+ *  to pixi `TextStyle.fontWeight` (`"normal"`/`"600"`/`"bold"`). */
+export type ElevatorBadgeFontWeight = "regular" | "bold";
 
 /** `"none"`: no connector line at all, just the two endpoint markers — with "group customization"
  *  enabled (see `TeleportGroupOverride`) this reproduces the old, now-removed `"grouped"` pattern's

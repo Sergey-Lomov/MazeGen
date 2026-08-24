@@ -1,9 +1,9 @@
 import {
-  type MarkerSettings, type DecorativeLineStyle, type VectorByWallsSettings, type VectorByCorridorsSettings, type VectorByWallsSharedStyle, type VectorByCorridorsSharedStyle, type TeleportSettingsFields, type VerticalSettingsFields, type MarkerWidenShape, type PngExportSettings,
+  type MarkerSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type VectorByWallsSettings, type VectorByCorridorsSettings, type VectorByWallsSharedStyle, type VectorByCorridorsSharedStyle, type TeleportSettingsFields, type VerticalSettingsFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
-import type { MarkerShape } from "../../pixi/renderers/types";
+import type { MarkerShape, ElevatorBadgeFontWeight } from "../../pixi/renderers/types";
 import type { RenderModeId } from "../mazeStore";
 import type { ProjectFileImageExport } from "./types";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../slices/imageExportSlice";
@@ -122,6 +122,48 @@ export function validateDecorativeLineStyle(v: unknown, path: string, fallback: 
   };
 }
 
+export function optElevatorBadgeLabelType(obj: Record<string, unknown> | null, key: string, fallback: ElevatorBadgeLabelType): ElevatorBadgeLabelType {
+  const v = obj?.[key];
+  return v === "arabic" || v === "roman" || v === "letters" ? v : fallback;
+}
+
+export function optElevatorBadgePlacement(obj: Record<string, unknown> | null, key: string, fallback: ElevatorBadgePlacement): ElevatorBadgePlacement {
+  const v = obj?.[key];
+  return v === "left_right" || v === "right_left" || v === "top_bottom" || v === "bottom_top" || v === "full_circle" ? v : fallback;
+}
+
+export function optElevatorBadgeFontWeight(obj: Record<string, unknown> | null, key: string, fallback: ElevatorBadgeFontWeight): ElevatorBadgeFontWeight {
+  const v = obj?.[key];
+  return v === "regular" || v === "bold" ? v : fallback;
+}
+
+/** `ElevatorBadgeSettings` validation (GitHub issue #430) — same lenient-recovery convention as
+ * `validateMarkerSettings`/`validateDecorativeLineStyle`. */
+export function validateElevatorBadgeSettings(v: unknown, path: string, fallback: ElevatorBadgeSettings): ElevatorBadgeSettings {
+  if (v == null) return fallback;
+  let obj: Record<string, unknown> | null;
+  try {
+    obj = assertObject(v, path);
+  } catch {
+    return fallback;
+  }
+  return {
+    enabled: optBool(obj, "enabled", fallback.enabled),
+    labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
+    size: optNumber(obj, "size", fallback.size),
+    placement: optElevatorBadgePlacement(obj, "placement", fallback.placement),
+    distance: optNumber(obj, "distance", fallback.distance),
+    gap: optNumber(obj, "gap", fallback.gap),
+    gapWidth: optNumber(obj, "gapWidth", fallback.gapWidth),
+    cornerStyle: optTeleportCornerStyle(obj, "cornerStyle", fallback.cornerStyle),
+    evenDistribution: optBool(obj, "evenDistribution", fallback.evenDistribution),
+    shape: optMarkerShape(obj, "shape", fallback.shape),
+    fillColor: optNumber(obj, "fillColor", fallback.fillColor),
+    textColor: optNumber(obj, "textColor", fallback.textColor),
+    fontWeight: optElevatorBadgeFontWeight(obj, "fontWeight", fallback.fontWeight),
+  };
+}
+
 /** `VectorByWallsSettings`' own "Vertical connections" fields (GitHub issue #347, three-style
  * follow-up, three-section split follow-up) — same lenient-recovery convention as
  * `validateTeleportSettingsFields`. `verticalStyle` reads the current field name first; a project
@@ -167,6 +209,7 @@ export function validateVerticalSettingsFields(obj: Record<string, unknown> | nu
     decorativeStairsArrowColor: optNumber(obj, "decorativeStairsArrowColor", d.decorativeStairsArrowColor),
     decorativeStairsArrowSize: optNumber(obj, "decorativeStairsArrowSize", d.decorativeStairsArrowSize),
     decorativeStairsAccentColor: optNumber(obj, "decorativeStairsAccentColor", d.decorativeStairsAccentColor),
+    elevatorBadges: validateElevatorBadgeSettings(obj?.elevatorBadges, `${path}.elevatorBadges`, d.elevatorBadges),
   };
 }
 

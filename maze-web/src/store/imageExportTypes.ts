@@ -1,4 +1,4 @@
-import type { MarkerShape, OneWayPattern, TeleportGroupOverride, TeleportCornerStyle, TeleportConnectorStyle, TeleportArrowMode } from "../pixi/renderers/types";
+import type { MarkerShape, OneWayPattern, TeleportGroupOverride, TeleportCornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight } from "../pixi/renderers/types";
 
 /** Registry id of a maze image-export rendering mode (see `Specs/image-export.md` and
  * `imageExportRegistry.ts`) — one entry per switcher item in the Image Export feature card. */
@@ -85,6 +85,77 @@ export interface DecorativeLineStyle {
   lineColor: number;
   lineWidth: number;
   size: number;
+}
+
+/** Numbering style for `ElevatorBadgeSettings.labelType` (GitHub issue #430) — each badge shows the
+ *  reached floor's 1-based display number (`floor index + 1`) formatted per this style. */
+export type ElevatorBadgeLabelType = "arabic" | "roman" | "letters";
+
+/** Placement pattern for the badge ring around an elevator marker (GitHub issue #430). `"left_right"`/
+ *  `"right_left"` both lay out **two** single rows, one to the left of the marker and one to the
+ *  right (`"top_bottom"`/`"bottom_top"`: one column above, one below); the name's first half is the
+ *  *leading* side — the one that fills first (see `ElevatorBadgeSettings.evenDistribution`) and
+ *  gets the extra badge on an odd `evenDistribution` split. Each side's own row/column is capped at
+ *  `slotsPerRow` badges (`elevatorBadgeLayout.ts`, accounting for `gap` between badges) — there is
+ *  no second, farther sub-row: a side whose own floor count exceeds that capacity instead trips the
+ *  `elevator_badges_too_many` export warning below (`elevatorBadgesTooMany`), same "flag it instead
+ *  of drawing badges that visually break the layout" treatment `elevator_badges_overlap` already
+ *  gives real geometric overlap. `"full_circle"` spreads badges around the marker's own circle at
+ *  radius `distance` — see `ElevatorBadgeSettings.evenDistribution` for the two ring layouts. */
+export type ElevatorBadgePlacement = "full_circle" | "left_right" | "right_left" | "top_bottom" | "bottom_top";
+
+/** "Floor-number badges" (GitHub issue #430) — an independent decorative layer drawn on top of an
+ *  `Elevator` marker, regardless of `verticalStyle` (abstract/decorative/realistic): one small
+ *  badge per floor the elevator's fan actually reaches (`VerticalConnectionMarker.
+ *  targetFloorIndices`), each showing that floor's 1-based display number. Applies to every
+ *  `Elevator` marker uniformly — there is no per-elevator override, mirroring `elevatorMarker`
+ *  itself. `size` is a fraction of the elevator marker's own radius (0-1), not the tile size —
+ *  badges are always small relative to the marker they surround; font size scales proportionally
+ *  with it (no fixed floor under the font size). `distance` is the badge center's own offset from
+ *  the marker center, in px, on top of the marker's own radius (so `distance: 0` sits the badge's
+ *  inner edge right at the marker's outer edge, not overlapping it). `gap` is the px space left
+ *  between two adjacent badges' own edges (default `1`, never `0` — badges never touch by default)
+ *  — used both for spacing along a row/column and, computed *before* any badge position (slot count
+ *  first, then positions), for `slotsPerRow`'s own fit calculation, so a badge's own gap is never
+ *  encroached on by a wrap/overflow decision made without accounting for it; also spaces badges
+ *  along `"full_circle"`'s own ring when `evenDistribution` is off (see below) — otherwise unused
+ *  for `"full_circle"`. `gapWidth` is a floor-colored ring drawn around each badge's own border
+ *  (same convention as `MarkerSettings.gapWidth`, `0` the default drawing no gap) — purely a visual
+ *  separation from whatever the badge sits over (the elevator marker, a wall, another decorative
+ *  element), never counted toward `gap`'s own inter-badge spacing, so two adjacent badges' gap rings
+ *  can still touch/overlap each other even while each is visually separated from its surroundings
+ *  (GitHub issue #430 second follow-up: badges must never cut into *each other* with their own gap,
+ *  only into the environment around the pair). `shape` is the badge's own outline (`MarkerShape`,
+ *  same shapes `MarkerSettings` offers) — purely visual, no border of its own (badges never draw
+ *  one). `cornerStyle` (`TeleportCornerStyle`) drives a polygon shape's corner rounding — seeded
+ *  from `elevatorMarker.cornerStyle` when badges are first enabled, but its own independent field
+ *  from then on (no live link back to the marker's setting, unlike `VectorByWallsSharedStyle`'s
+ *  tracked-override mechanism — this is a one-time seed, not an ongoing follow). `evenDistribution`
+ *  (default `true`, GitHub issue #430 follow-up) picks how badges pack: on, a two-sided placement
+ *  splits the count in half between its two sides (leading side gets the extra badge on an odd
+ *  split) and `"full_circle"` spreads badges evenly around the whole ring; off, a two-sided
+ *  placement fills the *leading* side (the name's first half) up to `slotsPerRow` capacity before
+ *  spilling any remainder onto the other side (ascending floor order preserved throughout, so it
+ *  never round-robins) — unless that still leaves both sides over capacity, in which case it falls
+ *  back to the even split (see `splitBadgeCount`'s own doc comment); `"full_circle"` instead lays
+ *  badges out one after another `gap` apart (chord distance, like every other placement's `gap`)
+ *  centered on the 12-o'clock mark — an odd count centers its middle badge there, an even count
+ *  centers the gap between its two middle badges there — unless that contiguous arc would wrap past
+ *  a full circle, in which case it too falls back to the even ring. */
+export interface ElevatorBadgeSettings {
+  enabled: boolean;
+  labelType: ElevatorBadgeLabelType;
+  size: number;
+  placement: ElevatorBadgePlacement;
+  distance: number;
+  gap: number;
+  gapWidth: number;
+  cornerStyle: TeleportCornerStyle;
+  evenDistribution: boolean;
+  shape: MarkerShape;
+  fillColor: number;
+  textColor: number;
+  fontWeight: ElevatorBadgeFontWeight;
 }
 
 /** "Vertical connections" section fields (GitHub issue #347) — `VerticalPassage`/`Elevator` edges
@@ -182,6 +253,9 @@ export interface VerticalSettingsFields {
   elevatorArrowSize: number;
   elevatorArrowStyle: OneWayPattern;
   elevatorArrowCornerStyle: "round" | "miter";
+  /** "Floor-number badges" (GitHub issue #430) — see `ElevatorBadgeSettings`'s own doc comment.
+   *  Independent of `verticalStyle`: draws on top of `elevatorMarker`/`decorativeElevator` alike. */
+  elevatorBadges: ElevatorBadgeSettings;
 }
 
 export interface TeleportSettingsFields {
@@ -253,7 +327,7 @@ export interface MarkerSettings {
  *  `TeleportGroupOverride`'s own sparse-optional-field convention, but keyed by dependent-field
  *  identity rather than by teleport group. */
 export interface VectorByWallsSharedStyleOverrides {
-  cornerStyle?: { wallJoin?: true; oneWayJoin?: true; startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
+  cornerStyle?: { wallJoin?: true; oneWayJoin?: true; startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true; elevatorBadges?: true };
   markerSize?: { startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
   markerBorderWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
   gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
@@ -648,6 +722,14 @@ export interface ImageExportActions {
     section: "decorativeStairsTwoWay" | "decorativeStairsOneWay" | "decorativeElevator",
     patch: Partial<DecorativeLineStyle>,
   ) => void;
+  /** Patches `elevatorBadges` fields other than `cornerStyle` (GitHub issue #430) — same
+   *  single-patch-call convention as `patchVectorByWallsDecorativeLineStyle`, no per-field
+   *  "Shared style" override to track. `cornerStyle` has its own setter below since it IS tracked
+   *  (GitHub issue #430 follow-up — linked to "Shared style" like every other corner-style field). */
+  patchVectorByWallsElevatorBadges: (patch: Partial<ElevatorBadgeSettings>) => void;
+  /** Same "Shared style"-tracked convention as `setVectorByWallsElevatorMarkerCornerStyle` — marks
+   *  the `cornerStyle` group's `elevatorBadges` field overridden before writing the value. */
+  setVectorByWallsElevatorBadgesCornerStyle: (style: TeleportCornerStyle) => void;
   setVectorByWallsTwoWayPassageMarkerShape: (shape: MarkerShape) => void;
   setVectorByWallsTwoWayPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
   setVectorByWallsTwoWayPassageMarkerFillColor: (color: number) => void;

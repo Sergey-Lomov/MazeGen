@@ -16,6 +16,7 @@ import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsR
 import { ExportWarningsSection } from "./ExportWarningsSection";
 import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
 import { DecorativeLineStyleGroup } from "./DecorativeLineStyleGroup";
+import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, sharedStyleFieldReset } from "./SharedStyleSection";
 import * as m from "~/paraglide/messages";
@@ -74,6 +75,8 @@ export function VectorByWallsSettingsPanel() {
   const setFinishMarkerSize = useMazeStore((s) => s.setVectorByWallsFinishMarkerSize);
   const patchVerticalSettings = useMazeStore((s) => s.patchVectorByWallsVerticalSettings);
   const patchDecorativeLineStyle = useMazeStore((s) => s.patchVectorByWallsDecorativeLineStyle);
+  const patchElevatorBadges = useMazeStore((s) => s.patchVectorByWallsElevatorBadges);
+  const setElevatorBadgesCornerStyle = useMazeStore((s) => s.setVectorByWallsElevatorBadgesCornerStyle);
   const setTwoWayPassageMarkerShape = useMazeStore((s) => s.setVectorByWallsTwoWayPassageMarkerShape);
   const setTwoWayPassageMarkerCornerStyle = useMazeStore((s) => s.setVectorByWallsTwoWayPassageMarkerCornerStyle);
   const setTwoWayPassageMarkerFillColor = useMazeStore((s) => s.setVectorByWallsTwoWayPassageMarkerFillColor);
@@ -148,8 +151,8 @@ export function VectorByWallsSettingsPanel() {
   // depict the case correctly (e.g. an invisible teleport marker). Distinct from the QC issue list
   // (Analytics feature) — see `exportWarnings.ts`'s doc comment.
   const exportWarnings = useMemo(
-    () => computeVectorByWallsWarnings(nodes, edges, cfg, settings, start, finish),
-    [nodes, edges, cfg, settings, start, finish],
+    () => computeVectorByWallsWarnings(nodes, edges, cfg, settings, start, finish, rawNodes),
+    [nodes, edges, cfg, settings, start, finish, rawNodes],
   );
 
   const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(nodes, edges, cfg, settings);
@@ -515,6 +518,13 @@ export function VectorByWallsSettingsPanel() {
                       settings={settings.decorativeElevator}
                       onChange={(patch) => patchDecorativeLineStyle("decorativeElevator", patch)}
                     />
+                    <ElevatorBadgesSubsection
+                      settings={settings.elevatorBadges}
+                      sharedStyleOverrides={settings.sharedStyle.overrides}
+                      onChange={patchElevatorBadges}
+                      onCornerStyleChange={setElevatorBadgesCornerStyle}
+                      onResetCornerStyle={() => resetSharedStyleField("cornerStyle", "elevatorBadges")}
+                    />
                   </div>
                   )}
                 </div>
@@ -749,6 +759,14 @@ export function VectorByWallsSettingsPanel() {
                         />
                       </div>
                     </div>
+
+                    <ElevatorBadgesSubsection
+                      settings={settings.elevatorBadges}
+                      sharedStyleOverrides={settings.sharedStyle.overrides}
+                      onChange={patchElevatorBadges}
+                      onCornerStyleChange={setElevatorBadgesCornerStyle}
+                      onResetCornerStyle={() => resetSharedStyleField("cornerStyle", "elevatorBadges")}
+                    />
                   </div>
                   )}
                 </div>

@@ -63,12 +63,34 @@ function installFakeGraphics(target: FakeGraphics): void {
   target.on = vi.fn();
 }
 
+// `Text.width` drives `fitElevatorBadgeFontSize`'s own scale-down decision — width scales linearly
+// with `text.length` here (a stand-in for real font-metric measurement) so a wider label (e.g.
+// `"VIII"` vs `"I"`) reliably measures wider, without needing a real font/canvas.
+interface FakeText {
+  text: string;
+  style: Record<string, unknown>;
+  width: number;
+  anchor: { set: (v: number) => void };
+  x: number;
+  y: number;
+  destroy: () => void;
+}
+
 vi.mock("pixi.js", () => ({
   Container: vi.fn().mockImplementation(function (this: { addChild: () => void }) {
     this.addChild = vi.fn();
   }),
   Graphics: vi.fn().mockImplementation(function (this: FakeGraphics) {
     installFakeGraphics(this);
+  }),
+  Text: vi.fn().mockImplementation(function (this: FakeText, opts: { text: string; style: Record<string, unknown> }) {
+    this.text = opts.text;
+    this.style = opts.style;
+    this.width = opts.text.length * (opts.style.fontSize as number) * 0.6;
+    this.anchor = { set: vi.fn() };
+    this.x = 0;
+    this.y = 0;
+    this.destroy = vi.fn();
   }),
 }));
 
@@ -109,6 +131,7 @@ function baseStyle(overrides: Partial<VerticalConnectionStyle> = {}): VerticalCo
     decorativeStairsArrowColor: 0x444444,
     decorativeStairsArrowSize: 0.6,
     decorativeStairsAccentColor: 0x2a2a2a,
+    elevatorBadges: { enabled: false, labelType: "arabic", size: 0.5, placement: "left_right", distance: 4, gap: 1, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0x555555, textColor: 0x666666, fontWeight: "bold" },
     ...overrides,
   };
 }
@@ -659,5 +682,71 @@ describe("VerticalConnectionRenderer", () => {
     render(renderer, { markers: [arrival], style });
     expect(g.strokeCalls.at(-1)?.color).toBe(0x2a2a2a);
     expect(g.fillCalls.at(-1)).toBe(0x2a2a2a);
+  });
+
+  describe("elevator floor-number badges (GitHub issue #430)", () => {
+    it("draws no badge Text/Graphics for an elevator marker when elevatorBadges is disabled", () => {
+      const container = new Container();
+      const renderer = new VerticalConnectionRenderer(container as never);
+      const style = baseStyle({ elevatorBadges: { ...baseStyle().elevatorBadges, enabled: false } });
+      const el = marker({ pos: [0, 0], kind: "elevator", targetFloorIndices: [0, 1] });
+      render(renderer, { markers: [el], style });
+      const g = (renderer as unknown as { g: FakeGraphics }).g;
+      // Only the elevator marker's own circle should be drawn — no extra badge shapes/text children.
+      expect(g.children).toHaveLength(0);
+    });
+
+    it("draws one gap-ring-then-body pair of shapes per floor, plus a Text label per badge, for an enabled elevator marker", () => {
+      const container = new Container();
+      const renderer = new VerticalConnectionRenderer(container as never);
+      const style = baseStyle({
+        elevatorBadges: {
+          ...baseStyle().elevatorBadges,
+          enabled: true,
+          gapWidth: 2,
+          placement: "left_right",
+          evenDistribution: true,
+        },
+      });
+      const el = marker({ pos: [0, 0], kind: "elevator", targetFloorIndices: [0, 1, 4] });
+      render(renderer, { markers: [el], style });
+      const g = (renderer as unknown as { g: FakeGraphics }).g;
+      // Every gap ring (one per badge, `gapWidth > 0`) is a separate `Graphics` child added before
+      // any badge body — `drawElevatorBadges`' own two-pass draw order (gap-then-fill across the
+      // whole set, not per-badge) — followed by one body `Graphics` + one `Text` child per badge.
+      const graphicsChildren = g.children.filter((c) => !("text" in c));
+      const textChildren = g.children.filter((c) => "text" in c) as unknown as FakeText[];
+      expect(graphicsChildren).toHaveLength(6); // 3 gap rings + 3 bodies
+      expect(textChildren).toHaveLength(3);
+      expect(textChildren.map((t) => t.text)).toEqual(["1", "2", "5"]); // formatElevatorBadgeLabel, 1-based
+    });
+
+    it("shares one font size across every elevator's badges in the same render pass, scaled down only as far as the widest label needs", () => {
+      const container = new Container();
+      const renderer = new VerticalConnectionRenderer(container as never);
+      const style = baseStyle({
+        elevatorBadges: { ...baseStyle().elevatorBadges, enabled: true, labelType: "roman" },
+      });
+      // One elevator reaching only floor 1 ("I"), another reaching floor 8 ("VIII") — the shared
+      // font size must be small enough for "VIII" to fit, applied to *both* markers' badges alike.
+      const small = marker({ pos: [0, 0], kind: "elevator", targetFloorIndices: [0] });
+      const wide = marker({ pos: [200, 0], kind: "elevator", targetFloorIndices: [7] });
+      render(renderer, { markers: [small, wide], style });
+      const g = (renderer as unknown as { g: FakeGraphics }).g;
+      const textChildren = g.children.filter((c) => "text" in c) as unknown as FakeText[];
+      expect(textChildren).toHaveLength(2);
+      const fontSizes = textChildren.map((t) => t.style.fontSize);
+      expect(fontSizes[0]).toBe(fontSizes[1]);
+    });
+
+    it("draws no badges for a vertical_passage marker even when elevatorBadges is enabled", () => {
+      const container = new Container();
+      const renderer = new VerticalConnectionRenderer(container as never);
+      const style = baseStyle({ elevatorBadges: { ...baseStyle().elevatorBadges, enabled: true } });
+      const passage = marker({ pos: [0, 0], kind: "vertical_passage", targetFloorIndex: 1 });
+      render(renderer, { markers: [passage], style });
+      const g = (renderer as unknown as { g: FakeGraphics }).g;
+      expect(g.children).toHaveLength(0);
+    });
   });
 });

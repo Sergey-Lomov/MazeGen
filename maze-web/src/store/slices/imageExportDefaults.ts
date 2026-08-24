@@ -33,7 +33,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE: VectorByWallsSharedStyle = {
   markerBorderWidth: 3,
   gapWidth: 3,
   overrides: {
-    cornerStyle: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+    cornerStyle: { twoWayPassage: true, oneWayPassage: true, elevator: true, elevatorBadges: true },
     markerSize: { twoWayPassage: true, oneWayPassage: true, elevator: true },
     markerBorderWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
     gapWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
@@ -130,6 +130,27 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
   decorativeStairsArrowColor: canvas.vertical.default,
   decorativeStairsArrowSize: 0.75,
   decorativeStairsAccentColor: ONE_WAY_ACCENT_DARK,
+  // "Floor-number badges" (GitHub issue #430) — enabled by default, Arabic numerals, a small
+  // fraction of the elevator marker's own radius, laid out above/below the marker
+  // (`placement: "top_bottom"`). `fillColor`/`textColor` are an independently visible fill+text
+  // pair (not a knockout/cutout like `drawFloorBadge`'s off-floor navigation stand-in), with
+  // `fillColor` a dedicated accent yellow rather than `canvas.vertical.default`, so a badge ring
+  // reads clearly against the marker it surrounds.
+  elevatorBadges: {
+    enabled: true,
+    labelType: "arabic",
+    size: 0.7,
+    placement: "top_bottom",
+    distance: 4,
+    gap: 2,
+    gapWidth: 2,
+    cornerStyle: "round",
+    evenDistribution: false,
+    shape: "circle",
+    fillColor: 0xf0c900,
+    textColor: canvas.floor.default,
+    fontWeight: "bold",
+  },
 };
 
 /** Shared with `projectExport/validate.ts`'s recovery defaults for old/malformed project files

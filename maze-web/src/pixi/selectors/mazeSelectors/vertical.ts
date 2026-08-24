@@ -117,8 +117,14 @@ export function buildVerticalConnectionMarkers(
     // own arrival-only marker below. Bidirectional/Elevator draw the ordinary solid marker.
     const isOneWay = kind === "vertical_passage" && !byPair.has(`${targets[0]}->${from}`);
     const targetFloorIndex = kind === "vertical_passage" ? resolveNodeLevel(targets[0]) : undefined;
+    // Every floor this Elevator's fan reaches (GitHub issue #430) — sorted ascending, deduplicated.
+    // Only resolved for `elevator`; a `vertical_passage` always has exactly one target, already
+    // covered by `targetFloorIndex`.
+    const targetFloorIndices = kind === "elevator"
+      ? Array.from(new Set(targets.map(resolveNodeLevel).filter((l): l is number => l !== undefined))).sort((a, b) => a - b)
+      : undefined;
     result.push({
-      pos: [pos.x, pos.y], fromNode: from, kind, direction: directionAcross(targets), targetFloorIndex,
+      pos: [pos.x, pos.y], fromNode: from, kind, direction: directionAcross(targets), targetFloorIndex, targetFloorIndices,
       filled: !isOneWay, arrowFilled: true,
     });
   }

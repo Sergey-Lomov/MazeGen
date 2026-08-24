@@ -1,8 +1,8 @@
 import { Container } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
 import { makeProjection } from "./tessellationProjection";
-import { TILE_SIZE } from "./constants";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { fitViewportToCenters } from "./viewportFit";
 import { configAllCells } from "./tessellationCells";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { OriginRenderer } from "./renderers/OriginRenderer";
@@ -143,25 +143,9 @@ export function fitFieldViewport(
   cfg: TessellationConfig,
   screenW: number,
   screenH: number,
-  padding = 0.85,
 ): { x: number; y: number; scale: number } {
   const cells = configAllCells(cfg);
-  if (cells.length === 0) return { x: screenW / 2, y: screenH / 2, scale: 1 };
   const proj = makeProjection(cfg);
   const centers = cells.map(([col, row]) => proj.gridToScreen(col, row));
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const c of centers) {
-    if (c.x < minX) minX = c.x;
-    if (c.y < minY) minY = c.y;
-    if (c.x > maxX) maxX = c.x;
-    if (c.y > maxY) maxY = c.y;
-  }
-  minX -= TILE_SIZE; minY -= TILE_SIZE; maxX += TILE_SIZE; maxY += TILE_SIZE;
-  const W = maxX - minX;
-  const H = maxY - minY;
-  if (W <= 0 || H <= 0) return { x: screenW / 2, y: screenH / 2, scale: 1 };
-  const scale = Math.min(padding * screenW / W, padding * screenH / H);
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  return { x: screenW / 2 - scale * cx, y: screenH / 2 - scale * cy, scale };
+  return fitViewportToCenters(centers, screenW, screenH);
 }

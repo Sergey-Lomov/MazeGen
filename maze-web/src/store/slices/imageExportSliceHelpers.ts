@@ -86,6 +86,7 @@ function applyVerticalSharedFields(
       twoWayPassageMarker: o?.twoWayPassage ? next.twoWayPassageMarker : { ...next.twoWayPassageMarker, cornerStyle: shared.cornerStyle },
       oneWayPassageMarker: o?.oneWayPassage ? next.oneWayPassageMarker : { ...next.oneWayPassageMarker, cornerStyle: shared.cornerStyle },
       elevatorMarker: o?.elevator ? next.elevatorMarker : { ...next.elevatorMarker, cornerStyle: shared.cornerStyle },
+      elevatorBadges: o?.elevatorBadges ? next.elevatorBadges : { ...next.elevatorBadges, cornerStyle: shared.cornerStyle },
     };
   }
   if (groups.includes("markerSize")) {
@@ -240,6 +241,7 @@ export function reconcileVectorByWallsSharedStyle(settings: VectorByWallsSetting
   if (settings.twoWayPassageMarker.cornerStyle !== shared.cornerStyle) overrides = withOverride(overrides, "cornerStyle", "twoWayPassage");
   if (settings.oneWayPassageMarker.cornerStyle !== shared.cornerStyle) overrides = withOverride(overrides, "cornerStyle", "oneWayPassage");
   if (settings.elevatorMarker.cornerStyle !== shared.cornerStyle) overrides = withOverride(overrides, "cornerStyle", "elevator");
+  if (settings.elevatorBadges.cornerStyle !== shared.cornerStyle) overrides = withOverride(overrides, "cornerStyle", "elevatorBadges");
   if (settings.twoWayPassageMarker.size !== shared.markerSize) overrides = withOverride(overrides, "markerSize", "twoWayPassage");
   if (settings.oneWayPassageMarker.size !== shared.markerSize) overrides = withOverride(overrides, "markerSize", "oneWayPassage");
   if (settings.elevatorMarker.size !== shared.markerSize) overrides = withOverride(overrides, "markerSize", "elevator");

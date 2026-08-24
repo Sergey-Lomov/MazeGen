@@ -1,10 +1,20 @@
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, TeleportSettingsFields } from "../../store/storeTypes";
-import { buildTeleportEdges, buildSplitPassages, buildCorridorSegments, getSplitAwareNodePosition, maxSplitNodeCount } from "./mazeSelectors";
+import {
+  buildTeleportEdges,
+  buildSplitPassages,
+  buildCorridorSegments,
+  getSplitAwareNodePosition,
+  maxSplitNodeCount,
+  selectNodeLevelResolver,
+  selectVerticalPassagePairSet,
+  buildVerticalConnectionMarkers,
+} from "./mazeSelectors";
 import { buildTeleportGroups, teleportEdgeKey, coordKey } from "./teleportGroups";
 import type { TeleportEdge } from "../renderers/types";
 import { chevronRowStep } from "../renderers/wallUtils";
+import { computeElevatorBadgePositions, elevatorBadgesOverlap, elevatorBadgesTooMany } from "../renderers/elevatorBadgeLayout";
 import { TILE_SIZE } from "../constants";
 
 /** One export-method-specific warning — a maze can be perfectly valid QC-wise but a particular
@@ -40,7 +50,21 @@ export type ExportWarningId =
   /** Print mode: content's placed rect extends past the margin-inset rect (still within the
    *  sheet, so nothing is lost) — informational, the user asked for a margin and part of the
    *  content sits inside it. */
-  | "png_content_in_margin_zone";
+  | "png_content_in_margin_zone"
+  /** "Vector by walls" only (GitHub issue #430) — an `Elevator` marker's own floor-number badge
+   *  ring visually overlaps itself: two or more badges sit closer than `2 * badgeRadius` apart
+   *  given the current size/distance/placement settings and the number of floors that elevator
+   *  reaches. One warning total, covering every affected elevator marker. */
+  | "elevator_badges_overlap"
+  /** "Vector by walls" only (GitHub issue #430 follow-ups) — a two-sided elevator badge placement
+   *  has more floors on one side than `slotsPerRow` capacity can hold in a single row (after
+   *  `evenDistribution`'s own split/fallback rules, see `elevatorBadgesTooMany`) — that side draws
+   *  overflowing past its own cell, rather than wrapping (there's no second sub-row any more). One
+   *  warning total, covering every affected elevator marker, with the same `crossFloorTargets`
+   *  hover-highlight treatment `elevator_badges_overlap` gets; never fires for `"full_circle"`,
+   *  which has no per-row capacity (an overflowing uneven arc falls back to the even ring instead of
+   *  ever visually breaking, see `computeElevatorBadgePositions`). */
+  | "elevator_badges_too_many";
 
 export type ExportWarning = {
   id: ExportWarningId;
@@ -57,6 +81,16 @@ export type ExportWarning = {
   /** [from, to] node-id pairs whose connecting line should be highlighted on hover, in addition to
    *  `nodes`. */
   edges: [number, number][];
+  /** `(onFloorNode, targetFloorIndex)` pairs for a floor-crossing warning whose flagged entity has
+   *  no real off-floor node of its own to point `edges` at (GitHub issue #430's
+   *  `elevator_badges_overlap`: the elevator's own badge ring reaches several floors, each a plain
+   *  floor index, not a specific node id) — same click-to-navigate floor-bubble treatment
+   *  `IssueHighlightOverlay`'s own cross-floor markers give a real off-floor edge endpoint
+   *  (`ExportWarningHighlight`, mirroring `BaseGraphRenderer.renderCrossFloorMarkers`), but built
+   *  directly from known floor indices instead of `buildCrossFloorMarkers`' pair/level-resolution
+   *  machinery, which has no node id to resolve here. Omitted (or empty) for every other warning
+   *  id — no bubbles drawn. */
+  crossFloorTargets?: { nodeId: number; targetFloorIndex: number }[];
 };
 
 /** Squared marker "radius" in world units for the given `MarkerSettings`-like fraction, mirroring
@@ -223,7 +257,13 @@ function computeTeleportWarnings(
 
 /** Every export-specific warning "Vector by walls" currently knows how to detect (GitHub issue
  *  #298). Each warning's `nodes`/`edges` back the hover-highlight the settings panel wires up —
- *  see `VectorByWallsSettingsPanel`'s warning list and `VectorByWallsRenderer`'s highlight overlay. */
+ *  see `VectorByWallsSettingsPanel`'s warning list and `VectorByWallsRenderer`'s highlight overlay.
+ *  `unscopedNodes` (GitHub issue #430) is the maze's full, floor-*un*scoped node list — needed only
+ *  for `elevator_badges_overlap`, to resolve a badge's own target floor the same way
+ *  `buildVerticalConnectionMarkers`/`resolveNodeLevel` require (an `Elevator`'s fan targets live on
+ *  other floors, absent from this function's own floor-scoped `nodes`). Optional and defaulted to
+ *  `nodes` so existing single-floor callers/tests need no change — that warning simply never fires
+ *  without real cross-floor data to resolve. */
 export function computeVectorByWallsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],
@@ -231,10 +271,12 @@ export function computeVectorByWallsWarnings(
   settings: VectorByWallsSettings,
   start: number | null,
   finish: number | null,
+  unscopedNodes: NodeDto[] = nodes,
 ): ExportWarning[] {
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const teleportEdges = buildTeleportEdges(nodeById, edges, cfg);
   const allNodes = Array.from(nodeById.values());
+  const resolveNodeLevel = selectNodeLevelResolver(unscopedNodes);
 
   const warnings: ExportWarning[] = computeTeleportWarnings(
     teleportEdges,
@@ -311,6 +353,62 @@ export function computeVectorByWallsWarnings(
         key: "vertical_on_special_split",
         nodes: flaggedIds,
         edges: [],
+      });
+    }
+  }
+
+  // --- elevator_badges_overlap / elevator_badges_too_many: an Elevator marker's own floor-number
+  // badge ring either visually overlaps itself, or has more floors on one side than that side's
+  // single row can hold (GitHub issue #430, #430 follow-ups). One warning total per id, covering
+  // every affected marker; each warning's own `crossFloorTargets` carries every reached floor of
+  // every flagged marker (not just the specific overlapping pair, or the specific overflowing side)
+  // so the hover highlight can show a click-to-navigate bubble per floor, same as
+  // `IssueHighlightOverlay`'s cross-floor markers. Mirrors `VerticalConnectionRenderer.
+  // drawElevatorBadges`'s own `markerRadius`/`badgeRadius` computation exactly (`elevatorMarker.size
+  // * TILE_SIZE`, no border-width addition — unlike `markerWorldRadius` above, which is only used
+  // for the teleport/waypoint overlap check). ---
+  if (settings.elevatorBadges.enabled) {
+    const verticalPairs = selectVerticalPassagePairSet(edges);
+    const markers = buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, 0, verticalPairs, edges);
+    const markerRadius = settings.elevatorMarker.size * TILE_SIZE;
+    const badgeRadius = markerRadius * settings.elevatorBadges.size;
+    const overlappingNodeIds: number[] = [];
+    const overlappingTargets: { nodeId: number; targetFloorIndex: number }[] = [];
+    const tooManyNodeIds: number[] = [];
+    const tooManyTargets: { nodeId: number; targetFloorIndex: number }[] = [];
+    for (const marker of markers) {
+      if (marker.kind !== "elevator" || !marker.targetFloorIndices || marker.targetFloorIndices.length < 2) continue;
+      const count = marker.targetFloorIndices.length;
+      const positions = computeElevatorBadgePositions(
+        marker.pos[0], marker.pos[1], markerRadius, count, badgeRadius,
+        settings.elevatorBadges.distance, settings.elevatorBadges.gap, settings.elevatorBadges.placement,
+        settings.elevatorBadges.evenDistribution,
+      );
+      if (elevatorBadgesOverlap(positions, badgeRadius)) {
+        overlappingNodeIds.push(marker.fromNode);
+        for (const targetFloorIndex of marker.targetFloorIndices) overlappingTargets.push({ nodeId: marker.fromNode, targetFloorIndex });
+      }
+      if (elevatorBadgesTooMany(count, badgeRadius, settings.elevatorBadges.gap, settings.elevatorBadges.placement, settings.elevatorBadges.evenDistribution)) {
+        tooManyNodeIds.push(marker.fromNode);
+        for (const targetFloorIndex of marker.targetFloorIndices) tooManyTargets.push({ nodeId: marker.fromNode, targetFloorIndex });
+      }
+    }
+    if (overlappingNodeIds.length > 0) {
+      warnings.push({
+        id: "elevator_badges_overlap",
+        key: "elevator_badges_overlap",
+        nodes: overlappingNodeIds,
+        edges: [],
+        crossFloorTargets: overlappingTargets,
+      });
+    }
+    if (tooManyNodeIds.length > 0) {
+      warnings.push({
+        id: "elevator_badges_too_many",
+        key: "elevator_badges_too_many",
+        nodes: tooManyNodeIds,
+        edges: [],
+        crossFloorTargets: tooManyTargets,
       });
     }
   }

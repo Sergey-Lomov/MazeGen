@@ -4,9 +4,7 @@ import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
 import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidSplitPoints, presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../pixi/fieldEditUtils";
 import { computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
 import { presetEndpointLevelLabel, type PresetEndpoint } from "../../pixi/presetEndpoint";
-import type { FloorState } from "../../store/floorsTypes";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
-import { navigateToFloor } from "../../pixi/renderers/floorNavigation";
 import { buttonStyle } from "../../styles/shared";
 import { ui, typography, muted, spacing } from "../../styles/theme";
 import { darken } from "../../styles/palette";
@@ -16,6 +14,7 @@ import { Switch } from "../Switch";
 import { Stack, Grid } from "../Layout";
 import { StatusTag } from "../StatusTag";
 import { WarningBubble } from "../WarningBubble";
+import { FloorBadgeRow } from "../FloorBadgeRow";
 import { notificationPalette } from "../EmbeddedNotification";
 import { PresetSplitNodesDialog } from "./PresetSplitNodesDialog";
 import { PresetElevatorFloorDialog } from "../dialogs/PresetElevatorFloorDialog";
@@ -209,7 +208,7 @@ export function PresetConnectionsFeature() {
                   onMouseEnter={() => setHighlightOrphanSplitNodes(true)}
                   onMouseLeave={() => setHighlightOrphanSplitNodes(false)}
                 >
-                  <OrphanSplitFloorBadges orphanPoints={orphanPoints} floors={floors} />
+                  <OrphanSplitFloorBadges orphanPoints={orphanPoints} />
                 </WarningBubble>
               )}
             </Stack>
@@ -396,49 +395,12 @@ export function PresetConnectionsFeature() {
 /** Row of solid `L{n}` badges for the orphan-split-node warning bubble (GitHub issue #420) —
  *  preset-stage counterpart of `IssuesBlock`'s `IssueFloorBadges`, but keyed directly off each
  *  orphan point's own `level` instead of resolving through generated `NodeId`s (presets run before
- *  generation, so there's no node snapshot to look levels up in). Unlike `IssueFloorBadges` (which
- *  hides for a single-floor *span*, since a resolved maze's issue could in principle touch any
- *  floor), this shows whenever the project itself has more than one floor — orphan split points are
- *  declared per-floor by the user, so even a single-floor span is worth pinning down on a
- *  multi-floor project. */
-function OrphanSplitFloorBadges({ orphanPoints, floors }: { orphanPoints: PresetEndpoint[]; floors: FloorState[] }) {
+ *  generation, so there's no node snapshot to look levels up in). */
+function OrphanSplitFloorBadges({ orphanPoints }: { orphanPoints: PresetEndpoint[] }) {
   const palette = notificationPalette("warning");
   const levels = Array.from(new Set(orphanPoints.map((ep) => ep.level ?? 0))).sort((a, b) => a - b);
-  if (floors.length <= 1) return null;
-  return (
-    <div style={warningFloorBadgeStyles.row}>
-      {levels.map((level) => (
-        <button
-          key={level}
-          type="button"
-          style={{ ...warningFloorBadgeStyles.badge, background: darken(palette.text, 0.2), color: palette.bg }}
-          onClick={(e) => { e.stopPropagation(); navigateToFloor(level); }}
-          disabled={!floors[level]}
-        >
-          {`L${level + 1}`}
-        </button>
-      ))}
-    </div>
-  );
+  return <FloorBadgeRow levels={levels} bg={darken(palette.text, 0.2)} text={palette.bg} />;
 }
-
-const warningFloorBadgeStyles: Record<string, React.CSSProperties> = {
-  row: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: spacing.itemGap / 2,
-    flexShrink: 0,
-  },
-  badge: {
-    ...typography.body,
-    fontSize: "0.75em",
-    lineHeight: 1,
-    padding: "2px 6px",
-    borderRadius: 999,
-    border: "none",
-    cursor: "pointer",
-  },
-};
 
 const styles: Record<string, React.CSSProperties> = {
   sectionLabel: {
