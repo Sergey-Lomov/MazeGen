@@ -187,6 +187,25 @@ describe("mazeStore preset connections", () => {
     expect(useMazeStore.getState().presetConnections.size).toBe(0);
   });
 
+  it("setDefaultEdgeState('wall') fills interior edges on every floor, not just the active one (GitHub issue #434)", () => {
+    // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
+    const cfg: TessellationConfig = { type: "square", width: 2, height: 1 };
+    const state = useMazeStore.getState();
+    useMazeStore.setState({
+      floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }],
+      activeFloorId: "f0",
+      floorFields: {
+        ...state.floorFields,
+        f0: { ...state.floorFields[state.activeFloorId], tessellationConfig: cfg },
+        f1: { ...state.floorFields[state.activeFloorId], tessellationConfig: cfg },
+      },
+    });
+    useMazeStore.getState().setDefaultEdgeState("wall");
+    const s = useMazeStore.getState();
+    expect(s.presetConnections.get("-1,0-0,0")?.state).toBe("wall");
+    expect(s.presetConnections.get("-1,0@1-0,0@1")?.state).toBe("wall");
+  });
+
   it("setHighlightInvalidPresets / setHighlightIsolatedNodes toggle flags", () => {
     useMazeStore.getState().setHighlightInvalidPresets(true);
     useMazeStore.getState().setHighlightIsolatedNodes(true);

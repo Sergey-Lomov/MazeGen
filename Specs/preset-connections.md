@@ -242,14 +242,14 @@ Every node touched by either loop is added to `preset_connected`/`preset_edges` 
 
 ## Default edge state
 
-`defaultEdgeState: "undefined" | "wall" | "passage"` controls the implicit state of all edges not explicitly set by the user.
+`defaultEdgeState: "undefined" | "wall" | "passage"` controls the implicit state of all edges not explicitly set by the user. It is one maze-wide toggle, not per-floor — toggling it while any floor is active applies to every floor's edges (GitHub issue #434).
 
 - `"undefined"` (default): no implicit state; unset edges are undecided.
-- `"wall"` / `"passage"`: all interior edges without a user entry are populated with `source: "default"` entries of the chosen state.
+- `"wall"` / `"passage"`: all interior edges without a user entry, on every floor, are populated with `source: "default"` entries of the chosen state.
 
-When `defaultEdgeState` changes, `_applyDefaultEdgeState` is called:
-1. All existing `source: "default"` entries are removed.
-2. If new state is not `"undefined"`, default entries are added for all interior edges that have no `source: "user"` entry (including edges with `state: "undefined", source: "user"` — those are intentionally excluded from the default).
+When `defaultEdgeState` changes, `applyDefaultEdgeState` is called:
+1. All existing `source: "default"` entries are removed, across all floors.
+2. If new state is not `"undefined"`, default entries are added for all interior edges on every floor that have no `source: "user"` entry (including edges with `state: "undefined", source: "user"` — those are intentionally excluded from the default), using each floor's own field shape (`levelFieldsOf`).
 
 Applying the `reset` tool or RMB clears the edge's user override and re-materializes it as the current default (see "Entry source" above) — it does not pin the edge as explicitly undecided.
 
