@@ -40,13 +40,12 @@ export type VerticalDecorativeLineStyle = {
  *  actually reads on the map: `twoWayPassageMarker` for a two-way `VerticalPassage`
  *  (`marker.filled === true`), `oneWayPassageMarker` for a one-way `VerticalPassage`
  *  (`marker.filled === false`, both ends), `elevatorMarker` for every `Elevator` (always two-way by
- *  construction, but its own separate section/look). `"realistic"` has no drawing of its own yet
- *  (reserved enum value) and falls back to the same plain marker shape `"abstract"` draws.
- *  `"decorative"` (GitHub issue #428) draws `decorativeStairsTwoWay`/`decorativeStairsOneWay`/
- *  `decorativeElevator` instead — a separate, line-only style surface (see
- *  `VerticalDecorativeLineStyle`), replacing the marker-shaped fields above for that style only. */
+ *  construction, but its own separate section/look). `"decorative"` (GitHub issue #428) draws
+ *  `decorativeStairsTwoWay`/`decorativeStairsOneWay`/`decorativeElevator` instead — a separate,
+ *  line-only style surface (see `VerticalDecorativeLineStyle`), replacing the marker-shaped fields
+ *  above for that style only. */
 export type VerticalConnectionStyle = {
-  style: "abstract" | "decorative" | "realistic";
+  style: "abstract" | "decorative";
   twoWayPassageMarker: VerticalMarkerStyle;
   oneWayPassageMarker: VerticalMarkerStyle;
   elevatorMarker: VerticalMarkerStyle;

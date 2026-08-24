@@ -439,14 +439,9 @@ export function VectorByWallsSettingsPanel() {
                 options={[
                   { value: "abstract", label: m["image_export.vector_by_walls.vertical_style_abstract"]() },
                   { value: "decorative", label: m["image_export.vector_by_walls.vertical_style_decorative"]() },
-                  { value: "realistic", label: m["image_export.vector_by_walls.vertical_style_realistic"]() },
                 ]}
                 onChange={(verticalStyle) => patchVerticalSettings({ verticalStyle })}
               />
-
-              {settings.verticalStyle === "realistic" && (
-                <div style={typography.caption}>{m["image_export.vector_by_walls.vertical_style_not_customizable"]()}</div>
-              )}
 
               {settings.verticalStyle === "decorative" && hasTwoWayPassages && (
                 <div style={styles.subGroupWrap}>
