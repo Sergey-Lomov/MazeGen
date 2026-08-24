@@ -479,10 +479,23 @@ function drawElevatorBadges(container: Container, marker: VerticalConnectionMark
  *  `VerticalConnectionMarker`'s own doc comment for the `arrowFilled` field that tells them apart. */
 export class VerticalConnectionRenderer {
   private readonly g: Graphics;
+  /** Interactive hit-area `Graphics` (`wireInteractivity`) and elevator floor-number badges
+   *  (`drawElevatorBadges`, its own `gapGraphics`/`g`/`text` children) must live in an actual
+   *  `Container`, not on `this.g` (a `Graphics` instance) — PixiJS v8 deprecates `addChild` on
+   *  non-`Container` objects and disallows it in a future major version (GitHub issue #432). Two
+   *  separate sibling layers above `this.g` (badges must draw on top of every marker, hit-areas on
+   *  top of everything so they never miss a click), both cleared/rebuilt every `render()` call the
+   *  same way `this.g` itself is. */
+  private readonly badgeLayer: Container;
+  private readonly hitLayer: Container;
 
   constructor(container: Container) {
     this.g = new Graphics();
     container.addChild(this.g);
+    this.badgeLayer = new Container();
+    container.addChild(this.badgeLayer);
+    this.hitLayer = new Container();
+    container.addChild(this.hitLayer);
   }
 
   /** `interactive` (GitHub issue #337 follow-up) wires click-to-switch-floor on every marker whose
@@ -504,6 +517,8 @@ export class VerticalConnectionRenderer {
   }): void {
     this.g.clear();
     this.g.removeChildren().forEach((c) => c.destroy());
+    this.badgeLayer.removeChildren().forEach((c) => c.destroy());
+    this.hitLayer.removeChildren().forEach((c) => c.destroy());
 
     // Two markers can share the same cell (an Elevator + VerticalPassage from the same node, or a
     // one-way VerticalPassage's departure end sharing a cell with another edge's arrival end) — GitHub
@@ -646,7 +661,7 @@ export class VerticalConnectionRenderer {
       }
 
       this.wireInteractivity(marker, data.interactive, cx, cy, radius + borderWidth + gapWidth);
-      drawElevatorBadges(this.g, marker, cx, cy, radius, data.style.elevatorBadges, data.style.elevatorMarker.gapColor, badgeFontSize);
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, data.style.elevatorBadges, data.style.elevatorMarker.gapColor, badgeFontSize);
     }
   }
 
@@ -667,7 +682,7 @@ export class VerticalConnectionRenderer {
     hit.eventMode = "static";
     hit.cursor = "pointer";
     hit.on("pointertap", () => navigateToFloor(targetFloorIndex));
-    this.g.addChild(hit);
+    this.hitLayer.addChild(hit);
   }
 
   /** Renders one marker in the "decorative" style (GitHub issue #428) — a line-only pictogram
@@ -700,7 +715,7 @@ export class VerticalConnectionRenderer {
     if (marker.kind === "elevator") {
       drawElevatorIcon(this.g, cx, cy, radius, lineStyle.lineWidth, lineStyle.lineColor);
       this.wireInteractivity(marker, interactive, cx, cy, radius);
-      drawElevatorBadges(this.g, marker, cx, cy, radius, style.elevatorBadges, style.elevatorMarker.gapColor, badgeFontSize);
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, style.elevatorBadges, style.elevatorMarker.gapColor, badgeFontSize);
       return;
     }
 
@@ -724,5 +739,7 @@ export class VerticalConnectionRenderer {
 
   destroy(): void {
     this.g.destroy();
+    this.badgeLayer.destroy({ children: true });
+    this.hitLayer.destroy({ children: true });
   }
 }
