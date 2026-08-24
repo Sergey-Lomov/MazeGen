@@ -1,7 +1,7 @@
 import { useMazeStore } from "../../store/mazeStore";
 import type { Viewport, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle } from "../renderers/types";
 import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../renderers/VerticalConnectionRenderer";
-import type { MarkerSettings, TeleportSettingsFields, VerticalSettingsFields } from "../../store/storeTypes";
+import type { MarkerSettings, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields } from "../../store/storeTypes";
 import type { MarkerStyle } from "../selectors/mazeSelectors";
 import { resolveEndpoint, buildSplitNodeResolver } from "../postEditEndpoint";
 import { TILE_SIZE } from "../constants";
@@ -88,12 +88,32 @@ function buildVerticalMarkerStyle(settings: MarkerSettings, floorColor: number):
   return { ...settings, gapColor: floorColor };
 }
 
-/** Builds `VerticalConnectionRenderer`'s style from `VectorByWallsSettings`' own vertical-connection
- *  fields plus the panel's own floor color (GitHub issue #347) — same "takes floorColor as its own
- *  param" rationale as `buildTeleportLineStyle`. */
-export function buildVerticalConnectionStyle(settings: VerticalSettingsFields, floorColor: number): VerticalConnectionStyle {
+/** `VerticalConnectionStyle`'s own decorative fields, filled in with inert filler when the caller has
+ *  no decorative treatment of its own (`style: "abstract"` means these are never actually read) —
+ *  same "abstract-only caller, decorative fields are unread filler" convention
+ *  `DEFAULT_VERTICAL_STYLE` (`VerticalConnectionRenderer.ts`) already documents for the four
+ *  read-only/tool-driven live-canvas renderers. "Vector by corridors" (GitHub issue #348) is such a
+ *  caller — it has no `verticalStyle`/decorative fields of its own at all. */
+const INERT_DECORATIVE_FILLER: VerticalDecorativeFields = {
+  verticalStyle: "abstract",
+  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
+  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
+  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
+  decorativeStairsArrowColor: canvas.floor.default,
+  decorativeStairsArrowSize: 0.75,
+  decorativeStairsAccentColor: canvas.floor.default,
+};
+
+/** Builds `VerticalConnectionRenderer`'s style from a mode's own vertical-connection fields plus the
+ *  panel's own floor color (GitHub issue #347) — same "takes floorColor as its own param" rationale
+ *  as `buildTeleportLineStyle`. `decorative` is optional: "Vector by walls" passes its own
+ *  `VerticalDecorativeFields`; "Vector by corridors" (GitHub issue #348, no decorative treatment of
+ *  its own) omits it and gets `INERT_DECORATIVE_FILLER` instead — inert since `style` always reads
+ *  `"abstract"` in that case. */
+export function buildVerticalConnectionStyle(settings: VerticalSettingsFields, floorColor: number, decorative?: VerticalDecorativeFields): VerticalConnectionStyle {
+  const dec = decorative ?? INERT_DECORATIVE_FILLER;
   return {
-    style: settings.verticalStyle,
+    style: dec.verticalStyle,
     twoWayPassageMarker: buildVerticalMarkerStyle(settings.twoWayPassageMarker, floorColor),
     oneWayPassageMarker: buildVerticalMarkerStyle(settings.oneWayPassageMarker, floorColor),
     elevatorMarker: buildVerticalMarkerStyle(settings.elevatorMarker, floorColor),
@@ -110,12 +130,12 @@ export function buildVerticalConnectionStyle(settings: VerticalSettingsFields, f
     elevatorArrowSize: settings.elevatorArrowSize,
     elevatorArrowStyle: settings.elevatorArrowStyle,
     elevatorArrowCornerStyle: settings.elevatorArrowCornerStyle,
-    decorativeStairsTwoWay: settings.decorativeStairsTwoWay,
-    decorativeStairsOneWay: settings.decorativeStairsOneWay,
-    decorativeElevator: settings.decorativeElevator,
-    decorativeStairsArrowColor: settings.decorativeStairsArrowColor,
-    decorativeStairsArrowSize: settings.decorativeStairsArrowSize,
-    decorativeStairsAccentColor: settings.decorativeStairsAccentColor,
+    decorativeStairsTwoWay: dec.decorativeStairsTwoWay,
+    decorativeStairsOneWay: dec.decorativeStairsOneWay,
+    decorativeElevator: dec.decorativeElevator,
+    decorativeStairsArrowColor: dec.decorativeStairsArrowColor,
+    decorativeStairsArrowSize: dec.decorativeStairsArrowSize,
+    decorativeStairsAccentColor: dec.decorativeStairsAccentColor,
     elevatorBadges: settings.elevatorBadges,
   };
 }

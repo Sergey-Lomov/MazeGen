@@ -85,7 +85,8 @@ mod add_node_at_tests {
         for &node in &existing { g.add_node(node); }
 
         let mut maze = Maze::new(field, g);
-        let added = maze.add_node_at(SquarePoint { x: 1, y: 1 });
+        let level = maze.field.single_level_id();
+        let added = maze.add_node_at_on_level(level, SquarePoint { x: 1, y: 1 });
 
         assert!(!existing.contains(&added));
     }
@@ -98,8 +99,8 @@ mod add_node_at_tests {
         for node in field.all_node_ids() { g.add_node(node); }
 
         let mut maze = Maze::new(field, g);
-        let added = maze.add_node_at(SquarePoint { x: 0, y: 0 });
         let level = maze.field.single_level_id();
+        let added = maze.add_node_at_on_level(level, SquarePoint { x: 0, y: 0 });
 
         assert!(maze.graph.nodes().any(|n| n.id == added));
         assert!(maze.field.nodes_at(level, SquarePoint { x: 0, y: 0 }).contains(&added));
@@ -128,7 +129,7 @@ mod remove_node_at_tests {
         let b_point = SquarePoint { x: 1, y: 0 };
         let b0 = maze.field.node_at(level, b_point).unwrap();
         let c = maze.field.node_at(level, SquarePoint { x: 2, y: 0 }).unwrap();
-        let b1 = maze.add_node_at(b_point);
+        let b1 = maze.add_node_at_on_level(level, b_point);
 
         maze.graph.add_bidirectional_edge(a, b0, EdgeKind::Basic);
         maze.graph.add_bidirectional_edge(b1, c, EdgeKind::Basic);
@@ -163,8 +164,9 @@ mod remove_node_at_tests {
         let mut g = Graph::new();
         for node in field.all_node_ids() { g.add_node(node); }
         let mut maze = Maze::new(field, g);
+        let level = maze.field.single_level_id();
         let p1 = SquarePoint { x: 1, y: 0 };
-        let extra_at_p1 = maze.add_node_at(p1);
+        let extra_at_p1 = maze.add_node_at_on_level(level, p1);
 
         // extra_at_p1 belongs to p1, not p0 — MultiLevelField::remove_node_at resolves the point
         // from the node itself, so removal always targets the node's real point; this test's

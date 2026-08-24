@@ -151,8 +151,8 @@ Event-tree based (GitHub issue #124/#125) — replaces the old per-step full-gra
 - `setStrategy/setStrategyParam` — manage repair strategies
 
 ### Preset Connections
-- `applyPresetConnectionsTool(key, from, to)` — apply active tool to a connection
-- `applyPresetConnectionsReset(key)` — delete a connection
+- `applyPresetConnectionsTool(key, from, to)` — apply the active tool to a connection
+- `applyPresetConnectionsToolAt(tool, key, from, to)` — apply a specific tool (bypassing `presetConnectionsTool`) to a connection; `tool: "reset"` clears a connection back to the current default. `key` is only a hint — both actions rebuild the real, level-aware key from `from`/`to` internally via `applyTool`, so a caller can pass the bare geometric key safely
 - `clearInvalidPresetConnections()` — remove connections outside current field
 - `resetPresetConnections()` — clear all presets, locks, start/finish
 

@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
-import { applyTool, materializeReset, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint, cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
+import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint, cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
 import { presetEndpoint, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { SplitRef } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
@@ -8,7 +8,7 @@ import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { NodeLockKind } from "../../wasm/types";
 import type { MazeState, MazeStore, PresetConnectionsState, PresetConnectionsActions } from "../storeTypes";
-import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock, activeFloorField, activeFloorLevel, resolveFieldAtOf } from "../storeHelpers";
+import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock, activeFloorField, activeFloorLevel, resolveFieldAtOf, levelFieldsOf } from "../storeHelpers";
 
 export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], PresetConnectionsState & PresetConnectionsActions> = (set, get) => ({
   presetConnections: new Map<string, PresetConnectionEntry>(),
@@ -109,13 +109,6 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     presetHoveredLink: null,
     debugStale: debugStaleOf(state),
   })),
-
-  applyPresetConnectionsReset: (key) => set((state) => {
-    const existing = state.presetConnections.get(key);
-    if (!existing) return {};
-    const presetConnections = materializeReset(state.presetConnections, { key, from: existing.from.point, to: existing.to.point }, state.defaultEdgeState, existing.from, existing.to);
-    return withRecomputedAutoLock(state, { presetConnections });
-  }),
 
   setAutoLock: (v) => set((state) => ({
     autoLock: v,
@@ -525,35 +518,35 @@ export function applyDefaultEdgeState(
   state: MazeState,
   newDefault: "undefined" | "wall" | "passage",
 ): Map<string, PresetConnectionEntry> {
-  const field = activeFloorField(state);
-  const level = activeFloorLevel(state);
-  const customPts = field.fieldEditMode === "custom" && field.fieldPoints.size > 0 ? field.fieldPoints : undefined;
-  const cells = resolveCells(field.tessellationConfig, customPts);
-  const cellSet = buildCellSet(cells);
-
-  // Remove all existing default entries on the active floor only — a default-state change made
-  // while floor N is active must not touch floor M's own default entries (each floor's
-  // `defaultEdgeState` toggle is independent, GitHub issue #340).
+  // Remove every existing default entry across all floors — `defaultEdgeState` is one maze-wide
+  // toggle (GitHub issue #434), not per-floor, so a change must repopulate every floor's default
+  // entries, not just the active floor's.
   const presetConnections = new Map(state.presetConnections);
   for (const [key, entry] of presetConnections) {
-    if (entry.source === "default" && (entry.from.level ?? 0) === (level ?? 0)) presetConnections.delete(key);
+    if (entry.source === "default") presetConnections.delete(key);
   }
 
   if (newDefault === "undefined") return presetConnections;
 
-  for (const [x, y] of cells) {
-    const { offsets } = getNeighborData(field.tessellationConfig, x, y);
-    for (const [dx, dy] of offsets) {
-      const nx = x + dx;
-      const ny = y + dy;
-      if (!cellSet.has(`${nx},${ny}`)) continue;
-      const less = x < nx || (x === nx && y < ny);
-      if (!less) continue; // only process edge once (owner = canonical-lesser cell)
-      const from = presetEndpoint([x, y], undefined, level);
-      const to = presetEndpoint([nx, ny], undefined, level);
-      const key = presetEdgeKey(from, to);
-      if (!presetConnections.has(key)) {
-        presetConnections.set(key, { from, to, state: newDefault, source: "default" });
+  for (const levelField of levelFieldsOf(state)) {
+    const { cfg, customPoints } = levelField;
+    const cells = resolveCells(cfg, customPoints);
+    const cellSet = buildCellSet(cells);
+
+    for (const [x, y] of cells) {
+      const { offsets } = getNeighborData(cfg, x, y);
+      for (const [dx, dy] of offsets) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (!cellSet.has(`${nx},${ny}`)) continue;
+        const less = x < nx || (x === nx && y < ny);
+        if (!less) continue; // only process edge once (owner = canonical-lesser cell)
+        const from = presetEndpoint([x, y], undefined, levelField.level);
+        const to = presetEndpoint([nx, ny], undefined, levelField.level);
+        const key = presetEdgeKey(from, to);
+        if (!presetConnections.has(key)) {
+          presetConnections.set(key, { from, to, state: newDefault, source: "default" });
+        }
       }
     }
   }

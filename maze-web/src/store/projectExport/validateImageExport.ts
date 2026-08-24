@@ -1,5 +1,5 @@
 import {
-  type MarkerSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type VectorByWallsSettings, type VectorByCorridorsSettings, type VectorByWallsSharedStyle, type VectorByCorridorsSharedStyle, type TeleportSettingsFields, type VerticalSettingsFields, type MarkerWidenShape, type PngExportSettings,
+  type MarkerSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type VectorByWallsSettings, type VectorByCorridorsSettings, type VectorByWallsSharedStyle, type VectorByCorridorsSharedStyle, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
@@ -164,29 +164,17 @@ export function validateElevatorBadgeSettings(v: unknown, path: string, fallback
   };
 }
 
-/** `VectorByWallsSettings`' own "Vertical connections" fields (GitHub issue #347, three-style
- * follow-up, three-section split follow-up) — same lenient-recovery convention as
- * `validateTeleportSettingsFields`. `verticalStyle` reads the current field name first; a project
- * file saved before the three-style follow-up (`verticalPassageDisplayStyle: "marker" |
- * "decorative"`) still loads correctly via the fallback, with `"marker"` mapped onto its renamed
- * equivalent, `"abstract"`. `twoWayPassageMarker`/`oneWayPassageMarker` (split from one shared
- * `verticalPassageMarker`, GitHub issue #347 three-section follow-up) both fall back to the legacy
- * single field when their own current field is absent, so a pre-split project file's one style
- * seeds both new sections identically on first load (matching how it actually rendered before the
- * split — same marker for every `VerticalPassage`, one-way or not). */
+/** "Vertical connections" fields shared by both vector modes (GitHub issue #347, three-style
+ * follow-up, three-section split follow-up; GitHub issue #348 "Vector by corridors" parity) — same
+ * lenient-recovery convention as `validateTeleportSettingsFields`. `twoWayPassageMarker`/
+ * `oneWayPassageMarker` (split from one shared `verticalPassageMarker`, GitHub issue #347
+ * three-section follow-up) both fall back to the legacy single field when their own current field is
+ * absent, so a pre-split project file's one style seeds both new sections identically on first load
+ * (matching how it actually rendered before the split — same marker for every `VerticalPassage`,
+ * one-way or not). */
 export function validateVerticalSettingsFields(obj: Record<string, unknown> | null, path: string, d: VerticalSettingsFields): VerticalSettingsFields {
-  const style = obj?.["verticalStyle"];
-  const legacyStyle = obj?.["verticalPassageDisplayStyle"];
   const legacyMarker = obj?.["verticalPassageMarker"];
   return {
-    verticalStyle:
-      style === "abstract" || style === "decorative"
-        ? style
-        : legacyStyle === "marker"
-          ? "abstract"
-          : legacyStyle === "decorative"
-            ? "decorative"
-            : d.verticalStyle,
     twoWayPassageMarker: validateMarkerSettings(obj?.twoWayPassageMarker ?? legacyMarker, `${path}.twoWayPassageMarker`, d.twoWayPassageMarker),
     oneWayPassageMarker: validateMarkerSettings(obj?.oneWayPassageMarker ?? legacyMarker, `${path}.oneWayPassageMarker`, d.oneWayPassageMarker),
     elevatorMarker: validateMarkerSettings(obj?.elevatorMarker, `${path}.elevatorMarker`, d.elevatorMarker),
@@ -203,13 +191,34 @@ export function validateVerticalSettingsFields(obj: Record<string, unknown> | nu
     elevatorArrowSize: optNumber(obj, "elevatorArrowSize", d.elevatorArrowSize),
     elevatorArrowStyle: optOneWayPattern(obj, "elevatorArrowStyle", d.elevatorArrowStyle),
     elevatorArrowCornerStyle: optJoin(obj, "elevatorArrowCornerStyle", d.elevatorArrowCornerStyle),
+    elevatorBadges: validateElevatorBadgeSettings(obj?.elevatorBadges, `${path}.elevatorBadges`, d.elevatorBadges),
+  };
+}
+
+/** `VectorByWallsSettings`' own extra "Vertical connections" fields (GitHub issue #428) — the
+ * "decorative" pictogram treatment, "Vector by walls"-only (GitHub issue #348: "Vector by
+ * corridors" has no decorative treatment). `verticalStyle` reads the current field name first; a
+ * project file saved before the three-style follow-up (`verticalPassageDisplayStyle: "marker" |
+ * "decorative"`) still loads correctly via the fallback, with `"marker"` mapped onto its renamed
+ * equivalent, `"abstract"`. */
+export function validateVerticalDecorativeFields(obj: Record<string, unknown> | null, path: string, d: VerticalDecorativeFields): VerticalDecorativeFields {
+  const style = obj?.["verticalStyle"];
+  const legacyStyle = obj?.["verticalPassageDisplayStyle"];
+  return {
+    verticalStyle:
+      style === "abstract" || style === "decorative"
+        ? style
+        : legacyStyle === "marker"
+          ? "abstract"
+          : legacyStyle === "decorative"
+            ? "decorative"
+            : d.verticalStyle,
     decorativeStairsTwoWay: validateDecorativeLineStyle(obj?.decorativeStairsTwoWay, `${path}.decorativeStairsTwoWay`, d.decorativeStairsTwoWay),
     decorativeStairsOneWay: validateDecorativeLineStyle(obj?.decorativeStairsOneWay, `${path}.decorativeStairsOneWay`, d.decorativeStairsOneWay),
     decorativeElevator: validateDecorativeLineStyle(obj?.decorativeElevator, `${path}.decorativeElevator`, d.decorativeElevator),
     decorativeStairsArrowColor: optNumber(obj, "decorativeStairsArrowColor", d.decorativeStairsArrowColor),
     decorativeStairsArrowSize: optNumber(obj, "decorativeStairsArrowSize", d.decorativeStairsArrowSize),
     decorativeStairsAccentColor: optNumber(obj, "decorativeStairsAccentColor", d.decorativeStairsAccentColor),
-    elevatorBadges: validateElevatorBadgeSettings(obj?.elevatorBadges, `${path}.elevatorBadges`, d.elevatorBadges),
   };
 }
 
@@ -315,6 +324,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string): VectorB
     finishMarker: validateMarkerSettings(obj.finishMarker, `${path}.finishMarker`, d.finishMarker),
     ...validateTeleportSettingsFields(obj, path, d),
     ...validateVerticalSettingsFields(obj, path, d),
+    ...validateVerticalDecorativeFields(obj, path, d),
     splitNodeColors: Array.isArray(obj.splitNodeColors) ? obj.splitNodeColors.filter((n): n is number => typeof n === "number") : d.splitNodeColors,
     splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
     sharedStyle: validateVectorByWallsSharedStyle(obj.sharedStyle, d.sharedStyle),
@@ -436,6 +446,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string): Vec
     oneWayLength: optNumber(obj, "oneWayLength", d.oneWayLength),
     oneWayJoin: optJoin(obj, "oneWayJoin", d.oneWayJoin),
     ...validateTeleportSettingsFields(obj, path, d),
+    ...validateVerticalSettingsFields(obj, path, d),
     splitNodeColors: Array.isArray(obj?.splitNodeColors) ? obj.splitNodeColors.filter((n): n is number => typeof n === "number") : d.splitNodeColors,
     splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
     splitGapWidth: optNumber(obj, "splitGapWidth", d.splitGapWidth),

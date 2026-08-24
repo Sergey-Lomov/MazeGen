@@ -1,13 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Graphics } from "pixi.js";
-import { VectorByCorridorsRenderer, buildTeleportWidenMarkers, computeDiagonalGapPatchGeometry } from "../pixi/imageExport/VectorByCorridorsRenderer";
+import { VectorByCorridorsRenderer, buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGapPatchGeometry } from "../pixi/imageExport/VectorByCorridorsRenderer";
 import { computeSquareCapPatch } from "../pixi/renderers/wallUtils";
 import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildSplitPassages } from "../pixi/selectors/mazeSelectors";
 import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
+import { buildVerticalConnectionStyle } from "../pixi/imageExport/exportStyleBuilders";
 import { TILE_SIZE } from "../pixi/constants";
 import type { NodeDto, EdgeDto } from "../wasm/types";
+import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByCorridorsSettings } from "../store/storeTypes";
+import { DEFAULT_VERTICAL_SETTINGS } from "../store/slices/imageExportDefaults";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path
 // only ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`).
@@ -41,6 +44,12 @@ vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildTeleportEdges: vi.fn(() => []),
   buildSplitPassages: vi.fn(() => ({ passages: [], wallFaces: [], specialShapes: [] })),
   maxSplitNodeCount: vi.fn(() => 0),
+  buildVerticalConnectionMarkers: vi.fn(() => []),
+  selectNodeLevelResolver: vi.fn(() => () => undefined),
+  selectVerticalPassagePairSet: vi.fn(() => new Set()),
+  selectFloorScopedMaze: vi.fn((nodes: unknown[], edges: unknown[], _floors: unknown, _activeFloorId: unknown, start: number | null = null, finish: number | null = null) => ({
+    nodes, edges, start, finish,
+  })),
 }));
 
 vi.mock("../pixi/renderers/WallRenderer", () => ({
@@ -85,7 +94,7 @@ vi.mock("pixi.js", () => ({
     // care about `getRequiredExportMargin`'s pixel-accurate path override this per-container.
     this.getLocalBounds = vi.fn(() => makeEmptyBounds());
   }),
-  Graphics: vi.fn().mockImplementation(function (this: { clear: () => void; moveTo: () => unknown; lineTo: () => unknown; arcTo: () => unknown; quadraticCurveTo: () => unknown; bezierCurveTo: () => unknown; closePath: () => unknown; stroke: () => unknown; circle: () => unknown; poly: () => unknown; rect: () => unknown; fill: () => unknown; setStrokeStyle: () => unknown; destroy: () => void }) {
+  Graphics: vi.fn().mockImplementation(function (this: { clear: () => void; moveTo: () => unknown; lineTo: () => unknown; arcTo: () => unknown; quadraticCurveTo: () => unknown; bezierCurveTo: () => unknown; closePath: () => unknown; stroke: () => unknown; circle: () => unknown; poly: () => unknown; rect: () => unknown; fill: () => unknown; setStrokeStyle: () => unknown; addChild: () => void; removeChildren: () => unknown[]; destroy: () => void }) {
     this.clear = vi.fn();
     this.moveTo = vi.fn(() => this);
     this.lineTo = vi.fn(() => this);
@@ -99,6 +108,8 @@ vi.mock("pixi.js", () => ({
     this.rect = vi.fn(() => this);
     this.fill = vi.fn(() => this);
     this.setStrokeStyle = vi.fn(() => this);
+    this.addChild = vi.fn();
+    this.removeChildren = vi.fn(() => []);
     this.destroy = vi.fn();
   }),
 }));
@@ -124,8 +135,8 @@ const splitDefaults: Pick<VectorByCorridorsSettings, "splitNodeColors" | "splitS
   splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
 };
 const sharedStyle: VectorByCorridorsSettings["sharedStyle"] = { cornerStyle: "round", markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3, overrides: {} };
-const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...splitDefaults, sharedStyle };
-const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...splitDefaults, sharedStyle };
+const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, sharedStyle };
+const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, sharedStyle };
 
 // Stable references reused across `baseState()` calls — the renderer's own geometry cache keys off
 // reference-equality of `nodes`/`edges`/`activeTessellationConfig` (same convention as
@@ -143,6 +154,8 @@ function baseState(overrides: Record<string, unknown> = {}) {
     activeTessellationConfig: stableCfg,
     vectorByCorridorsSettings: settingsA,
     vectorByCorridorsSectionsExpanded: {},
+    floors: [{ id: "floor_1", title: "Floor 1" }],
+    activeFloorId: "floor_1",
     start: null,
     finish: null,
     postEditMeta: null,
@@ -209,6 +222,57 @@ describe("buildTeleportWidenMarkers", () => {
 
   it("returns an empty list for no teleport edges", () => {
     expect(buildTeleportWidenMarkers([], settingsA, [])).toEqual([]);
+  });
+});
+
+describe("buildVerticalWidenMarkers", () => {
+  function makeMarker(overrides: Partial<VerticalConnectionMarker>): VerticalConnectionMarker {
+    return { pos: [0, 0], fromNode: 0, kind: "vertical_passage", filled: true, arrowFilled: true, ...overrides };
+  }
+
+  it("uses elevatorMarker's size/shape/cornerStyle for an elevator marker", () => {
+    const [marker] = buildVerticalWidenMarkers([makeMarker({ kind: "elevator" })], settingsA);
+    expect(marker.radius).toBe(settingsA.elevatorMarker.size * TILE_SIZE);
+    expect(marker.shape).toBe(settingsA.elevatorMarker.shape);
+    expect(marker.cornerStyle).toBe(settingsA.elevatorMarker.cornerStyle);
+  });
+
+  it("uses twoWayPassageMarker's size/shape/cornerStyle for a filled vertical_passage marker", () => {
+    const [marker] = buildVerticalWidenMarkers([makeMarker({ kind: "vertical_passage", filled: true })], settingsA);
+    expect(marker.radius).toBe(settingsA.twoWayPassageMarker.size * TILE_SIZE);
+    expect(marker.shape).toBe(settingsA.twoWayPassageMarker.shape);
+    expect(marker.cornerStyle).toBe(settingsA.twoWayPassageMarker.cornerStyle);
+  });
+
+  it("uses oneWayPassageMarker's size/shape/cornerStyle for an unfilled vertical_passage marker", () => {
+    const [marker] = buildVerticalWidenMarkers([makeMarker({ kind: "vertical_passage", filled: false })], settingsA);
+    expect(marker.radius).toBe(settingsA.oneWayPassageMarker.size * TILE_SIZE);
+    expect(marker.shape).toBe(settingsA.oneWayPassageMarker.shape);
+    expect(marker.cornerStyle).toBe(settingsA.oneWayPassageMarker.cornerStyle);
+  });
+
+  it("carries each marker's own pos through unchanged", () => {
+    const markers = [makeMarker({ pos: [3, 4] }), makeMarker({ pos: [5, 6], kind: "elevator" })];
+    expect(buildVerticalWidenMarkers(markers, settingsA).map((m) => m.pos)).toEqual([[3, 4], [5, 6]]);
+  });
+
+  it("returns an empty list for no markers", () => {
+    expect(buildVerticalWidenMarkers([], settingsA)).toEqual([]);
+  });
+});
+
+describe("buildVerticalConnectionStyle (Vector by corridors call site, no decorative arg)", () => {
+  it("always resolves style to 'abstract' when called without a third (decorative) argument", () => {
+    const style = buildVerticalConnectionStyle(settingsA, settingsA.color);
+    expect(style.style).toBe("abstract");
+  });
+
+  it("carries the caller's own marker/arrow settings through unchanged", () => {
+    const style = buildVerticalConnectionStyle(settingsA, settingsA.color);
+    expect(style.twoWayArrowColor).toBe(settingsA.twoWayArrowColor);
+    expect(style.oneWayAccentColor).toBe(settingsA.oneWayAccentColor);
+    expect(style.elevatorArrowStyle).toBe(settingsA.elevatorArrowStyle);
+    expect(style.elevatorBadges).toBe(settingsA.elevatorBadges);
   });
 });
 

@@ -1,19 +1,22 @@
 import type React from "react";
 import { useEffect, useMemo } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import { inset, spacing, ui } from "../../styles/theme";
+import type { OneWayPattern } from "../../pixi/renderers/types";
+import { inset, spacing, typography, ui } from "../../styles/theme";
 import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
 import { ToggleRow } from "../ToggleRow";
 import { SectionHeader } from "../SectionHeader";
 import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
+import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, sharedStyleFieldReset } from "./SharedStyleSection";
 import { computeVectorByCorridorsWarnings } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
-import { maxSplitNodeCount } from "../../pixi/selectors/mazeSelectors";
+import { maxSplitNodeCount, selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
@@ -68,6 +71,30 @@ export function VectorByCorridorsSettingsPanel() {
   const setMarkerWidenPadding = useMazeStore((s) => s.setVectorByCorridorsMarkerWidenPadding);
   const setMarkerWidenShape = useMazeStore((s) => s.setVectorByCorridorsMarkerWidenShape);
   const patchOneWaySettings = useMazeStore((s) => s.patchVectorByCorridorsOneWaySettings);
+  const patchVerticalSettings = useMazeStore((s) => s.patchVectorByCorridorsVerticalSettings);
+  const patchElevatorBadges = useMazeStore((s) => s.patchVectorByCorridorsElevatorBadges);
+  const setElevatorBadgesCornerStyle = useMazeStore((s) => s.setVectorByCorridorsElevatorBadgesCornerStyle);
+  const setTwoWayPassageMarkerShape = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerShape);
+  const setTwoWayPassageMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerCornerStyle);
+  const setTwoWayPassageMarkerFillColor = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerFillColor);
+  const setTwoWayPassageMarkerBorderColor = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerBorderColor);
+  const setTwoWayPassageMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerBorderWidth);
+  const setTwoWayPassageMarkerGapWidth = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerGapWidth);
+  const setTwoWayPassageMarkerSize = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerSize);
+  const setOneWayPassageMarkerShape = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerShape);
+  const setOneWayPassageMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerCornerStyle);
+  const setOneWayPassageMarkerFillColor = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerFillColor);
+  const setOneWayPassageMarkerBorderColor = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerBorderColor);
+  const setOneWayPassageMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerBorderWidth);
+  const setOneWayPassageMarkerGapWidth = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerGapWidth);
+  const setOneWayPassageMarkerSize = useMazeStore((s) => s.setVectorByCorridorsOneWayPassageMarkerSize);
+  const setElevatorMarkerShape = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerShape);
+  const setElevatorMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerCornerStyle);
+  const setElevatorMarkerFillColor = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerFillColor);
+  const setElevatorMarkerBorderColor = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerBorderColor);
+  const setElevatorMarkerBorderWidth = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerBorderWidth);
+  const setElevatorMarkerGapWidth = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerGapWidth);
+  const setElevatorMarkerSize = useMazeStore((s) => s.setVectorByCorridorsElevatorMarkerSize);
   const patchTeleportSettings = useMazeStore((s) => s.patchVectorByCorridorsTeleportSettings);
   const setTeleportGroupOverride = useMazeStore((s) => s.setVectorByCorridorsTeleportGroupOverride);
   const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
@@ -103,17 +130,27 @@ export function VectorByCorridorsSettingsPanel() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [setSelectedTeleportGroupKey]);
 
-  const nodes = useMazeStore((s) => s.nodes);
-  const edges = useMazeStore((s) => s.edges);
+  const rawNodes = useMazeStore((s) => s.nodes);
+  const rawEdges = useMazeStore((s) => s.edges);
   const rawStart = useMazeStore((s) => s.start);
   const rawFinish = useMazeStore((s) => s.finish);
   const postEditMeta = useMazeStore((s) => s.postEditMeta);
   const postEditDraftSplitPoints = useMazeStore((s) => s.postEditDraftSplitPoints);
   const cfg = useMazeStore((s) => s.activeTessellationConfig);
+  const floors = useMazeStore((s) => s.floors);
+  const activeFloorId = useMazeStore((s) => s.activeFloorId);
 
-  const { start, finish } = useMemo(
-    () => resolveEffectiveEndpoints({ nodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
-    [nodes, rawStart, rawFinish, postEditMeta, postEditDraftSplitPoints],
+  const rawEffectiveEndpoints = useMemo(
+    () => resolveEffectiveEndpoints({ nodes: rawNodes, start: rawStart, finish: rawFinish, postEditMeta, postEditDraftSplitPoints }),
+    [rawNodes, rawStart, rawFinish, postEditMeta, postEditDraftSplitPoints],
+  );
+
+  // Scoped to `activeFloorId` (GitHub issue #348, parity follow-up to #347) — mirrors
+  // `VectorByWallsSettingsPanel`'s own scoping, so this panel's warnings/section-visibility checks
+  // see exactly what's drawn.
+  const { nodes, edges, start, finish } = useMemo(
+    () => selectFloorScopedMaze(rawNodes, rawEdges, floors, activeFloorId, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish),
+    [rawNodes, rawEdges, floors, activeFloorId, rawEffectiveEndpoints],
   );
 
   const exportWarnings = useMemo(
@@ -130,6 +167,20 @@ export function VectorByCorridorsSettingsPanel() {
     return basicEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
   }, [edges]);
   const hasTeleports = useMemo(() => edges.some((e) => e.kind === "teleport"), [edges]);
+  // "Vertical connections" splits into three independent panel sections, each hidden when the maze
+  // has none of that kind — same rule as `VectorByWallsSettingsPanel`'s own (GitHub issue #348,
+  // parity follow-up to #347's three-section split). Reads `rawEdges` (unscoped by floor), not the
+  // floor-scoped `edges` — see that panel's own doc comment on why a bidirectional passage's two
+  // directed halves never survive floor-scoping together.
+  const { hasTwoWayPassages, hasOneWayPassages, hasElevators } = useMemo(() => {
+    const passageEdges = rawEdges.filter((e) => e.kind === "vertical_passage");
+    const forward = new Set(passageEdges.map((e) => `${e.from}->${e.to}`));
+    const hasOneWayPassages = passageEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
+    const hasTwoWayPassages = passageEdges.some((e) => forward.has(`${e.to}->${e.from}`));
+    const hasElevators = rawEdges.some((e) => e.kind === "elevator");
+    return { hasTwoWayPassages, hasOneWayPassages, hasElevators };
+  }, [rawEdges]);
+  const hasVerticalConnections = hasTwoWayPassages || hasOneWayPassages || hasElevators;
 
   const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(nodes, edges, cfg, settings);
 
@@ -385,6 +436,263 @@ export function VectorByCorridorsSettingsPanel() {
         </>
       )}
 
+      {hasVerticalConnections && (
+        <>
+          <div style={styles.divider} />
+
+          <SectionHeader
+            label={m["image_export.vector_by_walls.section_vertical"]()}
+            expanded={isExpanded("vertical")}
+            onToggle={() => toggleSection("vertical")}
+          />
+          {isExpanded("vertical") && (
+            <div style={styles.block}>
+              {hasTwoWayPassages && (
+                <div style={styles.subGroupWrap}>
+                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_two_way")}>
+                    {isExpanded("vertical_two_way") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
+                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.two_way_passage_marker"]()}</div>
+                  </div>
+                  {isExpanded("vertical_two_way") && (
+                  <div style={styles.subGroup}>
+                    <div style={styles.subGroupWrap}>
+                      <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
+                      <div style={styles.subGroup}>
+                        <MarkerSettingsGroup
+                          title=""
+                          settings={settings.twoWayPassageMarker}
+                          onChange={(patch) => {
+                            if (patch.shape !== undefined) setTwoWayPassageMarkerShape(patch.shape);
+                            if (patch.cornerStyle !== undefined) setTwoWayPassageMarkerCornerStyle(patch.cornerStyle);
+                            if (patch.fillColor !== undefined) setTwoWayPassageMarkerFillColor(patch.fillColor);
+                            if (patch.borderColor !== undefined) setTwoWayPassageMarkerBorderColor(patch.borderColor);
+                            if (patch.borderWidth !== undefined) setTwoWayPassageMarkerBorderWidth(patch.borderWidth);
+                            if (patch.gapWidth !== undefined) setTwoWayPassageMarkerGapWidth(patch.gapWidth);
+                            if (patch.size !== undefined) setTwoWayPassageMarkerSize(patch.size);
+                          }}
+                          resetButtons={{
+                            cornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "twoWayPassage", () => resetSharedStyleField("cornerStyle", "twoWayPassage")),
+                            size: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "twoWayPassage", () => resetSharedStyleField("markerSize", "twoWayPassage")),
+                            borderWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerBorderWidth", "twoWayPassage", () => resetSharedStyleField("markerBorderWidth", "twoWayPassage")),
+                            gapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "twoWayPassage", () => resetSharedStyleField("gapWidth", "twoWayPassage")),
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={styles.subGroupWrap}>
+                      <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
+                      <div style={styles.subGroup}>
+                        <ColorRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
+                          color={settings.twoWayArrowColor}
+                          onChange={(twoWayArrowColor) => patchVerticalSettings({ twoWayArrowColor })}
+                        />
+                        <SliderRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
+                          value={settings.twoWayArrowSize}
+                          onChange={(twoWayArrowSize) => patchVerticalSettings({ twoWayArrowSize })}
+                          min={0.2}
+                          max={1}
+                          step={0.05}
+                          format={(v) => v.toFixed(2)}
+                        />
+                        <SelectRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
+                          value={settings.twoWayArrowStyle}
+                          options={[
+                            { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+                            { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+                            { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                          ]}
+                          onChange={(twoWayArrowStyle) => patchVerticalSettings({ twoWayArrowStyle })}
+                        />
+                        <SelectRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_corner_style"]()}
+                          value={settings.twoWayArrowCornerStyle}
+                          options={[
+                            { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
+                            { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
+                          ]}
+                          onChange={(twoWayArrowCornerStyle) => patchVerticalSettings({ twoWayArrowCornerStyle })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  )}
+                </div>
+              )}
+
+              {hasOneWayPassages && (
+                <div style={styles.subGroupWrap}>
+                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_one_way")}>
+                    {isExpanded("vertical_one_way") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
+                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.one_way_passage_marker"]()}</div>
+                  </div>
+                  {isExpanded("vertical_one_way") && (
+                  <div style={styles.subGroup}>
+                    <div style={styles.subGroupWrap}>
+                      <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
+                      <div style={styles.subGroup}>
+                        <ColorRow
+                          label={m["image_export.vector_by_walls.one_way_accent_color"]()}
+                          color={settings.oneWayAccentColor}
+                          onChange={(oneWayAccentColor) => patchVerticalSettings({ oneWayAccentColor })}
+                        />
+                        <MarkerSettingsGroup
+                          title=""
+                          settings={settings.oneWayPassageMarker}
+                          hideBorderColor
+                          onChange={(patch) => {
+                            if (patch.shape !== undefined) setOneWayPassageMarkerShape(patch.shape);
+                            if (patch.cornerStyle !== undefined) setOneWayPassageMarkerCornerStyle(patch.cornerStyle);
+                            if (patch.fillColor !== undefined) setOneWayPassageMarkerFillColor(patch.fillColor);
+                            if (patch.borderColor !== undefined) setOneWayPassageMarkerBorderColor(patch.borderColor);
+                            if (patch.borderWidth !== undefined) setOneWayPassageMarkerBorderWidth(patch.borderWidth);
+                            if (patch.gapWidth !== undefined) setOneWayPassageMarkerGapWidth(patch.gapWidth);
+                            if (patch.size !== undefined) setOneWayPassageMarkerSize(patch.size);
+                          }}
+                          resetButtons={{
+                            cornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "oneWayPassage", () => resetSharedStyleField("cornerStyle", "oneWayPassage")),
+                            size: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "oneWayPassage", () => resetSharedStyleField("markerSize", "oneWayPassage")),
+                            borderWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerBorderWidth", "oneWayPassage", () => resetSharedStyleField("markerBorderWidth", "oneWayPassage")),
+                            gapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "oneWayPassage", () => resetSharedStyleField("gapWidth", "oneWayPassage")),
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={styles.subGroupWrap}>
+                      <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
+                      <div style={styles.subGroup}>
+                        <ColorRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
+                          color={settings.oneWayArrowColor}
+                          onChange={(oneWayArrowColor) => patchVerticalSettings({ oneWayArrowColor })}
+                        />
+                        <SliderRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
+                          value={settings.oneWayArrowSize}
+                          onChange={(oneWayArrowSize) => patchVerticalSettings({ oneWayArrowSize })}
+                          min={0.2}
+                          max={1}
+                          step={0.05}
+                          format={(v) => v.toFixed(2)}
+                        />
+                        <SelectRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
+                          value={settings.oneWayArrowStyle}
+                          options={[
+                            { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+                            { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+                            { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                          ]}
+                          onChange={(oneWayArrowStyle) => patchVerticalSettings({ oneWayArrowStyle })}
+                        />
+                        <SelectRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_corner_style"]()}
+                          value={settings.oneWayArrowCornerStyle}
+                          options={[
+                            { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
+                            { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
+                          ]}
+                          onChange={(oneWayArrowCornerStyle) => patchVerticalSettings({ oneWayArrowCornerStyle })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  )}
+                </div>
+              )}
+
+              {hasElevators && (
+                <div style={styles.subGroupWrap}>
+                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_elevator")}>
+                    {isExpanded("vertical_elevator") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
+                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.elevator_marker"]()}</div>
+                  </div>
+                  {isExpanded("vertical_elevator") && (
+                  <div style={styles.subGroup}>
+                    <div style={styles.subGroupWrap}>
+                      <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
+                      <div style={styles.subGroup}>
+                        <MarkerSettingsGroup
+                          title=""
+                          settings={settings.elevatorMarker}
+                          onChange={(patch) => {
+                            if (patch.shape !== undefined) setElevatorMarkerShape(patch.shape);
+                            if (patch.cornerStyle !== undefined) setElevatorMarkerCornerStyle(patch.cornerStyle);
+                            if (patch.fillColor !== undefined) setElevatorMarkerFillColor(patch.fillColor);
+                            if (patch.borderColor !== undefined) setElevatorMarkerBorderColor(patch.borderColor);
+                            if (patch.borderWidth !== undefined) setElevatorMarkerBorderWidth(patch.borderWidth);
+                            if (patch.gapWidth !== undefined) setElevatorMarkerGapWidth(patch.gapWidth);
+                            if (patch.size !== undefined) setElevatorMarkerSize(patch.size);
+                          }}
+                          resetButtons={{
+                            cornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "elevator", () => resetSharedStyleField("cornerStyle", "elevator")),
+                            size: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "elevator", () => resetSharedStyleField("markerSize", "elevator")),
+                            borderWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerBorderWidth", "elevator", () => resetSharedStyleField("markerBorderWidth", "elevator")),
+                            gapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "elevator", () => resetSharedStyleField("gapWidth", "elevator")),
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={styles.subGroupWrap}>
+                      <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
+                      <div style={styles.subGroup}>
+                        <ColorRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
+                          color={settings.elevatorArrowColor}
+                          onChange={(elevatorArrowColor) => patchVerticalSettings({ elevatorArrowColor })}
+                        />
+                        <SliderRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
+                          value={settings.elevatorArrowSize}
+                          onChange={(elevatorArrowSize) => patchVerticalSettings({ elevatorArrowSize })}
+                          min={0.2}
+                          max={1}
+                          step={0.05}
+                          format={(v) => v.toFixed(2)}
+                        />
+                        <SelectRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
+                          value={settings.elevatorArrowStyle}
+                          options={[
+                            { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+                            { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+                            { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                          ]}
+                          onChange={(elevatorArrowStyle) => patchVerticalSettings({ elevatorArrowStyle })}
+                        />
+                        <SelectRow
+                          label={m["image_export.vector_by_walls.vertical_arrow_corner_style"]()}
+                          value={settings.elevatorArrowCornerStyle}
+                          options={[
+                            { value: "round", label: m["image_export.vector_by_walls.wall_join_round"]() },
+                            { value: "miter", label: m["image_export.vector_by_walls.wall_join_miter"]() },
+                          ]}
+                          onChange={(elevatorArrowCornerStyle) => patchVerticalSettings({ elevatorArrowCornerStyle })}
+                        />
+                      </div>
+                    </div>
+
+                    <ElevatorBadgesSubsection
+                      settings={settings.elevatorBadges}
+                      sharedStyleOverrides={settings.sharedStyle.overrides}
+                      onChange={patchElevatorBadges}
+                      onCornerStyleChange={setElevatorBadgesCornerStyle}
+                      onResetCornerStyle={() => resetSharedStyleField("cornerStyle", "elevatorBadges")}
+                    />
+                  </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
       {maxSplit > 0 && (
         <>
           <div style={styles.divider} />
@@ -448,4 +756,8 @@ const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: spacing.itemGap, padding: `${inset.panelInsetY}px ${inset.panelInsetX}px` },
   block: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   divider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
+  subGroupWrap: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  subHeaderRow: { display: "flex", alignItems: "center", gap: spacing.itemGap, cursor: "default", borderRadius: 3 },
+  subHeader: { ...typography.body },
+  subGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
 };

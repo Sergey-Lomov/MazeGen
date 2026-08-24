@@ -1,17 +1,18 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
-import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildSplitPassages, maxSplitNodeCount, type CorridorSegment } from "../selectors/mazeSelectors";
+import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, type CorridorSegment } from "../selectors/mazeSelectors";
 import { chainSegmentsAtSharedVertices } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
+import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
 import { drawMarkerWidenPatches } from "../renderers/markerWidenPatches";
 import { drawOneWayChevronRow, computeSquareCapPatch } from "../renderers/wallUtils";
 import { buildTeleportGroups } from "../selectors/teleportGroups";
-import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildEffectiveSplitNodeColors, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
+import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, buildVerticalConnectionStyle, buildEffectiveSplitNodeColors, BackgroundGridLayer, ExportWarningHighlight } from "./VectorByWallsRenderer";
 import { computeVectorByCorridorsWarnings } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
-import type { Viewport, TeleportEdge, SplitPassage, SplitSpecialShape } from "../renderers/types";
-import { buildTeleportWidenMarkers, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon } from "./vectorByCorridorsGeometry";
+import type { Viewport, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "../renderers/types";
+import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon } from "./vectorByCorridorsGeometry";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
@@ -61,6 +62,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   private readonly teleports: TeleportRenderer;
   private readonly markersContainer: Container;
   private readonly markers: WaypointsRenderer;
+  /** Own instance, not shared with `VectorByWallsRenderer`'s own — per
+   *  `maze-web/CLAUDE.md`'s feature-renderer ownership rule (GitHub issue #348, "Vector by
+   *  corridors" parity follow-up to #347). */
+  private readonly verticalContainer: Container;
+  private readonly verticalConnections: VerticalConnectionRenderer;
   private readonly warningHighlightContainer: Container;
   /** Own instance, not shared with `VectorByWallsRenderer`'s own — per
    *  `maze-web/CLAUDE.md`'s feature-renderer ownership rule. Highlights the currently hovered
@@ -73,8 +79,9 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   private unsubscribe: (() => void) | null = null;
 
   private geometryCache: {
-    nodes: NodeDto[];
-    edges: EdgeDto[];
+    rawNodes: NodeDto[];
+    rawEdges: EdgeDto[];
+    activeFloorId: string;
     cfg: TessellationConfig;
     start: number | null;
     finish: number | null;
@@ -84,6 +91,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     teleportEdges: TeleportEdge[];
     splitPassages: SplitPassage[];
     splitSpecialShapes: SplitSpecialShape[];
+    verticalConnectionMarkers: VerticalConnectionMarker[];
   } | null = null;
 
   constructor(container: Container) {
@@ -106,6 +114,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     container.addChild(this.markersContainer);
     this.markers = new WaypointsRenderer(this.markersContainer);
 
+    this.verticalContainer = new Container();
+    container.addChild(this.verticalContainer);
+    this.verticalConnections = new VerticalConnectionRenderer(this.verticalContainer);
+
     this.warningHighlightContainer = new Container();
     container.addChild(this.warningHighlightContainer);
     this.warningHighlight = new ExportWarningHighlight(this.warningHighlightContainer, computeVectorByCorridorsWarnings);
@@ -127,7 +139,9 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         state.finish !== prev.finish ||
         state.postEditMeta !== prev.postEditMeta ||
         state.postEditDraftSplitPoints !== prev.postEditDraftSplitPoints ||
-        state.activeTessellationConfig !== prev.activeTessellationConfig;
+        state.activeTessellationConfig !== prev.activeTessellationConfig ||
+        state.activeFloorId !== prev.activeFloorId ||
+        state.floors !== prev.floors;
       const settingsChanged = state.vectorByCorridorsSettings !== prev.vectorByCorridorsSettings;
       // Teleports section's own expand/collapse flips canvas interactivity for group customization
       // (GitHub issue #293/#313), same rationale as `VectorByWallsRenderer`'s own
@@ -152,6 +166,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.splitShapesLayer.visible = visible;
     this.teleportContainer.visible = visible;
     this.markersContainer.visible = visible;
+    this.verticalContainer.visible = visible;
     this.warningHighlightContainer.visible = visible;
     if (visible) this.renderAll(state);
   }
@@ -186,9 +201,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // `PngExporter`'s temporary instance never gets positioned at all before this method runs (its
     // own `exportContainer.position`/`scale.set` happen afterward), so `getLocalBounds()` there is
     // simply a no-op identity transform away from `getBounds()` — same result either way.
-    const cellBounds = cellCenterBounds(state.nodes, state.activeTessellationConfig);
+    // Floor-scoped (GitHub issue #348), same reason `renderAll` scopes its own `nodes` — the
+    // *drawn* content is only ever one floor's worth, so the bounds basis must match.
+    const floorNodes = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId).nodes;
+    const cellBounds = cellCenterBounds(floorNodes, state.activeTessellationConfig);
     return measureContentMargin(
-      [this.corridorsContainer, this.splitShapesLayer, this.teleportContainer, this.markersContainer],
+      [this.corridorsContainer, this.splitShapesLayer, this.teleportContainer, this.markersContainer, this.verticalContainer],
       cellBounds,
     );
   }
@@ -199,19 +217,28 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
   }
 
   private renderAll(state: ReturnType<typeof useMazeStore.getState>): void {
-    const { nodes, edges } = state;
     const cfg = state.activeTessellationConfig;
 
     this.backgroundGrid.render(state.vectorByCorridorsSettings, cfg);
 
-    const { start: effStart, finish: effFinish } = resolveEffectiveEndpoints(state);
+    // Scoped to `activeFloorId` (GitHub issue #348, parity follow-up to #347) — see
+    // `VectorByWallsRenderer.renderAll`'s own doc comment on this same scoping.
+    const rawEndpoints = resolveEffectiveEndpoints(state);
+    const { nodes, edges, start: effStart, finish: effFinish } = selectFloorScopedMaze(
+      state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
+    );
+    const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
+    const verticalPairs = selectVerticalPassagePairSet(state.edges);
+    const activeFloorIndex = Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
+
     const settings = state.vectorByCorridorsSettings;
     const splitNodeColors = settings.splitNodeColors;
 
     if (
       !this.geometryCache ||
-      this.geometryCache.nodes !== nodes ||
-      this.geometryCache.edges !== edges ||
+      this.geometryCache.rawNodes !== state.nodes ||
+      this.geometryCache.rawEdges !== state.edges ||
+      this.geometryCache.activeFloorId !== state.activeFloorId ||
       this.geometryCache.cfg !== cfg ||
       this.geometryCache.start !== effStart ||
       this.geometryCache.finish !== effFinish ||
@@ -236,12 +263,13 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         buildSplitPassages(nodes, edges, cfg, specialNodeIds, {}, {}, effectiveSplitNodeColors, settings.thickness);
 
       this.geometryCache = {
-        nodes, edges, cfg,
+        rawNodes: state.nodes, rawEdges: state.edges, activeFloorId: state.activeFloorId, cfg,
         start: effStart, finish: effFinish, splitNodeColors, thickness: settings.thickness,
         segments: buildCorridorSegments(nodes, edges, cfg),
         teleportEdges: buildTeleportEdges(nodeById, edges, cfg),
         splitPassages,
         splitSpecialShapes,
+        verticalConnectionMarkers: buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, activeFloorIndex, verticalPairs, state.edges),
       };
     }
 
@@ -360,6 +388,19 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       squareCornerStyle,
     );
 
+    // Vertical-connection markers get the same widen patch (GitHub issue #348, parity follow-up to
+    // #313's teleport widen patch) — one shared `markerWidenPadding`/`markerWidenShape`, no
+    // separate vertical-only setting.
+    drawMarkerWidenPatches(
+      this.corridors,
+      buildVerticalWidenMarkers(this.geometryCache.verticalConnectionMarkers, settings),
+      settings.color,
+      settings.thickness,
+      settings.markerWidenPadding,
+      settings.markerWidenShape,
+      squareCornerStyle,
+    );
+
     // Split points (GitHub issue #314) — drawn after the plain corridor stroke and marker widen
     // patches (so a split hub sitting under a start/finish/teleport marker is already widened the
     // same way a plain corridor is), before the markers/teleports themselves land on top.
@@ -384,6 +425,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     });
 
     this.markers.render({ markers: markerData });
+
+    this.verticalConnections.render({
+      markers: this.geometryCache.verticalConnectionMarkers,
+      style: buildVerticalConnectionStyle(settings, settings.color),
+    });
 
     this.renderWarningHighlight(state);
   }
@@ -616,8 +662,14 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  `ExportWarningHighlight`'s own doc comment for the memoize-then-draw mechanics, shared with
    *  `VectorByWallsRenderer`'s own copy of this method. */
   private renderWarningHighlight(state: ReturnType<typeof useMazeStore.getState>): void {
-    const { hoveredExportWarningKey, nodes, edges } = state;
-    const { start, finish } = resolveEffectiveEndpoints(state);
+    const { hoveredExportWarningKey } = state;
+    const rawEndpoints = resolveEffectiveEndpoints(state);
+    // Same floor-scoping as `renderAll` (GitHub issue #348) — the warning computation must see
+    // exactly the drawn floor's own nodes/edges, or a hovered warning's `nodes`/`edges` could
+    // reference an id that isn't actually rendered.
+    const { nodes, edges, start, finish } = selectFloorScopedMaze(
+      state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
+    );
     this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByCorridorsSettings, start, finish);
   }
 
@@ -632,9 +684,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.teleportContainer.destroy();
     this.markers.destroy();
     this.markersContainer.destroy();
+    this.verticalConnections.destroy();
+    this.verticalContainer.destroy();
     this.warningHighlight.destroy();
     this.warningHighlightContainer.destroy();
   }
 }
 
-export { buildTeleportWidenMarkers, computeDiagonalGapPatchGeometry } from "./vectorByCorridorsGeometry";
+export { buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGapPatchGeometry } from "./vectorByCorridorsGeometry";

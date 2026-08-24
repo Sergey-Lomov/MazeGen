@@ -480,7 +480,7 @@ export class VectorByWallsRenderer {
 
     this.verticalConnections.render({
       markers: this.geometryCache.verticalConnectionMarkers,
-      style: buildVerticalConnectionStyle(state.vectorByWallsSettings, floorColor),
+      style: buildVerticalConnectionStyle(state.vectorByWallsSettings, floorColor, state.vectorByWallsSettings),
     });
 
     this.renderWarningHighlight(state);

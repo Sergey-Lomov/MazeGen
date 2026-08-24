@@ -213,9 +213,13 @@ describe("reconcileVectorByWallsSharedStyle", () => {
 });
 
 describe("reconcileVectorByCorridorsSharedStyle", () => {
-  it("marks nothing overridden when every dependent field already matches the shared values", () => {
+  it("marks nothing overridden beyond the vertical markers' own always-overridden defaults when every other dependent field already matches the shared values", () => {
+    // Same rationale as `reconcileVectorByWallsSharedStyle`'s own analogous test above —
+    // `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` default to the fixed
+    // `DEFAULT_VERTICAL_STYLE` look, not the shared style, so `DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS.
+    // sharedStyle.overrides` already pins them overridden.
     const next = reconcileVectorByCorridorsSharedStyle(corridorsSettings());
-    expect(next.sharedStyle.overrides).toEqual({});
+    expect(next.sharedStyle.overrides).toEqual(VERTICAL_PRE_OVERRIDDEN);
   });
 
   it("detects a splitGapWidth mismatch — corridors' own extra gapWidth-group field", () => {

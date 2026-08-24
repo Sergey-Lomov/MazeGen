@@ -798,7 +798,7 @@ mod preset_locked_end_to_end_tests {
         // draws) -- otherwise this test would trivially pass with no InvalidLoop issue at all.
         assert!(issues.iter().any(|i| i.kind() == maze_core::quality_control::INVALID_LOOP), "the fully preset-protected cycle must remain in remaining_issues -- repair can't fix it");
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &HashMap::new(), &preset_state, false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &HashMap::new(), &preset_state, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         let invalid_loop_issue = snapshot.issues.iter().find(|i| i.kind == "invalid_loop").expect("snapshot must carry the invalid_loop issue");
         let crate::dto::IssuePayloadDto::InvalidLoop { edges } = &invalid_loop_issue.payload else {
@@ -875,7 +875,7 @@ mod preset_locked_end_to_end_tests {
         assert!(issues.iter().any(|i| i.kind() == maze_core::quality_control::INVALID_SPLIT_NODE_CONNECTION_GROUP),
             "the fully preset-protected group must remain in remaining_issues -- repair can't fix it");
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &HashMap::new(), &preset_state, false, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &HashMap::new(), &preset_state, |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
 
         let issue_dto = snapshot.issues.iter().find(|i| i.kind == "invalid_split_node_connection_group")
             .expect("snapshot must carry the invalid_split_node_connection_group issue");

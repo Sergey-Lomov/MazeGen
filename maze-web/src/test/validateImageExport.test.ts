@@ -1,38 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { validateVerticalSettingsFields, validateDecorativeLineStyle } from "../store/projectExport/validateImageExport";
-import { DEFAULT_VERTICAL_SETTINGS } from "../store/slices/imageExportDefaults";
+import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle } from "../store/projectExport/validateImageExport";
+import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS } from "../store/slices/imageExportDefaults";
 
 describe("validateVerticalSettingsFields", () => {
-  it("reads the current verticalStyle field as-is", () => {
-    const result = validateVerticalSettingsFields({ verticalStyle: "decorative" }, "path", DEFAULT_VERTICAL_SETTINGS);
-    expect(result.verticalStyle).toBe("decorative");
-  });
-
-  it("migrates a pre-follow-up 'marker' legacy field to 'abstract'", () => {
-    const result = validateVerticalSettingsFields({ verticalPassageDisplayStyle: "marker" }, "path", DEFAULT_VERTICAL_SETTINGS);
-    expect(result.verticalStyle).toBe("abstract");
-  });
-
-  it("migrates a pre-follow-up 'decorative' legacy field as-is", () => {
-    const result = validateVerticalSettingsFields({ verticalPassageDisplayStyle: "decorative" }, "path", DEFAULT_VERTICAL_SETTINGS);
-    expect(result.verticalStyle).toBe("decorative");
-  });
-
-  it("falls back to the default when neither field is present", () => {
-    const result = validateVerticalSettingsFields({}, "path", DEFAULT_VERTICAL_SETTINGS);
-    expect(result.verticalStyle).toBe(DEFAULT_VERTICAL_SETTINGS.verticalStyle);
-  });
-
-  it("falls back to the default for a stale/removed value (e.g. a pre-removal 'realistic' project file)", () => {
-    const result = validateVerticalSettingsFields({ verticalStyle: "realistic" }, "path", DEFAULT_VERTICAL_SETTINGS);
-    expect(result.verticalStyle).toBe(DEFAULT_VERTICAL_SETTINGS.verticalStyle);
-  });
-
-  it("prefers the current field over a stale legacy field", () => {
-    const result = validateVerticalSettingsFields({ verticalStyle: "abstract", verticalPassageDisplayStyle: "decorative" }, "path", DEFAULT_VERTICAL_SETTINGS);
-    expect(result.verticalStyle).toBe("abstract");
-  });
-
   // Arrow style/corner-style fields (GitHub issue #347 third follow-up)
   it("reads twoWayArrowStyle/twoWayArrowCornerStyle as-is when valid", () => {
     const result = validateVerticalSettingsFields({ twoWayArrowStyle: "chevron", twoWayArrowCornerStyle: "miter" }, "path", DEFAULT_VERTICAL_SETTINGS);
@@ -84,14 +54,46 @@ describe("validateVerticalSettingsFields", () => {
     expect(result.twoWayPassageMarker).toEqual(DEFAULT_VERTICAL_SETTINGS.twoWayPassageMarker);
     expect(result.oneWayPassageMarker).toEqual(DEFAULT_VERTICAL_SETTINGS.oneWayPassageMarker);
   });
+});
+
+describe("validateVerticalDecorativeFields", () => {
+  it("reads the current verticalStyle field as-is", () => {
+    const result = validateVerticalDecorativeFields({ verticalStyle: "decorative" }, "path", DEFAULT_VERTICAL_DECORATIVE_SETTINGS);
+    expect(result.verticalStyle).toBe("decorative");
+  });
+
+  it("migrates a pre-follow-up 'marker' legacy field to 'abstract'", () => {
+    const result = validateVerticalDecorativeFields({ verticalPassageDisplayStyle: "marker" }, "path", DEFAULT_VERTICAL_DECORATIVE_SETTINGS);
+    expect(result.verticalStyle).toBe("abstract");
+  });
+
+  it("migrates a pre-follow-up 'decorative' legacy field as-is", () => {
+    const result = validateVerticalDecorativeFields({ verticalPassageDisplayStyle: "decorative" }, "path", DEFAULT_VERTICAL_DECORATIVE_SETTINGS);
+    expect(result.verticalStyle).toBe("decorative");
+  });
+
+  it("falls back to the default when neither field is present", () => {
+    const result = validateVerticalDecorativeFields({}, "path", DEFAULT_VERTICAL_DECORATIVE_SETTINGS);
+    expect(result.verticalStyle).toBe(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.verticalStyle);
+  });
+
+  it("falls back to the default for a stale/removed value (e.g. a pre-removal 'realistic' project file)", () => {
+    const result = validateVerticalDecorativeFields({ verticalStyle: "realistic" }, "path", DEFAULT_VERTICAL_DECORATIVE_SETTINGS);
+    expect(result.verticalStyle).toBe(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.verticalStyle);
+  });
+
+  it("prefers the current field over a stale legacy field", () => {
+    const result = validateVerticalDecorativeFields({ verticalStyle: "abstract", verticalPassageDisplayStyle: "decorative" }, "path", DEFAULT_VERTICAL_DECORATIVE_SETTINGS);
+    expect(result.verticalStyle).toBe("abstract");
+  });
 
   // Decorative line style fields (GitHub issue #428)
   it("reads decorativeStairsTwoWay/decorativeStairsOneWay/decorativeElevator as-is when valid", () => {
     const decorative = { lineColor: 0xabcdef, lineWidth: 4, size: 0.3 };
-    const result = validateVerticalSettingsFields(
+    const result = validateVerticalDecorativeFields(
       { decorativeStairsTwoWay: decorative, decorativeStairsOneWay: decorative, decorativeElevator: decorative },
       "path",
-      DEFAULT_VERTICAL_SETTINGS,
+      DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     );
     expect(result.decorativeStairsTwoWay).toEqual(decorative);
     expect(result.decorativeStairsOneWay).toEqual(decorative);
@@ -99,17 +101,17 @@ describe("validateVerticalSettingsFields", () => {
   });
 
   it("falls back to the default decorative line styles when the fields are absent", () => {
-    const result = validateVerticalSettingsFields({}, "path", DEFAULT_VERTICAL_SETTINGS);
-    expect(result.decorativeStairsTwoWay).toEqual(DEFAULT_VERTICAL_SETTINGS.decorativeStairsTwoWay);
-    expect(result.decorativeStairsOneWay).toEqual(DEFAULT_VERTICAL_SETTINGS.decorativeStairsOneWay);
-    expect(result.decorativeElevator).toEqual(DEFAULT_VERTICAL_SETTINGS.decorativeElevator);
+    const result = validateVerticalDecorativeFields({}, "path", DEFAULT_VERTICAL_DECORATIVE_SETTINGS);
+    expect(result.decorativeStairsTwoWay).toEqual(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsTwoWay);
+    expect(result.decorativeStairsOneWay).toEqual(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsOneWay);
+    expect(result.decorativeElevator).toEqual(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeElevator);
   });
 
   it("reads decorativeStairsArrowColor/decorativeStairsArrowSize/decorativeStairsAccentColor as-is when present", () => {
-    const result = validateVerticalSettingsFields(
+    const result = validateVerticalDecorativeFields(
       { decorativeStairsArrowColor: 0x123123, decorativeStairsArrowSize: 0.9, decorativeStairsAccentColor: 0x321321 },
       "path",
-      DEFAULT_VERTICAL_SETTINGS,
+      DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     );
     expect(result.decorativeStairsArrowColor).toBe(0x123123);
     expect(result.decorativeStairsArrowSize).toBe(0.9);
@@ -117,10 +119,10 @@ describe("validateVerticalSettingsFields", () => {
   });
 
   it("falls back to the default arrow color/size/accent color when the fields are absent", () => {
-    const result = validateVerticalSettingsFields({}, "path", DEFAULT_VERTICAL_SETTINGS);
-    expect(result.decorativeStairsArrowColor).toBe(DEFAULT_VERTICAL_SETTINGS.decorativeStairsArrowColor);
-    expect(result.decorativeStairsArrowSize).toBe(DEFAULT_VERTICAL_SETTINGS.decorativeStairsArrowSize);
-    expect(result.decorativeStairsAccentColor).toBe(DEFAULT_VERTICAL_SETTINGS.decorativeStairsAccentColor);
+    const result = validateVerticalDecorativeFields({}, "path", DEFAULT_VERTICAL_DECORATIVE_SETTINGS);
+    expect(result.decorativeStairsArrowColor).toBe(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsArrowColor);
+    expect(result.decorativeStairsArrowSize).toBe(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsArrowSize);
+    expect(result.decorativeStairsAccentColor).toBe(DEFAULT_VERTICAL_DECORATIVE_SETTINGS.decorativeStairsAccentColor);
   });
 });
 
