@@ -9,78 +9,13 @@ import { NavGraphRenderer } from "./NavGraphRenderer";
 import { RouteOverlay } from "./RouteOverlay";
 import { PureCyclesOverlay } from "./PureCyclesOverlay";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
-import { VerticalConnectionRenderer, type VerticalConnectionStyle } from "./renderers/VerticalConnectionRenderer";
+import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { postEditEdgesToDto, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportEdges, type TeleportFloorContext } from "./selectors/mazeSelectors";
 import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "./postEditEndpoint";
 import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
 import type { Viewport } from "./renderers/types";
 import type { PostEditEdge } from "../store/mazeStore";
-import { canvas } from "./colorTokens";
-
-/** Dark accent for a one-way passage marker's entry border / exit fill (GitHub issue #347 fourth
- *  follow-up) — mirrors `DEFAULT_VERTICAL_SETTINGS`'s own `ONE_WAY_ACCENT_DARK` (`imageExportDefaults.ts`),
- *  kept as a separate copy per `maze-web/CLAUDE.md`'s feature-renderer ownership rule. */
-const ONE_WAY_ACCENT_DARK = 0x196c64;
-
-/** Fixed style for `VerticalConnectionRenderer` — Analytics has no settings panel of its own for
- *  this, so it always uses this one look, mirroring `PostEditRenderer`'s own `DEFAULT_VERTICAL_STYLE`
- *  — kept as a separate copy per `maze-web/CLAUDE.md`'s feature-renderer ownership rule (no shared
- *  renderer instances/constants across features). */
-const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = {
-  style: "abstract",
-  twoWayPassageMarker: {
-    shape: "circle",
-    cornerStyle: "round",
-    fillColor: canvas.vertical.default,
-    borderColor: canvas.vertical.default,
-    borderWidth: 3,
-    gapWidth: 3,
-    gapColor: canvas.floor.default,
-    size: 0.22,
-  },
-  oneWayPassageMarker: {
-    shape: "circle",
-    cornerStyle: "round",
-    fillColor: canvas.vertical.default,
-    borderColor: canvas.vertical.default,
-    borderWidth: 3,
-    gapWidth: 3,
-    gapColor: canvas.floor.default,
-    size: 0.22,
-  },
-  elevatorMarker: {
-    shape: "diamond",
-    cornerStyle: "round",
-    fillColor: canvas.vertical.default,
-    borderColor: canvas.vertical.default,
-    borderWidth: 3,
-    gapWidth: 3,
-    gapColor: canvas.floor.default,
-    size: 0.22,
-  },
-  twoWayArrowColor: canvas.floor.default,
-  twoWayArrowSize: 0.75,
-  twoWayArrowStyle: "triangle",
-  twoWayArrowCornerStyle: "round",
-  oneWayArrowColor: canvas.floor.default,
-  oneWayArrowSize: 0.75,
-  oneWayArrowStyle: "triangle",
-  oneWayArrowCornerStyle: "round",
-  oneWayAccentColor: ONE_WAY_ACCENT_DARK,
-  elevatorArrowColor: canvas.floor.default,
-  elevatorArrowSize: 0.75,
-  elevatorArrowStyle: "triangle",
-  elevatorArrowCornerStyle: "round",
-  // `style: "abstract"` above means these decorative fields (GitHub issue #428) are never actually
-  // read — filled in only to satisfy `VerticalConnectionStyle`'s type.
-  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
-  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
-  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
-  decorativeStairsArrowColor: canvas.floor.default,
-  decorativeStairsArrowSize: 0.75,
-  decorativeStairsAccentColor: ONE_WAY_ACCENT_DARK,
-};
 
 export class AnalyticsRenderer {
   private readonly gridContainer: Container;

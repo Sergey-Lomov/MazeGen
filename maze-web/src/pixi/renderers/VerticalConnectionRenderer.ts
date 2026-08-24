@@ -1,9 +1,13 @@
-import { Container, Graphics } from "pixi.js";
-import type { VerticalConnectionMarker, MarkerShape, TeleportCornerStyle, OneWayPattern } from "./types";
+import { Container, Graphics, Text } from "pixi.js";
+import type { TextStyleFontWeight } from "pixi.js";
+import type { VerticalConnectionMarker, MarkerShape, TeleportCornerStyle, OneWayPattern, ElevatorBadgeFontWeight } from "./types";
+import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
 import { drawMarkerShape } from "./markerShapes";
 import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron } from "./wallUtils";
 import { TILE_SIZE } from "../constants";
 import { navigateToFloor } from "./floorNavigation";
+import { computeElevatorBadgePositions, formatElevatorBadgeLabel } from "./elevatorBadgeLayout";
+import { canvas } from "../colorTokens";
 
 /** Same field shape as `MarkerSettings` (`storeTypes.ts`) plus `gapColor`, by design — kept as its
  *  own type since this lower-level renderer module must not depend on the store layer, same
@@ -75,6 +79,87 @@ export type VerticalConnectionStyle = {
    *  convention as `twoWayArrowSize`. */
   decorativeStairsArrowSize: number;
   decorativeStairsAccentColor: number;
+  /** "Floor-number badges" (GitHub issue #430) — see `ElevatorBadgeSettings`'s own doc comment.
+   *  Independent of `style`: applies to `elevatorMarker`/`decorativeElevator` alike. */
+  elevatorBadges: ElevatorBadgeSettings;
+};
+
+/** Dark accent for a one-way passage marker's entry border / exit fill (GitHub issue #347 fourth
+ *  follow-up) — mirrors `DEFAULT_VERTICAL_SETTINGS`'s own `ONE_WAY_ACCENT_DARK`
+ *  (`imageExportDefaults.ts`). */
+const ONE_WAY_ACCENT_DARK = 0x196c64;
+
+/** Fixed live-canvas `VerticalConnectionStyle` shared by every read-only/tool-driven view with no
+ *  settings panel of its own for this (`GenerationRenderer`, `AnalyticsRenderer`, `PostEditRenderer`,
+ *  `PresetConnectionsRenderer`) — same convention as `TeleportRenderer`'s own `DEFAULT_LINE_STYLE`
+ *  fallback. Only `VectorByWallsRenderer`'s export panel lets the user configure this style
+ *  (`buildVerticalConnectionStyle`). Previously duplicated byte-for-byte in all four renderer files
+ *  (GitHub issue #337/#347) — the "no shared renderer instances across features" rule
+ *  (`maze-web/CLAUDE.md`) is about renderer *instances*, not plain data, so a single shared constant
+ *  here is the "extract shared code into a base class or utility" case that rule itself calls for.
+ *  `VerticalPassage`/`Elevator` share `canvas.vertical.default` but are told apart by shape (circle
+ *  vs. diamond); a two-way passage's own solid fill and a one-way passage's own empty (floor-colored)
+ *  fill are what tell those two apart. Floor-number badges (GitHub issue #430) stay `enabled: false`
+ *  — none of these four views has a settings panel to opt into them from. */
+export const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = {
+  style: "abstract",
+  twoWayPassageMarker: {
+    shape: "circle",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 3,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  oneWayPassageMarker: {
+    shape: "circle",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 3,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  elevatorMarker: {
+    shape: "diamond",
+    cornerStyle: "round",
+    fillColor: canvas.vertical.default,
+    borderColor: canvas.vertical.default,
+    borderWidth: 3,
+    gapWidth: 3,
+    gapColor: canvas.floor.default,
+    size: 0.22,
+  },
+  twoWayArrowColor: canvas.floor.default,
+  twoWayArrowSize: 0.75,
+  twoWayArrowStyle: "triangle",
+  twoWayArrowCornerStyle: "round",
+  oneWayArrowColor: canvas.floor.default,
+  oneWayArrowSize: 0.75,
+  oneWayArrowStyle: "triangle",
+  oneWayArrowCornerStyle: "round",
+  oneWayAccentColor: ONE_WAY_ACCENT_DARK,
+  elevatorArrowColor: canvas.floor.default,
+  elevatorArrowSize: 0.75,
+  elevatorArrowStyle: "triangle",
+  elevatorArrowCornerStyle: "round",
+  // `style: "abstract"` above means these decorative fields (GitHub issue #428) are never actually
+  // read — filled in only to satisfy `VerticalConnectionStyle`'s type.
+  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
+  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
+  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
+  decorativeStairsArrowColor: canvas.floor.default,
+  decorativeStairsArrowSize: 0.75,
+  decorativeStairsAccentColor: ONE_WAY_ACCENT_DARK,
+  // Floor-number badges (GitHub issue #430) are a settings-panel-only opt-in — none of these
+  // read-only/tool-driven views has a settings panel to enable them from, so `enabled: false` here
+  // makes every other field below purely inert filler (kept in sync with
+  // `imageExportDefaults.ts`'s own `elevatorBadges` values only by convention, not by import — this
+  // module must not depend on the store layer, see this file's own class-level doc comment).
+  elevatorBadges: { enabled: false, labelType: "arabic", size: 0.7, placement: "top_bottom", distance: 4, gap: 2, gapWidth: 2, cornerStyle: "round", evenDistribution: false, shape: "circle", fillColor: 0xf0c900, textColor: canvas.floor.default, fontWeight: "bold" },
 };
 
 /** Each pattern's own tip reach, as a fraction of its `size` param (`wallUtils.ts`) — none of the
@@ -290,6 +375,95 @@ function drawStairsArrow(g: Graphics, cx: number, cy: number, r: number, size: n
   g.stroke({ color, width: lineWidth, join: "round", cap: "round" });
 }
 
+/** Draws one floor-number badge's gap ring alone (GitHub issue #430 second follow-up) — same
+ *  "gap ring, then fill on top" convention `WaypointsRenderer` uses for `MarkerSettings.gapWidth`,
+ *  but split into its own function so every badge's gap ring across a whole render pass can be drawn
+ *  *before* any badge's own fill (`drawElevatorBadges`' two-pass draw order below) — otherwise a
+ *  gap ring drawn immediately before its own fill would still land on top of an already-drawn
+ *  neighboring badge, cutting into it; drawing every gap first keeps every badge's own fill on top
+ *  of any gap ring it might overlap, never the reverse. Sized to `radius + gapWidth` alone (no
+ *  border-width addition; badges never draw a border) — still no inter-badge *avoidance* (two gap
+ *  rings can still overlap each other), only a fixed draw order so a gap never wins over a fill. */
+function drawElevatorBadgeGap(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, gapWidth: number, gapColor: number): void {
+  if (gapWidth <= 0) return;
+  const gapGraphics = new Graphics();
+  drawMarkerShape(gapGraphics, shape, pos.x, pos.y, radius + gapWidth, rounded);
+  gapGraphics.fill(gapColor);
+  container.addChild(gapGraphics);
+}
+
+/** Draws one floor-number badge's own body (GitHub issue #430) — a small filled circle with a
+ *  centered label (`formatElevatorBadgeLabel`), independent of `drawFloorBadge`'s own
+ *  cross-floor-navigation badge (`floorBadge.ts`, a different feature: an off-floor endpoint
+ *  stand-in with a knockout digit and its own click-to-navigate wiring). This badge never navigates
+ *  and always fills solid, with the label drawn *on top* in `textColor` rather than knocked out of
+ *  the fill — the issue's own "fill color"/"text color" pair implies two independently visible
+ *  colors, not a stencil cutout. No gap ring here — see `drawElevatorBadgeGap`. */
+const ELEVATOR_BADGE_FONT_WEIGHTS: Record<ElevatorBadgeFontWeight, TextStyleFontWeight> = {
+  regular: "normal",
+  bold: "bold",
+};
+
+function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, label: string, fillColor: number, textColor: number, fontSize: number, fontWeight: ElevatorBadgeFontWeight): void {
+  const g = new Graphics();
+  drawMarkerShape(g, shape, pos.x, pos.y, radius, rounded);
+  g.fill(fillColor);
+  container.addChild(g);
+  const text = new Text({
+    text: label,
+    style: { fontSize, fill: textColor, fontWeight: ELEVATOR_BADGE_FONT_WEIGHTS[fontWeight], trim: true },
+    resolution: 4,
+  });
+  text.anchor.set(0.5);
+  text.x = pos.x;
+  text.y = pos.y;
+  container.addChild(text);
+}
+
+/** Picks one font size shared by every elevator badge across the whole render pass (round-4 GitHub
+ *  issue #430 follow-up) — sized to fit the widest label among *every* elevator marker being drawn,
+ *  not just one marker's own fan, so every badge in the image reads at the same size regardless of
+ *  which elevator it belongs to (an elevator reaching only floor 2 must still draw as small as one
+ *  reaching floor 8, e.g. `labelType: "roman"`'s `"VIII"`, since a shared badge size that changed
+ *  per-elevator would look inconsistent across the maze). Starts at the baseline `radius * 1.4` and
+ *  only ever scales *down* — every badge shares whatever the single worst-case label needs. */
+function fitElevatorBadgeFontSize(labels: string[], radius: number): number {
+  const baseline = radius * 1.4;
+  const targetWidth = radius * 1.6;
+  let widest = 0;
+  for (const label of labels) {
+    const probe = new Text({ text: label, style: { fontSize: baseline, fontWeight: "bold", trim: true } });
+    widest = Math.max(widest, probe.width);
+    probe.destroy();
+  }
+  if (widest <= targetWidth || widest === 0) return baseline;
+  return baseline * (targetWidth / widest);
+}
+
+/** Draws every floor-number badge for one `Elevator` marker (GitHub issue #430) — a no-op unless
+ *  `settings.enabled` and the marker actually carries a resolved fan (`targetFloorIndices`, only
+ *  ever set for `kind === "elevator"`, see `VerticalConnectionMarker`'s own doc comment). Shared by
+ *  both the marker-shape and decorative render branches — badges are an independent layer on top of
+ *  either. `gapColor` is the current floor color — callers pass `elevatorMarker.gapColor`, which
+ *  already mirrors it (see `VerticalMarkerStyle`'s own doc comment), so badges don't need their own
+ *  copy of that convention threaded through. `fontSize` is shared across the whole render pass (see
+ *  `fitElevatorBadgeFontSize`), not recomputed per marker. Draws every badge's own gap ring first,
+ *  then every badge's own body — never gap-then-body-then-gap-then-body — so no badge's fill ever
+ *  ends up underneath a neighboring badge's gap ring. */
+function drawElevatorBadges(container: Container, marker: VerticalConnectionMarker, cx: number, cy: number, markerRadius: number, settings: ElevatorBadgeSettings, gapColor: number, fontSize: number): void {
+  if (!settings.enabled || marker.kind !== "elevator" || !marker.targetFloorIndices || marker.targetFloorIndices.length === 0) return;
+  const badgeRadius = markerRadius * settings.size;
+  const rounded = settings.cornerStyle === "round";
+  const positions = computeElevatorBadgePositions(cx, cy, markerRadius, marker.targetFloorIndices.length, badgeRadius, settings.distance, settings.gap, settings.placement, settings.evenDistribution);
+  const labels = marker.targetFloorIndices.map((floorIndex) => formatElevatorBadgeLabel(floorIndex, settings.labelType));
+  for (const pos of positions) {
+    drawElevatorBadgeGap(container, pos, badgeRadius, settings.shape, rounded, settings.gapWidth, gapColor);
+  }
+  for (const [i, label] of labels.entries()) {
+    drawElevatorBadgeBody(container, positions[i], badgeRadius, settings.shape, rounded, label, settings.fillColor, settings.textColor, fontSize, settings.fontWeight);
+  }
+}
+
 /** Renders `VerticalPassage`/`Elevator` markers for one mode renderer (GitHub issue #347) — its own
  *  low-level primitive, alongside `WaypointsRenderer`/`TeleportRenderer`, so a future floor-aware
  *  `GenerationRenderer` can own its own instance the same way it already does for those (per
@@ -344,12 +518,24 @@ export class VerticalConnectionRenderer {
       else groupByPos.set(key, [marker]);
     }
 
+    // Shared across every elevator badge drawn this render pass (round-4 GitHub issue #430
+    // follow-up) — see `fitElevatorBadgeFontSize`'s own doc comment for why this must be computed
+    // once over every elevator's own `targetFloorIndices`, not per marker. `markerRadius` is the
+    // same for every elevator in one pass (one style mode applies to the whole render call), sourced
+    // from whichever branch this pass actually uses.
+    const decorative = data.style.style === "decorative";
+    const elevatorMarkerRadius = (decorative ? data.style.decorativeElevator.size : data.style.elevatorMarker.size) * TILE_SIZE;
+    const badgeRadius = elevatorMarkerRadius * data.style.elevatorBadges.size;
+    const allBadgeLabels = data.markers
+      .filter((m) => m.kind === "elevator" && m.targetFloorIndices)
+      .flatMap((m) => m.targetFloorIndices!.map((floorIndex) => formatElevatorBadgeLabel(floorIndex, data.style.elevatorBadges.labelType)));
+    const badgeFontSize = fitElevatorBadgeFontSize(allBadgeLabels, badgeRadius);
+
     for (const marker of data.markers) {
-      const decorative = data.style.style === "decorative";
       const group = groupByPos.get(`${marker.pos[0]},${marker.pos[1]}`)!;
 
       if (decorative) {
-        this.renderDecorativeMarker(marker, group, data.style, data.interactive);
+        this.renderDecorativeMarker(marker, group, data.style, data.interactive, badgeFontSize);
         continue;
       }
 
@@ -461,6 +647,7 @@ export class VerticalConnectionRenderer {
       }
 
       this.wireInteractivity(marker, data.interactive, cx, cy, radius + borderWidth + gapWidth);
+      drawElevatorBadges(this.g, marker, cx, cy, radius, data.style.elevatorBadges, data.style.elevatorMarker.gapColor, badgeFontSize);
     }
   }
 
@@ -499,6 +686,7 @@ export class VerticalConnectionRenderer {
     group: VerticalConnectionMarker[],
     style: VerticalConnectionStyle,
     interactive: boolean | ((marker: VerticalConnectionMarker) => boolean) | undefined,
+    badgeFontSize: number,
   ): void {
     const lineStyle =
       marker.kind === "elevator" ? style.decorativeElevator : marker.filled ? style.decorativeStairsTwoWay : style.decorativeStairsOneWay;
@@ -513,6 +701,7 @@ export class VerticalConnectionRenderer {
     if (marker.kind === "elevator") {
       drawElevatorIcon(this.g, cx, cy, radius, lineStyle.lineWidth, lineStyle.lineColor);
       this.wireInteractivity(marker, interactive, cx, cy, radius);
+      drawElevatorBadges(this.g, marker, cx, cy, radius, style.elevatorBadges, style.elevatorMarker.gapColor, badgeFontSize);
       return;
     }
 

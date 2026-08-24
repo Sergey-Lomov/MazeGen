@@ -12,6 +12,8 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   waypoint_on_split: m["image_export.vector_by_walls.warning_waypoint_on_split"],
   teleport_on_special_split: m["image_export.vector_by_walls.warning_teleport_on_special_split"],
   vertical_on_special_split: m["image_export.vector_by_walls.warning_vertical_on_special_split"],
+  elevator_badges_overlap: m["image_export.vector_by_walls.warning_elevator_badges_overlap"],
+  elevator_badges_too_many: m["image_export.vector_by_walls.warning_elevator_badges_too_many"],
   one_way_arrows_overflow_corridor: m["image_export.vector_by_corridors.warning_one_way_arrows_overflow"],
 };
 
@@ -22,6 +24,8 @@ const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   waypoint_on_split: m["image_export.vector_by_walls.warning_waypoint_on_split_description"],
   teleport_on_special_split: m["image_export.vector_by_walls.warning_teleport_on_special_split_description"],
   vertical_on_special_split: m["image_export.vector_by_walls.warning_vertical_on_special_split_description"],
+  elevator_badges_overlap: m["image_export.vector_by_walls.warning_elevator_badges_overlap_description"],
+  elevator_badges_too_many: m["image_export.vector_by_walls.warning_elevator_badges_too_many_description"],
   one_way_arrows_overflow_corridor: m["image_export.vector_by_corridors.warning_one_way_arrows_overflow_description"],
 };
 

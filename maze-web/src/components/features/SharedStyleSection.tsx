@@ -51,8 +51,8 @@ export function SharedStyleSection({
         label={m["image_export.vector_by_walls.shared_style_corner_style"]()}
         value={cornerStyle}
         options={[
-          { value: "sharp" as TeleportCornerStyle, label: m["image_export.vector_by_walls.teleport_corner_style_sharp"]() },
-          { value: "round" as TeleportCornerStyle, label: m["image_export.vector_by_walls.teleport_corner_style_round"]() },
+          { value: "sharp" as TeleportCornerStyle, label: m["image_export.vector_by_walls.corner_style_sharp"]() },
+          { value: "round" as TeleportCornerStyle, label: m["image_export.vector_by_walls.corner_style_round"]() },
         ]}
         onChange={onCornerStyleChange}
       />

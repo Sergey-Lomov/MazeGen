@@ -131,7 +131,7 @@ describe("forceVectorByWallsSharedStyle / forceVectorByCorridorsSharedStyle", ()
 });
 
 const VERTICAL_PRE_OVERRIDDEN = {
-  cornerStyle: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+  cornerStyle: { twoWayPassage: true, oneWayPassage: true, elevator: true, elevatorBadges: true },
   markerSize: { twoWayPassage: true, oneWayPassage: true, elevator: true },
   markerBorderWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
   gapWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },

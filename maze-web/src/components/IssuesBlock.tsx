@@ -8,7 +8,7 @@ import { embeddedNotificationStyle, notificationPalette } from "./EmbeddedNotifi
 import { SectionHeader } from "./SectionHeader";
 import { ToggleRow } from "./ToggleRow";
 import { selectNodeLevelResolver, selectNodeIdsForLevel } from "../pixi/selectors/mazeSelectors";
-import { navigateToFloor } from "../pixi/renderers/floorNavigation";
+import { FloorBadgeRow } from "./FloorBadgeRow";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 import type { IssueDto, IssueEdgeGroupPayload } from "../wasm/types";
@@ -365,34 +365,13 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
 /// per-element highlight data) -- there is nothing to badge in that case.
 function IssueFloorBadges({ nodeIds, bg, text, className }: { nodeIds: number[]; bg: string; text: string; className?: string }) {
   const nodes = useMazeStore((s) => s.nodes);
-  const floors = useMazeStore((s) => s.floors);
   // Memoized on `nodes` identity, not rebuilt per render -- `nodes` only changes on
   // generate/reset/load, while this component can re-render far more often (any store update
   // touching the Analytics panel), and rebuilding the full node->level Map per bubble per render
   // would be wasted work at scale (many issue bubbles x many nodes).
   const resolveNodeLevel = useMemo(() => selectNodeLevelResolver(nodes), [nodes]);
   const levels = Array.from(new Set(nodeIds.map((id) => resolveNodeLevel(id)).filter((l): l is number => l !== undefined))).sort((a, b) => a - b);
-  if (floors.length <= 1 || levels.length === 0) return null;
-  return (
-    <div className={className} style={issueStyles.floorBadgeRow}>
-      {levels.map((level) => (
-        <button
-          key={level}
-          type="button"
-          style={{ ...issueStyles.floorBadge, background: bg, color: text }}
-          // Badges live inside the bubble's own clickable div (opens the description modal) --
-          // stopPropagation keeps a badge click purely a floor switch, not also an open-modal click.
-          onClick={(e) => {
-            e.stopPropagation();
-            navigateToFloor(level);
-          }}
-          disabled={!floors[level]}
-        >
-          {`L${level + 1}`}
-        </button>
-      ))}
-    </div>
-  );
+  return <FloorBadgeRow levels={levels} bg={bg} text={text} className={className} />;
 }
 
 export function IssuesBlock({ issues }: { issues: IssueDto[] }) {
@@ -476,20 +455,5 @@ const issueStyles: Record<string, React.CSSProperties> = {
     borderTop: `1px solid`,
     borderColor: ui.border.default,
     margin: `${spacing.itemGap}px 0`,
-  },
-  floorBadgeRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: spacing.itemGap / 2,
-    flexShrink: 0,
-  },
-  floorBadge: {
-    ...typography.body,
-    fontSize: "0.75em",
-    lineHeight: 1,
-    padding: "2px 6px",
-    borderRadius: 999,
-    border: "none",
-    cursor: "pointer",
   },
 };

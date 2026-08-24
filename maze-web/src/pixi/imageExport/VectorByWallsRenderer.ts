@@ -44,6 +44,7 @@ export class ExportWarningHighlight<TSettings> {
     settings: TSettings,
     start: number | null,
     finish: number | null,
+    unscopedNodes?: NodeDto[],
   ) => ExportWarning[];
 
   private cache: {
@@ -53,6 +54,7 @@ export class ExportWarningHighlight<TSettings> {
     settings: TSettings;
     start: number | null;
     finish: number | null;
+    unscopedNodes: NodeDto[];
     warnings: ExportWarning[];
   } | null = null;
 
@@ -65,6 +67,7 @@ export class ExportWarningHighlight<TSettings> {
       settings: TSettings,
       start: number | null,
       finish: number | null,
+      unscopedNodes?: NodeDto[],
     ) => ExportWarning[],
   ) {
     this.highlight = new RegionHighlightRenderer(container);
@@ -79,6 +82,7 @@ export class ExportWarningHighlight<TSettings> {
     settings: TSettings,
     start: number | null,
     finish: number | null,
+    unscopedNodes: NodeDto[] = nodes,
   ): void {
     if (!hoveredKey) {
       this.highlight.clear();
@@ -92,12 +96,13 @@ export class ExportWarningHighlight<TSettings> {
       this.cache.cfg === cfg &&
       this.cache.settings === settings &&
       this.cache.start === start &&
-      this.cache.finish === finish
+      this.cache.finish === finish &&
+      this.cache.unscopedNodes === unscopedNodes
     ) {
       warnings = this.cache.warnings;
     } else {
-      warnings = this.computeWarnings(nodes, edges, cfg, settings, start, finish);
-      this.cache = { nodes, edges, cfg, settings, start, finish, warnings };
+      warnings = this.computeWarnings(nodes, edges, cfg, settings, start, finish, unscopedNodes);
+      this.cache = { nodes, edges, cfg, settings, start, finish, unscopedNodes, warnings };
     }
     const warning = warnings.find((w) => w.key === hoveredKey);
     if (!warning || warning.nodes.length === 0) {
@@ -494,7 +499,7 @@ export class VectorByWallsRenderer {
     const { nodes, edges, start, finish } = selectFloorScopedMaze(
       state.nodes, state.edges, state.floors, state.activeFloorId, rawEndpoints.start, rawEndpoints.finish,
     );
-    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByWallsSettings, start, finish);
+    this.warningHighlight.render(hoveredExportWarningKey, nodes, edges, state.activeTessellationConfig, state.vectorByWallsSettings, start, finish, state.nodes);
   }
 
   destroy(): void {

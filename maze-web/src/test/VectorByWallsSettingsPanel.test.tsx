@@ -252,7 +252,7 @@ describe("VectorByWallsSettingsPanel", () => {
 
   it("changing the start marker corner style updates the store (GitHub issue #302)", () => {
     render(<VectorByWallsSettingsPanel />);
-    const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.teleport_corner_style_sharp"]());
+    const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.corner_style_sharp"]());
     fireEvent.change(selects[0], { target: { value: "round" } });
     expect(useMazeStore.getState().vectorByWallsSettings.startMarker.cornerStyle).toBe("round");
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.cornerStyle).toBe("sharp");
@@ -260,7 +260,7 @@ describe("VectorByWallsSettingsPanel", () => {
 
   it("changing the finish marker corner style updates only the finish marker", () => {
     render(<VectorByWallsSettingsPanel />);
-    const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.teleport_corner_style_sharp"]());
+    const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.corner_style_sharp"]());
     fireEvent.change(selects[1], { target: { value: "round" } });
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.cornerStyle).toBe("round");
     expect(useMazeStore.getState().vectorByWallsSettings.startMarker.cornerStyle).toBe("sharp");
@@ -375,7 +375,7 @@ describe("VectorByWallsSettingsPanel", () => {
 
     it("changing the corner style updates the store", () => {
       render(<VectorByWallsSettingsPanel />);
-      const select = screen.getByDisplayValue(m["image_export.vector_by_walls.teleport_corner_style_sharp"]());
+      const select = screen.getByDisplayValue(m["image_export.vector_by_walls.corner_style_sharp"]());
       fireEvent.change(select, { target: { value: "round" } });
       expect(useMazeStore.getState().vectorByWallsSettings.teleportLineCornerStyle).toBe("round");
     });
@@ -716,6 +716,97 @@ describe("VectorByWallsSettingsPanel", () => {
         .parentElement!.querySelector('input[type="color"]') as HTMLInputElement;
       fireEvent.change(accentInput, { target: { value: "#112233" } });
       expect(useMazeStore.getState().vectorByWallsSettings.oneWayAccentColor).toBe(0x112233);
+    });
+
+    describe("Elevator badges subsection (GitHub issue #430)", () => {
+      function setElevatorState(overrides?: { elevatorBadgesEnabled?: boolean }) {
+        useMazeStore.setState({
+          nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
+          edges: [{ from: 0, to: 1, kind: "elevator" as const }],
+          vectorByWallsSectionsExpanded: {
+            ...useMazeStore.getState().vectorByWallsSectionsExpanded,
+            vertical: true,
+            vertical_elevator: true,
+          },
+          vectorByWallsSettings: {
+            ...useMazeStore.getState().vectorByWallsSettings,
+            elevatorBadges: {
+              ...useMazeStore.getState().vectorByWallsSettings.elevatorBadges,
+              ...(overrides?.elevatorBadgesEnabled !== undefined ? { enabled: overrides.elevatorBadgesEnabled } : {}),
+            },
+          },
+        });
+      }
+
+      it("renders the elevator badges toggle when the elevator sub-group is expanded", () => {
+        setElevatorState();
+        render(<VectorByWallsSettingsPanel />);
+        expect(screen.getByText(m["image_export.vector_by_walls.elevator_badges_enabled"]())).toBeInTheDocument();
+      });
+
+      it("hides the rest of the elevator badges fields when disabled", () => {
+        setElevatorState({ elevatorBadgesEnabled: false });
+        render(<VectorByWallsSettingsPanel />);
+        expect(screen.queryByText(m["image_export.vector_by_walls.elevator_badges_label_type"]())).not.toBeInTheDocument();
+      });
+
+      it("toggling elevator badges on shows the rest of the fields and updates the store", () => {
+        setElevatorState({ elevatorBadgesEnabled: false });
+        render(<VectorByWallsSettingsPanel />);
+        const toggle = screen.getByText(m["image_export.vector_by_walls.elevator_badges_enabled"]())
+          .closest("div")!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+        fireEvent.click(toggle);
+        expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.enabled).toBe(true);
+        expect(screen.getByText(m["image_export.vector_by_walls.elevator_badges_label_type"]())).toBeInTheDocument();
+      });
+
+      it("changing the label type updates the store", () => {
+        setElevatorState({ elevatorBadgesEnabled: true });
+        render(<VectorByWallsSettingsPanel />);
+        const select = screen.getByDisplayValue(m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]());
+        fireEvent.change(select, { target: { value: "roman" } });
+        expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.labelType).toBe("roman");
+      });
+
+      it("changing the font weight updates the store", () => {
+        setElevatorState({ elevatorBadgesEnabled: true });
+        render(<VectorByWallsSettingsPanel />);
+        const select = screen.getByDisplayValue(m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]());
+        fireEvent.change(select, { target: { value: "regular" } });
+        expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.fontWeight).toBe("regular");
+      });
+
+      it("changing the corner style updates the store and marks it shared-style overridden (GitHub issue #322 follow-up)", () => {
+        setElevatorState({ elevatorBadgesEnabled: true });
+        useMazeStore.setState({
+          vectorByWallsSettings: {
+            ...useMazeStore.getState().vectorByWallsSettings,
+            sharedStyle: {
+              ...useMazeStore.getState().vectorByWallsSettings.sharedStyle,
+              overrides: { ...useMazeStore.getState().vectorByWallsSettings.sharedStyle.overrides, cornerStyle: {} },
+            },
+          },
+        });
+        render(<VectorByWallsSettingsPanel />);
+        // `elevatorMarker`'s own "Corner style" row (`MarkerSettingsGroup`) and `elevatorBadges`'
+        // own row (`ElevatorBadgesSubsection`) share the same label text — the badges row is the
+        // one rendered second (badges sit under the elevator marker's own sub-group).
+        const selects = screen.getAllByDisplayValue(m["image_export.vector_by_walls.corner_style_round"]());
+        fireEvent.change(selects[selects.length - 1], { target: { value: "sharp" } });
+        expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.cornerStyle).toBe("sharp");
+        expect(useMazeStore.getState().vectorByWallsSettings.sharedStyle.overrides.cornerStyle?.elevatorBadges).toBe(true);
+      });
+
+      it("changing the fill color updates the store", () => {
+        setElevatorState({ elevatorBadgesEnabled: true });
+        render(<VectorByWallsSettingsPanel />);
+        // "Fill color" text also matches `elevatorMarker`'s own row (`MarkerSettingsGroup`) — the
+        // badges row is the one rendered second.
+        const labels = screen.getAllByText(m["image_export.vector_by_walls.elevator_badges_fill_color"]());
+        const input = labels[labels.length - 1].parentElement!.querySelector('input[type="color"]') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: "#112233" } });
+        expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.fillColor).toBe(0x112233);
+      });
     });
   });
 

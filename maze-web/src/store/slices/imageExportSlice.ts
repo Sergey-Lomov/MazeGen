@@ -400,6 +400,21 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
         [section]: { ...s.vectorByWallsSettings[section], ...patch },
       },
     })),
+  patchVectorByWallsElevatorBadges: (patch) =>
+    set((s) => ({
+      vectorByWallsSettings: {
+        ...s.vectorByWallsSettings,
+        elevatorBadges: { ...s.vectorByWallsSettings.elevatorBadges, ...patch },
+      },
+    })),
+  setVectorByWallsElevatorBadgesCornerStyle: (style) =>
+    set((s) => ({
+      vectorByWallsSettings: {
+        ...s.vectorByWallsSettings,
+        elevatorBadges: { ...s.vectorByWallsSettings.elevatorBadges, cornerStyle: style },
+        sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "cornerStyle", "elevatorBadges") },
+      },
+    })),
   setVectorByWallsTwoWayPassageMarkerShape: (shape) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, twoWayPassageMarker: { ...s.vectorByWallsSettings.twoWayPassageMarker, shape } } })),
   setVectorByWallsTwoWayPassageMarkerCornerStyle: (style) =>

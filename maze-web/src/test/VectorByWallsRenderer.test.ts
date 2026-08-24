@@ -111,9 +111,10 @@ vi.mock("../store/mazeStore", () => ({
 }));
 
 vi.mock("pixi.js", () => ({
-  Container: vi.fn().mockImplementation(function (this: { addChild: () => void; addChildAt: () => void; destroy: () => void; visible: boolean; getLocalBounds: () => unknown }) {
+  Container: vi.fn().mockImplementation(function (this: { addChild: () => void; addChildAt: () => void; removeChildren: () => unknown[]; destroy: () => void; visible: boolean; getLocalBounds: () => unknown }) {
     this.addChild = vi.fn();
     this.addChildAt = vi.fn();
+    this.removeChildren = vi.fn(() => []);
     this.destroy = vi.fn();
     this.visible = false;
     // Empty by default (Infinity/-Infinity, pixi's own "nothing drawn" convention) — tests that
@@ -202,6 +203,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     decorativeStairsArrowColor: 0x111111,
     decorativeStairsArrowSize: 0.6,
     decorativeStairsAccentColor: 0x2a2a2a,
+    elevatorBadges: { enabled: false, labelType: "arabic", size: 0.5, placement: "left_right", distance: 4, gap: 1, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0x555555, textColor: 0x666666, fontWeight: "bold" },
     splitNodeColors: [],
     splitSpecialShapes: false,
     sharedStyle: { cornerStyle: "round", markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3, overrides: {} },

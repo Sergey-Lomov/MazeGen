@@ -1,0 +1,147 @@
+import type * as React from "react";
+import type { ElevatorBadgeSettings, VectorByWallsSharedStyleOverrides } from "../../store/storeTypes";
+import { spacing, typography } from "../../styles/theme";
+import { ToggleRow } from "../ToggleRow";
+import { ColorRow } from "../ColorRow";
+import { SelectRow } from "../SelectRow";
+import { SliderRow } from "../SliderRow";
+import { MARKER_SHAPE_OPTIONS } from "./MarkerSettingsGroup";
+import { sharedStyleFieldReset } from "./SharedStyleSection";
+import * as m from "~/paraglide/messages";
+
+/** "Badges" sub-subsection of the Elevator sub-group (GitHub issue #430) — plain-weight label, not
+ *  collapsible, same convention as "Marker"/"Arrow" (`VectorByWallsSettingsPanel`). Independent of
+ *  `verticalStyle`: rendered under both the abstract and decorative elevator sub-groups, since a
+ *  floor-number badge ring is its own decorative layer on top of whichever elevator look is active
+ *  (`VerticalConnectionRenderer.drawElevatorBadges`). `cornerStyle` is "Shared style"-tracked
+ *  (GitHub issue #430 follow-up — same `elevatorBadges` group key as `elevatorMarker.cornerStyle`'s
+ *  own `elevator` key), so it needs the override map + its own change handler instead of going
+ *  through the plain `onChange` patch used by every other field here. */
+export function ElevatorBadgesSubsection({ settings, sharedStyleOverrides, onChange, onCornerStyleChange, onResetCornerStyle }: {
+  settings: ElevatorBadgeSettings;
+  sharedStyleOverrides: VectorByWallsSharedStyleOverrides;
+  onChange: (patch: Partial<ElevatorBadgeSettings>) => void;
+  onCornerStyleChange: (style: ElevatorBadgeSettings["cornerStyle"]) => void;
+  onResetCornerStyle: () => void;
+}) {
+  return (
+    <div style={styles.wrap}>
+      <div style={typography.body}>{m["image_export.vector_by_walls.elevator_badges"]()}</div>
+      <div style={styles.group}>
+        <ToggleRow
+          label={m["image_export.vector_by_walls.elevator_badges_enabled"]()}
+          checked={settings.enabled}
+          onChange={(enabled) => onChange({ enabled })}
+        />
+        {settings.enabled && (
+          <>
+            <SelectRow
+              label={m["image_export.vector_by_walls.elevator_badges_label_type"]()}
+              value={settings.labelType}
+              options={[
+                { value: "arabic", label: m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]() },
+                { value: "roman", label: m["image_export.vector_by_walls.elevator_badges_label_type_roman"]() },
+                { value: "letters", label: m["image_export.vector_by_walls.elevator_badges_label_type_letters"]() },
+              ]}
+              onChange={(labelType) => onChange({ labelType })}
+            />
+            <SelectRow
+              label={m["image_export.vector_by_walls.elevator_badges_font_weight"]()}
+              value={settings.fontWeight}
+              options={[
+                { value: "regular", label: m["image_export.vector_by_walls.elevator_badges_font_weight_regular"]() },
+                { value: "bold", label: m["image_export.vector_by_walls.elevator_badges_font_weight_bold"]() },
+              ]}
+              onChange={(fontWeight) => onChange({ fontWeight })}
+            />
+            <SelectRow
+              label={m["image_export.vector_by_walls.elevator_badges_placement"]()}
+              value={settings.placement}
+              options={[
+                { value: "full_circle", label: m["image_export.vector_by_walls.elevator_badges_placement_full_circle"]() },
+                { value: "left_right", label: m["image_export.vector_by_walls.elevator_badges_placement_left_right"]() },
+                { value: "right_left", label: m["image_export.vector_by_walls.elevator_badges_placement_right_left"]() },
+                { value: "top_bottom", label: m["image_export.vector_by_walls.elevator_badges_placement_top_bottom"]() },
+                { value: "bottom_top", label: m["image_export.vector_by_walls.elevator_badges_placement_bottom_top"]() },
+              ]}
+              onChange={(placement) => onChange({ placement })}
+            />
+            <SelectRow
+              label={m["image_export.vector_by_walls.elevator_badges_shape"]()}
+              value={settings.shape}
+              options={MARKER_SHAPE_OPTIONS.map((o) => ({ value: o.value, label: o.label() }))}
+              onChange={(shape) => onChange({ shape })}
+            />
+            <SelectRow
+              label={m["image_export.vector_by_walls.marker_corner_style"]()}
+              value={settings.cornerStyle}
+              options={[
+                { value: "sharp", label: m["image_export.vector_by_walls.corner_style_sharp"]() },
+                { value: "round", label: m["image_export.vector_by_walls.corner_style_round"]() },
+              ]}
+              onChange={onCornerStyleChange}
+              resetButton={sharedStyleFieldReset(sharedStyleOverrides, "cornerStyle", "elevatorBadges", onResetCornerStyle)}
+            />
+            <SliderRow
+              label={m["image_export.vector_by_walls.elevator_badges_size"]()}
+              value={settings.size}
+              onChange={(size) => onChange({ size })}
+              min={0.1}
+              max={1}
+              step={0.05}
+              format={(v) => v.toFixed(2)}
+            />
+            <SliderRow
+              label={m["image_export.vector_by_walls.elevator_badges_distance"]()}
+              value={settings.distance}
+              onChange={(distance) => onChange({ distance })}
+              min={0}
+              max={30}
+              step={1}
+              format={(v) => String(v)}
+            />
+            <ToggleRow
+              label={m["image_export.vector_by_walls.elevator_badges_even_distribution"]()}
+              checked={settings.evenDistribution}
+              onChange={(evenDistribution) => onChange({ evenDistribution })}
+            />
+            <SliderRow
+              label={m["image_export.vector_by_walls.elevator_badges_gap"]()}
+              value={settings.gap}
+              onChange={(gap) => onChange({ gap })}
+              min={0}
+              max={20}
+              step={1}
+              format={(v) => String(v)}
+              disabled={settings.placement === "full_circle" && settings.evenDistribution}
+            />
+            <SliderRow
+              label={m["image_export.vector_by_walls.elevator_badges_gap_width"]()}
+              value={settings.gapWidth}
+              onChange={(gapWidth) => onChange({ gapWidth })}
+              min={0}
+              max={10}
+              step={1}
+              format={(v) => String(v)}
+            />
+            <ColorRow
+              label={m["image_export.vector_by_walls.elevator_badges_fill_color"]()}
+              color={settings.fillColor}
+              onChange={(fillColor) => onChange({ fillColor })}
+            />
+            <ColorRow
+              label={m["image_export.vector_by_walls.elevator_badges_text_color"]()}
+              color={settings.textColor}
+              onChange={(textColor) => onChange({ textColor })}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  wrap: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  group: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
+};

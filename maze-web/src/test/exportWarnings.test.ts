@@ -10,7 +10,7 @@ vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
 }));
 
-const n = (id: number, x: number, y: number): NodeDto => ({ id, x, y, i: 0 });
+const n = (id: number, x: number, y: number, level?: number): NodeDto => ({ id, x, y, i: 0, level });
 const e = (from: number, to: number): EdgeDto => ({ from, to, kind: "basic" });
 const teleport = (from: number, to: number): EdgeDto => ({ from, to, kind: "teleport" });
 const squareCfg: TessellationConfig = { type: "square", width: 6, height: 6 };
@@ -243,6 +243,109 @@ describe("computeVectorByWallsWarnings", () => {
       const settings = baseSettings({ splitSpecialShapes: true });
       const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null);
       expect(warnings.filter((w) => w.id === "teleport_on_special_split")).toHaveLength(0);
+    });
+  });
+
+  describe("elevator_badges_overlap", () => {
+    // Elevator at node 0 (floor 0) reaching 3 other floors — with a large badge size and zero
+    // distance, the "left_right" row's badges necessarily overlap (row step = 2*badgeRadius,
+    // touching by construction; a larger radius than the default step forces real overlap).
+    const elevatorNodes = [n(0, 0, 0, 0), n(1, 1, 0, 1), n(2, 2, 0, 2), n(3, 3, 0, 3)];
+    const elevatorEdges: EdgeDto[] = [
+      { from: 0, to: 1, kind: "elevator" },
+      { from: 0, to: 2, kind: "elevator" },
+      { from: 0, to: 3, kind: "elevator" },
+    ];
+
+    it("flags an elevator whose badge ring overlaps itself", () => {
+      // "full_circle" is the only placement where the layout math itself doesn't guarantee
+      // touching-not-overlapping spacing (left_right/top_bottom always space consecutive badges
+      // exactly 2*radius apart by construction). As badge size grows past the marker's own
+      // radius, the ring radius converges on the badge radius itself, so the chord between
+      // adjacent badges (2*ring*sin(pi/count)) falls below 2*radius for count=3 — `size` isn't
+      // clamped to the settings-panel slider's 0.1-1 UI range, so a large value here isolates the
+      // geometry from the marker radius entirely.
+      const settings = baseSettings({
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 20, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, textColor: 0, fontWeight: "bold" },
+      });
+      const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
+      const matches = warnings.filter((w) => w.id === "elevator_badges_overlap");
+      expect(matches).toHaveLength(1);
+      expect(matches[0].nodes).toEqual([0]);
+      expect(matches[0].crossFloorTargets).toEqual([
+        { nodeId: 0, targetFloorIndex: 1 },
+        { nodeId: 0, targetFloorIndex: 2 },
+        { nodeId: 0, targetFloorIndex: 3 },
+      ]);
+    });
+
+    it("does not flag when badges is disabled", () => {
+      const settings = baseSettings({
+        elevatorBadges: { enabled: false, labelType: "arabic", size: 1, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, textColor: 0, fontWeight: "bold" },
+      });
+      const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
+      expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
+    });
+
+    it("does not flag when badges have enough room (large distance, small size)", () => {
+      const settings = baseSettings({
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 0.1, placement: "full_circle", distance: 20, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, textColor: 0, fontWeight: "bold" },
+      });
+      const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
+      expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
+    });
+
+    it("when only the floor-scoped source node is visible (targets' floors unresolvable), no overlap can be detected", () => {
+      // Mirrors a real floor-scoped `nodes` list: only node 0 (the elevator's own `from`, on the
+      // active floor) is present — the fan's targets on other floors are structurally absent, so
+      // without a separate unscoped node list their floors can't resolve at all.
+      const settings = baseSettings({
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 1, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, textColor: 0, fontWeight: "bold" },
+      });
+      const warnings = computeVectorByWallsWarnings([elevatorNodes[0]], elevatorEdges, squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "elevator_badges_overlap")).toHaveLength(0);
+    });
+  });
+
+  describe("elevator_badges_too_many", () => {
+    const elevatorNodes = [n(0, 0, 0, 0), n(1, 1, 0, 1), n(2, 2, 0, 2), n(3, 3, 0, 3)];
+    const elevatorEdges: EdgeDto[] = [
+      { from: 0, to: 1, kind: "elevator" },
+      { from: 0, to: 2, kind: "elevator" },
+      { from: 0, to: 3, kind: "elevator" },
+    ];
+
+    it("flags a left_right elevator whose one side exceeds slotsPerRow capacity", () => {
+      // Large size -> huge badgeRadius -> slotsPerRow capacity 1; 3 floors split 2/1 between
+      // sides, so the 2-badge side overflows.
+      const settings = baseSettings({
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 20, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, textColor: 0, fontWeight: "bold" },
+      });
+      const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
+      const matches = warnings.filter((w) => w.id === "elevator_badges_too_many");
+      expect(matches).toHaveLength(1);
+      expect(matches[0].nodes).toEqual([0]);
+      expect(matches[0].crossFloorTargets).toEqual([
+        { nodeId: 0, targetFloorIndex: 1 },
+        { nodeId: 0, targetFloorIndex: 2 },
+        { nodeId: 0, targetFloorIndex: 3 },
+      ]);
+    });
+
+    it("never fires for full_circle", () => {
+      const settings = baseSettings({
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 20, placement: "full_circle", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, textColor: 0, fontWeight: "bold" },
+      });
+      const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
+      expect(warnings.filter((w) => w.id === "elevator_badges_too_many")).toHaveLength(0);
+    });
+
+    it("does not flag when badges fit within one row per side", () => {
+      const settings = baseSettings({
+        elevatorBadges: { enabled: true, labelType: "arabic", size: 0.1, placement: "left_right", distance: 0, gap: 0, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0, textColor: 0, fontWeight: "bold" },
+      });
+      const warnings = computeVectorByWallsWarnings(elevatorNodes, elevatorEdges, squareCfg, settings, null, null, elevatorNodes);
+      expect(warnings.filter((w) => w.id === "elevator_badges_too_many")).toHaveLength(0);
     });
   });
 });

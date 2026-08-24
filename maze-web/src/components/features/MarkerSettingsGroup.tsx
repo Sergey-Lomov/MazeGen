@@ -56,8 +56,8 @@ export function MarkerSettingsGroup({ title, settings, onChange, resetButtons, h
           label={m["image_export.vector_by_walls.marker_corner_style"]()}
           value={settings.cornerStyle}
           options={[
-            { value: "sharp", label: m["image_export.vector_by_walls.teleport_corner_style_sharp"]() },
-            { value: "round", label: m["image_export.vector_by_walls.teleport_corner_style_round"]() },
+            { value: "sharp", label: m["image_export.vector_by_walls.corner_style_sharp"]() },
+            { value: "round", label: m["image_export.vector_by_walls.corner_style_round"]() },
           ]}
           onChange={(cornerStyle) => onChange({ cornerStyle })}
           resetButton={resetButtons?.cornerStyle}

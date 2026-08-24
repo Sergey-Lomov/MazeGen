@@ -75,9 +75,10 @@ vi.mock("../store/mazeStore", () => ({
 }));
 
 vi.mock("pixi.js", () => ({
-  Container: vi.fn().mockImplementation(function (this: { addChild: () => void; addChildAt: () => void; destroy: () => void; visible: boolean; getLocalBounds: () => unknown }) {
+  Container: vi.fn().mockImplementation(function (this: { addChild: () => void; addChildAt: () => void; removeChildren: () => unknown[]; destroy: () => void; visible: boolean; getLocalBounds: () => unknown }) {
     this.addChild = vi.fn();
     this.addChildAt = vi.fn();
+    this.removeChildren = vi.fn(() => []);
     this.destroy = vi.fn();
     this.visible = false;
     // Empty by default (Infinity/-Infinity, pixi's own "nothing drawn" convention) — tests that
