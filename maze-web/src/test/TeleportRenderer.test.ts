@@ -31,20 +31,24 @@ vi.mock("pixi.js", () => {
     roundPoly(...args: unknown[]) { this.calls.push({ fn: "roundPoly", args }); return this; }
     moveTo(...args: unknown[]) { this.calls.push({ fn: "moveTo", args }); return this; }
     lineTo(...args: unknown[]) { this.calls.push({ fn: "lineTo", args }); return this; }
+    closePath() { this.calls.push({ fn: "closePath", args: [] }); return this; }
     fill(...args: unknown[]) { this.calls.push({ fn: "fill", args }); return this; }
     stroke(...args: unknown[]) { this.calls.push({ fn: "stroke", args }); return this; }
     clear() { this.calls = []; return this; }
     removeChildren() { const c = this.children; this.children = []; return c; }
     addChild(child: unknown) { this.children.push(child); }
-    destroy() {}
+    destroy: () => void = vi.fn();
     eventMode = "auto";
     cursor = "";
+    mask: unknown = null;
     listeners: Record<string, (() => void)[]> = {};
     on(event: string, cb: () => void) { (this.listeners[event] ??= []).push(cb); return this; }
   }
   class FakeContainer {
-    addChild() {}
-    destroy() {}
+    children: unknown[] = [];
+    addChild(child: unknown) { this.children.push(child); }
+    removeChildren() { const c = this.children; this.children = []; return c; }
+    destroy: () => void = vi.fn();
   }
   // `drawFloorBadge` (GitHub issue #337) constructs a real pixi `Text` for the floor-number label —
   // a minimal stand-in recording `anchor`/`x`/`y` writes is enough for tests to assert positioning
@@ -269,6 +273,30 @@ describe("planGroupDrawOrder", () => {
 // (GitHub issue #302) — verified here against the fake `Graphics`'s recorded call order, since
 // `planGroupDrawOrder` alone (tested above) only proves the *plan* shape, not that `renderGroups`
 // actually walks it in this order.
+// GitHub issue #432: `drawMarker`'s `mixed` branch (drawn for a point resolved "mixed" by
+// `resolvePointFillState`, see that describe block above) must add its mask/half-fill `Graphics`
+// pair to `overlayLayer`, not `view` itself (a `Graphics` instance — PixiJS v8 deprecates
+// `addChild` on non-`Container` objects).
+describe("TeleportRenderer.render mixed-marker overlay placement (GitHub issue #432)", () => {
+  it("adds the mixed marker's mask/half-fill pair to overlayLayer, not view", () => {
+    const renderer = new TeleportRenderer(new Container());
+    // Same edge pair the `resolvePointFillState` describe block above proves resolves [5,5] to
+    // "mixed" — one edge wants it filled (its origin), the other wants it outline (its destination).
+    const edges: TeleportEdge[] = [
+      { from: [5, 5], to: [9, 9], oneWay: true, fromNode: 1, toNode: 2 },
+      { from: [1, 1], to: [5, 5], oneWay: true, fromNode: 3, toNode: 4 },
+    ];
+    renderer.render({ edges, lineStyle: baseLineStyle({ connectorStyle: "none" }) });
+    const view = (renderer as unknown as { view: InstanceType<typeof Graphics> & { children: unknown[] } }).view;
+    const overlay = (renderer as unknown as { overlayLayer: { children: unknown[] } }).overlayLayer;
+
+    // view stays a pure drawing surface — no mask/half-fill children land on it.
+    expect(view.children).toHaveLength(0);
+    // overlayLayer gets exactly the mask + half-fill pair for the one mixed point.
+    expect(overlay.children).toHaveLength(2);
+  });
+});
+
 describe("TeleportRenderer.render draw order", () => {
   it("draws a group's gap ring before its own marker fill/border when edgeGapWidth > 0", () => {
     const renderer = new TeleportRenderer(new Container());
@@ -354,6 +382,7 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
     renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
     const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[]; children: unknown[] } }).view;
+    const overlay = (renderer as unknown as { overlayLayer: { children: unknown[] } }).overlayLayer;
 
     // The badge point draws its own unconditional gap ring (`drawGroupGaps`) plus its own bordered
     // circle (`drawFloorBadge`'s fill + stroke pass), same as `from`'s ordinary marker circle-shape
@@ -365,17 +394,18 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     const atFromPoint = circleCalls.filter((c) => c.args[0] === 0 && c.args[1] === 0);
     expect(atBadgePoint.length).toBeGreaterThan(0);
     expect(atFromPoint.length).toBeGreaterThan(0);
-    // The badge's own label (a `Text` child) is present at the badge point.
-    expect(g.children).toHaveLength(1);
+    // The badge's own label (a `Text` child) is present at the badge point, in `overlayLayer`
+    // (a `Container` sibling of `view` — a `Graphics` instance can't host it, GitHub issue #432).
+    expect(overlay.children).toHaveLength(1);
   });
 
   it("badge display number is toFloor + 1 (1-based, matching FloorSwitcher's own convention)", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 2 }];
     renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
-    const g = (renderer as unknown as { view: { children: { text: string }[] } }).view;
-    expect(g.children).toHaveLength(1);
-    expect(g.children[0].text).toBe("3");
+    const overlay = (renderer as unknown as { overlayLayer: { children: { text: string }[] } }).overlayLayer;
+    expect(overlay.children).toHaveLength(1);
+    expect(overlay.children[0].text).toBe("3");
   });
 
   it("floorNavigable adds a clickable hit-circle on the badge wired to navigateToFloor(toFloor)", async () => {
@@ -385,12 +415,12 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
     renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }), floorNavigable: true });
-    const g = (renderer as unknown as {
-      view: { children: { listeners?: Record<string, (() => void)[]> }[] };
-    }).view;
+    const overlay = (renderer as unknown as {
+      overlayLayer: { children: { listeners?: Record<string, (() => void)[]> }[] };
+    }).overlayLayer;
 
     // The badge's own Text child has no `listeners`; a second child (the hit-circle Graphics) does.
-    const hit = g.children.find((c) => c.listeners !== undefined);
+    const hit = overlay.children.find((c) => c.listeners !== undefined);
     expect(hit).toBeDefined();
     expect(navigateSpy).not.toHaveBeenCalled();
 
@@ -407,8 +437,8 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
     renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
-    const g = (renderer as unknown as { view: { children: { on?: (event: string, cb: () => void) => void }[] } }).view;
-    const hit = g.children.find((c) => typeof c.on === "function");
+    const overlay = (renderer as unknown as { overlayLayer: { children: { on?: (event: string, cb: () => void) => void }[] } }).overlayLayer;
+    const hit = overlay.children.find((c) => typeof c.on === "function");
     expect(hit).toBeUndefined();
   });
 
@@ -416,7 +446,24 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: false }];
     renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }), floorNavigable: true });
-    const g = (renderer as unknown as { view: { children: unknown[] } }).view;
-    expect(g.children).toHaveLength(0);
+    const overlay = (renderer as unknown as { overlayLayer: { children: unknown[] } }).overlayLayer;
+    expect(overlay.children).toHaveLength(0);
+  });
+});
+
+// GitHub issue #432 follow-up: `destroy()` must destroy both `view` and the newer `overlayLayer`
+// sibling — the latter was easy to miss since it was added after `destroy()` already existed.
+describe("TeleportRenderer.destroy", () => {
+  it("destroys both view and overlayLayer", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const view = (renderer as unknown as { view: { destroy: ReturnType<typeof vi.fn> } }).view;
+    const overlayLayer = (renderer as unknown as { overlayLayer: { destroy: ReturnType<typeof vi.fn> } }).overlayLayer;
+    view.destroy = vi.fn();
+    overlayLayer.destroy = vi.fn();
+
+    renderer.destroy();
+
+    expect(view.destroy).toHaveBeenCalledWith({ children: true });
+    expect(overlayLayer.destroy).toHaveBeenCalledWith({ children: true });
   });
 });

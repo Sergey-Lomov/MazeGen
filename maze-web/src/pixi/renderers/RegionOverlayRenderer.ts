@@ -173,7 +173,7 @@ export class RegionOverlayRenderer {
 
     const drawBadge = (pos: { x: number; y: number }, color: number, targetFloorIndex: number) => {
       const g = new Graphics();
-      drawFloorBadge(g, NODE_RADIUS, pos.x, pos.y, color, color, canvas.floor.default, targetFloorIndex + 1);
+      drawFloorBadge(g, this.badgesContainer, NODE_RADIUS, pos.x, pos.y, color, color, canvas.floor.default, targetFloorIndex + 1);
       this.badgesContainer.addChild(g);
       attachFloorBadgeNavigation(this.badgesContainer, pos.x, pos.y, NODE_RADIUS, targetFloorIndex);
     };

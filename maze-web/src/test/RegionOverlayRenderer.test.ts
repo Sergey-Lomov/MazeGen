@@ -56,7 +56,7 @@ import type { NodeDto } from "../wasm/generated/dto";
 import type { EdgeDto } from "../wasm/generated/dto";
 import type { TeleportEdge } from "../pixi/renderers/types";
 
-type FakeChild = { calls: { fn: string; args: unknown[] }[]; listeners: Record<string, (() => void)[]> };
+type FakeChild = { calls: { fn: string; args: unknown[] }[]; listeners?: Record<string, (() => void)[]> };
 type FakeCont = { children: FakeChild[] };
 
 function node(id: number, x: number, y: number): NodeDto {
@@ -172,10 +172,10 @@ describe("RegionOverlayRenderer.render", () => {
     // The constructor already adds one (empty) inner container; `render()` replaces it with a fresh
     // one holding the actual badges, so the populated container is the *last* child, not the first.
     const inner = badgesContainer.children[badgesContainer.children.length - 1] as unknown as FakeCont;
-    const hit = inner.children.find((c) => c.listeners["pointertap"] !== undefined);
+    const hit = inner.children.find((c) => c.listeners?.["pointertap"] !== undefined);
     expect(hit).toBeDefined();
 
-    hit!.listeners["pointertap"][0]();
+    hit!.listeners!["pointertap"][0]();
     expect(navigateToFloor).toHaveBeenCalledWith(1);
   });
 
@@ -194,10 +194,10 @@ describe("RegionOverlayRenderer.render", () => {
     });
 
     const inner = badgesContainer.children[badgesContainer.children.length - 1] as unknown as FakeCont;
-    const hit = inner.children.find((c) => c.listeners["pointertap"] !== undefined);
+    const hit = inner.children.find((c) => c.listeners?.["pointertap"] !== undefined);
     expect(hit).toBeDefined();
 
-    hit!.listeners["pointertap"][0]();
+    hit!.listeners!["pointertap"][0]();
     expect(navigateToFloor).toHaveBeenCalledWith(2);
   });
 });

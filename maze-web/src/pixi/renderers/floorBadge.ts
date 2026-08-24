@@ -32,8 +32,13 @@ function vertexAngle(cell: [number, number], center: Pos, cfg: TessellationConfi
  *  own cross-floor markers (`NavGraphRenderer`/`MazeGraphRenderer`/`PureCyclesOverlay`/
  *  `RouteOverlay`, GitHub issue #339) — per `maze-web/CLAUDE.md`'s feature-renderer ownership rule,
  *  shared drawing logic between feature-renderers lives in a shared utility, never a shared
- *  renderer instance. */
-export function drawFloorBadge(g: Graphics, r: number, cx: number, cy: number, color: number, borderColor: number, floorColor: number, floorNumber: number): void {
+ *  renderer instance.
+ *
+ *  `labelsContainer` hosts the digit `Text` alone — PixiJS v8 deprecates `addChild` on a `Graphics`
+ *  instance (`g`) and disallows it in a future major version (GitHub issue #432), so the label can
+ *  no longer be a child of `g` itself; callers pass any actual `Container` sitting above `g` in
+ *  z-order (a sibling layer, or the same container `g` was itself added to). */
+export function drawFloorBadge(g: Graphics, labelsContainer: Container, r: number, cx: number, cy: number, color: number, borderColor: number, floorColor: number, floorNumber: number): void {
   g.circle(cx, cy, r).fill(color).stroke({ width: FLOOR_BADGE_STROKE_WIDTH, color: borderColor, alignment: 0 });
   const label = new Text({
     text: `${floorNumber}`,
@@ -52,7 +57,7 @@ export function drawFloorBadge(g: Graphics, r: number, cx: number, cy: number, c
   label.anchor.set(0.5);
   label.x = cx;
   label.y = cy;
-  g.addChild(label);
+  labelsContainer.addChild(label);
 }
 
 /** Resolves a cross-floor badge's own world position (GitHub issue #339) — the badge stands in for
@@ -200,7 +205,7 @@ export function drawCrossFloorBadge(
   floorColor: number,
 ): void {
   const g = new Graphics();
-  drawFloorBadge(g, radius, badgePos.x, badgePos.y, color, borderColor, floorColor, targetFloorIndex + 1);
+  drawFloorBadge(g, nodesContainer, radius, badgePos.x, badgePos.y, color, borderColor, floorColor, targetFloorIndex + 1);
   nodesContainer.addChild(g);
   attachFloorBadgeNavigation(nodesContainer, badgePos.x, badgePos.y, radius, targetFloorIndex);
 }

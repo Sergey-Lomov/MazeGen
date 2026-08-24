@@ -58,6 +58,12 @@ export class TeleportRenderer {
   // group's own connectors, then its own points, then the next group's connectors, ...) is the
   // actual z-order rather than "every connector below every marker" regardless of grouping.
   private readonly view: Graphics;
+  /** Hosts every child that can't live on `this.view` itself (a `Graphics` instance) — floor-badge
+   *  digit `Text` (`drawFloorBadge`), floor-badge hit-circles (`attachFloorBadgeNavigation`), and a
+   *  `mixed` marker's mask/half-fill `Graphics` pair (`drawMarker`) — PixiJS v8 deprecates `addChild`
+   *  on non-`Container` objects and disallows it in a future major version (GitHub issue #432). A
+   *  sibling layer drawn above `this.view`, cleared/rebuilt alongside it every render. */
+  private readonly overlayLayer: Container;
   private unsubscribeSelection: (() => void) | null = null;
   // Kept between `render()` calls so a selection change alone (no full re-render) can redraw
   // `view` from scratch with the new selected key's visibility split, without recomputing
@@ -85,6 +91,8 @@ export class TeleportRenderer {
   constructor(container: Container) {
     this.view = new Graphics();
     container.addChild(this.view);
+    this.overlayLayer = new Container();
+    container.addChild(this.overlayLayer);
   }
 
   /** `lineStyle` defaults to the pre-#293 fixed look (every caller except `VectorByWallsRenderer`).
@@ -280,6 +288,7 @@ export class TeleportRenderer {
    *  `drawFloorBadge`. */
   private drawGroupPoints(
     g: Graphics,
+    overlay: Container,
     group: TeleportGroup,
     override: TeleportGroupOverride | undefined,
     edges: TeleportEdge[],
@@ -292,15 +301,15 @@ export class TeleportRenderer {
     for (const [px, py] of group.points) {
       const floorNumber = this.selectionFloorBadges.get(coordKey(px, py));
       if (floorNumber !== undefined) {
-        drawFloorBadge(g, r, px, py, color, borderColor, style.floorColor, floorNumber);
+        drawFloorBadge(g, overlay, r, px, py, color, borderColor, style.floorColor, floorNumber);
         if (this.selectionFloorNavigable) {
-          attachFloorBadgeNavigation(g, px, py, r, floorNumber - 1);
+          attachFloorBadgeNavigation(overlay, px, py, r, floorNumber - 1);
         }
         continue;
       }
       const fillState = resolvePointFillState(edges, px, py);
       this.drawMarker(
-        g, shape, style.cornerStyle, r, px, py,
+        g, overlay, shape, style.cornerStyle, r, px, py,
         color, borderColor, style.borderWidth, style.floorColor,
         fillState === "filled", fillState === "mixed",
       );
@@ -328,6 +337,7 @@ export class TeleportRenderer {
   private renderGroups(selectedKey: string | null): void {
     this.view.clear();
     this.view.removeChildren().forEach((c) => c.destroy());
+    this.overlayLayer.removeChildren().forEach((c) => c.destroy());
     const style = this.selectionStyle;
     const r = style.size * TILE_SIZE;
 
@@ -339,7 +349,7 @@ export class TeleportRenderer {
         this.drawRoutedConnector(this.view, c.routed, style, c.color, c.edge.oneWay);
       }
       const override = this.selectionGroupOverrides[group.key];
-      this.drawGroupPoints(this.view, group, override, this.selectionEdges, style);
+      this.drawGroupPoints(this.view, this.overlayLayer, group, override, this.selectionEdges, style);
     }
 
     if (this.selectionInteractive) {
@@ -393,11 +403,14 @@ export class TeleportRenderer {
    *  `color`/`color` regardless of `borderColor` (the split itself is the distinguishing signal, an
    *  independent border color on top of it would just be visual noise). The lower-right half is
    *  masked out via a throwaway `Graphics` triangle (`shape`'s own outline isn't necessarily a
-   *  rectangle, so a plain clipped fill can't be built from `shape`'s path alone) — the mask is
-   *  never added to `g`, only assigned to a second pass's `.mask`, so it doesn't itself render or
-   *  get destroyed with `g`. */
+   *  rectangle, so a plain clipped fill can't be built from `shape`'s path alone) — both `mask` and
+   *  `halfFillView` are added to `overlay`, a `Container` sibling of `g` (`g` is a `Graphics`
+   *  instance, and PixiJS v8 deprecates `addChild` on non-`Container` objects — GitHub issue #432);
+   *  pixi excludes an object assigned as another's `.mask` from its own normal render pass, so `mask`
+   *  itself stays invisible despite being a normal child, same as before this container swap. */
   private drawMarker(
     g: Graphics,
+    overlay: Container,
     shape: TeleportLineStyle["shape"],
     cornerStyle: TeleportLineStyle["cornerStyle"],
     r: number,
@@ -438,8 +451,8 @@ export class TeleportRenderer {
       drawMarkerShape(halfFillView, shape, cx, cy, r + bleed, rounded);
       halfFillView.fill(color);
       halfFillView.mask = mask;
-      g.addChild(mask);
-      g.addChild(halfFillView);
+      overlay.addChild(mask);
+      overlay.addChild(halfFillView);
       return;
     }
 
@@ -540,6 +553,7 @@ export class TeleportRenderer {
   destroy(): void {
     this.unsubscribeSelection?.();
     this.view.destroy({ children: true });
+    this.overlayLayer.destroy({ children: true });
   }
 }
 

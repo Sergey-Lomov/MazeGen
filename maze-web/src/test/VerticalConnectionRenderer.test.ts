@@ -77,8 +77,11 @@ interface FakeText {
 }
 
 vi.mock("pixi.js", () => ({
-  Container: vi.fn().mockImplementation(function (this: { addChild: () => void }) {
-    this.addChild = vi.fn();
+  Container: vi.fn().mockImplementation(function (this: FakeGraphics) {
+    this.children = [];
+    this.addChild = (child) => { this.children.push(child as FakeGraphics); };
+    this.removeChildren = () => { const c = this.children; this.children = []; return c; };
+    this.destroy = vi.fn();
   }),
   Graphics: vi.fn().mockImplementation(function (this: FakeGraphics) {
     installFakeGraphics(this);
@@ -315,7 +318,7 @@ describe("VerticalConnectionRenderer", () => {
   it("interactive + resolved targetFloorIndex adds a clickable hit-circle wired to navigateToFloor", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
-    const g = (renderer as unknown as { g: FakeGraphics }).g;
+    const hitLayer = (renderer as unknown as { hitLayer: FakeGraphics }).hitLayer;
 
     render(renderer, {
       markers: [marker({ pos: [0, 0], targetFloorIndex: 2 })],
@@ -323,8 +326,8 @@ describe("VerticalConnectionRenderer", () => {
       interactive: true,
     });
 
-    expect(g.children).toHaveLength(1);
-    const hit = g.children[0] as unknown as { on: (event: string, cb: () => void) => void };
+    expect(hitLayer.children).toHaveLength(1);
+    const hit = hitLayer.children[0] as unknown as { on: (event: string, cb: () => void) => void };
     const onMock = hit.on as unknown as ReturnType<typeof vi.fn>;
     expect(onMock).toHaveBeenCalledWith("pointertap", expect.any(Function));
     const handler = onMock.mock.calls[0][1] as () => void;
@@ -335,7 +338,7 @@ describe("VerticalConnectionRenderer", () => {
   it("interactive but no targetFloorIndex (Elevator) adds no hit-circle", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
-    const g = (renderer as unknown as { g: FakeGraphics }).g;
+    const hitLayer = (renderer as unknown as { hitLayer: FakeGraphics }).hitLayer;
 
     render(renderer, {
       markers: [marker({ pos: [0, 0], kind: "elevator", targetFloorIndex: undefined })],
@@ -343,26 +346,26 @@ describe("VerticalConnectionRenderer", () => {
       interactive: true,
     });
 
-    expect(g.children).toHaveLength(0);
+    expect(hitLayer.children).toHaveLength(0);
   });
 
   it("not interactive skips the hit-circle even when targetFloorIndex resolved", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
-    const g = (renderer as unknown as { g: FakeGraphics }).g;
+    const hitLayer = (renderer as unknown as { hitLayer: FakeGraphics }).hitLayer;
 
     render(renderer, {
       markers: [marker({ pos: [0, 0], targetFloorIndex: 1 })],
       style: baseStyle(),
     });
 
-    expect(g.children).toHaveLength(0);
+    expect(hitLayer.children).toHaveLength(0);
   });
 
   it("interactive as a predicate gates each marker independently", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
-    const g = (renderer as unknown as { g: FakeGraphics }).g;
+    const hitLayer = (renderer as unknown as { hitLayer: FakeGraphics }).hitLayer;
 
     render(renderer, {
       markers: [
@@ -374,13 +377,13 @@ describe("VerticalConnectionRenderer", () => {
     });
 
     // Only the `filled: true` marker's own hit-circle is added — the predicate rejects the other.
-    expect(g.children).toHaveLength(1);
+    expect(hitLayer.children).toHaveLength(1);
   });
 
   it("interactive predicate returning false for every marker adds no hit-circles", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
-    const g = (renderer as unknown as { g: FakeGraphics }).g;
+    const hitLayer = (renderer as unknown as { hitLayer: FakeGraphics }).hitLayer;
 
     render(renderer, {
       markers: [marker({ pos: [0, 0], targetFloorIndex: 1 })],
@@ -388,21 +391,21 @@ describe("VerticalConnectionRenderer", () => {
       interactive: () => false,
     });
 
-    expect(g.children).toHaveLength(0);
+    expect(hitLayer.children).toHaveLength(0);
   });
 
   it("clear()/removeChildren() run on every render call — no stale draws or listeners accumulate across two renders", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);
-    const g = (renderer as unknown as { g: FakeGraphics }).g;
+    const hitLayer = (renderer as unknown as { hitLayer: FakeGraphics }).hitLayer;
 
     render(renderer, { markers: [marker({ pos: [0, 0], targetFloorIndex: 1 })], style: baseStyle(), interactive: true });
-    expect(g.children).toHaveLength(1);
-    const firstHit = g.children[0];
+    expect(hitLayer.children).toHaveLength(1);
+    const firstHit = hitLayer.children[0];
 
     render(renderer, { markers: [marker({ pos: [0, 0], targetFloorIndex: 1 })], style: baseStyle(), interactive: true });
-    expect(g.children).toHaveLength(1);
-    expect(g.children[0]).not.toBe(firstHit);
+    expect(hitLayer.children).toHaveLength(1);
+    expect(hitLayer.children[0]).not.toBe(firstHit);
     expect((firstHit as unknown as { destroy: ReturnType<typeof vi.fn> }).destroy).toHaveBeenCalled();
   });
 
@@ -691,9 +694,9 @@ describe("VerticalConnectionRenderer", () => {
       const style = baseStyle({ elevatorBadges: { ...baseStyle().elevatorBadges, enabled: false } });
       const el = marker({ pos: [0, 0], kind: "elevator", targetFloorIndices: [0, 1] });
       render(renderer, { markers: [el], style });
-      const g = (renderer as unknown as { g: FakeGraphics }).g;
+      const badgeLayer = (renderer as unknown as { badgeLayer: FakeGraphics }).badgeLayer;
       // Only the elevator marker's own circle should be drawn — no extra badge shapes/text children.
-      expect(g.children).toHaveLength(0);
+      expect(badgeLayer.children).toHaveLength(0);
     });
 
     it("draws one gap-ring-then-body pair of shapes per floor, plus a Text label per badge, for an enabled elevator marker", () => {
@@ -710,12 +713,12 @@ describe("VerticalConnectionRenderer", () => {
       });
       const el = marker({ pos: [0, 0], kind: "elevator", targetFloorIndices: [0, 1, 4] });
       render(renderer, { markers: [el], style });
-      const g = (renderer as unknown as { g: FakeGraphics }).g;
+      const badgeLayer = (renderer as unknown as { badgeLayer: FakeGraphics }).badgeLayer;
       // Every gap ring (one per badge, `gapWidth > 0`) is a separate `Graphics` child added before
       // any badge body — `drawElevatorBadges`' own two-pass draw order (gap-then-fill across the
       // whole set, not per-badge) — followed by one body `Graphics` + one `Text` child per badge.
-      const graphicsChildren = g.children.filter((c) => !("text" in c));
-      const textChildren = g.children.filter((c) => "text" in c) as unknown as FakeText[];
+      const graphicsChildren = badgeLayer.children.filter((c) => !("text" in c));
+      const textChildren = badgeLayer.children.filter((c) => "text" in c) as unknown as FakeText[];
       expect(graphicsChildren).toHaveLength(6); // 3 gap rings + 3 bodies
       expect(textChildren).toHaveLength(3);
       expect(textChildren.map((t) => t.text)).toEqual(["1", "2", "5"]); // formatElevatorBadgeLabel, 1-based
@@ -732,8 +735,8 @@ describe("VerticalConnectionRenderer", () => {
       const small = marker({ pos: [0, 0], kind: "elevator", targetFloorIndices: [0] });
       const wide = marker({ pos: [200, 0], kind: "elevator", targetFloorIndices: [7] });
       render(renderer, { markers: [small, wide], style });
-      const g = (renderer as unknown as { g: FakeGraphics }).g;
-      const textChildren = g.children.filter((c) => "text" in c) as unknown as FakeText[];
+      const badgeLayer = (renderer as unknown as { badgeLayer: FakeGraphics }).badgeLayer;
+      const textChildren = badgeLayer.children.filter((c) => "text" in c) as unknown as FakeText[];
       expect(textChildren).toHaveLength(2);
       const fontSizes = textChildren.map((t) => t.style.fontSize);
       expect(fontSizes[0]).toBe(fontSizes[1]);
@@ -745,8 +748,27 @@ describe("VerticalConnectionRenderer", () => {
       const style = baseStyle({ elevatorBadges: { ...baseStyle().elevatorBadges, enabled: true } });
       const passage = marker({ pos: [0, 0], kind: "vertical_passage", targetFloorIndex: 1 });
       render(renderer, { markers: [passage], style });
+      const badgeLayer = (renderer as unknown as { badgeLayer: FakeGraphics }).badgeLayer;
+      expect(badgeLayer.children).toHaveLength(0);
+    });
+  });
+
+  // GitHub issue #432 follow-up: `destroy()` must destroy `g` and both newer sibling layers
+  // (`badgeLayer`, `hitLayer`) — the latter two were easy to miss since they were added after
+  // `destroy()` already existed.
+  describe("VerticalConnectionRenderer.destroy", () => {
+    it("destroys g, badgeLayer, and hitLayer", () => {
+      const container = new Container();
+      const renderer = new VerticalConnectionRenderer(container as never);
       const g = (renderer as unknown as { g: FakeGraphics }).g;
-      expect(g.children).toHaveLength(0);
+      const badgeLayer = (renderer as unknown as { badgeLayer: FakeGraphics }).badgeLayer;
+      const hitLayer = (renderer as unknown as { hitLayer: FakeGraphics }).hitLayer;
+
+      renderer.destroy();
+
+      expect(g.destroy).toHaveBeenCalled();
+      expect(badgeLayer.destroy).toHaveBeenCalledWith({ children: true });
+      expect(hitLayer.destroy).toHaveBeenCalledWith({ children: true });
     });
   });
 });
