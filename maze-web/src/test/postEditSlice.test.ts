@@ -761,6 +761,102 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     expect(useMazeStore.getState().postEditDraftVerticalPassages[0].direction).toBe("two_way");
   });
 
+  it("startPostEditVerticalPassagePlacement detects a bidirectional pair as two_way even when the reverse edge is the one matched first (GitHub issue #385)", () => {
+    useMazeStore.setState({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
+      edges: [{ from: 1, to: 0, kind: "vertical_passage" }, { from: 0, to: 1, kind: "vertical_passage" }],
+      postEditDraftVerticalPassages: [],
+      postEditSuppressedVerticalPassagePairs: new Set<string>(),
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_two_way");
+    expect(useMazeStore.getState().postEditDraftVerticalPassages[0].direction).toBe("two_way");
+  });
+
+  it("startPostEditVerticalPassagePlacement is a no-op on a node that already has a draft entry to the same partner, instead of minting a duplicate (GitHub issue #385)", () => {
+    useMazeStore.setState({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
+      edges: [{ from: 0, to: 1, kind: "vertical_passage" }],
+      postEditDraftVerticalPassages: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
+      postEditSuppressedVerticalPassagePairs: new Set<string>(["0,1"]),
+      postEditAutoConfirm: false,
+    });
+    // A click landing in the same cell as the node's own marker, but outside the marker's own hit
+    // radius, still resolves to this action rather than the pick-endpoint/cycle path — see the
+    // doc comment on this guard.
+    useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_two_way");
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftVerticalPassages).toHaveLength(1);
+    expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ id: 1, direction: "forward" });
+  });
+
+  it("startPostEditVerticalPassagePlacement still seeds a second draft entry for a different generation-time partner (a cell with an up passage and a down passage are independent connections)", () => {
+    useMazeStore.setState({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 1 },
+        { id: 1, x: 0, y: 0, i: 0, level: 2 },
+        { id: 2, x: 0, y: 0, i: 0, level: 0 },
+      ],
+      edges: [
+        { from: 0, to: 2, kind: "vertical_passage" },
+        { from: 0, to: 1, kind: "vertical_passage" },
+      ],
+      postEditDraftVerticalPassages: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
+      postEditSuppressedVerticalPassagePairs: new Set<string>(["0,1"]),
+      postEditAutoConfirm: false,
+    });
+    useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_two_way");
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftVerticalPassages).toHaveLength(2);
+    expect(s.postEditDraftVerticalPassages[1]).toMatchObject({ from: n(0), to: n(2), direction: "forward" });
+  });
+
+  it("startPostEditVerticalPassagePlacement calls confirmPostEdit when seeding from a generation-time edge and postEditAutoConfirm is true", () => {
+    useMazeStore.setState({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
+      edges: [{ from: 0, to: 1, kind: "vertical_passage" }],
+      postEditDraftVerticalPassages: [],
+      postEditSuppressedVerticalPassagePairs: new Set<string>(),
+      postEditAutoConfirm: true,
+    });
+    useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
+    expect(computeAnalytics).toHaveBeenCalled();
+  });
+
+  it("startPostEditVerticalPassagePlacement falls through to the new-placement flow once every generation-time partner is already drafted", () => {
+    useMazeStore.setState({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 1 },
+        { id: 1, x: 0, y: 0, i: 0, level: 2 },
+        { id: 2, x: 0, y: 0, i: 0, level: 0 },
+      ],
+      edges: [{ from: 0, to: 1, kind: "vertical_passage" }],
+      postEditDraftVerticalPassages: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
+      postEditSuppressedVerticalPassagePairs: new Set<string>(["0,1"]),
+      postEditAutoConfirm: false,
+      activeFloorId: "f1",
+      floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }, { id: "f2", title: "Floor 3" }],
+      floorFields: {
+        f0: baseFloorFieldConfig(),
+        f1: baseFloorFieldConfig(),
+        f2: baseFloorFieldConfig(),
+      },
+    });
+    // Only generation-time partner (level 2, "up") is already drafted; level 0 ("down") has no
+    // generation-time edge at all, so the only path left is the ordinary new-placement flow, which
+    // resolves `availableDirections` from the field itself rather than from any existing edge. Both
+    // "up" and "down" are geometrically available from the field's own field points, so this opens
+    // the direction dialog rather than committing immediately.
+    useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_two_way");
+    expect(useMazeStore.getState().postEditVerticalPassagePending).toMatchObject({
+      origin: n(0), tool: "vertical_passage_two_way", availableDirections: ["up", "down"],
+    });
+    useMazeStore.getState().choosePostEditVerticalPassageDirection("down");
+    const s = useMazeStore.getState();
+    expect(s.postEditDraftVerticalPassages).toHaveLength(2);
+    expect(s.postEditDraftVerticalPassages[1]).toMatchObject({ from: n(0), to: n(2), direction: "two_way" });
+  });
+
   it("startPostEditVerticalPassagePlacement on a node whose generation-time edge only arrives (backward) detects it as backward", () => {
     useMazeStore.setState({
       nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
