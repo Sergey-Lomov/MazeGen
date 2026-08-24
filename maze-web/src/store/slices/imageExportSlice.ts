@@ -28,6 +28,7 @@ export {
   DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE,
   DEFAULT_TELEPORT_SETTINGS,
   DEFAULT_VERTICAL_SETTINGS,
+  DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
   DEFAULT_ONE_WAY_SETTINGS,
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -248,6 +249,137 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     })),
   setVectorByCorridorsSplitDiagonalBowAmount: (v) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, splitDiagonalBowAmount: v } })),
+  patchVectorByCorridorsVerticalSettings: (patch) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, ...patch } })),
+  patchVectorByCorridorsElevatorBadges: (patch) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        elevatorBadges: { ...s.vectorByCorridorsSettings.elevatorBadges, ...patch },
+      },
+    })),
+  setVectorByCorridorsElevatorBadgesCornerStyle: (style) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        elevatorBadges: { ...s.vectorByCorridorsSettings.elevatorBadges, cornerStyle: style },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "cornerStyle", "elevatorBadges") },
+      },
+    })),
+  setVectorByCorridorsTwoWayPassageMarkerShape: (shape) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, shape } } })),
+  setVectorByCorridorsTwoWayPassageMarkerCornerStyle: (style) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, cornerStyle: style },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "cornerStyle", "twoWayPassage") },
+      },
+    })),
+  setVectorByCorridorsTwoWayPassageMarkerFillColor: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, fillColor: color } } })),
+  setVectorByCorridorsTwoWayPassageMarkerBorderColor: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, borderColor: color } } })),
+  setVectorByCorridorsTwoWayPassageMarkerBorderWidth: (v) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, borderWidth: v },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerBorderWidth", "twoWayPassage") },
+      },
+    })),
+  setVectorByCorridorsTwoWayPassageMarkerGapWidth: (v) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, gapWidth: v },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "gapWidth", "twoWayPassage") },
+      },
+    })),
+  setVectorByCorridorsTwoWayPassageMarkerSize: (v) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        twoWayPassageMarker: { ...s.vectorByCorridorsSettings.twoWayPassageMarker, size: v },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerSize", "twoWayPassage") },
+      },
+    })),
+  setVectorByCorridorsOneWayPassageMarkerShape: (shape) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, shape } } })),
+  setVectorByCorridorsOneWayPassageMarkerCornerStyle: (style) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, cornerStyle: style },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "cornerStyle", "oneWayPassage") },
+      },
+    })),
+  setVectorByCorridorsOneWayPassageMarkerFillColor: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, fillColor: color } } })),
+  setVectorByCorridorsOneWayPassageMarkerBorderColor: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, borderColor: color } } })),
+  setVectorByCorridorsOneWayPassageMarkerBorderWidth: (v) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, borderWidth: v },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerBorderWidth", "oneWayPassage") },
+      },
+    })),
+  setVectorByCorridorsOneWayPassageMarkerGapWidth: (v) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, gapWidth: v },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "gapWidth", "oneWayPassage") },
+      },
+    })),
+  setVectorByCorridorsOneWayPassageMarkerSize: (v) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        oneWayPassageMarker: { ...s.vectorByCorridorsSettings.oneWayPassageMarker, size: v },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerSize", "oneWayPassage") },
+      },
+    })),
+  setVectorByCorridorsElevatorMarkerShape: (shape) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, shape } } })),
+  setVectorByCorridorsElevatorMarkerCornerStyle: (style) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, cornerStyle: style },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "cornerStyle", "elevator") },
+      },
+    })),
+  setVectorByCorridorsElevatorMarkerFillColor: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, fillColor: color } } })),
+  setVectorByCorridorsElevatorMarkerBorderColor: (color) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, borderColor: color } } })),
+  setVectorByCorridorsElevatorMarkerBorderWidth: (v) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, borderWidth: v },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerBorderWidth", "elevator") },
+      },
+    })),
+  setVectorByCorridorsElevatorMarkerGapWidth: (v) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, gapWidth: v },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "gapWidth", "elevator") },
+      },
+    })),
+  setVectorByCorridorsElevatorMarkerSize: (v) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        elevatorMarker: { ...s.vectorByCorridorsSettings.elevatorMarker, size: v },
+        sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "markerSize", "elevator") },
+      },
+    })),
   setVectorByCorridorsSharedCornerStyle: (style) =>
     set((s) => {
       const settings = { ...s.vectorByCorridorsSettings, sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, cornerStyle: style } };

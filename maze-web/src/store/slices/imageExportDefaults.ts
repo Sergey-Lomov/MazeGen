@@ -6,6 +6,7 @@ import type {
   TeleportSettingsFields,
   OneWaySettingsFields,
   VerticalSettingsFields,
+  VerticalDecorativeFields,
   PngExportSettings,
 } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
@@ -45,7 +46,12 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE: VectorByCorridorsSharedSt
   markerSize: 0.16,
   markerBorderWidth: 3,
   gapWidth: 3,
-  overrides: {},
+  overrides: {
+    cornerStyle: { twoWayPassage: true, oneWayPassage: true, elevator: true, elevatorBadges: true },
+    markerSize: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+    markerBorderWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+    gapWidth: { twoWayPassage: true, oneWayPassage: true, elevator: true },
+  },
 };
 
 /** Shared by both `VectorByWallsSettings` and `VectorByCorridorsSettings` — GitHub issue #313
@@ -97,7 +103,6 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
 const ONE_WAY_ACCENT_DARK = 0x196c64;
 
 export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
-  verticalStyle: "abstract",
   twoWayPassageMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: 3, gapWidth: 3, size: 0.22 },
   oneWayPassageMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: 3, gapWidth: 3, size: 0.22 },
   elevatorMarker: { shape: "diamond", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: 3, gapWidth: 3, size: 0.22 },
@@ -114,22 +119,6 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
   elevatorArrowSize: 0.75,
   elevatorArrowStyle: "triangle",
   elevatorArrowCornerStyle: "round",
-  // `decorative*` fields (GitHub issue #428) — the "decorative" style's own line-only pictogram
-  // settings, independent of the marker-shaped fields above. Same `canvas.vertical.default` line
-  // color for the two stairs sections and the elevator, same "matches the editor's own default look
-  // until changed" rationale as every other section's own defaults.
-  // Line width 2 (GitHub issue #428 fifth follow-up, lowered from 3) — a thinner default reads
-  // better for a stroke-only pictogram than the marker-shape sub-groups' own default border width.
-  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
-  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
-  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
-  // Two-way arrow defaults to the same color as the stairs line itself (GitHub issue #428 fourth
-  // follow-up: "two-way arrow should default to the stairs' own color", not a separate gray) — the
-  // one-way arrow still uses the dedicated accent color (`decorativeStairsAccentColor`) below, since
-  // that distinction is the whole point of the one-way from/to treatment.
-  decorativeStairsArrowColor: canvas.vertical.default,
-  decorativeStairsArrowSize: 0.75,
-  decorativeStairsAccentColor: ONE_WAY_ACCENT_DARK,
   // "Floor-number badges" (GitHub issue #430) — enabled by default, Arabic numerals, a small
   // fraction of the elevator marker's own radius, laid out above/below the marker
   // (`placement: "top_bottom"`). `fillColor`/`textColor` are an independently visible fill+text
@@ -151,6 +140,30 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
     textColor: canvas.floor.default,
     fontWeight: "bold",
   },
+};
+
+/** "Vector by walls"-only — see `VerticalDecorativeFields`'s own doc comment. `verticalStyle`
+ * defaults to `"abstract"` (not `"decorative"`) — a plain opening marker is the one style that's
+ * also correct for a physical single-sheet two-floor build, per the issue's own rationale;
+ * `"decorative"` is an opt-in choice for a purely visual/print export. */
+export const DEFAULT_VERTICAL_DECORATIVE_SETTINGS: VerticalDecorativeFields = {
+  verticalStyle: "abstract",
+  // `decorative*` fields (GitHub issue #428) — the "decorative" style's own line-only pictogram
+  // settings, independent of the marker-shaped fields above. Same `canvas.vertical.default` line
+  // color for the two stairs sections and the elevator, same "matches the editor's own default look
+  // until changed" rationale as every other section's own defaults.
+  // Line width 2 (GitHub issue #428 fifth follow-up, lowered from 3) — a thinner default reads
+  // better for a stroke-only pictogram than the marker-shape sub-groups' own default border width.
+  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
+  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
+  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 2, size: 0.22 },
+  // Two-way arrow defaults to the same color as the stairs line itself (GitHub issue #428 fourth
+  // follow-up: "two-way arrow should default to the stairs' own color", not a separate gray) — the
+  // one-way arrow still uses the dedicated accent color (`decorativeStairsAccentColor`) below, since
+  // that distinction is the whole point of the one-way from/to treatment.
+  decorativeStairsArrowColor: canvas.vertical.default,
+  decorativeStairsArrowSize: 0.75,
+  decorativeStairsAccentColor: ONE_WAY_ACCENT_DARK,
 };
 
 /** Shared with `projectExport/validate.ts`'s recovery defaults for old/malformed project files
@@ -178,6 +191,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = applyVect
     finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0 },
     ...DEFAULT_TELEPORT_SETTINGS,
     ...DEFAULT_VERTICAL_SETTINGS,
+    ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     splitNodeColors: [],
     splitSpecialShapes: true,
     sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
@@ -211,9 +225,9 @@ export const DEFAULT_ONE_WAY_SETTINGS: OneWaySettingsFields = {
 export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = applyVectorByCorridorsSharedStyle(
   {
     background: canvas.stage.background,
-    showGrid: true,
+    showGrid: false,
     gridColor: canvas.grid.line,
-    color: canvas.wall.default,
+    color: 0x2d2d2d,
     thickness: TILE_SIZE / 2,
     join: "round",
     startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0 },
@@ -222,6 +236,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = a
     markerWidenShape: "match_marker",
     ...DEFAULT_ONE_WAY_SETTINGS,
     ...DEFAULT_TELEPORT_SETTINGS,
+    ...DEFAULT_VERTICAL_SETTINGS,
     splitNodeColors: [],
     splitSpecialShapes: true,
     splitGapWidth: 0,

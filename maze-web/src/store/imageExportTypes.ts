@@ -212,19 +212,9 @@ export interface ElevatorBadgeSettings {
  *  fill/border split — there's no fill to split here). The elevator pictogram never draws an arrow
  *  of its own, decorative or not. */
 export interface VerticalSettingsFields {
-  verticalStyle: "abstract" | "decorative";
   twoWayPassageMarker: MarkerSettings;
   oneWayPassageMarker: MarkerSettings;
   elevatorMarker: MarkerSettings;
-  decorativeStairsTwoWay: DecorativeLineStyle;
-  decorativeStairsOneWay: DecorativeLineStyle;
-  decorativeElevator: DecorativeLineStyle;
-  decorativeStairsArrowColor: number;
-  decorativeStairsArrowSize: number;
-  /** One-way stairs arrow color, both ends (GitHub issue #428) — mirrors `oneWayAccentColor`'s own
-   *  from/to distinction but as one shared color, not a fill/border split (there's no fill on a
-   *  line icon to split). */
-  decorativeStairsAccentColor: number;
   twoWayArrowColor: number;
   twoWayArrowSize: number;
   /** Direction-arrow shape (GitHub issue #347 third follow-up) — same three patterns as the
@@ -253,8 +243,27 @@ export interface VerticalSettingsFields {
   elevatorArrowStyle: OneWayPattern;
   elevatorArrowCornerStyle: "round" | "miter";
   /** "Floor-number badges" (GitHub issue #430) — see `ElevatorBadgeSettings`'s own doc comment.
-   *  Independent of `verticalStyle`: draws on top of `elevatorMarker`/`decorativeElevator` alike. */
+   *  Independent of `verticalStyle` on modes that have one — draws on top of `elevatorMarker`/
+   *  `decorativeElevator` alike. */
   elevatorBadges: ElevatorBadgeSettings;
+}
+
+/** "Vector by walls"-only extension of `VerticalSettingsFields` (GitHub issue #428) — the
+ *  "decorative" pictogram treatment (`verticalStyle: "decorative"`, a stairs zigzag/elevator shaft
+ *  icon instead of the plain marker shape). "Vector by corridors" has no decorative treatment of its
+ *  own (GitHub issue #348) — every vertical marker there always draws as the plain `MarkerSettings`
+ *  shape, so `VectorByCorridorsSettings` extends `VerticalSettingsFields` alone, not this. */
+export interface VerticalDecorativeFields {
+  verticalStyle: "abstract" | "decorative";
+  decorativeStairsTwoWay: DecorativeLineStyle;
+  decorativeStairsOneWay: DecorativeLineStyle;
+  decorativeElevator: DecorativeLineStyle;
+  decorativeStairsArrowColor: number;
+  decorativeStairsArrowSize: number;
+  /** One-way stairs arrow color, both ends (GitHub issue #428) — mirrors `oneWayAccentColor`'s own
+   *  from/to distinction but as one shared color, not a fill/border split (there's no fill on a
+   *  line icon to split). */
+  decorativeStairsAccentColor: number;
 }
 
 export interface TeleportSettingsFields {
@@ -354,10 +363,10 @@ export interface VectorByWallsSharedStyle {
  *  field set differs (no `wallJoin`, has `join`/`oneWayJoin` instead; `gapWidth` also reaches
  *  `splitGapWidth`). */
 export interface VectorByCorridorsSharedStyleOverrides {
-  cornerStyle?: { join?: true; oneWayJoin?: true; startMarker?: true; finishMarker?: true; teleportLine?: true };
-  markerSize?: { startMarker?: true; finishMarker?: true; teleportLine?: true };
-  markerBorderWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true };
-  gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true; split?: true };
+  cornerStyle?: { join?: true; oneWayJoin?: true; startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true; elevatorBadges?: true };
+  markerSize?: { startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
+  markerBorderWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
+  gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true; split?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
 }
 
 /** Same role as `VectorByWallsSharedStyle`, for "Vector by corridors" (GitHub issue #322) — see
@@ -386,7 +395,7 @@ export type SharedStyleField<O extends VectorByWallsSharedStyleOverrides | Vecto
  * view until the user changes something. Kept as its own type (not folded into a shared per-mode
  * settings shape) since each render mode's settings are expected to differ entirely — a future
  * mode adds its own sibling `xxxSettings` field, not a new case of this type. */
-export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalSettingsFields {
+export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields {
   background: number;
   showGrid: boolean;
   gridColor: number;
@@ -477,7 +486,7 @@ export interface OneWaySettingsFields {
  * `extends TeleportSettingsFields` — teleports aren't tied to the corridor-vs-wall visual model, so
  * the settings and `TeleportRenderer` transfer as-is, same reuse convention as `startMarker`/
  * `finishMarker` (GitHub issue #311). */
-export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWaySettingsFields {
+export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWaySettingsFields, VerticalSettingsFields {
   /** Background/grid section (GitHub issue #309) — same fields/defaults/behavior as
    *  `VectorByWallsSettings.background`/`showGrid`/`gridColor`, kept as its own copy rather than a
    *  shared sub-type since `VectorByWallsSettings` itself isn't factored that way either. */
@@ -638,6 +647,54 @@ export interface ImageExportActions {
   setVectorByCorridorsSplitSpecialShapes: (v: boolean) => void;
   setVectorByCorridorsSplitGapWidth: (v: number) => void;
   setVectorByCorridorsSplitDiagonalBowAmount: (v: number) => void;
+  /** `oneWayArrowColor` etc. — see `patchVectorByWallsVerticalSettings`'s own doc comment (GitHub
+   *  issue #348, "Vector by corridors" parity follow-up to #347). "Vector by corridors" has no
+   *  `verticalStyle`/decorative fields — it always draws the plain marker shape (GitHub issue #348). */
+  patchVectorByCorridorsVerticalSettings: (
+    patch: Partial<
+      Pick<
+        VerticalSettingsFields,
+        | "twoWayArrowColor"
+        | "twoWayArrowSize"
+        | "twoWayArrowStyle"
+        | "twoWayArrowCornerStyle"
+        | "oneWayArrowColor"
+        | "oneWayArrowSize"
+        | "oneWayArrowStyle"
+        | "oneWayArrowCornerStyle"
+        | "oneWayAccentColor"
+        | "elevatorArrowColor"
+        | "elevatorArrowSize"
+        | "elevatorArrowStyle"
+        | "elevatorArrowCornerStyle"
+      >
+    >,
+  ) => void;
+  /** See `patchVectorByWallsElevatorBadges`'s own doc comment. */
+  patchVectorByCorridorsElevatorBadges: (patch: Partial<ElevatorBadgeSettings>) => void;
+  /** See `setVectorByWallsElevatorBadgesCornerStyle`'s own doc comment. */
+  setVectorByCorridorsElevatorBadgesCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsTwoWayPassageMarkerShape: (shape: MarkerShape) => void;
+  setVectorByCorridorsTwoWayPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsTwoWayPassageMarkerFillColor: (color: number) => void;
+  setVectorByCorridorsTwoWayPassageMarkerBorderColor: (color: number) => void;
+  setVectorByCorridorsTwoWayPassageMarkerBorderWidth: (v: number) => void;
+  setVectorByCorridorsTwoWayPassageMarkerGapWidth: (v: number) => void;
+  setVectorByCorridorsTwoWayPassageMarkerSize: (v: number) => void;
+  setVectorByCorridorsOneWayPassageMarkerShape: (shape: MarkerShape) => void;
+  setVectorByCorridorsOneWayPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsOneWayPassageMarkerFillColor: (color: number) => void;
+  setVectorByCorridorsOneWayPassageMarkerBorderColor: (color: number) => void;
+  setVectorByCorridorsOneWayPassageMarkerBorderWidth: (v: number) => void;
+  setVectorByCorridorsOneWayPassageMarkerGapWidth: (v: number) => void;
+  setVectorByCorridorsOneWayPassageMarkerSize: (v: number) => void;
+  setVectorByCorridorsElevatorMarkerShape: (shape: MarkerShape) => void;
+  setVectorByCorridorsElevatorMarkerCornerStyle: (style: TeleportCornerStyle) => void;
+  setVectorByCorridorsElevatorMarkerFillColor: (color: number) => void;
+  setVectorByCorridorsElevatorMarkerBorderColor: (color: number) => void;
+  setVectorByCorridorsElevatorMarkerBorderWidth: (v: number) => void;
+  setVectorByCorridorsElevatorMarkerGapWidth: (v: number) => void;
+  setVectorByCorridorsElevatorMarkerSize: (v: number) => void;
   /** Sets the shared corner style and re-applies it to every non-overridden dependent field
    *  (`join`, `oneWayJoin`, `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`).
    *  See `VectorByCorridorsSharedStyle`'s own doc comment for the `"sharp"`/`"round"` -> `"miter"`/
@@ -693,7 +750,6 @@ export interface ImageExportActions {
     patch: Partial<
       Pick<
         VerticalSettingsFields,
-        | "verticalStyle"
         | "twoWayArrowColor"
         | "twoWayArrowSize"
         | "twoWayArrowStyle"
@@ -707,10 +763,8 @@ export interface ImageExportActions {
         | "elevatorArrowSize"
         | "elevatorArrowStyle"
         | "elevatorArrowCornerStyle"
-        | "decorativeStairsArrowColor"
-        | "decorativeStairsArrowSize"
-        | "decorativeStairsAccentColor"
-      >
+      > &
+        Pick<VerticalDecorativeFields, "verticalStyle" | "decorativeStairsArrowColor" | "decorativeStairsArrowSize" | "decorativeStairsAccentColor">
     >,
   ) => void;
   /** Patches one `DecorativeLineStyle` sub-object (`decorativeStairsTwoWay`/`decorativeStairsOneWay`/

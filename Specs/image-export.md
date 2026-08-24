@@ -221,6 +221,38 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   computed once per `renderAll` and handed in, rather than the function recomputing
   `buildTeleportGroups` itself — `TeleportRenderer.render` already computes the same grouping
   internally for the same edges, so a second independent call would repeat that work for nothing.
+- **"Vertical connections"** (GitHub issue #348) — abstract-marker only, no style toggle: unlike
+  "Vector by walls", this mode has no `verticalStyle` (abstract/decorative) choice and no decorative
+  pictogram rendering at all — `VectorByCorridorsSettings extends VerticalSettingsFields` only
+  (`storeTypes.ts`), never `VerticalDecorativeFields` (that interface is "Vector by walls"-only). The
+  same three independently-hidden sub-groups exist (`twoWayPassageMarker`/`oneWayPassageMarker`/
+  `elevatorMarker`, shown per `hasTwoWayPassages`/`hasOneWayPassages`/`hasElevators` checked against
+  the panel's own *unscoped* `rawEdges`, same pairing logic as "Vector by walls"), each always drawn
+  as a plain marker shape — same arrow color/size/style/corner-style quadruple per sub-group, same
+  one-way passage primary/secondary accent redesign (`oneWayAccentColor`), same elevator floor-number
+  badges (`elevatorBadges`, GitHub issue #430). Floor-scoping mirrors "Vector by walls":
+  `VectorByCorridorsRenderer.renderAll` narrows `state.nodes`/`state.edges` via
+  `selectFloorScopedMaze` before building corridor/marker geometry, resolves node floors from the
+  *unscoped* list via `selectNodeLevelResolver`, and detects bidirectional vertical passages via
+  `selectVerticalPassagePairSet` over the unscoped edges — same as `VectorByWallsRenderer`. Markers
+  are drawn by this renderer's own `VerticalConnectionRenderer` instance (own `Container`, per
+  `maze-web/CLAUDE.md`'s feature-renderer ownership rule — never `VectorByWallsRenderer`'s own
+  instance), built via the shared `buildVerticalConnectionMarkers` selector and styled via the shared
+  `buildVerticalConnectionStyle(settings, floorColor)` builder — called here with `settings.color`
+  (the corridor's own stroke color) as the occluding-color parameter and no third (decorative) argument,
+  so the builder falls back to its internal `INERT_DECORATIVE_FILLER` placeholder, which is never
+  actually read since `style` is always `"abstract"` for this mode. The occluding-color parameter
+  reuses the convention this mode's Teleports/Waypoints sections already use in place of a separate
+  `floorColor` field. Every vertical marker also gets its own widen patch under the corridor stroke
+  (`buildVerticalWidenMarkers`, `vectorByCorridorsGeometry.ts`), reusing the Cells section's
+  `markerWidenPadding`/`markerWidenShape` the same way `buildTeleportWidenMarkers` does. "Shared
+  style" integration (GitHub issue #322) is identical to "Vector by walls"': `twoWayPassage`/
+  `oneWayPassage`/`elevator`/`elevatorBadges` entries in `VectorByCorridorsSharedStyleOverrides`, all
+  four starting pre-overridden in `DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE.overrides` so the export
+  matches the editor's fixed vertical-connection look until changed. **Deliberately no
+  `vertical_on_special_split`-equivalent export warning** — `computeVectorByCorridorsWarnings` has no
+  vertical-connection reading of its own, matching "Vector by corridors"' existing no-vertical-warning
+  behavior (see the note under "Vector by walls"' own `vertical_on_special_split` warning above).
 
 A one-way passage draws its chevron-row indicator (see the "One-ways" section above) on top of the
 same plain stroke a bidirectional passage draws — `buildCorridorSegments`' own `oneWayDir` is what
@@ -236,8 +268,10 @@ not duplicated, since the join-only-renders-within-one-stroked-path constraint i
 `VectorByWallsRenderer`'s own wall join). `getRequiredExportMargin`/`getRequiredWallExportMargin`
 both resolve to `computeVectorByCorridorsExportMargin` (`exportMargins.ts`) — the widest of half the
 corridor stroke's own width, a start/finish marker's own footprint, the one-way chevron row's own
-width and a teleport marker/connector's own footprint, i.e. every geometry this mode draws past a
-cell's raw center point; unlike "Vector by walls" there's no separate wall-only margin to
+width, a teleport marker/connector's own footprint, and (via `this.verticalContainer`'s own measured
+bounds, folded into `getRequiredExportMargin`'s pixel-accurate path the same way the markers/teleport
+containers already are) a vertical connection marker's own footprint, i.e. every geometry this mode
+draws past a cell's raw center point; unlike "Vector by walls" there's no separate wall-only margin to
 distinguish, so both getters return the same value. Background color is not yet user-configurable
 — always `canvas.stage.background` (`resolveBackgroundColor`'s `"vector_by_corridors"` case), a
 follow-up sub-issue's concern.

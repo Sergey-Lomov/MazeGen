@@ -4,7 +4,7 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
 import { canvas } from "../pixi/colorTokens";
-import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS } from "../store/slices/imageExportSlice";
 
 vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
@@ -44,6 +44,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
     teleportConnectorGapWidth: 3, teleportGroupCustomization: false, teleportGroupOverrides: {},
     ...DEFAULT_VERTICAL_SETTINGS,
+    ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     splitNodeColors: [], splitSpecialShapes: true,
     sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
     ...overrides,
@@ -62,6 +63,7 @@ function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {
     teleportConnectorColor: 0xff0000, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal",
     teleportAvoidFieldExit: false, teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10,
     teleportConnectorGapWidth: 3, teleportGroupCustomization: false, teleportGroupOverrides: {},
+    ...DEFAULT_VERTICAL_SETTINGS,
     splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
     sharedStyle: DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE,
     ...overrides,
