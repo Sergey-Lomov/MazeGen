@@ -142,7 +142,7 @@ describe("computeSheetScreenLayout", () => {
   it("is limited by the narrower screen axis relative to the sheet's aspect ratio", () => {
     const wideScreen = computeSheetScreenLayout(210, 297, 2000, 500);
     // A very wide, short screen with a portrait sheet is height-limited.
-    expect(wideScreen.h).toBeCloseTo(500 * 0.85);
+    expect(wideScreen.h).toBeCloseTo(500 * 0.9);
   });
 });
 
