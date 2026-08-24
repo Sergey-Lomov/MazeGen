@@ -105,7 +105,7 @@ export type ElevatorBadgeLabelType = "arabic" | "roman" | "letters";
 export type ElevatorBadgePlacement = "full_circle" | "left_right" | "right_left" | "top_bottom" | "bottom_top";
 
 /** "Floor-number badges" (GitHub issue #430) — an independent decorative layer drawn on top of an
- *  `Elevator` marker, regardless of `verticalStyle` (abstract/decorative/realistic): one small
+ *  `Elevator` marker, regardless of `verticalStyle` (abstract/decorative): one small
  *  badge per floor the elevator's fan actually reaches (`VerticalConnectionMarker.
  *  targetFloorIndices`), each showing that floor's 1-based display number. Applies to every
  *  `Elevator` marker uniformly — there is no per-elevator override, mirroring `elevatorMarker`
@@ -176,14 +176,13 @@ export interface ElevatorBadgeSettings {
  *  a two-way `VerticalPassage` — its own shape/color, own section). Each has distinct defaults
  *  (shape/color) so all three read apart on the map without the user configuring anything;
  *  `cornerStyle`/`size`/`borderWidth`/`gapWidth` on all three follow "Shared style" (GitHub issue
- *  #322 follow-up) the same way `startMarker`/`finishMarker` do. `verticalStyle` picks one of three
+ *  #322 follow-up) the same way `startMarker`/`finishMarker` do. `verticalStyle` picks one of two
  *  drawing treatments: `"abstract"` (the plain marker shape above — same look every other
  *  live-canvas renderer uses via its own fixed `VerticalConnectionStyle`, matching the issue's own
- *  "cut an opening here" build-marker rationale for a physical two-floor build), `"decorative"` (a
+ *  "cut an opening here" build-marker rationale for a physical two-floor build), or `"decorative"` (a
  *  small stairs illustration instead of the plain marker shape for `VerticalPassage`, meaningful
  *  only when the maze is printed as a set of separate per-floor images the viewer mentally
- *  connects), or `"realistic"` (reserved — no drawing implemented yet, falls back to `"abstract"`
- *  wherever a caller must actually render something). `Elevator` has no decorative treatment of its
+ *  connects). `Elevator` has no decorative treatment of its
  *  own (no natural "decorative elevator" illustration) and always renders as `elevatorMarker`,
  *  regardless of `verticalStyle`. Every marker draws a direction arrow on top of its own
  *  shape/stairs — `direction` is set for two-way markers too (GitHub issue #337/#347 design
@@ -213,7 +212,7 @@ export interface ElevatorBadgeSettings {
  *  fill/border split — there's no fill to split here). The elevator pictogram never draws an arrow
  *  of its own, decorative or not. */
 export interface VerticalSettingsFields {
-  verticalStyle: "abstract" | "decorative" | "realistic";
+  verticalStyle: "abstract" | "decorative";
   twoWayPassageMarker: MarkerSettings;
   oneWayPassageMarker: MarkerSettings;
   elevatorMarker: MarkerSettings;

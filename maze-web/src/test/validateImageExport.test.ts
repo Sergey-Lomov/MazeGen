@@ -8,11 +8,6 @@ describe("validateVerticalSettingsFields", () => {
     expect(result.verticalStyle).toBe("decorative");
   });
 
-  it("accepts the reserved 'realistic' value", () => {
-    const result = validateVerticalSettingsFields({ verticalStyle: "realistic" }, "path", DEFAULT_VERTICAL_SETTINGS);
-    expect(result.verticalStyle).toBe("realistic");
-  });
-
   it("migrates a pre-follow-up 'marker' legacy field to 'abstract'", () => {
     const result = validateVerticalSettingsFields({ verticalPassageDisplayStyle: "marker" }, "path", DEFAULT_VERTICAL_SETTINGS);
     expect(result.verticalStyle).toBe("abstract");
@@ -25,6 +20,11 @@ describe("validateVerticalSettingsFields", () => {
 
   it("falls back to the default when neither field is present", () => {
     const result = validateVerticalSettingsFields({}, "path", DEFAULT_VERTICAL_SETTINGS);
+    expect(result.verticalStyle).toBe(DEFAULT_VERTICAL_SETTINGS.verticalStyle);
+  });
+
+  it("falls back to the default for a stale/removed value (e.g. a pre-removal 'realistic' project file)", () => {
+    const result = validateVerticalSettingsFields({ verticalStyle: "realistic" }, "path", DEFAULT_VERTICAL_SETTINGS);
     expect(result.verticalStyle).toBe(DEFAULT_VERTICAL_SETTINGS.verticalStyle);
   });
 

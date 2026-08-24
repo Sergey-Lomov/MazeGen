@@ -180,7 +180,7 @@ export function validateVerticalSettingsFields(obj: Record<string, unknown> | nu
   const legacyMarker = obj?.["verticalPassageMarker"];
   return {
     verticalStyle:
-      style === "abstract" || style === "decorative" || style === "realistic"
+      style === "abstract" || style === "decorative"
         ? style
         : legacyStyle === "marker"
           ? "abstract"
