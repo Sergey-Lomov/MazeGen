@@ -522,6 +522,19 @@ On the Rust side: `PresetConnectionDto`/`PresetEndpointDto` with `#[derive(Deser
 
 **Breaking wire-format change (GitHub issue #231):** `PresetConnection.from`/`.to`, `LockedNode.point`, and `preset_start`/`preset_finish`/`preset_gen_source` changed from a bare `(i32,i32)`/`[i32;2]` to the `{point, slot}` object above — an intentional, non-backward-compatible change, not a migration. Project files and `maze-runner` fixtures predating this issue that use the old flat-tuple shape in these fields no longer parse.
 
+## Cell inspector (GitHub issue #353)
+
+The hover status bar shared by every maze-bearing card (`HoverInfoPanel`) also works on this card, via a separate preset-stage selector (`buildPresetCellInspection`, `pixi/selectors/presetCellInspection.ts`) — Preset Connections has no `NodeDto`/`EdgeDto` graph yet, so it cannot go through the generic post-generation inspector (`buildCellInspection`, `pixi/selectors/mazeSelectors/cellInspection.ts`); `cellInspectionResolver.ts`'s `resolveCellInspection` branches on `openCard === "preset_connections"` before falling through to the generic path.
+
+Same output conventions as the post-generation inspector: bare `"x:N, y:N"` for an empty cell, `" | "`-joined marker lines for a plain node, `"[Node N: ...]"` blocks (`"; "`-joined lines inside) for a split point — `N` is 1-based, original node first then declared slots by ascending `slotId` (`allNodesAt`'s own order, the preset-stage analogue of `NodeDto.i + 1`).
+
+Marker lines shown per node (exact `PresetEndpoint` match via `presetEndpointsEqual`):
+- `Start` / `Finish` / `Gen source` — `presetStart`/`presetFinish`/`presetGenSource`
+- `Teleport <arrow> (target)` — from `presetTeleports`, direction arrow (`<->`/`->`/`<-`) same convention as post-generation; cross-floor target shows the floor label (`L{n}`), same-floor shows coordinates
+- `Vertical passage <arrow> (L{n})` — from `presetVerticalPassages`, always floor-label target
+- `Elevator (L{a}, L{b}, ...)` — from `presetElevators`, no arrow (always bidirectional), sorted/deduped floor list
+- `Lock (in|out|both)` — from merged `lockedNodes`/`autoLockedNodes` (`"both"` for an auto-locked node), reported **only on the point's original node** (`slotId === undefined`) even for a split point, since locks always address the original node only
+
 ## Lifecycle
 
 | Event | Effect |
