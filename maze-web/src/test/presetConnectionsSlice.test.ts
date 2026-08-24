@@ -34,6 +34,7 @@ beforeEach(() => {
     lockedNodes: new Map(),
     autoLockedNodes: new Set(),
     autoLock: true,
+    defaultEdgeState: "undefined",
   });
   setActiveFieldConfig({ tessellationConfig: { type: "square", width: 3, height: 3 }, isEditingField: false, fieldPoints: new Set<number>() });
 });
@@ -68,39 +69,51 @@ describe("mazeStore preset connections", () => {
     expect(s.autoLockedNodes.has("0,0")).toBe(true);
   });
 
-  it("applyPresetConnectionsReset clears an existing entry when default is undefined", () => {
+  it("applyPresetConnectionsToolAt('reset', ...) clears an existing entry when default is undefined", () => {
     useMazeStore.setState({
       presetConnections: new Map([["0,0-1,0", { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "wall", source: "user" }]]),
     });
-    useMazeStore.getState().applyPresetConnectionsReset("0,0-1,0");
+    useMazeStore.getState().applyPresetConnectionsToolAt("reset", "0,0-1,0", [0, 0], [1, 0]);
     expect(useMazeStore.getState().presetConnections.has("0,0-1,0")).toBe(false);
   });
 
-  it("applyPresetConnectionsReset materializes the current default as a source:\"default\" entry", () => {
+  it("applyPresetConnectionsToolAt('reset', ...) materializes the current default as a source:\"default\" entry", () => {
     useMazeStore.setState({
       defaultEdgeState: "wall",
       presetConnections: new Map([["0,0-1,0", { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "passage", source: "user" }]]),
     });
-    useMazeStore.getState().applyPresetConnectionsReset("0,0-1,0");
+    useMazeStore.getState().applyPresetConnectionsToolAt("reset", "0,0-1,0", [0, 0], [1, 0]);
     expect(useMazeStore.getState().presetConnections.get("0,0-1,0")).toMatchObject({ state: "wall", source: "default" });
   });
 
-  it("applyPresetConnectionsReset recomputes autoLockedNodes when the materialized default fully surrounds a cell", () => {
+  it("applyPresetConnectionsToolAt('reset', ...) recomputes autoLockedNodes when the materialized default fully surrounds a cell", () => {
     // width=2 centers cells at x=-1 and x=0 (see configAllCells offset math)
     setActiveFieldConfig({ tessellationConfig: { type: "square", width: 2, height: 1 } });
     useMazeStore.setState({
       defaultEdgeState: "wall",
       presetConnections: new Map([["-1,0-0,0", { from: presetEndpoint([-1, 0]), to: presetEndpoint([0, 0]), state: "undefined", source: "user" }]]),
     });
-    useMazeStore.getState().applyPresetConnectionsReset("-1,0-0,0");
+    useMazeStore.getState().applyPresetConnectionsToolAt("reset", "-1,0-0,0", [-1, 0], [0, 0]);
     const s = useMazeStore.getState();
     expect(s.autoLockedNodes.has("-1,0")).toBe(true);
     expect(s.autoLockedNodes.has("0,0")).toBe(true);
   });
 
-  it("applyPresetConnectionsReset is no-op for missing key", () => {
-    useMazeStore.getState().applyPresetConnectionsReset("9,9-9,8");
+  it("applyPresetConnectionsToolAt('reset', ...) is no-op for missing key", () => {
+    useMazeStore.getState().applyPresetConnectionsToolAt("reset", "9,9-9,8", [9, 9], [9, 8]);
     expect(useMazeStore.getState().presetConnections.size).toBe(0);
+  });
+
+  it("applyPresetConnectionsToolAt('reset', ...) resolves the level-suffixed key on floor 1, not the bare geometric key (GitHub issue #433)", () => {
+    const state = useMazeStore.getState();
+    useMazeStore.setState({
+      floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }],
+      activeFloorId: "f1",
+      floorFields: { ...state.floorFields, f0: state.floorFields[state.activeFloorId], f1: state.floorFields[state.activeFloorId] },
+      presetConnections: new Map([["0,0@1-1,0@1", { from: presetEndpoint([0, 0], undefined, 1), to: presetEndpoint([1, 0], undefined, 1), state: "wall", source: "user" }]]),
+    });
+    useMazeStore.getState().applyPresetConnectionsToolAt("reset", "0,0-1,0", [0, 0], [1, 0]);
+    expect(useMazeStore.getState().presetConnections.has("0,0@1-1,0@1")).toBe(false);
   });
 
   it("clearInvalidPresetConnections removes entries outside the field", () => {

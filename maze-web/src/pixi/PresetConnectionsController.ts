@@ -146,7 +146,7 @@ export class PresetConnectionsController extends BaseController {
         this.renderer.updateCellHover(null);
         this.renderer.updateHover(edge, true);
         this.continueEdgeDrag(edge, (e) => {
-          useMazeStore.getState().applyPresetConnectionsReset(e.key);
+          useMazeStore.getState().applyPresetConnectionsToolAt("reset", e.key, e.from, e.to);
         });
         return;
       }
@@ -278,7 +278,7 @@ export class PresetConnectionsController extends BaseController {
         return (state.presetSplitPoints[k]?.length ?? 0) > 0;
       };
       if (edge && !isSplit(edge.from) && !isSplit(edge.to)) {
-        useMazeStore.getState().applyPresetConnectionsReset(edge.key);
+        useMazeStore.getState().applyPresetConnectionsToolAt("reset", edge.key, edge.from, edge.to);
         this.beginEdgeDrag(edge.key);
         this.renderer.updateHover(edge, true);
         return;
@@ -318,7 +318,7 @@ export class PresetConnectionsController extends BaseController {
     if (!edge) return;
 
     if (button === 2) {
-      useMazeStore.getState().applyPresetConnectionsReset(edge.key);
+      useMazeStore.getState().applyPresetConnectionsToolAt("reset", edge.key, edge.from, edge.to);
     } else if (button === 0) {
       useMazeStore.getState().applyPresetConnectionsTool(edge.key, edge.from, edge.to);
       if (DRAG_EDGE_TOOLS.has(tool)) {

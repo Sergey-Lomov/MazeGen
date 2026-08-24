@@ -259,7 +259,7 @@ Changing `defaultEdgeState` also triggers `_recomputeAutoLock` if auto-lock is e
 
 Tools `wall`, `passage`, and `reset` support drag with LMB held. While dragging:
 - `beginEdgeDrag(edgeKey)` (on `BaseController`, shared with `PostEditController`) sets `dragActive` and seeds `dragVisited` on `pointerdown`
-- `continueEdgeDrag(edge, onNewEdge)` deduplicates edges within one drag session via `dragVisited: Set<string>` and invokes `onNewEdge` for each newly-entered edge; the callback applies the current tool via `applyPresetConnectionsTool` — the helper itself never touches the store
+- `continueEdgeDrag(edge, onNewEdge)` deduplicates edges within one drag session via `dragVisited: Set<string>` and invokes `onNewEdge` for each newly-entered edge; the callback applies the current tool via `applyPresetConnectionsTool` (`wall`/`passage`) or `applyPresetConnectionsToolAt("reset", ...)` (the `reset`/Clear-tool drag path, GitHub issue #433 — needs `from`/`to` to rebuild the level-aware key itself, not just the bare edge key) — the helper itself never touches the store
 - `endEdgeDrag()` clears `dragActive`/`dragVisited` on `pointerup` (LMB only)
 
 One-way and lock/gen-source tools do not support drag.
@@ -340,7 +340,7 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 | `gen_source` | Generation | Toggles `presetGenSource` on clicked cell (click same cell to clear) |
 | `manage_split_nodes` | Vertex | Left-click any in-field point to open "Manage split nodes" for it — see "Split nodes" above |
 
-Right-click on an edge clears its user override and re-materializes it as the current default (same as the `reset` tool — see "Entry source" above), for any tool that falls through to edge picking (i.e. not `set_start`/`set_finish`/`gen_source`/lock/teleport/`manage_split_nodes` tools, each of which gives right-click its own tool-specific meaning — see their rows above).
+Right-click on an edge clears its user override and re-materializes it as the current default (same as the `reset` tool — see "Entry source" above), for any tool that falls through to edge picking (i.e. not `set_start`/`set_finish`/`gen_source`/lock/teleport/`manage_split_nodes` tools, each of which gives right-click its own tool-specific meaning — see their rows above). Dispatched via `applyPresetConnectionsToolAt("reset", edge.key, edge.from, edge.to)` — `edge.from`/`edge.to` (plain cell coords from `pickEdgeAtPosition`) are what `applyTool` actually keys off via `presetEdgeKey`/`activeFloorLevel`; the passed `edge.key` is a floor-0-only geometric hint, ignored by `applyTool` on any floor above the first (GitHub issue #433 — the pre-fix code passed only that bare key, so RMB reset silently no-opped on floor 1+).
 
 ## Node locking
 

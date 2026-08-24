@@ -101,7 +101,6 @@ export interface PresetConnectionsActions {
    * when a default is active); the "Manage split nodes" dialog is the only UI path to set it
    * explicitly, so it bypasses `applyTool` and writes the entry directly. */
   setPresetConnectionUndefined: (key: string, from: PresetEndpoint, to: PresetEndpoint) => void;
-  applyPresetConnectionsReset: (key: string) => void;
   clearInvalidPresetConnections: () => void;
   resetPresetConnections: () => void;
   setPresetStart: (cell: [number, number] | null) => void;
