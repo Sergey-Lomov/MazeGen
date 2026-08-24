@@ -192,20 +192,15 @@ impl GraphAnalytics {
 
 /// Count undirected edges within the pure-cycle core. An edge and its `reverse_edge` are the
 /// same physical corridor and count once; edges with no reverse_edge in the core (one-way, or
-/// a corridor whose reverse direction simply isn't in the core) count via plain undirected-pair
-/// dedup. Distinct parallel corridors between the same node pair (e.g. a direct path plus a
-/// longer detour, each compressed from a different chain of corridor nodes) must each count
-/// separately — they're genuinely different cycle legs.
+/// a corridor whose reverse direction simply isn't in the core) each count individually by edge
+/// index — NOT deduped by node-pair. Two distinct one-way edges between the same node pair are
+/// genuinely separate corridors and must both be counted, whether they're parallel corridors of
+/// the same kind (e.g. a direct path plus a longer detour) or a same-pair pair of opposite-
+/// direction edges of different kind that `link_reverse_edges` deliberately left unlinked (a
+/// `Basic` edge one way, an `Elevator` edge the other — GitHub issue #197; collapsing them by
+/// bare node-pair here undercounts the core, see GitHub issue #396).
 fn count_core_edges(nav: &NavGraph, core_edges: &HashSet<usize>) -> usize {
-    let mut paired_count = 0usize;
-    let mut unpaired_pairs: HashSet<(NavNodeId, NavNodeId)> = HashSet::new();
-    for (_, edge) in distinct_undirected_edges(nav, |idx| core_edges.contains(&idx)) {
-        match edge.reverse_edge {
-            Some(rev) if core_edges.contains(&rev) => paired_count += 1,
-            _ => { unpaired_pairs.insert((edge.from.min(edge.to), edge.from.max(edge.to))); }
-        }
-    }
-    paired_count + unpaired_pairs.len()
+    distinct_undirected_edges(nav, |idx| core_edges.contains(&idx)).count()
 }
 
 /// Number of connected components (WCC) of the pure-cycle core subgraph, via DSU.
