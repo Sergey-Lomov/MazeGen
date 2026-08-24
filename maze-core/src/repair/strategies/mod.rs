@@ -55,6 +55,7 @@ pub mod add_elevator_stop_count;
 pub mod add_elevator_height_stop;
 pub mod add_elevator_stop_for_gap;
 pub mod vertical_passage_region_merge;
+pub mod elevator_region_merge;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -91,6 +92,7 @@ pub use add_elevator_stop_count::{
 pub use add_elevator_height_stop::{AddElevatorHeightStopStrategy, PARAM_BALANCED_GROWTH as ADD_ELEVATOR_HEIGHT_STOP_PARAM_BALANCED_GROWTH, PARAM_ALLOW_INCOMPLETE as ADD_ELEVATOR_HEIGHT_STOP_PARAM_ALLOW_INCOMPLETE, PARAM_MAX_COMPACTNESS as ADD_ELEVATOR_HEIGHT_STOP_PARAM_MAX_COMPACTNESS};
 pub use add_elevator_stop_for_gap::AddElevatorStopForGapStrategy;
 pub use vertical_passage_region_merge::{VerticalPassageRegionMergeStrategy, PARAM_CONNECTION_MODE as VERTICAL_PASSAGE_REGION_MERGE_PARAM_CONNECTION_MODE, PARAM_DIRECTION_BALANCE as VERTICAL_PASSAGE_REGION_MERGE_PARAM_DIRECTION_BALANCE};
+pub use elevator_region_merge::{ElevatorRegionMergeStrategy, PARAM_USE_EXISTING_ELEVATORS as ELEVATOR_REGION_MERGE_PARAM_USE_EXISTING_ELEVATORS};
 pub use remove_split::{
     RemoveSplitStrategy, PARAM_SELECTION as REMOVE_SPLIT_PARAM_SELECTION,
     SELECTION_OPTIONS as REMOVE_SPLIT_SELECTION_OPTIONS,

@@ -1005,6 +1005,34 @@ Same contract as `ExpandRegionPassageStrategy`: `invalid` on `RegionNeedsExpansi
 - Merged-away bookkeeping identical to `ExpandRegionPassageStrategy`.
 - Returns `Fixed` if at least one region was successfully merged; `Failed` if none were.
 
+### ElevatorRegionMergeStrategy
+
+Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #431. Merges each flagged undersized SCC region into a region on **any other floor** (not just an adjacent one, unlike `VerticalPassageRegionMergeStrategy`) via an `Elevator` edge (`AddBidirectionalElevator`). Always spans exactly two floors — the region's own floor and the chosen target floor — regardless of whether an existing elevator on that column already spans more. Shares target-selection (`target_mode`) and merge-loop bookkeeping with the other region-merge strategies via `region_merge_core`, but not `prefer_partially_connected` (an elevator connection is always a full two-way fan, never partially completable the way a single vertical passage can be) or a direction concept (any other floor is a valid target, not just up/down one step).
+
+Same contract as `ExpandRegionPassageStrategy`: `invalid` on `RegionNeedsExpansionIssue` is the producing check's result — there is no other channel to learn it. Only meaningful on a multi-level field; fails outright on a single-level one (no other floor exists).
+
+**Parameters:**
+
+| id | type | default | options | description |
+|----|------|---------|---------|-------------|
+| `target_mode` | Enum | `random` | `largest`, `smallest`, `random`, `prefer_needy` | How to pick which region on another floor to merge into (`region_merge_core`) |
+| `use_existing_elevators` | Priority | `indifferent` | `required`, `preferred`, `indifferent`, `discouraged`, `forbidden` | Whether to add a stop to an elevator that already reaches the region or the target floor, versus building a brand-new two-floor elevator |
+
+**Algorithm**, in order:
+
+1. If `invalid` is empty: returns `Fixed` immediately.
+2. **Target discovery**: for every node in the region, every *other* floor's node at the same field point is checked (`maze.field.levels_ordered()`, skipping the region's own floor) and its SCC component looked up. Candidates are grouped by target component id, each carrying the set of field points shared between the region and that component (`discover_target_candidates`).
+3. **Target selection**: `target_mode` (`region_merge_core::pick_by_mode`) picks one target component from the candidate pool, same semantics as the other region-merge strategies.
+4. **Branch selection**: `use_existing_elevators` (a `PriorityLevel`) decides whether to try reusing an existing elevator first or building a new one first, with fallback to the other branch unless pinned to `Required`/`Forbidden` (which allow only one branch, no fallback):
+   - `Required`/`Preferred` → try reuse first, then new.
+   - `Discouraged`/`Forbidden` → try new first (or only, for `Forbidden`), then reuse.
+   - `Indifferent` → coin flip decides which branch goes first.
+5. **Reuse branch** (`try_reuse_existing_elevator`): finds every elevator (including ones already queued as `AddBidirectionalElevator` commands earlier in the same `apply()` call, via `elevator_groups_with_planned`) with at least one stop belonging to the region *or* the target component — membership by node, not by shared point, so an elevator a region already reaches through an earlier merge this call is found even if that stop's own point has nothing to do with the current target. An elevator with a stop on *both* sides already is skipped (nothing to add). **An elevator is one vertical shaft at a single fixed field point** — every stop must land on that same point (`Elevator`'s own doc contract, `elevator_core.rs`). A candidate is therefore only actually reusable if its own point (read off its first stop) is itself among the field points shared between the region and the target; otherwise it's skipped entirely, never grown at a different point just because that point happens to also be shared. For a reusable candidate missing one side, a free node (not already a stop) at the elevator's *own* point — never merely some other point `target_points` also offers — is picked at random and added as a new stop, fanned to every existing stop (`add_stop_command_checked` — rejects the whole elevator if any resulting pair is already connected, already planned this call, or preset-blocked).
+6. **New-elevator branch** (`try_build_new_elevator`): picks a shared field point at random (shuffled), finds the region's own node at that point and, among every other floor, the first node at the same point that belongs to the actually-chosen target component (not merely any other unconnected node at that point — a point can be shared with more than one candidate component) and isn't already connected and isn't preset-blocked; builds a single bidirectional elevator pair between just those two nodes. If that point doesn't work out, the next shuffled point is tried.
+7. Returns `Fixed` if at least one region was successfully merged; `Failed` if none were.
+
+WASM/UI-hidden on a single-floor maze (`EntityVisibility::MultiFloorOnly`), same as `VerticalPassageRegionMergeStrategy` and the elevator-family strategies.
+
 ### WeightedRegionMergeStrategy
 
 Handles `REGION_NEEDS_EXPANSION` — see GitHub issue #90. Unlike `ExpandRegionPassageStrategy`/`TeleportRegionMergeStrategy`, which each implement one specific merge mechanism, this strategy picks *which* nested region-merge strategy to actually run: it holds any number of nested strategies under one slot, each with a weight, and delegates to `dispatch_weighted` (see "Weighted nested dispatch" above) — weighted-random selection without replacement, retrying a different nested strategy if the chosen one returns `Failed`, until one succeeds or every candidate has been tried.
