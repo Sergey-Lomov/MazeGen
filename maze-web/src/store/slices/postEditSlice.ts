@@ -807,13 +807,31 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     // forward-only or `vertical_passage_two_way`'s both) would coexist with the old generation-time
     // edge once both got resent on the next confirm — a one-way "change direction" click reading as
     // "now two-way" instead of a flip.
-    const generatedPartner = state.edges.find((e) =>
-      e.kind === "vertical_passage" && (e.from === origin.id || e.to === origin.id));
-    if (generatedPartner) {
-      const partnerId = generatedPartner.from === origin.id ? generatedPartner.to : generatedPartner.from;
+    const generatedPartnerIds = new Set<number>();
+    for (const e of state.edges) {
+      if (e.kind !== "vertical_passage") continue;
+      if (e.from === origin.id) generatedPartnerIds.add(e.to);
+      else if (e.to === origin.id) generatedPartnerIds.add(e.from);
+    }
+    const isAlreadyDrafted = (partnerId: number) => state.postEditDraftVerticalPassages.some((p) =>
+      (p.from.kind === "node" && p.from.id === origin.id && p.to.kind === "node" && p.to.id === partnerId) ||
+      (p.to.kind === "node" && p.to.id === origin.id && p.from.kind === "node" && p.from.id === partnerId));
+    // A cell click (not on the endpoint marker itself) resolves to the same `origin` node as the
+    // marker does — `PostEditController`'s hit-test (`pickPostEditVerticalPassageEndpointAt`) only
+    // triggers a drag/cycle when the click lands within the marker's own hit radius, so a click
+    // elsewhere in the same cell still reaches this branch. Picks the first generation-time partner
+    // *not already drafted* — re-minting for a partner that already has a draft entry would produce
+    // a second entry for the same pair, which then coexists with the first on the next confirm and
+    // reads as two_way no matter what either entry's own direction says (GitHub issue #385); editing
+    // an already-drafted entry is the marker-click (cycle) path instead. Skipping only the drafted
+    // partners (not bailing out on "any draft entry touching origin") is what keeps this working for
+    // a point that legitimately holds two independent vertical passages — one up, one down.
+    const partnerId = [...generatedPartnerIds].find((id) => !isAlreadyDrafted(id));
+    if (partnerId !== undefined) {
+      const forwardExists = state.edges.some((e) =>
+        e.kind === "vertical_passage" && e.from === origin.id && e.to === partnerId);
       const reverseExists = state.edges.some((e) =>
         e.kind === "vertical_passage" && e.from === partnerId && e.to === origin.id);
-      const forwardExists = generatedPartner.from === origin.id;
       const direction: "forward" | "backward" | "two_way" =
         forwardExists && reverseExists ? "two_way" : forwardExists ? "forward" : "backward";
       const entry: PostEditVerticalPassageEntry = {
