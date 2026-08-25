@@ -194,4 +194,26 @@ describe("QualityDetailPanel", () => {
     render(<Harness selection={{ type: "param", owner: { kind: "check", checkId: "missing" }, paramId: "threshold" }} vm={vm} />);
     expect(screen.queryByText("Threshold")).not.toBeInTheDocument();
   });
+
+  it("renders option explanations for an enum param when selected (GitHub issue #435)", () => {
+    const checkWithEnumParam: CheckVM = {
+      ...check,
+      params: [{ id: "region_class", label: "Region class", kind: { type: "enum", default: "all", options: ["all", "path", "alternative", "unreachable", "trap"] } }],
+    };
+    const vm = makeVm({ checks: [checkWithEnumParam] });
+    render(<Harness selection={{ type: "param", owner: { kind: "check", checkId: "g1:0" }, paramId: "region_class" }} vm={vm} />);
+    expect(screen.getByText("Path", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText("Trap", { selector: "strong" })).toBeInTheDocument();
+  });
+
+  it("renders option explanations for a priority param when selected (GitHub issue #435)", () => {
+    const checkWithPriorityParam: CheckVM = {
+      ...check,
+      params: [{ id: "unreachable_priority", label: "Unreachable priority", kind: { type: "priority", default: "indifferent" } }],
+    };
+    const vm = makeVm({ checks: [checkWithPriorityParam] });
+    render(<Harness selection={{ type: "param", owner: { kind: "check", checkId: "g1:0" }, paramId: "unreachable_priority" }} vm={vm} />);
+    expect(screen.getByText("required", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText("forbidden", { selector: "strong" })).toBeInTheDocument();
+  });
 });

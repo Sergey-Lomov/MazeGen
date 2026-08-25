@@ -103,7 +103,6 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     borderRadius: radius.sm,
-    opacity: 0.85,
   },
   stageToolbarBtnDisabled: {
     opacity: 0.3,
@@ -165,7 +164,6 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     cursor: "default",
     lineHeight: 1,
     flexShrink: 0,
-    opacity: 0.7,
   },
   moveBtn: {
     background: "none",
@@ -176,7 +174,6 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     display: "flex",
     alignItems: "center",
-    opacity: 0.7,
   },
   moveBtnDisabled: {
     opacity: 0.25,
@@ -206,7 +203,7 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     opacity: 0.5,
   },
   ruleCardTitleText: {
-    ...muted(typography.field),
+    ...typography.field,
     fontWeight: 600,
     flex: 1,
     minWidth: 0,
@@ -333,6 +330,12 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     ...typography.title,
   },
   detailDesc: {
+    ...muted(typography.body),
+    lineHeight: 1.5,
+  },
+  optionList: {
+    margin: 0,
+    paddingLeft: 16,
     ...muted(typography.body),
     lineHeight: 1.5,
   },

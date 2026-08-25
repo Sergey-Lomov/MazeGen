@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, ChevronUp, ChevronDown, Plus, Pencil } from "lucide-react";
+import { X, ChevronUp, ChevronDown, Plus } from "lucide-react";
 import { useMazeStore } from "../../../store/mazeStore";
 import { CollapseButton } from "../../CollapseButton";
 import { CheckSelectDialog } from "../CheckSelectDialog";
@@ -197,7 +197,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                   title={m["quality.add_new_rule"]()}
                   onClick={() => setNewRuleStep({ stage: "issue", targetStageId: stage.stageId })}
                 >
-                  <Plus size={16} color={ui.text.tertiary} />
+                  <Plus size={16} color={ui.text.tertiary} strokeWidth={2.5} />
                 </button>
                 <button
                   className={isFirstStage ? undefined : "hoverable"}
@@ -206,7 +206,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                   disabled={isFirstStage}
                   onClick={() => moveStage(stage.stageId, "up")}
                 >
-                  <ChevronUp size={16} color={ui.text.tertiary} />
+                  <ChevronUp size={16} color={ui.text.tertiary} strokeWidth={2.5} />
                 </button>
                 <button
                   className={isLastStage ? undefined : "hoverable"}
@@ -215,11 +215,9 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                   disabled={isLastStage}
                   onClick={() => moveStage(stage.stageId, "down")}
                 >
-                  <ChevronDown size={16} color={ui.text.tertiary} />
+                  <ChevronDown size={16} color={ui.text.tertiary} strokeWidth={2.5} />
                 </button>
-                <button className="hoverable" style={styles.stageToolbarBtn} title={m["quality.rename_stage"]()} onClick={() => startRenameStage(stage)}>
-                  <Pencil size={15} color={ui.text.tertiary} />
-                </button>
+                <button className="hoverable" style={{ ...styles.stageToolbarBtn, fontSize: 16 }} title={m["quality.rename_stage"]()} onClick={() => startRenameStage(stage)}>✎</button>
                 <div
                   style={styles.toggleWrap}
                   title={stage.disabled ? m["quality.enable_stage"]() : m["quality.disable_stage"]()}
@@ -232,7 +230,7 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
                   title={m["quality.remove_stage"]()}
                   onClick={() => setRemoveConfirmStageId(stage.stageId)}
                 >
-                  <X size={16} color={ui.text.tertiary} />
+                  <X size={16} color={ui.text.tertiary} strokeWidth={2.5} />
                 </button>
               </div>
               {!stage.collapsed && (

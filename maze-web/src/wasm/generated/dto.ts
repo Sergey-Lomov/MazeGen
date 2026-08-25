@@ -376,6 +376,13 @@ export interface VerticalStatsDto {
    * a separate one spanning floors 4-6) and count as two groups.
    */
   elevator_groups: number;
+  /**
+   * Sum of stop counts over every elevator group, maze-wide (GitHub issue #436). See
+   * `MazeStatisticsDto::elevator_stop_count` for the same count broken down `by_floor`.
+   */
+  elevator_stop_count: number;
+  /** `elevator_stop_count as f64 / elevator_groups as f64`, `0.0` when there are no elevators. */
+  average_elevator_stops: number;
   cross_floor_teleports: number;
 }
 
@@ -464,6 +471,12 @@ export interface MazeStatisticsDto {
   passage_stats: FloorScoped<SpatialEdgeStatsDto>;
   elements_stats: FloorScoped<ElementsStatsDto>;
   vertical_stats: VerticalStatsDto;
+  /**
+   * Elevator stop count broken down `by_floor` (GitHub issue #436) — unlike the rest of
+   * `vertical_stats`, a single elevator stop belongs to exactly one floor, so a per-floor
+   * breakdown is meaningful here. `total` mirrors `vertical_stats.elevator_stop_count`.
+   */
+  elevator_stop_count: FloorScoped<number>;
 }
 
 /**

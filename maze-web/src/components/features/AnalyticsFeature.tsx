@@ -100,6 +100,15 @@ export function DetailedReportPanel({ statistics, floors, cfg, nodes, onClose }:
                         <StatGroup nested>
                           <ElementsSection stats={statistics.elements_stats.by_floor[idx]} />
                         </StatGroup>
+
+                        {statistics.graph_stats.floor_count > 1 && (
+                          <>
+                            <SubsectionTitle label={m["analytics.vertical_section"]()} />
+                            <StatGroup nested>
+                              <StatRow label={m["analytics.vertical_elevator_stop_count"]()} count={statistics.elevator_stop_count.by_floor[idx] ?? 0} />
+                            </StatGroup>
+                          </>
+                        )}
                       </StatGroup>
                       <div style={styles.divider} />
                     </div>

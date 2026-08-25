@@ -328,22 +328,15 @@ describe("ParamFields", () => {
   });
 
   describe("param selection (onSelectParam/selectedParamId, GitHub issue #375)", () => {
-    it("shows no info icon and no row click handler when onSelectParam is not passed", () => {
+    it("shows no row click handler when onSelectParam is not passed", () => {
       render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={vi.fn()} />);
-      expect(screen.queryByText("ℹ")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Reserve percent" })).not.toBeInTheDocument();
     });
 
-    it("clicking the info icon calls onSelectParam with that param's id", () => {
+    it("pressing Enter on the row calls onSelectParam", () => {
       const onSelectParam = vi.fn();
       render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={vi.fn()} onSelectParam={onSelectParam} />);
-      fireEvent.click(screen.getByText("ℹ"));
-      expect(onSelectParam).toHaveBeenCalledWith("reserve_percent");
-    });
-
-    it("pressing Enter on the info icon calls onSelectParam", () => {
-      const onSelectParam = vi.fn();
-      render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={vi.fn()} onSelectParam={onSelectParam} />);
-      fireEvent.keyDown(screen.getByText("ℹ"), { key: "Enter" });
+      fireEvent.keyDown(screen.getByText("Reserve percent").closest('[role="button"]')!, { key: "Enter" });
       expect(onSelectParam).toHaveBeenCalledWith("reserve_percent");
     });
 

@@ -433,10 +433,14 @@ pub struct VerticalStats {
     pub one_way_passages_up: usize,
     pub one_way_passages_down: usize,
     pub elevator_groups: usize,
+    pub elevator_stop_count: usize,
+    pub average_elevator_stops: f64,
     pub cross_floor_teleports: usize,
 }
 
 pub fn compute_vertical_stats<T: Tessellation>(graph: &Graph, field: &MultiLevelField<T>) -> VerticalStats
+
+pub fn compute_elevator_stop_count_scoped<T: Tessellation>(elevator_groups: &[HashSet<NodeId>], field: &MultiLevelField<T>, level: LevelId) -> usize
 ```
 
 - `bidirectional_passages` / `one_way_passages_up` / `one_way_passages_down` — `VerticalPassage`
@@ -445,9 +449,23 @@ pub fn compute_vertical_stats<T: Tessellation>(graph: &Graph, field: &MultiLevel
   via `field.level_index_of` — "up" means the edge's `from` has a lower floor index than its `to`.
 - `elevator_groups` — see `Graph::elevator_groups` below; **not** a raw edge count and **not**
   grouped by shared x-y point.
+- `elevator_stop_count` / `average_elevator_stops` (GitHub issue #436) — sum of stop counts (nodes)
+  over every `elevator_groups()` entry, and that sum divided by `elevator_groups` (`0.0` when there
+  are no elevators). Maze-wide only, same as the rest of `VerticalStats`.
 - `cross_floor_teleports` — `Teleport` pairs (same pairing convention) whose two ends are on
   different floors (`field.level_of(from) != field.level_of(to)`); same-floor teleports are excluded
   entirely, mirroring `compute_teleport_edge_stats_scoped`'s own cross-floor exclusion rule.
+
+`compute_elevator_stop_count_scoped` (GitHub issue #436) is the one exception to "no meaningful
+single-floor attribution" above: unlike a `VerticalPassage`/`Elevator` edge or a cross-floor
+`Teleport` pair, a single elevator *stop* is one node, and a node always belongs to exactly one
+floor. It counts, over the caller-supplied `elevator_groups` slice, the stop nodes that belong to
+`level` — it takes the already-computed `Graph::elevator_groups()` result rather than the `Graph`
+itself and recomputing, since that's a union-find pass over every `Elevator` edge and a caller
+building `FloorScoped<usize>` needs one count per floor from the same snapshot (see the web-side
+snapshot builder below, which computes it once and reuses it across floors). Kept outside
+`VerticalStats` (which stays maze-wide-only) — its own `FloorScoped<usize>` wrapper on the web side
+is described below.
 
 ### `Graph::elevator_groups`
 
@@ -478,3 +496,12 @@ mirroring `VerticalStats` field-for-field. `AnalyticsFeature`'s `DetailedReportP
 `VerticalSection`, shown only when `graph_stats.floor_count > 1` (always-zero on a single-floor maze,
 so the section stays hidden rather than showing a wall of zeroes). See `analytics-web.md`'s
 "Vertical Connections Section".
+
+`elevator_stop_count: FloorScoped<usize>` (GitHub issue #436) is a separate top-level member of
+`MazeStatisticsDto`, alongside `vertical_stats` — not nested inside `VerticalStatsDto`, since it is
+the one vertical-connection statistic that *is* meaningful `by_floor` (see
+`compute_elevator_stop_count_scoped` above). `total` mirrors `vertical_stats.elevator_stop_count`
+(computed independently, same `FloorScoped` convention as `cell_count`/`cell_stats`/etc.). The web
+side renders `total` inside `VerticalSection` and `by_floor[idx]` as its own row under each floor's
+own "Vertical Connections" subsection (shown under the same `floor_count > 1` condition) — see
+`analytics-web.md`.
