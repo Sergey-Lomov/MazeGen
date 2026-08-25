@@ -358,6 +358,8 @@
         assert_eq!(stats.one_way_passages_up, 0);
         assert_eq!(stats.one_way_passages_down, 0);
         assert_eq!(stats.elevator_groups, 0);
+        assert_eq!(stats.elevator_stop_count, 0);
+        assert_eq!(stats.average_elevator_stops, 0.0);
         assert_eq!(stats.cross_floor_teleports, 0);
     }
 
@@ -401,6 +403,8 @@
         }
         let stats = compute_vertical_stats(&graph, &field);
         assert_eq!(stats.elevator_groups, 1);
+        assert_eq!(stats.elevator_stop_count, 3, "one group spanning all 3 floors has 3 stops");
+        assert_eq!(stats.average_elevator_stops, 3.0);
     }
 
     #[test]
@@ -414,6 +418,8 @@
         graph.add_bidirectional_edge(b0, b1, EdgeKind::Elevator);
         let stats = compute_vertical_stats(&graph, &field);
         assert_eq!(stats.elevator_groups, 2);
+        assert_eq!(stats.elevator_stop_count, 4, "two 2-stop elevators");
+        assert_eq!(stats.average_elevator_stops, 2.0);
     }
 
     #[test]
@@ -440,6 +446,27 @@
 
         let stats = compute_vertical_stats(&graph, &field);
         assert_eq!(stats.elevator_groups, 2, "same x-y point but disjoint floor sets are two separate elevators");
+    }
+
+    #[test]
+    fn compute_elevator_stop_count_scoped_splits_by_floor() {
+        let (field, mut graph, level0, level1, level2) = make_three_level_field_and_graph(2, 1);
+        let a0 = node_at_level(&field, level0, 0, 0);
+        let a1 = node_at_level(&field, level1, 0, 0);
+        let a2 = node_at_level(&field, level2, 0, 0);
+        for (x, y) in [(a0, a1), (a0, a2), (a1, a2)] {
+            graph.add_bidirectional_edge(x, y, EdgeKind::Elevator);
+        }
+        let groups = graph.elevator_groups();
+        assert_eq!(compute_elevator_stop_count_scoped(&groups, &field, level0), 1);
+        assert_eq!(compute_elevator_stop_count_scoped(&groups, &field, level1), 1);
+        assert_eq!(compute_elevator_stop_count_scoped(&groups, &field, level2), 1);
+    }
+
+    #[test]
+    fn compute_elevator_stop_count_scoped_zero_when_no_elevator_on_floor() {
+        let (field, graph, level0, _level1) = make_two_level_field_and_graph(2, 1);
+        assert_eq!(compute_elevator_stop_count_scoped(&graph.elevator_groups(), &field, level0), 0);
     }
 
     #[test]

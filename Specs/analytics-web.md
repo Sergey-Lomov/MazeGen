@@ -113,16 +113,22 @@ sections:
     section stays hidden rather than rendering a wall of zeroes). Rows: `bidirectional_passages`
     ("two-way vertical passages"), `one_way_passages_up`, `one_way_passages_down`,
     `elevator_groups` (distinct `Elevator` groups — see `graph-analytics.md`'s `Graph::elevator_groups`
-    for the connected-component-not-shared-point counting rule), `cross_floor_teleports`. No
-    percentages (unlike Sides/Elements) — these counts have no natural denominator. Maze-wide only,
-    reading straight from `statistics.vertical_stats: VerticalStatsDto`; never appears under "By
-    floors" since `VerticalStatsDto` has no `by_floor` slice.
+    for the connected-component-not-shared-point counting rule), `elevator_stop_count` (GitHub
+    issue #436, maze-wide `elevator_stop_count.total`), `average_elevator_stops` (GitHub issue
+    #436, 2 decimals), `cross_floor_teleports`. No percentages (unlike Sides/Elements) — these
+    counts have no natural denominator. Reads from `statistics.vertical_stats: VerticalStatsDto`
+    except `elevator_stop_count`'s row, which reads `statistics.elevator_stop_count.total` (a
+    sibling `FloorScoped<usize>` member of `MazeStatisticsDto`, not nested inside
+    `VerticalStatsDto` — see `graph-analytics.md`'s Web Integration section).
 - **By floors** (`report_by_floors`) — one collapsible sub-section per floor that has a
   `statistics.cell_stats.by_floor[idx]` entry (`floorsWithStats`, topmost floor first), each
   containing its own Cells/Sides/Elements sub-blocks built from that floor's own `by_floor[idx]`
-  slice of `cell_stats`/`passage_stats`/`elements_stats`/`cell_count`. No per-floor Graph
-  sub-section — `graph_stats` is maze-wide only (SCCs/cycles can span floors via
-  teleport/vertical-passage/elevator edges), see `graph-analytics.md`.
+  slice of `cell_stats`/`passage_stats`/`elements_stats`/`cell_count`, plus — when
+  `graph_stats.floor_count > 1` — a "Vertical Connections" sub-block with a single
+  `elevator_stop_count.by_floor[idx]` row (GitHub issue #436; `?? 0` guards a floor the snapshot
+  has no `elevator_stop_count.by_floor` entry for). No per-floor Graph sub-section — `graph_stats`
+  is maze-wide only (SCCs/cycles can span floors via teleport/vertical-passage/elevator edges), see
+  `graph-analytics.md`.
 
 A "Pattern statistics" button opens `SplitPatternStatsModal`, listing every distinct canonical
 topology found on the field (`elements_stats.total.split_groups`), regardless of whether it has a

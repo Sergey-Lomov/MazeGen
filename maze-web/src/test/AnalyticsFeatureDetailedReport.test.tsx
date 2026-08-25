@@ -38,7 +38,8 @@ function makeStatistics(byFloor: Record<number, unknown>): MazeStatisticsDto {
     cell_stats: { total: baseCellStats, by_floor: Object.fromEntries(Object.keys(byFloor).map((k) => [k, baseCellStats])) },
     passage_stats: { total: baseEdgeStats, by_floor: Object.fromEntries(Object.keys(byFloor).map((k) => [k, baseEdgeStats])) },
     elements_stats: { total: baseElementsStats, by_floor: Object.fromEntries(Object.keys(byFloor).map((k) => [k, baseElementsStats])) },
-    vertical_stats: { bidirectional_passages: 0, one_way_passages_up: 0, one_way_passages_down: 0, elevator_groups: 0, cross_floor_teleports: 0 },
+    vertical_stats: { bidirectional_passages: 0, one_way_passages_up: 0, one_way_passages_down: 0, elevator_groups: 0, elevator_stop_count: 0, average_elevator_stops: 0, cross_floor_teleports: 0 },
+    elevator_stop_count: { total: 0, by_floor: Object.fromEntries(Object.keys(byFloor).map((k) => [k, 0])) },
   } as MazeStatisticsDto;
 }
 

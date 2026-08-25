@@ -51,6 +51,11 @@ pub struct VerticalStats {
     /// Count of distinct `Elevator` groups — see `Graph::elevator_groups`'s own doc comment for
     /// what defines a group (connected component, not shared x-y point).
     pub elevator_groups: usize,
+    /// Sum of stop counts (nodes) over every `Elevator` group — GitHub issue #436.
+    pub elevator_stop_count: usize,
+    /// `elevator_stop_count as f64 / elevator_groups as f64` — `0.0` when there are no elevators
+    /// (GitHub issue #436).
+    pub average_elevator_stops: f64,
     /// `Teleport` pairs (mirrors `TeleportEdgeStats`'s pairing) whose two ends are on different
     /// floors.
     pub cross_floor_teleports: usize,
@@ -220,7 +225,14 @@ pub fn compute_vertical_stats<T: Tessellation>(graph: &Graph, field: &MultiLevel
         }
     }
 
-    let elevator_groups = graph.elevator_groups().len();
+    let elevator_group_list = graph.elevator_groups();
+    let elevator_groups = elevator_group_list.len();
+    let elevator_stop_count: usize = elevator_group_list.iter().map(|g| g.len()).sum();
+    let average_elevator_stops = if elevator_groups == 0 {
+        0.0
+    } else {
+        elevator_stop_count as f64 / elevator_groups as f64
+    };
 
     let mut seen_teleport_pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
     let mut cross_floor_teleports = 0usize;
@@ -239,8 +251,26 @@ pub fn compute_vertical_stats<T: Tessellation>(graph: &Graph, field: &MultiLevel
         one_way_passages_up,
         one_way_passages_down,
         elevator_groups,
+        elevator_stop_count,
+        average_elevator_stops,
         cross_floor_teleports,
     }
+}
+
+/// Per-floor elevator stop count — unlike the rest of `VerticalStats`, a single elevator stop
+/// (one node) *does* belong to exactly one floor, so this is meaningful `by_floor` (GitHub issue
+/// #436). A floor's count is however still computed independently of `VerticalStats`'
+/// maze-wide `elevator_stop_count` (not a partition of it) — mirrors `FloorScoped`'s own
+/// total-is-not-a-sum-of-by_floor convention.
+///
+/// Takes `elevator_groups` (the caller's own `Graph::elevator_groups()` result) rather than
+/// recomputing it — that's a union-find pass over every `Elevator` edge, not worth repeating once
+/// per floor when a caller needs several floors' counts from the same snapshot.
+pub fn compute_elevator_stop_count_scoped<T: Tessellation>(elevator_groups: &[HashSet<NodeId>], field: &MultiLevelField<T>, level: LevelId) -> usize {
+    elevator_groups.iter()
+        .flat_map(|group| group.iter())
+        .filter(|&&node| in_scope(field, node, Some(level)))
+        .count()
 }
 
 /// Average out-degree over the real graph (not the compressed nav-graph): `2*E/V` treated as

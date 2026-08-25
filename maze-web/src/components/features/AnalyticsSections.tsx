@@ -106,6 +106,8 @@ export function VerticalSection({ stats }: { stats: VerticalStatsDto }) {
       <StatRow label={m["analytics.vertical_one_way_up"]()} count={stats.one_way_passages_up} />
       <StatRow label={m["analytics.vertical_one_way_down"]()} count={stats.one_way_passages_down} />
       <StatRow label={m["analytics.vertical_elevator_groups"]()} count={stats.elevator_groups} />
+      <StatRow label={m["analytics.vertical_elevator_stop_count"]()} count={stats.elevator_stop_count} />
+      <StatRow label={m["analytics.vertical_average_elevator_stops"]()} valueText={stats.average_elevator_stops.toFixed(2)} />
       <StatRow label={m["analytics.vertical_cross_floor_teleports"]()} count={stats.cross_floor_teleports} />
     </div>
   );

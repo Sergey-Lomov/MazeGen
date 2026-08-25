@@ -7,7 +7,7 @@ use maze_core::{
         QualityControlEngine, Issue, CycleAnalysisOverflowedIssue,
         RepairLimitReachedIssue, IssuePayload, resolve_issue_payload,
     },
-    graph::stats::{compute_node_stats_scoped, compute_spatial_edge_stats_scoped, compute_teleport_edge_stats, compute_teleport_edge_stats_scoped, compute_vertical_stats, average_degree},
+    graph::stats::{compute_node_stats_scoped, compute_spatial_edge_stats_scoped, compute_teleport_edge_stats, compute_teleport_edge_stats_scoped, compute_vertical_stats, compute_elevator_stop_count_scoped, average_degree},
     generation::PresetState,
     graph::split_topology::split_totals_scoped,
     Maze,
@@ -314,10 +314,22 @@ pub fn build_analytics_snapshot<T: Tessellation>(
         one_way_passages_up: raw_vertical_stats.one_way_passages_up,
         one_way_passages_down: raw_vertical_stats.one_way_passages_down,
         elevator_groups: raw_vertical_stats.elevator_groups,
+        elevator_stop_count: raw_vertical_stats.elevator_stop_count,
+        average_elevator_stops: raw_vertical_stats.average_elevator_stops,
         cross_floor_teleports: raw_vertical_stats.cross_floor_teleports,
     };
 
-    let statistics = MazeStatisticsDto { graph_stats, cell_count, cell_stats, passage_stats, elements_stats, vertical_stats };
+    // Reuses one `elevator_groups()` union-find pass for every floor, rather than recomputing it
+    // once per floor inside `compute_elevator_stop_count_scoped`.
+    let elevator_groups = maze.graph.elevator_groups();
+    let elevator_stop_count = FloorScoped {
+        total: raw_vertical_stats.elevator_stop_count,
+        by_floor: levels.iter().enumerate()
+            .map(|(idx, &level)| (idx.to_string(), compute_elevator_stop_count_scoped(&elevator_groups, &maze.field, level)))
+            .collect(),
+    };
+
+    let statistics = MazeStatisticsDto { graph_stats, cell_count, cell_stats, passage_stats, elements_stats, vertical_stats, elevator_stop_count };
 
     let route_info = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta).map(|r| RouteInfoDto {
         path_length:    r.path_length,
@@ -347,7 +359,7 @@ mod tests {
     use super::*;
     use maze_core::ids::IdGenerator;
     use maze_core::graph::{Graph, EdgeKind};
-    use maze_core::space::{SquareTessellation, SquarePoint, square_rect, MultiLevelField};
+    use maze_core::space::{SquareTessellation, SquarePoint, square_rect, Field, MultiLevelField};
     use maze_core::quality_control::CYCLE_ANALYSIS_OVERFLOWED;
 
     #[test]
@@ -453,6 +465,35 @@ mod tests {
         ids_seen.sort_unstable();
         ids_seen.dedup();
         assert_eq!(ids_seen.len(), 2, "no duplicate NodeIds within the split point's entries");
+    }
+
+    #[test]
+    fn statistics_dto_reflects_elevator_stop_count_by_floor() {
+        // GitHub issue #436: a 3-floor field with one elevator group spanning floors 0 and 2
+        // (floor 1 has no stop) — checks `elevator_stop_count.by_floor` wiring end-to-end through
+        // `build_analytics_snapshot`, not just `compute_elevator_stop_count_scoped` in isolation.
+        let mut ids = IdGenerator::new();
+        let mut field: MultiLevelField<SquareTessellation> = MultiLevelField::single_level(square_rect(2, 1), &mut ids).unwrap();
+        let level0 = field.single_level_id();
+        let _level1 = field.add_level(Field::new(square_rect(2, 1), &mut ids).unwrap());
+        let level2 = field.add_level(Field::new(square_rect(2, 1), &mut ids).unwrap());
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let a0 = field.nodes_at(level0, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        let a2 = field.nodes_at(level2, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
+        g.build_initial_bidirectional_edge(a0, a2, EdgeKind::Elevator);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let stats = &snapshot.statistics;
+
+        assert_eq!(stats.vertical_stats.elevator_groups, 1);
+        assert_eq!(stats.vertical_stats.elevator_stop_count, 2);
+        assert_eq!(stats.vertical_stats.average_elevator_stops, 2.0);
+        assert_eq!(stats.elevator_stop_count.total, 2);
+        assert_eq!(stats.elevator_stop_count.by_floor.get("0"), Some(&1), "level0's own stop");
+        assert_eq!(stats.elevator_stop_count.by_floor.get("1"), Some(&0), "middle floor has no stop");
+        assert_eq!(stats.elevator_stop_count.by_floor.get("2"), Some(&1), "level2's own stop");
     }
 
     #[test]

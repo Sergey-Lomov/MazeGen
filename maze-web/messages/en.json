@@ -1433,6 +1433,8 @@
   "analytics.vertical_one_way_up": "One-way vertical passages (up)",
   "analytics.vertical_one_way_down": "One-way vertical passages (down)",
   "analytics.vertical_elevator_groups": "Elevators",
+  "analytics.vertical_elevator_stop_count": "Elevator stops",
+  "analytics.vertical_average_elevator_stops": "Average stops per elevator",
   "analytics.vertical_cross_floor_teleports": "Cross-floor teleports",
   "analytics.path_length": "Path length",
   "analytics.junction_count": "Junctions on path",

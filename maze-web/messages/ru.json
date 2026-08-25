@@ -1444,6 +1444,8 @@
   "analytics.vertical_one_way_up": "Односторонние лестницы (вверх)",
   "analytics.vertical_one_way_down": "Односторонние лестницы (вниз)",
   "analytics.vertical_elevator_groups": "Лифты",
+  "analytics.vertical_elevator_stop_count": "Остановки лифтов",
+  "analytics.vertical_average_elevator_stops": "Среднее число остановок на лифт",
   "analytics.vertical_cross_floor_teleports": "Межэтажные телепорты",
   "analytics.path_length": "Длина пути",
   "analytics.junction_count": "Развилок на пути",
