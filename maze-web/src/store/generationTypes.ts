@@ -70,6 +70,10 @@ export interface GenerationState {
    *  received, since `qcExperiment` (the toggle) may have been flipped after that run without a
    *  new one happening yet. */
   lastUsedQcExperiment: boolean;
+  /** Whether the CustomVertexBased settings side panel (`VertexBasedSettingsPanel`, GitHub issue
+   *  #351) is open — part of the serialized project file (`generation.vertexSettingsPanelOpen` in
+   *  `ProjectFile`) so loading a project restores the panel to the state it was saved in. */
+  vertexSettingsPanelOpen: boolean;
   generationStatus: "idle" | "done" | "error";
   // Active feature card
   openCard: FeatureId;
@@ -153,6 +157,9 @@ export interface GenerationActions {
    * When on, `generate` skips the generation algorithm entirely and runs QC/repair
    * directly on the preset-seeded graph (preset connections applied, no algorithmic edges added). */
   setQcExperiment: (v: boolean) => void;
+  /** Sets whether the CustomVertexBased settings side panel is open — see
+   * `GenerationState.vertexSettingsPanelOpen`'s doc comment. */
+  setVertexSettingsPanelOpen: (v: boolean) => void;
   reset: () => void;
   setDebugFlag: (key: "showNodeIds" | "showCoords" | "showMaze", value: boolean) => void;
   selectNode: (id: number | null) => void;

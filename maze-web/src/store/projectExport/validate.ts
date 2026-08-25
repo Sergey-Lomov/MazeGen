@@ -70,6 +70,9 @@ export function parseAndValidate(raw: unknown): ProjectFile {
   // Optional — absent in project files saved before QC Only became a persistent toggle (see
   // GitHub issue #96); old files default to off, same as a fresh store.
   const qcExperiment = optBool(genObj, "qcExperiment", false);
+  // Optional — absent in project files saved before the settings panel's open state became
+  // persistent (GitHub issue #351's follow-up); old files default to closed.
+  const vertexSettingsPanelOpen = optBool(genObj, "vertexSettingsPanelOpen", false);
   // Optional — absent in project files saved before seed history existed (see GitHub issue #114).
   // Elements are filtered to safe integers, not just `typeof === "number"`, to drop NaN/Infinity/
   // fractional garbage from a corrupted file. `seedHistoryIndex` is clamped into range rather than
@@ -230,7 +233,7 @@ export function parseAndValidate(raw: unknown): ProjectFile {
     version: CURRENT_VERSION,
     tessellation: { kind, hexOrientation, triOrientation },
     floorFields,
-    generation: { seed, randomSeed, initial, elements, splitGeneration, qcExperiment, seedHistory, seedHistoryIndex },
+    generation: { seed, randomSeed, initial, elements, splitGeneration, qcExperiment, vertexSettingsPanelOpen, seedHistory, seedHistoryIndex },
     quality: { rules, stages, strategyParams, repairMaxIterations, repairTimeBudgetSecs },
     presets: {
       connections,

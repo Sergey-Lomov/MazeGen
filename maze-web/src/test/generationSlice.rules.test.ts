@@ -118,6 +118,24 @@ describe("mazeStore.setGenerationMethod", () => {
     useMazeStore.getState().setGenerationMethod("kruskal_algorithm");
     expect(useMazeStore.getState().initialConfig.method).toBe("kruskal_algorithm");
   });
+
+  it("closes the vertex settings panel when switching away from custom_vertex_based", () => {
+    useMazeStore.setState({
+      initialConfig: { method: "custom_vertex_based", depth_first: 0.1, corridor_chance: 0.1, branching: 0.1, directionality: 0.1 },
+      vertexSettingsPanelOpen: true,
+    });
+    useMazeStore.getState().setGenerationMethod("recursive_backtracker");
+    expect(useMazeStore.getState().vertexSettingsPanelOpen).toBe(false);
+  });
+
+  it("leaves the vertex settings panel open when switching to custom_vertex_based", () => {
+    useMazeStore.setState({
+      initialConfig: { method: "recursive_backtracker" },
+      vertexSettingsPanelOpen: true,
+    });
+    useMazeStore.getState().setGenerationMethod("custom_vertex_based");
+    expect(useMazeStore.getState().vertexSettingsPanelOpen).toBe(true);
+  });
 });
 
 describe("mazeStore.addCheck", () => {

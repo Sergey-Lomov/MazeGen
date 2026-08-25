@@ -51,6 +51,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   seedAttachedToHistory: false,
   qcExperiment: false,
   lastUsedQcExperiment: false,
+  vertexSettingsPanelOpen: false,
   generationStatus: "idle" as const,
   openCard: "basic_config" as const,
   debugMode: false,
@@ -174,6 +175,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
   }),
 
   setQcExperiment: (v) => set((state) => ({ qcExperiment: v, debugStale: debugStaleOf(state) })),
+  setVertexSettingsPanelOpen: (v) => set({ vertexSettingsPanelOpen: v }),
 
   setRandomSeed: (v) => set({ randomSeed: v }),
 
@@ -214,7 +216,11 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       return;
     }
     const stale = debugStaleOf(get());
-    set({ initialConfig: next, debugStale: stale });
+    set({
+      initialConfig: next,
+      debugStale: stale,
+      ...(method !== "custom_vertex_based" ? { vertexSettingsPanelOpen: false } : {}),
+    });
   },
 
   setElementsParam: (key, value) => set((state) => ({

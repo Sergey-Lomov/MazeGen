@@ -52,6 +52,7 @@ export function serializeProject(state: MazeState): ProjectFile {
         patterns: state.splitPatterns,
       },
       qcExperiment: state.qcExperiment,
+      vertexSettingsPanelOpen: state.vertexSettingsPanelOpen,
       seedHistory: state.seedHistory,
       seedHistoryIndex: state.seedHistoryIndex,
     },

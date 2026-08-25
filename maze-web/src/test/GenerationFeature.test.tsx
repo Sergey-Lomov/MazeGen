@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { GenerationFeature } from "../components/features/GenerationFeature";
 import { useMazeStore } from "../store/mazeStore";
 import * as m from "~/paraglide/messages";
@@ -65,5 +65,32 @@ describe("GenerationFeature — QC Only toggle", () => {
 
     expect(generate).not.toHaveBeenCalled();
     expect(screen.getByText(m["post_edit.confirm_regenerate"]())).toBeInTheDocument();
+  });
+});
+
+describe("GenerationFeature — vertex-based settings panel", () => {
+  it("shows the gear icon only for custom_vertex_based and opens the settings panel on click", () => {
+    useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0, cyclicity: 0.0 } });
+    render(<GenerationFeature canGenerate={true} />);
+
+    expect(screen.queryByText(m["generation.vertex_settings_title"]())).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle(m["generation.vertex_settings"]()));
+    expect(screen.getByText(m["generation.vertex_settings_title"]())).toBeInTheDocument();
+  });
+
+  it("does not show the gear icon for a non-vertex-based algorithm", () => {
+    render(<GenerationFeature canGenerate={true} />);
+    expect(screen.queryByTitle(m["generation.vertex_settings"]())).not.toBeInTheDocument();
+  });
+
+  it("closes the settings panel when the algorithm switches away from custom_vertex_based", () => {
+    useMazeStore.setState({ initialConfig: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0, cyclicity: 0.0 } });
+    render(<GenerationFeature canGenerate={true} />);
+
+    fireEvent.click(screen.getByTitle(m["generation.vertex_settings"]()));
+    expect(screen.getByText(m["generation.vertex_settings_title"]())).toBeInTheDocument();
+
+    act(() => { useMazeStore.setState({ initialConfig: { method: "recursive_backtracker" } }); });
+    expect(screen.queryByText(m["generation.vertex_settings_title"]())).not.toBeInTheDocument();
   });
 });

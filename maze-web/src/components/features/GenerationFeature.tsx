@@ -3,15 +3,13 @@ import { ChevronLeft, ChevronRight, History, Settings } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { AlgorithmSelectDialog, getAlgorithmLabel } from "../dialogs/AlgorithmSelectDialog";
 import { SeedHistoryDialog } from "../dialogs/SeedHistoryDialog";
-import { SplitSettingsDialog } from "../dialogs/SplitSettingsDialog";
 import { ConfirmModal } from "../ConfirmModal";
+import { VertexBasedSettingsPanel } from "./VertexBasedSettingsPanel";
 import { sharedStyles } from "../../styles/shared";
 import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
-import type { GenerationParams, EdgeBasedParams } from "../../wasm/types";
+import type { EdgeBasedParams } from "../../wasm/types";
 import { Switch } from "../Switch";
 import { SliderParam } from "../SliderParam";
-import { ToggleRow } from "../ToggleRow";
-import { ElevatorSpanRow } from "../ElevatorSpanRow";
 import { WarningBubble } from "../WarningBubble";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
@@ -29,26 +27,22 @@ export function GenerationFeature({ canGenerate }: Props) {
   const debugMode = useMazeStore((s) => s.debugMode);
   const error = useMazeStore((s) => s.error);
   const initialConfig = useMazeStore((s) => s.initialConfig);
-  const elementsConfig = useMazeStore((s) => s.elementsConfig);
   const qcExperiment = useMazeStore((s) => s.qcExperiment);
-  const multiFloor = useMazeStore((s) => s.floors.length > 1);
+  const vertexSettingsPanelOpen = useMazeStore((s) => s.vertexSettingsPanelOpen);
 
   const setSeed = useMazeStore((s) => s.setSeed);
   const setRandomSeed = useMazeStore((s) => s.setRandomSeed);
   const seedHistoryBack = useMazeStore((s) => s.seedHistoryBack);
   const seedHistoryForward = useMazeStore((s) => s.seedHistoryForward);
   const setDebugMode = useMazeStore((s) => s.setDebugMode);
-  const setGenerationParam = useMazeStore((s) => s.setGenerationParam);
-  const setElementsBoolParam = useMazeStore((s) => s.setElementsBoolParam);
   const setEdgeBasedParam = useMazeStore((s) => s.setEdgeBasedParam);
-  const setElementsParam = useMazeStore((s) => s.setElementsParam);
   const setQcExperiment = useMazeStore((s) => s.setQcExperiment);
+  const setVertexSettingsPanelOpen = useMazeStore((s) => s.setVertexSettingsPanelOpen);
   const generate = useMazeStore((s) => s.generate);
   const postEditDirty = useMazeStore(selectPostEditDirty);
 
   const [algorithmDialogOpen, setAlgorithmDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
-  const [splitSettingsDialogOpen, setSplitSettingsDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<"generate" | null>(null);
   const [seedDraft, setSeedDraft] = useState(String(seed));
 
@@ -59,7 +53,6 @@ export function GenerationFeature({ canGenerate }: Props) {
   const isEdgeBased = method === "custom_edge_based";
   const isCanonical = !isVertexBased && !isEdgeBased;
 
-  const vertexParams = isVertexBased ? (initialConfig as { method: string } & GenerationParams) : null;
   const edgeParams = isEdgeBased ? (initialConfig as { method: string } & EdgeBasedParams) : null;
 
   function handleGenerate() {
@@ -134,17 +127,13 @@ export function GenerationFeature({ canGenerate }: Props) {
         <span style={styles.sectionCaption}>{m["generation.algorithm"]()}</span>
         <div style={{ ...styles.row, paddingLeft: indent.tree }}>
           <span style={styles.algorithmLabel}>{getAlgorithmLabel(method)}</span>
+          {isVertexBased && (
+            <button className="hoverable" style={styles.gearBtn} onClick={() => setVertexSettingsPanelOpen(true)} title={m["generation.vertex_settings"]()}>
+              <Settings size={16} color={ui.text.tertiary} />
+            </button>
+          )}
           <button className="hoverable" style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)} title={m["generation.edit"]()}>✎</button>
         </div>
-        {isVertexBased && vertexParams && (
-          <div style={styles.paramValues}>
-            <SliderParam variant="primary" label={m["generation.depth_first"]()} value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
-            <SliderParam variant="primary" label={m["generation.corridor_chance"]()} value={vertexParams.corridor_chance ?? 0.7} onChange={(v) => setGenerationParam("corridor_chance", v)} />
-            <SliderParam variant="primary" label={m["generation.branching"]()} value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} />
-            <SliderParam variant="primary" label={m["generation.directionality"]()} value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} />
-            <SliderParam variant="primary" label={m["generation.cyclicity"]()} value={vertexParams.cyclicity ?? 0.0} onChange={(v) => setGenerationParam("cyclicity", v)} />
-          </div>
-        )}
         {isEdgeBased && edgeParams && (
           <div style={styles.paramValues}>
             <SliderParam variant="primary" label={m["generation.corridor_length"]()} value={edgeParams.corridor_length ?? 0.5} onChange={(v) => setEdgeBasedParam("corridor_length", v)} />
@@ -154,48 +143,15 @@ export function GenerationFeature({ canGenerate }: Props) {
             <SliderParam variant="primary" label={m["generation.cyclicity"]()} value={edgeParams.cyclicity ?? 0.0} onChange={(v) => setEdgeBasedParam("cyclicity", v)} />
           </div>
         )}
-      </div>
-      <div style={styles.divider} />
-
-      {/* Elements block */}
-      <div style={styles.algorithmBlock}>
-        <span style={styles.sectionCaption}>{m["generation.elements"]()}</span>
-        <div style={{ ...styles.paramValues, paddingLeft: indent.tree }}>
-          {isCanonical ? (
+        {isCanonical && (
+          <div style={{ paddingLeft: indent.tree * 2 }}>
             <WarningBubble message={m["generation.canonical_elements_warning"]({ qualityTitle: m["quality.title"]() })} severity="info" />
-          ) : (
-            <>
-              <SliderParam variant="primary" label={m["generation.one_way_chance"]()} value={elementsConfig.one_way_chance ?? 0.0} onChange={(v) => setElementsParam("one_way_chance", v)} />
-              <SliderParam variant="primary" label={m["generation.teleport_chance"]()} value={elementsConfig.teleport_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_chance", v)} />
-              <SliderParam variant="primary" label={m["generation.teleport_one_way_chance"]()} value={elementsConfig.teleport_one_way_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_one_way_chance", v)} />
-              {isVertexBased && multiFloor && (
-                <>
-                  <SliderParam variant="primary" label={m["generation.cross_floor_teleport_balance"]()} value={elementsConfig.cross_floor_teleport_balance ?? 0.0} onChange={(v) => setElementsParam("cross_floor_teleport_balance", v)} />
-                  <SliderParam variant="primary" label={m["generation.vertical_chance"]()} value={elementsConfig.vertical_chance ?? 0.0} onChange={(v) => setElementsParam("vertical_chance", v)} />
-                  <SliderParam variant="primary" label={m["generation.vertical_passage_elevator_balance"]()} value={elementsConfig.vertical_passage_elevator_balance ?? 0.5} onChange={(v) => setElementsParam("vertical_passage_elevator_balance", v)} />
-                  <SliderParam variant="primary" label={m["generation.one_way_vertical_passage_chance"]()} value={elementsConfig.one_way_vertical_passage_chance ?? 0.0} onChange={(v) => setElementsParam("one_way_vertical_passage_chance", v)} />
-                  <SliderParam variant="primary" label={m["generation.vertical_up_down_balance"]()} value={elementsConfig.vertical_up_down_balance ?? 0.5} onChange={(v) => setElementsParam("vertical_up_down_balance", v)} />
-                  <ElevatorSpanRow min={elementsConfig.elevator_span_min ?? 2} max={elementsConfig.elevator_span_max ?? 2} onMinChange={(v) => setElementsParam("elevator_span_min", v)} onMaxChange={(v) => setElementsParam("elevator_span_max", v)} />
-                  <SliderParam variant="primary" label={m["generation.elevator_branching"]()} value={elementsConfig.elevator_branching ?? 0.5} onChange={(v) => setElementsParam("elevator_branching", v)} />
-                  <ToggleRow label={m["generation.allow_non_consecutive_elevator_floors"]()} checked={elementsConfig.allow_non_consecutive_elevator_floors ?? false} onChange={(v) => setElementsBoolParam("allow_non_consecutive_elevator_floors", v)} />
-                </>
-              )}
-              {isVertexBased && (
-                <div style={styles.row}>
-                  <div style={{ flex: 1 }}>
-                    <SliderParam variant="primary" label={m["generation.split_chance"]()} value={elementsConfig.split_chance ?? 0.0} onChange={(v) => setElementsParam("split_chance", v)} />
-                  </div>
-                  <button className="hoverable" style={styles.gearBtn} onClick={() => setSplitSettingsDialogOpen(true)} title={m["generation.split_settings"]()}>
-                    <Settings size={16} color={ui.text.tertiary} />
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-      {isVertexBased && splitSettingsDialogOpen && (
-        <SplitSettingsDialog onClose={() => setSplitSettingsDialogOpen(false)} />
+
+      {isVertexBased && vertexSettingsPanelOpen && (
+        <VertexBasedSettingsPanel onClose={() => setVertexSettingsPanelOpen(false)} />
       )}
 
       {/* Status line */}

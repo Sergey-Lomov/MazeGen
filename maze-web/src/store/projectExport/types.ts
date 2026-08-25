@@ -161,6 +161,9 @@ export interface ProjectFile {
       patterns: SplitPattern[];
     };
     qcExperiment: boolean;
+    /** Whether the CustomVertexBased settings side panel was open when saved (GitHub issue #351's
+     * follow-up) — restored on load so the panel reappears in the same state. */
+    vertexSettingsPanelOpen: boolean;
     seedHistory: number[];
     seedHistoryIndex: number;
   };

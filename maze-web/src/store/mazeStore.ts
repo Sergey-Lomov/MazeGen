@@ -103,6 +103,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       splitPatterns: file.generation.splitGeneration.patterns,
       qcExperiment: file.generation.qcExperiment,
       lastUsedQcExperiment: file.generation.qcExperiment,
+      vertexSettingsPanelOpen: file.generation.vertexSettingsPanelOpen,
       seedHistory: file.generation.seedHistory,
       seedHistoryIndex: file.generation.seedHistoryIndex,
       seedAttachedToHistory: file.generation.seedHistory.length > 0

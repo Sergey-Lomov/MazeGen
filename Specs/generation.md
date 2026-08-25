@@ -248,6 +248,12 @@ The 8 `vertical_*`/`elevator_*` fields and `cross_floor_teleport_balance` are op
 
 All numeric values are clamped to `[0.0, 1.0]` in the WASM layer before use.
 
+### `CustomVertexBased` Settings Panel
+
+Web UI: `CustomVertexBased`'s generation params (Growth, One-way, Teleport, Split, and — on a multi-floor field — Vertical categories) live in a dedicated right-side panel (`VertexBasedSettingsPanel`, `maze-web/src/components/features/VertexBasedSettingsPanel.tsx`), opened via a gear icon next to the algorithm row on the generation card (GitHub issue #351). Each category can be collapsed/expanded independently; a category's info icon opens a `CategoryInfoModal` listing that category's params with their descriptions.
+
+Whether the panel is open is a persistent part of generation config, following the same pattern as `qcExperiment` above: `vertexSettingsPanelOpen` (`maze-web/src/store/generationTypes.ts`) is serialized into the project file (`ProjectFile.generation.vertexSettingsPanelOpen`, `maze-web/src/store/projectExport/types.ts`), so loading a project restores the panel to the state it was saved in. Old project files predating this field default to closed (`optBool` fallback in `parseAndValidate`). The panel auto-closes (`vertexSettingsPanelOpen` reset to `false`) whenever `setGenerationMethod` switches the algorithm away from `custom_vertex_based`, since the panel has nothing to show for any other method.
+
 ## QC Experiment Mode
 
 `GenerateConfig.qc_experiment: bool` (default `false`) skips the generation algorithm entirely — no `generate_maze` call is made. The graph fed into `build_maze`'s QC/repair pass is exactly what `build_preset_state` built from the preset connections (Passage/OneWay edges applied, nothing else) — lets a user hand-craft an arbitrary preset setup and observe how QC/repair reshapes it in isolation, without generation noise.

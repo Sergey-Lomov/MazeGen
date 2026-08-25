@@ -35,6 +35,7 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     splitMaxNodes: 2,
     splitPatterns: [],
     qcExperiment: false,
+    vertexSettingsPanelOpen: false,
     rules: [{ id: "rule_1", name: "Rule 1", kind: "k1", checks: [{ localId: 0, typeId: "check_a", params: { param_a: "1" }, disabled: false }], nextLocalCheckId: 1, strategyId: "strategy_a", disabled: false, ruleDisabled: false, nestedStrategies: [], params: {}, collapsed: false }],
     stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["rule_1"], disabled: false, collapsed: false }],
     strategyParams: { strategy_a: { param_b: "2" } },
@@ -135,6 +136,15 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     delete raw.generation.qcExperiment;
     const reparsed = parseAndValidate(raw);
     expect(reparsed.generation.qcExperiment).toBe(false);
+  });
+
+  it("defaults generation.vertexSettingsPanelOpen to false for a project file saved before this toggle existed", () => {
+    const state = makeState({ vertexSettingsPanelOpen: true });
+    const serialized = serializeProject(state);
+    const raw = JSON.parse(JSON.stringify(serialized));
+    delete raw.generation.vertexSettingsPanelOpen;
+    const reparsed = parseAndValidate(raw);
+    expect(reparsed.generation.vertexSettingsPanelOpen).toBe(false);
   });
 
   it("round-trips a non-empty seed history and index", () => {
