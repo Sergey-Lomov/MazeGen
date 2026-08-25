@@ -214,8 +214,8 @@ fn vertex_based_event_log_preset_teleport_dst_emits_preset_neighbor_visited_not_
     assert!(!saw_edge_added_for_teleport_pair, "a preset-teleport pair's edge already exists — must not emit a duplicate EdgeAdded");
 }
 
-/// Regression-style coverage for the direction-detection helper (mirrors GitHub issue #144's
-/// direction-mismatch fix in `edge_based`): with `one_way_chance = 1.0`, the coin flip reverses
+/// Regression-style coverage for the direction-detection helper (GitHub issue #144's
+/// direction-mismatch fix): with `one_way_chance = 1.0`, the coin flip reverses
 /// roughly half of all one-way edges — every edge-add event's `(src, dst)` must track the
 /// graph's actual direction, not the algorithm's connection-attempt intent, across many seeds.
 #[test]
@@ -473,7 +473,7 @@ fn vertex_based_event_payload_round_trips_for_representative_variants() {
     assert_eq!(u64le(&buf, 8), 12);
     assert_eq!(buf[16], 0);
 
-    // NodeVisited: node, parent (16 bytes, parent is always present unlike EdgeBased's NodeActivated).
+    // NodeVisited: node, parent (16 bytes, parent is always present).
     let mut buf = Vec::new();
     VertexBasedEvent::NodeVisited { node: 5, parent: 3 }.encode_payload(&mut buf);
     assert_eq!(buf.len(), 16);

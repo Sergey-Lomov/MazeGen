@@ -23,11 +23,6 @@
     }
 
     #[test]
-    fn edge_based_is_web_decodable() {
-        assert!(is_web_decodable(Some(EventedEventKind::EdgeBased)));
-    }
-
-    #[test]
     fn vertex_based_is_web_decodable() {
         assert!(is_web_decodable(Some(EventedEventKind::VertexBased)));
     }
@@ -115,32 +110,6 @@ mod run_initial_generation_tests {
             "CustomVertexBased declares the visited, frontier, and reserve debug values"
         );
         assert_eq!(event_kind, Some(maze_core::event_log::EventedEventKind::VertexBased));
-    }
-
-    #[test]
-    fn debug_events_true_with_custom_edge_based_yields_a_tape_and_debug_values() {
-        // CustomEdgeBased is instrumented in generate_maze_with_events (GitHub issue #144) and its
-        // event kind is web-decodable — it declares the "active" and "visited" debug values (both
-        // Region-kind).
-        let (mut graph, mut field, preset_state, mut ids) = field_and_state();
-        let level = field.single_level_id();
-        let start = field.nodes_at(level, SquarePoint { x: 0, y: 0 }).first().copied().unwrap();
-        let config = GenerationConfig {
-            algorithm: GenerationAlgorithm::CustomEdgeBased(maze_core::generation::EdgeBasedParams::default()),
-            ..GenerationConfig::default()
-        };
-        let (raw_source, event_kind, debug_value_names, _, _, _) = run_initial_generation(&mut graph, &mut field, &mut ids, 6, start, config, &preset_state, false, true);
-        let source = raw_source.expect("CustomEdgeBased's event kind is web-decodable");
-        assert!(!source.tape.node_table.is_empty(), "a 3x3 CustomEdgeBased run must emit at least one event");
-        assert_eq!(
-            debug_value_names,
-            vec![
-                ("active".to_string(), maze_core::event_log::DebugValueKind::Region),
-                ("visited".to_string(), maze_core::event_log::DebugValueKind::Region),
-            ],
-            "CustomEdgeBased declares the active and visited debug values"
-        );
-        assert_eq!(event_kind, Some(maze_core::event_log::EventedEventKind::EdgeBased));
     }
 
     #[test]

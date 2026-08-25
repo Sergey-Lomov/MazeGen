@@ -114,7 +114,6 @@ const SOURCE_SCOPE_LABEL: Record<EventedEventKind, () => string> = {
   recursive_backtracker: () => m["debug.tree.source_scope.generation"](),
   kruskal: () => m["debug.tree.source_scope.generation"](),
   wilson: () => m["debug.tree.source_scope.generation"](),
-  edge_based: () => m["debug.tree.source_scope.generation"](),
   vertex_based: () => m["debug.tree.source_scope.generation"](),
   quality_control: () => m["debug.tree.source_scope.quality_control"](),
 };

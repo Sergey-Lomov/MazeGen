@@ -104,7 +104,7 @@ export function readBool(bytes: Uint8Array, offset: number): boolean {
 }
 
 /** Reads a `u32`-length-prefixed `NodeId[]` starting at `offset` — mirrors the
- *  `push_ids`/`Vec<NodeId>` wire format in `EdgeBasedEvent::encode_payload`. Returns the decoded
+ *  `push_ids`/`Vec<NodeId>` wire format in `VertexBasedEvent::encode_payload`. Returns the decoded
  *  ids and the byte offset immediately past the list, so a caller reading further fields after a
  *  variable-length list (e.g. `DstWeightsComputed`'s `weights` after `candidates`) knows where to
  *  continue. */
@@ -118,7 +118,7 @@ export function readNodeIdList(bytes: Uint8Array, offset: number): { ids: bigint
 }
 
 /** Reads a `u32`-length-prefixed `f64[]` starting at `offset` — mirrors `push_f64s`'s wire format
- *  in `EdgeBasedEvent::encode_payload`. */
+ *  in `VertexBasedEvent::encode_payload`. */
 export function readF64List(bytes: Uint8Array, offset: number): { values: number[]; next: number } {
   const count = readU32(bytes, offset);
   const values: number[] = [];
@@ -129,8 +129,7 @@ export function readF64List(bytes: Uint8Array, offset: number): { values: number
 }
 
 /** Reads an `Option<NodeId>` — a 1-byte presence flag followed by 8 bytes (`0` when absent) —
- *  mirrors `NodeActivated.parent`'s wire format (the only `Option<NodeId>` field in
- *  `EdgeBasedEvent`). */
+ *  mirrors `SplitTeleportRolled.anchor`'s wire format in `VertexBasedEvent`. */
 export function readOptionalNodeId(bytes: Uint8Array, offset: number): bigint | null {
   return bytes[offset] === 0 ? null : readNodeId(bytes, offset + 1);
 }

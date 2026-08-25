@@ -308,10 +308,9 @@ pub fn build_preset_state<T: Tessellation>(
                     }
                 }
                 // Not added to `preset_connected` — that set exists only to short-circuit
-                // the geometric-adjacency generation loop for adjacent preset pairs (see
-                // edge_based.rs). A teleport pair is not geometrically adjacent, so the
-                // endpoints must still go through normal generation for their regular
-                // connectivity.
+                // the geometric-adjacency generation loop for adjacent preset pairs. A
+                // teleport pair is not geometrically adjacent, so the endpoints must still
+                // go through normal generation for their regular connectivity.
             }
         }
     }

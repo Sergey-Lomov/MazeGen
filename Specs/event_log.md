@@ -268,7 +268,7 @@ Module: `maze-web/src/store/`. Replaces the old `debugSnapshot: GenerationStepsS
 
 ## Intermediate Snapshot Checkpointing (#128)
 
-Lets a replay consumer reconstruct state at a late step without replaying every mutating event from the tape's start. Computed entirely on the **web side**, from the plain event tape — the core has no notion of a "snapshot" and never crosses the WASM boundary with one. Algorithm-agnostic: every instrumented algorithm (Recursive Backtracker, Kruskal, Wilson, CustomEdgeBased, CustomVertexBased, QC) gets snapshot-based resume through the same generic mechanism, not just RB.
+Lets a replay consumer reconstruct state at a late step without replaying every mutating event from the tape's start. Computed entirely on the **web side**, from the plain event tape — the core has no notion of a "snapshot" and never crosses the WASM boundary with one. Algorithm-agnostic: every instrumented algorithm (Recursive Backtracker, Kruskal, Wilson, CustomVertexBased, QC) gets snapshot-based resume through the same generic mechanism, not just RB.
 
 An earlier iteration of this issue implemented checkpointing core-side (a `CheckpointLog` type, a per-algorithm `CheckpointTracker` accumulator in `recursive_backtracker.rs`, a third WASM buffer pair) — reverted in favor of a web-side design because it violated `event_log`'s own agnosticism principle twice over: not only did `EventLog`/`DebugTape` need to stay ignorant of what a "snapshot" contains, but the *trigger* (deciding when a checkpoint is due) was manually duplicated inside each instrumented algorithm's `generate()` rather than living in one place. A second iteration moved the mechanism to the web side but kept it RB-only, decoding `RecursiveBacktrackerEvent`s directly inside `resolveDebugArenaMetadata` — reverted again in favor of the fully generic design below, since a snapshot is nothing more than *some* adapter's own `apply()` result at an earlier step, and there is no reason the caching logic itself needs to know which adapter produced it.
 
@@ -301,12 +301,12 @@ Knows nothing about `edges`/`debugValues`/`dsuGroups`/or any other concrete shap
 
 ### Every adapter's `apply` takes an optional `from` of its own result type
 
-`BaseAlgorithmAdapter<E, TResult>` (`maze-web/src/debug/algorithmRegistry.ts`) gained a second type parameter, `TResult extends { step: number; nodeIndex: number }` (defaulted for call sites that only need `decodeEvent`/`narrationTokensFor`/`scopeLabel`, not `resolveMetadata`/`apply`). Every one of the six adapters' `apply` signatures now accepts `from?: TResult` (QC's `from` is a required-but-possibly-`undefined` third parameter, ahead of its existing `startNodeIndex`, matching its pre-existing positional-parameter convention) — passing back a previous call's result resumes the underlying node-table scan right after it instead of replaying from the source's start:
+`BaseAlgorithmAdapter<E, TResult>` (`maze-web/src/debug/algorithmRegistry.ts`) gained a second type parameter, `TResult extends { step: number; nodeIndex: number }` (defaulted for call sites that only need `decodeEvent`/`narrationTokensFor`/`scopeLabel`, not `resolveMetadata`/`apply`). Every adapter's `apply` signature now accepts `from?: TResult` (QC's `from` is a required-but-possibly-`undefined` third parameter, ahead of its existing `startNodeIndex`, matching its pre-existing positional-parameter convention) — passing back a previous call's result resumes the underlying node-table scan right after it instead of replaying from the source's start:
 
-- `applyKruskal`/`applyWilson`/`applyEdgeBased`/`applyVertexBased`/`applyQc` all gained real from-resume logic (previously: always replay from `startIndex`/`startNodeIndex`, no `from` parameter existed at all). Each folds new events on top of a **cloned copy** of `from`'s own state (never mutates the caller's `from`), mirroring `applyRecursiveBacktracker`'s existing discipline:
+- `applyKruskal`/`applyWilson`/`applyVertexBased`/`applyQc` all gained real from-resume logic (previously: always replay from `startIndex`/`startNodeIndex`, no `from` parameter existed at all). Each folds new events on top of a **cloned copy** of `from`'s own state (never mutates the caller's `from`), mirroring `applyRecursiveBacktracker`'s existing discipline:
   - `applyKruskal`: seeds a fresh `KruskalDsu` from `from.dsuGroups`' already-flattened `id -> root` pairs via a new `KruskalDsu.seed(id, root)` method (re-seeding a flattened snapshot reproduces the same structure `find`/`union` would, without replaying every original `union` call).
-  - `applyWilson`: clones `debugValues`/`debugMaps`/`debugVertices` from `from` (`cloneDebugMaps`, a new two-level-deep clone helper alongside the existing `cloneDebugValues`), re-seeds a per-name `Map<string, Set<bigint>>` presence mirror from every entry in `from.debugValues` — mirrors `applyEdgeBased`'s own discipline (see next bullet) rather than hardcoding a single `Set` seeded from `from.debugValues.get(VISITED)` alone, which would silently misbehave the moment Wilson declares a second Insert/Remove-based value.
-  - `applyEdgeBased`/`applyVertexBased`: clone `debugValues` from `from`, re-seed their own presence `Set`/`Map<string, Set<bigint>>` mirrors from it.
+  - `applyWilson`: clones `debugValues`/`debugMaps`/`debugVertices` from `from` (`cloneDebugMaps`, a new two-level-deep clone helper alongside the existing `cloneDebugValues`), re-seeds a per-name `Map<string, Set<bigint>>` presence mirror from every entry in `from.debugValues` — mirrors `applyVertexBased`'s own discipline (see next bullet) rather than hardcoding a single `Set` seeded from `from.debugValues.get(VISITED)` alone, which would silently misbehave the moment Wilson declares a second Insert/Remove-based value.
+  - `applyVertexBased`: clones `debugValues` from `from`, re-seeds its own presence `Set`/`Map<string, Set<bigint>>` mirrors from it.
   - `applyQc`: re-keys `from.edges`/`from.removedEdges` back into the `net: Map<string, Edge>`/`removedFromEarlierSources: Set<string>` accumulators `applyQc` already uses internally, and seeds `start`/`finish` from `from.start`/`from.finish`.
 - Each adapter's own `resolveMetadata` (`algorithmRegistry.ts`) is now a thin closure calling the generic `resolveDebugArenaMetadata` with a `countMutating` closure over `countMutatingEvents` and an `applySnapshot` that calls its own `apply`, e.g. `KRUSKAL_ADAPTER.resolveMetadata = (tape, startIndex, endIndex) => resolveDebugArenaMetadata(tape, (t, s, e) => countMutatingEvents(t, decodeKruskalEvent, isMutatingKruskalEvent, s, e), (step, previous) => applyKruskal(tape, step, previous, startIndex, endIndex), startIndex, endIndex)`.
 
@@ -1264,7 +1264,7 @@ unchanged from their original `local_tag` values — this is the shift math work
 skipped step; a decoder must always apply the mask/shift uniformly, never special-case "the first
 source doesn't need unpacking."
 
-All existing per-algorithm wire tags (RB, Kruskal, Wilson, CustomEdgeBased, CustomVertexBased) are
+All existing per-algorithm wire tags (RB, Kruskal, Wilson, CustomVertexBased) are
 completely unchanged by this issue — the largest is `VertexBasedEvent`'s `DIRECTIONALITY_ROLLED =
 25`, comfortably inside the low byte. No algorithm's `wire_tags` module needed touching.
 
@@ -1300,7 +1300,7 @@ source scope, in the same order as the merged tree's top-level children (today: 
 DebugValueKind)>` — no longer a static slice, since names may now be dynamically qualified.
 `qualify_debug_value_names` (private, `generation/mod.rs`) prefixes every name with `"{scope_name}:"`
 when more than one source is present, disambiguating a name two sources might independently declare
-(`"visited"` is already reused by RB, Wilson, CustomEdgeBased, and CustomVertexBased independently —
+(`"visited"` is already reused by RB, Wilson, and CustomVertexBased independently —
 see their respective sections above). With exactly one source (every case today), names pass
 through unqualified, matching every pre-#169 name/test/UI expectation verbatim — qualification only
 changes the wire format once a second source genuinely exists (#147).
@@ -1410,7 +1410,7 @@ decoder — concretely, QC's `IterationStarted` tag (`1`) numerically collides w
 ### Contract C — `mergeDebugMazeView` combines independent per-source contributions, never in place
 
 Each source's own `apply()` call (`applyKruskal`/`applyWilson`/`applyRecursiveBacktracker`/
-`applyEdgeBased`/`applyVertexBased`/`applyQc`) builds its contribution in complete independence —
+`applyVertexBased`/`applyQc`) builds its contribution in complete independence —
 it never knows any other source exists, never reads another source's state, and is bounded to only
 its own arena range (Contract B). `debugSelectors.ts`'s `generationContribution`/`qcContribution`
 package each source's own `apply()` result into a `DebugMazeViewContribution`; `mergeDebugMazeView`
@@ -1450,7 +1450,7 @@ returned `edges` is just that contribution's own list, unchanged; `dsuGroups`/`d
 `debugVertices` pass through as-is. No caller anywhere (`selectDebugMazeView`,
 `debugTreeSelectors.ts`, `DebugEventTree.tsx`) special-cases `sources.length === 1` — the same code
 path that handles two sources handles one, which is what keeps every pre-#147 generation-only test
-(Kruskal/Wilson/RB/EdgeBased/VertexBased) passing unmodified.
+(Kruskal/Wilson/RB/VertexBased) passing unmodified.
 
 ### Scope-id-to-title resolution stays on the web side, never round-tripped through the wire
 
@@ -1790,11 +1790,11 @@ display of the same underlying `NodeDto.level`/array-position value.
 ## Wire-Format Codegen
 
 Every section above that describes an event enum's wire tags/`EncodeEventPayload`/`is_mutating()`
-(Recursive Backtracker, Kruskal, Wilson, `CustomEdgeBased`, `CustomVertexBased`, `QcEvent`, Preset
+(Recursive Backtracker, Kruskal, Wilson, `CustomVertexBased`, `QcEvent`, Preset
 Setup) originally paired one hand-written Rust `impl` with one hand-written TS
 `decodeXEvent`/`isMutatingXEvent` — two independently maintained mirrors of the same format, with
 real bugs traced back to their drift (`EdgeId` narrated as `NodeId`, see #171 above;
-`PresetUnionsApplied` silently missing from `edges`). All 7 sources now generate both sides from a
+`PresetUnionsApplied` silently missing from `edges`). All sources now generate both sides from a
 single annotated Rust enum instead.
 
 ### `codegen` crate (`codegen/src/`)

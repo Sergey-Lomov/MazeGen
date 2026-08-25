@@ -1,6 +1,6 @@
 /** Flat layer — linear forward scan over the node table, ignoring parent/firstChild/nextSibling
  *  entirely. This is what every algorithm's `applyX` function (`recursiveBacktracker.ts`,
- *  `kruskal.ts`, `wilson.ts`, `edgeBased.ts`, `vertexBased.ts`, `qc.ts`) uses; the tree layer
+ *  `kruskal.ts`, `wilson.ts`, `vertexBased.ts`, `qc.ts`) uses; the tree layer
  *  (`tree.ts`) is unused here. */
 
 import { nodeAt, TAG_SCOPE, type ParsedTape } from "./wire";

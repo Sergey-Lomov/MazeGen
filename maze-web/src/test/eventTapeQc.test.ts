@@ -12,7 +12,7 @@ import {
   buildFixture, buildQcTwoSourceTape, buildLongQcChainTape, buildQcChainWithRemovals,
 } from "./eventTapeQc.fixtures";
 
-// --- decodeQcEvent: round-trip coverage for every wire tag, mirroring decodeEdgeBasedEvent's
+// --- decodeQcEvent: round-trip coverage for every wire tag, mirroring decodeVertexBasedEvent's
 // test shape (eventTape.test.ts) — one it() per variant.
 
 describe("decodeQcEvent", () => {
@@ -316,7 +316,7 @@ describe("isMutatingQcEvent", () => {
   });
 });
 
-// --- applyQc: apply-invariant coverage (mirrors applyEdgeBased's test shape) — a "stage s1" ->
+// --- applyQc: apply-invariant coverage (mirrors applyVertexBased's test shape) — a "stage s1" ->
 // "iteration 1" -> "rule r1" tree with a mix of mutating and *Declined events, at a non-zero
 // startNodeIndex (as it always is once merged after a generation source, Contract A).
 

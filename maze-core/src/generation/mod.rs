@@ -4,7 +4,6 @@ pub(crate) mod vertex_based;
 pub(crate) mod wilson;
 pub(crate) mod kruskal;
 pub(crate) mod recursive_backtracker;
-pub(crate) mod edge_based;
 mod preset_state;
 mod preset_setup_event;
 mod types;
@@ -25,10 +24,9 @@ pub use preset_setup_event::{PresetSetupEvent, PRESET_SETUP_SCOPE_NAME};
 pub use recursive_backtracker::{generate as generate_recursive_backtracker, RecursiveBacktrackerEvent, debug_value_names as recursive_backtracker_debug_value_names};
 pub use kruskal::{generate as generate_kruskal, KruskalEvent};
 pub use wilson::{generate as generate_wilson, WilsonEvent, debug_value_names as wilson_debug_value_names};
-pub use edge_based::{generate as generate_edge_based, EdgeBasedEvent, debug_value_names as edge_based_debug_value_names};
 pub use vertex_based::{generate as generate_vertex_based, VertexBasedEvent, debug_value_names as vertex_based_debug_value_names};
 pub use types::{
-    ElementsConfig, GenerationParams, EdgeBasedParams, GenerationAlgorithm,
+    ElementsConfig, GenerationParams, GenerationAlgorithm,
     PresetConnectionState, TeleportDirection, PresetConnection, PresetEndpoint, NodeLockKind, LockedNode,
     VerticalPassageDirection, PresetVerticalPassage, PresetElevator,
     GenerationConfig,
@@ -89,10 +87,6 @@ fn dispatch<T: Tessellation>(
                 preset_state, &mut start_reassignment, None, None,
             );
             start_reassignment
-        }
-        GenerationAlgorithm::CustomEdgeBased(params) => {
-            edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, None);
-            None
         }
         GenerationAlgorithm::RecursiveBacktracker => {
             recursive_backtracker::generate(graph, field, seed, start, preset_state, None);
@@ -160,7 +154,7 @@ pub struct EventedGenerationResult<T: Tessellation> {
 
 /// Qualifies debug-value names with their source's scope name when more than one source is
 /// present, so two sources independently declaring the same name (e.g. `"visited"` — already
-/// reused today by Recursive Backtracker, Wilson, CustomEdgeBased, and CustomVertexBased
+/// reused today by Recursive Backtracker, Wilson, and CustomVertexBased
 /// independently, see `Specs/event_log.md`) don't collide once merged. Left unqualified for
 /// exactly one source, matching today's names/tests/UI verbatim — qualification only becomes
 /// necessary, and only then changes the wire format, once a second source genuinely exists.
@@ -177,9 +171,9 @@ pub fn qualify_debug_value_names(
 }
 
 /// Runs generation with narration-level event-tree logging (GitHub issue #124). Bypasses
-/// [`dispatch`] deliberately: `dispatch` is shared across all five algorithms and must not be
+/// [`dispatch`] deliberately: `dispatch` is shared across all four algorithms and must not be
 /// tied to any concrete `EventLog<E>` type, so this matches on the algorithm directly instead of
-/// growing `dispatch`'s signature with a type every other branch would have to ignore. All five
+/// growing `dispatch`'s signature with a type every other branch would have to ignore. All four
 /// generation algorithms are instrumented; each arm builds its own `EventLog<E>`, finishes it, and
 /// encodes it to a type-erased [`crate::event_log::EncodedTape`], tagged with
 /// [`crate::event_log::EventedEventKind`] (see GitHub issue #161). Since GitHub issue #147, this
@@ -222,11 +216,6 @@ pub fn generate_maze_with_events<T: Tessellation>(
             let mut log = crate::event_log::EventLog::new();
             wilson::generate(graph, field, seed, start, preset_state, Some(&mut log));
             ("generation", crate::event_log::EventedEventKind::Wilson, log.finish().encode(), wilson::debug_value_names())
-        }
-        GenerationAlgorithm::CustomEdgeBased(params) => {
-            let mut log = crate::event_log::EventLog::new();
-            edge_based::generate(graph, field, seed, start, &params, &config.elements, preset_state, Some(&mut log));
-            ("generation", crate::event_log::EventedEventKind::EdgeBased, log.finish().encode(), edge_based::debug_value_names())
         }
         GenerationAlgorithm::CustomVertexBased(params) => {
             let mut log = crate::event_log::EventLog::new();

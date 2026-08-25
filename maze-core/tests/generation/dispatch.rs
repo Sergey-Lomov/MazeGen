@@ -1,11 +1,10 @@
-use maze_core::generation::{generate_maze, GenerationAlgorithm, GenerationConfig, GenerationParams, EdgeBasedParams};
+use maze_core::generation::{generate_maze, GenerationAlgorithm, GenerationConfig, GenerationParams};
 use super::helpers::*;
 
 #[test]
 fn generate_maze_dispatches_all_algorithms() {
     let algorithms = vec![
         GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
-        GenerationAlgorithm::CustomEdgeBased(EdgeBasedParams::default()),
         GenerationAlgorithm::RecursiveBacktracker,
         GenerationAlgorithm::WilsonAlgorithm,
         GenerationAlgorithm::KruskalAlgorithm,

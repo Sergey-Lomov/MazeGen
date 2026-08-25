@@ -113,12 +113,12 @@ The junction branch (`corridor_chance` roll failed) handles small neighbor count
 
 A **teleport** is a connection type (`EdgeKind::Teleport`, alongside `EdgeKind::Basic`) that links two tiles regardless of geometric adjacency — one-way or two-way, same as a `Basic` connection. Unlike an earlier design, teleports are **not** a separate post-generation pass: each generation algorithm rolls `teleport_chance` inline, at the same point it would otherwise commit to a normal geometrically-adjacent connection, and — on a hit — substitutes or adds a non-adjacent `Teleport` edge instead. This makes teleports full participants in the maze from the moment they're added: they are present from the repair pipeline's very first pass onward — cycle-removal strategies (`InvalidLoopRandomStrategy`, `InvalidLoopScoredStrategy`) can remove a `Teleport` edge exactly like a `Basic` one, since SCC/cycle code operates purely on graph traversal and never branches on edge kind. Repair strategies that *add* connections (e.g. region-merge) do not create teleports — that is a separate, not-yet-implemented capability.
 
-Only `CustomVertexBased` and `CustomEdgeBased` support `teleport_chance`/`teleport_one_way_chance` — each has its own model, described in its own section below (`CustomVertexBased`'s model is described here; `CustomEdgeBased`'s is under its own heading further down). `RecursiveBacktracker`, `WilsonAlgorithm`, and `KruskalAlgorithm` are canonical textbook algorithms with no notion of directionality or non-adjacent connections; they add only plain bidirectional passages and ignore `elements` entirely (`one_way_chance`, `teleport_chance`, `teleport_one_way_chance` have no effect on them). Any one-way passages or teleports on top of a canonical algorithm's output must be introduced afterward via QC repair strategies.
+Only `CustomVertexBased` supports `teleport_chance`/`teleport_one_way_chance` — its model is described below. `RecursiveBacktracker`, `WilsonAlgorithm`, and `KruskalAlgorithm` are canonical textbook algorithms with no notion of directionality or non-adjacent connections; they add only plain bidirectional passages and ignore `elements` entirely (`one_way_chance`, `teleport_chance`, `teleport_one_way_chance` have no effect on them). Any one-way passages or teleports on top of a canonical algorithm's output must be introduced afterward via QC repair strategies.
 
 **Preset teleports are traversable by every algorithm, independent of `teleport_chance`** (GitHub issue #226). `build_preset_state` plants a preset `PresetConnectionState::Teleport`'s edge(s) directly into the graph before generation starts (see `Specs/preset-connections.md`) and records each source node's teleport destinations in `PresetState.preset_teleports: HashMap<NodeId, Vec<NodeId>>` — unlike `preset_connected` (for geometrically-adjacent preset pairs), a teleport pair isn't discoverable via `field.neighbors`, so every algorithm consults `preset_teleports` directly to treat a source node's preset-teleport destinations as extra traversable neighbors of that node, on top of its geometric ones:
 - `RecursiveBacktracker`/`WilsonAlgorithm`: the destination joins the current node's neighbor/candidate pool unconditionally (bypassing `can_connect`, which only gates *adding* a new edge — irrelevant here since the edge already exists) and, once chosen, is marked visited without adding a duplicate edge.
 - `KruskalAlgorithm`: needs no special-casing — it pre-unions every edge already present in the graph (including preset teleports) into its union-find structure before the main edge loop, so preset-teleported nodes start in the same set.
-- `CustomEdgeBased`/`CustomVertexBased`: the destination joins the geometric candidate pool (gated only on being Unseen/unvisited, not `can_connect`) regardless of this step's own `teleport_chance` roll — a preset teleport's connectivity doesn't depend on the algorithm's own dynamic-teleport dice.
+- `CustomVertexBased`: the destination joins the geometric candidate pool (gated only on being Unseen/unvisited, not `can_connect`) regardless of this step's own `teleport_chance` roll — a preset teleport's connectivity doesn't depend on the algorithm's own dynamic-teleport dice.
 
 **Parallel edges are allowed by design**: a `Teleport` edge may coexist with a `Basic` (or other-kind) edge in the same direction between the same pair — e.g. a tile already reachable by a normal passage can also have a teleport into it. `Graph::add_edge`'s dedup is kind-aware (only refuses to add a duplicate of the *same* kind in the same direction); the public `Graph::edge_between(from, to)` still returns an arbitrary edge of any kind between the pair, so code needing a specific kind must filter `Graph::edges()` itself. There is no per-node exclusivity constraint — a node may participate in any number of teleport connections.
 
@@ -139,9 +139,9 @@ When `cyclic_fired && teleport_hit`, the teleport-widened candidate pool ("any v
 
 ## Vertical Connections (GitHub issue #337)
 
-`CustomVertexBased` is the only algorithm that can connect floors of a `MultiLevelField` — the same reason it (along with `CustomEdgeBased`) is the only one with a notion of `EdgeKind::Teleport`. Two new edge kinds exist for this: `EdgeKind::VerticalPassage` (a single edge between two adjacent floors, one-way or two-way) and `EdgeKind::Elevator` (a fully-connected fan across several — not necessarily adjacent — floors, always two-way).
+`CustomVertexBased` is the only algorithm that can connect floors of a `MultiLevelField` — the same reason it is the only one with a notion of `EdgeKind::Teleport`. Two new edge kinds exist for this: `EdgeKind::VerticalPassage` (a single edge between two adjacent floors, one-way or two-way) and `EdgeKind::Elevator` (a fully-connected fan across several — not necessarily adjacent — floors, always two-way).
 
-`RecursiveBacktracker`, `WilsonAlgorithm`, and `KruskalAlgorithm` have no notion of `VerticalPassage`/`Elevator` at all — their neighbor lookups (`split_aware_neighbors`, and Kruskal's whole-field edge enumeration) are same-floor only (`MultiLevelField::neighbors`, not `vertical_neighbors`). On a multi-floor field they simply treat each floor as its own geometrically disconnected region: Kruskal produces one MST per floor naturally (each floor is its own DSU component); `RecursiveBacktracker`/`WilsonAlgorithm` produce one disjoint spanning-tree component per floor via their GitHub issue #417 restart mechanism (see below) — without that restart they would generate only the floor containing `start` and leave the rest empty. `CustomEdgeBased` alone remains disabled on multi-floor fields in the algorithm-select UI: it has no restart mechanism (deliberate, see "Termination and Disconnected Nodes" below) and no vertical-connection support, so extra floors would simply be silently skipped.
+`RecursiveBacktracker`, `WilsonAlgorithm`, and `KruskalAlgorithm` have no notion of `VerticalPassage`/`Elevator` at all — their neighbor lookups (`split_aware_neighbors`, and Kruskal's whole-field edge enumeration) are same-floor only (`MultiLevelField::neighbors`, not `vertical_neighbors`). On a multi-floor field they simply treat each floor as its own geometrically disconnected region: Kruskal produces one MST per floor naturally (each floor is its own DSU component); `RecursiveBacktracker`/`WilsonAlgorithm` produce one disjoint spanning-tree component per floor via their GitHub issue #417 restart mechanism (see below) — without that restart they would generate only the floor containing `start` and leave the rest empty.
 
 ### RNG-parity policy
 
@@ -264,91 +264,12 @@ Web UI: a "QC Only" toggle (`Switch`) on the generation card, next to Generate/R
 
 ---
 
-## CustomEdgeBased Algorithm
-
-### Overview
-
-Edge-first growth model. A node is selected from the active set, then a neighbor is chosen via weighted sampling. Normally one edge is added per step; when `cyclicity` triggers, an additional edge to a visited neighbor may also be added. No explicit degree constraints — structure emerges from stochastic decisions.
-
-Produces a spanning tree of the subgraph reachable from `start`. Geometrically disconnected clusters remain unconnected.
-
-### Parameters
-
-| Parameter | Range | Default | Effect |
-|---|---|---|---|
-| `corridor_length` | 0.0–1.0 | 0.5 | Probability of advancing to the last-connected destination as the next `src` (chain: A→B→C→…). 0 = no chaining, 1 = always continue from last destination. |
-| `branching` | 0.0–1.0 | 0.5 | Weight boost for destinations with more unseen neighbors. Uses `sqrt` of the free-neighbor count. 0 = uniform, 1 = strongly prefer high-potential destinations. |
-| `locality` | 0.0–1.0 | 0.0 | Bias toward `src` nodes closer to start (by tree depth). 0 = uniform selection, 1 = strongly prefer shallow nodes. **Not yet implemented in core or UI.** |
-| `directionality` | 0.0–1.0 | 0.0 | Weight multiplier (up to 4×) for candidates geometrically straight ahead from `src`'s parent. Requires `Field::is_straight`. Has no effect when `src` has no parent or when corridor chaining fired this step. |
-| `cyclicity` | 0.0–1.0 | 0.0 | Per-step probability of adding an extra edge to an already-visited neighbor, independent of the normal dst selection. If triggered and a visited neighbor exists, one is chosen at random and connected; `last_dst` is not updated (visited node cannot seed a corridor chain). The normal unseen-neighbor dst selection still proceeds as usual. |
-
-### Invariants
-
-- `NodeState ∈ {Unseen, Active, Visited}` — single source of truth, no separate HashSets
-- `node_state[n] == Active` ⟺ `n ∈ active`
-- Each node transitions `Unseen → Active → Visited` exactly once
-- `last_dst` is reset to `None` when the referenced node is removed from active
-
-### Source Selection (`choose_src`)
-
-Two-state machine:
-
-1. **Corridor attempt**: if `last_dst` exists and `rng.random() < corridor_length`, use `last_dst` as next `src` if it still has unseen neighbors. This creates a chain A→B→C→… where each newly connected node becomes the next source.
-2. **Locality weighted sampling**: weight for each node = `exp(-locality * depth / max_depth_in_active)`. Dynamic normalization by current max depth prevents center-biased growth over time.
-
-### Destination Weighting
-
-For each unseen neighbor `dst` of `src`:
-
-```
-free = count of unseen neighbors of dst
-w = 1.0 + branching * sqrt(free)
-if not corridor_fired and parent(src) exists and is_straight(parent(src), src, dst):
-    w *= 1.0 + directionality * 3.0
-```
-
-`sqrt` normalization prevents hub nodes (high tessellation degree) from dominating. `corridor_fired` is true when the corridor attempt succeeded this step — in that case directionality is skipped so the two effects remain orthogonal.
-
-### Teleport model
-
-Immediately after `src` is chosen (before any candidate pool is built), two rolls are made: `teleport_flag` and `cyclic_flag = rand() < cyclicity`. A single derived flag, `use_geometric_pool = !teleport_flag || cyclic_flag`, then governs every later choice this step.
-
-**Both `teleport_flag` and `cyclic_flag` are rolled at most once per node, not once per connection opportunity.** A node can become `src` several times before exhausting its geometric neighbors (each pop from `active` is a separate connection opportunity) — rolling `teleport_chance`/`cyclicity` fresh on every one of those visits would make the node's effective probability compound with its degree instead of applying once per node. `NodeEntry` tracks `teleport_rolled` and `cyclic_rolled` flags: the first time a node is popped as `src`, each flag is rolled (`rand() < teleport_chance` / `rand() < cyclicity`) and the corresponding `*_rolled` flag is set (regardless of hit or miss); every subsequent time the same node is popped as `src`, the flag is `false` unconditionally and no sample is drawn — the node falls back to the normal geometric pool (for teleport) or skips the cyclic-edge attempt (for cyclic) for its remaining connection opportunities.
-
-- **Candidate pool**: if `use_geometric_pool`, the normal unseen-geometric-neighbors pool (as without teleports). Otherwise, the pool is every Unseen node in the graph except `src` (`can_connect`-filtered, no adjacency restriction, sorted for determinism) — i.e. `teleport_flag` fired and `cyclic_flag` did not, so the teleport replaces the normal dst choice entirely rather than adding to it. If this pool is empty, the step is skipped exactly like an empty geometric pool would be (`continue`/deactivate `src`).
-- **Weighting**: the `branching` weight always applies. The `directionality` multiplier only applies when `use_geometric_pool && !corridor_fired` — non-adjacent candidates have no meaningful "straight ahead," so directionality is skipped for a pure-teleport dst choice.
-- **Cyclic edge** (unchanged trigger point, `cyclic_flag`): if `teleport_flag` is also set, the cyclic partner is drawn from all visited nodes in the graph (not just geometric neighbors), and the edge is added as `EdgeKind::Teleport` via `teleport_one_way_chance`. If `teleport_flag` is not set, the cyclic edge behaves exactly as without teleports (`EdgeKind::Basic`, geometric visited neighbors only).
-- **Edge addition**: if `use_geometric_pool`, the chosen dst is connected as `EdgeKind::Basic` via `one_way_chance` (unchanged). Otherwise the chosen dst is connected as `EdgeKind::Teleport` via `teleport_one_way_chance`.
-
-Net effect: when `cyclicity` fires alongside a teleport roll, the teleport is "spent" on the cyclic edge and the step's normal dst choice stays on the geometric pool (mirroring `CustomVertexBased`'s "teleport spent on cycle" rule) — otherwise the teleport fully replaces (not augments) the normal dst choice.
-
-**Dead-hit edge case**: a node's teleport roll can hit while the teleport candidate pool (every Unseen node in the graph) is empty — e.g. near the end of generation, when almost every node has already transitioned out of Unseen. In that case the step is skipped entirely (`continue`, node deactivated) with no edge added at all for that node's own roll. The node can still end up with an outgoing `Basic` edge later, but only as the *other* direction of a bidirectional connection initiated by a different node's own (non-teleport) roll — not as a consequence of its own hit.
-
-### Termination and Disconnected Nodes
-
-The algorithm terminates when `active` becomes empty. There is **no reserve mechanism and no restart-on-exhaustion recovery** (unlike `CustomVertexBased`, `RecursiveBacktracker`, and `WilsonAlgorithm` — see "Restart on a Geometrically Disconnected Region" below): any node not reachable from `start` via unseen-neighbor chains will never be added to `active` and will remain isolated — no edge will be created for it. `CustomEdgeBased` produces a spanning tree strictly of the reachable subgraph. This is a deliberate scope limit, not an oversight — GitHub issue #417 restricted its abstract restart mechanism to `CustomVertexBased`, and the later extension to `RecursiveBacktracker`/`WilsonAlgorithm` (below) did not extend it to `CustomEdgeBased`.
-
 ## Restart on a Geometrically Disconnected Region (GitHub issue #417)
 
-`CustomVertexBased`, `RecursiveBacktracker`, and `WilsonAlgorithm` all fill in geometrically disconnected regions of the field as separate, unbridged spanning-tree components rather than ending generation with unvisited cells left over. Once ordinary growth from `start` is exhausted (empty frontier/reserve for `CustomVertexBased`, an empty DFS stack for `RecursiveBacktracker`, no walk that can reach `visited` for `WilsonAlgorithm`) but unvisited nodes remain anywhere on the field, a random unvisited node is picked and marked visited directly — no edge, no parent, treated exactly like the run's own `start` — becoming the root of a new component that ordinary growth then continues from. This repeats until every node is visited; only then does generation actually end. The resulting graph can have multiple disjoint components with no path between them — connecting them back together (if desired) is `build_maze`'s repair pass's concern, not generation's (mirrors `CustomEdgeBased`'s existing "isolated nodes are the repair pass's problem" stance for its own, narrower, no-recovery case).
+`CustomVertexBased`, `RecursiveBacktracker`, and `WilsonAlgorithm` all fill in geometrically disconnected regions of the field as separate, unbridged spanning-tree components rather than ending generation with unvisited cells left over. Once ordinary growth from `start` is exhausted (empty frontier/reserve for `CustomVertexBased`, an empty DFS stack for `RecursiveBacktracker`, no walk that can reach `visited` for `WilsonAlgorithm`) but unvisited nodes remain anywhere on the field, a random unvisited node is picked and marked visited directly — no edge, no parent, treated exactly like the run's own `start` — becoming the root of a new component that ordinary growth then continues from. This repeats until every node is visited; only then does generation actually end. The resulting graph can have multiple disjoint components with no path between them — connecting them back together (if desired) is `build_maze`'s repair pass's concern, not generation's.
 
 Each algorithm's restart trigger and mechanism differs to fit its own growth model:
 
 - **`CustomVertexBased`**: see "Restart on total exhaustion" under "Reserve" above — triggers when the reserve scan's linear pass finds no reachable candidate.
 - **`RecursiveBacktracker`**: triggers when the DFS stack unwinds to empty. A random unvisited node (from every node in the field, not just ones that were ever pushed onto the stack) becomes the new stack's sole entry. No event is narrated for the restart root's own visit — same as the original `start`, which also isn't narrated (`RecursiveBacktrackerEvent` has no dedicated "start" event; a node's visit is only narrated when something else chooses it as a candidate).
 - **`WilsonAlgorithm`**: a loop-erased random walk can only stop by reaching an already-visited node — a walk started inside a not-yet-reachable region would run forever if that region happens to have no dead end (every node has at least one neighbor). To make the restart decision without ever risking an unbounded walk, `generate` precomputes field-geometric connected components once up front (BFS over `split_aware_neighbors` plus preset-teleport edges in both directions — the same candidate pool a walk's search phase itself uses), before any walk runs. The main loop then only ever starts a walk from an unvisited node whose component already contains a visited node; when no such candidate exists, every remaining unvisited node belongs to a genuinely separate component, and one is picked at random and seeded directly into `visited` (emitting `WilsonEvent::StartVisited`, the same event the run's actual `start` uses) instead of attempting a walk. This can make `WilsonEvent::StartVisited` appear more than once directly under the root scope — once for the original `start`, and once per additional component restarted into.
-
-### WASM JSON Format
-
-```json
-{
-  "method": "custom_edge_based",
-  "corridor_length": 0.5,
-  "branching": 0.5,
-  "locality": 0.0,
-  "directionality": 0.0,
-  "cyclicity": 0.0
-}
-```
-
-All values are clamped to `[0.0, 1.0]` before use. `one_way_chance`, `teleport_chance`, and `teleport_one_way_chance` are not part of `CustomEdgeBased`'s own parameters — they are configured separately via the `elements` section of the generation config (see "Teleport model" above for how `CustomEdgeBased` interprets them).

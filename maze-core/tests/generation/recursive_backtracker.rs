@@ -332,8 +332,8 @@ fn recursive_backtracker_encode_round_trips_tree_shape() {
 
 #[test]
 fn generate_maze_with_events_debug_values_stay_empty_for_kruskal() {
-    // Every generation algorithm is now instrumented (RB, Kruskal, Wilson, EdgeBased,
-    // VertexBased) — Kruskal is the one remaining case where `debug_value_names` doesn't follow
+    // Every generation algorithm is now instrumented (RB, Kruskal, Wilson, VertexBased) —
+    // Kruskal is the one remaining case where `debug_value_names` doesn't follow
     // `tape`'s `Some`-ness (see `Specs/event_log.md`'s #161 section).
     let (mut graph, mut field, start, mut ids) = build_with_ids(3, 3);
     let result = generate_maze_with_events(&mut graph, &mut field, &mut ids, 1, start, GenerationConfig {

@@ -34,9 +34,9 @@ pub(crate) fn add_edge(graph: &mut Graph, src: NodeId, dst: NodeId, elements: &E
 /// those functions return `()` and a one-way coin flip may add `dst->src` instead of `src->dst`
 /// (GitHub issue #144's direction-mismatch fix). Returns `Some((from, to, bidirectional))` with the
 /// graph's actual direction when an edge was added, `None` when the attempt was silently declined
-/// by a preset conflict. Shared by `vertex_based`'s and `edge_based`'s `generate` (and their split
-/// paths) — every direction-detection call site needs the exact same before/after comparison, only
-/// which `add_fn` they call differs.
+/// by a preset conflict. Shared by `vertex_based`'s `generate` and its split paths — every
+/// direction-detection call site needs the exact same before/after comparison, only which `add_fn`
+/// they call differs.
 pub(crate) fn add_edge_and_detect_direction(
     graph: &mut Graph,
     src: NodeId,

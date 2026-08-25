@@ -1,7 +1,7 @@
 ﻿use maze_core::{Graph, IdGenerator, NodeId};
 use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 use maze_core::generation::{
-    EdgeBasedParams, ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams, PresetState,
+    ElementsConfig, GenerationAlgorithm, GenerationConfig, GenerationParams, PresetState,
     build_preset_state, PresetConnection, PresetConnectionState, PresetEndpoint,
 };
 
@@ -234,14 +234,6 @@ pub fn config_with_elements(elements: ElementsConfig) -> GenerationConfig {
     GenerationConfig {
         algorithm: GenerationAlgorithm::CustomVertexBased(GenerationParams::default()),
         elements,
-        ..GenerationConfig::default()
-    }
-}
-
-pub fn edge_based_config(params: EdgeBasedParams) -> GenerationConfig {
-    GenerationConfig {
-        algorithm: GenerationAlgorithm::CustomEdgeBased(params),
-        elements: ElementsConfig { one_way_chance: 0.0, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() },
         ..GenerationConfig::default()
     }
 }

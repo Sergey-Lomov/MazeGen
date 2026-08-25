@@ -1,8 +1,8 @@
 //! Shared little-endian write helpers for `EncodeEventPayload::encode_payload` implementations.
 //! Every generated `<name>_wire.rs` file (see `codegen/`) calls these instead of each source
 //! carrying its own private copy — before this module existed, `write_node_id`/`push_ids`-shaped
-//! helpers were duplicated privately per file (`quality_control/event.rs`, `edge_based.rs`,
-//! `vertex_based.rs`). Hand-written `encode_payload` impls (e.g. `QcEvent`'s, which the codegen
+//! helpers were duplicated privately per file (`quality_control/event.rs`, `vertex_based.rs`).
+//! Hand-written `encode_payload` impls (e.g. `QcEvent`'s, which the codegen
 //! plan keeps hand-written for its custom-coded fields) may keep using their own private copies —
 //! this module doesn't retroactively claim every existing call site, only the ones `codegen`
 //! itself emits calls to.
@@ -86,9 +86,7 @@ mod tests {
     /// (skipping the 8-byte placeholder), while every consumer — `type_map`'s
     /// `WireWidth::Fixed(9)`, TS's `readOptionalNodeId` (always reads presence + 8 bytes),
     /// `expectLen` checks in generated decoders — assumed a fixed 9-byte width regardless of
-    /// presence. Caught by `maze-core/tests/generation/edge_based_events.rs`'s
-    /// `NodeActivated { parent: None, .. }` byte-length assertion during `VertexBasedEvent`'s
-    /// migration; the field is always 9 bytes wide, `None` just zero-fills the value half.
+    /// presence; the field is always 9 bytes wide, `None` just zero-fills the value half.
     #[test]
     fn write_optional_node_id_is_always_nine_bytes() {
         let mut none_bytes = Vec::new();

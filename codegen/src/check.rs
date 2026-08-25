@@ -268,9 +268,7 @@ mod tests {
     /// Regression test: `SrcExhausted` is a text prefix of `SrcExhaustedEmptyPool` — an earlier
     /// version of `old_write_call_sequence` used plain `str::find`, which matched the shorter
     /// name's search *inside* the longer variant's own arm and produced a bogus "field layout
-    /// changed" warning for an unmodified source (caught during `VertexBasedEvent`'s migration:
-    /// `SrcExhausted { src: NodeId }` was falsely flagged against `EdgeBasedEvent`'s already
-    /// unchanged `SrcExhaustedEmptyPool { src: NodeId }`).
+    /// changed" warning for an unmodified source.
     #[test]
     fn detect_breaking_changes_is_silent_for_a_variant_name_that_prefixes_another() {
         let src = source(vec![

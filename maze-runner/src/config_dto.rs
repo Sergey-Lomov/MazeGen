@@ -82,15 +82,6 @@ pub struct GenerationParamsConfig {
 }
 
 #[derive(Deserialize, Default)]
-pub struct EdgeBasedParamsConfig {
-    pub corridor_length: Option<f64>,
-    pub branching:       Option<f64>,
-    pub depth_first:     Option<f64>,
-    pub directionality:  Option<f64>,
-    pub cyclicity:       Option<f64>,
-}
-
-#[derive(Deserialize, Default)]
 pub struct ElementsConfigDto {
     pub one_way_chance: Option<f64>,
     pub teleport_chance: Option<f64>,
@@ -234,7 +225,6 @@ pub struct LockedNodeDto {
 #[serde(tag = "method", rename_all = "snake_case")]
 pub enum InitialGenerationConfig {
     CustomVertexBased(GenerationParamsConfig),
-    CustomEdgeBased(EdgeBasedParamsConfig),
     RecursiveBacktracker,
     WilsonAlgorithm,
     KruskalAlgorithm,

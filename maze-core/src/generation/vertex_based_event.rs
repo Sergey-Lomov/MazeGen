@@ -4,11 +4,10 @@ mod vertex_based_wire;
 use crate::ids::NodeId;
 use crate::event_log::{DebugValueDelta, DebugValueKind, DebugValueOp};
 
-/// Narration-level events for `CustomVertexBased` generation (see GitHub issue #143). Unlike
-/// `CustomEdgeBased`'s single active-list per step, `vertex_based` has two distinct entry points
-/// into its main loop — `handle_empty_frontier` (teleport-bridge or reserve-pop, when the
-/// frontier is empty) and `step_from_frontier` (the normal frontier-pop step) — both emitted flat
-/// under one `"step N"` scope per main-loop iteration (mirrors Kruskal/EdgeBased's flat shape),
+/// Narration-level events for `CustomVertexBased` generation (see GitHub issue #143). `vertex_based`
+/// has two distinct entry points into its main loop — `handle_empty_frontier` (teleport-bridge or
+/// reserve-pop, when the frontier is empty) and `step_from_frontier` (the normal frontier-pop step)
+/// — both emitted flat under one `"step N"` scope per main-loop iteration (mirrors Kruskal's flat shape),
 /// except the reserve-candidate scan, which nests under its own fixed `"reserve_search"`
 /// sub-scope (mirrors Wilson's fixed `"search"`/`"commit"` names) since it can reject several
 /// candidates before settling on one — per explicit user decision (GitHub issue #143 discussion).
@@ -25,8 +24,8 @@ pub enum VertexBasedEvent {
     /// A teleport bridge was added from `src` (an already-visited node, picked uniformly at
     /// random) to `dst` (an unvisited node, picked uniformly at random) — `src`/`dst` are the
     /// actual graph direction, not necessarily the roll's own naming, since `try_add_edge_kind`'s
-    /// own one-way coin flip may reverse a one-way edge (mirrors `EdgeBasedEvent::EdgeAdded`'s
-    /// direction-detection fix, GitHub issue #144). Only emitted when the graph actually gained
+    /// own one-way coin flip may reverse a one-way edge (GitHub issue #144's direction-detection
+    /// fix). Only emitted when the graph actually gained
     /// an edge — `try_add_edge_kind` silently declines on a preset conflict, detected by comparing
     /// `graph.edge_between` before/after.
     #[wire(tag = 2, mutating)]
@@ -296,8 +295,7 @@ pub const RESERVE: &str = "reserve";
 /// `NodeQueuedToReserve` in an earlier step and only later gets connected, e.g. via
 /// `step_from_frontier`'s `connected`/`free_preset`/teleport-connect targets, must leave `reserve`
 /// even though no `ReserveCandidateChosen` fires for it; `Remove` on an id that was never actually
-/// in `reserve` — the common case — is a no-op on the receiving side, mirroring
-/// `EdgeBasedEvent::SrcExhausted`'s unconditional remove). `SrcChosenFromFrontier` removes its node
+/// in `reserve` — the common case — is a no-op on the receiving side). `SrcChosenFromFrontier` removes its node
 /// from `frontier` (just popped); `ReserveCandidateChosen` removes its node from `reserve` (just
 /// popped, redundant with but emitted ahead of the same node's later `NodeVisited`);
 /// `NodeQueuedToReserve` inserts into `reserve`; `ReserveCandidateRejected` (requeue branch)
@@ -341,9 +339,8 @@ impl DebugValueDelta<NodeId> for VertexBasedEvent {
     }
 }
 
-/// Static declaration of `CustomVertexBased`'s debug values (GitHub issue #131) — mirrors
-/// `edge_based::debug_value_names()`. A static property of the algorithm, not derived from what a
-/// particular run happened to emit.
+/// Static declaration of `CustomVertexBased`'s debug values (GitHub issue #131). A static property
+/// of the algorithm, not derived from what a particular run happened to emit.
 pub fn debug_value_names() -> &'static [(&'static str, DebugValueKind)] {
     &[
         (VISITED, DebugValueKind::Region),

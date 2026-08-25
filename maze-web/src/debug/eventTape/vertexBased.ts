@@ -64,7 +64,7 @@ export interface VertexBasedApplyResult {
   /** `"visited"`, `"frontier"`, and `"reserve"` (all Region — none of the three form a connected
    *  traversal chain, so unlike RB's `Sequence`-kind `"recursion_stack"` they render as
    *  independent per-node highlights) — mirrors `debugValues` on
-   *  `ApplyResult`/`applyRecursiveBacktracker`/`EdgeBasedApplyResult`. */
+   *  `ApplyResult`/`applyRecursiveBacktracker`. */
   debugValues: DebugValues;
   /** Node ids minted mid-run by a `SplitNodesCreated` event seen so far (GitHub issue #222) — every
    *  such node is absent from the field until its own creation step, unlike every other node
@@ -78,10 +78,10 @@ export interface VertexBasedApplyResult {
 }
 
 /** Replays `CustomVertexBased` events up to and including `targetStep` — counterpart to
- *  `applyEdgeBased`/`applyKruskal`/`applyWilson`: no checkpoints, every call replays from the
+ *  `applyKruskal`/`applyWilson`: no checkpoints, every call replays from the
  *  tape's start. Every edge-add variant (`TeleportBridgeAdded`/`BridgeAdded`/`CyclicEdgeAdded`/
  *  `EdgeAdded`/`TeleportConnectAdded`) carries an explicit `bidirectional` flag — mirrors RB/
- *  Kruskal/Wilson/EdgeBased's own handling: a bidirectional edge contributes both `{from, to}` and
+ *  Kruskal/Wilson's own handling: a bidirectional edge contributes both `{from, to}` and
  *  `{to, from}` to `edges`, a one-way edge only the forward pair. `PresetNeighborVisited` and the
  *  step-count-worthy-but-edgeless mutating variants (`ReserveCandidateChosen`,
  *  `NodeQueuedToReserve`) contribute no `edges` entry of their own. */
