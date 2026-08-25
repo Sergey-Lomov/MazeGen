@@ -18,10 +18,11 @@ vi.mock("pixi.js", () => {
   return { Container: FakeContainer, Graphics: FakeGraphics };
 });
 
-const { SplitJunctionRenderer } = await import("../pixi/renderers/SplitJunctionRenderer");
+const { SplitJunctionRenderer, collectSplitWallPaths } = await import("../pixi/renderers/SplitJunctionRenderer");
 const { Container, Graphics } = await import("pixi.js");
 
-// Two wallFaces sharing a vertex — an ordinary corner, chainable when a style override is given.
+// Two wallFaces sharing a vertex — an ordinary corner, chainable by WallRenderer once passed
+// through as extraWalls.
 const wallFaces = [
   { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 } },
   { v0: { x: 10, y: 0 }, v1: { x: 10, y: 10 } },
@@ -31,21 +32,62 @@ function graphicsOf(renderer: InstanceType<typeof SplitJunctionRenderer>) {
   return (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
 }
 
-describe("SplitJunctionRenderer.render wallFaces", () => {
-  it("without a style override, draws each wallFace as its own isolated stroke", () => {
-    const renderer = new SplitJunctionRenderer(new Container());
-    renderer.render({ passages: [], wallFaces });
-    const strokeCalls = graphicsOf(renderer).calls.filter((c) => c.fn === "stroke");
-    expect(strokeCalls).toHaveLength(2);
+// GitHub issue #319 follow-up: `SplitJunctionRenderer` no longer draws wallFaces/specialShapes
+// itself — a feature-renderer collects their geometry via `collectSplitWallPaths` and feeds it to
+// `WallRenderer.render`'s `extraWalls` param instead, so it joins with ordinary walls in
+// `WallRenderer`'s own single `Graphics` stroke pass (a join can only render within one continuous
+// stroke of a single `Graphics`, never across two independent ones).
+describe("collectSplitWallPaths", () => {
+  it("returns each wallFace as its own 2-point path, with no noCapPoints", () => {
+    const { paths, noCapPoints } = collectSplitWallPaths(wallFaces, undefined);
+    expect(paths).toHaveLength(2);
+    expect(paths).toContainEqual([{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+    expect(paths).toContainEqual([{ x: 10, y: 0 }, { x: 10, y: 10 }]);
+    expect(noCapPoints).toHaveLength(0);
   });
 
-  it("with a style override, chains wallFaces sharing a vertex into one continuous stroked path", () => {
-    const renderer = new SplitJunctionRenderer(new Container());
-    renderer.render({ passages: [], wallFaces }, { color: 0xabcdef, width: 4, join: "miter", cap: "square" });
-    const calls = graphicsOf(renderer).calls;
-    const strokeCalls = calls.filter((c) => c.fn === "stroke");
-    expect(strokeCalls).toHaveLength(1);
-    expect(strokeCalls[0].args[0]).toMatchObject({ color: 0xabcdef, width: 4, join: "miter", cap: "square" });
+  it("includes a 'diagonal' special shape as its own corner-to-corner path", () => {
+    const diagonal = { kind: "diagonal" as const, pointKey: "2,2", corner0: { x: 20, y: 10 }, corner1: { x: 30, y: 20 } };
+    const { paths } = collectSplitWallPaths([], [diagonal]);
+    expect(paths).toEqual([[{ x: 20, y: 10 }, { x: 30, y: 20 }]]);
+  });
+
+  it("includes a 'bridge' special shape's edge0/edge1 as 2 separate 4-point paths", () => {
+    const { paths } = collectSplitWallPaths([], [bridgeShape]);
+    expect(paths).toHaveLength(2);
+    expect(paths).toContainEqual(bridgeShape.edge0);
+    expect(paths).toContainEqual(bridgeShape.edge1);
+  });
+
+  it("with includeSpecialShapes = false, omits special shapes but keeps wallFaces", () => {
+    const diagonal = { kind: "diagonal" as const, pointKey: "2,2", corner0: { x: 20, y: 10 }, corner1: { x: 30, y: 20 } };
+    const { paths } = collectSplitWallPaths(wallFaces, [diagonal], false);
+    expect(paths).toHaveLength(2);
+    expect(paths).toContainEqual([{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+  });
+
+  it("a hex_triple_bridge point's earlier bridge edge is cut open where a later bridge's silhouette crosses it, and the cut's own new endpoints are reported as noCapPoints", () => {
+    const earlier = bridgeShape;
+    const later = {
+      ...bridgeShape,
+      // Silhouette crossing straight through the middle of `earlier`'s edge0/edge1 span (y: 0..40).
+      edge0: [{ x: 5, y: 18 }, { x: 19, y: 18 }, { x: 19, y: 22 }, { x: 5, y: 22 }] as [
+        { x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number },
+      ],
+      edge1: [{ x: 35, y: 18 }, { x: 21, y: 18 }, { x: 21, y: 22 }, { x: 35, y: 22 }] as [
+        { x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number },
+      ],
+    };
+    const { paths, noCapPoints } = collectSplitWallPaths([], [earlier, later]);
+    // `earlier`'s 2 edges are cut open by the crossing later silhouette (no single path spans the
+    // full original 4-point edge); `later`'s own 2 edges are untouched (nothing crosses it).
+    expect(paths).not.toContainEqual(earlier.edge0);
+    expect(paths).not.toContainEqual(earlier.edge1);
+    expect(paths).toContainEqual(later.edge0);
+    expect(paths).toContainEqual(later.edge1);
+    // Every cut piece's own new endpoint (not one of `earlier`'s original 8 edge0/edge1 points) is
+    // a synthetic intersection point — must never get a protruding cap in WallRenderer.
+    expect(noCapPoints.length).toBeGreaterThan(0);
   });
 });
 
@@ -75,26 +117,19 @@ const bridgeShape = {
   crossColor: 0xbbbbbb,
 };
 
-const diagonalShape = {
-  kind: "diagonal" as const,
-  pointKey: "1,1",
-  corner0: { x: 0, y: 0 },
-  corner1: { x: 40, y: 40 },
-};
-
 describe("SplitJunctionRenderer.render special shapes", () => {
-  it("defaults on (no splitStyleOverride at all) — a recognized point's ordinary passage is skipped and the bridge shape draws instead, matching every non-VectorByWalls feature-renderer that never passes an override", () => {
+  it("defaults on (no splitStyleOverride at all) — a recognized point's ordinary passage is skipped, matching every non-VectorByWalls feature-renderer that never passes an override", () => {
     const renderer = new SplitJunctionRenderer(new Container());
     renderer.render({ passages: [passage("0,0", 0xaaaaaa)], wallFaces: [], specialShapes: [bridgeShape] });
     const calls = graphicsOf(renderer).calls;
     const strokeCalls = calls.filter((c) => c.fn === "stroke");
-    // Bridge: 2 edges (left/right of the cross corridor); the ordinary passage (0,0)'s own
-    // segment/connector must not appear at all.
-    expect(strokeCalls).toHaveLength(2);
-    expect(strokeCalls.every((c) => (c.args[0] as { color: number }).color !== 0xaaaaaa)).toBe(true);
+    // The bridge shape itself is never drawn by this renderer (moved to WallRenderer via
+    // collectSplitWallPaths) — only the ordinary passage (0,0) would draw, and it's skipped as a
+    // recognized special point.
+    expect(strokeCalls).toHaveLength(0);
   });
 
-  it("explicit specialShapes: false opts a caller out — ordinary passages draw and special shapes are ignored", () => {
+  it("explicit specialShapes: false opts a caller out — ordinary passages draw", () => {
     const renderer = new SplitJunctionRenderer(new Container());
     renderer.render(
       { passages: [passage("0,0", 0xaaaaaa)], wallFaces: [], specialShapes: [bridgeShape] },
@@ -102,12 +137,12 @@ describe("SplitJunctionRenderer.render special shapes", () => {
       { specialShapes: false },
     );
     const calls = graphicsOf(renderer).calls;
-    // 1 wall segment + 1 connector = 2 strokes, no special-shape draw calls beyond that.
+    // 1 wall segment + 1 connector = 2 strokes.
     expect(calls.filter((c) => c.fn === "stroke")).toHaveLength(2);
     expect(calls.some((c) => c.fn === "stroke" && (c.args[0] as { color: number }).color === 0xaaaaaa)).toBe(true);
   });
 
-  it("with specialShapes on, a recognized point's ordinary passage is skipped and the bridge shape draws its 2 cross edges in wall color", () => {
+  it("with specialShapes on, a recognized point's ordinary passage is skipped entirely", () => {
     const renderer = new SplitJunctionRenderer(new Container());
     renderer.render(
       { passages: [passage("0,0", 0xaaaaaa)], wallFaces: [], specialShapes: [bridgeShape] },
@@ -115,52 +150,18 @@ describe("SplitJunctionRenderer.render special shapes", () => {
       { specialShapes: true },
     );
     const calls = graphicsOf(renderer).calls;
-    const strokeCalls = calls.filter((c) => c.fn === "stroke");
-    // Bridge: 2 edges (left/right of the cross corridor); the ordinary passage (0,0)'s own
-    // segment/connector must not appear at all, and neither edge uses the node's own color.
-    expect(strokeCalls).toHaveLength(2);
-    expect(strokeCalls.every((c) => (c.args[0] as { color: number }).color !== 0xaaaaaa)).toBe(true);
+    expect(calls.filter((c) => c.fn === "stroke")).toHaveLength(0);
   });
 
-  it("diagonal shape draws one straight stroke corner-to-corner, in wall color", () => {
-    const renderer = new SplitJunctionRenderer(new Container());
-    renderer.render(
-      { passages: [], wallFaces: [], specialShapes: [diagonalShape] },
-      undefined,
-      { specialShapes: true },
-    );
-    const calls = graphicsOf(renderer).calls;
-    const strokeCalls = calls.filter((c) => c.fn === "stroke");
-    expect(strokeCalls).toHaveLength(1);
-    const moveTo = calls.find((c) => c.fn === "moveTo")!;
-    const lineTo = calls.find((c) => c.fn === "lineTo")!;
-    expect(moveTo.args).toEqual([0, 0]);
-    expect(lineTo.args).toEqual([40, 40]);
-  });
-
-  it("a caller-supplied wallFaceStyleOverride's color/width/join apply to special shapes, but cap is always forced to 'butt'", () => {
-    // A special shape's free ends already sit exactly on the tile's own face boundary — a round
-    // or square cap would protrude past it into the neighboring tile/wall, regardless of what the
-    // caller's own wall style asks for.
-    const renderer = new SplitJunctionRenderer(new Container());
-    renderer.render(
-      { passages: [], wallFaces: [], specialShapes: [diagonalShape] },
-      { color: 0xabcdef, width: 5, join: "miter", cap: "square" },
-      { specialShapes: true },
-    );
-    const strokeCalls = graphicsOf(renderer).calls.filter((c) => c.fn === "stroke");
-    expect(strokeCalls[0].args[0]).toMatchObject({ color: 0xabcdef, width: 5, join: "miter", cap: "butt" });
-  });
-
-  it("a caller-supplied wallFaceStyleOverride's width applies to ordinary passages (segment and connector); color stays the node's own; a single (no-hub) connector's cap is always 'butt', wallSegment cap follows the caller since its lone share spans the whole (free-ended) face", () => {
+  it("a caller-supplied wallFaceStyleOverride's width applies to ordinary passages (segment and connector); color stays the node's own; every cap is 'butt' under a sharp (miter) style, including a wallSegment's own free end", () => {
     // GitHub issue #304: width was previously hardcoded to WALL_THICKNESS for ordinary
-    // (non-special) passages, ignoring the caller's wall style entirely. GitHub issue #317: a
-    // wallSegment end landing on the face's own real boundary (`atFaceStart`/`atFaceEnd`, both true
-    // here since this node is alone on the face) has no neighboring sub-segment to butt against, so
-    // it follows the caller's own cap instead of always "butt". This passage has exactly one
-    // connector (the 2-share straight-line case, no hub) — both its ends are division points, so
-    // it stays "butt" always. See the hub-fan-out test below (GitHub issue #421) for the case where
-    // a connector's hub end follows the caller's cap instead.
+    // (non-special) passages, ignoring the caller's wall style entirely. GitHub issue #317/#319
+    // follow-up: a wallSegment end landing on the face's own real boundary (`atFaceStart`/
+    // `atFaceEnd`, both true here since this node is alone on the face) has no neighboring
+    // sub-segment to butt against, but under a sharp style it still stays "butt" — a protruding
+    // cap has no shared join with whatever unrelated line meets it at that tile corner. This
+    // passage has exactly one connector (the 2-share straight-line case, no hub) — both its ends
+    // are division points, so it stays "butt" regardless of style either way.
     const renderer = new SplitJunctionRenderer(new Container());
     renderer.render(
       { passages: [passage("9,9", 0xaaaaaa)], wallFaces: [] },
@@ -170,7 +171,7 @@ describe("SplitJunctionRenderer.render special shapes", () => {
     expect(strokeCalls).toHaveLength(2);
     const [connectorStroke, segmentStroke] = strokeCalls;
     expect(connectorStroke.args[0]).toMatchObject({ color: 0xaaaaaa, width: 7, cap: "butt" });
-    expect(segmentStroke.args[0]).toMatchObject({ color: 0xaaaaaa, width: 7, cap: "square" });
+    expect(segmentStroke.args[0]).toMatchObject({ color: 0xaaaaaa, width: 7, cap: "butt" });
   });
 
   it("GitHub issue #421: a hub fan-out connector's hub end always gets a round cap patch, while the stroke itself still draws 'butt' (its division-point end always stays butt)", () => {
@@ -295,8 +296,9 @@ describe("SplitJunctionRenderer.render special shapes", () => {
     );
     const calls = graphicsOf(renderer).calls;
     const strokeCalls = calls.filter((c) => c.fn === "stroke");
-    // 2 for the bridge + 2 (segment/connector) for the unrelated point's ordinary passage.
-    expect(strokeCalls).toHaveLength(4);
+    // 2 (segment/connector) for the unrelated point's ordinary passage; the bridge (pointKey "0,0")
+    // itself is never drawn by this renderer.
+    expect(strokeCalls).toHaveLength(2);
     expect(strokeCalls.some((c) => (c.args[0] as { color: number }).color === 0xaaaaaa)).toBe(true);
   });
 
@@ -326,7 +328,7 @@ describe("SplitJunctionRenderer.render special shapes", () => {
     expect(circleCalls[0].args[1]).toBe(0);
   });
 
-  it("GitHub issue #317: with a 'square' caller cap, the free end gets a square patch instead of a circle", () => {
+  it("GitHub issue #317/#319 follow-up: a sharp (miter) style draws the free end as plain 'butt', no round patch", () => {
     const halfFacePassage = {
       color: 0xaaaaaa,
       pointKey: "6,6",
@@ -337,12 +339,11 @@ describe("SplitJunctionRenderer.render special shapes", () => {
       connectors: [],
     };
     const renderer = new SplitJunctionRenderer(new Container());
-    renderer.render({ passages: [halfFacePassage], wallFaces: [] }, { cap: "square" });
+    renderer.render({ passages: [halfFacePassage], wallFaces: [] }, { join: "miter", cap: "square" });
     const calls = graphicsOf(renderer).calls;
     expect(calls.filter((c) => c.fn === "circle")).toHaveLength(0);
-    expect(calls.filter((c) => c.fn === "closePath")).toHaveLength(1);
-    const fillCalls = calls.filter((c) => c.fn === "fill");
-    expect(fillCalls).toHaveLength(1);
-    expect(fillCalls[0].args[0]).toBe(0xaaaaaa);
+    expect(calls.filter((c) => c.fn === "closePath")).toHaveLength(0);
+    const strokeCalls = calls.filter((c) => c.fn === "stroke");
+    expect(strokeCalls[0].args[0]).toMatchObject({ cap: "butt" });
   });
 });

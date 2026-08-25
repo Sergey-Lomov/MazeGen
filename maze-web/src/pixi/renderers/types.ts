@@ -110,14 +110,24 @@ export type SplitPassage = {
   connectors: { from: { x: number; y: number }; to: { x: number; y: number }; oneWayOut?: boolean; isUndefined: boolean }[];
 };
 
-/** Recognized degree-4 split topology drawn with a dedicated shape instead of the generic
- *  per-node segment/connector reading, when `SplitStyleOverride.specialShapes` is on (GitHub issue
- *  #294) — `"bridge"`: two nodes, each a straight-through opposite-face pair (one node's corridor
- *  literally crosses the other's at the tile center). `"diagonal"`: two nodes, each an
- *  adjacent-face pair (the tile is cut in half by one diagonal wall). Matches
- *  `splitPatternTitles.ts`'s `"bridge"`/`"diagonal_divider"` square topologies — same shape
- *  vocabulary, this is the canvas-drawing side of it. */
-export type SplitSpecialShapeKind = "bridge" | "diagonal";
+/** Recognized split topology drawn with a dedicated shape instead of the generic per-node
+ *  segment/connector reading, when `SplitStyleOverride.specialShapes` is on (GitHub issue #294,
+ *  hex kinds added in #319) —
+ *
+ *  Degree 4 (square): `"bridge"` — two nodes, each a straight-through opposite-face pair (one
+ *  node's corridor literally crosses the other's at the tile center). `"diagonal"` — two nodes,
+ *  each an adjacent-face pair (the tile is cut in half by one diagonal wall). Matches
+ *  `splitPatternTitles.ts`'s `"bridge"`/`"diagonal_divider"` square topologies.
+ *
+ *  Degree 6 (hex): `"hex_bridge"` — two nodes, each a straight-through opposite-face pair (direct
+ *  hex analog of `"bridge"`, at 60° instead of 90°). `"hex_triple_bridge"` — three nodes, all
+ *  opposite-face pairs, three corridors crossing at the tile center (`splitPatternTitles.ts`'s
+ *  `"double_bridge"`). `"hex_diagonal"` — two nodes, no opposite-face pair between them (adjacent
+ *  and/or skip-face pairs) — cut by one straight wall, whose endpoints depend on how many real
+ *  tile corners the two nodes' faces actually share (see `detectSplitSpecialShapeKind`).
+ *  `"hex_triple_corridor"` — three nodes, one opposite-face pair plus two adjacent-face pairs
+ *  (`splitPatternTitles.ts`'s `"triple_corridor"`). */
+export type SplitSpecialShapeKind = "bridge" | "diagonal" | "hex_bridge" | "hex_triple_bridge" | "hex_diagonal" | "hex_triple_corridor";
 
 /** Dedicated-shape draw data for one split point recognized as `kind` (GitHub issue #294) — emitted
  *  by `buildSplitPassagesCore` alongside (not instead of) the point's ordinary `SplitPassage`
@@ -141,6 +151,13 @@ export type SplitSpecialShape =
       pointKey: string;
       corner0: { x: number; y: number };
       corner1: { x: number; y: number };
+      /** Set only for `"hex_triple_corridor"`'s first of its two `"diagonal"` entries (GitHub
+       *  issue #319) — the point's third (opposite-face-pair) node's own two endpoints
+       *  (face-midpoint to face-midpoint), same role as `"bridge"`'s own `throughLine`: wall-mode
+       *  ignores it entirely (an ordinary passage draws no wall of its own), corridor-mode draws it
+       *  as a plain straight line so that node's own corridor isn't silently dropped just because
+       *  this point's other two nodes are drawn as dedicated shapes instead of generic connectors. */
+      throughLine?: [{ x: number; y: number }, { x: number; y: number }];
     }
   | {
       kind: "bridge";

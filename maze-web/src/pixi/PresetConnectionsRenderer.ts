@@ -13,7 +13,7 @@ import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
 import { TeleportRenderer, clipDistance } from "./renderers/TeleportRenderer";
-import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
+import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { buildPresetTeleportEdges, buildPresetVerticalMarkers } from "./presetConnectionsGeometry";
 import {
@@ -321,9 +321,11 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const { undecided, preset, invalidPassages, invalidKeys } = buildPresetWallGroups(cells, presetConnections, cfg, presetSplitPoints);
     this.invalidPassages.render({ edges: invalidPassages }, cfg);
     this.undecidedWalls.render({ edges: undecided }, cfg);
-    this.presetWalls.render({ edges: preset }, cfg);
 
     const { passages: splitPassages, wallFaces, specialShapes } = buildPresetSplitPassages(presetSplitPoints, presetConnections, cfg, presetActiveSplitNode, cells);
+    const { paths: extraWalls, noCapPoints } = collectSplitWallPaths(wallFaces, specialShapes);
+    this.presetWalls.render({ edges: preset }, cfg, undefined, undefined, extraWalls, noCapPoints);
+
     this.splitJunctions.render({ passages: splitPassages, wallFaces, specialShapes });
 
     const lockEntries = buildLocks(lockedNodes, autoLockedNodes);

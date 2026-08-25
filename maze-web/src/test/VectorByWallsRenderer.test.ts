@@ -68,6 +68,7 @@ vi.mock("../pixi/renderers/SplitJunctionRenderer", () => ({
     this.render = vi.fn();
     this.destroy = vi.fn();
   }),
+  collectSplitWallPaths: vi.fn().mockReturnValue({ paths: [], noCapPoints: [] }),
 }));
 
 vi.mock("../pixi/renderers/TeleportRenderer", () => ({

@@ -5,7 +5,7 @@ import { WallRenderer } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
 import { TeleportRenderer } from "../renderers/TeleportRenderer";
 import { GridRenderer } from "../renderers/GridRenderer";
-import { SplitJunctionRenderer } from "../renderers/SplitJunctionRenderer";
+import { SplitJunctionRenderer, collectSplitWallPaths } from "../renderers/SplitJunctionRenderer";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet } from "../selectors/mazeSelectors";
@@ -451,7 +451,12 @@ export class VectorByWallsRenderer {
     const oneWayStyle = buildOneWayStyle(state.vectorByWallsSettings);
     const splitStyle: SplitStyleOverride = { specialShapes: state.vectorByWallsSettings.splitSpecialShapes };
     this.closedCells.render({ cells: this.geometryCache.closedCells, color: state.vectorByWallsSettings.wallColor, alpha: 1 }, cfg);
-    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg, wallStyle, oneWayStyle);
+    const { paths: extraWalls, noCapPoints } = collectSplitWallPaths(
+      this.geometryCache.splitWallFaces,
+      this.geometryCache.splitSpecialShapes,
+      state.vectorByWallsSettings.splitSpecialShapes,
+    );
+    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg, wallStyle, oneWayStyle, extraWalls, noCapPoints);
     this.splitJunctions.render(
       { passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces, specialShapes: this.geometryCache.splitSpecialShapes },
       wallStyle,

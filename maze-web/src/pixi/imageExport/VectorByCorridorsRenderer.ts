@@ -456,6 +456,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
    *  node's own connector as an arc bowed away from the tile's own `corner0`-`corner1` diagonal
    *  (`splitDiagonalBowAmount`) instead of a
    *  straight line, so the two nodes' lines don't visually cross at the tile center. */
+  private drawSplitPassagesThroughLineMatch(a: { x: number; y: number }, b: { x: number; y: number }): boolean {
+    return Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6;
+  }
+
   private drawSplitPassages(settings: VectorByCorridorsSettings, passages: SplitPassage[], specialShapes: SplitSpecialShape[]): void {
     for (const g of this.splitClipScratch) g.destroy();
     this.splitClipScratch = [];
@@ -525,16 +529,34 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
     if (!useSpecial) return;
 
+    // A point recognized as `"hex_triple_bridge"`/`"hex_triple_corridor"` (GitHub issue #319)
+    // emits 2 special-shape entries sharing the same `pointKey` (the third node's own "through"
+    // corridor is common context for both, not a separate entry of its own) — drawn only once per
+    // point, on the first entry that carries it (`shape.throughLine`/`"diagonal"`'s own optional
+    // `throughLine`), so the second entry doesn't redraw the exact same line on top of itself.
+    const throughDrawnForPoint = new Set<string>();
+    // Same dedup for the diagonal-ribbon block below (GitHub issue #319's `"hex_triple_corridor"`
+    // and, in principle, any future multi-entry `"diagonal"` point) — `nodePassages` already
+    // includes every node sharing this `pointKey`, not just the two faces this one shape entry
+    // describes, so drawing it once per *entry* would redraw every node's own ribbon once per entry
+    // sharing the point instead of once total.
+    const diagonalRibbonDrawnForPoint = new Set<string>();
+
     for (const shape of specialShapes) {
       if (shape.kind === "bridge") {
-        const [throughFrom, throughTo] = shape.throughLine;
         const crossMid0 = { x: (shape.crossFaces[0].v0.x + shape.crossFaces[0].v1.x) / 2, y: (shape.crossFaces[0].v0.y + shape.crossFaces[0].v1.y) / 2 };
         const crossMid1 = { x: (shape.crossFaces[1].v0.x + shape.crossFaces[1].v1.x) / 2, y: (shape.crossFaces[1].v0.y + shape.crossFaces[1].v1.y) / 2 };
 
         // Through corridor (node 0) draws first, with no patch of its own — it's the corridor that
-        // reads as passing *underneath*, so nothing needs to cut a gap into it.
-        const { clipView: throughClipView } = clipViewAt();
-        drawConnectorLine(throughFrom, throughTo, settings.color, undefined, settings.thickness, throughClipView);
+        // reads as passing *underneath*, so nothing needs to cut a gap into it. Drawn once per
+        // point (see `throughDrawnForPoint` above) — a `"hex_triple_bridge"` point's second entry
+        // shares the exact same through corridor as its first.
+        if (!throughDrawnForPoint.has(shape.pointKey)) {
+          throughDrawnForPoint.add(shape.pointKey);
+          const [throughFrom, throughTo] = shape.throughLine;
+          const { clipView: throughClipView } = clipViewAt();
+          drawConnectorLine(throughFrom, throughTo, settings.color, undefined, settings.thickness, throughClipView);
+        }
 
         // Cross corridor (node 1) gets its own patch+line pair — patch first (drawn into `gapView`,
         // below in z-order, cutting a gap into the through corridor it now sits on top of), then the
@@ -544,15 +566,13 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         const crossViews = clipViewAt();
 
         // Background-colored gap patch cut into the through line, centered at the tile's own center
-        // (where the two corridors actually cross) and limited to the intersection zone — a short
-        // stroke run along the *cross* line's own axis (so its perpendicular stroke width, not its
-        // length, is what actually punches the hole — the hole needs to be wide enough along cross
-        // to clear the through corridor passing under it), `splitGapWidth` wider than the through
-        // corridor's own thickness on each side, not the line's whole length. Both the stroke's own
-        // length (along cross) and width (perpendicular, along through) are clamped to the tile's
-        // own size (GitHub issue #314 follow-up: no mask backs this — see `splitShapesLayer`'s own
-        // doc comment for why — so a large `splitGapWidth` must be clamped numerically instead of
-        // relying on one to bound an oversized stroke).
+        // (where the two corridors actually cross) — a stroke run along the *cross* line's own
+        // axis, almost its full length (see `half` below), with `gapWidth` as its perpendicular
+        // stroke width (`splitGapWidth` wider than the through corridor's own thickness on each
+        // side). Both the stroke's own length (along cross) and width (perpendicular, along
+        // through) are clamped to the tile's own size (GitHub issue #314 follow-up: no mask backs
+        // this — see `splitShapesLayer`'s own doc comment for why — so a large `splitGapWidth` must
+        // be clamped numerically instead of relying on one to bound an oversized stroke).
         if (settings.splitGapWidth > 0) {
           // Inset from the tile's own half-size (GitHub issue #314 follow-up) — half the grid
           // line's own stroke width, read from the live viewport scale, so the patch's own edge
@@ -562,7 +582,11 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           const dx = crossMid1.x - crossMid0.x, dy = crossMid1.y - crossMid0.y;
           const len = Math.hypot(dx, dy) || 1;
           const ux = dx / len, uy = dy / len;
-          const half = Math.min((settings.thickness + 2 * settings.splitGapWidth) / 2, TILE_SIZE / 2 - gridInset);
+          // Patch length runs 90% of the cross corridor's own length (not just a thin slice sized
+          // to the through line's thickness) — a short patch left a sliver of the through line
+          // poking out past the cross line's visible edge; running it almost the cross line's full
+          // length instead keeps it flush.
+          const half = Math.min((len / 2) * 0.9, TILE_SIZE / 2 - gridInset);
           const gapWidth = Math.min(settings.thickness + 2 * settings.splitGapWidth, TILE_SIZE - 2 * gridInset);
           const gapFrom = { x: cx - ux * half, y: cy - uy * half };
           const gapTo = { x: cx + ux * half, y: cy + uy * half };
@@ -574,11 +598,18 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
         drawConnectorLine(crossMid0, crossMid1, settings.color, undefined, settings.thickness, crossViews.clipView);
       } else {
-        // "diagonal" — each node's own connector (the same straight 2-share line the generic
-        // reading would draw, since a recognized diagonal point is always exactly 2 nodes each with
-        // exactly 2 plain-passage faces) drawn as a ribbon, bowed outward (away from the tile's own
-        // center) instead of running straight, so the two nodes' ribbons don't visually cross at
-        // the tile center. Both nodes bow by the same `bowFrac` — `drawDiagonalConnectorRibbon`
+        // Every node's own connector (the same straight 2-share line the generic reading would
+        // draw) drawn as a ribbon, bowed outward (away from the tile's own center) instead of
+        // running straight, so several nodes' ribbons don't visually cross each other right at the
+        // tile center — drawn once per point (`diagonalRibbonDrawnForPoint`), not once per
+        // `"diagonal"` entry, since `nodePassages` below already covers every node sharing this
+        // point (GitHub issue #319: a `"hex_triple_corridor"` point has 2 `"diagonal"` entries for
+        // its 2 corner-cut nodes, but only 1 ribbon pass is needed — the entry loop itself is just
+        // how the shape geometry happens to be split, not how many nodes there are to draw).
+        if (diagonalRibbonDrawnForPoint.has(shape.pointKey)) continue;
+        diagonalRibbonDrawnForPoint.add(shape.pointKey);
+
+        // Both nodes bow by the same `bowFrac` — `drawDiagonalConnectorRibbon`
         // itself resolves "outward" independently per node from each face's own geometry, so unlike
         // an earlier version there's no need to pick a signed `side` here (GitHub issue #314
         // follow-up: that earlier per-node sign was the actual cause of one node's ribbon bowing
@@ -588,7 +619,18 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         // `1.0` always lands the control points exactly at that intersection regardless of tile
         // size or face geometry. See `drawDiagonalConnectorRibbon`'s own doc comment for how it's
         // applied without ever moving the ribbon's own corner points off the tile-face boundary.
-        const nodePassages = passages.filter((p) => p.pointKey === shape.pointKey);
+        // A `"hex_triple_corridor"` point's third node (the opposite-face-pair one) draws below,
+        // after both ribbons, as its own dedicated 2-plain-passage straight connector — that's the
+        // exact same line `computeSplitConnectors` would hand this node in `passages` too (same
+        // face-midpoint endpoints), so it's excluded here by matching endpoints, not drawn a second
+        // time as a bowed ribbon.
+        const throughLine = shape.throughLine;
+        const match = (p: { x: number; y: number }, q: { x: number; y: number }) => this.drawSplitPassagesThroughLineMatch(p, q);
+        const isThroughPassage = (p: SplitPassage) =>
+          !!throughLine && p.connectors.length === 1 &&
+          ((match(p.connectors[0].from, throughLine[0]) && match(p.connectors[0].to, throughLine[1])) ||
+            (match(p.connectors[0].from, throughLine[1]) && match(p.connectors[0].to, throughLine[0])));
+        const nodePassages = passages.filter((p) => p.pointKey === shape.pointKey && !isThroughPassage(p));
         const bowFrac = settings.splitDiagonalBowAmount;
 
         // Background-colored gap frame drawn around each connector before its own trapezoid (GitHub
@@ -653,6 +695,38 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
             const dir = connector.oneWayOut ? 1 : -1;
             drawOneWayChevronRow(clipView, mx, my, (ddx / dlen) * dir, (ddy / dlen) * dir, settings.oneWayCount, oneWayLengthPx, settings.oneWayGap, oneWayStyle);
           }
+        }
+
+        // Drawn last, on top of both ribbons above (user-requested ordering for the "3 parallel
+        // passages" pattern: 2 adjacent pairs' ribbons plus 1 opposite-pair straight connector,
+        // the opposite-pair one reading as the topmost of the three). Being topmost now, it needs
+        // its own gap patch cutting into the two ribbons underneath — same "this node's own patch,
+        // then this node's own line" pairing every other connector here uses, mirroring `"bridge"`'s
+        // own cross-corridor patch (there the *cross* corridor is topmost and patches the through
+        // corridor; here it's the *through* one, patching both ribbons).
+        if (throughLine && !throughDrawnForPoint.has(shape.pointKey)) {
+          throughDrawnForPoint.add(shape.pointKey);
+          const [throughFrom, throughTo] = throughLine;
+          const { clipView: throughClipView, gapView: throughGapView } = clipViewAt();
+
+          if (settings.splitGapWidth > 0) {
+            const tx = throughTo.x - throughFrom.x, ty = throughTo.y - throughFrom.y;
+            const tlen = Math.hypot(tx, ty) || 1;
+            const ux = tx / tlen, uy = ty / tlen;
+            const cx = (throughFrom.x + throughTo.x) / 2, cy = (throughFrom.y + throughTo.y) / 2;
+            // 90% of the through line's own length, same reasoning as the bridge shape's own
+            // cross-corridor patch above — a short patch left a sliver of the underlying ribbons
+            // poking out past the through line's visible edge.
+            const half = Math.min((tlen / 2) * 0.9, TILE_SIZE / 2 - gridInset);
+            const gapFrom = { x: cx - ux * half, y: cy - uy * half };
+            const gapTo = { x: cx + ux * half, y: cy + uy * half };
+            throughGapView
+              .moveTo(gapFrom.x, gapFrom.y)
+              .lineTo(gapTo.x, gapTo.y)
+              .stroke({ width: gapWidth, color: settings.background, cap: "butt", join: settings.join });
+          }
+
+          drawConnectorLine(throughFrom, throughTo, settings.color, undefined, settings.thickness, throughClipView);
         }
       }
     }
