@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
     quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, MISSING_VERTICAL_PASSAGES, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, MISSING_ELEVATORS, AREA_MISSING_ELEVATOR_STOPS, MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, VerticalPassageRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy, MissingLoopsVerticalStrategy, RemoveElevatorStrategy, ReplaceElevatorWithPassagesStrategy, ElevatorGroupSelectStrategy, RemoveElevatorStopStrategy, ElevatorStopGroupSelectStrategy, AddElevatorStrategy, AddElevatorStopStrategy, AddElevatorStopCountStrategy, AddElevatorHeightStopStrategy, AddElevatorStopForGapStrategy},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, VerticalPassageRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy, MissingLoopsVerticalStrategy, RemoveElevatorStrategy, ReplaceElevatorWithPassagesStrategy, ElevatorGroupSelectStrategy, RemoveElevatorStopStrategy, ElevatorStopGroupSelectStrategy, AddElevatorStrategy, AddElevatorStopStrategy, AddElevatorStopCountStrategy, AddElevatorHeightStopStrategy, AddElevatorStopForGapStrategy, ElevatorRegionMergeStrategy},
 };
 use crate::check_descriptor::{EntityVisibility, ParamDescriptor, ParamKindDto};
 
@@ -209,6 +209,14 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
             handles: REGION_NEEDS_EXPANSION.as_str(),
             params: strategy_params_dto(<VerticalPassageRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&VerticalPassageRegionMergeStrategy), &[]),
             experimental: <VerticalPassageRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::is_experimental(&VerticalPassageRegionMergeStrategy),
+            nested_slots: vec![],
+            visibility: Some(EntityVisibility::MultiFloorOnly),
+        },
+        StrategyDescriptor {
+            id: "elevator_region_merge",
+            handles: REGION_NEEDS_EXPANSION.as_str(),
+            params: strategy_params_dto(<ElevatorRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::params(&ElevatorRegionMergeStrategy), &[]),
+            experimental: <ElevatorRegionMergeStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::RegionNeedsExpansionIssue>>::is_experimental(&ElevatorRegionMergeStrategy),
             nested_slots: vec![],
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
@@ -578,7 +586,7 @@ mod tests {
             vec![
                 "add_elevator", "add_elevator_height_stop", "add_elevator_stop",
                 "add_elevator_stop_count", "add_elevator_stop_for_gap", "add_vertical_passage",
-                "elevator_group_select", "elevator_stop_group_select", "remove_elevator",
+                "elevator_group_select", "elevator_region_merge", "elevator_stop_group_select", "remove_elevator",
                 "remove_elevator_stop", "remove_vertical_passage", "replace_elevator_with_passages",
                 "vertical_passage_group_select", "vertical_passage_region_merge",
             ],

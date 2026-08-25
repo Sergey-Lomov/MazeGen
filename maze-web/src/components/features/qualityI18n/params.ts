@@ -511,6 +511,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.max_compactness.label"] as MessageFn,
     description: m["param.max_compactness.description"] as MessageFn,
   },
+  use_existing_elevators: {
+    label: m["param.use_existing_elevators.label"] as MessageFn,
+    description: m["param.use_existing_elevators.description"] as MessageFn,
+  },
   max_teleport_density: {
     label: m["param.max_teleport_density.label"] as MessageFn,
     description: m["param.max_teleport_density.description"] as MessageFn,
@@ -651,6 +655,11 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "expand_elevator.indifferent": m["param.expand_elevator.option.indifferent.explanation"] as MessageFn,
   "expand_elevator.preferred": m["param.expand_elevator.option.preferred.explanation"] as MessageFn,
   "expand_elevator.required": m["param.expand_elevator.option.required.explanation"] as MessageFn,
+  "use_existing_elevators.forbidden": m["param.use_existing_elevators.option.forbidden.explanation"] as MessageFn,
+  "use_existing_elevators.discouraged": m["param.use_existing_elevators.option.discouraged.explanation"] as MessageFn,
+  "use_existing_elevators.indifferent": m["param.use_existing_elevators.option.indifferent.explanation"] as MessageFn,
+  "use_existing_elevators.preferred": m["param.use_existing_elevators.option.preferred.explanation"] as MessageFn,
+  "use_existing_elevators.required": m["param.use_existing_elevators.option.required.explanation"] as MessageFn,
   "passage_type.any": m["param.passage_type.option.any.explanation"] as MessageFn,
   "passage_type.two_way": m["param.passage_type.option.two_way.explanation"] as MessageFn,
   "passage_type.one_way": m["param.passage_type.option.one_way.explanation"] as MessageFn,
