@@ -1,5 +1,5 @@
 /** Shared types and helpers every algorithm's `applyX` function (`recursiveBacktracker.ts`,
- *  `kruskal.ts`, `wilson.ts`, `edgeBased.ts`, `vertexBased.ts`, `qc.ts`) builds on: the `Edge`/
+ *  `kruskal.ts`, `wilson.ts`, `vertexBased.ts`, `qc.ts`) builds on: the `Edge`/
  *  `DebugValues`/`DebugMaps`/`DebugVertices` result shapes, step-validation, and the
  *  copy-on-write clone/fold helpers every adapter's replay loop repeats. Each `applyX` still owns
  *  its own loop (result shapes differ enough — `edges` vs `edges`+`removedEdges`,
@@ -12,7 +12,7 @@ export interface Edge {
   to: bigint;
   /** This edge's `EdgeKind` when it isn't a plain `Basic` passage — optional and unset for
    *  RB/Kruskal/Wilson (none of those algorithms produce anything but basic edges); set by
-   *  `applyEdgeBased`/`applyVertexBased` from their own mutating events (`EdgeAdded`/
+   *  `applyVertexBased` from its own mutating events (`EdgeAdded`/
    *  `CyclicEdgeAdded.teleport` for `"teleport"`, GitHub issue #144's teleport-rendering fix —
    *  `selectDebugMazeView` used to hardcode every reconstructed edge's `EdgeDto.kind` to `"basic"`,
    *  so a teleport edge rendered as a plain passage in debug mode even though the underlying graph

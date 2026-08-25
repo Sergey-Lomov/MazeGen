@@ -24,7 +24,6 @@ fn event_kind_wire_str(kind: maze_core::event_log::EventedEventKind) -> &'static
         maze_core::event_log::EventedEventKind::RecursiveBacktracker => "recursive_backtracker",
         maze_core::event_log::EventedEventKind::Kruskal => "kruskal",
         maze_core::event_log::EventedEventKind::Wilson => "wilson",
-        maze_core::event_log::EventedEventKind::EdgeBased => "edge_based",
         maze_core::event_log::EventedEventKind::VertexBased => "vertex_based",
         maze_core::event_log::EventedEventKind::QualityControl => "quality_control",
     }
@@ -336,12 +335,6 @@ mod tests {
     fn with_debug_tape_carries_wilson_event_kind() {
         let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), vec![("generation", maze_core::event_log::EventedEventKind::Wilson)], JsValue::UNDEFINED);
         assert_eq!(result.source_event_kinds_bytes(), &["wilson".to_string()]);
-    }
-
-    #[test]
-    fn with_debug_tape_carries_edge_based_event_kind() {
-        let result = GenerateResult::with_debug_tape(JsValue::UNDEFINED, vec![1, 2, 3], vec![4, 5], Vec::new(), vec![("generation", maze_core::event_log::EventedEventKind::EdgeBased)], JsValue::UNDEFINED);
-        assert_eq!(result.source_event_kinds_bytes(), &["edge_based".to_string()]);
     }
 
     #[test]

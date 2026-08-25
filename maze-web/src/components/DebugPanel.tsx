@@ -33,7 +33,7 @@ const DEBUG_VALUE_LABELS: Record<string, () => string> = {
  *  unqualified name, so the prefix (if any) is stripped before lookup, not carried into the i18n
  *  key match.
  *
- *  `"visited"` is declared independently by four algorithms (RB, Wilson, CustomEdgeBased,
+ *  `"visited"` is declared independently by three algorithms (RB, Wilson,
  *  CustomVertexBased — see `Specs/event_log.md`) with the same wire name but a different meaning
  *  for RB specifically: RB's `"visited"` is every node the DFS has ever stepped onto (monotonic,
  *  including ones it later backtracked past), which reads more naturally as "Visited" than the

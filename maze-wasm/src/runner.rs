@@ -70,8 +70,7 @@ fn run_initial_generation<T: Tessellation>(
 
 /// Which [`maze_core::event_log::EventedEventKind`]s the web replay engine (`maze-web/src/debug/
 /// eventTape.ts`) can decode today — the preset setup source's (GitHub issue #225), Recursive
-/// Backtracker's, Kruskal's (GitHub issue #146), Wilson's (#145) and `CustomEdgeBased`'s (#144)
-/// wire tags. Must stay in sync by hand with the
+/// Backtracker's, Kruskal's (GitHub issue #146), and Wilson's (#145) wire tags. Must stay in sync by hand with the
 /// keys registered in `maze-web/src/debug/algorithmRegistry.ts`'s `adapterFor` (GitHub issue
 /// #163) — that registry is the web-side source of truth for which kinds have a decoder/apply/
 /// narration adapter; no codegen ties the two together across the WASM boundary, so extend both
@@ -83,7 +82,6 @@ fn is_web_decodable(kind: Option<maze_core::event_log::EventedEventKind>) -> boo
             | Some(maze_core::event_log::EventedEventKind::RecursiveBacktracker)
             | Some(maze_core::event_log::EventedEventKind::Kruskal)
             | Some(maze_core::event_log::EventedEventKind::Wilson)
-            | Some(maze_core::event_log::EventedEventKind::EdgeBased)
             | Some(maze_core::event_log::EventedEventKind::VertexBased)
             | Some(maze_core::event_log::EventedEventKind::QualityControl)
     )

@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use serde::Deserialize;
 use maze_core::{
-    generation::{GenerationParams, EdgeBasedParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, PresetEndpoint, TeleportDirection, LockedNode, NodeLockKind, PresetVerticalPassage, PresetElevator, VerticalPassageDirection},
+    generation::{GenerationParams, ElementsConfig, GenerationConfig, GenerationAlgorithm, PresetConnection, PresetConnectionState, PresetEndpoint, TeleportDirection, LockedNode, NodeLockKind, PresetVerticalPassage, PresetElevator, VerticalPassageDirection},
     quality_control::{MISSING_ENDPOINTS, UNREACHABLE_FINISH},
     RepairLimits,
 };
 pub use crate::config_dto::{
     StrategyConfig, CheckInstanceConfig, QcRuleConfig, StageConfig, TessellationType, TessellationConfig,
-    GenerationParamsConfig, EdgeBasedParamsConfig, ElementsConfigDto,
+    GenerationParamsConfig, ElementsConfigDto,
     SplitFaceRequirementDto, OneWayDirectionDto, SplitPatternFaceDto, SplitPatternDto, SplitGenerationConfigDto,
     PresetConnectionStateDto, PresetEndpointDto, PresetConnectionDto, VerticalPassageDirectionDto,
     PresetVerticalPassageDto, PresetElevatorDto, NodeLockKindDto, LockedNodeDto, InitialGenerationConfig,
@@ -154,8 +154,6 @@ pub fn build_generation_config(config: &GenerateConfig) -> GenerationConfig {
     let algorithm = match &config.initial {
         InitialGenerationConfig::CustomVertexBased(p) =>
             GenerationAlgorithm::CustomVertexBased(build_gen_params(p)),
-        InitialGenerationConfig::CustomEdgeBased(p) =>
-            GenerationAlgorithm::CustomEdgeBased(build_edge_params(p)),
         InitialGenerationConfig::RecursiveBacktracker =>
             GenerationAlgorithm::RecursiveBacktracker,
         InitialGenerationConfig::WilsonAlgorithm =>
@@ -290,16 +288,6 @@ fn build_gen_params(cfg: &GenerationParamsConfig) -> GenerationParams {
     if let Some(v) = cfg.depth_first     { p.depth_first     = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.corridor_chance { p.corridor_chance = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.branching       { p.branching       = v.clamp(0.0, 1.0); }
-    if let Some(v) = cfg.directionality  { p.directionality  = v.clamp(0.0, 1.0); }
-    if let Some(v) = cfg.cyclicity       { p.cyclicity       = v.clamp(0.0, 1.0); }
-    p
-}
-
-fn build_edge_params(cfg: &EdgeBasedParamsConfig) -> EdgeBasedParams {
-    let mut p = EdgeBasedParams::default();
-    if let Some(v) = cfg.corridor_length { p.corridor_length = v.clamp(0.0, 1.0); }
-    if let Some(v) = cfg.branching       { p.branching       = v.clamp(0.0, 1.0); }
-    if let Some(v) = cfg.depth_first     { p.depth_first     = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.directionality  { p.directionality  = v.clamp(0.0, 1.0); }
     if let Some(v) = cfg.cyclicity       { p.cyclicity       = v.clamp(0.0, 1.0); }
     p

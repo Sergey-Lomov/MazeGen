@@ -120,7 +120,7 @@ export function applyWilson(tape: ParsedTape, targetStep: number, from?: WilsonA
 
   const edges = from ? [...from.edges] : [];
   const debugValues: DebugValues = from ? cloneDebugValues(from.debugValues) : new Map();
-  // Presence tracked per debug-value name (mirrors applyEdgeBased's own discipline) — Wilson
+  // Presence tracked per debug-value name (mirrors applyVertexBased's own discipline) — Wilson
   // declares only one Insert/Remove-based value ("visited") today, but a single shared Set would
   // silently misbehave the moment a second one is added, so this doesn't take the VISITED-only
   // shortcut a single Set would tempt.

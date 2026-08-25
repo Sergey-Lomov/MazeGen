@@ -334,7 +334,7 @@ fn qualify_debug_value_names_leaves_a_single_empty_source_unqualified() {
 fn qualify_debug_value_names_qualifies_every_name_with_its_scope_when_two_sources_present() {
     // Not reachable from generate_maze_with_events yet (always one source today) — this is the
     // path future #147 (a second, QC source) will exercise. "visited" is deliberately reused by
-    // both sources here, mirroring the real collision RB/Wilson/CustomEdgeBased/CustomVertexBased
+    // both sources here, mirroring the real collision RB/Wilson/CustomVertexBased
     // already have independently (see Specs/event_log.md) — qualification must disambiguate it.
     let sources = [
         ("generation", vec![("visited", DebugValueKind::Region), ("recursion_stack", DebugValueKind::Sequence)]),

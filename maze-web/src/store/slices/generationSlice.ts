@@ -197,15 +197,9 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
     return { initialConfig: { ...state.initialConfig, [key]: value }, debugStale: debugStaleOf(state) };
   }),
 
-  setEdgeBasedParam: (key, value) => set((state) => {
-    if (state.initialConfig.method !== "custom_edge_based") return {};
-    return { initialConfig: { ...state.initialConfig, [key]: value }, debugStale: debugStaleOf(state) };
-  }),
-
   setGenerationMethod: (method) => {
     const defaults: Record<string, InitialGenerationConfig> = {
       custom_vertex_based: { method: "custom_vertex_based", depth_first: 0.9, corridor_chance: 0.7, branching: 0.5, directionality: 0.0, cyclicity: 0.0 },
-      custom_edge_based: { method: "custom_edge_based", corridor_length: 0.5, branching: 0.5, depth_first: 0.5, directionality: 0.0, cyclicity: 0.0 },
       recursive_backtracker: { method: "recursive_backtracker" },
       wilson_algorithm: { method: "wilson_algorithm" },
       kruskal_algorithm: { method: "kruskal_algorithm" },

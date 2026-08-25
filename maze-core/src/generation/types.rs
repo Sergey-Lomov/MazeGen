@@ -85,30 +85,8 @@ impl Default for GenerationParams {
 }
 
 #[derive(Debug, Clone)]
-pub struct EdgeBasedParams {
-    pub corridor_length: f64,
-    pub branching:       f64,
-    pub depth_first:     f64,
-    pub directionality:  f64,
-    pub cyclicity:       f64,
-}
-
-impl Default for EdgeBasedParams {
-    fn default() -> Self {
-        EdgeBasedParams {
-            corridor_length: 0.5,
-            branching:       0.5,
-            depth_first:     0.5,
-            directionality:  0.0,
-            cyclicity:       0.0,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub enum GenerationAlgorithm {
     CustomVertexBased(GenerationParams),
-    CustomEdgeBased(EdgeBasedParams),
     RecursiveBacktracker,
     WilsonAlgorithm,
     KruskalAlgorithm,

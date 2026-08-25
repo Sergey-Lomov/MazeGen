@@ -294,17 +294,4 @@ describe("mazeStore generation strategy actions", () => {
     ]);
   });
 
-  it("setEdgeBasedParam updates param when method is custom_edge_based", () => {
-    useMazeStore.setState({ initialConfig: { method: "custom_edge_based", corridor_length: 0.5, branching: 0.5, depth_first: 0.5, directionality: 0, cyclicity: 0 } });
-    useMazeStore.getState().setEdgeBasedParam("corridor_length", 0.9);
-    const cfg = useMazeStore.getState().initialConfig;
-    expect(cfg.method).toBe("custom_edge_based");
-    if (cfg.method === "custom_edge_based") expect(cfg.corridor_length).toBe(0.9);
-  });
-
-  it("setEdgeBasedParam is no-op when method is not custom_edge_based", () => {
-    useMazeStore.setState({ initialConfig: { method: "recursive_backtracker" } });
-    useMazeStore.getState().setEdgeBasedParam("corridor_length", 0.9);
-    expect(useMazeStore.getState().initialConfig.method).toBe("recursive_backtracker");
-  });
 });

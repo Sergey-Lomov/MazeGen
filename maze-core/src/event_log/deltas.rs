@@ -81,7 +81,6 @@ pub enum EventedEventKind {
     RecursiveBacktracker,
     Kruskal,
     Wilson,
-    EdgeBased,
     VertexBased,
     QualityControl,
 }

@@ -7,7 +7,7 @@ import { buildPalette, hslToRgb } from "./colorUtils";
 // `scope_name` concept `qualify_debug_value_names` already uses on the Rust side.
 //
 // The same name is declared independently by several algorithms (e.g. "visited" — Recursive
-// Backtracker, Wilson, CustomEdgeBased, CustomVertexBased all declare it, see
+// Backtracker, Wilson, CustomVertexBased all declare it, see
 // debug_value_names() in maze-core/src/generation/*.rs). Deliberately keyed per-scope rather than
 // giving a name one global color: colors are assigned independently per algorithm below, each
 // picked by hand for that algorithm's own table — two scopes ending up with the same hue for
@@ -23,10 +23,6 @@ const PREDEFINED_COLORS: Record<string, Record<string, number>> = {
     current_walk: hslToRgb(140, 0.55, 0.35),
     walk_start: hslToRgb(140, 0.9, 0.35),
     walk_head: hslToRgb(140, 0.9, 0.35),
-  },
-  edge_based: {
-    active: hslToRgb(140, 0.55, 0.5),
-    visited: hslToRgb(140, 0.55, 0.3),
   },
   vertex_based: {
     visited: hslToRgb(140, 0.55, 0.3),

@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { DebugArenaHandle } from "./storeTypes";
 import { nearestCheckpointFromAtOrBefore, sourceContentStart, nodeView } from "../debug/eventTape";
-import type { ApplyFrom, PresetSetupApplyResult, KruskalApplyResult, WilsonApplyResult, EdgeBasedApplyResult, VertexBasedApplyResult, QcApplyResult } from "../debug/eventTape";
+import type { ApplyFrom, PresetSetupApplyResult, KruskalApplyResult, WilsonApplyResult, VertexBasedApplyResult, QcApplyResult } from "../debug/eventTape";
 import { adapterFor, adapterForNode, type Token, type BaseAlgorithmAdapter } from "../debug/algorithmRegistry";
 import { buildStepIndex, nodeIndexForStep } from "../debug/debugTreeSelectors";
 
@@ -18,11 +18,10 @@ export interface DebugMazeView {
    *  unlike the `bigint` ids the replay engine itself works in). `number[]`, not a `Set` — order
    *  matters for `DebugValueKind.Sequence` values, which `DebugValueHighlightOverlay` renders as
    *  an arrow chain in this order. Always empty for Kruskal (GitHub issue #131 is RB-only, plus
-   *  Wilson's own `"visited"` value, `CustomEdgeBased`'s own `"active"`/`"visited"`, and
-   *  `CustomVertexBased`'s own `"visited"`/`"frontier"`/`"reserve"` — see
-   *  `wilson::debug_value_names()`/`edge_based::debug_value_names()`/
-   *  `vertex_based::debug_value_names()`, GitHub issues #144/#143). QC (#147) declares no debug
-   *  values either (see `quality_control/event.rs`'s doc comment) — always empty from that source. */
+   *  Wilson's own `"visited"` value, and `CustomVertexBased`'s own `"visited"`/`"frontier"`/
+   *  `"reserve"` — see `wilson::debug_value_names()`/`vertex_based::debug_value_names()`, GitHub
+   *  issue #143). QC (#147) declares no debug values either (see `quality_control/event.rs`'s doc
+   *  comment) — always empty from that source. */
   debugValues: Map<string, number[]>;
   /** Kruskal's union-find groups (GitHub issue #146's DSU-groups extension) reconstructed at this
    *  step, keyed by node id (`number`, already joined against `NodeDto.id`) mapped to its current
@@ -121,11 +120,6 @@ function generationContribution(arena: DebugArenaHandle, source: DebugArenaHandl
     contribution.debugValues = result.debugValues;
     contribution.debugMaps = result.debugMaps;
     contribution.debugVertices = result.debugVertices;
-  } else if (kind === "edge_based") {
-    const from = nearestCheckpointFromAtOrBefore<EdgeBasedApplyResult>(source.checkpointFroms, localStep) ?? undefined;
-    const result = adapterFor("edge_based").apply(arena.tape, localStep, from, startIndex, endIndex);
-    contribution.edges = result.edges;
-    contribution.debugValues = result.debugValues;
   } else if (kind === "vertex_based") {
     const from = nearestCheckpointFromAtOrBefore<VertexBasedApplyResult>(source.checkpointFroms, localStep) ?? undefined;
     const result = adapterFor("vertex_based").apply(arena.tape, localStep, from, startIndex, endIndex);
@@ -210,7 +204,7 @@ function mergeDebugMazeView(contributions: DebugMazeViewContribution[]): {
     edges = edges.concat(contribution.edges);
     if (contribution.start !== null) start = contribution.start;
     if (contribution.finish !== null) finish = contribution.finish;
-    // debugValues/dsuGroups/debugMaps/debugVertices are generation-only (Kruskal/Wilson/EdgeBased/
+    // debugValues/dsuGroups/debugMaps/debugVertices are generation-only (Kruskal/Wilson/
     // VertexBased/RB) — QC's own contribution never sets these, so a later (QC) contribution never
     // overwrites an earlier (generation) source's values here; whichever contribution actually
     // declares a given map wins, which today is always at most one contribution per view.

@@ -406,8 +406,8 @@
     }
   ],
   "initial": {
-    "method": "custom_edge_based",
-    "corridor_length": 0.5,
+    "method": "custom_vertex_based",
+    "corridor_chance": 0.5,
     "branching": 0.5,
     "depth_first": 0,
     "directionality": 0,

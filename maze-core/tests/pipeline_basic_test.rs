@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use maze_core::{Graph, IdGenerator, Maze};
 use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
-use maze_core::generation::{generate_maze, GenerationAlgorithm, EdgeBasedParams, ElementsConfig, GenerationConfig, PresetState, pipeline::{build_maze, RepairLimits}};
+use maze_core::generation::{generate_maze, GenerationAlgorithm, ElementsConfig, GenerationConfig, PresetState, pipeline::{build_maze, RepairLimits}};
 use maze_core::graph::EdgeKind;
 use maze_core::quality_control::{
     QualityControlEngine, Rule, RuleTrait, Stage, Check,
@@ -242,98 +242,6 @@ fn pipeline_breaks_short_loop_via_min_loop_length() {
     let (_, remaining, _timing) = build_maze(field, graph, 1, qc, &PresetState::empty(), RepairLimits::default(), None, None, None, None);
     assert!(!remaining.iter().any(|i| as_issue::<InvalidLoopIssue>(i.as_ref()).is_some()),
         "short loop must be resolved by the pipeline: {:?}", remaining.iter().map(|i| i.kind()).collect::<Vec<_>>());
-}
-
-#[test]
-fn full_pipeline_with_min_loop_length_never_isolates_a_node() {
-    // Exact repro config from issue #23's attached maze-project.json: 11x11 square,
-    // custom_edge_based generation, cyclicity=0.8, one_way_chance=0.04, min_loop_length=10
-    // repaired by the random strategy, missing_endpoints repaired by RANDOM (not farthest)
-    // endpoints, no presets, debugMode=false (this is the non-debug path). Across many seeds,
-    // no repair iteration should ever leave a node with zero edges.
-    for seed in 0..200u64 {
-        let mut ids = IdGenerator::new();
-        let mut field = MultiLevelField::single_level(square_rect(11, 11), &mut ids).unwrap();
-        let mut graph = Graph::new();
-        for node in field.all_node_ids() { graph.add_node(node); }
-        let start = field.nodes_at(field.single_level_id(), SquarePoint { x: 5, y: 5 }).first().copied().unwrap();
-
-        let gen_config = GenerationConfig {
-            algorithm: GenerationAlgorithm::CustomEdgeBased(EdgeBasedParams {
-                corridor_length: 0.5,
-                branching: 0.5,
-                depth_first: 0.5,
-                directionality: 0.0,
-                cyclicity: 0.8,
-            }),
-            elements: ElementsConfig { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() },
-            preset_connections: vec![],
-            preset_vertical_passages: vec![],
-            preset_elevators: vec![],
-            locked_nodes: vec![],
-            split_points: vec![],
-            split_generation: maze_core::generation::SplitGenerationConfig::default(),
-        };
-        generate_maze(&mut graph, &mut field, &mut ids, seed, start, gen_config, &PresetState::empty());
-
-        let qc = two_rules(
-            (vec![("missing_endpoints", Box::new(MissingEndpointsCheck { instance_id: "ga:missing_endpoints".to_string() }) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],
-             Box::new(RandomEndpointsStrategy) as Box<dyn RepairStrategy<SquareTessellation, MissingEndpointsIssue>>),
-            (vec![("min_loop_length", Box::new(LoopLengthCheck { instance_id: "gb:min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any }))],
-             Box::new(InvalidLoopRandomStrategy) as Box<dyn RepairStrategy<SquareTessellation, InvalidLoopIssue>>),
-        );
-
-        let (maze, _, _timing) = build_maze(field, graph, seed, qc, &PresetState::empty(), RepairLimits::default(), None, None, None, None);
-
-        for node in maze.graph.nodes() {
-            let degree = maze.graph.edges().filter(|e| e.from == node.id || e.to == node.id).count();
-            assert!(degree > 0, "seed {seed}: node {} was fully cut off from the graph", node.id);
-        }
-    }
-}
-
-#[test]
-fn exact_issue_23_seed_never_isolates_a_node() {
-    let seed = 292118u64;
-    let mut ids = IdGenerator::new();
-    let mut field = MultiLevelField::single_level(square_rect(11, 11), &mut ids).unwrap();
-    let mut graph = Graph::new();
-    for node in field.all_node_ids() { graph.add_node(node); }
-    // UI picks the field's centroid as generation start (see tessellation_dispatch::pick_start),
-    // not (0,0) — for an 11x11 square field (coords 0..10) that's (5,5).
-    let start = field.nodes_at(field.single_level_id(), SquarePoint { x: 5, y: 5 }).first().copied().unwrap();
-
-    let gen_config = GenerationConfig {
-        algorithm: GenerationAlgorithm::CustomEdgeBased(EdgeBasedParams {
-            corridor_length: 0.5,
-            branching: 0.5,
-            depth_first: 0.5,
-            directionality: 0.0,
-            cyclicity: 0.8,
-        }),
-        elements: ElementsConfig { one_way_chance: 0.04, teleport_chance: 0.0, teleport_one_way_chance: 0.0, split_chance: 0.0, ..Default::default() },
-        preset_connections: vec![],
-            preset_vertical_passages: vec![],
-            preset_elevators: vec![],
-        locked_nodes: vec![],
-        split_points: vec![],
-        split_generation: maze_core::generation::SplitGenerationConfig::default(),
-    };
-    generate_maze(&mut graph, &mut field, &mut ids, seed, start, gen_config, &PresetState::empty());
-
-    let qc = two_rules(
-        (vec![("missing_endpoints", Box::new(MissingEndpointsCheck { instance_id: "ga:missing_endpoints".to_string() }) as BoxedCheck<SquareTessellation, MissingEndpointsIssue>)],
-         Box::new(RandomEndpointsStrategy) as Box<dyn RepairStrategy<SquareTessellation, MissingEndpointsIssue>>),
-        (vec![("min_loop_length", Box::new(LoopLengthCheck { instance_id: "gb:min_loop_length".to_string(), comparison: Comparison::Lt, length: 10, cycle_kind: CycleKind::Any }))],
-         Box::new(InvalidLoopRandomStrategy) as Box<dyn RepairStrategy<SquareTessellation, InvalidLoopIssue>>),
-    );
-
-    let (maze, _, _timing) = build_maze(field, graph, seed, qc, &PresetState::empty(), RepairLimits::default(), None, None, None, None);
-
-    for node in maze.graph.nodes() {
-        let degree = maze.graph.edges().filter(|e| e.from == node.id || e.to == node.id).count();
-        assert!(degree > 0, "node {} was fully cut off from the graph", node.id);
-    }
 }
 
 #[test]

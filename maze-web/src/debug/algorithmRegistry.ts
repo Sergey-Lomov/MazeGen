@@ -14,13 +14,12 @@
 
 import {
   type ParsedTape, type ApplyFrom, type NodeView,
-  type PresetSetupEvent, type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type EdgeBasedEvent, type VertexBasedEvent, type QcEvent, type IssuePayload,
-  type PresetSetupApplyResult, type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type EdgeBasedApplyResult, type VertexBasedApplyResult, type QcApplyResult,
+  type PresetSetupEvent, type RecursiveBacktrackerEvent, type KruskalEvent, type WilsonEvent, type VertexBasedEvent, type QcEvent, type IssuePayload,
+  type PresetSetupApplyResult, type ApplyResult, type KruskalApplyResult, type WilsonApplyResult, type VertexBasedApplyResult, type QcApplyResult,
   decodePresetSetupEvent, isMutatingPresetSetupEvent, mutatingPresetSetupEventsWithIndex, applyPresetSetup,
   decodeRecursiveBacktrackerEvent, isMutatingRecursiveBacktrackerEvent, mutatingRbEventsWithIndex, applyRecursiveBacktracker,
   decodeKruskalEvent, isMutatingKruskalEvent, mutatingKruskalEventsWithIndex, applyKruskal, kruskalMergedRoot,
   decodeWilsonEvent, isMutatingWilsonEvent, mutatingWilsonEventsWithIndex, applyWilson,
-  decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, mutatingEdgeBasedEventsWithIndex, applyEdgeBased,
   decodeVertexBasedEvent, isMutatingVertexBasedEvent, mutatingVertexBasedEventsWithIndex, applyVertexBased, VERTEX_BASED_EVENT_TAG,
   decodeQcEvent, isMutatingQcEvent, mutatingQcEventsWithIndex, applyQc, sourceScopeForNode, topLevelSourceScopes,
   resolveDebugArenaMetadata, countMutatingEvents, type DebugArenaMetadata, type TopLevelSourceScope,
@@ -234,9 +233,6 @@ export interface KruskalAdapter extends BaseAlgorithmAdapter<KruskalEvent, Krusk
 export interface WilsonAdapter extends BaseAlgorithmAdapter<WilsonEvent, WilsonApplyResult> {
   apply(tape: ParsedTape, targetStep: number, from?: WilsonApplyResult, startIndex?: number, endIndex?: number): WilsonApplyResult;
 }
-export interface EdgeBasedAdapter extends BaseAlgorithmAdapter<EdgeBasedEvent, EdgeBasedApplyResult> {
-  apply(tape: ParsedTape, targetStep: number, from?: EdgeBasedApplyResult, startIndex?: number, endIndex?: number): EdgeBasedApplyResult;
-}
 export interface VertexBasedAdapter extends BaseAlgorithmAdapter<VertexBasedEvent, VertexBasedApplyResult> {
   apply(tape: ParsedTape, targetStep: number, from?: VertexBasedApplyResult, startIndex?: number, endIndex?: number): VertexBasedApplyResult;
 }
@@ -420,112 +416,13 @@ function fmt(value: number): string {
   return value.toFixed(2);
 }
 
-/** `CustomEdgeBased`'s counterpart to `narrationTokensForRb`/`narrationTokensForKruskal`/
- *  `narrationTokensForWilson` (GitHub issue #144). Every "step N" scope is flat (no nested
- *  sub-scopes, unlike Wilson's search/commit) — mirrors Kruskal's shape, just with many more
- *  decision-level trace events per step, per the issue's granularity requirement. Roll/param
- *  values are rendered via `fmt` (2 decimals) directly in the narration text, per explicit user
- *  request (e.g. "Corridor chance 0.30, roll 0.20 (< 0.30) → continuing corridor from"). */
-function narrationTokensForEdgeBased(event: EdgeBasedEvent): Token[] {
-  switch (event.kind) {
-    case "CorridorRollSkipped":
-      return [{ kind: "text", text: m["debug.tree.corridor_roll_skipped"]() }];
-    case "CorridorRolled":
-      return event.continued
-        ? [{ kind: "text", text: m["debug.tree.corridor_rolled_continue"]({ param: fmt(event.corridorLength), roll: fmt(event.roll) }) + " " }, { kind: "node", id: event.prev }]
-        : [{ kind: "text", text: m["debug.tree.corridor_rolled_stop"]({ param: fmt(event.corridorLength), roll: fmt(event.roll) }) }];
-    case "CorridorDeadNoUnseen":
-      return [{ kind: "text", text: m["debug.tree.corridor_dead_no_unseen"]() + " " }, { kind: "node", id: event.prev }];
-    case "SrcChosenByDepthFirst":
-      return [
-        { kind: "text", text: m["debug.tree.src_chosen_by_depth_first"]({ param: fmt(event.depthFirst), position: event.position, total: event.activeLen }) + " " },
-        { kind: "node", id: event.src },
-      ];
-    case "TeleportRolled":
-      return [{
-        kind: "text",
-        text: event.fired
-          ? m["debug.tree.teleport_rolled_fired"]({ param: fmt(event.teleportChance), roll: fmt(event.roll) })
-          : m["debug.tree.teleport_rolled_not_fired"]({ param: fmt(event.teleportChance), roll: fmt(event.roll) }),
-      }];
-    case "TeleportAlreadyRolled":
-      return [{ kind: "text", text: m["debug.tree.teleport_already_rolled"]() }];
-    case "CyclicRolled":
-      return [{
-        kind: "text",
-        text: event.fired
-          ? m["debug.tree.cyclic_rolled_fired"]({ param: fmt(event.cyclicity), roll: fmt(event.roll) })
-          : m["debug.tree.cyclic_rolled_not_fired"]({ param: fmt(event.cyclicity), roll: fmt(event.roll) }),
-      }];
-    case "CyclicAlreadyRolled":
-      return [{ kind: "text", text: m["debug.tree.cyclic_already_rolled"]() }];
-    case "CandidatePoolBuilt":
-      return [{
-        kind: "text",
-        text: event.geometric
-          ? m["debug.tree.candidate_pool_built_geometric"]({ count: event.candidates.length })
-          : m["debug.tree.candidate_pool_built_teleport"]({ count: event.candidates.length }),
-      }];
-    case "SrcExhaustedEmptyPool":
-      return [{ kind: "text", text: m["debug.tree.src_exhausted_empty_pool"]() }];
-    case "CyclicCandidatesComputed":
-      return [{
-        kind: "text",
-        text: event.geometric
-          ? m["debug.tree.cyclic_candidates_computed_geometric"]({ count: event.candidates.length })
-          : m["debug.tree.cyclic_candidates_computed_teleport"]({ count: event.candidates.length }),
-      }];
-    case "CyclicEdgeAdded":
-      return [{ kind: "text", text: m["debug.tree.cyclic_edge_added"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: event.bidirectional }];
-    case "CyclicEdgeRejected":
-      return [{ kind: "text", text: m["debug.tree.cyclic_edge_rejected"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: false }];
-    case "DstWeightsComputed":
-      return [{
-        kind: "text",
-        text: m["debug.tree.dst_weights_computed"]({
-          param: fmt(event.branching),
-          param2: fmt(event.directionality),
-          eligible: event.directionalityEligible ? m["debug.tree.directionality_eligible"]() : m["debug.tree.directionality_not_eligible"](),
-          count: event.candidates.length,
-        }),
-      }];
-    case "DstChosen":
-      return [{ kind: "text", text: m["debug.tree.dst_chosen"]({ roll: fmt(event.roll), total: fmt(event.totalWeight) }) + " " }, { kind: "node", id: event.dst }];
-    case "EdgeAdded":
-      return [{ kind: "text", text: m["debug.tree.edge_added"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: event.bidirectional }];
-    case "EdgeRejected":
-      return [{ kind: "text", text: m["debug.tree.edge_rejected_edge_based"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: false }];
-    case "PresetSkipped":
-      return [{ kind: "text", text: m["debug.tree.preset_skipped"]() + " " }, { kind: "edge", from: event.src, to: event.dst, bidirectional: false }];
-    case "NodeActivated":
-      return [{ kind: "text", text: m["debug.tree.node_activated"]() + " " }, { kind: "node", id: event.node }];
-    case "SrcExhausted":
-      return [{ kind: "text", text: m["debug.tree.src_exhausted"]() + " " }, { kind: "node", id: event.src }];
-  }
-}
-
-const EDGE_BASED_ADAPTER: EdgeBasedAdapter = {
-  mutatingNodeIndices: (tape, startIndex = 0, endIndex) => mutatingEdgeBasedEventsWithIndex(tape, undefined, startIndex, endIndex).map((e) => e.nodeIndex),
-  resolveMetadata: (tape, startIndex = 0, endIndex) => resolveDebugArenaMetadata(
-    tape,
-    (t, s, e) => countMutatingEvents(t, decodeEdgeBasedEvent, isMutatingEdgeBasedEvent, s, e),
-    (step, previous) => applyEdgeBased(tape, step, previous, startIndex, endIndex),
-    startIndex, endIndex,
-  ),
-  decodeEvent: decodeEdgeBasedEvent,
-  isMutatingEvent: isMutatingEdgeBasedEvent,
-  narrationTokensFor: narrationTokensForEdgeBased,
-  scopeLabel: (name, _children) => m["debug.tree.step_scope_edge_based"]({ index: numberedScopeIndex(name) }),
-  apply: applyEdgeBased,
-};
-
-/** `CustomVertexBased`'s counterpart to `narrationTokensForRb`/`.../Kruskal`/`.../Wilson`/
- *  `.../EdgeBased` (GitHub issue #143). Every `"step N"` scope is flat, mirroring
- *  Kruskal/EdgeBased's shape, except when the frontier empties out mid-run: then a fixed,
+/** `CustomVertexBased`'s counterpart to `narrationTokensForRb`/`.../Kruskal`/`.../Wilson`
+ *  (GitHub issue #143). Every `"step N"` scope is flat, mirroring
+ *  Kruskal's shape, except when the frontier empties out mid-run: then a fixed,
  *  non-numbered `"reserve_search"` sub-scope opens (mirroring Wilson's fixed `"search"`/`"commit"`
  *  names) to hold the reserve-candidate scan's possibly-several rejected/chosen events — handled
  *  by `scopeLabel` below, not here. Roll/param values are rendered via `fmt` (2 decimals) directly
- *  in the narration text, mirroring EdgeBased's own convention. */
+ *  in the narration text. */
 function narrationTokensForVertexBased(event: VertexBasedEvent): Token[] {
   switch (event.kind) {
     case "TeleportBridgeRolled":
@@ -1001,7 +898,7 @@ const QC_ADAPTER: QcAdapter = {
   apply: applyQc,
 };
 
-export type AnyAdapter = PresetSetupAdapter | RbAdapter | KruskalAdapter | WilsonAdapter | EdgeBasedAdapter | VertexBasedAdapter | QcAdapter;
+export type AnyAdapter = PresetSetupAdapter | RbAdapter | KruskalAdapter | WilsonAdapter | VertexBasedAdapter | QcAdapter;
 
 /** Non-overloaded dispatch, shared by `adapterFor`'s per-kind overloads below and by any caller
  *  (e.g. `adapterForNode`, `generateConfigBuilder.ts`) that only has a plain `EventedEventKind`
@@ -1013,7 +910,6 @@ export function adapterForKind(kind: EventedEventKind): AnyAdapter {
     case "recursive_backtracker": return RB_ADAPTER;
     case "kruskal": return KRUSKAL_ADAPTER;
     case "wilson": return WILSON_ADAPTER;
-    case "edge_based": return EDGE_BASED_ADAPTER;
     case "vertex_based": return VERTEX_BASED_ADAPTER;
     case "quality_control": return QC_ADAPTER;
   }
@@ -1023,7 +919,6 @@ export function adapterFor(kind: "preset_setup"): PresetSetupAdapter;
 export function adapterFor(kind: "recursive_backtracker"): RbAdapter;
 export function adapterFor(kind: "kruskal"): KruskalAdapter;
 export function adapterFor(kind: "wilson"): WilsonAdapter;
-export function adapterFor(kind: "edge_based"): EdgeBasedAdapter;
 export function adapterFor(kind: "vertex_based"): VertexBasedAdapter;
 export function adapterFor(kind: "quality_control"): QcAdapter;
 export function adapterFor(kind: EventedEventKind): AnyAdapter {

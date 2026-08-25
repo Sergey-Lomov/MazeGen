@@ -7,10 +7,7 @@ import { ConfirmModal } from "../ConfirmModal";
 import { VertexBasedSettingsPanel } from "./VertexBasedSettingsPanel";
 import { sharedStyles } from "../../styles/shared";
 import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
-import type { EdgeBasedParams } from "../../wasm/types";
 import { Switch } from "../Switch";
-import { SliderParam } from "../SliderParam";
-import { WarningBubble } from "../WarningBubble";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
 
@@ -35,7 +32,6 @@ export function GenerationFeature({ canGenerate }: Props) {
   const seedHistoryBack = useMazeStore((s) => s.seedHistoryBack);
   const seedHistoryForward = useMazeStore((s) => s.seedHistoryForward);
   const setDebugMode = useMazeStore((s) => s.setDebugMode);
-  const setEdgeBasedParam = useMazeStore((s) => s.setEdgeBasedParam);
   const setQcExperiment = useMazeStore((s) => s.setQcExperiment);
   const setVertexSettingsPanelOpen = useMazeStore((s) => s.setVertexSettingsPanelOpen);
   const generate = useMazeStore((s) => s.generate);
@@ -50,10 +46,6 @@ export function GenerationFeature({ canGenerate }: Props) {
 
   const method = initialConfig.method;
   const isVertexBased = method === "custom_vertex_based";
-  const isEdgeBased = method === "custom_edge_based";
-  const isCanonical = !isVertexBased && !isEdgeBased;
-
-  const edgeParams = isEdgeBased ? (initialConfig as { method: string } & EdgeBasedParams) : null;
 
   function handleGenerate() {
     if (postEditDirty) { setPendingAction("generate"); return; }
@@ -134,20 +126,6 @@ export function GenerationFeature({ canGenerate }: Props) {
           )}
           <button className="hoverable" style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)} title={m["generation.edit"]()}>✎</button>
         </div>
-        {isEdgeBased && edgeParams && (
-          <div style={styles.paramValues}>
-            <SliderParam variant="primary" label={m["generation.corridor_length"]()} value={edgeParams.corridor_length ?? 0.5} onChange={(v) => setEdgeBasedParam("corridor_length", v)} />
-            <SliderParam variant="primary" label={m["generation.branching"]()} value={edgeParams.branching ?? 0.5} onChange={(v) => setEdgeBasedParam("branching", v)} />
-            <SliderParam variant="primary" label={m["generation.depth_first"]()} value={edgeParams.depth_first ?? 0.5} onChange={(v) => setEdgeBasedParam("depth_first", v)} />
-            <SliderParam variant="primary" label={m["generation.directionality"]()} value={edgeParams.directionality ?? 0.0} onChange={(v) => setEdgeBasedParam("directionality", v)} />
-            <SliderParam variant="primary" label={m["generation.cyclicity"]()} value={edgeParams.cyclicity ?? 0.0} onChange={(v) => setEdgeBasedParam("cyclicity", v)} />
-          </div>
-        )}
-        {isCanonical && (
-          <div style={{ paddingLeft: indent.tree * 2 }}>
-            <WarningBubble message={m["generation.canonical_elements_warning"]({ qualityTitle: m["quality.title"]() })} severity="info" />
-          </div>
-        )}
       </div>
 
       {isVertexBased && vertexSettingsPanelOpen && (

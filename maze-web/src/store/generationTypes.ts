@@ -1,4 +1,4 @@
-import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerationParams, EdgeBasedParams, ElementsConfig, InitialGenerationConfig, RouteInfoDto, MazeStatisticsDto, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
+import type { NodeDto, EdgeDto, NavNodeDto, NavEdgeDto, CheckDescriptor, StrategyDescriptor, RuleParamDescriptor, GenerationParams, ElementsConfig, InitialGenerationConfig, RouteInfoDto, MazeStatisticsDto, IssueDto, GenerationTimingDto, SplitPattern } from "../wasm/types";
 import type { FeatureId } from "./tessellationTypes";
 import type { QcRuleState, RepairStageState, PathSegment } from "./qcRuleTypes";
 import type { DebugArenaHandle, HoveredDebugRef } from "./debugArenaTypes";
@@ -268,7 +268,6 @@ export interface GenerationActions {
    * by strategy id. */
   setRuleParam: (ruleId: string, paramId: string, value: string) => void;
   setGenerationParam: (key: keyof GenerationParams, value: number) => void;
-  setEdgeBasedParam: (key: keyof EdgeBasedParams, value: number) => void;
   setGenerationMethod: (method: string) => void;
   setElementsParam: (key: keyof ElementsConfig, value: number) => void;
   /** Boolean-valued `ElementsConfig` fields (currently only `allow_non_consecutive_elevator_floors`,

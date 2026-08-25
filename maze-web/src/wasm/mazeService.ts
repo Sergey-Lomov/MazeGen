@@ -76,12 +76,12 @@ export interface DebugTape {
 
 /** Mirrors `event_kind_wire_str` in `maze-wasm/src/result.rs` — which concrete event enum a
  *  tape's bytes were encoded from. */
-export type EventedEventKind = "preset_setup" | "recursive_backtracker" | "kruskal" | "wilson" | "edge_based" | "vertex_based" | "quality_control";
+export type EventedEventKind = "preset_setup" | "recursive_backtracker" | "kruskal" | "wilson" | "vertex_based" | "quality_control";
 
 function toEventedEventKind(raw: string): EventedEventKind {
   if (
     raw !== "preset_setup" && raw !== "recursive_backtracker" && raw !== "kruskal" && raw !== "wilson" &&
-    raw !== "edge_based" && raw !== "vertex_based" && raw !== "quality_control"
+    raw !== "vertex_based" && raw !== "quality_control"
   ) {
     throw new Error(`unknown event kind "${raw}"`);
   }
