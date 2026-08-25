@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, ChevronUp, ChevronDown, Pencil } from "lucide-react";
+import { X, ChevronUp, ChevronDown } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData } from "../../pixi/selectors/mazeSelectors";
 import { ConfirmModal } from "../ConfirmModal";
@@ -124,9 +124,7 @@ export function FloorsFeature() {
               >
                 <ChevronDown size={16} color={ui.text.tertiary} />
               </button>
-              <button className="hoverable" style={styles.editBtn} title={m["floors.rename_floor"]()} onClick={() => startRename(floor.id, floor.title)}>
-                <Pencil size={15} color={ui.text.tertiary} />
-              </button>
+              <button className="hoverable" style={{ ...styles.editBtn, fontSize: 15 }} title={m["floors.rename_floor"]()} onClick={() => startRename(floor.id, floor.title)}>✎</button>
               <button
                 className={floors.length === 1 ? undefined : "hoverable"}
                 style={{ ...styles.removeBtn, ...(floors.length === 1 ? styles.removeBtnDisabled : {}) }}
