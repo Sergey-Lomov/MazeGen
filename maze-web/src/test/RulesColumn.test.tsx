@@ -169,20 +169,21 @@ describe("RulesColumn", () => {
     expect(onSelect).toHaveBeenCalledWith({ type: "check", id: "g1:0" });
   });
 
-  it("clicking a check param's info icon selects that param, scoped to the owning check", () => {
+  it("clicking a check param's row selects that param, scoped to the owning check", () => {
     const onSelect = vi.fn();
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkWithParams], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={onSelect} />);
-    fireEvent.click(screen.getByText("ℹ"));
+    fireEvent.click(screen.getByText("Threshold"));
     expect(onSelect).toHaveBeenCalledWith({ type: "param", owner: { kind: "check", checkId: "g1:0" }, paramId: "threshold" });
   });
 
-  it("clicking a rule-level param's info icon selects that param, scoped to the owning rule", () => {
+  it("clicking a rule-level param's row selects that param, scoped to the owning rule", () => {
     const onSelect = vi.fn();
     useMazeStore.setState({ availableRuleParams: [{ id: "protect_route", label: "Protect route", kind: { type: "bool", default: false }, applies_to: ["c1"] }] });
     const slots: StrategySlotVM[] = [{ ruleId: "g1", name: "Rule 1", kind: "k1", label: "Kind One", strategy, disabled: false, ruleDisabled: false, producedBy: [checkA], params: {}, nestedStrategies: [], collapsed: false }];
     render(<RulesColumn stages={wrapStage(slots)} selection={null} onSelect={onSelect} />);
-    fireEvent.click(screen.getByText("ℹ"));
+    const protectRouteCheckbox = screen.getAllByRole("checkbox").find((el) => !(el as HTMLInputElement).checked)!;
+    fireEvent.click(protectRouteCheckbox.closest('[role="button"]')!);
     expect(onSelect).toHaveBeenCalledWith({ type: "param", owner: { kind: "rule", ruleId: "g1" }, paramId: "protect_route" });
   });
 

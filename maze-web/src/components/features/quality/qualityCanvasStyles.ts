@@ -336,6 +336,12 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     ...muted(typography.body),
     lineHeight: 1.5,
   },
+  optionList: {
+    margin: 0,
+    paddingLeft: 16,
+    ...muted(typography.body),
+    lineHeight: 1.5,
+  },
   detailSectionLabel: {
     ...typography.caption,
     textTransform: "uppercase" as const,

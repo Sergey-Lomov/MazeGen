@@ -153,25 +153,32 @@ type QualitySelection =
 
 `nested_strategy` selects one nested-strategy entry, anywhere in the nesting chain under a rule's top-level strategy — see "Nested strategies (UI)" below for `PathSegment` and how the detail panel renders this case (same `ParamizedDetail` machinery as `strategy`, plus that entry's own further-nested slots).
 
-#### Per-param selection (GitHub issue #375)
+#### Per-param selection (GitHub issue #375, icon removed in #435)
 
 Every param row rendered by `ParamFields` — check params, strategy params, nested-strategy params,
-and rule-level params (`RuleParamsSection`) — shows an inline `ℹ` info icon right after its label
-(only when the caller passes `onSelectParam`; the detail panel's own `ParamFields` instance never
-does, since it's already showing one entity's full description). Clicking the icon, or anywhere
-else in the row (except an actual value control, which stops propagation the same way row-level
-selection already does for nested-strategy entries — see "Nested strategies (UI)" below), calls
-`onSelectParam(paramId)`, which the caller wraps into `onSelect({ type: "param", owner, paramId })`
-with a `ParamOwner` identifying which entity the param belongs to. `selectedParamId` (also passed
-to `ParamFields`) highlights the matching row's background when its id equals the current
-selection's `paramId` for the same owner.
+and rule-level params (`RuleParamsSection`) — is itself clickable (only when the caller passes
+`onSelectParam`; the detail panel's own `ParamFields` instance never does, since it's already
+showing one entity's full description). There is no dedicated per-param info icon (removed in
+GitHub issue #435 — a icon on every single param row cluttered the UI); the whole row acts as the
+click target, exposed as `role="button"`/`tabIndex={0}` so it's keyboard-reachable (Enter/Space)
+without a separate focusable icon. Clicking anywhere in the row (except an actual value control,
+which stops propagation the same way row-level selection already does for nested-strategy entries
+— see "Nested strategies (UI)" below) calls `onSelectParam(paramId)`, which the caller wraps into
+`onSelect({ type: "param", owner, paramId })` with a `ParamOwner` identifying which entity the
+param belongs to. `selectedParamId` (also passed to `ParamFields`) highlights the matching row's
+background when its id equals the current selection's `paramId` for the same owner.
 
 `QualityDetailPanel`'s `"param"` branch resolves the `ParamDescriptor` for `(owner, paramId)`
 against the relevant source — `vm.checks`/`vm.strategySlots` for check/strategy/nested_strategy
 owners, `availableRuleParams` (with `resolveParamLabel` for the fallback label) for a `"rule"`
-owner — and renders only its (possibly `contextId`-resolved) label and description as plain text,
-no `ParamizedDetail`/`useParamEditor`/edit control; a param that no longer resolves (its owning
-entity was removed or the param id no longer exists) renders an empty panel.
+owner — and renders its (possibly `contextId`-resolved) label and description as plain text, no
+`ParamizedDetail`/`useParamEditor`/edit control; a param that no longer resolves (its owning entity
+was removed or the param id no longer exists) renders an empty panel. For an `enum`/`priority`
+param, it additionally renders the same option-explanation list `ParamFields` shows inline in
+expanded views (`resolveParamOptionExplanation` per option, skipping options with no explanation)
+— this is the one place a compact rule-card param (no `getDescription` passed to its `ParamFields`)
+surfaces dropdown option meanings, addressing the issue #435 "dropdown options have no explanation"
+gap without duplicating the list into every compact row.
 
 Callers threading `onSelectParam`/`selectedParamId` through to `ParamFields`: `RuleCheckRow`,
 `RuleStrategyPanel`, `RuleParamsSection`. `NestedStrategyPanel` does not — its own params sit

@@ -30,7 +30,7 @@ const OPTION_WIDTH_BUFFER = 10;
 const SELECT_MAX_WIDTH_RATIO = 0.4;
 
 // Mirrors `maze_core::repair::PriorityLevel::ALL`'s own order.
-const PRIORITY_LEVELS = ["required", "preferred", "indifferent", "discouraged", "forbidden"];
+export const PRIORITY_LEVELS = ["required", "preferred", "indifferent", "discouraged", "forbidden"];
 
 // Float params rendered as a 0-100 percent slider instead of the default number input — an
 // explicit id allowlist rather than a blanket "every Float is a slider" rule, since most Float
@@ -268,6 +268,8 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
         return (
           <div
             key={p.id}
+            role={onSelectParam ? "button" : undefined}
+            tabIndex={onSelectParam ? 0 : undefined}
             style={{
               ...styles.field,
               ...(isDisabled(p) ? styles.fieldDisabled : {}),
@@ -275,20 +277,11 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
               ...(selected ? styles.fieldSelected : {}),
             }}
             onClick={onSelectParam ? () => onSelectParam(p.id) : undefined}
+            onKeyDown={onSelectParam ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectParam(p.id); } } : undefined}
           >
             <Inline gap="rowGap" justify="space-between">
               <span style={styles.labelWrap}>
                 <label style={styles.label}>{displayLabel(p)}</label>
-                {onSelectParam && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="hoverable"
-                    style={styles.infoIcon}
-                    onClick={(e) => { e.stopPropagation(); onSelectParam(p.id); }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); onSelectParam(p.id); } }}
-                  >ℹ</span>
-                )}
               </span>
               {/* Each control stops its own click from bubbling — not the whole row/field — so a
                   container that turns clicks into a "select this" action elsewhere (e.g.
@@ -599,14 +592,6 @@ const styles: Record<string, React.CSSProperties> = {
     gap: spacing.rowGap,
     flex: 1,
     minWidth: 0,
-  },
-  infoIcon: {
-    ...typography.icon,
-    lineHeight: 1,
-    flexShrink: 0,
-    cursor: "default",
-    borderRadius: 3,
-    color: ui.text.tertiary,
   },
   description: {
     ...typography.caption,

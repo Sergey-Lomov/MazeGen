@@ -2,7 +2,8 @@ import React from "react";
 import { useMazeStore } from "../../../store/mazeStore";
 import { ParamizedDetail } from "./ParamizedDetail";
 import { NestedStrategyPanel, findRawNested } from "./NestedStrategyPanel";
-import { resolveStrategyDescription, resolveParamLabel, resolveParamDescription } from "../qualityI18n";
+import { resolveStrategyDescription, resolveParamLabel, resolveParamDescription, resolveParamOptionLabel, resolveParamOptionExplanation, resolvePriorityOptionLabel } from "../qualityI18n";
+import { PRIORITY_LEVELS } from "../ParamFields";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { spacing } from "../../../styles/theme";
@@ -189,6 +190,32 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
       <div style={styles.detailPanel}>
         <span style={styles.detailTitle}>{param.label}</span>
         <p style={styles.detailDesc}>{resolveParamDescription(param.id, contextId)}</p>
+        {param.kind.type === "enum" && (
+          <ul style={styles.optionList}>
+            {param.kind.options.map((opt) => {
+              const explanation = resolveParamOptionExplanation(param.id, opt, contextId);
+              if (!explanation) return null;
+              return (
+                <li key={opt}>
+                  <strong>{resolveParamOptionLabel(param.id, opt)}</strong> — {explanation}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {param.kind.type === "priority" && (
+          <ul style={styles.optionList}>
+            {PRIORITY_LEVELS.map((opt) => {
+              const explanation = resolveParamOptionExplanation(param.id, opt, contextId);
+              if (!explanation) return null;
+              return (
+                <li key={opt}>
+                  <strong>{resolvePriorityOptionLabel(opt)}</strong> — {explanation}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     );
   }
