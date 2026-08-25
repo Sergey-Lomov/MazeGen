@@ -8,7 +8,6 @@ import { VertexBasedSettingsPanel } from "./VertexBasedSettingsPanel";
 import { sharedStyles } from "../../styles/shared";
 import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
 import { Switch } from "../Switch";
-import { WarningBubble } from "../WarningBubble";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import * as m from "~/paraglide/messages";
 
@@ -47,7 +46,6 @@ export function GenerationFeature({ canGenerate }: Props) {
 
   const method = initialConfig.method;
   const isVertexBased = method === "custom_vertex_based";
-  const isCanonical = !isVertexBased;
 
   function handleGenerate() {
     if (postEditDirty) { setPendingAction("generate"); return; }
@@ -128,11 +126,6 @@ export function GenerationFeature({ canGenerate }: Props) {
           )}
           <button className="hoverable" style={styles.editBtn} onClick={() => setAlgorithmDialogOpen(true)} title={m["generation.edit"]()}>✎</button>
         </div>
-        {isCanonical && (
-          <div style={{ paddingLeft: indent.tree * 2 }}>
-            <WarningBubble message={m["generation.canonical_elements_warning"]({ qualityTitle: m["quality.title"]() })} severity="info" />
-          </div>
-        )}
       </div>
 
       {isVertexBased && vertexSettingsPanelOpen && (

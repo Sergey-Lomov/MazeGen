@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "./ItemSelectDialog";
+import { WarningBubble } from "../WarningBubble";
 import { ui, radius, typography, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -15,10 +16,10 @@ interface Props {
  * RB/Wilson via the #417 restart, one MST per floor for Kruskal). */
 function getAlgorithms() {
   return [
-    { id: "custom_vertex_based",   label: m["algorithm.custom_vertex_based"](),   description: m["algorithm.desc.custom_vertex_based"]() },
-    { id: "recursive_backtracker", label: m["algorithm.recursive_backtracker"](), description: m["algorithm.desc.recursive_backtracker"]() },
-    { id: "wilson_algorithm",      label: m["algorithm.wilson_algorithm"](),      description: m["algorithm.desc.wilson_algorithm"]() },
-    { id: "kruskal_algorithm",     label: m["algorithm.kruskal_algorithm"](),     description: m["algorithm.desc.kruskal_algorithm"]() },
+    { id: "custom_vertex_based",   label: m["algorithm.custom_vertex_based"](),   description: m["algorithm.desc.custom_vertex_based"](),   canonical: false },
+    { id: "recursive_backtracker", label: m["algorithm.recursive_backtracker"](), description: m["algorithm.desc.recursive_backtracker"](), canonical: true },
+    { id: "wilson_algorithm",      label: m["algorithm.wilson_algorithm"](),      description: m["algorithm.desc.wilson_algorithm"](),      canonical: true },
+    { id: "kruskal_algorithm",     label: m["algorithm.kruskal_algorithm"](),     description: m["algorithm.desc.kruskal_algorithm"](),     canonical: true },
   ];
 }
 
@@ -47,7 +48,15 @@ export function AlgorithmSelectDialog({ onClose }: Props) {
   const items = algorithms.map((a) => ({ id: a.id, label: a.label }));
 
   const rightPanel = selectedAlgorithm ? (
-    <div style={styles.description}>{selectedAlgorithm.description}</div>
+    <>
+      <div style={styles.description}>{selectedAlgorithm.description}</div>
+      {selectedAlgorithm.canonical && (
+        <WarningBubble
+          message={m["generation.canonical_elements_warning"]({ qualityTitle: m["quality.title"]() })}
+          severity="info"
+        />
+      )}
+    </>
   ) : (
     <div style={styles.description}>No algorithm selected.</div>
   );
