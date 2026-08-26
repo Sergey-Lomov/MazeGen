@@ -9,7 +9,7 @@ import { TeleportRenderer, clipDistance } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
-import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
+import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, type TeleportFloorContext } from "./selectors/mazeSelectors";
@@ -358,10 +358,12 @@ export class PostEditRenderer extends BaseFieldRenderer {
     const closed = buildClosedCells(nodes, activeEdges, state.edges);
     this.closedCells.render({ cells: closed, color: canvas.wall.default, alpha: 1 }, cfg);
 
-    const wallEdges = buildMazeWalls(nodes, activeEdges, cfg);
-    this.walls.render({ edges: wallEdges }, cfg);
-
     const { passages: splitPassages, wallFaces, specialShapes } = buildSplitPassages(nodes, activeEdges, cfg, specialNodeIds, postEditActiveSplitNode, postEditDraftSplitPoints);
+
+    const wallEdges = buildMazeWalls(nodes, activeEdges, cfg);
+    const { paths: extraWalls, noCapPoints } = collectSplitWallPaths(wallFaces, specialShapes);
+    this.walls.render({ edges: wallEdges }, cfg, undefined, undefined, extraWalls, noCapPoints);
+
     this.splitJunctions.render({ passages: splitPassages, wallFaces, specialShapes });
 
     const nodeById = new Map<number, NodeDto>(nodes.map(n => [n.id, n]));

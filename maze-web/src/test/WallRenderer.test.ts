@@ -16,6 +16,8 @@ vi.mock("pixi.js", () => {
     stroke(...args: unknown[]) { this.calls.push({ fn: "stroke", args }); return this; }
     poly(...args: unknown[]) { this.calls.push({ fn: "poly", args }); return this; }
     roundPoly(...args: unknown[]) { this.calls.push({ fn: "roundPoly", args }); return this; }
+    circle(...args: unknown[]) { this.calls.push({ fn: "circle", args }); return this; }
+    closePath(...args: unknown[]) { this.calls.push({ fn: "closePath", args }); return this; }
     fill(...args: unknown[]) { this.calls.push({ fn: "fill", args }); return this; }
     clear() { this.calls = []; return this; }
   }
@@ -75,6 +77,49 @@ describe("WallRenderer.render", () => {
     const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
 
     expect(g.calls.filter((c) => c.fn === "stroke")).toHaveLength(1);
+  });
+
+  // Three synthetic 2-point paths sharing one vertex, (10,0) — a T-junction/triple-point
+  // (GitHub issue #319 follow-up), degree 3 there — fed via `extraWalls` (bypasses square-grid
+  // wall lookup entirely, since `WallRenderer` treats `extraWalls` as opaque joinable geometry
+  // regardless of its own tessellation).
+  const triJunctionExtraWalls = [
+    [{ x: 10, y: 0 }, { x: 0, y: 0 }],
+    [{ x: 10, y: 0 }, { x: 20, y: 10 }],
+    [{ x: 10, y: 0 }, { x: 20, y: -10 }],
+  ];
+
+  it("with a round-cap style override, a T-junction vertex (degree 3) never gets a protruding cap — every path stroke there uses butt, and the junction end gets no circle patch (only genuine free ends do)", () => {
+    const renderer = new WallRenderer(new Container());
+    renderer.render({ edges: [] }, squareCfg, { color: 0x123456, width: 5, join: "round", cap: "round" }, undefined, triJunctionExtraWalls);
+    const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
+
+    const strokeCalls = g.calls.filter((c) => c.fn === "stroke");
+    // Every one of the 3 paths touching the T-junction has at least one non-free end -> every
+    // stroke uses "butt", never the caller's own "round".
+    expect(strokeCalls).toHaveLength(3);
+    expect(strokeCalls.every((c) => (c.args[0] as { cap: string }).cap === "butt")).toBe(true);
+
+    // Exactly 3 genuine free ends exist overall — the shared T-junction vertex (10,0) itself
+    // must never get a circle patch.
+    const circleCalls = g.calls.filter((c) => c.fn === "circle");
+    expect(circleCalls).toHaveLength(3);
+    const circlePositions = circleCalls.map((c) => [c.args[0], c.args[1]]);
+    expect(circlePositions).not.toContainEqual([10, 0]);
+  });
+
+  it("with a square-cap style override, a T-junction's genuine free ends get a filled square-cap patch instead of a protruding native cap", () => {
+    const renderer = new WallRenderer(new Container());
+    renderer.render({ edges: [] }, squareCfg, { color: 0x123456, width: 5, join: "miter", cap: "square" }, undefined, triJunctionExtraWalls);
+    const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
+
+    const strokeCalls = g.calls.filter((c) => c.fn === "stroke");
+    expect(strokeCalls.every((c) => (c.args[0] as { cap: string }).cap === "butt")).toBe(true);
+
+    // No circle patches for a square-cap style — free ends get a filled quad (closePath) instead.
+    expect(g.calls.filter((c) => c.fn === "circle")).toHaveLength(0);
+    const closePathCalls = g.calls.filter((c) => c.fn === "closePath");
+    expect(closePathCalls).toHaveLength(3);
   });
 
   it("draws a one-way indicator (roundPoly triangle, bordered) for an edge with oneWayDir, even without a style override", () => {

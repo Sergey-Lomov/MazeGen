@@ -801,6 +801,46 @@ describe("VectorByCorridorsRenderer", () => {
       expect(corridorsGraphics.bezierCurveTo).not.toHaveBeenCalled();
     });
 
+    it("hex_triple_corridor: the opposite-pair throughLine draws once (deduped across its 2 diagonal entries), after both ribbons, with its own background gap patch cutting into them when splitGapWidth > 0", () => {
+      const throughLine: [{ x: number; y: number }, { x: number; y: number }] = [{ x: 0, y: 20 }, { x: 40, y: 20 }];
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [
+          { color: 0xaaaaaa, pointKey: "1,1", center: { x: 20, y: 20 }, wallSegments: [], connectors: [{ from: { x: 0, y: 0 }, to: { x: 20, y: 0 }, isUndefined: false }] },
+          { color: 0xbbbbbb, pointKey: "1,1", center: { x: 20, y: 20 }, wallSegments: [], connectors: [{ from: { x: 20, y: 40 }, to: { x: 40, y: 40 }, isUndefined: false }] },
+          { color: 0xcccccc, pointKey: "1,1", center: { x: 20, y: 20 }, wallSegments: [], connectors: [{ from: throughLine[0], to: throughLine[1], isUndefined: false }] },
+        ],
+        wallFaces: [],
+        specialShapes: [
+          { kind: "diagonal", pointKey: "1,1", corner0: { x: 0, y: 0 }, corner1: { x: 20, y: 40 }, throughLine },
+          { kind: "diagonal", pointKey: "1,1", corner0: { x: 20, y: 0 }, corner1: { x: 40, y: 40 } },
+        ],
+      });
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true, splitDiagonalBowAmount: 0.15, splitGapWidth: 3 } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn>; bezierCurveTo: ReturnType<typeof vi.fn> } }).corridors;
+
+      const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as { stroke: ReturnType<typeof vi.fn>; bezierCurveTo: ReturnType<typeof vi.fn> });
+      const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
+
+      // Exactly one straight-line stroke at full thickness in the plain corridor color — the
+      // throughLine, drawn once despite appearing on both diagonal entries sharing this pointKey.
+      const fullColorStrokes = groupGraphics.flatMap((g) => g.stroke.mock.calls.map((call: unknown[]) => call[0] as { color: number; width: number }))
+        .filter((s) => s.color === settingsA.color && s.width === settingsA.thickness);
+      expect(fullColorStrokes.length).toBe(1);
+
+      // Its own background gap patch (splitGapWidth > 0) exists as a separate background-colored
+      // stroke, distinct from the through line's own full-color stroke.
+      const backgroundStrokes = groupGraphics.flatMap((g) => g.stroke.mock.calls.map((call: unknown[]) => call[0] as { color: number }))
+        .filter((s) => s.color === settingsA.background);
+      expect(backgroundStrokes.length).toBeGreaterThan(0);
+
+      // Both ribbons still draw — with splitGapWidth > 0 each ribbon draws its own gap frame plus
+      // its own line (2 bezierCurveTo calls each), 2 ribbons -> 8 total.
+      const totalBezier = groupGraphics.reduce((sum, g) => sum + g.bezierCurveTo.mock.calls.length, 0);
+      expect(totalBezier).toBe(8);
+      expect(corridorsGraphics.stroke).not.toHaveBeenCalled();
+    });
+
     it("splitSpecialShapes off: special-shape points fall back to the ordinary per-node face-share reading", () => {
       vi.mocked(buildSplitPassages).mockReturnValueOnce({
         passages: [{

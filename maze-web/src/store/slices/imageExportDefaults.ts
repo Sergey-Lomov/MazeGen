@@ -240,7 +240,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = a
     splitNodeColors: [],
     splitSpecialShapes: true,
     splitGapWidth: 0,
-    splitDiagonalBowAmount: 0.15,
+    splitDiagonalBowAmount: 0.5,
     sharedStyle: DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE,
   },
   ["cornerStyle", "markerSize", "markerBorderWidth", "gapWidth"],

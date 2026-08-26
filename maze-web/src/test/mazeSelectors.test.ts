@@ -594,6 +594,108 @@ describe("buildSplitPassages", () => {
   });
 });
 
+// --- hex special shapes (GitHub issue #319) ---
+
+// flat_top hex, offsets (HEX_NEIGHBOR_OFFSETS_FLAT): 0=(1,0) 1=(0,1) 2=(-1,1) 3=(-1,0) 4=(0,-1) 5=(1,-1)
+// Opposite pairs: (0,3) (1,4) (2,5). Adjacent pairs: (i,i+1). Skip pairs: (i,i+2).
+// Neighbor node ids are always 1..6 (one per face index); split-point node ids start at 100 to
+// avoid colliding with them.
+const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 4 };
+const hexNeighborNodes = (x: number, y: number) => [
+  n(1, x + 1, y), n(2, x, y + 1), n(3, x - 1, y + 1),
+  n(4, x - 1, y), n(5, x, y - 1), n(6, x + 1, y - 1),
+];
+
+describe("hex special shapes", () => {
+  it("recognizes a hex_bridge topology (2 opposite-face pairs)", () => {
+    // Point (0,0) split into node 100 (faces 0,3 -- opposite) and node 101 (faces 1,4 -- opposite).
+    const neighbors = hexNeighborNodes(0, 0);
+    const nodes = [n(100, 0, 0), n(101, 0, 0), ...neighbors];
+    const edges: EdgeDto[] = [
+      e(100, 1), e(1, 100), e(100, 4), e(4, 100),
+      e(101, 2), e(2, 101), e(101, 5), e(5, 101),
+    ];
+    const { specialShapes } = buildSplitPassages(nodes, edges, hexCfg);
+    expect(specialShapes).toHaveLength(1);
+    const shape = specialShapes[0];
+    expect(shape.kind).toBe("bridge");
+    expect(shape.pointKey).toBe("0,0");
+  });
+
+  it("recognizes a hex_triple_bridge topology (3 opposite-face pairs, node0 < node1 < node2 layering)", () => {
+    // Point (0,0) split into node 100 (faces 0,3), node 101 (faces 1,4), node 102 (faces 2,5).
+    const neighbors = hexNeighborNodes(0, 0);
+    const nodes = [n(100, 0, 0), n(101, 0, 0), n(102, 0, 0), ...neighbors];
+    const edges: EdgeDto[] = [
+      e(100, 1), e(1, 100), e(100, 4), e(4, 100),
+      e(101, 2), e(2, 101), e(101, 5), e(5, 101),
+      e(102, 3), e(3, 102), e(102, 6), e(6, 102),
+    ];
+    const { specialShapes } = buildSplitPassages(nodes, edges, hexCfg);
+    // node0 (through corridor) draws nothing of its own; node1 and node2 each cross it once.
+    expect(specialShapes).toHaveLength(2);
+    for (const shape of specialShapes) {
+      expect(shape.kind).toBe("bridge");
+      expect(shape.pointKey).toBe("0,0");
+    }
+  });
+
+  it("recognizes a hex_diagonal topology, 2-shared-corner sub-case (adjacent pairs)", () => {
+    // Point (0,0) split into node 100 (faces 0,1 -- adjacent) and node 101 (faces 3,4 -- adjacent).
+    const neighbors = hexNeighborNodes(0, 0);
+    const nodes = [n(100, 0, 0), n(101, 0, 0), ...neighbors];
+    const edges: EdgeDto[] = [
+      e(100, 1), e(1, 100), e(100, 2), e(2, 100),
+      e(101, 4), e(4, 101), e(101, 5), e(5, 101),
+    ];
+    const { specialShapes } = buildSplitPassages(nodes, edges, hexCfg);
+    expect(specialShapes).toHaveLength(1);
+    const shape = specialShapes[0];
+    expect(shape.kind).toBe("diagonal");
+    if (shape.kind !== "diagonal") throw new Error("unreachable");
+    expect(shape.corner0).not.toEqual(shape.corner1);
+    expect(shape.throughLine).toBeUndefined();
+  });
+
+  it("recognizes a hex_diagonal topology, 1-shared-corner sub-case (skip pair + adjacent pair)", () => {
+    // Point (0,0) split into node 100 (faces 0,2 -- skip) and node 101 (faces 4,5 -- adjacent).
+    // Faces 2 and 4 share one real corner; face 0 and face 5 leave a gap (no shared corner).
+    const neighbors = hexNeighborNodes(0, 0);
+    const nodes = [n(100, 0, 0), n(101, 0, 0), ...neighbors];
+    const edges: EdgeDto[] = [
+      e(100, 1), e(1, 100), e(100, 3), e(3, 100),
+      e(101, 5), e(5, 101), e(101, 6), e(6, 101),
+    ];
+    const { specialShapes } = buildSplitPassages(nodes, edges, hexCfg);
+    expect(specialShapes).toHaveLength(1);
+    const shape = specialShapes[0];
+    expect(shape.kind).toBe("diagonal");
+    if (shape.kind !== "diagonal") throw new Error("unreachable");
+    expect(shape.corner0).not.toEqual(shape.corner1);
+  });
+
+  it("recognizes a hex_triple_corridor topology (1 opposite + 2 adjacent pairs)", () => {
+    // Point (0,0) split into node 100 (faces 0,3 -- opposite/through), node 101 (faces 1,2 -- adjacent),
+    // node 102 (faces 4,5 -- adjacent).
+    const neighbors = hexNeighborNodes(0, 0);
+    const nodes = [n(100, 0, 0), n(101, 0, 0), n(102, 0, 0), ...neighbors];
+    const edges: EdgeDto[] = [
+      e(100, 1), e(1, 100), e(100, 4), e(4, 100),
+      e(101, 2), e(2, 101), e(101, 3), e(3, 101),
+      e(102, 5), e(5, 102), e(102, 6), e(6, 102),
+    ];
+    const { specialShapes } = buildSplitPassages(nodes, edges, hexCfg);
+    expect(specialShapes).toHaveLength(2);
+    for (const shape of specialShapes) {
+      expect(shape.kind).toBe("diagonal");
+      expect(shape.pointKey).toBe("0,0");
+    }
+    // Exactly one of the two entries carries the shared through-line.
+    const withThroughLine = specialShapes.filter((s) => s.kind === "diagonal" && s.throughLine);
+    expect(withThroughLine).toHaveLength(1);
+  });
+});
+
 describe("maxSplitNodeCount", () => {
   it("returns 0 for an empty node list or a maze with no split points", () => {
     expect(maxSplitNodeCount([])).toBe(0);

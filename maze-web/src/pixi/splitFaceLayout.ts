@@ -16,30 +16,69 @@ import type { SplitSpecialShapeKind } from "./renderers/types";
  *  by `undefined`/`wall` themselves, not a separate absence state. */
 export type SplitFaceKind = "wall" | "passage" | "one_way_out" | "one_way_in" | "undefined";
 
+/** This point's connected face indices for one node, ascending. */
+function connectedIndicesOf(kinds: SplitFaceKind[]): number[] {
+  return kinds.reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []);
+}
+
+/** Circular distance between two face indices around a `degree`-sided tile (0..floor(degree/2)). */
+export function circularDist(a: number, b: number, degree: number): number {
+  const d = Math.abs(a - b);
+  return Math.min(d, degree - d);
+}
+
 /** Recognizes a degree-4 split point's two-node topology as `"bridge"` (each node an
- *  opposite-face pair) or `"diagonal"` (each node an adjacent-face pair) — GitHub issue #294.
- *  `faceKindsByNode[nodeIndex]` is that node's kind on every one of the point's faces, in the same
- *  order as `offsets`/`faceInputs`; a node only counts as "connected" on a face for `passage`/
- *  `one_way_out`/`one_way_in` (mirrors `NO_OWN_SEGMENT_KINDS`). Returns `null` for anything else
- *  (wrong degree/node count, not exactly 2 connected faces per node, or connected faces that are
- *  neither opposite nor adjacent). Shared by `buildSplitPassagesCore` (`mazeSelectors.ts`, drawing)
- *  and `getSplitAwareNodePosition`/`buildNodePositions` (GitHub issue #318, node-point
- *  positioning) so both agree on what counts as a recognized shape. */
+ *  opposite-face pair) or `"diagonal"` (each node an adjacent-face pair) — GitHub issue #294 — or
+ *  a degree-6 (hex) split point's topology as one of the hex-specific kinds — GitHub issue #319:
+ *  `"hex_bridge"` (two nodes, each an opposite-face pair), `"hex_triple_bridge"` (three nodes, all
+ *  opposite-face pairs), `"hex_diagonal"` (two nodes, neither an opposite-face pair — adjacent
+ *  and/or skip-face pairs), `"hex_triple_corridor"` (three nodes: one opposite-face pair plus two
+ *  adjacent-face pairs). `faceKindsByNode[nodeIndex]` is that node's kind on every one of the
+ *  point's faces, in the same order as `offsets`/`faceInputs`; a node only counts as "connected" on
+ *  a face for `passage`/`one_way_out`/`one_way_in` (mirrors `NO_OWN_SEGMENT_KINDS`). Returns `null`
+ *  for anything else (wrong degree/node count, not exactly 2 connected faces per node, or a
+ *  face-pair combination with no recognized shape). Shared by `buildSplitPassagesCore`
+ *  (`mazeSelectors.ts`, drawing) and `getSplitAwareNodePosition`/`buildNodePositions` (GitHub issue
+ *  #318, node-point positioning) so both agree on what counts as a recognized shape. */
 export function detectSplitSpecialShapeKind(faceKindsByNode: SplitFaceKind[][]): SplitSpecialShapeKind | null {
   const degree = faceKindsByNode[0]?.length ?? 0;
-  if (degree !== 4 || faceKindsByNode.length !== 2) return null;
+  const nodeCount = faceKindsByNode.length;
+  if (degree !== 4 && degree !== 6) return null;
+  if (degree === 4 && nodeCount !== 2) return null;
+  if (degree === 6 && nodeCount !== 2 && nodeCount !== 3) return null;
 
-  const connectedIndices = faceKindsByNode.map((kinds) =>
-    kinds.reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []),
-  );
+  const connectedIndices = faceKindsByNode.map((kinds) => connectedIndicesOf(kinds));
   if (connectedIndices.some((idxs) => idxs.length !== 2)) return null;
 
-  const [a0, a1] = connectedIndices[0];
-  const [b0, b1] = connectedIndices[1];
-  const aOpposite = Math.abs(a0 - a1) === 2;
-  const bOpposite = Math.abs(b0 - b1) === 2;
-  if (aOpposite !== bOpposite) return null; // one node opposite, the other adjacent — not a recognized shape
-  return aOpposite ? "bridge" : "diagonal";
+  const isOpposite = (idxs: number[]) => circularDist(idxs[0], idxs[1], degree) === degree / 2;
+
+  if (degree === 4) {
+    const aOpposite = isOpposite(connectedIndices[0]);
+    const bOpposite = isOpposite(connectedIndices[1]);
+    if (aOpposite !== bOpposite) return null; // one node opposite, the other adjacent — not recognized
+    return aOpposite ? "bridge" : "diagonal";
+  }
+
+  // degree === 6
+  const oppositeFlags = connectedIndices.map(isOpposite);
+  const oppositeCount = oppositeFlags.filter(Boolean).length;
+
+  if (nodeCount === 2) {
+    if (oppositeCount === 2) return "hex_bridge";
+    if (oppositeCount === 0) return "hex_diagonal";
+    return null; // one opposite, one not — not recognized
+  }
+
+  // nodeCount === 3 — every face must be used exactly once (3 nodes × 2 faces = the full degree)
+  const allFaces = connectedIndices.flat();
+  if (new Set(allFaces).size !== 6) return null;
+
+  if (oppositeCount === 3) return "hex_triple_bridge";
+  if (oppositeCount === 1) {
+    const adjacentCount = connectedIndices.filter((idxs) => circularDist(idxs[0], idxs[1], degree) === 1).length;
+    if (adjacentCount === 2) return "hex_triple_corridor";
+  }
+  return null;
 }
 
 /** This node's own connected face indices, as recognized by `detectSplitSpecialShapeKind` (exactly

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeSplitFaceLayouts, computeSplitConnectors, type SplitFaceInput, type SplitNodeFaceKind } from "../pixi/splitFaceLayout";
+import { computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, type SplitFaceInput, type SplitNodeFaceKind, type SplitFaceKind } from "../pixi/splitFaceLayout";
 
 // A single square face spanning (0,0) -> (10,0) — enough for every division test below.
 const face: SplitFaceInput = { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 } };
@@ -183,5 +183,67 @@ describe("computeSplitConnectors", () => {
     const hub0 = connectors[0].lines[0].from;
     expect(hub0.x).toBeCloseTo(hubRadius * Math.cos(Math.PI / 4), 5);
     expect(hub0.y).toBeCloseTo(hubRadius * Math.sin(Math.PI / 4), 5);
+  });
+});
+
+describe("circularDist", () => {
+  it("shortest distance around the ring, either direction", () => {
+    expect(circularDist(0, 3, 6)).toBe(3);
+    expect(circularDist(5, 0, 6)).toBe(1);
+    expect(circularDist(0, 2, 6)).toBe(2);
+    expect(circularDist(1, 1, 6)).toBe(0);
+  });
+});
+
+describe("detectSplitSpecialShapeKind", () => {
+  const passage = (idxs: number[], degree: number): SplitFaceKind[] =>
+    Array.from({ length: degree }, (_, i) => (idxs.includes(i) ? "passage" : "wall"));
+
+  it("degree 6, 2 nodes: opposite pairs -> hex_bridge", () => {
+    const kinds = [passage([0, 3], 6), passage([1, 4], 6)];
+    expect(detectSplitSpecialShapeKind(kinds)).toBe("hex_bridge");
+  });
+
+  it("degree 6, 2 nodes: non-opposite pairs (adjacent or skip) -> hex_diagonal", () => {
+    expect(detectSplitSpecialShapeKind([passage([0, 1], 6), passage([3, 4], 6)])).toBe("hex_diagonal");
+    expect(detectSplitSpecialShapeKind([passage([0, 2], 6), passage([4, 5], 6)])).toBe("hex_diagonal");
+  });
+
+  it("degree 6, 3 nodes: all opposite pairs, faces partition the hexagon -> hex_triple_bridge", () => {
+    const kinds = [passage([0, 3], 6), passage([1, 4], 6), passage([2, 5], 6)];
+    expect(detectSplitSpecialShapeKind(kinds)).toBe("hex_triple_bridge");
+  });
+
+  it("degree 6, 3 nodes: 1 opposite + 2 adjacent pairs, faces partition the hexagon -> hex_triple_corridor", () => {
+    const kinds = [passage([0, 3], 6), passage([1, 2], 6), passage([4, 5], 6)];
+    expect(detectSplitSpecialShapeKind(kinds)).toBe("hex_triple_corridor");
+  });
+
+  it("degree 6, 3 nodes: faces don't partition the full hexagon (overlap/gap) -> null", () => {
+    const kinds = [passage([0, 3], 6), passage([1, 4], 6), passage([1, 2], 6)];
+    expect(detectSplitSpecialShapeKind(kinds)).toBeNull();
+  });
+
+  it("degree 6, 3 nodes: 1 opposite + 2 skip pairs -> null (only adjacent+adjacent qualifies)", () => {
+    const kinds = [passage([0, 3], 6), passage([1, 5], 6), passage([2, 4], 6)];
+    expect(detectSplitSpecialShapeKind(kinds)).toBeNull();
+  });
+
+  it("degree 4, 2 nodes: unchanged bridge/diagonal behavior", () => {
+    expect(detectSplitSpecialShapeKind([passage([0, 2], 4), passage([1, 3], 4)])).toBe("bridge");
+    expect(detectSplitSpecialShapeKind([passage([0, 1], 4), passage([2, 3], 4)])).toBe("diagonal");
+  });
+
+  it("a node without exactly 2 connected faces never matches a special shape", () => {
+    const oneConnected = [passage([0], 6), passage([1, 4], 6)];
+    expect(detectSplitSpecialShapeKind(oneConnected)).toBeNull();
+    const threeConnected = [passage([0, 2, 4], 6), passage([1, 3], 6)];
+    expect(detectSplitSpecialShapeKind(threeConnected)).toBeNull();
+  });
+
+  it("unsupported degree or node count returns null", () => {
+    expect(detectSplitSpecialShapeKind([passage([0, 2], 3), passage([1], 3)])).toBeNull();
+    expect(detectSplitSpecialShapeKind([passage([0, 3], 6)])).toBeNull(); // degree 6, 1 node
+    expect(detectSplitSpecialShapeKind([passage([0, 2], 4), passage([1, 3], 4), passage([0, 1], 4)])).toBeNull(); // degree 4, 3 nodes
   });
 });
