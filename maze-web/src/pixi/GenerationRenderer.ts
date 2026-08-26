@@ -5,7 +5,7 @@ import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
-import { SplitJunctionRenderer } from "./renderers/SplitJunctionRenderer";
+import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { DebugRefHighlightOverlay } from "./DebugRefHighlightOverlay";
 import { DebugValueHighlightOverlay } from "./DebugValueHighlightOverlay";
@@ -270,7 +270,11 @@ export class GenerationRenderer {
       };
     }
     this.closedCells.render({ cells: this.geometryCache.closedCells, color: canvas.wall.default, alpha: 1 }, cfg);
-    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg);
+    const { paths: extraWalls, noCapPoints } = collectSplitWallPaths(
+      this.geometryCache.splitWallFaces,
+      this.geometryCache.splitSpecialShapes,
+    );
+    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg, undefined, undefined, extraWalls, noCapPoints);
     this.splitJunctions.render({
       passages: this.geometryCache.splitPassages,
       wallFaces: this.geometryCache.splitWallFaces,

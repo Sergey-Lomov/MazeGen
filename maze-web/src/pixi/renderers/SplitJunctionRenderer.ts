@@ -145,7 +145,7 @@ function specialShapeJoinablePaths(specialShapes: SplitSpecialShape[], synthetic
   const paths: Point[][] = [];
   for (const shape of specialShapes) {
     if (shape.kind === "diagonal") {
-      paths.push([shape.corner0, shape.corner1]);
+      paths.push(shape.wallPath ?? [shape.corner0, shape.corner1]);
       continue;
     }
     const laterBridges = bridgesByPoint.get(shape.pointKey)!.slice(bridgesByPoint.get(shape.pointKey)!.indexOf(shape) + 1);

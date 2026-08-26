@@ -7,19 +7,21 @@ import { canvas } from "../../colorTokens";
 import { splitSlotColor } from "../../colorUtils";
 import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "../../postEditEndpoint";
 
-/** Bridge shape proportions (GitHub issue #294) — the taper (narrowing/widening) each take the
- *  first/last 20% of the tile's length; the flat deck spans the middle 60% at 60% of the cross
- *  corridor's full width. */
-const BRIDGE_TAPER_FRAC = 0.2;
 const BRIDGE_DECK_WIDTH_FRAC = 0.6;
 
 /** Sharper/narrower proportions for `hex_triple_bridge`'s two crossing edges (issue #319 follow-up)
- *  — the taper takes only the first/last 8% of the tile's length (vs. 20% for an ordinary bridge),
- *  reading as a crisp crossing rather than a long gradual narrowing; the deck itself is narrower
- *  too (40% of the cross corridor's width vs. 60%), since three corridors meeting at one point
- *  need more visual separation than a plain two-way bridge. */
+ *  — the taper takes only the first/last 8% of the tile's length and the deck is 40% of the cross
+ *  corridor's width, since three corridors meeting at one point need extra visual separation. */
 const TRIPLE_BRIDGE_TAPER_FRAC = 0.08;
 const TRIPLE_BRIDGE_DECK_WIDTH_FRAC = 0.4;
+
+/** An ordinary bridge keeps its wider 60% deck, but uses the same taper angle as the narrower
+ *  triple bridge. Each edge moves inward by `(1 - deckWidth) / 2`; preserving the ratio of that
+ *  transverse movement to the axial taper length gives a short ~5.33% narrowing/widening section
+ *  instead of the old gradual 20% section. */
+const BRIDGE_TAPER_FRAC = TRIPLE_BRIDGE_TAPER_FRAC
+  * (1 - BRIDGE_DECK_WIDTH_FRAC)
+  / (1 - TRIPLE_BRIDGE_DECK_WIDTH_FRAC);
 
 /** Points with more than one `NodeDto` (split points, GitHub issue #221/#223) — geometric edges
  *  touching one of these are excluded from `buildMazeWalls`'s ordinary reading entirely; they
@@ -140,8 +142,14 @@ type Point = { x: number; y: number };
  *  its two real geometric endpoints — shared by the degree-4 `"diagonal"` kind and every degree-6
  *  `"hex_diagonal"` sub-case (GitHub issue #319), which differ only in *how* `corner0`/`corner1`
  *  are computed (see `buildHexDiagonalEndpoints`), not in the resulting shape's own drawing. */
-function buildDiagonalShape(pointKey: string, corner0: Point, corner1: Point, throughLine?: [Point, Point]): SplitSpecialShape {
-  return { kind: "diagonal", pointKey, corner0, corner1, throughLine };
+function buildDiagonalShape(
+  pointKey: string,
+  corner0: Point,
+  corner1: Point,
+  throughLine?: [Point, Point],
+  wallPath?: Point[],
+): SplitSpecialShape {
+  return { kind: "diagonal", pointKey, corner0, corner1, throughLine, wallPath };
 }
 
 /** Builds the "bridge" `SplitSpecialShape` for a through corridor (`throughFaces`, drawn as nothing
@@ -389,8 +397,8 @@ export function buildSplitPassagesCore<Id>(
     } else if (specialShapeKind === "bridge" || specialShapeKind === "hex_bridge") {
       // Node 0 is the "through" pair (opposite faces, drawn as nothing — an ordinary passage);
       // node 1 is the "cross" pair, drawn as the bridge's own two edges: full width at the cross
-      // faces (100%), narrowing to 60% over the tile's first/last 20% of length, a flat 60%-wide
-      // deck across the middle 60%. Same construction for square and hex (GitHub issue #319) —
+      // faces (100%), narrowing at the same angle as a triple bridge to a flat 60%-wide deck.
+      // Same construction for square and hex (GitHub issue #319) —
       // `buildBridgeShape` only needs each node's own opposite-face pair.
       const throughIdx = connectedFaces(faceKindsByNode[0]);
       const crossIdx = connectedFaces(faceKindsByNode[1]);
@@ -425,18 +433,28 @@ export function buildSplitPassagesCore<Id>(
     } else if (specialShapeKind === "hex_triple_corridor") {
       // GitHub issue #319 — three nodes: one opposite-face pair (the "through" corridor, drawn as
       // an ordinary passage, same role as `"bridge"`'s node 0) plus two adjacent-face pairs, each
-      // cutting a corner of the tile off with a straight wall through that corner, the tile
-      // center, and the opposite point on the tile boundary — an adjacent pair here always shares
-      // exactly one real tile corner with the through pair's own faces (its other face borders the
-      // *other* adjacent-pair node instead, not a corner this wall needs). Both corner-cuts pass
-      // through the same center point as the through corridor (see `buildBridgeShape`'s own doc
-      // comment), so — like `"hex_triple_bridge"` above — neither corner-cut needs to know about
-      // the other to read as crossing it.
+      // separated from the through corridor by the straight chord joining the two real tile
+      // corners where those nodes meet. For faces `{0,3}` through, `{1,2}` and `{4,5}` adjacent,
+      // these are chords `1-3` and `4-0`; reflecting one corner through the center incorrectly
+      // collapses both boundaries onto the single opposite-corner diagonal `0-3`.
       const perNodeFaces = faceKindsByNode.map((kinds) => connectedFaces(kinds));
       const degree = offsets.length;
       const throughNodeIdx = perNodeFaces.findIndex(([a, b]) => circularDist(a, b, degree) === degree / 2);
       const verts = getCellVertices(px, py, cfg);
       if (verts && throughNodeIdx >= 0) {
+        let diameter = 0;
+        for (let a = 0; a < verts.length; a++) {
+          for (let b = a + 1; b < verts.length; b++) {
+            diameter = Math.max(diameter, Math.hypot(verts[b].x - verts[a].x, verts[b].y - verts[a].y));
+          }
+        }
+        const centerOffset = diameter / 6;
+        const bendTowardCenter = (a: Point, b: Point): Point => {
+          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          const dx = mx - center.x, dy = my - center.y;
+          const len = Math.hypot(dx, dy) || 1;
+          return { x: center.x + dx / len * centerOffset, y: center.y + dy / len * centerOffset };
+        };
         const throughFaces = perNodeFaces[throughNodeIdx];
         const throughFace0 = faceInputs[throughFaces[0]];
         const throughFace1 = faceInputs[throughFaces[1]];
@@ -448,17 +466,22 @@ export function buildSplitPassagesCore<Id>(
         for (let i = 0; i < 3; i++) {
           if (i === throughNodeIdx) continue;
           const cornerFaces = perNodeFaces[i];
-          let corner: { x: number; y: number } | null = null;
+          const cornerIndices: number[] = [];
           for (const fa of cornerFaces) {
             for (const fb of throughFaces) {
               const c = sharedCornerIndex(edgeVerts, fa, fb);
-              if (c !== null) { corner = verts[c]; break; }
+              if (c !== null && !cornerIndices.includes(c)) cornerIndices.push(c);
             }
-            if (corner) break;
           }
-          if (!corner) continue;
-          const far = { x: center.x * 2 - corner.x, y: center.y * 2 - corner.y };
-          specialShapes.push(buildDiagonalShape(pointKey, corner, far, firstEntry ? throughLine : undefined));
+          if (cornerIndices.length !== 2) continue;
+          const corner0 = verts[cornerIndices[0]], corner1 = verts[cornerIndices[1]];
+          specialShapes.push(buildDiagonalShape(
+            pointKey,
+            corner0,
+            corner1,
+            firstEntry ? throughLine : undefined,
+            [corner0, bendTowardCenter(corner0, corner1), corner1],
+          ));
           firstEntry = false;
         }
       }

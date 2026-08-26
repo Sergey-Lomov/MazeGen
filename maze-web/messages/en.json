@@ -1741,7 +1741,7 @@
   "image_export.vector_by_walls.split_node_color": "Node {index} color",
   "image_export.vector_by_walls.split_special_shapes": "Special shapes",
   "image_export.vector_by_corridors.split_gap_width": "Gap width",
-  "image_export.vector_by_corridors.split_diagonal_bow_amount": "Diagonal bow amount",
+  "image_export.vector_by_corridors.split_diagonal_bow_amount": "Bow",
   "image_export.vector_by_walls.section_vertical": "Vertical connections",
   "image_export.vector_by_walls.vertical_style": "Vertical passage style",
   "image_export.vector_by_walls.vertical_style_abstract": "Abstract",

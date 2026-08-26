@@ -1752,7 +1752,7 @@
   "image_export.vector_by_walls.split_node_color": "Цвет узла {index}",
   "image_export.vector_by_walls.split_special_shapes": "Специальные формы",
   "image_export.vector_by_corridors.split_gap_width": "Зазор",
-  "image_export.vector_by_corridors.split_diagonal_bow_amount": "Изгиб диагонали",
+  "image_export.vector_by_corridors.split_diagonal_bow_amount": "Изгиб",
   "image_export.vector_by_walls.section_vertical": "Вертикальные связи",
   "image_export.vector_by_walls.vertical_style": "Общий стиль",
   "image_export.vector_by_walls.vertical_style_abstract": "Абстрактный",

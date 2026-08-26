@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
-import { getCellCenter } from "../pixi/tessellationGeometry";
+import { getCellCenter, getCellVertices } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
 import type { NodeDto, EdgeDto } from "../wasm/types";
@@ -514,7 +514,7 @@ describe("buildSplitPassages", () => {
     // The cross corridor is north/south (the through corridor, east/west, draws nothing of its
     // own). Each edge is a 4-point polyline: full width at the cross faces (y = 0 and y = -40 in
     // this test's cartesian mock, i.e. the tile's own top/bottom edges), narrowing to 60% width at
-    // 20%/80% of the tile's length, flat in between.
+    // the same angle as the narrower triple bridge, flat in between.
     expect(shape.edge0).toHaveLength(4);
     expect(shape.edge1).toHaveLength(4);
     const [e0start, e0taperIn, e0taperOut, e0end] = shape.edge0;
@@ -531,6 +531,12 @@ describe("buildSplitPassages", () => {
     expect(width(e0taperOut, e1taperOut)).toBeCloseTo(deckWidth, 5);
     expect(deckWidth).toBeCloseTo(fullWidth * 0.6, 5);
     expect(deckWidth).toBeLessThan(fullWidth);
+    const midpoint = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+      x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+    });
+    const taperAxialLength = width(midpoint(e0start, e1start), midpoint(e0taperIn, e1taperIn));
+    const bridgeLength = width(midpoint(e0start, e1start), midpoint(e0end, e1end));
+    expect(taperAxialLength / bridgeLength).toBeCloseTo(0.08 * (1 - 0.6) / (1 - 0.4), 5);
 
     // edge0/edge1 must run side by side, never crossing -- `nearestEndpointPairing` (mazeSelectors.ts)
     // picks which of crossFaces[1]'s two ends pairs with which of crossFaces[0]'s; picking the wrong
@@ -690,6 +696,17 @@ describe("hex special shapes", () => {
       expect(shape.kind).toBe("diagonal");
       expect(shape.pointKey).toBe("0,0");
     }
+    const diagonalShapes = specialShapes.filter((shape) => shape.kind === "diagonal");
+    const verts = getCellVertices(0, 0, hexCfg)!;
+    const endpointPairs = diagonalShapes.map((shape) => [shape.corner0, shape.corner1]);
+    expect(endpointPairs).toEqual(expect.arrayContaining([
+      expect.arrayContaining([verts[0], verts[4]]),
+      expect.arrayContaining([verts[1], verts[3]]),
+    ]));
+    expect(diagonalShapes.every((shape) => shape.wallPath?.length === 3)).toBe(true);
+    const bends = diagonalShapes.map((shape) => shape.wallPath![1]);
+    const diameter = Math.hypot(verts[0].x - verts[3].x, verts[0].y - verts[3].y);
+    expect(Math.hypot(bends[0].x - bends[1].x, bends[0].y - bends[1].y)).toBeCloseTo(diameter / 3, 5);
     // Exactly one of the two entries carries the shared through-line.
     const withThroughLine = specialShapes.filter((s) => s.kind === "diagonal" && s.throughLine);
     expect(withThroughLine).toHaveLength(1);

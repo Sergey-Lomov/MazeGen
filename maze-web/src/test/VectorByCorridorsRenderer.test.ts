@@ -11,6 +11,7 @@ import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByCorridorsSettings } from "../store/storeTypes";
 import { DEFAULT_VERTICAL_SETTINGS } from "../store/slices/imageExportDefaults";
+import { chainSegmentsAtSharedVertices } from "../pixi/renderers/WallRenderer";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path
 // only ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`).
@@ -336,6 +337,25 @@ describe("computeDiagonalGapPatchGeometry", () => {
 });
 
 describe("VectorByCorridorsRenderer", () => {
+  it("round style keeps split-touching corridor ends butt and restores round caps only elsewhere", () => {
+    const splitEnd = { x: 40, y: 20 };
+    const freeEnd = { x: 20, y: 20 };
+    vi.mocked(buildCorridorSegments).mockReturnValueOnce([{
+      v0: freeEnd, v1: splitEnd, fromNode: 1, toNode: 2, v1TouchesSplit: true,
+    }]);
+    vi.mocked(chainSegmentsAtSharedVertices).mockReturnValueOnce([[freeEnd, splitEnd]]);
+
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    const corridors = (renderer as unknown as { corridors: {
+      stroke: ReturnType<typeof vi.fn>;
+      circle: ReturnType<typeof vi.fn>;
+    } }).corridors;
+
+    expect(corridors.stroke).toHaveBeenCalledWith(expect.objectContaining({ cap: "butt" }));
+    expect(corridors.circle).toHaveBeenCalledWith(freeEnd.x, freeEnd.y, settingsA.thickness / 2);
+    expect(corridors.circle).not.toHaveBeenCalledWith(splitEnd.x, splitEnd.y, settingsA.thickness / 2);
+  });
+
   it("getRequiredExportMargin returns zero margin when this maze has no nodes (nothing drawn)", () => {
     currentState = baseState({ vectorByCorridorsSettings: settingsB });
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
@@ -799,6 +819,32 @@ describe("VectorByCorridorsRenderer", () => {
       expect(allFillCalls.some((c) => c === settingsA.background)).toBe(true);
       expect(allFillCalls.some((c) => c === settingsA.color)).toBe(true);
       expect(corridorsGraphics.bezierCurveTo).not.toHaveBeenCalled();
+    });
+
+    it("miter diagonal uses a sharp ribbon and suppresses its gap even when splitGapWidth > 0", () => {
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [{
+          color: 0xaaaaaa, pointKey: "1,1", center: { x: 20, y: 20 }, wallSegments: [],
+          connectors: [{ from: { x: 0, y: 20 }, to: { x: 20, y: 0 }, isUndefined: false }],
+        }],
+        wallFaces: [],
+        specialShapes: [{ kind: "diagonal", pointKey: "1,1", corner0: { x: 0, y: 0 }, corner1: { x: 40, y: 40 } }],
+      });
+      currentState = baseState({
+        vectorByCorridorsSettings: { ...settingsB, splitSpecialShapes: true, splitDiagonalBowAmount: 0.8, splitGapWidth: 8 },
+      });
+
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { fill: ReturnType<typeof vi.fn> } }).corridors;
+      const graphicsInstances = vi.mocked(Graphics).mock.results.map((r) => r.value as {
+        bezierCurveTo: ReturnType<typeof vi.fn>;
+        fill: ReturnType<typeof vi.fn>;
+      });
+      const groupGraphics = graphicsInstances.filter((g) => g !== corridorsGraphics);
+      expect(groupGraphics.every((g) => g.bezierCurveTo.mock.calls.length === 0)).toBe(true);
+      const fills = groupGraphics.flatMap((g) => g.fill.mock.calls.map((call: unknown[]) => call[0] as number));
+      expect(fills).toContain(settingsB.color);
+      expect(fills).not.toContain(settingsB.background);
     });
 
     it("hex_triple_corridor: the opposite-pair throughLine draws once (deduped across its 2 diagonal entries), after both ribbons, with its own background gap patch cutting into them when splitGapWidth > 0", () => {

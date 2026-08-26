@@ -736,7 +736,7 @@ export function VectorByCorridorsSettingsPanel() {
                 max={1}
                 step={0.01}
                 format={(v) => v.toFixed(2)}
-                disabled={!settings.splitSpecialShapes}
+                disabled={!settings.splitSpecialShapes || settings.join === "miter"}
               />
             </div>
           )}

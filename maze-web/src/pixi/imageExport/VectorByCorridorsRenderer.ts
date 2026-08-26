@@ -12,7 +12,7 @@ import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, bu
 import { computeVectorByCorridorsWarnings } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "../renderers/types";
-import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon } from "./vectorByCorridorsGeometry";
+import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, computeMiterJunctionPatch, type JunctionRay } from "./vectorByCorridorsGeometry";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
@@ -295,34 +295,98 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     }
     const touchesSplit = (p: { x: number; y: number }): boolean => splitTouchPoints.has(splitTouchKey(p));
 
-    // Pixi's `stroke()` applies a single `cap` to *both* free ends of a path — there's no per-end
-    // cap option. So a path with only one end touching a split tile is drawn `butt` on both ends
-    // first, then its non-split free end gets its own round/square cap restored as a standalone
-    // filled shape at just that point (not by redrawing the path's last segment — that would put an
-    // ordinary cap back on *both* of that segment's ends, undoing the split end's own `butt` cap too
-    // whenever the path is only 2 points long, where the "last segment" and "whole path" are the
-    // same stroke). A path with both ends touching split tiles only needs the `butt` pass.
+    const chainedCorridorPaths = chainSegmentsAtSharedVertices(this.geometryCache.segments);
+
+    // A chained path's own two ends can meet other chained paths' own ends at the same point only
+    // where `chainSegmentsAtSharedVertices` itself declined to extend through it — a degree != 2
+    // vertex, i.e. an ordinary 3+-corridor T-junction (never a split hub — a split-touching end is
+    // handled separately below via `touchesSplit`, `drawSplitPassages` owns that point's own
+    // geometry entirely). Collected up front (GitHub issue #443 follow-up) so every such T-junction
+    // gets a single `computeMiterJunctionPatch` polygon instead of each path's own end drawing an
+    // independent cap that pokes across its neighbors at non-perpendicular angles.
+    const junctionEnds = new Map<string, { path: { x: number; y: number }[]; end: 0 | 1 }[]>();
+    for (const path of chainedCorridorPaths) {
+      for (const end of [0, 1] as const) {
+        const p = end === 0 ? path[0] : path[path.length - 1];
+        if (touchesSplit(p)) continue;
+        const k = splitTouchKey(p);
+        const list = junctionEnds.get(k);
+        if (list) list.push({ path, end });
+        else junctionEnds.set(k, [{ path, end }]);
+      }
+    }
+
+    // Round style still needs a per-end decision: an end touching a split must stay flush (`butt`),
+    // while every other end remains round. Pixi applies one cap to both path ends, so all paths are
+    // stroked with `butt` and a radius-sized disc restores each non-split end independently. At an
+    // ordinary shared junction those discs have the same center and safely coincide.
+    //
+    // Miter/square has no such luck — a `"square"` cap protrudes as a flat-edged rectangle aligned
+    // to *that line's own* direction, so two lines meeting at a non-perpendicular T-junction angle
+    // each protrude past the other's edge instead of reconciling into a clean corner. So for
+    // miter/square only: every path draws `butt` unconditionally first (never protrudes), then each
+    // of its own two non-split ends gets its own cap patched back in separately as a standalone
+    // filled shape (not by redrawing the path's last segment — that would put an ordinary cap back
+    // on *both* of that segment's ends whenever the path is only 2 points long, where the "last
+    // segment" and "whole path" are the same stroke). A genuine free end (nothing else meets it,
+    // `junctionEnds` has exactly one entry there) gets its own plain square cap, same as an ordinary
+    // stroke would draw; a T-junction where several chained paths' own ends meet (`junctionEnds`
+    // has 2+ entries) gets one shared miter-style patch instead — see `computeMiterJunctionPatch`'s
+    // own doc comment for why a per-path cap can't work there (GitHub issue #443 follow-up:
+    // patching every path's own end independently left visible gaps between them at
+    // non-perpendicular junction angles instead of a clean corner).
     this.corridors.clear();
-    for (const path of chainSegmentsAtSharedVertices(this.geometryCache.segments)) {
-      const startsOnSplit = touchesSplit(path[0]);
-      const endsOnSplit = touchesSplit(path[path.length - 1]);
-      this.corridors.moveTo(path[0].x, path[0].y);
-      for (let i = 1; i < path.length; i++) this.corridors.lineTo(path[i].x, path[i].y);
-      this.corridors.stroke(startsOnSplit || endsOnSplit ? { ...strokeOpts, cap: "butt" } : strokeOpts);
-      if (strokeOpts.cap === "round" && (startsOnSplit !== endsOnSplit)) {
-        const freeEnd = startsOnSplit ? path[path.length - 1] : path[0];
-        this.corridors.circle(freeEnd.x, freeEnd.y, strokeOpts.width / 2).fill(strokeOpts.color);
-      } else if (strokeOpts.cap === "square" && (startsOnSplit !== endsOnSplit)) {
-        const freeEnd = startsOnSplit ? path[path.length - 1] : path[0];
-        const neighbor = startsOnSplit ? path[path.length - 2] : path[1];
-        const [p0, p1, p2, p3] = computeSquareCapPatch(freeEnd, neighbor, strokeOpts.width);
-        this.corridors
-          .moveTo(p0.x, p0.y)
-          .lineTo(p1.x, p1.y)
-          .lineTo(p2.x, p2.y)
-          .lineTo(p3.x, p3.y)
-          .closePath()
-          .fill(strokeOpts.color);
+    if (strokeOpts.cap === "round") {
+      for (const path of chainedCorridorPaths) {
+        this.corridors.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) this.corridors.lineTo(path[i].x, path[i].y);
+        this.corridors.stroke({ ...strokeOpts, cap: "butt" });
+        for (const end of [path[0], path[path.length - 1]]) {
+          if (!touchesSplit(end)) {
+            this.corridors.circle(end.x, end.y, strokeOpts.width / 2).fill(strokeOpts.color);
+          }
+        }
+      }
+    } else {
+      for (const path of chainedCorridorPaths) {
+        this.corridors.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) this.corridors.lineTo(path[i].x, path[i].y);
+        this.corridors.stroke({ ...strokeOpts, cap: "butt" });
+      }
+      const patchedJunctions = new Set<string>();
+      for (const path of chainedCorridorPaths) {
+        for (const [end, neighbor] of [[path[0], path[1]], [path[path.length - 1], path[path.length - 2]]] as const) {
+          if (touchesSplit(end)) continue;
+          const k = splitTouchKey(end);
+          const atVertex = junctionEnds.get(k)!;
+          if (atVertex.length === 1) {
+            const [p0, p1, p2, p3] = computeSquareCapPatch(end, neighbor, strokeOpts.width);
+            this.corridors
+              .moveTo(p0.x, p0.y)
+              .lineTo(p1.x, p1.y)
+              .lineTo(p2.x, p2.y)
+              .lineTo(p3.x, p3.y)
+              .closePath()
+              .fill(strokeOpts.color);
+          } else if (!patchedJunctions.has(k)) {
+            patchedJunctions.add(k);
+            const rays: JunctionRay[] = atVertex.map(({ path: p, end: e }) => {
+              // `end` (the junction point itself) minus `neighbor` (the next point in along the
+              // path) points *outward* from the junction along that path — the direction
+              // `computeMiterJunctionPatch`'s own `JunctionRay.dir` expects.
+              const neighbor = e === 0 ? p[1] : p[p.length - 2];
+              return { dir: { x: end.x - neighbor.x, y: end.y - neighbor.y }, width: strokeOpts.width };
+            });
+            const wedges = computeMiterJunctionPatch(rays);
+            for (const wedge of wedges) {
+              this.corridors.moveTo(end.x + wedge.points[0].x, end.y + wedge.points[0].y);
+              for (let i = 1; i < wedge.points.length; i++) {
+                this.corridors.lineTo(end.x + wedge.points[i].x, end.y + wedge.points[i].y);
+              }
+              this.corridors.closePath().fill(strokeOpts.color);
+            }
+          }
+        }
       }
     }
 
@@ -632,6 +696,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
             (match(p.connectors[0].from, throughLine[1]) && match(p.connectors[0].to, throughLine[0])));
         const nodePassages = passages.filter((p) => p.pointKey === shape.pointKey && !isThroughPassage(p));
         const bowFrac = settings.splitDiagonalBowAmount;
+        // Sharp/miter corridor style never draws this ribbon's bowed curve, regardless of
+        // `bowFrac` — a curve reads as inconsistent next to a sharp-style corridor network. See
+        // `drawDiagonalConnectorRibbon`'s own `sharp` param doc comment.
+        const sharpRibbon = settings.join === "miter";
 
         // Background-colored gap frame drawn around each connector before its own trapezoid (GitHub
         // issue #314 follow-up) — same "wider background pass underneath" technique the bridge
@@ -682,12 +750,12 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
             // filled shape has no such failure mode, and its own two short ends are cut exactly
             // along each face's own direction so they land flush against the plain corridor's own
             // segment there, unmoved by `bow`. See `drawDiagonalConnectorRibbon`'s own doc comment.
-            if (settings.splitGapWidth > 0) {
+            if (settings.splitGapWidth > 0 && !sharpRibbon) {
               const { gapFrom, gapTo, clampedGapWidth } = computeDiagonalGapPatchGeometry(connector.from, connector.to, fromFaceDir, toFaceDir, gridInset, gapWidth);
-              drawDiagonalConnectorRibbon(gapView, gapFrom, gapTo, fromFaceDir, toFaceDir, clampedGapWidth, settings.background, bowFrac);
+              drawDiagonalConnectorRibbon(gapView, gapFrom, gapTo, fromFaceDir, toFaceDir, clampedGapWidth, settings.background, bowFrac, sharpRibbon);
             }
 
-            drawDiagonalConnectorRibbon(clipView, connector.from, connector.to, fromFaceDir, toFaceDir, settings.thickness, settings.color, bowFrac);
+            drawDiagonalConnectorRibbon(clipView, connector.from, connector.to, fromFaceDir, toFaceDir, settings.thickness, settings.color, bowFrac, sharpRibbon);
 
             if (connector.oneWayOut === undefined) continue;
             const ddx = connector.to.x - connector.from.x, ddy = connector.to.y - connector.from.y;
@@ -709,7 +777,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           const [throughFrom, throughTo] = throughLine;
           const { clipView: throughClipView, gapView: throughGapView } = clipViewAt();
 
-          if (settings.splitGapWidth > 0) {
+          if (settings.splitGapWidth > 0 && settings.join !== "miter") {
             const tx = throughTo.x - throughFrom.x, ty = throughTo.y - throughFrom.y;
             const tlen = Math.hypot(tx, ty) || 1;
             const ux = tx / tlen, uy = ty / tlen;

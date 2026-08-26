@@ -151,6 +151,10 @@ export type SplitSpecialShape =
       pointKey: string;
       corner0: { x: number; y: number };
       corner1: { x: number; y: number };
+      /** Optional wall-mode polyline from `corner0` to `corner1`. Used by
+       *  `hex_triple_corridor` to bend both separating walls toward the tile center while corridor
+       *  mode continues to use the shape only as topology metadata. */
+      wallPath?: { x: number; y: number }[];
       /** Set only for `"hex_triple_corridor"`'s first of its two `"diagonal"` entries (GitHub
        *  issue #319) — the point's third (opposite-face-pair) node's own two endpoints
        *  (face-midpoint to face-midpoint), same role as `"bridge"`'s own `throughLine`: wall-mode

@@ -52,6 +52,19 @@ describe("collectSplitWallPaths", () => {
     expect(paths).toEqual([[{ x: 20, y: 10 }, { x: 30, y: 20 }]]);
   });
 
+  it("uses a diagonal shape's explicit wallPath for a bent triple-corridor boundary", () => {
+    const wallPath = [{ x: 0, y: 0 }, { x: 12, y: 10 }, { x: 30, y: 20 }];
+    const diagonal = {
+      kind: "diagonal" as const,
+      pointKey: "2,2",
+      corner0: wallPath[0],
+      corner1: wallPath[2],
+      wallPath,
+    };
+    const { paths } = collectSplitWallPaths([], [diagonal]);
+    expect(paths).toEqual([wallPath]);
+  });
+
   it("includes a 'bridge' special shape's edge0/edge1 as 2 separate 4-point paths", () => {
     const { paths } = collectSplitWallPaths([], [bridgeShape]);
     expect(paths).toHaveLength(2);

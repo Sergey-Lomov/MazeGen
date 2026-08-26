@@ -164,8 +164,20 @@ export function drawDiagonalConnectorRibbon(
    *  pixel distance. `bowFrac === 1` puts each edge's two control points exactly at the
    *  intersection of their own two rays (`p ± faceNormal * t`), never past it — see this
    *  function's own doc comment for why an absolute distance can't be capped this way without
-   *  knowing each edge's own ray geometry. */
+   *  knowing each edge's own ray geometry. Ignored entirely when `sharp` is true — see below. */
   bowFrac = 0,
+  /** The corridor's own `settings.join === "miter"` style (GitHub issue #443 follow-up), not
+   *  derived from `bowFrac` — a sharp/miter corridor style should never draw this ribbon's bowed
+   *  curve (visually inconsistent next to the rest of a sharp-style corridor network) regardless of
+   *  what `bowFrac` is set to, and `bowFrac === 0`'s old "straight" fallback (offset along each
+   *  face's own direction independently) isn't actually straight either — `fromFaceDir`/
+   *  `toFaceDir` aren't parallel to the `from`→`to` line, so that quad pinches into a bowtie/
+   *  trapezoid shape in the middle instead of a constant-width band. When `sharp` is true, draws a
+   *  real constant-width rectangle along `from`→`to` instead, with a miter wedge at each end closing
+   *  the gap against the ordinary corridor perpendicular to that end's face — the same two-ray miter construction
+   *  `computeMiterJunctionPatch` uses for a T-junction, applied here to the one corner each end
+   *  turns through (corridor axis to face axis). */
+  sharp = false,
 ): void {
   const half = width / 2;
   const ldx = to.x - from.x, ldy = to.y - from.y;
@@ -173,6 +185,11 @@ export function drawDiagonalConnectorRibbon(
   // offset below (the bow direction itself now comes from each face's own perpendicular instead).
   const llen = Math.hypot(ldx, ldy) || 1;
   const lnx = -ldy / llen, lny = ldx / llen;
+
+  if (sharp) {
+    drawSharpDiagonalConnectorRibbon(target, from, to, fromFaceDir, toFaceDir, width, color);
+    return;
+  }
 
   const alongEnd = (p: { x: number; y: number }, dir: { x: number; y: number }): [{ x: number; y: number }, { x: number; y: number }] => {
     const len = Math.hypot(dir.x, dir.y) || 1;
@@ -234,4 +251,219 @@ export function drawDiagonalConnectorRibbon(
       .bezierCurveTo(ctrl1B.x, ctrl1B.y, ctrl2B.x, ctrl2B.y, fromB.x, fromB.y);
   }
   target.closePath().fill(color);
+}
+
+/** The `sharp: true` path of `drawDiagonalConnectorRibbon` (GitHub issue #443 follow-up) — a real
+ *  constant-width band along `from`→`to` (unlike the bowed version's own `fromFaceDir`/`toFaceDir`-
+ *  offset ends, which aren't parallel to that line and so pinch the band's width in the middle),
+ *  with a miter wedge at each end closing the gap between the band's own straight edge and that
+ *  end's own face-aligned stub — the same short flush-cut segment `alongEnd` in the bowed path
+ *  produces, kept here so the ribbon still butts flush against the plain corridor's own segment at
+ *  the tile boundary.
+ *
+ *  Built from two filled pieces rather than one polygon: the band itself (a plain rectangle, `from
+ *  ± perp*half` to `to ± perp*half`), plus one miter wedge per end via `computeMiterJunctionPatch`
+ *  with two rays — the band's own axis (pointing outward, away from the far end) and the inward
+ *  normal of that end's face (the continuation of the ordinary corridor beyond its butt cut) —
+ *  reusing the exact same two-ray miter construction a T-junction uses, just for one corner instead
+ *  of an N-way fan. */
+function drawSharpDiagonalConnectorRibbon(
+  target: Graphics,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  fromFaceDir: { x: number; y: number },
+  toFaceDir: { x: number; y: number },
+  width: number,
+  color: number,
+): void {
+  const half = width / 2;
+  const ldx = to.x - from.x, ldy = to.y - from.y;
+  const llen = Math.hypot(ldx, ldy) || 1;
+  const ux = ldx / llen, uy = ldy / llen;
+  const pnx = -uy * half, pny = ux * half;
+
+  target
+    .moveTo(from.x + pnx, from.y + pny)
+    .lineTo(to.x + pnx, to.y + pny)
+    .lineTo(to.x - pnx, to.y - pny)
+    .lineTo(from.x - pnx, from.y - pny)
+    .closePath()
+    .fill(color);
+
+  // `fromFaceDir`/`toFaceDir` run *along* the tile face, while the ordinary corridor meeting that
+  // face runs perpendicular to it. `JunctionRay.dir` is the continuation beyond a butt-cut end, so
+  // the plain corridor's continuation into the split tile is the inward face normal. Passing the
+  // face tangent itself here rotates both of that ray's offset edges by 90 degrees, producing a
+  // displaced, incorrectly-sized miter patch at the split/plain-corridor seam.
+  for (const [origin, corridorOutward, corridorInward] of [
+    [from, { x: -ux, y: -uy }, faceNormalAt(fromFaceDir, from, to)],
+    [to, { x: ux, y: uy }, faceNormalAt(toFaceDir, to, from)],
+  ] as const) {
+    // `adjacentRayWedge` constructs the corner on the side toward its ray directions. At this
+    // two-body seam the vectors above describe the continuations beyond the two butt cuts, while
+    // the visible outer corner lies on the opposite side of their shared origin. Reverse both
+    // together: this rotates the patch 180 degrees without changing its angle, size, or shape.
+    const wedge = computeTwoRayOuterWedge(
+      { dir: { x: -corridorOutward.x, y: -corridorOutward.y }, width },
+      { dir: { x: -corridorInward.x, y: -corridorInward.y }, width },
+    );
+    if (!wedge) continue;
+    const pts = wedge.points;
+    target.moveTo(origin.x + pts[0].x, origin.y + pts[0].y);
+    for (let i = 1; i < pts.length; i++) target.lineTo(origin.x + pts[i].x, origin.y + pts[i].y);
+    target.closePath().fill(color);
+  }
+}
+
+/** The single outer-corner miter wedge between two rays sharing an origin (GitHub issue #443
+ *  follow-up) — a thin wrapper around `adjacentRayWedge` (the same construction
+ *  `computeMiterJunctionPatch` uses per neighbor pair, verified correct on ordinary T-junctions).
+ *  Order-independent in `rayA`/`rayB`: which ray is "first" doesn't come from an `atan2` sort (that
+ *  broke down at the ±180° branch cut, where two rays 20° apart can land on opposite sides of the
+ *  cut and sort as if 340° apart) but directly from the sign of `cross(a.dir, b.dir)` — the two
+ *  offset edges facing each other are always `a`'s own edge on `b`'s side and `b`'s own edge on
+ *  `a`'s side, regardless of which one was passed first.
+ *
+ *  Unlike an N-ray junction (where *every* adjacent pair needs its own wedge), a bare 2-ray corner
+ *  only ever needs this one wedge: the reflex (>180°) side between the same two rays is already
+ *  covered by the two rays' own bodies overlapping there, so a second wedge for that side would
+ *  double up a corner that isn't actually open. */
+function computeTwoRayOuterWedge(rayA: JunctionRay, rayB: JunctionRay): JunctionWedge | null {
+  const a = rayEdges(rayA.dir, rayA.width);
+  const b = rayEdges(rayB.dir, rayB.width);
+  const cross = a.ux * b.uy - a.uy * b.ux; // > 0: b is CCW from a
+  return cross >= 0
+    ? adjacentRayWedge(a, rayA.width, b, rayB.width, 4)
+    : adjacentRayWedge(b, rayB.width, a, rayA.width, 4);
+}
+
+/** One line converging on a junction point, for `computeMiterJunctionPatch` — `dir` points *away*
+ *  from the junction (the direction the line runs out to its own far end), `width` is that line's
+ *  own stroke width. */
+export type JunctionRay = { dir: { x: number; y: number }; width: number };
+
+/** One filled wedge that closes the gap between two angularly-adjacent rays at a junction — see
+ *  `computeMiterJunctionPatch`. `points` is a quad `[edgeA, corner, edgeB, junctionOrigin]` for a
+ *  genuine miter corner (the junction point itself, i.e. `(0, 0)` in the same local space `rays`
+ *  was given in, closes the sliver between the two offset edges and each ray's own `butt` cut), or
+ *  a triangle `[edgeA, junctionOrigin, edgeB]` as a bevel fallback past the miter limit. */
+export type JunctionWedge = { points: { x: number; y: number }[] };
+
+/** Builds one filled wedge per angularly-*adjacent* pair of rays converging on a junction point
+ *  (GitHub issue #443 follow-up), closing the gap a `butt`-capped junction of 2+ lines otherwise
+ *  leaves between them — every line drawn on this canvas is its own independent `stroke()` call
+ *  (see `VectorByCorridorsRenderer`'s own doc comments on why: separate calls never share a Pixi
+ *  `join` even at a shared vertex), so each line's own `butt` cut runs exactly perpendicular to
+ *  *that* line alone; at any junction where the lines don't all meet at a clean 180°/90° grid
+ *  angle, those independent perpendicular cuts leave visible triangular gaps between neighboring
+ *  lines instead of a clean miter corner.
+ *
+ *  Deliberately builds one independent wedge per *pair* of neighbors rather than a single N-gon
+ *  through every ray at once: a shared N-gon's own far corners (from an acute pair elsewhere on
+ *  the same junction) can poke out past *other* rays' own bodies, reading as a stray spike instead
+ *  of a patch — the same junction a real path would only ever draw as a sequence of independent
+ *  two-segment joins, never one N-way polygon. Each wedge here is exactly that: a two-ray miter,
+ *  same as an ordinary line turning a corner.
+ *
+ *  For each pair of angularly-adjacent rays (sorted around the junction by `atan2`, wrapping), the
+ *  two edges facing each other — ray i's own `right` edge and ray i+1's own `left` edge, each
+ *  offset `width/2` perpendicular to that ray's own direction — are extended as infinite lines and
+ *  intersected; that intersection is the miter corner between them, exactly the same construction
+ *  a real stroke `join` computes for two adjacent segments of one path.
+ *
+ *  A pair closer than ~180° apart (nearly a straight continuation of one another, not a genuine
+ *  corner — the "through" direction at a T-junction) produces no meaningful corner at all: the
+ *  lines already abut with no gap there, so it's skipped entirely rather than patched. A pair
+ *  whose miter corner lands past `maxMiterRatio * half-width` (default ratio `4`, same default
+ *  Pixi's `Graphics` stroke uses for `miterLimit`) falls back to a bevel quad through both edges'
+ *  own near/far offset points instead of an arbitrarily far spike.
+ *
+ *  Pure geometry, no `Graphics` dependency, so a caller on a fixed tessellation (square/hex/triangle
+ *  tiles only ever produce a small fixed set of distinct ray-angle patterns) can memoize the result
+ *  by a rounded-angle+width cache key instead of recomputing this per split point per render. */
+export function computeMiterJunctionPatch(rays: JunctionRay[], maxMiterRatio = 4): JunctionWedge[] {
+  if (rays.length < 2) return [];
+
+  const sorted = [...rays].sort((a, b) => Math.atan2(a.dir.y, a.dir.x) - Math.atan2(b.dir.y, b.dir.x));
+
+  // Each ray's own two offset edges — `left`/`right` relative to the ray's own outward direction. A
+  // wedge between ray i and ray i+1 always uses ray i's own `right` edge (the side facing ray i+1)
+  // and ray i+1's own `left` edge (the side facing ray i) — the two edges bounding the gap between
+  // them, regardless of which screen-space convention "left"/"right" visually correspond to (the
+  // pairing is internally consistent with the `atan2` sort either way).
+  const edges = sorted.map((r) => rayEdges(r.dir, r.width));
+
+  const n = sorted.length;
+  const wedges: JunctionWedge[] = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const wedge = adjacentRayWedge(edges[i], sorted[i].width, edges[j], sorted[j].width, maxMiterRatio);
+    if (wedge) wedges.push(wedge);
+  }
+  return wedges;
+}
+
+/** One CCW-adjacent pair's own wedge, factored out of `computeMiterJunctionPatch`'s loop
+ *  (GitHub issue #443 follow-up) so `computeTwoRayOuterWedge` — the diagonal split connector's own
+ *  2-ray corner — can reuse the exact same edge/corner construction verified correct on ordinary
+ *  T-junctions, instead of a separately-derived (and, in practice, sign-buggy) copy. `a`/`b` must
+ *  already be `edges[i]`/`edges[j]` for a CCW-adjacent pair `i`, `i+1` (i.e. `b` is the *next* ray
+ *  going counter-clockwise from `a`, not just "the other ray") — the `right`/`left` edge choice
+ *  below only bounds the correct (convex, gap-side) corner for that specific adjacency direction. */
+function adjacentRayWedge(
+  a: { ux: number; uy: number; right: { x: number; y: number }; left: { x: number; y: number } },
+  aWidth: number,
+  b: { ux: number; uy: number; right: { x: number; y: number }; left: { x: number; y: number } },
+  bWidth: number,
+  maxMiterRatio: number,
+): JunctionWedge | null {
+  // Angle this pair turns through, from a's outward direction to b's — near-180° means the two rays
+  // run almost straight through one another (the T-junction's own "through" pair), which already
+  // abuts with no gap: skip, no wedge needed.
+  const cos = a.ux * b.ux + a.uy * b.uy;
+  if (cos < -1 + 1e-4) return null;
+
+  const aEdgeOrigin = a.right;
+  const bEdgeOrigin = b.left;
+  const miterLimit = (Math.max(aWidth, bWidth) / 2) * maxMiterRatio;
+  const origin = { x: 0, y: 0 }; // the junction point itself, in the same local space the rays were given in
+
+  const lineIntersect = (
+    p1: { x: number; y: number }, d1: { x: number; y: number },
+    p2: { x: number; y: number }, d2: { x: number; y: number },
+  ): { x: number; y: number } | null => {
+    const det = d1.x * -d2.y - d1.y * -d2.x;
+    if (Math.abs(det) < 1e-9) return null;
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const t = (dx * -d2.y - dy * -d2.x) / det;
+    return { x: p1.x + d1.x * t, y: p1.y + d1.y * t };
+  };
+
+  const hit = lineIntersect(aEdgeOrigin, { x: a.ux, y: a.uy }, bEdgeOrigin, { x: b.ux, y: b.uy });
+  if (hit && Math.hypot(hit.x - aEdgeOrigin.x, hit.y - aEdgeOrigin.y) <= miterLimit) {
+    // Quad through both edge points, the miter corner, and the junction point itself — the corner
+    // alone (a bare triangle `[edgeA, corner, edgeB]`) only closes the gap *outside* the two lines'
+    // own offset edges, leaving the sliver between those edges and each line's own `butt` cut
+    // (which runs through the junction point) still open.
+    return { points: [aEdgeOrigin, hit, bEdgeOrigin, origin] };
+  }
+  // Miter corner past the limit (or the two edges never meet, near-parallel) — fall back to a bevel
+  // triangle through the junction point itself instead of an arbitrarily far spike, same bevel
+  // fallback a real stroke's `miterLimit` overflow uses.
+  return { points: [aEdgeOrigin, origin, bEdgeOrigin] };
+}
+
+/** Each ray's own two offset edges (perpendicular to `dir`, ±`width/2`), as a point + normalized
+ *  direction — shared construction between `computeMiterJunctionPatch` and
+ *  `computeTwoRayOuterWedge`. */
+function rayEdges(dir: { x: number; y: number }, width: number) {
+  const len = Math.hypot(dir.x, dir.y) || 1;
+  const ux = dir.x / len, uy = dir.y / len;
+  const nx = -uy, ny = ux; // left normal (+90° rotation of the outward direction)
+  const half = width / 2;
+  return {
+    ux, uy,
+    right: { x: -nx * half, y: -ny * half },
+    left: { x: nx * half, y: ny * half },
+  };
 }
