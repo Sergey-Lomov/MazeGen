@@ -14,6 +14,7 @@ import { ConfirmModal } from "../../ConfirmModal";
 import { AlertModal } from "../../AlertModal";
 import { Switch } from "../../Switch";
 import { ui } from "../../../styles/theme";
+import { Button } from "../../Button";
 import * as m from "~/paraglide/messages";
 import { qualityCanvasStyles as styles } from "./qualityCanvasStyles";
 import { resolveCheckLabel, resolveCheckDescription } from "../qualityI18n";
@@ -366,9 +367,9 @@ export function RulesColumn({ stages, selection, onSelect }: Props) {
         {slots.length === 0 && (
           <span style={styles.emptyHint}>{m["status.no_checks"]()}</span>
         )}
-        <button className="hoverable" style={styles.addStageBtn} onClick={() => addStage()}>
+        <Button variant="primary" layoutStyle={styles.addStageBtn} onClick={() => addStage()}>
           {m["quality.add_stage"]()}
-        </button>
+        </Button>
       </div>
       {newRuleStep?.stage === "issue" && (
         <IssueSelectDialog

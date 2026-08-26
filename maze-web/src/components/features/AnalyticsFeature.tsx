@@ -2,7 +2,7 @@ import React from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useMazeStore } from "../../store/mazeStore";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
-import { sharedStyles } from "../../styles/shared";
+import { Button } from "../Button";
 import { selectAnalyticsIssues } from "../../pixi/selectors/mazeSelectors";
 import { IssuesBlock } from "../IssuesBlock";
 import { ToggleRow } from "../ToggleRow";
@@ -237,9 +237,9 @@ export function AnalyticsFeature() {
               <StatRow label={m["analytics.graph_components"]()} count={statistics.graph_stats.component_count} />
               <StatRow label={m["analytics.graph_cycle_count"]()} count={statistics.graph_stats.cycle_count} />
               <StatRow label={m["analytics.graph_average_degree"]()} valueText={statistics.graph_stats.average_degree.toFixed(2)} />
-              <button className="hoverable" style={{ ...sharedStyles.btnMuted, ...styles.patternStatsButton }} onClick={() => setDetailedReportOpen(true)}>
+              <Button variant="secondary" layoutStyle={styles.patternStatsButton} onClick={() => setDetailedReportOpen(true)}>
                 {m["analytics.detailed_report_button"]()}
-              </button>
+              </Button>
             </div>
           )}
         </>
@@ -269,9 +269,9 @@ export function AnalyticsFeature() {
                 <StatRow label={m["analytics.timing_initial_build"]()} valueText={formatMs(timing.initial_build_ms)} />
                 <StatRow label={m["analytics.timing_qc_total"]()} valueText={formatMs(qcTotalMs)} />
                 <StatRow label={m["analytics.timing_snapshot"]()} valueText={formatMs(timing.snapshot_ms)} />
-                <button className="hoverable" style={{ ...sharedStyles.btnMuted, ...styles.patternStatsButton }} onClick={() => setTimingReportOpen(true)}>
+                <Button variant="secondary" layoutStyle={styles.patternStatsButton} onClick={() => setTimingReportOpen(true)}>
                   {m["analytics.timing_detailed_report_button"]()}
-                </button>
+                </Button>
               </div>
             )}
           </>

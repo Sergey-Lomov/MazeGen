@@ -7,6 +7,7 @@ import { ToggleRow } from "../ToggleRow";
 import { ElevatorSpanRow } from "../ElevatorSpanRow";
 import { SliderRow } from "../SliderRow";
 import { Inline } from "../Layout";
+import { Button } from "../Button";
 import { ui, radius, typography, muted, spacing, inset, indent, controlRowHeight } from "../../styles/theme";
 import type { GenerationParams } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
@@ -93,9 +94,9 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
           <SliderRow label={m["generation.split_chance_short"]()} value={elementsConfig.split_chance ?? 0.0} onChange={(v) => setElementsParam("split_chance", v)} />
           <Inline gap="groupGap" style={styles.paramRow}>
             <span style={styles.paramLabel}>{m["generation.split_config"]()}</span>
-            <button className="hoverable" style={styles.paramButton} onClick={() => setSplitSettingsDialogOpen(true)}>
+            <Button variant="secondary" layoutStyle={styles.paramButton} onClick={() => setSplitSettingsDialogOpen(true)}>
               {m["generation.split_settings"]()}
-            </button>
+            </Button>
           </Inline>
         </div>
       </div>
@@ -226,13 +227,9 @@ const styles: Record<string, React.CSSProperties> = {
     ...typography.body,
   },
   paramButton: {
-    ...typography.control,
     boxSizing: "border-box",
     height: 22,
     padding: "0 8px",
-    border: `1px solid ${ui.border.strong}`,
-    background: ui.bg.input,
-    color: ui.text.secondary,
     cursor: "default",
     borderRadius: radius.sm,
     flexShrink: 0,

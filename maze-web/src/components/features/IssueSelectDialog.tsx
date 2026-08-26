@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
+import { Button } from "../Button";
 import { isEntityVisible } from "./ParamFields";
 import { resolveIssueLabel, resolveIssueDescription, resolveIssueSection, resolveIssueShortLabel } from "./qualityI18n";
-import { ui, radius, typography, disabled, spacing, inset } from "../../styles/theme";
+import { radius, typography, disabled, spacing, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -67,15 +68,15 @@ export function IssueSelectDialog({ onSelect, onClose }: Props) {
 
   const footer = (
     <>
-      <button className="hoverable" style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
-      <button
-        className={selectedKind ? "hoverable-accent" : undefined}
-        style={{ ...styles.btnPrimary, ...(!selectedKind ? styles.btnDisabled : {}) }}
+      <Button variant="secondary" layoutStyle={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</Button>
+      <Button
+        variant="primary"
+        layoutStyle={styles.btnPrimary}
         disabled={!selectedKind}
         onClick={() => selectedKind && onSelect(selectedKind)}
       >
         {m["common.select"]()}
-      </button>
+      </Button>
     </>
   );
 
@@ -106,18 +107,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnPrimary: {
     ...typography.control,
-    background: ui.accent.base,
-    border: "none",
-    color: ui.text.inverse,
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
   },
   btnSecondary: {
     ...typography.control,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.strong}`,
-    color: ui.text.secondary,
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,

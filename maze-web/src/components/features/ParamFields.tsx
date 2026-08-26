@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { ParamDescriptor, EntityVisibility, SplitPattern } from "../../wasm/types";
 import { sharedStyles } from "../../styles/shared";
+import { Button } from "../Button";
 import { typography, font, spacing, ui, radius } from "../../styles/theme";
 import { resolveParamOptionLabel, resolveParamOptionExplanation, resolvePriorityOptionLabel } from "./qualityI18n";
 import { Switch } from "../Switch";
@@ -439,24 +440,24 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 </select>
               )}
               {p.kind.type === "pattern_list" && (
-                <button
-                  className="hoverable"
-                  style={styles.paramButton}
+                <Button
+                  variant="secondary"
+                  layoutStyle={styles.paramButton}
                   disabled={isDisabled(p)}
                   onClick={(e) => { e.stopPropagation(); setOpenPatternListParam(p.id); }}
                 >
                   {m["quality.pattern_list_edit"]()} ({getPatterns(p).length})
-                </button>
+                </Button>
               )}
               {p.kind.type === "split_generation_config" && (
-                <button
-                  className="hoverable"
-                  style={styles.paramButton}
+                <Button
+                  variant="secondary"
+                  layoutStyle={styles.paramButton}
                   disabled={isDisabled(p)}
                   onClick={(e) => { e.stopPropagation(); setOpenSplitConfigParam(p.id); }}
                 >
                   {m["quality.split_config_edit"]()}
-                </button>
+                </Button>
               )}
               {p.kind.type === "add_split_config" && !addSplitPatternsOverride?.length && (
                 <input
@@ -472,14 +473,14 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 />
               )}
               {p.kind.type === "add_split_config" && Boolean(addSplitPatternsOverride?.length) && (
-                <button
-                  className="hoverable"
-                  style={styles.paramButton}
+                <Button
+                  variant="secondary"
+                  layoutStyle={styles.paramButton}
                   disabled={isDisabled(p)}
                   onClick={(e) => { e.stopPropagation(); setOpenSplitConfigParam(p.id); }}
                 >
                   {m["quality.add_split_config.weights_edit"]()}
-                </button>
+                </Button>
               )}
             </Inline>
             {description && <div style={styles.description}>{description}</div>}
@@ -614,16 +615,12 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "2px 18px 2px 4px",
   },
   // `pattern_list`/`split_generation_config` edit buttons -- same row height as `input`/`select`
-  // (not `buttonStyle("toggle")`'s own `flex: 1` + unconstrained height, which stretches the row
+  // (not the semantic button layout defaults, which would stretch the row
   // taller than every other param's control and reads as inconsistent).
   paramButton: {
-    ...typography.control,
     boxSizing: "border-box",
     height: 22,
     padding: "0 8px",
-    border: `1px solid ${ui.border.strong}`,
-    background: ui.bg.input,
-    color: ui.text.tertiary,
     borderRadius: radius.sm,
     cursor: "default",
     flexShrink: 0,

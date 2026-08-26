@@ -6,7 +6,8 @@ import { SliderRow } from "../SliderRow";
 import { Stack, Inline } from "../Layout";
 import { HoverIconButton } from "../HoverIconButton";
 import { ToggleRow } from "../ToggleRow";
-import { buttonStyle, sharedStyles } from "../../styles/shared";
+import { buttonStyle, buttonClass, sharedStyles } from "../../styles/shared";
+import { Button } from "../Button";
 import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/theme";
 import { PngOverflowWarningBubble, PngFitWarningBubble } from "./PngOverflowWarningBubble";
 import { computeDigitalExportFit } from "../../pixi/imageExport/exportFit";
@@ -174,20 +175,20 @@ export function PngExportSettingsPanel() {
     <div style={styles.root}>
       <Stack gap="itemGap">
         <Inline gap="itemGap">
-          <button
-            className={outputMode === "digital" ? "hoverable-accent" : "hoverable"}
-            style={{ ...buttonStyle(outputMode === "digital" ? "toggle-active" : "toggle"), flex: 1 }}
+          <Button
+            variant={outputMode === "digital" ? "toggle-selected" : "toggle"}
+            layoutStyle={{ flex: 1 }}
             onClick={() => setPngOutputMode("digital")}
           >
             {m["image_export.format.png.mode.digital"]()}
-          </button>
-          <button
-            className={outputMode === "print" ? "hoverable-accent" : "hoverable"}
-            style={{ ...buttonStyle(outputMode === "print" ? "toggle-active" : "toggle"), flex: 1 }}
+          </Button>
+          <Button
+            variant={outputMode === "print" ? "toggle-selected" : "toggle"}
+            layoutStyle={{ flex: 1 }}
             onClick={() => setPngOutputMode("print")}
           >
             {m["image_export.format.png.mode.print"]()}
-          </button>
+          </Button>
         </Inline>
 
         {outputMode === "digital" && (
@@ -332,16 +333,16 @@ export function PngExportSettingsPanel() {
               <span style={styles.label}>{m["image_export.format.png.print.orientation"]()}</span>
               <Inline gap="itemGap">
                 <button
-                  className={print.orientation === "portrait" ? "hoverable-accent" : "hoverable"}
-                  style={{ ...buttonStyle(print.orientation === "portrait" ? "toggle-active" : "toggle"), ...styles.control, ...styles.iconToggle }}
+                  className={buttonClass(print.orientation === "portrait" ? "toggle-selected" : "toggle")}
+                  style={{ ...buttonStyle(print.orientation === "portrait" ? "toggle-selected" : "toggle"), ...styles.control, ...styles.iconToggle }}
                   title={m["image_export.format.png.print.orientation_portrait"]()}
                   onClick={() => setPrintOrientation("portrait")}
                 >
                   <RectangleVertical size={16} />
                 </button>
                 <button
-                  className={print.orientation === "landscape" ? "hoverable-accent" : "hoverable"}
-                  style={{ ...buttonStyle(print.orientation === "landscape" ? "toggle-active" : "toggle"), ...styles.control, ...styles.iconToggle }}
+                  className={buttonClass(print.orientation === "landscape" ? "toggle-selected" : "toggle")}
+                  style={{ ...buttonStyle(print.orientation === "landscape" ? "toggle-selected" : "toggle"), ...styles.control, ...styles.iconToggle }}
                   title={m["image_export.format.png.print.orientation_landscape"]()}
                   onClick={() => setPrintOrientation("landscape")}
                 >

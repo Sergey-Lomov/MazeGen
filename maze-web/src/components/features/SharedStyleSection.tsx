@@ -1,6 +1,6 @@
 import type React from "react";
 import { spacing } from "../../styles/theme";
-import { buttonStyle } from "../../styles/shared";
+import { Button } from "../Button";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
 import { OverrideResetButton } from "../OverrideResetButton";
@@ -83,12 +83,12 @@ export function SharedStyleSection({
         step={1}
         format={(v) => String(v)}
       />
-      <button type="button" className="hoverable" style={buttonStyle("toggle")} onClick={onForce}>
+      <Button variant="toggle" onClick={onForce}>
         {m["image_export.vector_by_walls.shared_style_force"]()}
-      </button>
-      <button type="button" className="hoverable" style={buttonStyle("destructive")} onClick={onResetAll}>
+      </Button>
+      <Button variant="destructive" onClick={onResetAll}>
         {m["image_export.vector_by_walls.shared_style_reset_all"]()}
-      </button>
+      </Button>
     </div>
   );
 }

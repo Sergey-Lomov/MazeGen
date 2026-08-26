@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { SquareShape, HexShape, TriangleShape, TessellationKind, FieldPrimitive } from "../../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { sharedStyles, buttonStyle } from "../../styles/shared";
+import { sharedStyles } from "../../styles/shared";
+import { Button } from "../Button";
 import { typography, muted, spacing } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { CopyFloorDialog } from "../dialogs/CopyFloorDialog";
@@ -178,20 +179,18 @@ export function FieldSetupFeature() {
   return (
     <Stack gap="groupGap">
       <Inline gap="itemGap">
-        <button
-          className={isCustom ? "hoverable" : "hoverable-accent"}
-          style={buttonStyle(isCustom ? "toggle" : "toggle-active")}
+        <Button
+          variant={isCustom ? "toggle" : "toggle-selected"}
           onClick={handleSwitchToDefault}
         >
           {m["field.default"]()}
-        </button>
-        <button
-          className={isCustom ? "hoverable-accent" : "hoverable"}
-          style={buttonStyle(isCustom ? "toggle-active" : "toggle")}
+        </Button>
+        <Button
+          variant={isCustom ? "toggle-selected" : "toggle"}
           onClick={() => setFieldEditMode("custom")}
         >
           {m["field.custom"]()}
-        </button>
+        </Button>
       </Inline>
       {!isCustom && (
         <>
@@ -204,37 +203,36 @@ export function FieldSetupFeature() {
           <div style={styles.sectionLabel}>{m["field.tools"]()}</div>
           <Grid templateColumns="1fr 1fr" gap="itemGap">
           {primitivesForKind(tessellationKind).map(([p, label]) => (
-            <button
+            <Button
               key={p}
-              className={fieldPrimitive === p ? "hoverable-accent" : "hoverable"}
-              style={buttonStyle(fieldPrimitive === p ? "toggle-active" : "toggle")}
+              variant={fieldPrimitive === p ? "toggle-selected" : "toggle"}
               onClick={() => setFieldPrimitive(p as FieldPrimitive)}
             >
               {label}
-            </button>
+            </Button>
           ))}
           </Grid>
           <div style={styles.originRow}>
             <span style={styles.originLabel}>{m["field.show_origin"]()}</span>
             <Switch checked={showFieldOrigin} onChange={setShowFieldOrigin} />
           </div>
-          <button
-            className="hoverable-danger"
-            style={{ ...buttonStyle("destructive"), width: "100%", marginTop: spacing.itemGap }}
+          <Button
+            variant="destructive"
+            layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
             onClick={handleClearField}
           >
             {m["field.clear"]()}
-          </button>
+          </Button>
         </>
       )}
       {floorCount > 1 && (
-        <button
-          className="hoverable"
-          style={{ ...buttonStyle("toggle"), width: "100%", marginTop: spacing.itemGap }}
+        <Button
+          variant="toggle"
+          layoutStyle={{ width: "100%", marginTop: spacing.itemGap }}
           onClick={() => setCopyFloorDialogOpen(true)}
         >
           {m["field.copy_floor"]()}
-        </button>
+        </Button>
       )}
       {confirmPending !== null && (
         <ConfirmModal

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "../dialogs/ItemSelectDialog";
+import { Button } from "../Button";
 import { WarningBubble } from "../WarningBubble";
 import { ParamFields, isEntityVisible } from "./ParamFields";
 import { useParamEditor } from "./useParamEditor";
@@ -105,8 +106,8 @@ export function StrategySelectDialog({ ruleId, kind, onClose }: Props) {
 
   const footer = (
     <>
-      <button className="hoverable" style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
-      <button className="hoverable-accent" style={styles.btnPrimary} onClick={handleSelect}>{m["common.select"]()}</button>
+      <Button variant="secondary" layoutStyle={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</Button>
+      <Button variant="primary" layoutStyle={styles.btnPrimary} onClick={handleSelect}>{m["common.select"]()}</Button>
     </>
   );
 
@@ -185,18 +186,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnPrimary: {
     ...typography.control,
-    background: ui.accent.base,
-    border: "none",
-    color: ui.text.inverse,
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
   },
   btnSecondary: {
     ...typography.control,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.strong}`,
-    color: ui.text.secondary,
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,

@@ -1,7 +1,8 @@
 import React from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { Modal } from "../Modal";
-import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
+import { Button } from "../Button";
+import { radius, dialogSpacing, typography, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -23,12 +24,12 @@ export function PresetVerticalDirectionDialog({ onClose }: Props) {
   return (
     <Modal title={m["preset.vertical_direction_dialog_title"]()} size="approve" onClose={onClose}>
       <div style={styles.row}>
-        <button className="hoverable-accent" style={styles.btn} onClick={() => { choose("up"); onClose(); }}>
+        <Button variant="primary" layoutStyle={styles.btn} onClick={() => { choose("up"); onClose(); }}>
           {m["preset.vertical_direction_up"]()}
-        </button>
-        <button className="hoverable-accent" style={styles.btn} onClick={() => { choose("down"); onClose(); }}>
+        </Button>
+        <Button variant="primary" layoutStyle={styles.btn} onClick={() => { choose("down"); onClose(); }}>
           {m["preset.vertical_direction_down"]()}
-        </button>
+        </Button>
       </div>
     </Modal>
   );
@@ -42,9 +43,6 @@ const styles: Record<string, React.CSSProperties> = {
   btn: {
     ...typography.control,
     flex: 1,
-    background: ui.accent.base,
-    border: "none",
-    color: ui.text.inverse,
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,

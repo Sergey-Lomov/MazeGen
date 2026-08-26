@@ -6,6 +6,7 @@ import { SeedHistoryDialog } from "../dialogs/SeedHistoryDialog";
 import { ConfirmModal } from "../ConfirmModal";
 import { VertexBasedSettingsPanel } from "./VertexBasedSettingsPanel";
 import { sharedStyles } from "../../styles/shared";
+import { Button } from "../Button";
 import { ui, radius, typography, muted, spacing, inset, indent } from "../../styles/theme";
 import { Switch } from "../Switch";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
@@ -156,14 +157,14 @@ export function GenerationFeature({ canGenerate }: Props) {
 
       {/* Action buttons */}
       <div style={styles.btnRow}>
-        <button
-          className={canGenerate ? "hoverable-accent" : undefined}
-          style={{ ...styles.btnGenerate, ...(!canGenerate ? styles.btnDisabled : {}) }}
+        <Button
+          variant="primary"
+          layoutStyle={{ ...styles.btnGenerate, ...(!canGenerate ? styles.btnDisabled : {}) }}
           disabled={!canGenerate}
           onClick={handleGenerate}
         >
           {m["generation.generate"]()}
-        </button>
+        </Button>
       </div>
 
       {algorithmDialogOpen && (
@@ -273,13 +274,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: spacing.itemGap,
   },
   btnGenerate: {
-    ...typography.control,
     flex: 1,
-    background: ui.accent.base,
-    border: "none",
-    color: ui.text.inverse,
-    padding: inset.toolButtonInset,
-    cursor: "default",
     borderRadius: radius.sm,
   },
   btnDisabled: {

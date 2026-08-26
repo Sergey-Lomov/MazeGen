@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { SidePanel } from "../SidePanel";
 import { ConfirmModal } from "../ConfirmModal";
+import { Button } from "../Button";
 import { TileFaceEditor, type TileFaceNode } from "./TileFaceEditor";
 import { splitNodeDiagnostics } from "../../pixi/splitNodeDiagnostics";
 import { fittingRotation, tileNodesForBlueprint, type SplitNodeBlueprint } from "../../pixi/splitBlueprints";
 import { ui, typography, radius, spacing, indent } from "../../styles/theme";
-import { buttonStyle, sharedStyles } from "../../styles/shared";
+import { sharedStyles } from "../../styles/shared";
 import { Inline, Stack } from "../Layout";
 import * as m from "~/paraglide/messages";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
@@ -234,14 +235,13 @@ export function SplitNodesDialogView<E>({
         )}
         <Inline gap="itemGap" justify="center" style={{ flexWrap: "wrap" }}>
           {availableKinds.map((kind) => (
-            <button
+            <Button
               key={kind}
-              className={kind === activeKind ? "hoverable-accent" : "hoverable"}
-              style={buttonStyle(kind === activeKind ? "toggle-active" : "toggle")}
+              variant={kind === activeKind ? "toggle-selected" : "toggle"}
               onClick={() => onKindChange(kind)}
             >
               {KIND_LABEL[kind]()}
-            </button>
+            </Button>
           ))}
         </Inline>
         <TileFaceEditor
@@ -308,34 +308,34 @@ export function SplitNodesDialogView<E>({
         <div style={styles.nodeListFooter}>
           <Stack gap="itemGap">
             <Inline gap="itemGap">
-              <button className="hoverable-accent" style={{ ...buttonStyle("primary"), flex: 1 }} onClick={handleAdd}>
+              <Button variant="primary" layoutStyle={{ flex: 1 }} onClick={handleAdd}>
                 {m["post_edit.split_add_node"]()}
-              </button>
-              <button
-                className="hoverable-danger"
-                style={{ ...buttonStyle("destructive"), flex: 1, ...(!activeRow?.removable ? sharedStyles.btnDisabled : {}) }}
+              </Button>
+              <Button
+                variant="destructive"
+                layoutStyle={{ flex: 1 }}
                 disabled={!activeRow?.removable}
                 onClick={() => activeRow && setPendingRemove(activeRow)}
               >
                 {m["post_edit.split_remove"]()}
-              </button>
+              </Button>
             </Inline>
             {activeRow && (
               <Inline gap="itemGap">
-                <button
-                  className={activeRow.isStart ? "hoverable-accent" : "hoverable"}
-                  style={{ ...buttonStyle(activeRow.isStart ? "toggle-active" : "toggle"), flex: 1 }}
+                <Button
+                  variant="primary"
+                  layoutStyle={{ flex: 1 }}
                   onClick={handleToggleStart}
                 >
                   {activeRow.isStart ? m["post_edit.split_clear_start"]() : m["post_edit.split_set_start"]()}
-                </button>
-                <button
-                  className={activeRow.isFinish ? "hoverable-accent" : "hoverable"}
-                  style={{ ...buttonStyle(activeRow.isFinish ? "toggle-active" : "toggle"), flex: 1 }}
+                </Button>
+                <Button
+                  variant="primary"
+                  layoutStyle={{ flex: 1 }}
                   onClick={handleToggleFinish}
                 >
                   {activeRow.isFinish ? m["post_edit.split_clear_finish"]() : m["post_edit.split_set_finish"]()}
-                </button>
+                </Button>
               </Inline>
             )}
           </Stack>

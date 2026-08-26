@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { TessellationKind, HexOrientation, TriOrientation } from "../../store/mazeStore";
-import { sharedStyles, buttonStyle } from "../../styles/shared";
+import { sharedStyles } from "../../styles/shared";
+import { Button } from "../Button";
 import { spacing, inset } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { selectTessellationWouldLoseData } from "../../pixi/selectors/mazeSelectors";
@@ -86,9 +87,9 @@ export function BasicConfigFeature() {
           </select>
         </label>
       )}
-      <button className="hoverable-accent" style={styles.confirmBtn} onClick={handleConfirmTessellation}>
+      <Button variant="primary" layoutStyle={styles.confirmBtn} onClick={handleConfirmTessellation}>
         {m["tessellation.confirm_btn"]()}
-      </button>
+      </Button>
       {showConfirm && (
         <ConfirmModal
           message={m["tessellation.reset_warning"]()}
@@ -110,7 +111,6 @@ const styles: Record<string, React.CSSProperties> = {
   select: sharedStyles.select,
   confirmBtn: {
     marginTop: spacing.itemGap,
-    ...buttonStyle("primary"),
     padding: `${inset.buttonInsetY}px 0`,
   },
 };
