@@ -27,7 +27,7 @@
   "tessellation.confirm_btn": "Confirm tessellation",
   "tessellation.reset_warning": "Changing tessellation will reset most settings and generation results. Continue?",
   "floors.title": "Floors",
-  "floors.add_floor": "+ Add floor",
+  "floors.add_floor": "Add floor",
   "floors.rename_floor": "Rename floor",
   "floors.remove_floor": "Remove floor",
   "floors.move_floor_up": "Move floor up",

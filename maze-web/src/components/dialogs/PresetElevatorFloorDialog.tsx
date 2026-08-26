@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { Modal } from "../Modal";
+import { Button } from "../Button";
 import { Switch } from "../Switch";
 import { cellExistsAt } from "../../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../../store/storeHelpers";
@@ -72,15 +73,15 @@ export function PresetElevatorFloorDialog({ onClose }: Props) {
         })}
       </div>
       <div style={styles.footer}>
-        <button className="hoverable" style={styles.btnCancel} onClick={onClose}>{m["common.cancel"]()}</button>
-        <button
-          className="hoverable-accent"
-          style={{ ...styles.btnOk, ...(canConfirm ? {} : styles.btnOkDisabled) }}
+        <Button variant="secondary" layoutStyle={styles.btnCancel} onClick={onClose}>{m["common.cancel"]()}</Button>
+        <Button
+          variant="primary"
+          layoutStyle={styles.btnOk}
           disabled={!canConfirm}
           onClick={() => { confirm(); onClose(); }}
         >
           {m["common.confirm"]()}
-        </button>
+        </Button>
       </div>
     </Modal>
   );
@@ -127,9 +128,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnOk: {
     ...typography.control,
-    background: ui.accent.base,
-    border: "none",
-    color: ui.text.inverse,
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
@@ -139,9 +137,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnCancel: {
     ...typography.control,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.strong}`,
-    color: ui.text.secondary,
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,

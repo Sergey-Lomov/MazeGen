@@ -4,11 +4,11 @@ import { useMazeStore } from "../../store/mazeStore";
 import { activeFloorTessellationOf } from "../../store/storeHelpers";
 import { Modal } from "../Modal";
 import { ConfirmModal } from "../ConfirmModal";
+import { Button } from "../Button";
 import { Inline, Stack } from "../Layout";
 import { dialogPanelStyles, type SplitEdgeKind, KIND_LABEL } from "../features/SplitNodesDialogView";
 import { TileFaceEditor, type TileFaceNode } from "../features/TileFaceEditor";
 import { splitNodeDiagnostics, patternEmptyNodeDiagnostics, patternSiblingDiagnostics } from "../../pixi/splitNodeDiagnostics";
-import { buttonStyle, sharedStyles } from "../../styles/shared";
 import { typography, spacing } from "../../styles/theme";
 import { embeddedNotificationStyle, notificationPalette } from "../EmbeddedNotification";
 import { degreeFor, splitPatternNodeColor, tileNodesForPattern, resizePatternNodes, removePatternNode } from "../../pixi/splitPatternTile";
@@ -146,14 +146,13 @@ export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Prop
         <div style={dialogPanelStyles.tileArea}>
           <Inline gap="itemGap" justify="center" style={{ flexWrap: "wrap" }}>
             {AVAILABLE_KINDS.map((kind) => (
-              <button
+              <Button
                 key={kind}
-                className={kind === activeKind ? "hoverable-accent" : "hoverable"}
-                style={buttonStyle(kind === activeKind ? "toggle-active" : "toggle")}
+                variant={kind === activeKind ? "toggle-selected" : "toggle"}
                 onClick={() => setActiveKind(kind)}
               >
                 {KIND_LABEL[kind]()}
-              </button>
+              </Button>
             ))}
           </Inline>
           <TileFaceEditor
@@ -191,17 +190,17 @@ export function AbstractPatternEditorDialog({ pattern, onChange, onClose }: Prop
            * how far the card list above is scrolled. */}
           <div style={dialogPanelStyles.nodeListFooter}>
             <Inline gap="itemGap">
-              <button className="hoverable-accent" style={{ ...buttonStyle("primary"), flex: 1 }} onClick={addNode}>
+              <Button variant="primary" layoutStyle={{ flex: 1 }} onClick={addNode}>
                 {m["post_edit.split_add_node"]()}
-              </button>
-              <button
-                className="hoverable-danger"
-                style={{ ...buttonStyle("destructive"), flex: 1, ...(pattern.node_count <= 1 ? sharedStyles.btnDisabled : {}) }}
+              </Button>
+              <Button
+                variant="destructive"
+                layoutStyle={{ flex: 1 }}
                 disabled={pattern.node_count <= 1}
                 onClick={() => setPendingRemove(activeNode)}
               >
                 {m["post_edit.split_remove"]()}
-              </button>
+              </Button>
             </Inline>
           </div>
         </div>

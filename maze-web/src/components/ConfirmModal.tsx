@@ -1,5 +1,6 @@
 import React from "react";
 import { Modal } from "./Modal";
+import { Button } from "./Button";
 import { ui, radius, dialogSpacing, typography, inset } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -14,8 +15,8 @@ export function ConfirmModal({ message, onConfirm, onCancel }: Props) {
     <Modal title={m["common.confirm"]()} size="approve" onClose={onCancel}>
       <div style={styles.message}>{message}</div>
       <div style={styles.footer}>
-        <button className="hoverable" style={styles.btnCancel} onClick={onCancel}>{m["common.cancel"]()}</button>
-        <button className="hoverable-accent" style={styles.btnOk} onClick={onConfirm}>{m["common.ok"]()}</button>
+        <Button variant="secondary" layoutStyle={styles.btnCancel} onClick={onCancel}>{m["common.cancel"]()}</Button>
+        <Button variant="primary" layoutStyle={styles.btnOk} onClick={onConfirm}>{m["common.ok"]()}</Button>
       </div>
     </Modal>
   );
@@ -35,18 +36,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnOk: {
     ...typography.control,
-    background: ui.accent.base,
-    border: "none",
-    color: ui.text.inverse,
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
   },
   btnCancel: {
     ...typography.control,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.strong}`,
-    color: ui.text.secondary,
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,

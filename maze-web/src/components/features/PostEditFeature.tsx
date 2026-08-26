@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PostEditTool } from "../../store/mazeStore";
-import { buttonStyle } from "../../styles/shared";
+import { Button } from "../Button";
 import { typography, muted, spacing } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { Switch } from "../Switch";
@@ -79,56 +79,51 @@ export function PostEditFeature() {
       <span style={styles.sectionLabel}>{m["preset.edges_tools"]()}</span>
       <Grid templateColumns="1fr 1fr" gap="itemGap">
         {getEdgeTools().map(([t, label]) => (
-          <button
+          <Button
             key={t}
-            className={tool === t ? "hoverable-accent" : "hoverable"}
-            style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+            variant={tool === t ? "toggle-selected" : "toggle"}
             onClick={() => setTool(t)}
           >
             {label}
-          </button>
+          </Button>
         ))}
       </Grid>
       <span style={styles.sectionLabel}>{m["preset.vertex_tools"]()}</span>
       <Stack gap="itemGap">
         {getTeleportTools().map(([t, label]) => (
-          <button
+          <Button
             key={t}
-            className={tool === t ? "hoverable-accent" : "hoverable"}
-            style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+            variant={tool === t ? "toggle-selected" : "toggle"}
             onClick={() => setTool(t)}
           >
             {label}
-          </button>
+          </Button>
         ))}
         <Grid templateColumns="1fr 1fr" gap="itemGap">
           {getVertexTools().map(([t, label]) => (
-            <button
+            <Button
               key={t}
-              className={tool === t ? "hoverable-accent" : "hoverable"}
-              style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+              variant={tool === t ? "toggle-selected" : "toggle"}
               onClick={() => setTool(t)}
             >
               {label}
-            </button>
+            </Button>
           ))}
         </Grid>
-        <button
-          className={tool === "manage_split_nodes" ? "hoverable-accent" : "hoverable"}
-          style={buttonStyle(tool === "manage_split_nodes" ? "toggle-active" : "toggle")}
+        <Button
+          variant={tool === "manage_split_nodes" ? "toggle-selected" : "toggle"}
           onClick={() => setTool("manage_split_nodes")}
         >
           {m["post_edit.manage_split_nodes_tool"]()}
-        </button>
+        </Button>
         {floors.length > 1 && getVerticalTools().map(([t, label]) => (
-          <button
+          <Button
             key={t}
-            className={tool === t ? "hoverable-accent" : "hoverable"}
-            style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+            variant={tool === t ? "toggle-selected" : "toggle"}
             onClick={() => setTool(t)}
           >
             {label}
-          </button>
+          </Button>
         ))}
       </Stack>
 
@@ -142,38 +137,36 @@ export function PostEditFeature() {
 
       <span style={styles.sectionLabel}>{m["post_edit.management"]()}</span>
       <Stack gap="itemGap">
-        <button
-          className={tool === "reset" ? "hoverable-danger" : "hoverable"}
-          style={buttonStyle(tool === "reset" ? "toggle-danger-active" : "toggle-danger")}
+        <Button
+          variant={tool === "reset" ? "toggle-danger-selected" : "toggle-danger"}
           onClick={() => setTool("reset")}
         >
           {m["post_edit.reset"]()}
-        </button>
+        </Button>
 
-        <button
-          className={tool === "delete" ? "hoverable-danger" : "hoverable"}
-          style={buttonStyle(tool === "delete" ? "toggle-danger-active" : "toggle-danger")}
+        <Button
+          variant={tool === "delete" ? "toggle-danger-selected" : "toggle-danger"}
           onClick={() => setTool("delete")}
         >
           {m["post_edit.delete"]()}
-        </button>
+        </Button>
 
-        <button
-          className="hoverable-danger"
-          style={{ ...buttonStyle("destructive"), width: "100%" }}
+        <Button
+          variant="destructive"
+          layoutStyle={{ width: "100%" }}
           onClick={() => setConfirmReset(true)}
         >
           {m["post_edit.reset_to_generation"]()}
-        </button>
+        </Button>
 
-        <button
-          className="hoverable-accent"
-          style={{ ...buttonStyle("primary"), width: "100%" }}
+        <Button
+          variant="primary"
+          layoutStyle={{ width: "100%" }}
           disabled={autoConfirm || !hasEdges}
           onClick={() => void confirmPostEdit()}
         >
           {m["post_edit.confirm"]()}
-        </button>
+        </Button>
 
         <Inline gap="groupGap" justify="space-between">
           <span style={styles.autoConfirmLabel}>{m["post_edit.auto_confirm"]()}</span>

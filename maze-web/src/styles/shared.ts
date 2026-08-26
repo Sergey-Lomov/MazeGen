@@ -97,11 +97,11 @@ export const sharedStyles = {
     cursor: "default",
   } satisfies React.CSSProperties,
 
-  // Toggle button active state
-  toggleBtnActive: {
-    background: ui.accent.base,
-    color: ui.text.inverse,
-    border: `1px solid ${ui.accent.base}`,
+  // Toggle button selected state
+  toggleBtnSelected: {
+    background: ui.state.selected,
+    color: ui.text.primary,
+    border: `1px solid ${ui.state.selected}`,
   } satisfies React.CSSProperties,
 
   // Icon/close button (no bg/border)
@@ -178,75 +178,34 @@ export const sharedStyles = {
   } satisfies React.CSSProperties,
 } as const;
 
-type ButtonVariant = "primary" | "toggle" | "toggle-active" | "destructive" | "toggle-danger" | "toggle-danger-active";
+type ButtonVariant = "primary" | "secondary" | "toggle" | "toggle-selected" | "destructive" | "toggle-danger" | "toggle-danger-selected";
 
+// Rest/hover/active colors for every variant live in the matching CSS class (`global.css`,
+// `.btn-*`), not here — an inline `background`/`border`/`color` always outranks a CSS class
+// regardless of selector specificity (except `!important`), which silently defeated `:hover`/
+// `:active` for every one of these variants (GitHub issue #329). `buttonStyle()` only returns
+// layout that has no visual-state variation (padding, flex, radius, typography, cursor).
 export function buttonStyle(variant: ButtonVariant): React.CSSProperties {
-  switch (variant) {
-    case "primary":
-      return {
-        ...typography.control,
-        background: ui.accent.base,
-        border: "none",
-        color: ui.text.inverse,
-        padding: inset.toolButtonInset,
-        cursor: "default",
-        borderRadius: radius.sm,
-      };
-    case "toggle":
-      return {
-        ...typography.control,
-        flex: 1,
-        padding: inset.toolButtonInset,
-        border: `1px solid ${ui.border.strong}`,
-        background: ui.bg.input,
-        color: ui.text.tertiary,
-        borderRadius: radius.sm,
-        cursor: "default",
-      };
-    case "toggle-active":
-      return {
-        ...typography.control,
-        flex: 1,
-        padding: inset.toolButtonInset,
-        border: `1px solid ${ui.accent.base}`,
-        background: ui.accent.base,
-        color: ui.text.inverse,
-        borderRadius: radius.sm,
-        cursor: "default",
-      };
-    case "destructive":
-      return {
-        ...typography.control,
-        padding: inset.toolButtonInset,
-        border: `1px solid ${ui.text.error}`,
-        background: ui.bg.input,
-        color: ui.text.error,
-        borderRadius: radius.sm,
-        cursor: "default",
-      };
-    // A toggle tool whose selected state should read as dangerous (GitHub issue #327's unified
-    // Reset tool) — same shape as `toggle`/`toggle-active`, red instead of accent.
-    case "toggle-danger":
-      return {
-        ...typography.control,
-        flex: 1,
-        padding: inset.toolButtonInset,
-        border: `1px solid ${ui.text.error}`,
-        background: ui.bg.input,
-        color: ui.text.error,
-        borderRadius: radius.sm,
-        cursor: "default",
-      };
-    case "toggle-danger-active":
-      return {
-        ...typography.control,
-        flex: 1,
-        padding: inset.toolButtonInset,
-        border: `1px solid ${ui.text.error}`,
-        background: ui.text.error,
-        color: ui.text.inverse,
-        borderRadius: radius.sm,
-        cursor: "default",
-      };
-  }
+  const flex = variant === "primary" || variant === "secondary" || variant === "destructive" ? {} : { flex: 1 };
+  return {
+    ...typography.control,
+    ...flex,
+    padding: inset.toolButtonInset,
+    borderRadius: radius.sm,
+    cursor: "default",
+  };
+}
+
+const buttonClassByVariant: Record<ButtonVariant, string> = {
+  primary: "btn-primary",
+  secondary: "btn-secondary",
+  toggle: "btn-toggle",
+  "toggle-selected": "btn-toggle-selected",
+  destructive: "btn-destructive",
+  "toggle-danger": "btn-toggle-danger",
+  "toggle-danger-selected": "btn-toggle-danger-selected",
+};
+
+export function buttonClass(variant: ButtonVariant): string {
+  return buttonClassByVariant[variant];
 }

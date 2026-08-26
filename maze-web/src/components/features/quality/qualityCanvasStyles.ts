@@ -1,6 +1,6 @@
 import React from "react";
 import { ui, radius, typography, muted, disabled, spacing, inset, indent } from "../../../styles/theme";
-import { sharedStyles } from "../../../styles/shared";
+import { buttonStyle, sharedStyles } from "../../../styles/shared";
 
 export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   root: {
@@ -36,11 +36,7 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
     textAlign: "center" as const,
   },
   addStageBtn: {
-    ...typography.control,
-    background: "none",
-    border: `1px solid ${ui.border.strong}`,
-    color: ui.text.tertiary,
-    cursor: "default",
+    ...buttonStyle("primary"),
     padding: `${inset.buttonInsetY}px 0`,
     borderRadius: radius.md,
     textAlign: "center" as const,

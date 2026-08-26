@@ -1,4 +1,5 @@
 import { sharedStyles } from "../../styles/shared";
+import { Button } from "../Button";
 import type { NodeStatsDto, SpatialEdgeStatsDto, ElementsStatsDto, GraphStatsDto, VerticalStatsDto } from "../../wasm/types";
 import { titleKeyForTopology } from "../../pixi/splitPatternTitles";
 import { styles, messageFor } from "./analyticsStyles";
@@ -91,9 +92,9 @@ export function ElementsSection({ stats, onOpenSplitStats }: { stats: ElementsSt
         <StatRow key={i} label={messageFor(titleKeyForTopology(group.topology)!)} count={group.count} />
       ))}
       {onOpenSplitStats && stats.split_groups.length > 0 && (
-        <button className="hoverable" style={{ ...sharedStyles.btnMuted, ...styles.patternStatsButton }} onClick={onOpenSplitStats}>
+        <Button variant="secondary" layoutStyle={styles.patternStatsButton} onClick={onOpenSplitStats}>
           {m["analytics.split_pattern_stats_button"]()}
-        </button>
+        </Button>
       )}
     </div>
   );

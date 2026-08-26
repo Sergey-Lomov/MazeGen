@@ -29,7 +29,7 @@
   "tessellation.reset_warning": "Изменение тесселяции приведёт к потере большинства настроек и результатов генерации. Продолжить?",
 
   "floors.title": "Этажи",
-  "floors.add_floor": "+ Добавить этаж",
+  "floors.add_floor": "Добавить этаж",
   "floors.rename_floor": "Переименовать этаж",
   "floors.remove_floor": "Удалить этаж",
   "floors.move_floor_up": "Переместить этаж вверх",

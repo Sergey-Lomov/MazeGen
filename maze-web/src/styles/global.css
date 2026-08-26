@@ -118,13 +118,202 @@ input[type="number"]::-webkit-inner-spin-button {
   background: #2d2d2d;
 }
 
+.hoverable:active {
+  background: #282828; /* darken(#2d2d2d, 0.12) */
+}
+
 .hoverable-accent:hover {
   background: #4c83c1;
+}
+
+.hoverable-accent:active {
+  background: #315e8f; /* ui.accent.active = darken(base.accent, 0.15) */
 }
 
 .hoverable-danger:hover {
   border-color: #ff8181;
   color: #ff8181;
+}
+
+.hoverable-danger:active {
+  border-color: #ff3535; /* darken(base.error, 0.15) */
+  color: #ff3535;
+}
+
+/* Rectangular text-label button variants (`buttonStyle()`/`shared.ts`, GitHub issue #329).
+   Colors live entirely here, not as an inline `style.background`/`border`/`color` from
+   `buttonStyle()` — an inline value always outranks a CSS class regardless of selector
+   specificity, which is why `.hoverable`/`.hoverable-accent`/`.hoverable-danger` above never
+   actually took effect on these buttons despite being applied as a className. Idle/hover/active/
+   selected/disabled hexes below are a fixed palette (not derived via `lighten()`/`darken()`).
+   `:active` keeps its own (darker) color plus a `translateY(1px)` press cue — a pure
+   color darken on `:active` reads as a flash when arriving from the lighter `:hover` state. */
+
+.btn-primary {
+  background: #3a6ea8; /* Action idle */
+  border: none;
+  color: #ffffff; /* ui.text.inverse */
+}
+
+.btn-primary:hover {
+  background: #4a7eb8; /* Action hover */
+}
+
+.btn-primary:active {
+  background: #315f91; /* Action active */
+  transform: translateY(1px);
+}
+
+.btn-primary:disabled {
+  background: #3a3d40; /* disabled (universal) */
+  color: #666666; /* ui.text.disabled */
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid #626a72;
+  color: #c5c9cd;
+}
+
+.btn-secondary:hover {
+  background: #292e33;
+  border-color: #77818a;
+  color: #e0e3e6;
+}
+
+.btn-secondary:active {
+  background: #25292d;
+  border-color: #555e66;
+  color: #d0d4d7;
+  transform: translateY(1px);
+}
+
+.btn-secondary:disabled {
+  background: transparent;
+  border-color: #3d4247;
+  color: #666c71;
+}
+
+.btn-toggle {
+  background: #39424a; /* Selector idle */
+  border: 1px solid #555c63;
+  color: #aaaaaa; /* ui.text.tertiary */
+}
+
+.btn-toggle:hover {
+  background: #46515b; /* Selector hover */
+  border-color: #68727b;
+}
+
+.btn-toggle:active {
+  background: #323a41; /* Selector active */
+  border-color: #626a72;
+  transform: translateY(1px);
+}
+
+.btn-toggle:disabled {
+  background: #3a3d40; /* disabled (universal) */
+  border-color: #45484b;
+  color: #666666; /* ui.text.disabled */
+}
+
+.btn-toggle-selected {
+  background: #3a6ea8; /* Selector selected */
+  border: 1px solid transparent;
+  color: #e0e0e0; /* ui.text.primary */
+}
+
+.btn-toggle-selected:hover {
+  background: #4a7eb8; /* Selector selected hover */
+}
+
+.btn-toggle-selected:active {
+  background: #315f91; /* Selector selected active */
+  transform: translateY(1px);
+}
+
+.btn-toggle-selected:disabled {
+  background: #3a3d40; /* disabled (universal) */
+  color: #666666; /* ui.text.disabled */
+}
+
+.btn-destructive {
+  background: #b84c4c; /* Destructive idle */
+  border: none;
+  color: #ffffff; /* ui.text.inverse */
+}
+
+.btn-destructive:hover {
+  background: #c85a5a; /* Destructive hover */
+}
+
+.btn-destructive:active {
+  background: #9f4141; /* Destructive active */
+  transform: translateY(1px);
+}
+
+.btn-destructive:disabled {
+  background: #3a3d40; /* disabled (universal) */
+  color: #666666; /* ui.text.disabled */
+}
+
+/* Unselected destructive selector — deliberately muted so it doesn't outshine the selected state. */
+.btn-toggle-danger {
+  background: #794348;
+  border: 1px solid #965a60;
+  color: #ffffff; /* ui.text.inverse */
+}
+
+.btn-toggle-danger:hover {
+  background: #8d4e55; /* Destructive selector hover */
+  border-color: #a46168;
+}
+
+.btn-toggle-danger:active {
+  background: #683b40; /* Destructive selector active */
+  border-color: #874a50;
+  transform: translateY(1px);
+}
+
+.btn-toggle-danger:disabled {
+  background: #3a3d40; /* disabled (universal) */
+  border-color: #45484b;
+  color: #666666; /* ui.text.disabled */
+}
+
+/* Selected — the brighter "Destructive idle" table color, deliberately same as .btn-destructive. */
+.btn-toggle-danger-selected {
+  background: #b84c4c;
+  border: 1px solid transparent;
+  color: #ffffff; /* ui.text.inverse */
+}
+
+.btn-toggle-danger-selected:hover {
+  background: #c85a5a; /* Destructive hover */
+}
+
+.btn-toggle-danger-selected:active {
+  background: #9f4141; /* Destructive active */
+  transform: translateY(1px);
+}
+
+.btn-toggle-danger-selected:disabled {
+  background: #3a3d40; /* disabled (universal) */
+  color: #666666; /* ui.text.disabled */
+}
+
+/* :disabled wins the cascade for background/border/color (declared after :active), but the
+   :active rules' `transform: translateY(1px)` has no :disabled counterpart to lose to — so a
+   disabled button still shifts on mousedown even though it never fires onClick. Cancel it here
+   for every variant instead of repeating `transform: none` in each `:disabled` block above. */
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-toggle:disabled,
+.btn-toggle-selected:disabled,
+.btn-destructive:disabled,
+.btn-toggle-danger:disabled,
+.btn-toggle-danger-selected:disabled {
+  transform: none;
 }
 
 /* For elements with their own colored background (severity bubbles) — brightens in place

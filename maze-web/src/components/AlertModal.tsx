@@ -1,5 +1,6 @@
 import React from "react";
 import { Modal } from "./Modal";
+import { Button } from "./Button";
 import { ui, radius, dialogSpacing, typography, inset } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
@@ -13,7 +14,7 @@ export function AlertModal({ message, onClose }: Props) {
     <Modal title={m["common.notice"]()} size="approve" onClose={onClose}>
       <div style={styles.message}>{message}</div>
       <div style={styles.footer}>
-        <button className="hoverable-accent" style={styles.btnOk} onClick={onClose}>{m["common.ok"]()}</button>
+        <Button variant="primary" layoutStyle={styles.btnOk} onClick={onClose}>{m["common.ok"]()}</Button>
       </div>
     </Modal>
   );
@@ -33,9 +34,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnOk: {
     ...typography.control,
-    background: ui.accent.base,
-    border: "none",
-    color: ui.text.inverse,
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,

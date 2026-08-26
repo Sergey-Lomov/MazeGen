@@ -6,6 +6,7 @@ import { ConfirmModal } from "../ConfirmModal";
 import { Stack } from "../Layout";
 import { ui, radius, typography, muted, spacing, inset } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
+import { Button } from "../Button";
 import * as m from "~/paraglide/messages";
 
 type PendingAction =
@@ -138,9 +139,9 @@ export function FloorsFeature() {
           </div>
         );
       })}
-      <button className="hoverable" style={styles.addFloorBtn} onClick={() => addFloor()}>
+      <Button variant="primary" layoutStyle={styles.addFloorBtn} onClick={() => addFloor()}>
         {m["floors.add_floor"]()}
-      </button>
+      </Button>
       {pending !== null && (
         <ConfirmModal
           message={pending.kind === "remove" ? pending.message : m["floors.confirm_reorder"]()}
@@ -225,11 +226,6 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "default",
   },
   addFloorBtn: {
-    ...typography.control,
-    background: "none",
-    border: `1px solid ${ui.border.strong}`,
-    color: ui.text.tertiary,
-    cursor: "default",
     padding: `${inset.buttonInsetY}px 0`,
     borderRadius: radius.md,
     textAlign: "center",

@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { ItemSelectDialog } from "./ItemSelectDialog";
 import { WarningBubble } from "../WarningBubble";
-import { ui, radius, typography, inset } from "../../styles/theme";
+import { Button } from "../Button";
+import { radius, typography, inset } from "../../styles/theme";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -63,14 +64,14 @@ export function AlgorithmSelectDialog({ onClose }: Props) {
 
   const footer = (
     <>
-      <button className="hoverable" style={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</button>
-      <button
-        className="hoverable-accent"
-        style={styles.btnPrimary}
+      <Button variant="secondary" layoutStyle={styles.btnSecondary} onClick={onClose}>{m["common.cancel"]()}</Button>
+      <Button
+        variant="primary"
+        layoutStyle={styles.btnPrimary}
         onClick={handleSelect}
       >
         {m["common.select"]()}
-      </button>
+      </Button>
     </>
   );
 
@@ -95,18 +96,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnPrimary: {
     ...typography.control,
-    background: ui.accent.base,
-    border: "none",
-    color: ui.text.inverse,
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,
   },
   btnSecondary: {
     ...typography.control,
-    background: ui.bg.input,
-    border: `1px solid ${ui.border.strong}`,
-    color: ui.text.secondary,
     padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
     cursor: "default",
     borderRadius: radius.sm,

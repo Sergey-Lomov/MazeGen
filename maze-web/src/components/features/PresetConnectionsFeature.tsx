@@ -5,7 +5,7 @@ import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPa
 import { computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
 import { presetEndpointLevelLabel, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
-import { buttonStyle } from "../../styles/shared";
+import { Button } from "../Button";
 import { ui, typography, muted, spacing } from "../../styles/theme";
 import { darken } from "../../styles/palette";
 import { ConfirmModal } from "../ConfirmModal";
@@ -220,85 +220,78 @@ export function PresetConnectionsFeature() {
       <span style={styles.sectionLabel}>{m["preset.edges_tools"]()}</span>
       <Grid templateColumns="1fr 1fr" gap="itemGap">
         {getEdgeTools().map(([t, label]) => (
-          <button
+          <Button
             key={t}
-            className={tool === t ? "hoverable-accent" : "hoverable"}
-            style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+            variant={tool === t ? "toggle-selected" : "toggle"}
             onClick={() => setTool(t)}
           >
             {label}
-          </button>
+          </Button>
         ))}
       </Grid>
 
       <span style={styles.sectionLabel}>{m["preset.vertex_tools"]()}</span>
       <Stack gap="itemGap">
         {getVertexTools().map(([t, label]) => (
-          <button
+          <Button
             key={t}
-            className={tool === t ? "hoverable-accent" : "hoverable"}
-            style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+            variant={tool === t ? "toggle-selected" : "toggle"}
             onClick={() => setTool(t)}
           >
             {label}
-          </button>
+          </Button>
         ))}
         <Grid templateColumns="1fr 1fr" gap="itemGap">
           {getStartFinishTools().map(([t, label]) => (
-            <button
+            <Button
               key={t}
-              className={tool === t ? "hoverable-accent" : "hoverable"}
-              style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+              variant={tool === t ? "toggle-selected" : "toggle"}
               onClick={() => setTool(t)}
             >
               {label}
-            </button>
+            </Button>
           ))}
         </Grid>
-        <button
-          className={tool === "manage_split_nodes" ? "hoverable-accent" : "hoverable"}
-          style={buttonStyle(tool === "manage_split_nodes" ? "toggle-active" : "toggle")}
+        <Button
+          variant={tool === "manage_split_nodes" ? "toggle-selected" : "toggle"}
           onClick={() => setTool("manage_split_nodes")}
         >
           {m["post_edit.manage_split_nodes_tool"]()}
-        </button>
+        </Button>
         {floors.length > 1 && getVerticalTools().map(([t, label]) => (
-          <button
+          <Button
             key={t}
-            className={tool === t ? "hoverable-accent" : "hoverable"}
-            style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+            variant={tool === t ? "toggle-selected" : "toggle"}
             onClick={() => setTool(t)}
           >
             {label}
-          </button>
+          </Button>
         ))}
       </Stack>
 
       <span style={styles.sectionLabel}>{m["preset.generation_tools"]()}</span>
       <Grid templateColumns="1fr 1fr" gap="itemGap">
         {getGenerationTools().map(([t, label]) => (
-          <button
+          <Button
             key={t}
-            className={tool === t ? "hoverable-accent" : "hoverable"}
-            style={buttonStyle(tool === t ? "toggle-active" : "toggle")}
+            variant={tool === t ? "toggle-selected" : "toggle"}
             onClick={() => setTool(t)}
           >
             {label}
-          </button>
+          </Button>
         ))}
       </Grid>
 
       <span style={styles.sectionLabel}>{m["preset.default_edge"]()}</span>
       <Grid templateColumns="1fr 1fr 1fr" gap="itemGap">
         {(["undefined", "wall", "passage"] as const).map((s) => (
-          <button
+          <Button
             key={s}
-            className={defaultEdgeState === s ? "hoverable-accent" : "hoverable"}
-            style={buttonStyle(defaultEdgeState === s ? "toggle-active" : "toggle")}
+            variant={defaultEdgeState === s ? "toggle-selected" : "toggle"}
             onClick={() => setDefaultEdgeState(s)}
           >
             {m[`preset.default_${s}` as "preset.default_undefined" | "preset.default_wall" | "preset.default_passage"]()}
-          </button>
+          </Button>
         ))}
       </Grid>
 
@@ -327,38 +320,37 @@ export function PresetConnectionsFeature() {
 
       <span style={styles.sectionLabel}>{m["preset.control"]()}</span>
       <Stack gap="itemGap">
-        <button
-          className={tool === "clear" ? "hoverable-danger" : "hoverable"}
-          style={buttonStyle(tool === "clear" ? "toggle-danger-active" : "toggle-danger")}
+        <Button
+          variant={tool === "clear" ? "toggle-danger-selected" : "toggle-danger"}
           onClick={() => setTool("clear")}
         >
           {m["preset.clear_tool"]()}
-        </button>
-        <button
-          className={lockedNodes.size === 0 ? undefined : "hoverable-danger"}
-          style={{ ...buttonStyle("destructive"), width: "100%", ...(lockedNodes.size === 0 ? styles.controlBtnDisabled : {}) }}
+        </Button>
+        <Button
+          variant="destructive"
+          layoutStyle={{ width: "100%" }}
           disabled={lockedNodes.size === 0}
           onClick={clearLockedNodes}
         >
           {m["preset.reset_locks"]()}
-        </button>
-        <button
-          className={hasInvalid ? "hoverable-danger" : undefined}
-          style={{ ...buttonStyle("destructive"), width: "100%", ...(hasInvalid ? {} : styles.controlBtnDisabled) }}
+        </Button>
+        <Button
+          variant="destructive"
+          layoutStyle={{ width: "100%" }}
           disabled={!hasInvalid}
           onClick={() => clearInvalidPresetConnections()}
           onMouseEnter={() => setHighlightInvalidPresets(true)}
           onMouseLeave={() => setHighlightInvalidPresets(false)}
         >
           {m["preset.clear_invalid"]({ count: invalidCount })}
-        </button>
-        <button
-          className="hoverable-danger"
-          style={{ ...buttonStyle("destructive"), width: "100%" }}
+        </Button>
+        <Button
+          variant="destructive"
+          layoutStyle={{ width: "100%" }}
           onClick={() => setConfirmReset(true)}
         >
           {m["common.reset_all"]()}
-        </button>
+        </Button>
         <div style={styles.autoLockRow}>
           <div style={styles.autoLockLeft}>
             <span style={styles.autoLockLabel}>{m["preset.auto_lock"]()}</span>
@@ -432,10 +424,6 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     ...typography.caption,
-  },
-  controlBtnDisabled: {
-    opacity: 0.25,
-    cursor: "default",
   },
   originLabel: {
     ...muted(typography.body),

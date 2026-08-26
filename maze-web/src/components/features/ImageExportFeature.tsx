@@ -1,7 +1,7 @@
 import { Settings } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { RenderModeId, ExportFormatId, PngExportSettings } from "../../store/mazeStore";
-import { buttonStyle } from "../../styles/shared";
+import { Button } from "../Button";
 import { ui } from "../../styles/theme";
 import { Stack, Inline } from "../Layout";
 import { SidePanel } from "../SidePanel";
@@ -50,28 +50,28 @@ export function ImageExportFeature({ onExportPng }: { onExportPng: (settings: Pn
   return (
     <Stack gap="itemGap">
       {RENDER_MODES.map((mode) => (
-        <button
+        <Button
           key={mode.id}
-          className={mode.id === activeRenderMode ? "hoverable-accent" : "hoverable"}
-          style={{ ...buttonStyle(mode.id === activeRenderMode ? "toggle-active" : "toggle"), width: "100%" }}
+          variant={mode.id === activeRenderMode ? "toggle-selected" : "toggle"}
+          layoutStyle={{ width: "100%" }}
           onClick={() => handleClick(mode.id)}
         >
           {mode.label()}
-        </button>
+        </Button>
       ))}
 
       <div style={{ borderTop: `1px solid ${ui.border.default}` }} />
 
       {EXPORT_FORMATS.map((format) => (
         <Inline key={format.id} gap="itemGap">
-          <button
-            className="hoverable"
-            style={{ ...buttonStyle("toggle"), flex: 1 }}
+          <Button
+            variant="primary"
+            layoutStyle={{ flex: 1 }}
             disabled={activeRenderMode === null}
             onClick={() => handleExportClick(format.id)}
           >
             {format.label()}
-          </button>
+          </Button>
           <HoverIconButton
             onClick={() => handleFormatGearClick(format.id)}
             title={m["image_export.format.settings_tooltip"]({ format: format.label() })}
