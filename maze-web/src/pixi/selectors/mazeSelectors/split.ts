@@ -15,11 +15,13 @@ const BRIDGE_DECK_WIDTH_FRAC = 0.6;
 const TRIPLE_BRIDGE_TAPER_FRAC = 0.08;
 const TRIPLE_BRIDGE_DECK_WIDTH_FRAC = 0.4;
 
-/** An ordinary bridge keeps its wider 60% deck, but uses the same taper angle as the narrower
- *  triple bridge. Each edge moves inward by `(1 - deckWidth) / 2`; preserving the ratio of that
- *  transverse movement to the axial taper length gives a short ~5.33% narrowing/widening section
- *  instead of the old gradual 20% section. */
-const BRIDGE_TAPER_FRAC = TRIPLE_BRIDGE_TAPER_FRAC
+/** Square bridges retain their original gradual narrowing/widening section. */
+const SQUARE_BRIDGE_TAPER_FRAC = 0.2;
+
+/** A hex bridge keeps its wider 60% deck, but uses the same taper angle as the narrower triple
+ *  bridge. Each edge moves inward by `(1 - deckWidth) / 2`; preserving the ratio of that transverse
+ *  movement to the axial taper length gives a short ~5.33% narrowing/widening section. */
+const HEX_BRIDGE_TAPER_FRAC = TRIPLE_BRIDGE_TAPER_FRAC
   * (1 - BRIDGE_DECK_WIDTH_FRAC)
   / (1 - TRIPLE_BRIDGE_DECK_WIDTH_FRAC);
 
@@ -164,7 +166,7 @@ function buildBridgeShape(
   pointKey: string,
   throughFaces: [Seg, Seg],
   crossFaces: [Seg, Seg],
-  taperFrac: number = BRIDGE_TAPER_FRAC,
+  taperFrac: number = SQUARE_BRIDGE_TAPER_FRAC,
   deckWidthFrac: number = BRIDGE_DECK_WIDTH_FRAC,
 ): SplitSpecialShape {
   const throughMid0 = { x: (throughFaces[0].v0.x + throughFaces[0].v1.x) / 2, y: (throughFaces[0].v0.y + throughFaces[0].v1.y) / 2 };
@@ -397,15 +399,15 @@ export function buildSplitPassagesCore<Id>(
     } else if (specialShapeKind === "bridge" || specialShapeKind === "hex_bridge") {
       // Node 0 is the "through" pair (opposite faces, drawn as nothing — an ordinary passage);
       // node 1 is the "cross" pair, drawn as the bridge's own two edges: full width at the cross
-      // faces (100%), narrowing at the same angle as a triple bridge to a flat 60%-wide deck.
-      // Same construction for square and hex (GitHub issue #319) —
-      // `buildBridgeShape` only needs each node's own opposite-face pair.
+      // faces (100%), narrowing to a flat 60%-wide deck. Square bridges use their original gradual
+      // 20% taper; hex bridges use the sharper triple-bridge angle (GitHub issue #446).
       const throughIdx = connectedFaces(faceKindsByNode[0]);
       const crossIdx = connectedFaces(faceKindsByNode[1]);
       specialShapes.push(buildBridgeShape(
         pointKey,
         [faceInputs[throughIdx[0]], faceInputs[throughIdx[1]]],
         [faceInputs[crossIdx[0]], faceInputs[crossIdx[1]]],
+        specialShapeKind === "hex_bridge" ? HEX_BRIDGE_TAPER_FRAC : SQUARE_BRIDGE_TAPER_FRAC,
       ));
     } else if (specialShapeKind === "hex_diagonal") {
       // GitHub issue #319 — two nodes, neither an opposite-face pair. `buildHexDiagonalEndpoints`

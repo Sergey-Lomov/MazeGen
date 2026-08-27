@@ -514,7 +514,7 @@ describe("buildSplitPassages", () => {
     // The cross corridor is north/south (the through corridor, east/west, draws nothing of its
     // own). Each edge is a 4-point polyline: full width at the cross faces (y = 0 and y = -40 in
     // this test's cartesian mock, i.e. the tile's own top/bottom edges), narrowing to 60% width at
-    // the same angle as the narrower triple bridge, flat in between.
+    // the original gradual 20% taper, flat in between.
     expect(shape.edge0).toHaveLength(4);
     expect(shape.edge1).toHaveLength(4);
     const [e0start, e0taperIn, e0taperOut, e0end] = shape.edge0;
@@ -536,7 +536,7 @@ describe("buildSplitPassages", () => {
     });
     const taperAxialLength = width(midpoint(e0start, e1start), midpoint(e0taperIn, e1taperIn));
     const bridgeLength = width(midpoint(e0start, e1start), midpoint(e0end, e1end));
-    expect(taperAxialLength / bridgeLength).toBeCloseTo(0.08 * (1 - 0.6) / (1 - 0.4), 5);
+    expect(taperAxialLength / bridgeLength).toBeCloseTo(0.2, 5);
 
     // edge0/edge1 must run side by side, never crossing -- `nearestEndpointPairing` (mazeSelectors.ts)
     // picks which of crossFaces[1]'s two ends pairs with which of crossFaces[0]'s; picking the wrong
@@ -626,6 +626,15 @@ describe("hex special shapes", () => {
     const shape = specialShapes[0];
     expect(shape.kind).toBe("bridge");
     expect(shape.pointKey).toBe("0,0");
+    if (shape.kind !== "bridge") throw new Error("unreachable");
+    const midpoint = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+      x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+    });
+    const distance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+      Math.hypot(a.x - b.x, a.y - b.y);
+    const taperLength = distance(midpoint(shape.edge0[0], shape.edge1[0]), midpoint(shape.edge0[1], shape.edge1[1]));
+    const bridgeLength = distance(midpoint(shape.edge0[0], shape.edge1[0]), midpoint(shape.edge0[3], shape.edge1[3]));
+    expect(taperLength / bridgeLength).toBeCloseTo(0.08 * (1 - 0.6) / (1 - 0.4), 5);
   });
 
   it("recognizes a hex_triple_bridge topology (3 opposite-face pairs, node0 < node1 < node2 layering)", () => {
