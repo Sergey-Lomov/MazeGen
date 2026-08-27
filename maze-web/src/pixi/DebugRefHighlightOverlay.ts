@@ -9,6 +9,7 @@ import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { buildNodePositions } from "./tessellationGeometry";
 import type { Pos } from "./tessellationGeometry";
 import { drawOneWayWallHighlight } from "./renderers/wallUtils";
+import { buildCrossFloorMarkers, drawCrossFloorMarkers, type NodeCellResolver } from "./BaseGraphRenderer";
 
 const HIGHLIGHT_WIDTH = 3;
 const HIGHLIGHT_ALPHA = 1;
@@ -26,6 +27,25 @@ export interface DebugRefHighlightData {
   edges: EdgeDto[];
   ref: HoveredDebugRef | null;
   cfg: TessellationConfig;
+  /** Cross-floor lookup data used to render an edge/cycle ref with the same stub + floor badge
+   *  representation as graph overlays. Omitted callers retain the single-floor behaviour. */
+  resolveNodeLevel?: (id: number) => number | undefined;
+  resolveNodeCell?: NodeCellResolver;
+  activeFloorIndex?: number;
+}
+
+/** Directed endpoint pairs represented by an edge/cycle debug ref. A bidirectional edge bubble
+ *  contributes its implicit reverse direction so the shared graph marker draws no one-way arrow. */
+export function debugRefEdgePairs(ref: HoveredDebugRef): { from: number; to: number }[] {
+  if (ref.kind === "edge") {
+    const pair = { from: Number(ref.from), to: Number(ref.to) };
+    return ref.bidirectional ? [pair, { from: pair.to, to: pair.from }] : [pair];
+  }
+  if (ref.kind === "cycle") return ref.edges.map(([from, to]) => ({ from: Number(from), to: Number(to) }));
+  if (ref.kind === "issue" && ref.target?.kind === "cycle") {
+    return ref.target.edges.map(([from, to]) => ({ from: Number(from), to: Number(to) }));
+  }
+  return [];
 }
 
 /** Canvas highlighting for node/edge/cycle/region references hovered in the debug event tree
@@ -46,6 +66,8 @@ export class DebugRefHighlightOverlay {
   private readonly edgeContainer: Container;
   private readonly regionContainer: Container;
   private readonly wallContainer: Container;
+  private readonly crossFloorEdgesContainer: Container;
+  private readonly crossFloorNodesContainer: Container;
 
   private readonly edgeRenderer: NodeEdgeHighlightRenderer;
   private readonly regionRenderer: RegionHighlightRenderer;
@@ -55,9 +77,13 @@ export class DebugRefHighlightOverlay {
     this.edgeContainer = new Container();
     this.regionContainer = new Container();
     this.wallContainer = new Container();
+    this.crossFloorEdgesContainer = new Container();
+    this.crossFloorNodesContainer = new Container();
     container.addChild(this.edgeContainer);
     container.addChild(this.regionContainer);
     container.addChild(this.wallContainer);
+    container.addChild(this.crossFloorEdgesContainer);
+    container.addChild(this.crossFloorNodesContainer);
 
     this.edgeRenderer = new NodeEdgeHighlightRenderer(this.edgeContainer);
     this.regionRenderer = new RegionHighlightRenderer(this.regionContainer);
@@ -66,8 +92,10 @@ export class DebugRefHighlightOverlay {
   }
 
   render(data: DebugRefHighlightData): void {
-    const { nodes, allNodes, edges, ref, cfg } = data;
+    const { nodes, allNodes, edges, ref, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex } = data;
     this.wallGraphics.clear();
+    this.crossFloorEdgesContainer.removeChildren().forEach((child) => child.destroy());
+    this.crossFloorNodesContainer.removeChildren().forEach((child) => child.destroy());
 
     if (!ref || nodes.length === 0) {
       this.edgeRenderer.render([]);
@@ -79,16 +107,36 @@ export class DebugRefHighlightOverlay {
     const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg, directedPairs);
     const posOf = (id: bigint): Pos | undefined => nodePos.get(Number(id));
 
+    const renderCrossFloorRef = (target: HoveredDebugRef, color: number) => {
+      if (!resolveNodeLevel || !resolveNodeCell || activeFloorIndex === undefined) return;
+      const markers = buildCrossFloorMarkers(
+        debugRefEdgePairs(target), nodePos, resolveNodeLevel, resolveNodeCell,
+        activeFloorIndex, cfg, NODE_RADIUS,
+      );
+      const nodeMarkers = new Graphics();
+      for (const marker of markers) {
+        nodeMarkers.circle(marker.nodePos.x, marker.nodePos.y, NODE_RADIUS);
+        nodeMarkers.fill({ color, alpha: HIGHLIGHT_ALPHA });
+      }
+      this.crossFloorNodesContainer.addChild(nodeMarkers);
+      drawCrossFloorMarkers(
+        this.crossFloorEdgesContainer, this.crossFloorNodesContainer, markers, NODE_RADIUS,
+        color, color, color, HIGHLIGHT_WIDTH, HIGHLIGHT_ALPHA,
+      );
+    };
+
     switch (ref.kind) {
       case "edge": {
         const highlights = this.edgeHighlightsFor([[ref.from, ref.to]], posOf, [ref.bidirectional]);
         this.edgeRenderer.render(highlights);
+        renderCrossFloorRef(ref, canvas.debug.refHighlight);
         this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
         break;
       }
       case "cycle": {
         const highlights = this.edgeHighlightsFor(ref.edges, posOf);
         this.edgeRenderer.render(highlights);
+        renderCrossFloorRef(ref, canvas.debug.refHighlight);
         this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.refHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
         break;
       }
@@ -148,6 +196,7 @@ export class DebugRefHighlightOverlay {
           }
           const highlights = this.edgeHighlightsFor(lineEdges, posOf, undefined, canvas.debug.issueHighlight);
           this.edgeRenderer.render(highlights);
+          renderCrossFloorRef(ref, canvas.debug.issueHighlight);
           this.regionRenderer.render({ nodes: [], regionGroups: [], color: canvas.debug.issueHighlight, width: HIGHLIGHT_WIDTH, alpha: HIGHLIGHT_ALPHA, cfg });
         } else {
           this.edgeRenderer.render([]);
@@ -183,6 +232,8 @@ export class DebugRefHighlightOverlay {
     this.edgeRenderer.clear();
     this.regionRenderer.clear();
     this.wallGraphics.clear();
+    this.crossFloorEdgesContainer.removeChildren().forEach((child) => child.destroy());
+    this.crossFloorNodesContainer.removeChildren().forEach((child) => child.destroy());
   }
 
   destroy(): void {
@@ -192,5 +243,7 @@ export class DebugRefHighlightOverlay {
     this.edgeContainer.destroy();
     this.regionContainer.destroy();
     this.wallContainer.destroy();
+    this.crossFloorEdgesContainer.destroy({ children: true });
+    this.crossFloorNodesContainer.destroy({ children: true });
   }
 }

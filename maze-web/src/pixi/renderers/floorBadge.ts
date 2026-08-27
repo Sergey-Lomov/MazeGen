@@ -149,6 +149,7 @@ export function drawCrossFloorStub(
   nodeRadius: number,
   badgeRadius: number,
   lineWidth = 2,
+  lineAlpha = 1,
 ): void {
   const dx = badgePos.x - nodePos.x;
   const dy = badgePos.y - nodePos.y;
@@ -162,7 +163,9 @@ export function drawCrossFloorStub(
   const startPt: Pos = { x: nodePos.x + ux * nodeMargin, y: nodePos.y + uy * nodeMargin };
   const endPt: Pos = { x: badgePos.x - ux * badgeMargin, y: badgePos.y - uy * badgeMargin };
 
-  g.moveTo(startPt.x, startPt.y).lineTo(endPt.x, endPt.y).stroke({ width: lineWidth, color: lineColor });
+  g.moveTo(startPt.x, startPt.y).lineTo(endPt.x, endPt.y).stroke({
+    width: lineWidth, color: lineColor, alpha: lineAlpha, cap: "round",
+  });
 
   if (direction !== "none") {
     const segLen = Math.hypot(endPt.x - startPt.x, endPt.y - startPt.y);
@@ -170,7 +173,7 @@ export function drawCrossFloorStub(
       const sign = direction === "toBadge" ? 1 : -1;
       const midX = (startPt.x + endPt.x) / 2;
       const midY = (startPt.y + endPt.y) / 2;
-      drawDirectionArrow(g, midX, midY, ux * sign, uy * sign, TILE_SIZE * 0.18, lineColor);
+      drawDirectionArrow(g, midX, midY, ux * sign, uy * sign, TILE_SIZE * 0.18, lineColor, lineAlpha);
     }
   }
 }
@@ -205,7 +208,9 @@ export function drawCrossFloorBadge(
   floorColor: number,
 ): void {
   const g = new Graphics();
-  drawFloorBadge(g, nodesContainer, radius, badgePos.x, badgePos.y, color, borderColor, floorColor, targetFloorIndex + 1);
+  // The body must sit below the label `Text` that `drawFloorBadge` adds to the same container.
+  // Adding `g` afterwards covered the digit with the badge's opaque fill (GitHub issue #449).
   nodesContainer.addChild(g);
+  drawFloorBadge(g, nodesContainer, radius, badgePos.x, badgePos.y, color, borderColor, floorColor, targetFloorIndex + 1);
   attachFloorBadgeNavigation(nodesContainer, badgePos.x, badgePos.y, radius, targetFloorIndex);
 }
