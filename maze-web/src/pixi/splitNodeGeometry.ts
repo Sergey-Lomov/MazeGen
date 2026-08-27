@@ -203,9 +203,9 @@ export function specialSplitNodePoint(
  *  edge-pair Set from scratch (GitHub issue #318 follow-up: this was previously O(nodes) /
  *  O(edges) per split point, turning a single `buildNodePositions` call into O(splitPoints ×
  *  (nodes + edges)) work). */
-export function splitPointFaceKindsByNode(
-  pointNodes: { id: number; x: number; y: number }[],
-  byTile: ReadonlyMap<string, { id: number; x: number; y: number }[]>,
+export function splitPointFaceKindsByNode<Id extends string | number>(
+  pointNodes: { id: Id; x: number; y: number }[],
+  byTile: ReadonlyMap<string, { id: Id; x: number; y: number }[]>,
   directed: ReadonlySet<string>,
   cfg: TessellationConfig,
 ): SplitFaceKind[][] {
@@ -233,11 +233,11 @@ export function splitPointFaceKindsByNode(
  * omit/pass `[]` to always use the generic hub position. Lives here (not in `BaseGraphRenderer.ts`)
  * since it's pure tessellation geometry consumed by several unrelated overlays, not just the
  * graph-renderer hierarchy. */
-export function buildNodePositions(
-  nodes: { id: number; x: number; y: number }[],
+export function buildNodePositions<Id extends string | number>(
+  nodes: { id: Id; x: number; y: number }[],
   cfg: TessellationConfig,
-  directedPairs: { from: number; to: number }[] = [],
-): Map<number, Pos> {
+  directedPairs: { from: Id; to: Id }[] = [],
+): Map<Id, Pos> {
   const byTile = new Map<string, typeof nodes>();
   for (const node of nodes) {
     const key = `${node.x}:${node.y}`;
@@ -253,7 +253,7 @@ export function buildNodePositions(
     ? new Set(directedPairs.map(({ from, to }) => `${from}->${to}`))
     : null;
 
-  const nodePos = new Map<number, Pos>();
+  const nodePos = new Map<Id, Pos>();
   for (const group of byTile.values()) {
     const center = getCellCenter(group[0].x, group[0].y, cfg);
     if (group.length <= 1) {
