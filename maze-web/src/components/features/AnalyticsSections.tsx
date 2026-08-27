@@ -80,17 +80,28 @@ export function SubsectionTitle({ label, onOpenInfo }: { label: string; onOpenIn
 }
 
 export function ElementsSection({ stats, onOpenSplitStats }: { stats: ElementsStatsDto; onOpenSplitStats?: () => void }) {
-  const namedSplitGroups = stats.split_groups.filter((g) => titleKeyForTopology(g.topology) != null);
+  const namedSplitOrder: Record<string, number> = {
+    "split_pattern_title.bridge": 0,
+    "split_pattern_title.double_bridge": 1,
+    "split_pattern_title.triple_corridor": 2,
+  };
+  const namedSplitGroups = stats.split_groups
+    .filter((g) => titleKeyForTopology(g.topology) != null)
+    .sort((a, b) => {
+      const aKey = titleKeyForTopology(a.topology)!;
+      const bKey = titleKeyForTopology(b.topology)!;
+      return (namedSplitOrder[aKey] ?? Number.MAX_SAFE_INTEGER) - (namedSplitOrder[bKey] ?? Number.MAX_SAFE_INTEGER);
+    });
   return (
     <div style={styles.statBlock}>
       <StatRow label={m["analytics.one_way_edges"]()} count={stats.one_way_passages} />
       <StatRow label={m["analytics.two_way_teleports"]()} count={stats.two_way_teleports} />
       <StatRow label={m["analytics.one_way_teleports"]()} count={stats.one_way_teleports} />
-      <StatRow label={m["analytics.split_tile_count"]()} count={stats.split_tile_count} />
-      <StatRow label={m["analytics.split_node_count"]()} count={stats.split_node_count} />
       {namedSplitGroups.map((group, i) => (
         <StatRow key={i} label={messageFor(titleKeyForTopology(group.topology)!)} count={group.count} />
       ))}
+      <StatRow label={m["analytics.split_tile_count"]()} count={stats.split_tile_count} />
+      <StatRow label={m["analytics.split_node_count"]()} count={stats.split_node_count} />
       {onOpenSplitStats && stats.split_groups.length > 0 && (
         <Button variant="secondary" layoutStyle={styles.patternStatsButton} onClick={onOpenSplitStats}>
           {m["analytics.split_pattern_stats_button"]()}
