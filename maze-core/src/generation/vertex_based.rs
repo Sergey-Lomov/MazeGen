@@ -5,9 +5,9 @@ mod vertex_based_vertical;
 use vertex_based_vertical::{add_vertical_passage_edge, try_vertical_growth_connect, try_vertical_cyclic_edge};
 #[cfg(test)]
 use vertex_based_vertical::{
-    VerticalKind, roll_vertical_balance, adjacent_level, resolve_vertical_passage_target,
+    resolve_vertical_passage_target,
     try_growth_vertical_passage, elevator_floor_candidates, longest_consecutive_run,
-    try_elevator, try_growth_elevator,
+    try_elevator,
 };
 
 use std::collections::HashSet;

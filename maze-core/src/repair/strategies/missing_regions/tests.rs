@@ -3,7 +3,6 @@ use super::grow::{grow_front, try_open_excess_neighbor, sever_from_parent, Opene
 use super::reuse::{filter_by_border, absorb_until_min_size, prioritize_candidates};
 use super::convert::{convert_region, membership_matches};
 use super::GrowContext;
-use crate::repair::draft::DraftMaze;
 use std::collections::HashMap as StdHashMap;
 use rand::SeedableRng;
 use crate::random::MazeRng;

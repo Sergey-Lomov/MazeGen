@@ -219,10 +219,8 @@ mod tests {
     use crate::graph::{Graph, EdgeKind};
     use crate::IdGenerator;
     use crate::space::{SquareTessellation, SquarePoint, square_rect, MultiLevelField};
-    use crate::generation::{SplitPattern, SplitPatternFace, SplitFaceRequirement};
     use crate::repair::params::build_params;
     use crate::repair::strategies::test_utils::apply_and_commit;
-    use crate::repair::strategies::split_core;
 
     fn no_params() -> StrategyParams {
         build_params(<AddSplitStrategy as RepairStrategy<SquareTessellation, MissingSplitTilesIssue>>::params(&strategy_unconstrained()), None)

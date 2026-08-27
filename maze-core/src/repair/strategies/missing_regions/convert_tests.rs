@@ -1,5 +1,4 @@
 use super::*;
-use super::super::*;
 use crate::graph::{Graph as G, EdgeKind as EK};
 use crate::IdGenerator;
 use crate::space::{SquareTessellation, square_rect, MultiLevelField};
