@@ -2,7 +2,7 @@ import { Container, Graphics } from "pixi.js";
 import type { TeleportEdge, TeleportLineStyle, TeleportGroupOverride } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
-import { canvas } from "../colorTokens";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { drawMarkerShape, markerBoundingHalfExtent } from "./markerShapes";
 import { drawDirectionArrow } from "./wallUtils";
 import { routeStraightConnectors, arrowPlacements, type RoutedConnector } from "./teleportConnectorRouting";
@@ -12,31 +12,11 @@ import { useMazeStore } from "../../store/mazeStore";
 import { attachFloorBadgeNavigation, drawFloorBadge, FLOOR_BADGE_STROKE_WIDTH } from "./floorBadge";
 import { coordKey, computeFloorBadges, resolvePointFillState, planGroupDrawOrder } from "./teleportGeometry";
 
-const SQUARE_STROKE_WIDTH = 3;
 /** Extra radius (GitHub issue #293 follow-up) beyond the shape's own drawn radius for a group's
  *  click hit area (only drawn when group customization + `interactive` are both on) — a shape
  *  drawn with `borderWidth: 0` has nothing visually marking its true clickable extent, so the hit
  *  circle is deliberately a bit larger than the shape itself rather than matching it exactly. */
 const HIT_AREA_PADDING = 4;
-
-const DEFAULT_LINE_STYLE: TeleportLineStyle = {
-  shape: "diamond",
-  cornerStyle: "round",
-  size: 0.16,
-  edgeColor: canvas.teleport.default,
-  edgeBorderColor: canvas.teleport.default,
-  borderWidth: SQUARE_STROKE_WIDTH,
-  edgeGapWidth: 3,
-  connectorColor: canvas.teleport.default,
-  connectorWidth: SQUARE_STROKE_WIDTH,
-  connectorStyle: "orthogonal",
-  arrowMode: "periodic",
-  arrowPeriod: 5,
-  arrowSize: 10,
-  connectorGapWidth: SQUARE_STROKE_WIDTH,
-  floorColor: canvas.floor.default,
-};
-
 
 /** Renders teleport connectors + markers into one persistent `Graphics` (`view`) per full
  *  `render()` call. GitHub issue #293's group-customization selection highlight (hide every group
@@ -69,7 +49,7 @@ export class TeleportRenderer {
   // `view` from scratch with the new selected key's visibility split, without recomputing
   // groups/routing from the raw `edges` again.
   private selectionGroups: TeleportGroup[] = [];
-  private selectionStyle: TeleportLineStyle = DEFAULT_LINE_STYLE;
+  private selectionStyle: TeleportLineStyle = DEFAULT_MAZE_RENDER_STYLE.teleport;
   private selectionGroupOverrides: Record<string, TeleportGroupOverride> = {};
   private selectionEdges: TeleportEdge[] = [];
   private selectionInteractive = false;
@@ -140,7 +120,7 @@ export class TeleportRenderer {
 
     this.renderLine(
       data.edges,
-      data.lineStyle ?? DEFAULT_LINE_STYLE,
+      data.lineStyle ?? DEFAULT_MAZE_RENDER_STYLE.teleport,
       data.groupCustomization ?? false,
       data.groupOverrides ?? {},
       data.interactive ?? false,

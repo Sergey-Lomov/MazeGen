@@ -7,7 +7,7 @@ import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron } from "./wallUt
 import { TILE_SIZE } from "../constants";
 import { navigateToFloor } from "./floorNavigation";
 import { computeElevatorBadgePositions, formatElevatorBadgeLabel } from "./elevatorBadgeLayout";
-import { canvas } from "../colorTokens";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 
 /** Same field shape as `MarkerSettings` (`storeTypes.ts`) plus `gapColor`, by design — kept as its
  *  own type since this lower-level renderer module must not depend on the store layer, same
@@ -83,14 +83,9 @@ export type VerticalConnectionStyle = {
   elevatorBadges: ElevatorBadgeSettings;
 };
 
-/** Dark accent for a one-way passage marker's entry border / exit fill (GitHub issue #347 fourth
- *  follow-up) — mirrors `DEFAULT_VERTICAL_SETTINGS`'s own `ONE_WAY_ACCENT_DARK`
- *  (`imageExportDefaults.ts`). */
-const ONE_WAY_ACCENT_DARK = 0x196c64;
-
 /** Fixed live-canvas `VerticalConnectionStyle` shared by every read-only/tool-driven view with no
  *  settings panel of its own for this (`GenerationRenderer`, `AnalyticsRenderer`, `PostEditRenderer`,
- *  `PresetConnectionsRenderer`) — same convention as `TeleportRenderer`'s own `DEFAULT_LINE_STYLE`
+ *  `PresetConnectionsRenderer`) — sourced from the same canonical style as `TeleportRenderer`'s
  *  fallback. Only `VectorByWallsRenderer`'s export panel lets the user configure this style
  *  (`buildVerticalConnectionStyle`). Previously duplicated byte-for-byte in all four renderer files
  *  (GitHub issue #337/#347) — the "no shared renderer instances across features" rule
@@ -100,66 +95,7 @@ const ONE_WAY_ACCENT_DARK = 0x196c64;
  *  vs. diamond); a two-way passage's own solid fill and a one-way passage's own empty (floor-colored)
  *  fill are what tell those two apart. Floor-number badges (GitHub issue #430) stay `enabled: false`
  *  — none of these four views has a settings panel to opt into them from. */
-export const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = {
-  style: "abstract",
-  twoWayPassageMarker: {
-    shape: "circle",
-    cornerStyle: "round",
-    fillColor: canvas.vertical.default,
-    borderColor: canvas.vertical.default,
-    borderWidth: 3,
-    gapWidth: 3,
-    gapColor: canvas.floor.default,
-    size: 0.22,
-  },
-  oneWayPassageMarker: {
-    shape: "circle",
-    cornerStyle: "round",
-    fillColor: canvas.vertical.default,
-    borderColor: canvas.vertical.default,
-    borderWidth: 3,
-    gapWidth: 3,
-    gapColor: canvas.floor.default,
-    size: 0.22,
-  },
-  elevatorMarker: {
-    shape: "diamond",
-    cornerStyle: "round",
-    fillColor: canvas.vertical.default,
-    borderColor: canvas.vertical.default,
-    borderWidth: 3,
-    gapWidth: 3,
-    gapColor: canvas.floor.default,
-    size: 0.22,
-  },
-  twoWayArrowColor: canvas.floor.default,
-  twoWayArrowSize: 0.75,
-  twoWayArrowStyle: "triangle",
-  twoWayArrowCornerStyle: "round",
-  oneWayArrowColor: canvas.floor.default,
-  oneWayArrowSize: 0.75,
-  oneWayArrowStyle: "triangle",
-  oneWayArrowCornerStyle: "round",
-  oneWayAccentColor: ONE_WAY_ACCENT_DARK,
-  elevatorArrowColor: canvas.floor.default,
-  elevatorArrowSize: 0.75,
-  elevatorArrowStyle: "triangle",
-  elevatorArrowCornerStyle: "round",
-  // `style: "abstract"` above means these decorative fields (GitHub issue #428) are never actually
-  // read — filled in only to satisfy `VerticalConnectionStyle`'s type.
-  decorativeStairsTwoWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
-  decorativeStairsOneWay: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
-  decorativeElevator: { lineColor: canvas.vertical.default, lineWidth: 3, size: 0.22 },
-  decorativeStairsArrowColor: canvas.floor.default,
-  decorativeStairsArrowSize: 0.75,
-  decorativeStairsAccentColor: ONE_WAY_ACCENT_DARK,
-  // Floor-number badges (GitHub issue #430) are a settings-panel-only opt-in — none of these
-  // read-only/tool-driven views has a settings panel to enable them from, so `enabled: false` here
-  // makes every other field below purely inert filler (kept in sync with
-  // `imageExportDefaults.ts`'s own `elevatorBadges` values only by convention, not by import — this
-  // module must not depend on the store layer, see this file's own class-level doc comment).
-  elevatorBadges: { enabled: false, labelType: "arabic", size: 0.7, placement: "top_bottom", distance: 4, gap: 2, gapWidth: 2, cornerStyle: "round", evenDistribution: false, shape: "circle", fillColor: 0xf0c900, textColor: canvas.floor.default, fontWeight: "bold" },
-};
+export const DEFAULT_VERTICAL_STYLE: VerticalConnectionStyle = DEFAULT_MAZE_RENDER_STYLE.verticalConnections;
 
 /** Each pattern's own tip reach, as a fraction of its `size` param (`wallUtils.ts`) — none of the
  *  three shared primitives puts its tip exactly at `size` from `(cx, cy)`: `drawOneWayTriangle`'s

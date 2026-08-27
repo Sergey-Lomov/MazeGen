@@ -3,7 +3,7 @@ import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
 import type { MarkerData, MarkerShape, TeleportCornerStyle } from "../../renderers/types";
 import { buildNodePositions } from "../../tessellationGeometry";
 import { TILE_SIZE } from "../../constants";
-import { canvas } from "../../colorTokens";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../../defaultMazeRenderStyle";
 
 /** Same field shape as `MarkerSettings` (`storeTypes.ts`) by design — kept as its own type since
  *  this lower-level selector module must not depend on the store layer, but the identical field
@@ -28,13 +28,14 @@ export interface MarkerStyle {
   gapColor: number;
 }
 
-/** Matches "Vector by walls"' own export-panel default for `startMarker`/`finishMarker` (GitHub
- *  issue #347 follow-up) — those follow the "Shared style" (#322) `markerSize`/`markerBorderWidth`/
- *  `gapWidth`/`cornerStyle` defaults (0.16/3/3/round) rather than this module's own
- *  once-separate `DEFAULT_MARKER_SIZE`, so every marker-drawing feature (Generation, post-edit,
- *  overlay, export) renders the same start/finish look out of the box. */
-const DEFAULT_START_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 3, size: 0.16, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default };
-const DEFAULT_FINISH_STYLE: MarkerStyle = { shape: "circle", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 3, size: 0.16, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default };
+/** Converts a marker position and style into the renderer-facing data shared by every maze stage. */
+export function buildMarkerData(pos: [number, number], style: MarkerStyle): MarkerData {
+  return {
+    pos, radius: style.size * TILE_SIZE,
+    shape: style.shape, color: style.fillColor, borderColor: style.borderColor, borderWidth: style.borderWidth,
+    cornerStyle: style.cornerStyle, gapWidth: style.gapWidth, gapColor: style.gapColor,
+  };
+}
 
 /** A start/finish marker on a split point (GitHub issue #223) anchors to that node's own hub
  *  point (`buildNodePositions`), not the tile's plain center — `nodeById`'s full value set
@@ -48,8 +49,8 @@ export function buildMazeMarkers(
   start: number | null,
   finish: number | null,
   cfg: TessellationConfig,
-  startStyle: MarkerStyle = DEFAULT_START_STYLE,
-  finishStyle: MarkerStyle = DEFAULT_FINISH_STYLE,
+  startStyle: MarkerStyle = DEFAULT_MAZE_RENDER_STYLE.startMarker,
+  finishStyle: MarkerStyle = DEFAULT_MAZE_RENDER_STYLE.finishMarker,
   edges: EdgeDto[] = [],
 ): MarkerData[] {
   const markers: MarkerData[] = [];
@@ -59,21 +60,13 @@ export function buildMazeMarkers(
   if (start !== null) {
     const c = nodePos.get(start);
     if (c) {
-      markers.push({
-        pos: [c.x, c.y], radius: startStyle.size * TILE_SIZE,
-        shape: startStyle.shape, color: startStyle.fillColor, borderColor: startStyle.borderColor, borderWidth: startStyle.borderWidth,
-        cornerStyle: startStyle.cornerStyle, gapWidth: startStyle.gapWidth, gapColor: startStyle.gapColor,
-      });
+      markers.push(buildMarkerData([c.x, c.y], startStyle));
     }
   }
   if (finish !== null) {
     const c = nodePos.get(finish);
     if (c) {
-      markers.push({
-        pos: [c.x, c.y], radius: finishStyle.size * TILE_SIZE,
-        shape: finishStyle.shape, color: finishStyle.fillColor, borderColor: finishStyle.borderColor, borderWidth: finishStyle.borderWidth,
-        cornerStyle: finishStyle.cornerStyle, gapWidth: finishStyle.gapWidth, gapColor: finishStyle.gapColor,
-      });
+      markers.push(buildMarkerData([c.x, c.y], finishStyle));
     }
   }
   return markers;

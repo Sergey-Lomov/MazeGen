@@ -215,7 +215,7 @@ A vertical passage is **invalid** if either endpoint's cell is outside its own f
 
 ### Rendering
 
-Drawn by a `VerticalConnectionRenderer` instance (`PresetConnectionsRenderer.verticals`, its own `verticalContainer`, added above `teleportContainer`) — the same marker primitive `GenerationRenderer` uses for resolved `VerticalPassage`/`Elevator` edges after generation (circle marker for a vertical passage, diamond for an elevator, both in `canvas.vertical.default`, `DEFAULT_VERTICAL_STYLE`), so a preset reads identically to how the same connection looks once generated — not like a teleport. An earlier version reused `TeleportRenderer` (the same primitive preset teleports use) for this, which read as a plain teleport marker; that approach was replaced.
+Drawn by a `VerticalConnectionRenderer` instance (`PresetConnectionsRenderer.verticals`, its own `verticalContainer`, added above `teleportContainer`) — the same marker primitive and `DEFAULT_MAZE_RENDER_STYLE.verticalConnections` section `GenerationRenderer` uses for resolved `VerticalPassage`/`Elevator` edges after generation (`DEFAULT_VERTICAL_STYLE` remains an alias for existing callers): circle marker for a vertical passage, diamond for an elevator, both in `canvas.vertical.default`. A preset therefore reads identically to the generated connection, not like a teleport. An earlier version reused `TeleportRenderer` (the same primitive preset teleports use) for this, which read as a plain teleport marker; that approach was replaced.
 
 `buildPresetVerticalMarkers` (`PresetConnectionsRenderer.ts`) converts both collections, filtered to the active floor, into `VerticalConnectionMarker[]`: for a vertical passage, whichever endpoint is on the active floor draws its own marker, pointing `"up"`/`"down"` toward the other endpoint's floor — a **two-way** passage's marker is always filled (both ends look identical); a **one-way** passage's marker is always empty at *both* ends (`filled: false`) — only the arrow tells them apart: solid on the departure end, outline on the arrival end (mirrors `mazeSelectors.ts`'s own `buildVerticalConnectionMarkers` for the resolved post-generation graph). For an elevator, the active floor's own endpoint draws one marker, filled, with the arrow direction aggregated across every other floor in the entry (`"both"` if it reaches floors on both sides of the active one).
 
@@ -379,7 +379,7 @@ Layers (bottom to top):
 5. **presetWallsLayer** — `wall` and `one_way` edges (solid stroke), including invalid ones; one-way arrow triangles drawn inline
 6. **teleportLayer** — teleport links (`TeleportRenderer`) — see "Preset teleports"
 7. **locksLayer** — lock icons for both `lockedNodes` and `autoLockedNodes` (merged)
-8. **markersLayer** — start/finish circles (`NODE_RADIUS * 1.5`)
+8. **markersLayer** — start/finish markers built by `buildPresetMarkers` from `DEFAULT_MAZE_RENDER_STYLE.startMarker`/`finishMarker`: circle, round corners, radius `0.16 * TILE_SIZE`, 3px matching-color border, and a 3px `canvas.floor.default` gap. Their positions remain preset-specific plain cell centers (`getCellCenter`), rather than post-generation split-node hub positions.
 9. **originLayer** — origin crosshair (when `showPresetOrigin = true`)
 10. **genSourceLayer** — blue cross marker at `presetGenSource` cell
 11. **isolatedHLLayer** — cell highlight for nodes locked both-in-and-out with no passage preset

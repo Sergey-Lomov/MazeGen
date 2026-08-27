@@ -2,12 +2,13 @@ import { Container, Graphics } from "pixi.js";
 import type { WallEdge, WallStyleOverride, OneWayStyleOverride } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellVertices, getNeighborData } from "../tessellationGeometry";
-import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow, MAP_ONE_WAY_SIZE, computeSquareCapPatch } from "./wallUtils";
+import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow, computeSquareCapPatch } from "./wallUtils";
 import { WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 
 const WALL_STYLES = {
-  solid:      { color: canvas.wall.default,     cap: "round" as const, join: "round" as const },
+  solid:      { color: DEFAULT_MAZE_RENDER_STYLE.wall.color, cap: DEFAULT_MAZE_RENDER_STYLE.wall.cap, join: DEFAULT_MAZE_RENDER_STYLE.wall.join },
   faint:      { color: canvas.wall.undecided,   cap: "round" as const, join: "round" as const },
   background: { color: canvas.stage.background, cap: "round" as const, join: "round" as const },
 };
@@ -227,23 +228,17 @@ export class WallRenderer {
     dy: number,
     override?: OneWayStyleOverride,
   ): void {
-    if (!override) {
-      // Default look (GenerationRenderer/PostEditRenderer/PresetConnectionsRenderer/
-      // MazeOverlayRenderer, none of which pass an override): a triangle gapped in the floor
-      // color — GitHub issue #292 follow-up.
-      drawOneWayTriangle(this.g, cx, cy, dx, dy, { gapColor: canvas.floor.default, gapWidth: 3, size: MAP_ONE_WAY_SIZE });
-      return;
-    }
+    const effective = override ?? DEFAULT_MAZE_RENDER_STYLE.oneWay;
     const style = {
-      color: override.color,
-      gapColor: override.gapColor,
-      gapWidth: override.gapWidth,
-      size: override.size,
-      thickness: override.thickness,
-      join: override.join,
-      cap: override.cap,
+      color: effective.color,
+      gapColor: effective.gapColor,
+      gapWidth: effective.gapWidth,
+      size: effective.size,
+      thickness: effective.thickness,
+      join: effective.join,
+      cap: effective.cap,
     };
-    switch (override.pattern) {
+    switch (effective.pattern) {
       case "chevron":
         drawOneWayChevron(this.g, cx, cy, dx, dy, style);
         break;

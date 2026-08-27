@@ -8,14 +8,27 @@ import type {
   VerticalSettingsFields,
   VerticalDecorativeFields,
   PngExportSettings,
+  MarkerSettings,
 } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
-import { WALL_THICKNESS } from "../../pixi/renderConstants";
 import { TILE_SIZE } from "../../pixi/constants";
+import { DEFAULT_MAZE_RENDER_STYLE, type MazeRenderStyle } from "../../pixi/defaultMazeRenderStyle";
 import {
   applyVectorByWallsSharedStyle,
   applyVectorByCorridorsSharedStyle,
 } from "./imageExportSliceHelpers";
+
+function markerSettings(style: MazeRenderStyle["startMarker"]): MarkerSettings {
+  return {
+    shape: style.shape,
+    cornerStyle: style.cornerStyle,
+    fillColor: style.fillColor,
+    borderColor: style.borderColor,
+    borderWidth: style.borderWidth,
+    gapWidth: style.gapWidth,
+    size: style.size,
+  };
+}
 
 /** Shared defaults for the centralized "Shared style" section (GitHub issue #322) — the single
  * source of truth every dependent field's own default is derived from below (`applyVectorBy*
@@ -29,10 +42,10 @@ import {
  * after. The user is still free to pull them back onto the shared value via the panel's own
  * per-field reset button. */
 export const DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE: VectorByWallsSharedStyle = {
-  cornerStyle: "round",
-  markerSize: 0.16,
-  markerBorderWidth: 3,
-  gapWidth: 3,
+  cornerStyle: DEFAULT_MAZE_RENDER_STYLE.startMarker.cornerStyle,
+  markerSize: DEFAULT_MAZE_RENDER_STYLE.startMarker.size,
+  markerBorderWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderWidth,
+  gapWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.gapWidth,
   overrides: {
     cornerStyle: { twoWayPassage: true, oneWayPassage: true, elevator: true, elevatorBadges: true },
     markerSize: { twoWayPassage: true, oneWayPassage: true, elevator: true },
@@ -42,10 +55,10 @@ export const DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE: VectorByWallsSharedStyle = {
 };
 
 export const DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE: VectorByCorridorsSharedStyle = {
-  cornerStyle: "round",
-  markerSize: 0.16,
-  markerBorderWidth: 3,
-  gapWidth: 3,
+  cornerStyle: DEFAULT_MAZE_RENDER_STYLE.startMarker.cornerStyle,
+  markerSize: DEFAULT_MAZE_RENDER_STYLE.startMarker.size,
+  markerBorderWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.borderWidth,
+  gapWidth: DEFAULT_MAZE_RENDER_STYLE.startMarker.gapWidth,
   overrides: {
     cornerStyle: { twoWayPassage: true, oneWayPassage: true, elevator: true, elevatorBadges: true },
     markerSize: { twoWayPassage: true, oneWayPassage: true, elevator: true },
@@ -58,26 +71,24 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE: VectorByCorridorsSharedSt
  * extracted this out so the two modes' Teleports section defaults never drift apart, mirroring
  * `TeleportSettingsFields` itself being shared at the type level. The four fields driven by
  * "Shared style" (GitHub issue #322: `teleportLineCornerStyle`, `teleportLineSize`,
- * `teleportEdgeBorderWidth`, `teleportEdgeGapWidth`/`teleportConnectorGapWidth`) hold placeholder
- * values here — `applyVectorBy*SharedStyle` overwrites them from `DEFAULT_VECTOR_BY_*_SHARED_STYLE`
- * once assembled into a full settings object below, so this const is never used directly as a
- * finished default on its own. */
+ * `teleportEdgeBorderWidth`, `teleportEdgeGapWidth`/`teleportConnectorGapWidth`) start from the
+ * canonical runtime values here and are reconciled once assembled into a full settings object. */
 export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
-  teleportLineCornerStyle: "round",
-  teleportLineShape: "diamond",
-  teleportLineSize: 0,
-  teleportEdgeColor: canvas.teleport.default,
-  teleportEdgeBorderColor: canvas.teleport.default,
-  teleportEdgeBorderWidth: 0,
-  teleportEdgeGapWidth: 0,
-  teleportConnectorColor: canvas.teleport.default,
-  teleportConnectorWidth: 3,
-  teleportConnectorStyle: "orthogonal",
+  teleportLineCornerStyle: DEFAULT_MAZE_RENDER_STYLE.teleport.cornerStyle,
+  teleportLineShape: DEFAULT_MAZE_RENDER_STYLE.teleport.shape,
+  teleportLineSize: DEFAULT_MAZE_RENDER_STYLE.teleport.size,
+  teleportEdgeColor: DEFAULT_MAZE_RENDER_STYLE.teleport.edgeColor,
+  teleportEdgeBorderColor: DEFAULT_MAZE_RENDER_STYLE.teleport.edgeBorderColor,
+  teleportEdgeBorderWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.borderWidth,
+  teleportEdgeGapWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.edgeGapWidth,
+  teleportConnectorColor: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorColor,
+  teleportConnectorWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorWidth,
+  teleportConnectorStyle: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorStyle,
   teleportAvoidFieldExit: false,
-  teleportArrowMode: "periodic",
-  teleportArrowPeriod: 5,
-  teleportArrowSize: 10,
-  teleportConnectorGapWidth: 0,
+  teleportArrowMode: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowMode,
+  teleportArrowPeriod: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowPeriod,
+  teleportArrowSize: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowSize,
+  teleportConnectorGapWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorGapWidth,
   teleportGroupCustomization: false,
   teleportGroupOverrides: {},
 };
@@ -85,8 +96,8 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
 /** Shared by `VectorByWallsSettings` and `projectExport/validate.ts`'s recovery defaults, same
  * extraction rationale as `DEFAULT_TELEPORT_SETTINGS`/`DEFAULT_ONE_WAY_SETTINGS` (GitHub issue
  * #347, three-section split GitHub issue #347 follow-up). Defaults match `GenerationRenderer`'s
- * own fixed `DEFAULT_VERTICAL_STYLE` (circle for `VerticalPassage`, diamond for `Elevator`, border
- * width 2, size 0.22), the same "exported image looks identical to the editor view until changed"
+ * canonical vertical style (circle for `VerticalPassage`, diamond for `Elevator`, border width 3,
+ * size 0.22), the same "exported image looks identical to the editor view until changed"
  * rationale every other "Vector by walls" section's own defaults follow. `verticalStyle` defaults
  * to `"abstract"` (not `"decorative"`) — a plain opening marker is the one style that's also
  * correct for a physical single-sheet two-floor build, per the issue's own rationale;
@@ -100,25 +111,25 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
  * Every section's own `*ArrowColor` defaults to `canvas.floor.default` (GitHub issue #347 fifth
  * follow-up — `oneWayArrowColor` moved off `canvas.vertical.default` to match the other two
  * sections), so the arrow reads as a floor-colored cutout against the marker's own fill. */
-const ONE_WAY_ACCENT_DARK = 0x196c64;
+const ONE_WAY_ACCENT_DARK = DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayAccentColor;
 
 export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
-  twoWayPassageMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: 3, gapWidth: 3, size: 0.22 },
-  oneWayPassageMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: 3, gapWidth: 3, size: 0.22 },
-  elevatorMarker: { shape: "diamond", cornerStyle: "round", fillColor: canvas.vertical.default, borderColor: canvas.vertical.default, borderWidth: 3, gapWidth: 3, size: 0.22 },
-  twoWayArrowColor: canvas.floor.default,
-  twoWayArrowSize: 0.75,
-  twoWayArrowStyle: "triangle",
-  twoWayArrowCornerStyle: "round",
-  oneWayArrowColor: canvas.floor.default,
-  oneWayArrowSize: 0.75,
-  oneWayArrowStyle: "triangle",
-  oneWayArrowCornerStyle: "round",
+  twoWayPassageMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker),
+  oneWayPassageMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayPassageMarker),
+  elevatorMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorMarker),
+  twoWayArrowColor: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayArrowColor,
+  twoWayArrowSize: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayArrowSize,
+  twoWayArrowStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayArrowStyle,
+  twoWayArrowCornerStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayArrowCornerStyle,
+  oneWayArrowColor: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayArrowColor,
+  oneWayArrowSize: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayArrowSize,
+  oneWayArrowStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayArrowStyle,
+  oneWayArrowCornerStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayArrowCornerStyle,
   oneWayAccentColor: ONE_WAY_ACCENT_DARK,
-  elevatorArrowColor: canvas.floor.default,
-  elevatorArrowSize: 0.75,
-  elevatorArrowStyle: "triangle",
-  elevatorArrowCornerStyle: "round",
+  elevatorArrowColor: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowColor,
+  elevatorArrowSize: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowSize,
+  elevatorArrowStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowStyle,
+  elevatorArrowCornerStyle: DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorArrowCornerStyle,
   // "Floor-number badges" (GitHub issue #430) — enabled by default, Arabic numerals, a small
   // fraction of the elevator marker's own radius, laid out above/below the marker
   // (`placement: "top_bottom"`). `fillColor`/`textColor` are an independently visible fill+text
@@ -174,26 +185,26 @@ export const DEFAULT_VERTICAL_DECORATIVE_SETTINGS: VerticalDecorativeFields = {
  * function's own doc comment for exactly which fields it touches. */
 export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = applyVectorByWallsSharedStyle(
   {
-    background: canvas.stage.background,
-    showGrid: true,
-    gridColor: canvas.grid.line,
-    floorColor: canvas.floor.default,
-    wallColor: canvas.wall.default,
-    wallJoin: "round",
-    wallThickness: WALL_THICKNESS,
-    oneWayPattern: "triangle",
-    oneWayColor: 0xffaa00,
-    oneWayGapWidth: 3,
-    oneWaySize: 0.3,
-    oneWayThickness: 4,
-    oneWayJoin: "round",
-    startMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.start, borderColor: canvas.node.start, borderWidth: 0, gapWidth: 0, size: 0 },
-    finishMarker: { shape: "circle", cornerStyle: "round", fillColor: canvas.node.finish, borderColor: canvas.node.finish, borderWidth: 0, gapWidth: 0, size: 0 },
+    background: DEFAULT_MAZE_RENDER_STYLE.backgroundColor,
+    showGrid: DEFAULT_MAZE_RENDER_STYLE.grid.visible,
+    gridColor: DEFAULT_MAZE_RENDER_STYLE.grid.color,
+    floorColor: DEFAULT_MAZE_RENDER_STYLE.floorColor,
+    wallColor: DEFAULT_MAZE_RENDER_STYLE.wall.color,
+    wallJoin: DEFAULT_MAZE_RENDER_STYLE.wall.join,
+    wallThickness: DEFAULT_MAZE_RENDER_STYLE.wall.width,
+    oneWayPattern: DEFAULT_MAZE_RENDER_STYLE.oneWay.pattern,
+    oneWayColor: DEFAULT_MAZE_RENDER_STYLE.oneWay.color,
+    oneWayGapWidth: DEFAULT_MAZE_RENDER_STYLE.oneWay.gapWidth,
+    oneWaySize: DEFAULT_MAZE_RENDER_STYLE.oneWay.size / TILE_SIZE,
+    oneWayThickness: DEFAULT_MAZE_RENDER_STYLE.oneWay.thickness,
+    oneWayJoin: DEFAULT_MAZE_RENDER_STYLE.oneWay.join,
+    startMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.startMarker),
+    finishMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.finishMarker),
     ...DEFAULT_TELEPORT_SETTINGS,
     ...DEFAULT_VERTICAL_SETTINGS,
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
-    splitNodeColors: [],
-    splitSpecialShapes: true,
+    splitNodeColors: [...DEFAULT_MAZE_RENDER_STYLE.split.nodeColors],
+    splitSpecialShapes: DEFAULT_MAZE_RENDER_STYLE.split.specialShapes,
     sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
   },
   ["cornerStyle", "markerSize", "markerBorderWidth", "gapWidth"],

@@ -6,7 +6,8 @@ import type { PresetConnectionEntry, PresetTeleportEntry, FieldEdge } from "../f
 import { edgeKey, computeInvalidKeysFromCells } from "../fieldEditUtils";
 import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
-import { buildSplitPassagesCore, type SplitPassageNode, type SplitPassagesResult } from "./mazeSelectors";
+import { buildMarkerData, buildSplitPassagesCore, type SplitPassageNode, type SplitPassagesResult } from "./mazeSelectors";
+import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 import { presetEndpoint, presetEndpointKey, presetEndpointIsSplit, type PresetEndpoint } from "../presetEndpoint";
 import { NODE_RADIUS, WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
@@ -199,11 +200,11 @@ export function buildPresetMarkers(
   const markers: MarkerData[] = [];
   if (start) {
     const c = getCellCenter(start[0], start[1], cfg);
-    markers.push({ pos: [c.x, c.y], color: canvas.node.start, radius: NODE_RADIUS * 1.5 });
+    markers.push(buildMarkerData([c.x, c.y], DEFAULT_MAZE_RENDER_STYLE.startMarker));
   }
   if (finish) {
     const c = getCellCenter(finish[0], finish[1], cfg);
-    markers.push({ pos: [c.x, c.y], color: canvas.node.finish, radius: NODE_RADIUS * 1.5 });
+    markers.push(buildMarkerData([c.x, c.y], DEFAULT_MAZE_RENDER_STYLE.finishMarker));
   }
   return markers;
 }
