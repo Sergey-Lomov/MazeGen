@@ -21,7 +21,7 @@ vi.mock("../pixi/cartesianCache", () => ({
   },
 }));
 
-const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getNeighborData, getSplitCircleRotationDeg, splitHubPoint, specialSplitNodePoint, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord } = await import("../pixi/tessellationGeometry");
+const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, splitHubPoint, specialSplitNodePoint, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord } = await import("../pixi/tessellationGeometry");
 
 // `maze-core`'s own `Tessellation::faces()` order per space (`Specs/split-patterns.md`,
 // GitHub issue #273) — used here only to name expected indices by face, not to duplicate the
@@ -130,12 +130,80 @@ describe("specialSplitNodePoint", () => {
   const cfg: TessellationConfig = { type: "square", width: 10, height: 10 };
   const center = { x: 0, y: 0 };
 
-  it("provides dedicated anchors for hex special shapes", () => {
+  it("returns null for a hex special shape that has no dedicated anchor", () => {
     const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
-    expect(specialSplitNodePoint(hexCfg, center, "hex_diagonal", [0, 1], 0)).not.toEqual(center);
-    expect(specialSplitNodePoint(hexCfg, center, "hex_triple_bridge", [0, 3], 0)).not.toEqual(center);
-    expect(specialSplitNodePoint(hexCfg, center, "hex_triple_corridor", [1, 2], 1)).not.toEqual(center);
-    expect(specialSplitNodePoint(hexCfg, center, "hex_bridge", [1, 4], 1)).toEqual(center);
+    expect(specialSplitNodePoint(hexCfg, center, "diagonal", [0, 1], 0)).toBeNull();
+    expect(specialSplitNodePoint(hexCfg, center, "bridge", [0, 2], 0)).toBeNull();
+  });
+
+  it.each([
+    ["adjacent", [0, 1] as [number, number]],
+    ["skip-face", [0, 2] as [number, number]],
+  ])("hex diagonal %s pair anchors on its face-center bisector at the skip-pair radius", (_name, faces) => {
+    const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    const hexCenter = getCellCenter(0, 0, hexCfg);
+    const vertices = getCellVertices(0, 0, hexCfg)!;
+    const { edgeVerts } = getNeighborData(hexCfg, 0, 0);
+    const centers = faces.map((face) => {
+      const [a, b] = edgeVerts[face];
+      return { x: (vertices[a].x + vertices[b].x) / 2, y: (vertices[a].y + vertices[b].y) / 2 };
+    });
+    const midpoint = { x: (centers[0].x + centers[1].x) / 2, y: (centers[0].y + centers[1].y) / 2 };
+    const point = specialSplitNodePoint(hexCfg, hexCenter, "hex_diagonal", faces, 0)!;
+    const skipPoint = specialSplitNodePoint(hexCfg, hexCenter, "hex_diagonal", [0, 2], 0)!;
+    expect(Math.atan2(point.y - hexCenter.y, point.x - hexCenter.x))
+      .toBeCloseTo(Math.atan2(midpoint.y - hexCenter.y, midpoint.x - hexCenter.x));
+    expect(Math.hypot(point.x - hexCenter.x, point.y - hexCenter.y))
+      .toBeCloseTo(Math.hypot(skipPoint.x - hexCenter.x, skipPoint.y - hexCenter.y));
+  });
+
+  it("hex bridge keeps the rendered upper node centered and offsets the lower node 2/3 toward the vertex between the bridge sides", () => {
+    const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    const hexCenter = getCellCenter(0, 0, hexCfg);
+    const allFaces: [number, number][] = [[0, 3], [1, 4]];
+    expect(specialSplitNodePoint(hexCfg, hexCenter, "hex_bridge", allFaces[1], 1, allFaces)).toEqual(hexCenter);
+
+    const lower = specialSplitNodePoint(hexCfg, hexCenter, "hex_bridge", allFaces[0], 0, allFaces)!;
+    const vertices = getCellVertices(0, 0, hexCfg)!;
+    expect(lower.x).toBeCloseTo(hexCenter.x + (vertices[0].x - hexCenter.x) * 2 / 3);
+    expect(lower.y).toBeCloseTo(hexCenter.y + (vertices[0].y - hexCenter.y) * 2 / 3);
+  });
+
+  it("hex triple corridor puts slots between the corners belonging to its two side corridors", () => {
+    const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    const hexCenter = getCellCenter(0, 0, hexCfg);
+    const vertices = getCellVertices(0, 0, hexCfg)!;
+    const from = vertices[2], to = vertices[5]; // shared corners of side pairs [1,2] and [4,5]
+    const expectedAt = (t: number) => ({
+      x: from.x + (to.x - from.x) * t,
+      y: from.y + (to.y - from.y) * t,
+    });
+    const faces: [number, number][] = [[0, 3], [1, 2], [4, 5]];
+    [1 / 2, 1 / 6, 5 / 6].forEach((t, slot) => {
+      expect(specialSplitNodePoint(hexCfg, hexCenter, "hex_triple_corridor", faces[slot], slot, faces))
+        .toEqual(expectedAt(t));
+    });
+  });
+
+  it("hex triple bridge puts every node at 5/6 of its axis and reverses the bottom/top node directions", () => {
+    const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    const hexCenter = getCellCenter(0, 0, hexCfg);
+    const vertices = getCellVertices(0, 0, hexCfg)!;
+    const { edgeVerts } = getNeighborData(hexCfg, 0, 0);
+    const faces: [number, number][] = [[0, 3], [1, 4], [2, 5]];
+    faces.forEach((pair, slot) => {
+      const centerOf = (face: number) => {
+        const [a, b] = edgeVerts[face];
+        return { x: (vertices[a].x + vertices[b].x) / 2, y: (vertices[a].y + vertices[b].y) / 2 };
+      };
+      const reversed = slot === 0 || slot === 2;
+      const from = centerOf(pair[reversed ? 1 : 0]), to = centerOf(pair[reversed ? 0 : 1]);
+      const t = 5 / 6;
+      expect(specialSplitNodePoint(hexCfg, hexCenter, "hex_triple_bridge", pair, slot, faces)).toEqual({
+        x: from.x + (to.x - from.x) * t,
+        y: from.y + (to.y - from.y) * t,
+      });
+    });
   });
 
   it("returns null for a diagonal face pair with no dedicated table entry", () => {
@@ -269,74 +337,38 @@ describe("buildNodePositions", () => {
       expect(nodePos.get(1)).toEqual(splitHubPoint(center, 1, 2, cfg));
     });
 
-    it("uses shape-aware anchors for a hex bridge", () => {
+    it("positions a recognized hex diagonal node midway between its connected face centers", () => {
       const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
       const node0 = { id: 0, x: 0, y: 0 };
       const node1 = { id: 1, x: 0, y: 0 };
       const { offsets } = getNeighborData(hexCfg, 0, 0);
-      const neighbors = offsets.map(([dx, dy], i) => ({ id: 200 + i, x: dx, y: dy }));
+      const neighbors = offsets.map(([x, y], i) => ({ id: 200 + i, x, y }));
       const directedPairs = [
-        { from: node0.id, to: neighbors[0].id }, { from: node0.id, to: neighbors[3].id },
-        { from: node1.id, to: neighbors[1].id }, { from: node1.id, to: neighbors[4].id },
+        { from: node0.id, to: neighbors[0].id }, { from: node0.id, to: neighbors[1].id },
+        { from: node1.id, to: neighbors[3].id }, { from: node1.id, to: neighbors[4].id },
       ];
       const nodePos = buildNodePositions([node0, node1, ...neighbors], hexCfg, directedPairs);
       const center = getCellCenter(0, 0, hexCfg);
-      expect(nodePos.get(0)).not.toEqual(splitHubPoint(center, 0, 2, hexCfg));
-      expect(nodePos.get(0)).not.toEqual(center);
-      expect(nodePos.get(1)).toEqual(center);
+      expect(nodePos.get(0)).toEqual(specialSplitNodePoint(hexCfg, center, "hex_diagonal", [0, 1], 0));
+      expect(nodePos.get(1)).toEqual(specialSplitNodePoint(hexCfg, center, "hex_diagonal", [3, 4], 1));
     });
 
-    it("assigns distinct lane anchors to every node of a hex triple bridge", () => {
+    it("detects a three-node hex triple corridor and applies its three dedicated anchors", () => {
       const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
-      const splitNodes = [0, 1, 2].map((id) => ({ id, x: 0, y: 0 }));
+      const pointNodes = [0, 1, 2].map((id) => ({ id, x: 0, y: 0 }));
       const { offsets } = getNeighborData(hexCfg, 0, 0);
-      const neighbors = offsets.map(([dx, dy], i) => ({ id: 200 + i, x: dx, y: dy }));
-      const directedPairs = splitNodes.flatMap((node, i) => [
-        { from: node.id, to: neighbors[i].id },
-        { from: node.id, to: neighbors[i + 3].id },
-      ]);
-      const nodePos = buildNodePositions([...splitNodes, ...neighbors], hexCfg, directedPairs);
+      const neighbors = offsets.map(([x, y], i) => ({ id: 200 + i, x, y }));
+      const faces: [number, number][] = [[0, 3], [1, 2], [4, 5]];
+      const directedPairs = faces.flatMap((pair, nodeIndex) =>
+        pair.map((face) => ({ from: pointNodes[nodeIndex].id, to: neighbors[face].id })),
+      );
+      const nodePos = buildNodePositions([...pointNodes, ...neighbors], hexCfg, directedPairs);
       const center = getCellCenter(0, 0, hexCfg);
-      const positions = splitNodes.map((node) => nodePos.get(node.id)!);
-      expect(positions.every((point) => point.x !== center.x || point.y !== center.y)).toBe(true);
-      expect(new Set(positions.map((point) => `${point.x}:${point.y}`)).size).toBe(3);
-    });
-
-    it("assigns opposite region anchors to a recognized hex diagonal", () => {
-      const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
-      const splitNodes = [0, 1].map((id) => ({ id, x: 0, y: 0 }));
-      const { offsets } = getNeighborData(hexCfg, 0, 0);
-      const neighbors = offsets.map(([dx, dy], i) => ({ id: 200 + i, x: dx, y: dy }));
-      const directedPairs = [
-        { from: splitNodes[0].id, to: neighbors[0].id },
-        { from: splitNodes[0].id, to: neighbors[1].id },
-        { from: splitNodes[1].id, to: neighbors[3].id },
-        { from: splitNodes[1].id, to: neighbors[4].id },
-      ];
-      const nodePos = buildNodePositions([...splitNodes, ...neighbors], hexCfg, directedPairs);
-      const center = getCellCenter(0, 0, hexCfg);
-      const p0 = nodePos.get(0)!, p1 = nodePos.get(1)!;
-      expect(p0).not.toEqual(center);
-      expect(p1).not.toEqual(center);
-      expect(p0.x - center.x).toBeCloseTo(-(p1.x - center.x));
-      expect(p0.y - center.y).toBeCloseTo(-(p1.y - center.y));
-    });
-
-    it("assigns distinct anchors to all nodes of a recognized hex triple corridor", () => {
-      const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
-      const splitNodes = [0, 1, 2].map((id) => ({ id, x: 0, y: 0 }));
-      const { offsets } = getNeighborData(hexCfg, 0, 0);
-      const neighbors = offsets.map(([dx, dy], i) => ({ id: 200 + i, x: dx, y: dy }));
-      const facePairs = [[0, 3], [1, 2], [4, 5]];
-      const directedPairs = splitNodes.flatMap((node, i) => facePairs[i].map((face) => ({
-        from: node.id,
-        to: neighbors[face].id,
-      })));
-      const nodePos = buildNodePositions([...splitNodes, ...neighbors], hexCfg, directedPairs);
-      const center = getCellCenter(0, 0, hexCfg);
-      const positions = splitNodes.map((node) => nodePos.get(node.id)!);
-      expect(positions.every((point) => point.x !== center.x || point.y !== center.y)).toBe(true);
-      expect(new Set(positions.map((point) => `${point.x}:${point.y}`)).size).toBe(3);
+      pointNodes.forEach((node, slot) => {
+        expect(nodePos.get(node.id)).toEqual(
+          specialSplitNodePoint(hexCfg, center, "hex_triple_corridor", faces[slot], slot, faces),
+        );
+      });
     });
   });
 });
