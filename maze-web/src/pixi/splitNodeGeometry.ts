@@ -28,11 +28,10 @@ export function splitHubPoint(
  *  shape" (`SplitSpecialShapeKind`, GitHub issue #294/#318) — a node whose two connected faces
  *  match a recognized bridge/diagonal topology gets a point matching where that shape visually
  *  reads as "belonging" to it, instead of `splitHubPoint`'s generic evenly-spaced circle position.
- *  Hand-authored constants per tessellation/shape/face-pair (not derived from tile geometry at
- *  runtime) — deliberately, since each recognized shape has its own fixed visual design (GitHub
- *  issue #318): a future special shape on a differently-shaped tile is its own pattern with its own
- *  constants, not a formula this table could generalize to. `null` for a tessellation/pair this
- *  table has no entry for — callers fall back to `splitHubPoint`.
+ *  Square shapes retain their hand-authored geometry. Hex anchors derive their direction from the
+ *  tessellation's own face directions: an adjacent/skip pair uses its outward bisector, while an
+ *  opposite pair uses its corridor axis. `null` for an unsupported tessellation/pair makes callers
+ *  fall back to `splitHubPoint`.
  *
  *  Square face order is `getNeighborData`'s `offsets` index: `0=E, 1=N, 2=W, 3=S` (screen
  *  coordinates, Y down). `TILE_SIZE = 1` (scaled by the caller).
@@ -59,14 +58,36 @@ const SQUARE_DIAGONAL_NODE_OFFSET: Record<string, Pos> = {
 const SQUARE_FACE_DIRECTION: Pos[] = [{ x: 1, y: 0 }, { x: 0, y: -1 }, { x: -1, y: 0 }, { x: 0, y: 1 }];
 
 const SQUARE_BRIDGE_CROSS_OFFSET_FRAC = 0.25;
+const HEX_SPECIAL_NODE_OFFSET_FRAC = 0.25;
+
+/** Unit screen-space direction from a tile center toward one of its faces. Derived from the
+ * tessellation's own neighbor geometry so flat-top/pointy-top hex orientations stay in sync. */
+function faceDirection(cfg: TessellationConfig, faceIndex: number): Pos | null {
+  const origin = getCellCenter(0, 0, cfg);
+  const offset = getNeighborData(cfg, 0, 0).offsets[faceIndex];
+  if (!offset) return null;
+  const neighbor = getCellCenter(offset[0], offset[1], cfg);
+  const dx = neighbor.x - origin.x, dy = neighbor.y - origin.y;
+  const length = Math.hypot(dx, dy);
+  return length > 0 ? { x: dx / length, y: dy / length } : null;
+}
+
+/** Direction into the portion/lane represented by a pair of faces. Non-opposite pairs use their
+ * outward angular bisector; opposite pairs use the first face's corridor axis. */
+function facePairAnchorDirection(cfg: TessellationConfig, faces: [number, number]): Pos | null {
+  const a = faceDirection(cfg, faces[0]);
+  const b = faceDirection(cfg, faces[1]);
+  if (!a || !b) return null;
+  const x = a.x + b.x, y = a.y + b.y;
+  const length = Math.hypot(x, y);
+  return length > 1e-9 ? { x: x / length, y: y / length } : a;
+}
 
 /** Absolute node point for a node recognized as part of a `SplitSpecialShapeKind` — `null` if this
  *  tessellation/kind/face-pair combination has no dedicated entry (caller falls back to
  *  `splitHubPoint`). `center` is the split point's own tile center (`getCellCenter`). `faces` is
- *  this node's own two connected face indices (`getNeighborData`'s ordering), `slotIndex` this
- *  node's position within its point's node list (only meaningful/needed for `"bridge"` — see this
- *  module's own `SQUARE_DIAGONAL_NODE_OFFSET`/`SQUARE_BRIDGE_CROSS_OFFSET_FRAC` doc comment for the
- *  exact geometry). */
+ *  this node's own two connected face indices (`getNeighborData`'s ordering), and `slotIndex`
+ *  selects the centered crossing lane in a two-node bridge. */
 export function specialSplitNodePoint(
   cfg: TessellationConfig,
   center: Pos,
@@ -74,7 +95,22 @@ export function specialSplitNodePoint(
   faces: [number, number],
   slotIndex: number,
 ): Pos | null {
-  if (cfg.type !== "square" && cfg.type !== "square_custom") return null;
+  const square = cfg.type === "square" || cfg.type === "square_custom";
+  const hex = cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom";
+
+  if (hex) {
+    // A two-lane bridge's upper/crossing node owns the center; move the through node along its
+    // corridor. Three-node shapes move every node into its own lane/region so no anchors overlap.
+    if (kind === "hex_bridge" && slotIndex === 1) return center;
+    if (kind !== "hex_bridge" && kind !== "hex_triple_bridge" && kind !== "hex_diagonal" && kind !== "hex_triple_corridor") return null;
+    const dir = facePairAnchorDirection(cfg, faces);
+    return dir ? {
+      x: center.x + dir.x * HEX_SPECIAL_NODE_OFFSET_FRAC * TILE_SIZE,
+      y: center.y + dir.y * HEX_SPECIAL_NODE_OFFSET_FRAC * TILE_SIZE,
+    } : null;
+  }
+
+  if (!square) return null;
 
   if (kind === "diagonal") {
     const [a, b] = [...faces].sort((x, y) => x - y);
@@ -89,7 +125,7 @@ export function specialSplitNodePoint(
   return { x: center.x + dir.x * SQUARE_BRIDGE_CROSS_OFFSET_FRAC * TILE_SIZE, y: center.y + dir.y * SQUARE_BRIDGE_CROSS_OFFSET_FRAC * TILE_SIZE };
 }
 
-/** A degree-4 split point's two nodes' own connected face indices (`getNeighborData`'s ordering) —
+/** A split point's nodes' own connected face indices (`getNeighborData`'s ordering) —
  *  a face counts as connected for a node when a directed edge exists (either direction) between it
  *  and any node at the geometrically neighboring point across that face. Only cares about
  *  connected-or-not (never one-way direction/undefined), unlike `buildSplitPassagesCore`'s own
@@ -161,7 +197,7 @@ export function buildNodePositions(
 
     let faceKindsByNode: SplitFaceKind[][] | null = null;
     let kind: SplitSpecialShapeKind | null = null;
-    if (group.length === 2 && directed) {
+    if (directed) {
       faceKindsByNode = splitPointFaceKindsByNode(group, byTile, directed, cfg);
       kind = detectSplitSpecialShapeKind(faceKindsByNode);
     }

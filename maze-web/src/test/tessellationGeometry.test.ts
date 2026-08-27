@@ -130,13 +130,12 @@ describe("specialSplitNodePoint", () => {
   const cfg: TessellationConfig = { type: "square", width: 10, height: 10 };
   const center = { x: 0, y: 0 };
 
-  // GitHub issue #318 follow-up — the tessellation-type guard is only reachable directly (every
-  // caller today, `buildNodePositions`, never passes a non-null `kind` for a non-square cfg, since
-  // `detectSplitSpecialShapeKind` requires degree 4, which hex/triangle points never have).
-  it("returns null for a non-square tessellation even when kind/faces would otherwise resolve", () => {
+  it("provides dedicated anchors for hex special shapes", () => {
     const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
-    expect(specialSplitNodePoint(hexCfg, center, "diagonal", [0, 1], 0)).toBeNull();
-    expect(specialSplitNodePoint(hexCfg, center, "bridge", [0, 2], 0)).toBeNull();
+    expect(specialSplitNodePoint(hexCfg, center, "hex_diagonal", [0, 1], 0)).not.toEqual(center);
+    expect(specialSplitNodePoint(hexCfg, center, "hex_triple_bridge", [0, 3], 0)).not.toEqual(center);
+    expect(specialSplitNodePoint(hexCfg, center, "hex_triple_corridor", [1, 2], 1)).not.toEqual(center);
+    expect(specialSplitNodePoint(hexCfg, center, "hex_bridge", [1, 4], 1)).toEqual(center);
   });
 
   it("returns null for a diagonal face pair with no dedicated table entry", () => {
@@ -270,20 +269,74 @@ describe("buildNodePositions", () => {
       expect(nodePos.get(1)).toEqual(splitHubPoint(center, 1, 2, cfg));
     });
 
-    it("falls back to the generic hub circle for a non-degree-4 tessellation (hex)", () => {
+    it("uses shape-aware anchors for a hex bridge", () => {
       const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
       const node0 = { id: 0, x: 0, y: 0 };
       const node1 = { id: 1, x: 0, y: 0 };
       const { offsets } = getNeighborData(hexCfg, 0, 0);
-      const [dx0, dy0] = offsets[0];
-      const [dx1, dy1] = offsets[1];
-      const neighbor0 = { id: 200, x: dx0, y: dy0 };
-      const neighbor1 = { id: 201, x: dx1, y: dy1 };
-      const directedPairs = [{ from: node0.id, to: neighbor0.id }, { from: node1.id, to: neighbor1.id }];
-      const nodePos = buildNodePositions([node0, node1, neighbor0, neighbor1], hexCfg, directedPairs);
+      const neighbors = offsets.map(([dx, dy], i) => ({ id: 200 + i, x: dx, y: dy }));
+      const directedPairs = [
+        { from: node0.id, to: neighbors[0].id }, { from: node0.id, to: neighbors[3].id },
+        { from: node1.id, to: neighbors[1].id }, { from: node1.id, to: neighbors[4].id },
+      ];
+      const nodePos = buildNodePositions([node0, node1, ...neighbors], hexCfg, directedPairs);
       const center = getCellCenter(0, 0, hexCfg);
-      expect(nodePos.get(0)).toEqual(splitHubPoint(center, 0, 2, hexCfg));
-      expect(nodePos.get(1)).toEqual(splitHubPoint(center, 1, 2, hexCfg));
+      expect(nodePos.get(0)).not.toEqual(splitHubPoint(center, 0, 2, hexCfg));
+      expect(nodePos.get(0)).not.toEqual(center);
+      expect(nodePos.get(1)).toEqual(center);
+    });
+
+    it("assigns distinct lane anchors to every node of a hex triple bridge", () => {
+      const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+      const splitNodes = [0, 1, 2].map((id) => ({ id, x: 0, y: 0 }));
+      const { offsets } = getNeighborData(hexCfg, 0, 0);
+      const neighbors = offsets.map(([dx, dy], i) => ({ id: 200 + i, x: dx, y: dy }));
+      const directedPairs = splitNodes.flatMap((node, i) => [
+        { from: node.id, to: neighbors[i].id },
+        { from: node.id, to: neighbors[i + 3].id },
+      ]);
+      const nodePos = buildNodePositions([...splitNodes, ...neighbors], hexCfg, directedPairs);
+      const center = getCellCenter(0, 0, hexCfg);
+      const positions = splitNodes.map((node) => nodePos.get(node.id)!);
+      expect(positions.every((point) => point.x !== center.x || point.y !== center.y)).toBe(true);
+      expect(new Set(positions.map((point) => `${point.x}:${point.y}`)).size).toBe(3);
+    });
+
+    it("assigns opposite region anchors to a recognized hex diagonal", () => {
+      const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+      const splitNodes = [0, 1].map((id) => ({ id, x: 0, y: 0 }));
+      const { offsets } = getNeighborData(hexCfg, 0, 0);
+      const neighbors = offsets.map(([dx, dy], i) => ({ id: 200 + i, x: dx, y: dy }));
+      const directedPairs = [
+        { from: splitNodes[0].id, to: neighbors[0].id },
+        { from: splitNodes[0].id, to: neighbors[1].id },
+        { from: splitNodes[1].id, to: neighbors[3].id },
+        { from: splitNodes[1].id, to: neighbors[4].id },
+      ];
+      const nodePos = buildNodePositions([...splitNodes, ...neighbors], hexCfg, directedPairs);
+      const center = getCellCenter(0, 0, hexCfg);
+      const p0 = nodePos.get(0)!, p1 = nodePos.get(1)!;
+      expect(p0).not.toEqual(center);
+      expect(p1).not.toEqual(center);
+      expect(p0.x - center.x).toBeCloseTo(-(p1.x - center.x));
+      expect(p0.y - center.y).toBeCloseTo(-(p1.y - center.y));
+    });
+
+    it("assigns distinct anchors to all nodes of a recognized hex triple corridor", () => {
+      const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+      const splitNodes = [0, 1, 2].map((id) => ({ id, x: 0, y: 0 }));
+      const { offsets } = getNeighborData(hexCfg, 0, 0);
+      const neighbors = offsets.map(([dx, dy], i) => ({ id: 200 + i, x: dx, y: dy }));
+      const facePairs = [[0, 3], [1, 2], [4, 5]];
+      const directedPairs = splitNodes.flatMap((node, i) => facePairs[i].map((face) => ({
+        from: node.id,
+        to: neighbors[face].id,
+      })));
+      const nodePos = buildNodePositions([...splitNodes, ...neighbors], hexCfg, directedPairs);
+      const center = getCellCenter(0, 0, hexCfg);
+      const positions = splitNodes.map((node) => nodePos.get(node.id)!);
+      expect(positions.every((point) => point.x !== center.x || point.y !== center.y)).toBe(true);
+      expect(new Set(positions.map((point) => `${point.x}:${point.y}`)).size).toBe(3);
     });
   });
 });

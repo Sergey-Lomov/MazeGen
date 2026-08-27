@@ -965,6 +965,24 @@ describe("buildMazeMarkers", () => {
     expect(hubDist).not.toBeCloseTo(10);
   });
 
+  it("start on a hex bridge uses the bridge lane anchor from buildNodePositions", () => {
+    const neighbors = hexNeighborNodes(0, 0);
+    const split0 = n(100, 0, 0); // through faces 0,3
+    const split1 = n(101, 0, 0); // bridge faces 1,4
+    const nodes = [split0, split1, ...neighbors];
+    const nodeById = new Map<number, NodeDto>(nodes.map((node) => [node.id, node]));
+    const edges: EdgeDto[] = [
+      e(100, 1), e(1, 100), e(100, 4), e(4, 100),
+      e(101, 2), e(2, 101), e(101, 5), e(5, 101),
+    ];
+
+    const markers = buildMazeMarkers(nodeById, split0.id, split1.id, hexCfg, undefined, undefined, edges);
+    const center = getCellCenter(0, 0, hexCfg);
+    expect(markers).toHaveLength(2);
+    expect(markers[0].pos).not.toEqual([center.x, center.y]);
+    expect(markers[1].pos).toEqual([center.x, center.y]);
+  });
+
   it("without edges, a split node still falls back to the generic hub position (default edges=[])", () => {
     const nodeById = new Map<number, NodeDto>([[0, n(0, 0, 0)], [1, n(1, 0, 0)]]);
     const markers = buildMazeMarkers(nodeById, 0, null, squareCfg);
