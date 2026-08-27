@@ -689,6 +689,26 @@ describe("hex special shapes", () => {
     expect(shape.corner0).not.toEqual(shape.corner1);
   });
 
+  it("renders a hex diagonal divider with the exact same wall line as 0-2 / 3-5", () => {
+    const neighbors = hexNeighborNodes(0, 0);
+    const nodes = [n(100, 0, 0), n(101, 0, 0), ...neighbors];
+    const edgesFor = (faces: number[][]): EdgeDto[] => faces.flatMap((nodeFaces, nodeIndex) =>
+      nodeFaces.flatMap((face) => [e(100 + nodeIndex, face + 1), e(face + 1, 100 + nodeIndex)]),
+    );
+    const divider = buildSplitPassages(nodes, edgesFor([[0, 1, 2], [3, 4, 5]]), hexCfg).specialShapes;
+    const doublePassage = buildSplitPassages(nodes, edgesFor([[0, 2], [3, 5]]), hexCfg).specialShapes;
+    expect(divider).toHaveLength(1);
+    expect(doublePassage).toHaveLength(1);
+    expect(divider[0]).toMatchObject({
+      kind: "diagonal",
+      corner0: doublePassage[0].kind === "diagonal" ? doublePassage[0].corner0 : null,
+      corner1: doublePassage[0].kind === "diagonal" ? doublePassage[0].corner1 : null,
+    });
+    if (divider[0].kind !== "diagonal") throw new Error("unreachable");
+    expect(divider[0].dividerJunctions).toHaveLength(2);
+    expect(divider[0].dividerJunctions?.[0]).not.toEqual(divider[0].dividerJunctions?.[1]);
+  });
+
   it("recognizes a hex_triple_corridor topology (1 opposite + 2 adjacent pairs)", () => {
     // Point (0,0) split into node 100 (faces 0,3 -- opposite/through), node 101 (faces 1,2 -- adjacent),
     // node 102 (faces 4,5 -- adjacent).

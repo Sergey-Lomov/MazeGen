@@ -1,7 +1,7 @@
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { TILE_SIZE } from "./constants";
 import type { SplitSpecialShapeKind } from "./renderers/types";
-import { detectSplitSpecialShapeKind, connectedFacePair, type SplitFaceKind } from "./splitFaceLayout";
+import { adjacentTripleOuterFaces, detectSplitSpecialShapeKind, connectedFaceIndices, type SplitFaceKind } from "./splitFaceLayout";
 import { getSplitCircleRotationDeg, getCellCenter, getCellVertices, getNeighborData, type Pos } from "./tessellationGeometry";
 
 /** A split point's hub-point circle radius (GitHub issue #223) — 1/2 of the cell's own radius. */
@@ -69,9 +69,9 @@ export function specialSplitNodePoint(
   cfg: TessellationConfig,
   center: Pos,
   kind: SplitSpecialShapeKind,
-  faces: [number, number],
+  faces: number[],
   slotIndex: number,
-  allFaces?: [number, number][],
+  allFaces?: number[][],
 ): Pos | null {
   if (cfg.type === "hex_parallelogram" || cfg.type === "hex_hexagon" || cfg.type === "hex_custom") {
     const vertices = getCellVertices(0, 0, cfg);
@@ -86,6 +86,13 @@ export function specialSplitNodePoint(
     };
 
     const localCenter = getCellCenter(0, 0, cfg);
+    if (kind === "hex_diagonal_divider") {
+      const outerFaces = adjacentTripleOuterFaces(faces, 6);
+      if (!outerFaces) return null;
+      faces = outerFaces;
+      kind = "hex_diagonal";
+    }
+
     if (kind === "hex_bridge") {
       // Node 1 is the bridge deck rendered on top; its anchor stays at the crossing. Node 0 is
       // underneath and moves toward the nearer of the two vertices midway around the perimeter
@@ -118,7 +125,7 @@ export function specialSplitNodePoint(
         return Math.min(distance, 6 - distance) === 1;
       });
       if (sidePairs?.length !== 2) return null;
-      const sharedVertex = ([a, b]: [number, number]): Pos | null => {
+      const sharedVertex = ([a, b]: number[]): Pos | null => {
         const [a0, a1] = edgeVerts[a], [b0, b1] = edgeVerts[b];
         const index = a0 === b0 || a0 === b1 ? a0 : a1 === b0 || a1 === b1 ? a1 : null;
         return index === null ? null : vertices[index];
@@ -262,7 +269,7 @@ export function buildNodePositions(
     }
 
     const connectedFacesByNode = kind && faceKindsByNode
-      ? faceKindsByNode.map(connectedFacePair)
+      ? faceKindsByNode.map(connectedFaceIndices)
       : null;
 
     for (let i = 0; i < group.length; i++) {

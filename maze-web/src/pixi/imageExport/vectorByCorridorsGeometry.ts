@@ -403,6 +403,28 @@ export function computeMiterJunctionPatch(rays: JunctionRay[], maxMiterRatio = 4
   return wedges;
 }
 
+/** Selects the junction wedge lying furthest toward `inward`, used where the opposite wedge is
+ * already covered by overlapping strokes and would only protrude outside the split tile. */
+export function selectInwardJunctionWedge(
+  rays: JunctionRay[],
+  inward: { x: number; y: number },
+): JunctionWedge | null {
+  let selected: JunctionWedge | null = null;
+  let selectedScore = -Infinity;
+  for (const wedge of computeMiterJunctionPatch(rays)) {
+    const sum = wedge.points.reduce(
+      (acc, point) => ({ x: acc.x + point.x, y: acc.y + point.y }),
+      { x: 0, y: 0 },
+    );
+    const score = sum.x * inward.x + sum.y * inward.y;
+    if (score > selectedScore) {
+      selected = wedge;
+      selectedScore = score;
+    }
+  }
+  return selected;
+}
+
 /** One CCW-adjacent pair's own wedge, factored out of `computeMiterJunctionPatch`'s loop
  *  (GitHub issue #443 follow-up) so `computeTwoRayOuterWedge` — the diagonal split connector's own
  *  2-ray corner — can reuse the exact same edge/corner construction verified correct on ordinary

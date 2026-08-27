@@ -206,6 +206,17 @@ describe("specialSplitNodePoint", () => {
     });
   });
 
+  it("hex diagonal divider uses the same anchors as the equivalent 0-2 / 3-5 double passage", () => {
+    const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+    const hexCenter = getCellCenter(0, 0, hexCfg);
+    const faces = [[0, 1, 2], [3, 4, 5]];
+    const equivalentPairs = [[0, 2], [3, 5]];
+    faces.forEach((nodeFaces, slot) => {
+      expect(specialSplitNodePoint(hexCfg, hexCenter, "hex_diagonal_divider", nodeFaces, slot, faces))
+        .toEqual(specialSplitNodePoint(hexCfg, hexCenter, "hex_diagonal", equivalentPairs[slot], slot, equivalentPairs));
+    });
+  });
+
   it("returns null for a diagonal face pair with no dedicated table entry", () => {
     // Only adjacent pairs (0,1)/(1,2)/(2,3)/(3,0) have entries — an opposite pair like (0,2)
     // shouldn't reach this function via detectSplitSpecialShapeKind's own "diagonal" classification
@@ -367,6 +378,24 @@ describe("buildNodePositions", () => {
       pointNodes.forEach((node, slot) => {
         expect(nodePos.get(node.id)).toEqual(
           specialSplitNodePoint(hexCfg, center, "hex_triple_corridor", faces[slot], slot, faces),
+        );
+      });
+    });
+
+    it("uses the hex diagonal divider anchors for graph and marker positioning", () => {
+      const hexCfg: TessellationConfig = { type: "hex_hexagon", radius: 3 };
+      const pointNodes = [0, 1].map((id) => ({ id, x: 0, y: 0 }));
+      const { offsets } = getNeighborData(hexCfg, 0, 0);
+      const neighbors = offsets.map(([x, y], i) => ({ id: 200 + i, x, y }));
+      const faces = [[0, 1, 2], [3, 4, 5]];
+      const directedPairs = faces.flatMap((nodeFaces, nodeIndex) =>
+        nodeFaces.map((face) => ({ from: pointNodes[nodeIndex].id, to: neighbors[face].id })),
+      );
+      const nodePos = buildNodePositions([...pointNodes, ...neighbors], hexCfg, directedPairs);
+      const center = getCellCenter(0, 0, hexCfg);
+      pointNodes.forEach((node, slot) => {
+        expect(nodePos.get(node.id)).toEqual(
+          specialSplitNodePoint(hexCfg, center, "hex_diagonal_divider", faces[slot], slot, faces),
         );
       });
     });

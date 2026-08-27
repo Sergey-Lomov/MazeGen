@@ -100,6 +100,10 @@ describe("ElementsSection", () => {
     [wall, wall, passage, wall, wall, passage],
     [wall, wall, wall, passage, passage, wall],
   ];
+  const diagonalDivider = [
+    [passage, passage, passage, wall, wall, wall],
+    [wall, wall, wall, passage, passage, passage],
+  ];
 
   it("orders named hex splits before split tile/node totals", () => {
     const { container } = render(<ElementsSection stats={{
@@ -108,12 +112,13 @@ describe("ElementsSection", () => {
       split_node_count: 25,
       split_groups: [
         { topology: tripleCorridor, count: 3 },
+        { topology: diagonalDivider, count: 4 },
         { topology: bridge, count: 7 },
         { topology: doubleBridge, count: 5 },
       ],
     }} />);
     const labels = Array.from(container.querySelectorAll("span")).map((span) => span.textContent);
-    const indices = ["Bridge", "Double bridge", "Triple corridor", "Split tiles", "Split nodes"]
+    const indices = ["Bridge", "Diagonal divider", "Double bridge", "Triple corridor", "Split tiles", "Split nodes"]
       .map((label) => labels.indexOf(label));
     expect(indices.every((index) => index >= 0)).toBe(true);
     expect(indices).toEqual([...indices].sort((a, b) => a - b));

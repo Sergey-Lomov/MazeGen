@@ -126,8 +126,10 @@ export type SplitPassage = {
  *  and/or skip-face pairs) — cut by one straight wall, whose endpoints depend on how many real
  *  tile corners the two nodes' faces actually share (see `detectSplitSpecialShapeKind`).
  *  `"hex_triple_corridor"` — three nodes, one opposite-face pair plus two adjacent-face pairs
- *  (`splitPatternTitles.ts`'s `"triple_corridor"`). */
-export type SplitSpecialShapeKind = "bridge" | "diagonal" | "hex_bridge" | "hex_triple_bridge" | "hex_diagonal" | "hex_triple_corridor";
+ *  (`splitPatternTitles.ts`'s `"triple_corridor"`). `"hex_diagonal_divider"` — two nodes owning
+ *  opposite groups of three adjacent faces; it keeps the generic junction drawing but supplies
+ *  dedicated graph/marker anchors for the two halves. */
+export type SplitSpecialShapeKind = "bridge" | "diagonal" | "hex_bridge" | "hex_triple_bridge" | "hex_diagonal" | "hex_triple_corridor" | "hex_diagonal_divider";
 
 /** Dedicated-shape draw data for one split point recognized as `kind` (GitHub issue #294) — emitted
  *  by `buildSplitPassagesCore` alongside (not instead of) the point's ordinary `SplitPassage`
@@ -155,6 +157,8 @@ export type SplitSpecialShape =
        *  `hex_triple_corridor` to bend both separating walls toward the tile center while corridor
        *  mode continues to use the shape only as topology metadata. */
       wallPath?: { x: number; y: number }[];
+      /** Per-node convergence points for a multi-face diagonal divider in corridor mode. */
+      dividerJunctions?: { x: number; y: number }[];
       /** Set only for `"hex_triple_corridor"`'s first of its two `"diagonal"` entries (GitHub
        *  issue #319) — the point's third (opposite-face-pair) node's own two endpoints
        *  (face-midpoint to face-midpoint), same role as `"bridge"`'s own `throughLine`: wall-mode

@@ -5,7 +5,15 @@ describe("blueprintsForDegree", () => {
   it("returns the built-in set for a known degree", () => {
     expect(blueprintsForDegree(3)).toHaveLength(1);
     expect(blueprintsForDegree(4)).toHaveLength(2);
-    expect(blueprintsForDegree(6)).toHaveLength(6);
+    expect(blueprintsForDegree(6)).toHaveLength(7);
+  });
+
+  it("includes the hex diagonal divider with two opposite adjacent-face triples", () => {
+    expect(blueprintsForDegree(6)).toContainEqual({
+      id: 6,
+      degree: 6,
+      nodeFaces: [[0, 1, 2], [3, 4, 5]],
+    });
   });
 
   it("returns an empty array for an unknown degree", () => {

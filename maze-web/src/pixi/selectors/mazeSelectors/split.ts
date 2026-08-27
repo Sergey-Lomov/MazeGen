@@ -1,8 +1,8 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
 import type { SplitPassage, SplitSpecialShape } from "../../renderers/types";
-import { getCellVertices, getSplitCircleRotationDeg, buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegment, SPLIT_HUB_RADIUS } from "../../tessellationGeometry";
-import { computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, type SplitFaceKind } from "../../splitFaceLayout";
+import { getCellVertices, getSplitCircleRotationDeg, buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegment, specialSplitNodePoint, SPLIT_HUB_RADIUS } from "../../tessellationGeometry";
+import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, type SplitFaceKind } from "../../splitFaceLayout";
 import { canvas } from "../../colorTokens";
 import { splitSlotColor } from "../../colorUtils";
 import { resolveEndpoint, buildSplitNodeResolver, type PostEditEndpoint } from "../../postEditEndpoint";
@@ -150,8 +150,9 @@ function buildDiagonalShape(
   corner1: Point,
   throughLine?: [Point, Point],
   wallPath?: Point[],
+  dividerJunctions?: Point[],
 ): SplitSpecialShape {
-  return { kind: "diagonal", pointKey, corner0, corner1, throughLine, wallPath };
+  return { kind: "diagonal", pointKey, corner0, corner1, throughLine, wallPath, dividerJunctions };
 }
 
 /** Builds the "bridge" `SplitSpecialShape` for a through corridor (`throughFaces`, drawn as nothing
@@ -199,7 +200,7 @@ function buildBridgeShape(
 }
 
 /** This node's own connected face indices against the dense `faceKindsByNode[nodeIndex]` matrix —
- *  same convention `connectedFacePair`/`detectSplitSpecialShapeKind` use ("wall" = not connected). */
+ *  same convention `connectedFaceIndices`/`detectSplitSpecialShapeKind` use ("wall" = not connected). */
 function connectedFaces(kinds: SplitFaceKind[]): number[] {
   return kinds.reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []);
 }
@@ -417,6 +418,23 @@ export function buildSplitPassagesCore<Id>(
       const node1Faces = connectedFaces(faceKindsByNode[1]);
       const endpoints = buildHexDiagonalEndpoints(px, py, cfg, edgeVerts, faceInputs, node0Faces, node1Faces);
       if (endpoints) specialShapes.push(buildDiagonalShape(pointKey, endpoints[0], endpoints[1]));
+    } else if (specialShapeKind === "hex_diagonal_divider") {
+      // The middle face of each adjacent triple does not change its boundary. Use the exact same
+      // separator as the equivalent two skip-face passages (0-2 / 3-5 and their rotations).
+      const node0Faces = adjacentTripleOuterFaces(connectedFaces(faceKindsByNode[0]), offsets.length);
+      const node1Faces = adjacentTripleOuterFaces(connectedFaces(faceKindsByNode[1]), offsets.length);
+      if (node0Faces && node1Faces) {
+        const endpoints = buildHexDiagonalEndpoints(px, py, cfg, edgeVerts, faceInputs, node0Faces, node1Faces);
+        const allFaces = faceKindsByNode.map(connectedFaces);
+        const dividerJunctions = allFaces.map((faces, slot) =>
+          specialSplitNodePoint(cfg, center, "hex_diagonal_divider", faces, slot, allFaces),
+        );
+        if (endpoints && dividerJunctions.every((point): point is Point => point !== null)) {
+          specialShapes.push(buildDiagonalShape(
+            pointKey, endpoints[0], endpoints[1], undefined, undefined, dividerJunctions,
+          ));
+        }
+      }
     } else if (specialShapeKind === "hex_triple_bridge") {
       // GitHub issue #319 — three nodes, all opposite-face pairs, three corridors crossing at the
       // same tile center point (every opposite-face axis of a regular hexagon passes through its

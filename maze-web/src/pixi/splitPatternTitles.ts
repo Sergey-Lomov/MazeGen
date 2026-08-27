@@ -64,6 +64,14 @@ const SQUARE_TITLES: SplitPatternTitleEntry[] = [
 // Hex (degree 6).
 const HEX_TITLES: SplitPatternTitleEntry[] = [
   {
+    // "Diagonal divider" — two nodes owning opposite groups of three adjacent faces.
+    topology: [
+      [PASSAGE, PASSAGE, PASSAGE, WALL, WALL, WALL],
+      [WALL, WALL, WALL, PASSAGE, PASSAGE, PASSAGE],
+    ],
+    titleKey: "split_pattern_title.diagonal_divider",
+  },
+  {
     // "Bridge" — two nodes, each a straight-through opposite-face pair.
     topology: [
       [PASSAGE, WALL, WALL, PASSAGE, WALL, WALL],

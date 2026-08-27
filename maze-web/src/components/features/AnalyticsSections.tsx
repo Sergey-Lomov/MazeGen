@@ -82,8 +82,9 @@ export function SubsectionTitle({ label, onOpenInfo }: { label: string; onOpenIn
 export function ElementsSection({ stats, onOpenSplitStats }: { stats: ElementsStatsDto; onOpenSplitStats?: () => void }) {
   const namedSplitOrder: Record<string, number> = {
     "split_pattern_title.bridge": 0,
-    "split_pattern_title.double_bridge": 1,
-    "split_pattern_title.triple_corridor": 2,
+    "split_pattern_title.diagonal_divider": 1,
+    "split_pattern_title.double_bridge": 2,
+    "split_pattern_title.triple_corridor": 3,
   };
   const namedSplitGroups = stats.split_groups
     .filter((g) => titleKeyForTopology(g.topology) != null)

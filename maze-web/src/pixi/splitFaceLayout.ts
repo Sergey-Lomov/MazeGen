@@ -27,6 +27,18 @@ export function circularDist(a: number, b: number, degree: number): number {
   return Math.min(d, degree - d);
 }
 
+/** The two outer faces of three consecutive faces on a circular tile, excluding the middle. */
+export function adjacentTripleOuterFaces(faces: number[], degree: number): [number, number] | null {
+  if (faces.length !== 3) return null;
+  const set = new Set(faces);
+  for (const start of faces) {
+    if ([0, 1, 2].every((step) => set.has((start + step) % degree))) {
+      return [start, (start + 2) % degree];
+    }
+  }
+  return null;
+}
+
 /** Recognizes a degree-4 split point's two-node topology as `"bridge"` (each node an
  *  opposite-face pair) or `"diagonal"` (each node an adjacent-face pair) — GitHub issue #294 — or
  *  a degree-6 (hex) split point's topology as one of the hex-specific kinds — GitHub issue #319:
@@ -48,6 +60,13 @@ export function detectSplitSpecialShapeKind(faceKindsByNode: SplitFaceKind[][]):
   if (degree === 6 && nodeCount !== 2 && nodeCount !== 3) return null;
 
   const connectedIndices = faceKindsByNode.map((kinds) => connectedIndicesOf(kinds));
+  if (degree === 6 && nodeCount === 2 && connectedIndices.every((idxs) => idxs.length === 3)) {
+    const allFaces = connectedIndices.flat();
+    return new Set(allFaces).size === degree && connectedIndices.every((faces) => adjacentTripleOuterFaces(faces, degree) !== null)
+      ? "hex_diagonal_divider"
+      : null;
+  }
+
   if (connectedIndices.some((idxs) => idxs.length !== 2)) return null;
 
   const isOpposite = (idxs: number[]) => circularDist(idxs[0], idxs[1], degree) === degree / 2;
@@ -83,9 +102,8 @@ export function detectSplitSpecialShapeKind(faceKindsByNode: SplitFaceKind[][]):
 
 /** This node's own connected face indices, as recognized by `detectSplitSpecialShapeKind` (exactly
  *  2, in ascending order) — GitHub issue #318. */
-export function connectedFacePair(kinds: SplitFaceKind[]): [number, number] {
-  const idxs = kinds.reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []);
-  return [idxs[0], idxs[1]];
+export function connectedFaceIndices(kinds: SplitFaceKind[]): number[] {
+  return kinds.reduce<number[]>((acc, k, i) => (k === "wall" ? acc : [...acc, i]), []);
 }
 
 /** Kinds that get no own colored segment/connector — `wall` (this node's face explicitly
