@@ -331,7 +331,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const lockEntries = buildLocks(lockedNodes, autoLockedNodes);
     this.locks.render({ locks: lockEntries }, cfg);
 
-    const markerData = buildPresetMarkers(presetStart?.point ?? null, presetFinish?.point ?? null, cfg);
+    const markerData = buildPresetMarkers(presetStart, presetFinish, cfg, presetSplitPoints, presetConnections);
     this.markers.render({ markers: markerData });
 
     this.teleports.render({

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Graphics } from "pixi.js";
 import { VectorByCorridorsRenderer, buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGapPatchGeometry } from "../pixi/imageExport/VectorByCorridorsRenderer";
+import { computeMiterJunctionPatch, selectInwardJunctionWedge } from "../pixi/imageExport/vectorByCorridorsGeometry";
 import { computeSquareCapPatch } from "../pixi/renderers/wallUtils";
 import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildSplitPassages } from "../pixi/selectors/mazeSelectors";
 import { buildTeleportGroups } from "../pixi/selectors/teleportGroups";
@@ -223,6 +224,25 @@ describe("buildTeleportWidenMarkers", () => {
 
   it("returns an empty list for no teleport edges", () => {
     expect(buildTeleportWidenMarkers([], settingsA, [])).toEqual([]);
+  });
+});
+
+describe("selectInwardJunctionWedge", () => {
+  it("keeps the wedge furthest toward the tile interior", () => {
+    const rays = [
+      { dir: { x: -1, y: -1 }, width: 10 },
+      { dir: { x: 1, y: 0 }, width: 10 },
+    ];
+    const wedges = computeMiterJunctionPatch(rays);
+    expect(wedges).toHaveLength(2);
+    const inward = { x: 0, y: 1 };
+    const score = (wedge: (typeof wedges)[number]) => wedge.points.reduce(
+      (sum, point) => sum + point.x * inward.x + point.y * inward.y,
+      0,
+    );
+    const selected = selectInwardJunctionWedge(rays, inward);
+    expect(selected).not.toBeNull();
+    expect(score(selected!)).toBe(Math.max(...wedges.map(score)));
   });
 });
 
@@ -678,6 +698,61 @@ describe("VectorByCorridorsRenderer", () => {
       const corridorsGraphics = (renderer as unknown as { corridors: { stroke: ReturnType<typeof vi.fn>; moveTo: ReturnType<typeof vi.fn> } }).corridors;
       expect(corridorsGraphics.stroke).toHaveBeenCalledTimes(3);
       expect(corridorsGraphics.moveTo.mock.calls.every((call: unknown[]) => call[0] === 5 && call[1] === 5)).toBe(true);
+    });
+
+    it("sharp hex diagonal divider converges each node's three lines at its own off-center junction", () => {
+      const segment = (x: number, y: number) => ({
+        v0: { x, y }, v1: { x, y }, center: { x, y }, isUndefined: false,
+        atFaceStart: false, atFaceEnd: false,
+      });
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [
+          { color: 0xaaaaaa, pointKey: "0,0", center: { x: 5, y: 5 }, wallSegments: [segment(10, 0), segment(10, 5), segment(10, 10)], connectors: [] },
+          { color: 0xbbbbbb, pointKey: "0,0", center: { x: 5, y: 5 }, wallSegments: [segment(0, 0), segment(0, 5), segment(0, 10)], connectors: [] },
+        ],
+        wallFaces: [],
+        specialShapes: [{
+          kind: "diagonal", pointKey: "0,0", corner0: { x: 5, y: 0 }, corner1: { x: 5, y: 10 },
+          dividerJunctions: [{ x: 7, y: 5 }, { x: 3, y: 5 }],
+        }],
+      });
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsB, splitSpecialShapes: true } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
+      expect(corridorsGraphics.stroke).toHaveBeenCalledTimes(6);
+      expect(corridorsGraphics.moveTo.mock.calls.filter(([x, y]) => x === 7 && y === 5)).toHaveLength(3);
+      expect(corridorsGraphics.moveTo.mock.calls.filter(([x, y]) => x === 3 && y === 5)).toHaveLength(3);
+      expect(corridorsGraphics.moveTo).not.toHaveBeenCalledWith(5, 5);
+      expect(corridorsGraphics.stroke.mock.calls.every(([style]) => style.cap === "butt")).toBe(true);
+      expect(corridorsGraphics.stroke.mock.calls.every(([style]) => style.color === settingsB.color)).toBe(true);
+      // Only the inward wedge is needed at each seam; the outward stroke halves already overlap.
+      expect(corridorsGraphics.fill.mock.calls.filter(([color]) => color === settingsB.color)).toHaveLength(6);
+    });
+
+    it("rounded hex diagonal divider converges at the same off-center junctions with round caps and no miter patches", () => {
+      const segment = (x: number, y: number) => ({
+        v0: { x, y }, v1: { x, y }, center: { x, y }, isUndefined: false,
+        atFaceStart: false, atFaceEnd: false,
+      });
+      vi.mocked(buildSplitPassages).mockReturnValueOnce({
+        passages: [
+          { color: 0xaaaaaa, pointKey: "0,0", center: { x: 5, y: 5 }, wallSegments: [segment(10, 0), segment(10, 5), segment(10, 10)], connectors: [] },
+          { color: 0xbbbbbb, pointKey: "0,0", center: { x: 5, y: 5 }, wallSegments: [segment(0, 0), segment(0, 5), segment(0, 10)], connectors: [] },
+        ],
+        wallFaces: [],
+        specialShapes: [{
+          kind: "diagonal", pointKey: "0,0", corner0: { x: 5, y: 0 }, corner1: { x: 5, y: 10 },
+          dividerJunctions: [{ x: 7, y: 5 }, { x: 3, y: 5 }],
+        }],
+      });
+      currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true } });
+      const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+      const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
+      expect(corridorsGraphics.stroke).toHaveBeenCalledTimes(6);
+      expect(corridorsGraphics.moveTo.mock.calls.filter(([x, y]) => x === 7 && y === 5)).toHaveLength(3);
+      expect(corridorsGraphics.moveTo.mock.calls.filter(([x, y]) => x === 3 && y === 5)).toHaveLength(3);
+      expect(corridorsGraphics.stroke.mock.calls.every(([style]) => style.cap === "round")).toBe(true);
+      expect(corridorsGraphics.fill).not.toHaveBeenCalled();
     });
 
     it("draws an undefined (tentative) share in a desaturated version of the node's color, not the plain color", () => {

@@ -2,9 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import type { PresetConnectionEntry } from "../pixi/fieldEditUtils";
 import { presetEndpoint } from "../pixi/presetEndpoint";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
-import { canvas } from "../pixi/colorTokens";
 import { TILE_SIZE } from "../pixi/constants";
-import { getCellCenter } from "../pixi/tessellationGeometry";
+import { canvas } from "../pixi/colorTokens";
 
 // getCellCenter (via squareGeometry's getCartesian) delegates to wasm, unavailable in this
 // unit-test environment -- mock it with the canonical square formula (see
@@ -14,7 +13,8 @@ vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
 }));
 
-const { buildPresetWallGroups, buildPresetSplitPassages, buildLinkHoverHighlight, buildPresetMarkers } = await import("../pixi/selectors/presetSelectors");
+const { buildPresetWallGroups, buildPresetSplitPassages, buildPresetMarkers, buildLinkHoverHighlight } = await import("../pixi/selectors/presetSelectors");
+const { getCellCenter } = await import("../pixi/tessellationGeometry");
 
 // width=2, height=1 centers cells at x=-1 and x=0 (see configAllCells offset math)
 const cfg: TessellationConfig = { type: "square", width: 2, height: 1 };
@@ -29,8 +29,8 @@ function connEntry(
 }
 
 describe("buildPresetMarkers", () => {
-  it("uses the shared default marker styles while keeping preset cell-center positions (GitHub issue #448)", () => {
-    const markers = buildPresetMarkers([-1, 0], [0, 0], cfg);
+  it("uses shared default styles and keeps ordinary endpoints at their tile centers (GitHub issue #448)", () => {
+    const markers = buildPresetMarkers(presetEndpoint([-1, 0]), presetEndpoint([0, 0]), cfg);
     const startCenter = getCellCenter(-1, 0, cfg);
     const finishCenter = getCellCenter(0, 0, cfg);
 
@@ -46,6 +46,24 @@ describe("buildPresetMarkers", () => {
         borderWidth: 3, cornerStyle: "round", gapWidth: 3, gapColor: canvas.floor.default,
       },
     ]);
+  });
+
+  it("uses the special split-shape anchor for a preset endpoint slot (GitHub issue #447)", () => {
+    const splitCfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    const connections = new Map<string, PresetConnectionEntry>();
+    const add = (key: string, from: ReturnType<typeof presetEndpoint>, to: ReturnType<typeof presetEndpoint>) =>
+      connections.set(key, { from, to, state: "passage", source: "user" });
+    const original = presetEndpoint([0, 0]);
+    const slot = presetEndpoint([0, 0], 0);
+    add("left", original, presetEndpoint([-1, 0]));
+    add("right", original, presetEndpoint([1, 0]));
+    add("up", slot, presetEndpoint([0, -1]));
+    add("down", slot, presetEndpoint([0, 1]));
+
+    const marker = buildPresetMarkers(original, null, splitCfg, { "0,0": [0] }, connections)[0];
+    const center = getCellCenter(0, 0, splitCfg);
+    expect(marker.pos[0]).toBeCloseTo(center.x + TILE_SIZE * 0.25);
+    expect(marker.pos[1]).toBeCloseTo(center.y);
   });
 });
 

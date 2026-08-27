@@ -4,7 +4,7 @@ import type { WallEdge, MarkerData, LockEntry, EdgeHL, PassageKind } from "../re
 import type { NodeEdgeHighlight } from "../renderers/NodeEdgeHighlightRenderer";
 import type { PresetConnectionEntry, PresetTeleportEntry, FieldEdge } from "../fieldEditUtils";
 import { edgeKey, computeInvalidKeysFromCells } from "../fieldEditUtils";
-import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
+import { buildNodePositions, getCellCenter, getNeighborData, getSharedEdgeSegment } from "../tessellationGeometry";
 import { buildCellSet } from "./sharedSelectors";
 import { buildMarkerData, buildSplitPassagesCore, type SplitPassageNode, type SplitPassagesResult } from "./mazeSelectors";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
@@ -193,18 +193,53 @@ export function buildPresetSplitPassages(
 }
 
 export function buildPresetMarkers(
-  start: [number, number] | null,
-  finish: [number, number] | null,
+  start: PresetEndpoint | null,
+  finish: PresetEndpoint | null,
   cfg: TessellationConfig,
+  presetSplitPoints: Record<string, number[]> = {},
+  connections: Map<string, PresetConnectionEntry> = new Map(),
 ): MarkerData[] {
+  const nodesById = new Map<string, SplitPassageNode<string>>();
+  const addNode = (endpoint: PresetEndpoint) => {
+    const id = presetEndpointKey(endpoint);
+    nodesById.set(id, { id, x: endpoint.point[0], y: endpoint.point[1] });
+  };
+  for (const [pointKey, slotIds] of Object.entries(presetSplitPoints)) {
+    if (slotIds.length === 0) continue;
+    const [x, y] = pointKey.split(",").map(Number);
+    addNode(presetEndpoint([x, y]));
+    for (const slotId of [...slotIds].sort((a, b) => a - b)) {
+      addNode(presetEndpoint([x, y], slotId));
+    }
+  }
+
+  const directedPairs: { from: string; to: string }[] = [];
+  for (const entry of connections.values()) {
+    if (entry.state === "wall" || entry.state === "undefined") continue;
+    addNode(entry.from);
+    addNode(entry.to);
+    const from = presetEndpointKey(entry.from);
+    const to = presetEndpointKey(entry.to);
+    directedPairs.push(...(entry.state === "one_way_backward"
+      ? [{ from: to, to: from }]
+      : entry.state === "one_way_forward"
+        ? [{ from, to }]
+        : [{ from, to }, { from: to, to: from }]));
+  }
+  const positions = buildNodePositions([...nodesById.values()], cfg, directedPairs);
+
+  const markerPosition = (endpoint: PresetEndpoint): [number, number] => {
+    const anchored = positions.get(presetEndpointKey(endpoint));
+    if (anchored) return [anchored.x, anchored.y];
+    const center = getCellCenter(endpoint.point[0], endpoint.point[1], cfg);
+    return [center.x, center.y];
+  };
   const markers: MarkerData[] = [];
   if (start) {
-    const c = getCellCenter(start[0], start[1], cfg);
-    markers.push(buildMarkerData([c.x, c.y], DEFAULT_MAZE_RENDER_STYLE.startMarker));
+    markers.push(buildMarkerData(markerPosition(start), DEFAULT_MAZE_RENDER_STYLE.startMarker));
   }
   if (finish) {
-    const c = getCellCenter(finish[0], finish[1], cfg);
-    markers.push(buildMarkerData([c.x, c.y], DEFAULT_MAZE_RENDER_STYLE.finishMarker));
+    markers.push(buildMarkerData(markerPosition(finish), DEFAULT_MAZE_RENDER_STYLE.finishMarker));
   }
   return markers;
 }

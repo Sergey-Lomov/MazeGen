@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use maze_core::{Graph, IdGenerator, Maze};
 use maze_core::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
-use maze_core::generation::{generate_maze, GenerationAlgorithm, ElementsConfig, GenerationConfig, PresetState, pipeline::{build_maze, RepairLimits}};
+use maze_core::generation::{PresetState, pipeline::{build_maze, RepairLimits}};
 use maze_core::graph::EdgeKind;
 use maze_core::quality_control::{
     QualityControlEngine, Rule, RuleTrait, Stage, Check,
@@ -11,7 +11,7 @@ use maze_core::quality_control::{
     MissingEndpointsIssue, InvalidLoopIssue, InvalidLoopRequirement, RepairLimitReachedIssue,
     RepairLimitKind,
 };
-use maze_core::repair::{RepairStrategy, FarthestEndpointsStrategy, RandomEndpointsStrategy, InvalidLoopRandomStrategy, StrategyParams, MutationCommand};
+use maze_core::repair::{RepairStrategy, FarthestEndpointsStrategy, InvalidLoopRandomStrategy, StrategyParams, MutationCommand};
 
 #[path = "pipeline_common/mod.rs"]
 mod pipeline_common;

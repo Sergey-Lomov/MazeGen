@@ -326,6 +326,6 @@ const DETAIL_DESCRIPTIONS: Record<string, (details: Record<string, string>) => s
 /// Resolves the description for one source check within an issue — mirrors
 /// `resolveIssueSourceLabel`, falling back to the issue kind's generic description when the check
 /// has no override in `DETAIL_DESCRIPTIONS`.
-export function resolveIssueSourceDescription(kind: string, typeId: string, details: Record<string, string> | undefined): string {
+export function resolveIssueSourceDescription(kind: string, typeId: string, details?: Record<string, string>): string {
   return DETAIL_DESCRIPTIONS[typeId]?.(details ?? {}) ?? resolveIssue(kind).description;
 }

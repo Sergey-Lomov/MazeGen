@@ -47,6 +47,7 @@ const HEX_BLUEPRINTS: SplitNodeBlueprint[] = [
   { id: 3, degree: 6, nodeFaces: [[0, 2], [3, 5]] },
   { id: 4, degree: 6, nodeFaces: [[0, 3], [1, 4], [2, 5]] },
   { id: 5, degree: 6, nodeFaces: [[0, 3], [1, 2], [4, 5]] },
+  { id: 6, degree: 6, nodeFaces: [[0, 1, 2], [3, 4, 5]] },
 ];
 
 const BLUEPRINTS_BY_DEGREE: Record<number, SplitNodeBlueprint[]> = {

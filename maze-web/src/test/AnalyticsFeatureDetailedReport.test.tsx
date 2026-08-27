@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { DetailedReportPanel } from "../components/features/AnalyticsFeature";
+import { ElementsSection } from "../components/features/AnalyticsSections";
 import { useMazeStore } from "../store/mazeStore";
 import { activeFloorTessellationOf } from "../store/storeHelpers";
 import type { MazeStatisticsDto } from "../wasm/types";
@@ -79,5 +80,47 @@ describe("DetailedReportPanel", () => {
     );
     expect(screen.getByText("Floor 1")).toBeInTheDocument();
     expect(screen.queryByText("Floor 2")).not.toBeInTheDocument();
+  });
+});
+
+describe("ElementsSection", () => {
+  const passage = { kind: "passage" as const };
+  const wall = { kind: "wall" as const };
+  const bridge = [
+    [passage, wall, wall, passage, wall, wall],
+    [wall, passage, wall, wall, passage, wall],
+  ];
+  const doubleBridge = [
+    [passage, wall, wall, passage, wall, wall],
+    [wall, passage, wall, wall, passage, wall],
+    [wall, wall, passage, wall, wall, passage],
+  ];
+  const tripleCorridor = [
+    [passage, passage, wall, wall, wall, wall],
+    [wall, wall, passage, wall, wall, passage],
+    [wall, wall, wall, passage, passage, wall],
+  ];
+  const diagonalDivider = [
+    [passage, passage, passage, wall, wall, wall],
+    [wall, wall, wall, passage, passage, passage],
+  ];
+
+  it("orders named hex splits before split tile/node totals", () => {
+    const { container } = render(<ElementsSection stats={{
+      ...baseElementsStats,
+      split_tile_count: 11,
+      split_node_count: 25,
+      split_groups: [
+        { topology: tripleCorridor, count: 3 },
+        { topology: diagonalDivider, count: 4 },
+        { topology: bridge, count: 7 },
+        { topology: doubleBridge, count: 5 },
+      ],
+    }} />);
+    const labels = Array.from(container.querySelectorAll("span")).map((span) => span.textContent);
+    const indices = ["Bridge", "Diagonal divider", "Double bridge", "Triple corridor", "Split tiles", "Split nodes"]
+      .map((label) => labels.indexOf(label));
+    expect(indices.every((index) => index >= 0)).toBe(true);
+    expect(indices).toEqual([...indices].sort((a, b) => a - b));
   });
 });

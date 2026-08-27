@@ -514,7 +514,7 @@ describe("buildSplitPassages", () => {
     // The cross corridor is north/south (the through corridor, east/west, draws nothing of its
     // own). Each edge is a 4-point polyline: full width at the cross faces (y = 0 and y = -40 in
     // this test's cartesian mock, i.e. the tile's own top/bottom edges), narrowing to 60% width at
-    // the same angle as the narrower triple bridge, flat in between.
+    // the original gradual 20% taper, flat in between.
     expect(shape.edge0).toHaveLength(4);
     expect(shape.edge1).toHaveLength(4);
     const [e0start, e0taperIn, e0taperOut, e0end] = shape.edge0;
@@ -536,7 +536,7 @@ describe("buildSplitPassages", () => {
     });
     const taperAxialLength = width(midpoint(e0start, e1start), midpoint(e0taperIn, e1taperIn));
     const bridgeLength = width(midpoint(e0start, e1start), midpoint(e0end, e1end));
-    expect(taperAxialLength / bridgeLength).toBeCloseTo(0.08 * (1 - 0.6) / (1 - 0.4), 5);
+    expect(taperAxialLength / bridgeLength).toBeCloseTo(0.2, 5);
 
     // edge0/edge1 must run side by side, never crossing -- `nearestEndpointPairing` (mazeSelectors.ts)
     // picks which of crossFaces[1]'s two ends pairs with which of crossFaces[0]'s; picking the wrong
@@ -626,6 +626,15 @@ describe("hex special shapes", () => {
     const shape = specialShapes[0];
     expect(shape.kind).toBe("bridge");
     expect(shape.pointKey).toBe("0,0");
+    if (shape.kind !== "bridge") throw new Error("unreachable");
+    const midpoint = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+      x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+    });
+    const distance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+      Math.hypot(a.x - b.x, a.y - b.y);
+    const taperLength = distance(midpoint(shape.edge0[0], shape.edge1[0]), midpoint(shape.edge0[1], shape.edge1[1]));
+    const bridgeLength = distance(midpoint(shape.edge0[0], shape.edge1[0]), midpoint(shape.edge0[3], shape.edge1[3]));
+    expect(taperLength / bridgeLength).toBeCloseTo(0.08 * (1 - 0.6) / (1 - 0.4), 5);
   });
 
   it("recognizes a hex_triple_bridge topology (3 opposite-face pairs, node0 < node1 < node2 layering)", () => {
@@ -678,6 +687,26 @@ describe("hex special shapes", () => {
     expect(shape.kind).toBe("diagonal");
     if (shape.kind !== "diagonal") throw new Error("unreachable");
     expect(shape.corner0).not.toEqual(shape.corner1);
+  });
+
+  it("renders a hex diagonal divider with the exact same wall line as 0-2 / 3-5", () => {
+    const neighbors = hexNeighborNodes(0, 0);
+    const nodes = [n(100, 0, 0), n(101, 0, 0), ...neighbors];
+    const edgesFor = (faces: number[][]): EdgeDto[] => faces.flatMap((nodeFaces, nodeIndex) =>
+      nodeFaces.flatMap((face) => [e(100 + nodeIndex, face + 1), e(face + 1, 100 + nodeIndex)]),
+    );
+    const divider = buildSplitPassages(nodes, edgesFor([[0, 1, 2], [3, 4, 5]]), hexCfg).specialShapes;
+    const doublePassage = buildSplitPassages(nodes, edgesFor([[0, 2], [3, 5]]), hexCfg).specialShapes;
+    expect(divider).toHaveLength(1);
+    expect(doublePassage).toHaveLength(1);
+    expect(divider[0]).toMatchObject({
+      kind: "diagonal",
+      corner0: doublePassage[0].kind === "diagonal" ? doublePassage[0].corner0 : null,
+      corner1: doublePassage[0].kind === "diagonal" ? doublePassage[0].corner1 : null,
+    });
+    if (divider[0].kind !== "diagonal") throw new Error("unreachable");
+    expect(divider[0].dividerJunctions).toHaveLength(2);
+    expect(divider[0].dividerJunctions?.[0]).not.toEqual(divider[0].dividerJunctions?.[1]);
   });
 
   it("recognizes a hex_triple_corridor topology (1 opposite + 2 adjacent pairs)", () => {

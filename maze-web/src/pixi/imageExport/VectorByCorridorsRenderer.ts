@@ -12,7 +12,7 @@ import { resolveEffectiveEndpoints, buildMarkerStyle, buildTeleportLineStyle, bu
 import { computeVectorByCorridorsWarnings } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "../renderers/types";
-import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, computeMiterJunctionPatch, type JunctionRay } from "./vectorByCorridorsGeometry";
+import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, computeMiterJunctionPatch, selectInwardJunctionWedge, type JunctionRay } from "./vectorByCorridorsGeometry";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
@@ -558,8 +558,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       cap: settings.oneWayJoin === "miter" ? ("square" as const) : ("round" as const),
     };
 
-    const drawConnectorLine = (from: { x: number; y: number }, to: { x: number; y: number }, color: number, oneWayOut: boolean | undefined, width: number = settings.thickness, target: Graphics = this.corridors): void => {
-      target.moveTo(from.x, from.y).lineTo(to.x, to.y).stroke({ width, color, cap, join: settings.join });
+    const drawConnectorLine = (from: { x: number; y: number }, to: { x: number; y: number }, color: number, oneWayOut: boolean | undefined, width: number = settings.thickness, target: Graphics = this.corridors, capOverride?: "butt" | "round" | "square"): void => {
+      target.moveTo(from.x, from.y).lineTo(to.x, to.y).stroke({ width, color, cap: capOverride ?? cap, join: settings.join });
       if (oneWayOut === undefined) return;
       const dx = to.x - from.x, dy = to.y - from.y;
       const len = Math.hypot(dx, dy) || 1;
@@ -607,7 +607,52 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     const diagonalRibbonDrawnForPoint = new Set<string>();
 
     for (const shape of specialShapes) {
-      if (shape.kind === "bridge") {
+      if (shape.kind === "diagonal" && shape.dividerJunctions) {
+        const nodePassages = passages.filter((passage) => passage.pointKey === shape.pointKey);
+        nodePassages.forEach((passage, nodeIndex) => {
+          const junction = shape.dividerJunctions?.[nodeIndex];
+          if (!junction) return;
+          for (const segment of passage.wallSegments) {
+            drawConnectorLine(
+              junction, segment.center, settings.color, segment.oneWayOut, settings.thickness, this.corridors,
+              settings.join === "miter" ? "butt" : "round",
+            );
+
+            // Patch the seam between this angled split ray and the ordinary corridor continuing
+            // beyond the hex face. Both strokes are butt-cut at `segment.center`; the two-ray
+            // miter patch closes the resulting corner without adding anything at the split's own
+            // internal convergence point.
+            if (settings.join !== "miter") continue;
+
+            const faceDx = segment.v1.x - segment.v0.x, faceDy = segment.v1.y - segment.v0.y;
+            let outward = { x: -faceDy, y: faceDx };
+            const fromTileCenter = {
+              x: segment.center.x - passage.center.x,
+              y: segment.center.y - passage.center.y,
+            };
+            if (outward.x * fromTileCenter.x + outward.y * fromTileCenter.y < 0) {
+              outward = { x: -outward.x, y: -outward.y };
+            }
+            const rays: JunctionRay[] = [
+              { dir: { x: junction.x - segment.center.x, y: junction.y - segment.center.y }, width: settings.thickness },
+              { dir: outward, width: settings.thickness },
+            ];
+            const inward = {
+              x: passage.center.x - segment.center.x,
+              y: passage.center.y - segment.center.y,
+            };
+            const inwardWedge = selectInwardJunctionWedge(rays, inward);
+            if (inwardWedge) {
+              const wedge = inwardWedge;
+              this.corridors.moveTo(segment.center.x + wedge.points[0].x, segment.center.y + wedge.points[0].y);
+              for (let i = 1; i < wedge.points.length; i++) {
+                this.corridors.lineTo(segment.center.x + wedge.points[i].x, segment.center.y + wedge.points[i].y);
+              }
+              this.corridors.closePath().fill(settings.color);
+            }
+          }
+        });
+      } else if (shape.kind === "bridge") {
         const crossMid0 = { x: (shape.crossFaces[0].v0.x + shape.crossFaces[0].v1.x) / 2, y: (shape.crossFaces[0].v0.y + shape.crossFaces[0].v1.y) / 2 };
         const crossMid1 = { x: (shape.crossFaces[1].v0.x + shape.crossFaces[1].v1.x) / 2, y: (shape.crossFaces[1].v0.y + shape.crossFaces[1].v1.y) / 2 };
 

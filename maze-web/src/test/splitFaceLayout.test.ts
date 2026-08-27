@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, type SplitFaceInput, type SplitNodeFaceKind, type SplitFaceKind } from "../pixi/splitFaceLayout";
+import { adjacentTripleOuterFaces, computeSplitFaceLayouts, computeSplitConnectors, detectSplitSpecialShapeKind, circularDist, type SplitFaceInput, type SplitNodeFaceKind, type SplitFaceKind } from "../pixi/splitFaceLayout";
 
 // A single square face spanning (0,0) -> (10,0) — enough for every division test below.
 const face: SplitFaceInput = { v0: { x: 0, y: 0 }, v1: { x: 10, y: 0 } };
@@ -195,6 +195,17 @@ describe("circularDist", () => {
   });
 });
 
+describe("adjacentTripleOuterFaces", () => {
+  it("returns the outer faces for ordinary and wrap-around triples", () => {
+    expect(adjacentTripleOuterFaces([0, 1, 2], 6)).toEqual([0, 2]);
+    expect(adjacentTripleOuterFaces([0, 4, 5], 6)).toEqual([4, 0]);
+  });
+
+  it("rejects a non-adjacent triple", () => {
+    expect(adjacentTripleOuterFaces([0, 2, 4], 6)).toBeNull();
+  });
+});
+
 describe("detectSplitSpecialShapeKind", () => {
   const passage = (idxs: number[], degree: number): SplitFaceKind[] =>
     Array.from({ length: degree }, (_, i) => (idxs.includes(i) ? "passage" : "wall"));
@@ -207,6 +218,20 @@ describe("detectSplitSpecialShapeKind", () => {
   it("degree 6, 2 nodes: non-opposite pairs (adjacent or skip) -> hex_diagonal", () => {
     expect(detectSplitSpecialShapeKind([passage([0, 1], 6), passage([3, 4], 6)])).toBe("hex_diagonal");
     expect(detectSplitSpecialShapeKind([passage([0, 2], 6), passage([4, 5], 6)])).toBe("hex_diagonal");
+  });
+
+  it("degree 6, 2 nodes: opposite adjacent-face triples -> hex_diagonal_divider", () => {
+    const kinds = [passage([0, 1, 2], 6), passage([3, 4, 5], 6)];
+    expect(detectSplitSpecialShapeKind(kinds)).toBe("hex_diagonal_divider");
+  });
+
+  it("degree 6, 2 nodes: overlapping or non-adjacent triples are not a diagonal divider", () => {
+    expect(detectSplitSpecialShapeKind([
+      passage([0, 1, 2], 6), passage([2, 3, 4], 6),
+    ])).toBeNull();
+    expect(detectSplitSpecialShapeKind([
+      passage([0, 2, 4], 6), passage([1, 3, 5], 6),
+    ])).toBeNull();
   });
 
   it("degree 6, 3 nodes: all opposite pairs, faces partition the hexagon -> hex_triple_bridge", () => {
@@ -234,7 +259,7 @@ describe("detectSplitSpecialShapeKind", () => {
     expect(detectSplitSpecialShapeKind([passage([0, 1], 4), passage([2, 3], 4)])).toBe("diagonal");
   });
 
-  it("a node without exactly 2 connected faces never matches a special shape", () => {
+  it("a node without the face count required by a recognized topology never matches a special shape", () => {
     const oneConnected = [passage([0], 6), passage([1, 4], 6)];
     expect(detectSplitSpecialShapeKind(oneConnected)).toBeNull();
     const threeConnected = [passage([0, 2, 4], 6), passage([1, 3], 6)];

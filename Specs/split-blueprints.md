@@ -31,8 +31,9 @@ without duplication. Currently defined:
 - **Degree 3 (triangle)** — 1 blueprint: a cross-through pair (two nodes, each connecting the
   original node's two non-shared faces to one shared face).
 - **Degree 4 (square)** — 2 blueprints: opposite pairs (N/S vs E/W) and adjacent pairs.
-- **Degree 6 (hex)** — 6 blueprints: opposite pairs, skip pairs, two "wide pair + far pair"
-  variants, three-opposite-pairs, and opposite-pair-plus-two-skip-pairs.
+- **Degree 6 (hex)** — 7 blueprints: opposite pairs, skip pairs, two "wide pair + far pair"
+  variants, three-opposite-pairs, opposite-pair-plus-two-skip-pairs, and a diagonal divider whose
+  two nodes own opposite groups of three adjacent faces.
 
 `blueprintsForDegree(degree)` returns the list for a degree, or `[]` if none are defined.
 
