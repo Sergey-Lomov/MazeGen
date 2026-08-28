@@ -57,10 +57,25 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
   useMazeStore((s) => s.autoLockedNodes);
   const hoverText = hover ? resolveCellInspection(useMazeStore.getState(), hover.x, hover.y) : "";
 
+  const resetZoom = () => scene?.resetZoomToOne();
+
   return (
     <div style={styles.bar}>
       {scene && (
-        <span style={styles.scale}>
+        <span
+          role="button"
+          tabIndex={0}
+          title="Reset zoom to 100% (Shift+1)"
+          aria-label="Reset zoom to 100%"
+          onClick={resetZoom}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              resetZoom();
+            }
+          }}
+          style={styles.scaleButton}
+        >
           <Search size={13} />
           {Math.round(scale * 100)}%
         </span>
@@ -82,12 +97,21 @@ const styles: Record<string, React.CSSProperties> = {
     height: 24,
     boxSizing: "border-box",
   },
-  scale: {
+  scaleButton: {
     ...muted(typography.body),
     display: "flex",
     alignItems: "center",
     gap: 4,
     whiteSpace: "nowrap",
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    margin: 0,
+    color: "inherit",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    WebkitAppearance: "none",
+    appearance: "none",
   },
   label: {
     ...muted(typography.body),

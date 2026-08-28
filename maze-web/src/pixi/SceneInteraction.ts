@@ -16,6 +16,12 @@ interface SceneInteractionDeps {
   getHoverProvider: (st: ReturnType<typeof useMazeStore.getState>) => HoverProvider;
   onHoverChanged: (info: HoverInfo | null) => void;
   onViewportChanged: () => void;
+  onResetZoom: () => void;
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
 }
 
 /** Wires pointer/wheel DOM events to the active feature controller, or to default viewport pan when none is active. */
@@ -23,6 +29,13 @@ export class SceneInteraction {
   private deps: SceneInteractionDeps;
   defaultPan: PanState;
   private onWheel: (e: WheelEvent) => void = () => {};
+  private onKeyDown = (e: KeyboardEvent) => {
+    if (isTypingTarget(e.target)) return;
+    if (e.shiftKey && e.code === "Digit1" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      this.deps.onResetZoom();
+    }
+  };
 
   private onBlur = () => {
     this.defaultPan.end();
@@ -109,6 +122,7 @@ export class SceneInteraction {
     });
 
     window.addEventListener("blur", this.onBlur);
+    window.addEventListener("keydown", this.onKeyDown);
 
     this.onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -128,6 +142,7 @@ export class SceneInteraction {
 
   destroy(): void {
     window.removeEventListener("blur", this.onBlur);
+    window.removeEventListener("keydown", this.onKeyDown);
     this.deps.app.canvas.removeEventListener("wheel", this.onWheel);
   }
 }

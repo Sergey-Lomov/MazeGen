@@ -27,6 +27,8 @@ Top-level coordinator. Holds a single `viewport: Container` for the maze, plus s
 
 Thin DOM bar docked at the bottom of the canvas column (`HoverInfoPanel`), showing the grid `x, y` under the cursor. Works uniformly across every card except `quality` (raw HTML5 canvas, no Pixi stage) — one shared mechanism rather than a per-feature reimplementation.
 
+The zoom readout is also exposed as a reset control: clicking the percentage label or pressing `Shift+1` resets the active viewport back to 100% scale without running fit-to-screen.
+
 **`HoverProvider`** (`pixi/hoverTypes.ts`): `getHoverInfo(canvasX, canvasY): HoverInfo | null`. `canvasX/canvasY` are raw DOM pointer-event coordinates (before viewport pan/zoom is undone) — each provider does its own transform. Returns `null` only when hover info can't be determined at all (no active projection/viewport); coordinates outside the current field/graph bounds still return a valid `HoverInfo`.
 
 **`DefaultHoverProvider`** (`pixi/hoverProviders.ts`): today's only implementation, used by every card. Converts canvas coords → viewport-local coords → grid coords via the active `TessellationProjection` (`canvasToGrid`, also reused by `FieldEditController.toGrid`).
