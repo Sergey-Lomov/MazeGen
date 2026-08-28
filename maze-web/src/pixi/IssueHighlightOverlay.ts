@@ -4,7 +4,8 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import type { Pos } from "./tessellationGeometry";
 import { buildNodePositions } from "./tessellationGeometry";
-import { drawOneWayWallHighlight } from "./renderers/wallUtils";
+import { drawOneWayWallHighlight, drawDirectionArrow } from "./renderers/wallUtils";
+import { TILE_SIZE } from "./constants";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { touchedNodeIds } from "./renderers/edgeUtils";
 import { canvas } from "./colorTokens";
@@ -43,6 +44,13 @@ export interface IssueHighlightData {
   resolveNodeCell?: NodeCellResolver;
   /** The active floor's own `levels_ordered()` index — required alongside `resolveNodeLevel`. */
   activeFloorIndex?: number;
+  /** Every cross-floor edge's own `"from->to"` key (`vertical_passage` / `elevator` / `teleport` —
+   *  every kind that can span floors), built from the *unscoped* `state.edges`. A cross-floor stub
+   *  gets its direction arrow only when the underlying connection is genuinely one-way — exactly
+   *  one of `"from->to"`/`"to->from"` present. Must be unscoped: a two-way connection's reverse
+   *  edge lives on the other floor and is always missing from any floor-scoped list (GitHub issue
+   *  #337/#347). */
+  crossFloorEdgeKeys?: ReadonlySet<string>;
 }
 
 export class IssueHighlightOverlay extends BaseGraphRenderer {
@@ -58,7 +66,7 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
 
   render(data: IssueHighlightData): void {
     this.resetContainers();
-    const { nodes, edges, allEdges, regionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex } = data;
+    const { nodes, edges, allEdges, regionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex, crossFloorEdgeKeys } = data;
     const hasEdges = edges != null && edges.length > 0;
     const hasRegions = regionGroups != null && regionGroups.length > 0 && nodes.length > 0;
 
@@ -102,6 +110,13 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
     const nodePos: Map<number, Pos> = buildNodePositions(nodes, cfg, directedPairs);
     const linePairs: [number, number][] = lineEdges.map((e) => [e.from, e.to]);
 
+    // A same-floor edge drawn as a line gets a mid-segment direction arrow when it's genuinely
+    // one-way — the reverse `to`→`from` absent from the base graph. Every edge kind counts here
+    // (a one-way teleport must show its arrow too), unlike `directedPairs` above which drops
+    // teleports only because they don't drive `buildNodePositions`. Matches how the Cycles overlay
+    // marks a one-way hop; a cross-floor edge has no on-floor line to mark and is handled by its
+    // badge stub instead.
+    const baseEdgeKeys = new Set(allEdges.map((e) => `${e.from},${e.to}`));
     const g = new Graphics();
     for (const [from, to] of linePairs) {
       const a = nodePos.get(from);
@@ -110,12 +125,35 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
       g.moveTo(a.x, a.y);
       g.lineTo(b.x, b.y);
       g.stroke({ width: HIGHLIGHT_WIDTH, color: HIGHLIGHT_COLOR, alpha: HIGHLIGHT_ALPHA });
+      if (baseEdgeKeys.has(`${from},${to}`) && !baseEdgeKeys.has(`${to},${from}`)) {
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len >= 1) {
+          drawDirectionArrow(g, (a.x + b.x) / 2, (a.y + b.y) / 2, (b.x - a.x) / len, (b.y - a.y) / len, TILE_SIZE * 0.18, HIGHLIGHT_COLOR, HIGHLIGHT_ALPHA);
+        }
+      }
     }
     this.edgesContainer.addChild(g);
 
     if (resolveNodeLevel && resolveNodeCell && activeFloorIndex !== undefined) {
-      const markers = buildCrossFloorMarkers(linePairs.map(([from, to]) => ({ from, to })), nodePos, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, NODE_RADIUS);
-      this.renderCrossFloorMarkers(markers, NODE_RADIUS, HIGHLIGHT_COLOR, HIGHLIGHT_COLOR, HIGHLIGHT_COLOR);
+      // A cross-floor stub gets its direction arrow only when the underlying connection is
+      // genuinely one-way — exactly one of `"from->to"`/`"to->from"` present in
+      // `crossFloorEdgeKeys`, with the stub then pointing whichever way that lone edge runs (which
+      // may be opposite the loop's own traversal). A two-way connection (both keys present) or a
+      // hop with no cross-floor edge at all (neither key) feeds both directions so
+      // `buildCrossFloorMarkers` resolves the stub to `direction: "none"` (no arrow).
+      const oneWayDir = (from: number, to: number): [number, number] | null => {
+        if (crossFloorEdgeKeys == null) return null;
+        const fwd = crossFloorEdgeKeys.has(`${from}->${to}`);
+        const bwd = crossFloorEdgeKeys.has(`${to}->${from}`);
+        if (fwd === bwd) return null;
+        return fwd ? [from, to] : [to, from];
+      };
+      const markerPairs = linePairs.flatMap(([from, to]) => {
+        const dir = oneWayDir(from, to);
+        return dir ? [{ from: dir[0], to: dir[1] }] : [{ from, to }, { from: to, to: from }];
+      });
+      const markers = buildCrossFloorMarkers(markerPairs, nodePos, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, NODE_RADIUS);
+      this.renderCrossFloorMarkers(markers, NODE_RADIUS, HIGHLIGHT_COLOR, HIGHLIGHT_COLOR, HIGHLIGHT_COLOR, true, HIGHLIGHT_WIDTH);
     }
 
     const nodesG = new Graphics();

@@ -357,7 +357,10 @@ export class AnalyticsRenderer {
     const showIssueHighlight = analyticsOpen && (hasLoopEdges || hasRegionGroups);
     this.issueHighlightContainer.visible = showIssueHighlight;
     if (showIssueHighlight) {
-      this.issueHighlightRenderer.render({ nodes, edges: hoveredIssueLoopEdges, allEdges: edges, regionGroups: hoveredIssueRegionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex });
+      const crossFloorEdgeKeys = new Set(
+        state.edges.filter((e) => e.kind !== "basic").map((e) => `${e.from}->${e.to}`),
+      );
+      this.issueHighlightRenderer.render({ nodes, edges: hoveredIssueLoopEdges, allEdges: edges, regionGroups: hoveredIssueRegionGroups, cfg, resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex, crossFloorEdgeKeys });
     } else {
       this.issueHighlightRenderer.clear();
     }
