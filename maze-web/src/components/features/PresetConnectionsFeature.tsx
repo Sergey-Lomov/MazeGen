@@ -375,6 +375,7 @@ export function PresetConnectionsFeature() {
 
       {presetFocusedPoint && (
         <PresetSplitNodesDialog
+          key={`${presetFocusedPoint[0]},${presetFocusedPoint[1]}@${activeFloorLevel({ floors, activeFloorId }) ?? 0}`}
           point={presetFocusedPoint}
           onClose={() => setPresetFocusedPoint(null)}
         />
