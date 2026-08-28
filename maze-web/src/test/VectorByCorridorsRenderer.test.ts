@@ -65,6 +65,13 @@ vi.mock("../pixi/renderers/TeleportRenderer", () => ({
   }),
 }));
 
+vi.mock("../pixi/renderers/VerticalConnectionRenderer", () => ({
+  VerticalConnectionRenderer: vi.fn().mockImplementation(function (this: { render: () => void; destroy: () => void }) {
+    this.render = vi.fn();
+    this.destroy = vi.fn();
+  }),
+}));
+
 vi.mock("../pixi/renderers/GridRenderer", () => ({
   GridRenderer: vi.fn().mockImplementation(function (this: { render: () => void; destroy: () => void }) {
     this.render = vi.fn();
@@ -601,6 +608,15 @@ describe("VectorByCorridorsRenderer", () => {
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
     const teleports = (renderer as unknown as { teleports: { render: ReturnType<typeof vi.fn> } }).teleports;
     expect(teleports.render).toHaveBeenCalledWith(expect.objectContaining({ interactive: true }));
+  });
+
+  it("wires cross-floor teleport badges and vertical-passage markers as always-on click-to-switch-floor (GitHub issue #478)", () => {
+    currentState = baseState();
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    const teleports = (renderer as unknown as { teleports: { render: ReturnType<typeof vi.fn> } }).teleports;
+    const verticalConnections = (renderer as unknown as { verticalConnections: { render: ReturnType<typeof vi.fn> } }).verticalConnections;
+    expect(teleports.render).toHaveBeenCalledWith(expect.objectContaining({ floorNavigable: true }));
+    expect(verticalConnections.render).toHaveBeenCalledWith(expect.objectContaining({ interactive: true }));
   });
 
   it("destroy destroys its own TeleportRenderer and its container", () => {

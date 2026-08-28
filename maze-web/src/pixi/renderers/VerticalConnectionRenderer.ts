@@ -341,10 +341,12 @@ function drawElevatorBadgeGap(container: Container, pos: { x: number; y: number 
 /** Draws one floor-number badge's own body (GitHub issue #430) — a small filled circle with a
  *  centered label (`formatElevatorBadgeLabel`), independent of `drawFloorBadge`'s own
  *  cross-floor-navigation badge (`floorBadge.ts`, a different feature: an off-floor endpoint
- *  stand-in with a knockout digit and its own click-to-navigate wiring). This badge never navigates
- *  and always fills solid, with the label drawn *on top* in `textColor` rather than knocked out of
- *  the fill — the issue's own "fill color"/"text color" pair implies two independently visible
- *  colors, not a stencil cutout. No gap ring here — see `drawElevatorBadgeGap`. */
+ *  stand-in with a knockout digit and its own click-to-navigate wiring). This badge always fills
+ *  solid, with the label drawn *on top* in `textColor` rather than knocked out of the fill — the
+ *  issue's own "fill color"/"text color" pair implies two independently visible colors, not a
+ *  stencil cutout. No gap ring here — see `drawElevatorBadgeGap`. Click-to-switch-floor wiring is a
+ *  separate hit-area pass in `drawElevatorBadges` (GitHub issue #478 follow-up), gated the same way
+ *  the marker's own `interactive` flag is. */
 const ELEVATOR_BADGE_FONT_WEIGHTS: Record<ElevatorBadgeFontWeight, TextStyleFontWeight> = {
   regular: "normal",
   bold: "bold",
@@ -386,6 +388,16 @@ function fitElevatorBadgeFontSize(labels: string[], radius: number): number {
   return baseline * (targetWidth / widest);
 }
 
+/** Resolves the `render` `interactive` param (a plain `boolean` or a per-marker predicate) to a
+ *  concrete `boolean` for one marker — shared by `wireInteractivity` (marker click) and
+ *  `drawElevatorBadges` (per-floor badge click, GitHub issue #478 follow-up). */
+function resolveMarkerInteractive(
+  interactive: boolean | ((marker: VerticalConnectionMarker) => boolean) | undefined,
+  marker: VerticalConnectionMarker,
+): boolean {
+  return typeof interactive === "function" ? interactive(marker) : (interactive ?? false);
+}
+
 /** Draws every floor-number badge for one `Elevator` marker (GitHub issue #430) — a no-op unless
  *  `settings.enabled` and the marker actually carries a resolved fan (`targetFloorIndices`, only
  *  ever set for `kind === "elevator"`, see `VerticalConnectionMarker`'s own doc comment). Shared by
@@ -395,18 +407,47 @@ function fitElevatorBadgeFontSize(labels: string[], radius: number): number {
  *  copy of that convention threaded through. `fontSize` is shared across the whole render pass (see
  *  `fitElevatorBadgeFontSize`), not recomputed per marker. Draws every badge's own gap ring first,
  *  then every badge's own body — never gap-then-body-then-gap-then-body — so no badge's fill ever
- *  ends up underneath a neighboring badge's gap ring. */
-function drawElevatorBadges(container: Container, marker: VerticalConnectionMarker, cx: number, cy: number, markerRadius: number, settings: ElevatorBadgeSettings, gapColor: number, fontSize: number): void {
+ *  ends up underneath a neighboring badge's gap ring. When `navigable` and a `hitLayer` are given
+ *  (GitHub issue #478 follow-up), also adds one transparent click-to-switch-floor hit circle per
+ *  badge, wired to that badge's own floor. */
+function drawElevatorBadges(
+  container: Container,
+  marker: VerticalConnectionMarker,
+  cx: number,
+  cy: number,
+  markerRadius: number,
+  settings: ElevatorBadgeSettings,
+  gapColor: number,
+  fontSize: number,
+  hitLayer?: Container,
+  navigable?: boolean,
+): void {
   if (!settings.enabled || marker.kind !== "elevator" || !marker.targetFloorIndices || marker.targetFloorIndices.length === 0) return;
   const badgeRadius = markerRadius * settings.size;
   const rounded = settings.cornerStyle === "round";
-  const positions = computeElevatorBadgePositions(cx, cy, markerRadius, marker.targetFloorIndices.length, badgeRadius, settings.distance, settings.gap, settings.placement, settings.evenDistribution);
-  const labels = marker.targetFloorIndices.map((floorIndex) => formatElevatorBadgeLabel(floorIndex, settings.labelType));
+  const targetFloorIndices = marker.targetFloorIndices;
+  const positions = computeElevatorBadgePositions(cx, cy, markerRadius, targetFloorIndices.length, badgeRadius, settings.distance, settings.gap, settings.placement, settings.evenDistribution);
+  const labels = targetFloorIndices.map((floorIndex) => formatElevatorBadgeLabel(floorIndex, settings.labelType));
   for (const pos of positions) {
     drawElevatorBadgeGap(container, pos, badgeRadius, settings.shape, rounded, settings.gapWidth, gapColor);
   }
   for (const [i, label] of labels.entries()) {
     drawElevatorBadgeBody(container, positions[i], badgeRadius, settings.shape, rounded, label, settings.fillColor, settings.textColor, fontSize, settings.fontWeight);
+  }
+  // Click-to-switch-floor hit area per badge (GitHub issue #478 follow-up) — `computeElevatorBadgePositions`
+  // returns positions in the same ascending order as `targetFloorIndices`, so `positions[i]` is the
+  // badge for `targetFloorIndices[i]`. Gated by `navigable` (the marker's own `interactive` flag),
+  // since an `Elevator` marker itself never navigates (its fan has no single target) — the badges are
+  // the only per-floor jump target it can offer.
+  if (hitLayer && navigable) {
+    for (const [i, pos] of positions.entries()) {
+      const targetFloorIndex = targetFloorIndices[i];
+      const hit = new Graphics().circle(pos.x, pos.y, badgeRadius).fill({ color: 0, alpha: 0 });
+      hit.eventMode = "static";
+      hit.cursor = "pointer";
+      hit.on("pointertap", () => navigateToFloor(targetFloorIndex));
+      hitLayer.addChild(hit);
+    }
   }
 }
 
@@ -447,9 +488,12 @@ export class VerticalConnectionRenderer {
 
   /** `interactive` (GitHub issue #337 follow-up) wires click-to-switch-floor on every marker whose
    *  own `targetFloorIndex` resolved (a `VerticalPassage` always has exactly one target floor; an
-   *  `Elevator`'s fan does not, so its markers never get `targetFloorIndex` and stay non-interactive
-   *  regardless of this flag — see `VerticalConnectionMarker`'s own doc comment). One listener per
-   *  marker `Graphics`, not a shared hit-test the way `TeleportRenderer.wireGroupInteractivity`
+   *  `Elevator`'s fan does not, so its marker itself never gets `targetFloorIndex` and stays
+   *  non-interactive regardless of this flag — see `VerticalConnectionMarker`'s own doc comment).
+   *  For an `Elevator` the same flag instead makes each of its per-floor number badges
+   *  (`drawElevatorBadges`) a click-to-switch-floor target (GitHub issue #478 follow-up) — the badges
+   *  are the only unambiguous per-floor jump target an elevator can offer. One listener per marker /
+   *  per badge `Graphics`, not a shared hit-test the way `TeleportRenderer.wireGroupInteractivity`
    *  needs (a handful of markers per floor at most — no bucket-search justified here). */
   render(data: {
     markers: VerticalConnectionMarker[];
@@ -615,7 +659,7 @@ export class VerticalConnectionRenderer {
       }
 
       this.wireInteractivity(marker, data.interactive, cx, cy, radius + borderWidth + gapWidth);
-      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, data.style.elevatorBadges, data.style.elevatorMarker.gapColor, badgeFontSize);
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, data.style.elevatorBadges, data.style.elevatorMarker.gapColor, badgeFontSize, this.hitLayer, resolveMarkerInteractive(data.interactive, marker));
     }
   }
 
@@ -629,7 +673,7 @@ export class VerticalConnectionRenderer {
     cy: number,
     hitRadius: number,
   ): void {
-    const markerInteractive = typeof interactive === "function" ? interactive(marker) : (interactive ?? false);
+    const markerInteractive = resolveMarkerInteractive(interactive, marker);
     if (!markerInteractive || marker.targetFloorIndex === undefined) return;
     const targetFloorIndex = marker.targetFloorIndex;
     const hit = new Graphics().circle(cx, cy, hitRadius).fill({ color: 0, alpha: 0 });
@@ -669,7 +713,7 @@ export class VerticalConnectionRenderer {
     if (marker.kind === "elevator") {
       drawElevatorIcon(this.g, cx, cy, radius, lineStyle.lineWidth, lineStyle.lineColor);
       this.wireInteractivity(marker, interactive, cx, cy, radius);
-      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, style.elevatorBadges, style.elevatorMarker.gapColor, badgeFontSize);
+      drawElevatorBadges(this.badgeLayer, marker, cx, cy, radius, style.elevatorBadges, style.elevatorMarker.gapColor, badgeFontSize, this.hitLayer, resolveMarkerInteractive(interactive, marker));
       return;
     }
 
