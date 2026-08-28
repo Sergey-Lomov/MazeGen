@@ -12,7 +12,7 @@ import { canvas } from "../../pixi/colorTokens";
 import { blueprintsForDegree } from "../../pixi/splitBlueprints";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { recordOnLevel } from "../../pixi/fieldEditUtils";
-import { SplitNodesDialogView, createRequiredLinksTracker, type SplitNodesRow, type LinkInfo, type SplitEdgeKind } from "./SplitNodesDialogView";
+import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, splitNodeLabelShort, type SplitNodesRow, type LinkInfo, type SplitEdgeKind } from "./SplitNodesDialogView";
 import type { TileFace, TileFaceKind, TileFaceNode } from "./TileFaceEditor";
 import * as m from "~/paraglide/messages";
 
@@ -129,17 +129,16 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
   };
 
   // Formats one side of a link bubble — used for both the card's own endpoint and its partner, so
-  // a non-original node always gets a "(<title>)" suffix on whichever side it appears on, not just
-  // the partner's. The original node itself never does — it's the maze's plain, un-split node, its
-  // coordinates alone already identify it uniquely. A `split` endpoint gets its generic slot label
-  // as the suffix; a plain `node` endpoint elsewhere on the maze (not this point's original node)
-  // has no title at all, just its coordinates.
+  // every node always gets an "(N{N})" suffix on whichever side it appears on, not just the
+  // partner's. A `split` endpoint or this point's original node gets its compact node label; a
+  // plain `node` endpoint elsewhere on the maze (not this point's original node) has no label at
+  // all, just its coordinates.
   const describeEndpoint = (ep: PostEditEndpoint): string => {
     if (originalEndpoint && endpointsMatch(ep, originalEndpoint)) {
-      return `${point[0]},${point[1]}`;
+      return `${point[0]},${point[1]} (${splitNodeLabelShort(undefined)})`;
     }
     if (ep.kind === "split") {
-      return `${ep.point[0]},${ep.point[1]} (${m["post_edit.split_node_label"]({ slotId: ep.slotId })})`;
+      return `${ep.point[0]},${ep.point[1]} (${splitNodeLabelShort(ep.slotId)})`;
     }
     const n = nodeById.get(ep.id);
     return n ? `${n.x},${n.y}` : `#${ep.id}`;
@@ -184,14 +183,14 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
 
   const rows: SplitNodesRow<PostEditEndpoint>[] = [
     ...(originalEndpoint ? [{
-      key: endpointKey(originalEndpoint), endpoint: originalEndpoint, title: m["post_edit.split_original_node"](),
+      key: endpointKey(originalEndpoint), endpoint: originalEndpoint, title: splitNodeLabel(undefined),
       color: colorAt(0), removable: false, active: isActive(originalEndpoint), ownLabel: describeEndpoint(originalEndpoint), links: links(originalEndpoint),
       isStart: isStart(originalEndpoint), isFinish: isFinish(originalEndpoint),
     }] : []),
     ...slots.map((slotId, i) => {
       const ep = splitEndpoint(point, slotId, level);
       return {
-        key: endpointKey(ep), endpoint: ep, title: m["post_edit.split_node_label"]({ slotId }),
+        key: endpointKey(ep), endpoint: ep, title: splitNodeLabel(slotId),
         color: colorAt((originalEndpoint ? 1 : 0) + i), removable: true, active: isActive(ep), ownLabel: describeEndpoint(ep), links: links(ep),
         isStart: isStart(ep), isFinish: isFinish(ep),
       };

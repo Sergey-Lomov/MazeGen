@@ -1,5 +1,5 @@
-import { useMemo, useEffect } from "react";
-import { Maximize2, RectangleVertical, RectangleHorizontal } from "lucide-react";
+import { useMemo, useEffect, useState } from "react";
+import { Maximize2, RectangleVertical, RectangleHorizontal, Ruler } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
@@ -11,7 +11,10 @@ import { Button } from "../Button";
 import { typography, spacing, inset, controlRowHeight, ui } from "../../styles/theme";
 import { PngOverflowWarningBubble, PngFitWarningBubble } from "./PngOverflowWarningBubble";
 import { computeDigitalExportFit } from "../../pixi/imageExport/exportFit";
-import { computePrintExportFit, computeAutoFitPrintScale, resolveSheetSizeMm, DPI_BY_DENSITY, pxToMm } from "../../pixi/imageExport/printFit";
+import { computePrintExportFit, computeAutoFitPrintScale, resolveSheetSizeMm, DPI_BY_DENSITY, pxToMm, computePhysicalOneToOneViewportScale } from "../../pixi/imageExport/printFit";
+import { applyPhysicalZoom } from "../../pixi/viewportScaleBridge";
+import { useCalibratedCssPpi } from "./useCalibratedCssPpi";
+import { ScreenDpiCalibrationModal } from "./ScreenDpiCalibrationModal";
 import { resolveContentBoundsBasis } from "../../pixi/imageExport/exportMargins";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { createModeRenderer } from "../../pixi/imageExport/modeRendererFactory";
@@ -98,6 +101,9 @@ export function PngExportSettingsPanel() {
   const setPrintScale = useMazeStore((s) => s.setPrintScale);
   const setPrintScaleAutoFit = useMazeStore((s) => s.setPrintScaleAutoFit);
   const setPrintAnchor = useMazeStore((s) => s.setPrintAnchor);
+
+  const calibratedCssPpi = useCalibratedCssPpi();
+  const [calibrationOpen, setCalibrationOpen] = useState(false);
 
   const activeRenderMode = useMazeStore((s) => s.activeRenderMode);
   const nodes = useMazeStore((s) => s.nodes);
@@ -424,9 +430,47 @@ export function PngExportSettingsPanel() {
 
             {printFit?.clipsSheetBounds && <PngFitWarningBubble id="png_content_clips_sheet" />}
             {printFit?.entersMarginZone && <PngFitWarningBubble id="png_content_in_margin_zone" />}
+
+            <div style={styles.divider} />
+
+            <Inline gap="itemGap" justify="space-between">
+              <span style={styles.label}>{m["image_export.format.png.print.screen_calibration"]()}</span>
+              <Inline gap="elementsGap">
+                <span style={typography.caption}>
+                  {calibratedCssPpi == null
+                    ? m["image_export.format.png.print.screen_calibration_uncalibrated"]()
+                    : m["image_export.format.png.print.screen_calibration_value"]({ ppi: calibratedCssPpi.toFixed(0) })}
+                </span>
+                <HoverIconButton
+                  fixedHeight
+                  onClick={() => setCalibrationOpen(true)}
+                  title={m["image_export.format.png.print.calibrate_tooltip"]()}
+                >
+                  <Ruler size={16} />
+                </HoverIconButton>
+              </Inline>
+            </Inline>
+
+            <Button
+              variant="secondary"
+              layoutStyle={{ width: "100%" }}
+              disabled={nodes.length === 0 || !activeRenderMode}
+              title={m["image_export.format.png.print.physical_size_tooltip"]()}
+              onClick={() => {
+                if (calibratedCssPpi == null) {
+                  setCalibrationOpen(true);
+                  return;
+                }
+                applyPhysicalZoom(computePhysicalOneToOneViewportScale(print.scale, print.density, calibratedCssPpi));
+              }}
+            >
+              {m["image_export.format.png.print.physical_size"]()}
+            </Button>
           </Stack>
           </div>
         )}
+
+        {calibrationOpen && <ScreenDpiCalibrationModal onClose={() => setCalibrationOpen(false)} />}
       </Stack>
     </div>
   );

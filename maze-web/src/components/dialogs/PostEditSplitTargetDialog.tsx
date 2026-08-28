@@ -113,9 +113,7 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
               onClick={() => { pick(id); onClose(); }}
             >
               <span style={{ ...styles.dot, background: colorToCss(splitSlotColor(index, canvas.node.splitSlots)) }} />
-              {index === 0
-                ? m["post_edit.split_original_node"]()
-                : m["post_edit.split_node_label"]({ slotId: index - 1 })}
+              {m["post_edit.split_node_label"]({ slotId: index + 1 })}
             </Button>
           ))}
         </div>

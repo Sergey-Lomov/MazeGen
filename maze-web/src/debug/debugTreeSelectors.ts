@@ -220,7 +220,10 @@ export function resolveHighlightTarget(
 }
 
 export interface NodeCoordIndex {
-  get(id: bigint): { x: number; y: number; level: number } | null;
+  /** `i` is `NodeDto.i` — the node's 0-based per-point index (`0` = the point's original node);
+   *  `split` is true when more than one node sits at this point on this floor, i.e. a split point
+   *  (GitHub issue #468 — used to append a "Node N" suffix to a split node's narration label). */
+  get(id: bigint): { x: number; y: number; level: number; i: number; split: boolean } | null;
 }
 
 const coordIndexCache = new WeakMap<NodeDto[], NodeCoordIndex>();
@@ -238,10 +241,20 @@ export function buildNodeCoordIndex(nodes: NodeDto[]): NodeCoordIndex {
   const map = new Map<bigint, NodeDto>();
   for (const node of nodes) map.set(BigInt(node.id), node);
 
+  // Point-key ("x,y,level") -> node count, to flag split points (GitHub issue #468).
+  const countByPoint = new Map<string, number>();
+  for (const node of map.values()) {
+    const key = `${node.x},${node.y},${node.level ?? 0}`;
+    countByPoint.set(key, (countByPoint.get(key) ?? 0) + 1);
+  }
+
   const result: NodeCoordIndex = {
     get(id: bigint) {
       const node = map.get(id);
-      return node ? { x: node.x, y: node.y, level: node.level ?? 0 } : null;
+      if (!node) return null;
+      const level = node.level ?? 0;
+      const split = (countByPoint.get(`${node.x},${node.y},${level}`) ?? 0) > 1;
+      return { x: node.x, y: node.y, level, i: node.i, split };
     },
   };
   coordIndexCache.set(nodes, result);

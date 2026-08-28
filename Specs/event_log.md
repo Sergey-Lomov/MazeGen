@@ -355,6 +355,13 @@ arrow — those rendered poorly in the bubble's monospace font). Per explicit us
 canvas highlight makes inline coordinates in prose redundant. The `debug.tree.*` paraglide
 messages lost their `{x}`/`{y}`/`{fx}`/... coordinate interpolations accordingly.
 
+When the referenced node belongs to a **split point** (more than one node at the same `(x, y, level)`),
+`bubbleLabel` appends a compact `(N{n})` suffix — `n` is the node's 1-based number (`NodeDto.i + 1`,
+so the point's original node is `N1`), GitHub issue #468. Nodes on non-split points stay bare
+coordinates. `buildNodeCoordIndex` (`maze-web/src/debug/debugTreeSelectors.ts`) supplies `i` and a
+`split` flag alongside `x`/`y`/`level` for this. The `N{n}` short form is the `post_edit.split_node_label_short`
+message (the dialogs' link bubbles use the same one — see `Specs/post-edit.md`).
+
 Initial scope mirrors #123 (Recursive Backtracker only): only `node`/`edge` tokens are actually
 emitted; `cycle`/`region` exist in the type only, for QC/repair narration landing later (see #171
 below, which puts them to use).

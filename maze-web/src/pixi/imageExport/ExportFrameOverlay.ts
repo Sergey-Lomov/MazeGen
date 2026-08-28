@@ -72,6 +72,37 @@ export class ExportFrameOverlay implements ViewportListener {
     this.redraw();
   }
 
+  /** "Physical size (1:1)" viewport command from the print settings panel (GitHub issue #476):
+   * set the editor viewport to `targetScale`, keeping the point currently under the print frame's
+   * centre fixed on screen (standard zoom-around-point). Deliberately does NOT write
+   * `print.scale`/`anchor`/`offset` — the user changed how they view the sheet, not the maze's
+   * placement on it — so it's `syncingDepth`-guarded exactly like `syncViewportToPlacement`, to
+   * stop `onViewportChanged` mistaking this for a real pan/zoom and stomping the placement. A
+   * genuine pan/zoom afterwards still flows through `syncPlacementToViewport` as usual. */
+  applyViewportScaleAroundFrameCentre(targetScale: number): void {
+    const state = useMazeStore.getState();
+    const layout = this.currentPrintFrameLayout(state);
+    if (!layout || targetScale <= 0) return;
+
+    const cx = layout.x + layout.w / 2;
+    const cy = layout.y + layout.h / 2;
+    const k = targetScale / this.lastViewport.scale;
+    const newX = cx - (cx - this.lastViewport.x) * k;
+    const newY = cy - (cy - this.lastViewport.y) * k;
+
+    this.syncingDepth++;
+    try {
+      this.setViewportTransform(newX, newY, targetScale);
+    } finally {
+      this.syncingDepth--;
+    }
+    // The `setViewportTransform` callback moves the real Pixi viewport, but its `onViewportChanged`
+    // echo is skipped while syncing — mirror the new transform into our own cache so a subsequent
+    // real pan/zoom computes its delta from here.
+    this.lastViewport = { x: newX, y: newY, scale: targetScale };
+    this.redraw();
+  }
+
   // w/h unused: screen size is now read live via getScreenSize() at redraw time (see its doc
   // comment) rather than cached from this callback's params, to avoid drawing against a stale
   // canvas size on any redraw that isn't itself triggered by a viewport change.

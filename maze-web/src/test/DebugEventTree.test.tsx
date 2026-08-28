@@ -1,6 +1,6 @@
 ﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { DebugEventTree } from "../components/DebugEventTree";
+import { DebugEventTree, bubbleLabel } from "../components/DebugEventTree";
 import { useMazeStore } from "../store/mazeStore";
 import { TAG_SCOPE, RECURSIVE_BACKTRACKER_EVENT_TAG } from "../debug/eventTape";
 import type { NodeDto } from "../wasm/types";
@@ -292,6 +292,37 @@ describe("DebugEventTree on a multi-floor maze", () => {
     fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
     expect(screen.getByText("0:0 <-> 3:4")).toBeInTheDocument();
     expect(screen.queryByText(/L2:/)).not.toBeInTheDocument();
+  });
+});
+
+// --- Split-node narration suffix (GitHub issue #468) ---
+
+describe("bubbleLabel split-node suffix", () => {
+  // (2,2) is a split point (i=0, i=1); (5,5) has a single node.
+  const coords = (id: bigint): { x: number; y: number; level: number; i: number; split: boolean } | null => {
+    switch (id) {
+      case 1n: return { x: 2, y: 2, level: 0, i: 0, split: true };
+      case 2n: return { x: 2, y: 2, level: 0, i: 1, split: true };
+      case 3n: return { x: 5, y: 5, level: 0, i: 0, split: false };
+      default: return null;
+    }
+  };
+
+  it("appends a compact (N{N}) suffix to a split point's node, none to a non-split endpoint", () => {
+    // original node of the split point (i=0) -> N1; plain (5,5) node stays bare.
+    expect(bubbleLabel({ kind: "edge", from: 1n, to: 3n, bidirectional: true }, coords)).toBe("2:2 (N1) <-> 5:5");
+  });
+
+  it("numbers a split point's non-original node by its per-point index + 1", () => {
+    expect(bubbleLabel({ kind: "edge", from: 2n, to: 3n, bidirectional: true }, coords)).toBe("2:2 (N2) <-> 5:5");
+  });
+
+  it("prefixes the floor and still appends the suffix on a multi-floor maze", () => {
+    expect(bubbleLabel({ kind: "node", id: 2n }, coords, true)).toBe("L1:2:2 (N2)");
+  });
+
+  it("falls back to #id for an unresolved node, no suffix", () => {
+    expect(bubbleLabel({ kind: "node", id: 99n }, coords)).toBe("#99");
   });
 });
 

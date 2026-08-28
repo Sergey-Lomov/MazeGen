@@ -173,6 +173,7 @@ export const ISSUE_KIND_IDS = [
 export const PARAM_IDS = [
   "adjacent_floors_only",
   "allow_add_connections",
+  "allow_cross_floor",
   "allow_incomplete",
   "allow_lose_connections",
   "allow_out_of_interval",

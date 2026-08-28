@@ -79,6 +79,97 @@ describe("ExportFrameOverlay — print anchor guard", () => {
   });
 });
 
+describe("ExportFrameOverlay — physical 1:1 viewport command", () => {
+  function printState(overrides: Record<string, unknown> = {}) {
+    setBaseState({
+      pngExportSettings: {
+        ...DEFAULT_PNG_EXPORT_SETTINGS,
+        outputMode: "print",
+        print: { ...DEFAULT_PNG_EXPORT_SETTINGS.print, scaleAutoFit: false, anchor: "center", scale: 1.7 },
+      },
+      ...overrides,
+    });
+  }
+
+  it("is a pure scale about the print frame's screen centre", async () => {
+    const { computeSheetScreenLayout } = await import("../pixi/imageExport/printFit");
+    const { computePrintExportFit } = await import("../pixi/imageExport/printFit");
+    const { resolveContentBoundsBasis } = await import("../pixi/imageExport/exportMargins");
+
+    printState();
+    const { overlay, setViewportTransform } = makeOverlay();
+
+    // The constructor's becameActive sync already placed the viewport for "center" — that's our
+    // "old" transform (read it back), no pan/zoom needed.
+    const [oldX, oldY, oldS] = setViewportTransform.mock.calls.at(-1)!;
+    setViewportTransform.mockClear();
+
+    const target = 2.5;
+    overlay.applyViewportScaleAroundFrameCentre(target);
+
+    const [nx, ny, ns] = setViewportTransform.mock.calls.at(-1)!;
+    expect(ns).toBe(target);
+
+    // The frame's own screen centre (computeSheetScreenLayout of the current print fit).
+    const s = useMazeStore.getState();
+    const fit = computePrintExportFit(s.activeTessellationConfig, s.nodes, { left: 0, right: 0, top: 0, bottom: 0 }, s.pngExportSettings.print, resolveContentBoundsBasis("vector_by_walls"));
+    const layout = computeSheetScreenLayout(fit.sheetWidthPx, fit.sheetHeightPx, SCREEN.width, SCREEN.height);
+    const cx = layout.x + layout.w / 2;
+    const cy = layout.y + layout.h / 2;
+
+    const k = target / oldS;
+    expect(nx).toBeCloseTo(cx - (cx - oldX) * k);
+    expect(ny).toBeCloseTo(cy - (cy - oldY) * k);
+  });
+
+  it("does not touch print placement (scale / anchor / offset)", () => {
+    printState();
+    const { overlay } = makeOverlay();
+
+    overlay.applyViewportScaleAroundFrameCentre(0.32);
+
+    const p = useMazeStore.getState().pngExportSettings.print;
+    expect(p.scale).toBe(1.7);
+    expect(p.anchor).toBe("center");
+    expect(p.offsetXMm).toBe(DEFAULT_PNG_EXPORT_SETTINGS.print.offsetXMm);
+    expect(p.offsetYMm).toBe(DEFAULT_PNG_EXPORT_SETTINGS.print.offsetYMm);
+  });
+
+  it("ignores a non-positive target scale (no viewport write)", () => {
+    printState();
+    const { overlay, setViewportTransform } = makeOverlay();
+    setViewportTransform.mockClear();
+
+    overlay.applyViewportScaleAroundFrameCentre(0);
+    overlay.applyViewportScaleAroundFrameCentre(-1.5);
+
+    expect(setViewportTransform).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when the print frame is not active (export panel closed)", () => {
+    printState({ openCard: null });
+    const { overlay, setViewportTransform } = makeOverlay();
+    setViewportTransform.mockClear();
+
+    overlay.applyViewportScaleAroundFrameCentre(2.0);
+
+    expect(setViewportTransform).not.toHaveBeenCalled();
+  });
+
+  it("a genuine pan/zoom afterwards still switches the anchor to custom (placement contract intact)", () => {
+    printState();
+    const { overlay, setViewportTransform } = makeOverlay();
+
+    overlay.applyViewportScaleAroundFrameCentre(0.5);
+    expect(useMazeStore.getState().pngExportSettings.print.anchor).toBe("center");
+
+    const [x, y] = setViewportTransform.mock.calls.at(-1)!;
+    // A genuine pan away from the 1:1 transform.
+    overlay.onViewportChanged(x + 77, y + 33, SCREEN.width, SCREEN.height, 0.5);
+    expect(useMazeStore.getState().pngExportSettings.print.anchor).toBe("custom");
+  });
+});
+
 describe("ExportFrameOverlay — re-entrancy guard", () => {
   it("does not recurse infinitely when setViewportTransform synchronously calls back into onViewportChanged (stack-overflow regression)", () => {
     setBaseState({

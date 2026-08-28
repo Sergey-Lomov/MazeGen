@@ -501,6 +501,47 @@ Both directions are guarded by a re-entrant-safe `syncingDepth` counter (not a b
 
 `MazeScene.notifyScreenResized()` (triggered by an `App.tsx` `ResizeObserver` on the canvas DOM element — side panel opening/closing, card switching, DevTools toggling) forces `app.resize()` (Pixi's own `resizeTo` `ResizeObserver` on the same element races independently against the caller's, so `app.screen` can read one tick stale without this) then calls `ExportFrameOverlay.notifyExternalResize()`, which re-runs `redraw()` explicitly — a pure screen resize doesn't itself flow through the store subscription `redraw()` normally relies on, so without this the frame's `sheetSizeChanged` check would never re-fire and the canvas would stay fit against the *previous* (pre-resize) screen size.
 
+### Physical-size (1:1) preview
+
+The print settings panel's bottom section (below the fit warnings) offers a **"Physical size (1:1)"**
+button that zooms the editor so one on-screen millimetre equals one printed millimetre — a way to
+judge the real printed size of cells/labels/markers without a test print (GitHub issue #476).
+
+**Calibration.** The browser exposes no real physical pixel density, and a CSS pixel is not a
+device pixel (OS display scaling, browser zoom). So the user calibrates, and the app stores, the
+*effective CSS pixels-per-inch* (`calibratedCssPpi`) under their current browser/OS configuration.
+`ScreenDpiCalibrationModal` shows an on-screen bar `CALIBRATION_CARD_WIDTH_MM` (85.6 mm, ISO/IEC
+7810 ID-1 — a single worldwide bank/ID-card standard) wide at the draft PPI; the user holds a card
+against it and drags a slider (range `MIN_CSS_PPI`..`MAX_CSS_PPI` = 60..200, realistic once OS
+scaling is folded in, slider reads out in CSS PPI) until the on-screen bar matches the card. This
+is a property of the device/configuration, **not the project** — persisted to `localStorage` by
+`screenCalibration.ts` (same imperative-store + `useSyncExternalStore` shape as
+`i18n/localeStore.ts`, hook `useCalibratedCssPpi`), never written to a project file or the store.
+The stored value is clamped to `[MIN_CSS_PPI, MAX_CSS_PPI]` on **both** write and read (a value
+persisted by a different build, or hand-edited, can't reach the formula out of range). Before calibration `calibratedCssPpi` is `null` and the button opens
+the calibration modal instead of zooming. Calibration is environment-dependent (monitor, screen
+resolution, system/browser scaling) — the modal says so.
+
+**Formula.** `computePhysicalOneToOneViewportScale(printScale, density, calibratedCssPpi)`
+(`printFit.ts`) = `printScale * calibratedCssPpi / DPI_BY_DENSITY[density]`. Independent of
+`TILE_SIZE` (both the on-paper and on-screen cell size are `TILE_SIZE * scale`, so it cancels).
+`printScale` is the current `print.scale` (kept in lockstep with `computeAutoFitPrintScale` by the
+panel's own effect while `scaleAutoFit` is on).
+
+**It is a pure viewport command** — it does **not** touch `print.scale`/`anchor`/`offset` (the user
+changed how they view the sheet, not the maze's placement on it). Wired through the second slot of
+`viewportScaleBridge.ts` (`setPhysicalZoomApplier`/`applyPhysicalZoom` — the panel is reached
+propless via `exportFormatRegistry`, same reason the "match current zoom" getter exists) →
+`MazeScene.applyPrintPhysicalZoom` → `ExportFrameOverlay.applyViewportScaleAroundFrameCentre`, which
+scales the viewport about the print frame's screen centre (standard zoom-around-point) and is
+`syncingDepth`-guarded exactly like `syncViewportToPlacement` so `onViewportChanged` doesn't mistake
+it for a real pan/zoom. It is a no-op when the print frame is not active (export panel closed) or
+the target scale is non-positive. A genuine pan/zoom afterwards still flows through `syncPlacementToViewport`
+and switches `anchor` to `"custom"` as usual. The 1:1 view holds until a real pan/zoom or any
+`print`-setting/panel-size change (the latter re-fires `redraw()`'s `sheetSizeChanged`/
+`placementChanged` re-sync back to the `print`-derived placement) — acceptable, since a DPI/paper/
+margin change needs a fresh 1:1 recompute anyway.
+
 ### Result info & warning bubbles
 
 Both output modes show a result-info block (image size in px for digital, sheet size in px + cell size in mm for print) below a divider, then any applicable warning bubbles below that. Digital's own overflow warning (`PngOverflowWarningBubble`, `png_content_overflows_canvas`) carries a fill-percentage parameter; print's two warnings (`PngFitWarningBubble`, `png_content_clips_sheet`/`png_content_in_margin_zone`) are plain yes/no facts with no parameter — both bubble components share one `WarningBubble` body (click opens a `Modal` with the resolved description, `exportWarningsI18n.ts`'s `resolvePng*WarningMessage`/`resolvePng*WarningDescription`), same look/interaction as the "Vector by walls" section's `ExportWarningBubble` but built inline in `PngExportSettingsPanel.tsx` from the fit result rather than through `computeVectorByWallsWarnings` — these are canvas-fit facts, not maze-geometry facts, so they don't carry `nodes`/`edges` to highlight.

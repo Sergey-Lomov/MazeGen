@@ -16,7 +16,7 @@ import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
   useMazeStore.setState({
-    // Node 5 is the split point (2,2)'s original node — the dialog resolves "Original node" to
+    // Node 5 is the split point (2,2)'s original node — the dialog resolves the "Node 1" row to
     // its real NodeId from this snapshot, not from the point's coordinates (see the fixed bug
     // where it was mistakenly built as `nodeEndpoint(point[0])`).
     nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 5, x: 2, y: 2, i: 0 }],
@@ -32,9 +32,9 @@ describe("ManageSplitNodesDialog", () => {
   it("renders one card for the original node plus one per slot, coordinates in the modal header", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     expect(screen.getByText("Manage split nodes: 2, 2")).toBeInTheDocument();
-    expect(screen.getByText("Original node")).toBeInTheDocument();
-    expect(screen.getByText("Node 0")).toBeInTheDocument();
     expect(screen.getByText("Node 1")).toBeInTheDocument();
+    expect(screen.getByText("Node 2")).toBeInTheDocument();
+    expect(screen.getByText("Node 3")).toBeInTheDocument();
   });
 
   it("Remove is disabled while the original node is active (defaults active)", () => {
@@ -44,7 +44,7 @@ describe("ManageSplitNodesDialog", () => {
 
   it("Remove is enabled once a slot becomes active", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Node 0"));
+    fireEvent.click(screen.getByText("Node 2"));
     expect(screen.getByText("Remove")).not.toBeDisabled();
   });
 
@@ -55,7 +55,7 @@ describe("ManageSplitNodesDialog", () => {
 
   it("clicking a non-active card calls setActiveSplitNode", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Node 0"));
+    fireEvent.click(screen.getByText("Node 2"));
     expect(useMazeStore.getState().postEditActiveSplitNode["2,2"]).toEqual(splitEndpoint([2, 2], 0));
   });
 
@@ -77,13 +77,13 @@ describe("ManageSplitNodesDialog", () => {
       postEditDraftMeta: { start: splitEndpoint([2, 2], 0, 1), finish: null },
     });
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Node 0"));
+    fireEvent.click(screen.getByText("Node 2"));
     expect(screen.getByText("Start")).toBeInTheDocument();
   });
 
   it("clicking the already-active card is a no-op (not clickable)", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Original node"));
+    fireEvent.click(screen.getByText("Node 1"));
     expect(useMazeStore.getState().postEditActiveSplitNode["2,2"]).toBeUndefined();
   });
 
@@ -95,7 +95,7 @@ describe("ManageSplitNodesDialog", () => {
 
   it("clicking Remove (on the active slot) then confirming calls removeSplitNode", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Node 0"));
+    fireEvent.click(screen.getByText("Node 2"));
     fireEvent.click(screen.getByText("Remove"));
     fireEvent.click(screen.getByText("Ok"));
     expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([1]);
@@ -103,13 +103,13 @@ describe("ManageSplitNodesDialog", () => {
 
   it("clicking Remove then cancelling leaves the slot untouched", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Node 0"));
+    fireEvent.click(screen.getByText("Node 2"));
     fireEvent.click(screen.getByText("Remove"));
     fireEvent.click(screen.getByText("Cancel"));
     expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0, 1]);
   });
 
-  it("shows a link bubble naming both this node and the other endpoint, with a title suffix on the non-original side", () => {
+  it("shows a link bubble naming both this node and the other endpoint, with a Node N suffix on the split side", () => {
     useMazeStore.setState({
       postEditDraftEdges: {
         "n0-s0": { from: nodeEndpoint(0), to: splitEndpoint([2, 2], 0), kind: "basic" },
@@ -118,8 +118,9 @@ describe("ManageSplitNodesDialog", () => {
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     // Slot 0 is the edge's `to`, so from its perspective the link is incoming ("<-"), not "->".
     // Every card's own coordinates ("2,2") lead the bubble, then the arrow, then the partner's —
-    // slot 0's own side gets a "(Node 0)" suffix since it isn't the original node.
-    expect(screen.getByText("2,2 (Node 0) <- 0,0")).toBeInTheDocument();
+    // slot 0's own side gets a compact "(N2)" suffix (row order: original = Node 1, slot 0 =
+    // Node 2). The partner (0,0) is a plain node on a non-split point, so it gets no suffix.
+    expect(screen.getByText("2,2 (N2) <- 0,0")).toBeInTheDocument();
   });
 
   it("shows the original node's own links, resolved by its real NodeId, not the point's coordinates", () => {
@@ -131,7 +132,8 @@ describe("ManageSplitNodesDialog", () => {
       },
     });
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    expect(screen.getByText("2,2 -> 1,0")).toBeInTheDocument();
+    // (2,2) is a split point, so its original node's own side gets a compact "(N1)" suffix too.
+    expect(screen.getByText("2,2 (N1) -> 1,0")).toBeInTheDocument();
   });
 
   it("collapses a passage's matched forward+backward basic pair into a single <-> link", () => {
@@ -142,9 +144,9 @@ describe("ManageSplitNodesDialog", () => {
       },
     });
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    expect(screen.getByText("2,2 <-> 1,0")).toBeInTheDocument();
-    expect(screen.queryByText("2,2 -> 1,0")).not.toBeInTheDocument();
-    expect(screen.queryByText("2,2 <- 1,0")).not.toBeInTheDocument();
+    expect(screen.getByText("2,2 (N1) <-> 1,0")).toBeInTheDocument();
+    expect(screen.queryByText("2,2 (N1) -> 1,0")).not.toBeInTheDocument();
+    expect(screen.queryByText("2,2 (N1) <- 1,0")).not.toBeInTheDocument();
   });
 
   it("shows links for an auto-split node (GitHub issue #222) keyed by its real NodeId, not a split endpoint", () => {
@@ -162,8 +164,8 @@ describe("ManageSplitNodesDialog", () => {
     });
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
     // The link belongs to slot 0 (node 6), not the original node — slot 0's own side gets its
-    // usual "(Node 0)" title suffix.
-    expect(screen.getByText("2,2 (Node 0) -> 1,0")).toBeInTheDocument();
+    // compact "(N2)" suffix (row order: original = Node 1, slot 0 = Node 2).
+    expect(screen.getByText("2,2 (N2) -> 1,0")).toBeInTheDocument();
     // Slot 0 (node 6) is also the run's start node — must resolve as such despite draftMeta
     // carrying a plain node endpoint, not a split one.
     expect(screen.getByText("Start")).toBeInTheDocument();
@@ -177,12 +179,12 @@ describe("ManageSplitNodesDialog", () => {
       },
     });
     render(<ManageSplitNodesDialog point={[2, 2]} onClose={vi.fn()} />);
-    // Original node's card: own side has no suffix (it IS the original node), outgoing link to
-    // slot 0 named by its title, not a bare slotId.
-    expect(screen.getByText("2,2 -> 2,2 (Node 0)")).toBeInTheDocument();
-    // Slot 0's card: own side gets a "(Node 0)" suffix too; the partner (the original node) never
-    // gets a suffix, on either side of a bubble.
-    expect(screen.getByText("2,2 (Node 0) <- 2,2")).toBeInTheDocument();
+    // Original node's card (row "Node 1"): both nodes of the bubble belong to this split point,
+    // so each side gets its compact "(N{N})" suffix — the original node included (slot 0 is not a
+    // special node any more, GitHub issue #468).
+    expect(screen.getByText("2,2 (N1) -> 2,2 (N2)")).toBeInTheDocument();
+    // Slot 0's card (row "Node 2"): same bubble seen from the other side.
+    expect(screen.getByText("2,2 (N2) <- 2,2 (N1)")).toBeInTheDocument();
   });
 
   it("applies a blueprint immediately, with no confirm, when clicked right after the panel opens", () => {
