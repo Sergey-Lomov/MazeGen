@@ -86,6 +86,25 @@ export interface PresetConnectionsState {
    *  section on this card (Edges Tools, Vertex Tools, Control, etc.) is a plain, always-expanded
    *  group, not tracked here. */
   presetSectionsExpanded: Record<string, boolean>;
+  /** Deferred vertex-tool placement waiting on a split-node pick (GitHub issue #474, extended to
+   *  presets). Set when a left click with a vertex tool lands on a split point (>0 declared
+   *  slots) — `PresetSplitTargetDialog` shows, and picking a node calls
+   *  `applyPresetSplitTargetPick`, which dispatches the deferred tool to that specific node. The
+   *  active-node concept (`presetActiveSplitNode`) must not decide which node a placement
+   *  attaches to. `null` when no pick is pending. `slotIds` are the point's declared slots in
+   *  ascending order; the picker also always offers the original node (slot `undefined`). */
+  presetSplitTargetPrompt:
+    | {
+        point: [number, number];
+        level?: number;
+        slotIds: number[];
+        action:
+          | { tool: "set_start" | "set_finish" }
+          | { tool: "vertical_passage_one_way" | "vertical_passage_two_way" }
+          | { tool: "elevator" }
+          | { tool: "teleport_one_way" | "teleport_two_way" };
+      }
+    | null;
 }
 
 export interface PresetConnectionsActions {
@@ -176,4 +195,11 @@ export interface PresetConnectionsActions {
    *  behavior (GitHub issue #340's "clear" tool follow-up) — but presets have no prior generation
    *  to roll back to, so this deletes outright rather than restoring a generated snapshot. */
   resetPresetPoint: (point: [number, number]) => void;
+  /** Opens `presetSplitTargetPrompt` — called by `PresetConnectionsController` when a vertex-tool
+   *  left click lands on a split point. */
+  requestPresetSplitTarget: (prompt: NonNullable<PresetConnectionsState["presetSplitTargetPrompt"]>) => void;
+  /** Resolves the pending prompt: dispatches the deferred vertex tool to the picked node.
+   *  `slotId: undefined` = the point's original node. No-op if nothing is pending. */
+  applyPresetSplitTargetPick: (slotId: number | undefined) => void;
+  cancelPresetSplitTarget: () => void;
 }

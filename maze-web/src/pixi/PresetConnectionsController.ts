@@ -35,6 +35,7 @@ export class PresetConnectionsController extends BaseController {
       this.cancelPendingTeleport();
       useMazeStore.getState().cancelPresetVerticalPassagePlacement();
       useMazeStore.getState().cancelPresetElevatorPlacement();
+      useMazeStore.getState().cancelPresetSplitTarget();
     }
   };
 
@@ -189,6 +190,29 @@ export class PresetConnectionsController extends BaseController {
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
       const level = activeFloorLevel(store);
+
+      // On a split point the active-node concept (`presetActiveSplitNode`) must not decide which
+      // node a vertex-tool placement attaches to (GitHub issue #474). A left click there defers
+      // to the node picker *before* any marker/teleport/vertical-passage hit-test below — those
+      // resolve through the active node and would otherwise silently drag/cycle/complete on it
+      // without the dialog. Right click (remove) still falls through to the hit-tests.
+      if (button === 0) {
+        const splitKey = level === undefined ? `${coords[0]},${coords[1]}` : `${coords[0]},${coords[1]}@${level}`;
+        const slotIds = store.presetSplitPoints[splitKey];
+        if (slotIds && slotIds.length > 0) {
+          const sortedSlotIds = [...slotIds].sort((a, b) => a - b);
+          if (tool === "set_start" || tool === "set_finish") {
+            store.requestPresetSplitTarget({ point: coords, level, slotIds: sortedSlotIds, action: { tool } });
+          } else if (VERTICAL_PASSAGE_TOOLS.has(tool)) {
+            store.requestPresetSplitTarget({ point: coords, level, slotIds: sortedSlotIds, action: { tool: tool as "vertical_passage_one_way" | "vertical_passage_two_way" } });
+          } else if (tool === "elevator") {
+            store.requestPresetSplitTarget({ point: coords, level, slotIds: sortedSlotIds, action: { tool: "elevator" } });
+          } else if (TELEPORT_TOOLS.has(tool)) {
+            store.requestPresetSplitTarget({ point: coords, level, slotIds: sortedSlotIds, action: { tool: tool as "teleport_one_way" | "teleport_two_way" } });
+          }
+          return;
+        }
+      }
 
       // All four vertex elements (start, finish, every teleport endpoint) share one editing
       // mode: whichever vertex tool is active, drag/RMB-delete applies to any of them — but only

@@ -146,6 +146,7 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
       presetSplitPoints: file.presets.splitPoints,
       presetActiveSplitNode: {},
       presetFocusedPoint: null,
+      presetSplitTargetPrompt: null,
       // reset maze state — will be populated by generate below
       ...buildResetMazeState(),
       generationStatus: "idle" as const,

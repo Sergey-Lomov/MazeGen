@@ -166,6 +166,27 @@ export interface PostEditState {
    * directions between the pair regardless of the new entry's own direction — the draft entry is
    * the sole source of truth for the pair once it exists. */
   postEditSuppressedVerticalPassagePairs: ReadonlySet<string>;
+  /** In-progress "which split node?" prompt (GitHub issue #474) — set whenever a vertex tool
+   * (`set_start`/`set_finish`, a vertical-passage tool, `elevator`, a teleport tool) is used on a
+   * split point. The active-node concept must not leak into connection placement, so instead of
+   * silently attaching to the active/original node the placement is deferred until the user picks
+   * one of the point's nodes via `applyPostEditSplitTargetPick`. `nodeIds` are the point's
+   * confirmed nodes in snapshot order (index 0 = the point's original node — see
+   * `PostEditController.buildNodeMap`); an unconfirmed split slot has no real id yet and is not
+   * offered, same as the pre-#474 no-op on an unconfirmed active split node. `null` when no
+   * prompt is open. Never persisted (ephemeral placement state). */
+  postEditSplitTargetPrompt:
+    | {
+        point: [number, number];
+        level?: number;
+        nodeIds: number[];
+        action:
+          | { tool: "set_start" | "set_finish" }
+          | { tool: "vertical_passage_one_way" | "vertical_passage_two_way" }
+          | { tool: "elevator" }
+          | { tool: "teleport_one_way" | "teleport_two_way" };
+      }
+    | null;
 }
 
 export interface PostEditActions {
@@ -223,4 +244,13 @@ export interface PostEditActions {
   confirmPostEditElevatorPlacement: () => void;
   cancelPostEditElevatorPlacement: () => void;
   removePostEditElevator: (id: number) => void;
+  /** Opens the "which split node?" prompt (GitHub issue #474). Called by `PostEditController` when
+   * a vertex tool is used on a split point instead of dispatching the tool directly. */
+  requestPostEditSplitTarget: (prompt: NonNullable<PostEditState["postEditSplitTargetPrompt"]>) => void;
+  /** Resolves an open `postEditSplitTargetPrompt` against the picked node id, dispatching the
+   * deferred vertex tool (start/finish, vertical passage, elevator, teleport) to that node.
+   * No-op if no prompt is open. */
+  applyPostEditSplitTargetPick: (nodeId: number) => void;
+  /** Dismisses an open `postEditSplitTargetPrompt` without placing anything. */
+  cancelPostEditSplitTarget: () => void;
 }

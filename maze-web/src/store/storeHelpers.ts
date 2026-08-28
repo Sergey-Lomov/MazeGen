@@ -498,6 +498,7 @@ export function makeOrientationSetter(axisKind: "hex" | "triangle", field: "hexO
       // already applies to both focused-point fields.
       presetFocusedPoint: null,
       postEditFocusedPoint: null,
+      presetSplitTargetPrompt: null,
     } as Partial<MazeState>;
   };
 }

@@ -83,6 +83,19 @@ describe("buildPresetTeleportEdges", () => {
     expect(result[0].toFloor).toBeUndefined();
     expect(result[0].from).not.toEqual(result[0].to);
   });
+
+  it("split-node endpoint draws at its supplied node-anchor position, not the tile center (GitHub issue #474)", () => {
+    const teleports: PresetTeleportEntry[] = [
+      { id: 1, from: presetEndpoint([1, 1], 0), to: presetEndpoint([3, 3]), direction: "two_way" },
+    ];
+    // A caller-supplied anchor for the split endpoint — offset from the tile center on purpose.
+    const anchor = { x: proj.gridToScreen(1, 1).x + 7, y: proj.gridToScreen(1, 1).y - 3 };
+    const nodePositions = new Map([["1,1:0", anchor]]);
+    const result = buildPresetTeleportEdges(teleports, cfg, undefined, nodePositions);
+    expect(result[0].from).toEqual([anchor.x, anchor.y]);
+    expect(result[0].from).not.toEqual(posOf(1, 1));
+    expect(result[0].to).toEqual(posOf(3, 3));
+  });
 });
 
 describe("buildPresetVerticalMarkers", () => {
@@ -138,5 +151,23 @@ describe("buildPresetVerticalMarkers", () => {
     ];
     const result = buildPresetVerticalMarkers([], elevators, cfg, 2);
     expect(result).toHaveLength(0);
+  });
+
+  it("split-node endpoint draws at its supplied node-anchor position, not the tile center (GitHub issue #474)", () => {
+    const anchor = { x: proj.gridToScreen(0, 0).x + 5, y: proj.gridToScreen(0, 0).y - 8 };
+    const nodePositions = new Map([["0,0:0", anchor]]);
+
+    const passages: PresetVerticalPassageEntry[] = [
+      { id: 1, from: presetEndpoint([0, 0], 0), to: presetEndpoint([0, 0], undefined, 1), direction: "two_way" },
+    ];
+    const passageResult = buildPresetVerticalMarkers(passages, [], cfg, undefined, nodePositions);
+    expect(passageResult[0].pos).toEqual([anchor.x, anchor.y]);
+    expect(passageResult[0].pos).not.toEqual(posOf(0, 0));
+
+    const elevators: PresetElevatorEntry[] = [
+      { id: 1, floors: [presetEndpoint([0, 0], 0), presetEndpoint([0, 0], undefined, 1)] },
+    ];
+    const elevatorResult = buildPresetVerticalMarkers([], elevators, cfg, undefined, nodePositions);
+    expect(elevatorResult[0].pos).toEqual([anchor.x, anchor.y]);
   });
 });

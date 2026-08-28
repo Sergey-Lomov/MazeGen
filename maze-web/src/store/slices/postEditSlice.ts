@@ -58,6 +58,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
   _nextPostEditElevatorId: 1,
   postEditSuppressedElevatorPairs: new Set<string>(),
   postEditSuppressedVerticalPassagePairs: new Set<string>(),
+  postEditSplitTargetPrompt: null,
 
   setPostEditAutoConfirm: (v) => set({ postEditAutoConfirm: v }),
   setPostEditTool: (tool) => set({ postEditTool: tool }),
@@ -346,6 +347,7 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         _nextPostEditElevatorId: 1,
         postEditSuppressedElevatorPairs: new Set<string>(),
         postEditSuppressedVerticalPassagePairs: new Set<string>(),
+        postEditSplitTargetPrompt: null,
       };
     });
     void get().confirmPostEdit();
@@ -1064,6 +1066,49 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     }));
     if (get().postEditAutoConfirm) {
       void get().confirmPostEdit();
+    }
+  },
+
+  requestPostEditSplitTarget: (prompt) => set({ postEditSplitTargetPrompt: prompt }),
+
+  cancelPostEditSplitTarget: () => set({ postEditSplitTargetPrompt: null }),
+
+  applyPostEditSplitTargetPick: (nodeId) => {
+    const prompt = get().postEditSplitTargetPrompt;
+    if (!prompt) return;
+    set({ postEditSplitTargetPrompt: null });
+    const endpoint = nodeEndpoint(nodeId);
+    const { action } = prompt;
+    switch (action.tool) {
+      case "set_start":
+        get().setPostEditEndpoint("start", endpoint);
+        break;
+      case "set_finish":
+        get().setPostEditEndpoint("finish", endpoint);
+        break;
+      case "vertical_passage_one_way":
+      case "vertical_passage_two_way":
+        get().startPostEditVerticalPassagePlacement(endpoint, action.tool);
+        break;
+      case "elevator":
+        get().startPostEditElevatorPlacement(endpoint);
+        break;
+      case "teleport_one_way":
+      case "teleport_two_way": {
+        // Same two-click machine as `PostEditController.tryTeleportClick`, driven by node id: first
+        // pick sets the pending origin, second pick (a different node) completes the link.
+        const pendingFrom = get().postEditTeleportPendingFrom;
+        if (pendingFrom === null) {
+          get().setPostEditTeleportPendingFrom(nodeId);
+        } else if (pendingFrom !== nodeId) {
+          get().addPostEditTeleport(
+            nodeEndpoint(pendingFrom),
+            endpoint,
+            action.tool === "teleport_two_way" ? "two_way" : "forward",
+          );
+        }
+        break;
+      }
     }
   },
 });

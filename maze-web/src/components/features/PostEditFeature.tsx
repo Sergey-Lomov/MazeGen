@@ -10,6 +10,7 @@ import { Stack, Inline, Grid } from "../Layout";
 import { ManageSplitNodesDialog } from "./ManageSplitNodesDialog";
 import { PostEditElevatorFloorDialog } from "../dialogs/PostEditElevatorFloorDialog";
 import { PostEditVerticalDirectionDialog } from "../dialogs/PostEditVerticalDirectionDialog";
+import { PostEditSplitTargetDialog } from "../dialogs/PostEditSplitTargetDialog";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 
@@ -60,6 +61,8 @@ export function PostEditFeature() {
   const cancelPostEditVerticalPassagePlacement = useMazeStore((s) => s.cancelPostEditVerticalPassagePlacement);
   const postEditElevatorPending = useMazeStore((s) => s.postEditElevatorPending);
   const cancelPostEditElevatorPlacement = useMazeStore((s) => s.cancelPostEditElevatorPlacement);
+  const postEditSplitTargetPrompt = useMazeStore((s) => s.postEditSplitTargetPrompt);
+  const cancelPostEditSplitTarget = useMazeStore((s) => s.cancelPostEditSplitTarget);
 
   // The "Manage split nodes" dialog closes when leaving the post-edit card — it has no meaning
   // once the user is looking at a different feature (see GitHub issue #221's plan, §6.2).
@@ -68,6 +71,14 @@ export function PostEditFeature() {
       setPostEditFocusedPoint(null);
     }
   }, [openCard, postEditFocusedPoint, setPostEditFocusedPoint]);
+
+  // A deferred split-target prompt (GitHub issue #474) has no meaning once the user leaves the
+  // post-edit card — drop it, same as the "Manage split nodes" panel above.
+  useEffect(() => {
+    if (openCard !== "post_edit" && postEditSplitTargetPrompt !== null) {
+      cancelPostEditSplitTarget();
+    }
+  }, [openCard, postEditSplitTargetPrompt, cancelPostEditSplitTarget]);
 
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -133,6 +144,10 @@ export function PostEditFeature() {
 
       {postEditVerticalPassagePending && (
         <PostEditVerticalDirectionDialog onClose={cancelPostEditVerticalPassagePlacement} />
+      )}
+
+      {postEditSplitTargetPrompt && (
+        <PostEditSplitTargetDialog onClose={cancelPostEditSplitTarget} />
       )}
 
       <span style={styles.sectionLabel}>{m["post_edit.management"]()}</span>
