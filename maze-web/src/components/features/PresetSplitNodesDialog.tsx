@@ -9,7 +9,7 @@ import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { blueprintsForDegree } from "../../pixi/splitBlueprints";
-import { SplitNodesDialogView, createRequiredLinksTracker, type SplitNodesRow, type LinkInfo, type SplitEdgeKind } from "./SplitNodesDialogView";
+import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, splitNodeLabelShort, type SplitNodesRow, type LinkInfo, type SplitEdgeKind } from "./SplitNodesDialogView";
 import type { TileFace, TileFaceKind, TileFaceNode } from "./TileFaceEditor";
 import * as m from "~/paraglide/messages";
 
@@ -65,13 +65,20 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     [fieldPoints, fieldEditMode, cfg],
   );
 
-  // A preset endpoint's label is trivial — just its coordinates, plus a slot suffix for a
-  // non-original node. There's no "real NodeId" to resolve (presets run before generation), so
-  // unlike post-edit's `describeEndpoint`, this never needs a `nodes` snapshot lookup.
-  const describeEndpoint = (ep: PresetEndpoint): string =>
-    ep.slotId === undefined
-      ? `${ep.point[0]},${ep.point[1]}`
-      : `${ep.point[0]},${ep.point[1]} (${m["post_edit.split_node_label"]({ slotId: ep.slotId })})`;
+  // A preset endpoint's label is its coordinates, plus a compact "(N{N})" suffix for every node of
+  // a *split* point — the point's original node included (slot 0 is not a special node any more,
+  // GitHub issue #468). A plain endpoint on a non-split point has no suffix. There's no "real
+  // NodeId" to resolve (presets run before generation), so unlike post-edit's `describeEndpoint`,
+  // this never needs a `nodes` snapshot lookup.
+  const describeEndpoint = (ep: PresetEndpoint): string => {
+    // `ep` may be a cross-floor partner (teleport/vertical passage), so key by its own level, not
+    // the dialog's active floor.
+    const epLevel = ep.level ?? level;
+    const epKey = epLevel === undefined ? `${ep.point[0]},${ep.point[1]}` : `${ep.point[0]},${ep.point[1]}@${epLevel}`;
+    const isSplitPoint = (splitPoints[epKey]?.length ?? 0) > 0;
+    if (ep.slotId === undefined && !isSplitPoint) return `${ep.point[0]},${ep.point[1]}`;
+    return `${ep.point[0]},${ep.point[1]} (${splitNodeLabelShort(ep.slotId)})`;
+  };
 
   // Groups an endpoint's connections/teleports/markers by partner, same collapsing rule as
   // post-edit's `links` (a passage's two directed entries become one "<->" link).
@@ -139,14 +146,14 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   const originalEndpoint = presetEndpoint(point, undefined, level);
   const rows: SplitNodesRow<PresetEndpoint>[] = [
     {
-      key: presetEndpointKey(originalEndpoint), endpoint: originalEndpoint, title: m["post_edit.split_original_node"](),
+      key: presetEndpointKey(originalEndpoint), endpoint: originalEndpoint, title: splitNodeLabel(undefined),
       color: colorAt(0), removable: false, active: isActive(originalEndpoint), ownLabel: describeEndpoint(originalEndpoint), links: links(originalEndpoint),
       isStart: isStart(originalEndpoint), isFinish: isFinish(originalEndpoint),
     },
     ...slots.map((slotId, i) => {
       const ep = presetEndpoint(point, slotId, level);
       return {
-        key: presetEndpointKey(ep), endpoint: ep, title: m["post_edit.split_node_label"]({ slotId }),
+        key: presetEndpointKey(ep), endpoint: ep, title: splitNodeLabel(slotId),
         color: colorAt(1 + i), removable: true, active: isActive(ep), ownLabel: describeEndpoint(ep), links: links(ep),
         isStart: isStart(ep), isFinish: isFinish(ep),
       };

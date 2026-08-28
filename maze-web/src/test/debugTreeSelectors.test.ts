@@ -381,14 +381,28 @@ describe("buildNodeCoordIndex", () => {
       { id: 2, x: 3, y: 4, i: 0, level: 1 },
     ];
     const index = buildNodeCoordIndex(nodes);
-    expect(index.get(2n)).toEqual({ x: 3, y: 4, level: 1 });
+    expect(index.get(2n)).toEqual({ x: 3, y: 4, level: 1, i: 0, split: false });
     expect(index.get(99n)).toBeNull();
   });
 
   it("defaults a missing level to 0", () => {
     const nodes: NodeDto[] = [{ id: 1, x: 0, y: 0, i: 0 }];
     const index = buildNodeCoordIndex(nodes);
-    expect(index.get(1n)).toEqual({ x: 0, y: 0, level: 0 });
+    expect(index.get(1n)).toEqual({ x: 0, y: 0, level: 0, i: 0, split: false });
+  });
+
+  it("flags every node at a point with more than one node as split, carrying its per-point index", () => {
+    const nodes: NodeDto[] = [
+      { id: 1, x: 2, y: 2, i: 0 },
+      { id: 2, x: 2, y: 2, i: 1 },
+      { id: 3, x: 5, y: 5, i: 0 }, // same point on another floor stays separate
+      { id: 4, x: 5, y: 5, i: 0, level: 1 },
+    ];
+    const index = buildNodeCoordIndex(nodes);
+    expect(index.get(1n)).toEqual({ x: 2, y: 2, level: 0, i: 0, split: true });
+    expect(index.get(2n)).toEqual({ x: 2, y: 2, level: 0, i: 1, split: true });
+    expect(index.get(3n)).toEqual({ x: 5, y: 5, level: 0, i: 0, split: false });
+    expect(index.get(4n)).toEqual({ x: 5, y: 5, level: 1, i: 0, split: false });
   });
 });
 

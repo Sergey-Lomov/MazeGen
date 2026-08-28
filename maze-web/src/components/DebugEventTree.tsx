@@ -55,9 +55,9 @@ function estimateRowHeight(tokens: Token[], depth: number, containerWidth: numbe
  *  floor 1. `issue` tokens are the one exception: there's no id to format, so the label is the
  *  issue kind's own resolved display name (`resolveIssue`, the same registry `IssuesBlock`'s
  *  `IssueBubble` reads), not a coordinate. */
-function bubbleLabel(
+export function bubbleLabel(
   token: Token,
-  coords?: (id: bigint) => { x: number; y: number; level: number } | null,
+  coords?: (id: bigint) => { x: number; y: number; level: number; i: number; split: boolean } | null,
   multiFloor = false,
 ): string {
   const fmt = (id: bigint) => {
@@ -72,7 +72,10 @@ function bubbleLabel(
     // rather than crashing the whole tree either way (a React render-time throw here previously
     // took down the entire debug panel).
     if (!p) return `#${id}`;
-    return multiFloor ? `L${p.level + 1}:${p.x}:${p.y}` : `${p.x}:${p.y}`;
+    const coord = multiFloor ? `L${p.level + 1}:${p.x}:${p.y}` : `${p.x}:${p.y}`;
+    // A split point's node also names which node of the point it is (GitHub issue #468) — 1-based
+    // compact "N{N}" form, the point's original node is "N1". Non-split points stay bare coords.
+    return p.split ? `${coord} (${m["post_edit.split_node_label_short"]({ slotId: p.i + 1 })})` : coord;
   };
   switch (token.kind) {
     case "text": return token.text;
