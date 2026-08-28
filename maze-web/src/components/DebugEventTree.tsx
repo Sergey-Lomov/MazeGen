@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
 import {
   buildStepIndex, flattenVisibleRows, resolveHighlightTarget, buildNodeCoordIndex,
-  displayStepForRow, nodeIndexForStep, resolveBubbleFloor, type TreeRow,
+  displayStepForRow, nodeIndexForStep, resolveBubbleFloor, resolveIssueBubbleFloors, type TreeRow,
 } from "../debug/debugTreeSelectors";
 import { nodeAt, nodeView, topLevelSourceScopes, type ParsedTape } from "../debug/eventTape";
 import { adapterForNode, type Token, type BaseAlgorithmAdapter, type ScopeTitleLookup } from "../debug/algorithmRegistry";
@@ -238,14 +238,15 @@ export function DebugEventTree() {
       if (floorIndex !== null && floors[floorIndex]) setActiveFloorId(floors[floorIndex].id);
     };
   }, [multiFloor, coords, activeFloorIndex, floors, setActiveFloorId]);
-  // An `issue` bubble's own `L{n}` floor badge (GitHub issue #350, `DebugRefBubble` only reads
-  // this for `target.kind === "issue"` — every other bubble kind already shows its floor via the
-  // label's own `Lf:x:y` prefix). Unlike `onBubbleClick` above, this has no "stay put if already
-  // on `to`'s floor" bias: it always names the floor a click would land on, so `resolveBubbleFloor`
-  // is called with a `currentFloorIndex` no real floor ever has (`-1`), forcing the `edge` case
-  // (relevant to a `cycle`-payload issue) to resolve `from`'s floor unconditionally.
-  const resolveTargetFloor = useMemo(
-    () => (multiFloor ? (target: HoveredDebugRef) => resolveBubbleFloor(target, coords, -1) : undefined),
+  // An `issue` bubble's own row of `L{n}` floor badges (GitHub issue #467, superseding the single
+  // badge of GitHub issue #350) — `DebugRefBubble` only reads this for `target.kind === "issue"`,
+  // every other bubble kind already shows its floor via the label's own `Lf:x:y` prefix. Lists
+  // every distinct floor the issue's structural payload touches (deduplicated, ascending), matching
+  // the Analytics `IssueBubble`'s own `IssueFloorBadges` behavior — a floor-scoped canvas highlight
+  // only shows the active floor's entities, so this is where a user discovers the same issue also
+  // has entities on another floor. `undefined` on a single-floor maze (nothing to badge).
+  const resolveTargetFloors = useMemo(
+    () => (multiFloor ? (target: HoveredDebugRef) => resolveIssueBubbleFloors(target, coords) : undefined),
     [multiFloor, coords],
   );
 
@@ -438,7 +439,7 @@ export function DebugEventTree() {
                           target={token}
                           label={bubbleLabel(token, coords, multiFloor)}
                           onClickFloor={onBubbleClick}
-                          targetFloorIndex={resolveTargetFloor?.(token)}
+                          targetFloorIndices={resolveTargetFloors?.(token)}
                         />
                   )}
                 </span>

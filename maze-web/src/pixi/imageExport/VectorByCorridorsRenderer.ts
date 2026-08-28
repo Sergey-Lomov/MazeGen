@@ -485,6 +485,10 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       groupCustomization: settings.teleportGroupCustomization,
       groupOverrides: settings.teleportGroupOverrides,
       interactive: state.vectorByCorridorsSectionsExpanded["teleports"] ?? false,
+      // Cross-floor teleport/elevator badges are always click-to-switch-floor on the export
+      // canvas (GitHub issue #478) — a read-only view like `GenerationRenderer`/`AnalyticsRenderer`,
+      // so no tool-driven gating applies.
+      floorNavigable: true,
       cfg,
       waypoints: markerData.map((m) => m.pos),
       avoidFieldExit: settings.teleportAvoidFieldExit,
@@ -496,6 +500,9 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     this.verticalConnections.render({
       markers: this.geometryCache.verticalConnectionMarkers,
       style: buildVerticalConnectionStyle(settings, settings.color),
+      // Vertical-passage markers navigate to their target floor on the export canvas (GitHub
+      // issue #478) — always-on, same as `GenerationRenderer`'s read-only canvas.
+      interactive: true,
     });
 
     this.renderWarningHighlight(state);

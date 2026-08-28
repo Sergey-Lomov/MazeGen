@@ -1692,11 +1692,16 @@ component; 1-based to match `FloorSwitcher.tsx`'s own display convention (see be
 `selectFloorScopedMaze`) to supply this.
 
 An `issue`-kind bubble (#171) is the one exception — its label is a resolved issue-kind display
-name, not a coordinate, so it carries no floor information of its own. Per explicit user decision,
-it instead always shows a separate `L{n}` badge immediately outside the bubble (never inside its
-border) — `DebugRefBubble`'s `targetFloorIndex` prop, consulted only for `target.kind === "issue"`.
-Unconditional (not gated on "differs from the active floor"), unlike the coordinate bubbles' own
-prefix, which is already conditional on `multiFloor`.
+name, not a coordinate, so it carries no floor information of its own. It instead shows a row of
+`L{n}` badges on its own line *inside* the bubble, below the label (matching Analytics'
+`IssueBubble` layout — `bubbleWrap` becomes an `inline-flex` column for this), one per distinct
+floor the issue's structural payload touches — `DebugRefBubble`'s `targetFloorIndices` prop (GitHub issue #467,
+superseding the single-badge form of GitHub issue #350), consulted only for `target.kind ===
+"issue"`. Computed by `resolveIssueBubbleFloors` (`debugTreeSelectors.ts` — every payload node/edge
+endpoint's floor, deduplicated and sorted ascending, unresolved ids skipped) and rendered via the
+shared `FloorBadgeRow` component (`components/FloorBadgeRow.tsx`), matching Analytics'
+`IssueBubble`/`IssueFloorBadges` presentation and behavior (click-to-navigate per badge,
+`FloorBadgeRow` hides itself on a single-floor maze).
 
 ### Click-to-switch floor
 

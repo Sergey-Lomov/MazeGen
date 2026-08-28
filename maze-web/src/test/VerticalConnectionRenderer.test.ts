@@ -808,6 +808,48 @@ describe("VerticalConnectionRenderer", () => {
       const badgeLayer = (renderer as unknown as { badgeLayer: FakeGraphics }).badgeLayer;
       expect(badgeLayer.children).toHaveLength(0);
     });
+
+    it("interactive wires one click-to-switch-floor hit-circle per badge, each to its own floor (GitHub issue #478)", () => {
+      const container = new Container();
+      const renderer = new VerticalConnectionRenderer(container as never);
+      const style = baseStyle({ elevatorBadges: { ...baseStyle().elevatorBadges, enabled: true } });
+      const el = marker({ pos: [0, 0], kind: "elevator", targetFloorIndices: [0, 2, 4] });
+      render(renderer, { markers: [el], style, interactive: true });
+      const hitLayer = (renderer as unknown as { hitLayer: FakeGraphics }).hitLayer;
+      expect(hitLayer.children).toHaveLength(3);
+
+      navigateToFloorMock.mockClear();
+      for (const [i, child] of hitLayer.children.entries()) {
+        const onMock = (child as unknown as { on: ReturnType<typeof vi.fn> }).on;
+        const cb = onMock.mock.calls[0][1] as () => void;
+        cb();
+        expect(navigateToFloorMock).toHaveBeenNthCalledWith(i + 1, [0, 2, 4][i]);
+      }
+    });
+
+    it("not interactive draws the badges but wires no hit-circles", () => {
+      const container = new Container();
+      const renderer = new VerticalConnectionRenderer(container as never);
+      const style = baseStyle({ elevatorBadges: { ...baseStyle().elevatorBadges, enabled: true } });
+      const el = marker({ pos: [0, 0], kind: "elevator", targetFloorIndices: [0, 1] });
+      render(renderer, { markers: [el], style });
+      const hitLayer = (renderer as unknown as { hitLayer: FakeGraphics }).hitLayer;
+      expect(hitLayer.children).toHaveLength(0);
+    });
+
+    it("style 'decorative' also wires per-badge click-to-switch-floor when interactive (GitHub issue #478)", () => {
+      const container = new Container();
+      const renderer = new VerticalConnectionRenderer(container as never);
+      const style = baseStyle({ style: "decorative", elevatorBadges: { ...baseStyle().elevatorBadges, enabled: true } });
+      const el = marker({ pos: [0, 0], kind: "elevator", targetFloorIndices: [1, 3] });
+      render(renderer, { markers: [el], style, interactive: true });
+      const hitLayer = (renderer as unknown as { hitLayer: FakeGraphics }).hitLayer;
+      expect(hitLayer.children).toHaveLength(2);
+      const cb = (hitLayer.children[1] as unknown as { on: ReturnType<typeof vi.fn> }).on.mock.calls[0][1] as () => void;
+      navigateToFloorMock.mockClear();
+      cb();
+      expect(navigateToFloorMock).toHaveBeenCalledWith(3);
+    });
   });
 
   // GitHub issue #432 follow-up: `destroy()` must destroy `g` and both newer sibling layers

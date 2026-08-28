@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { parseTape, TAG_SCOPE, NO_NODE, RECURSIVE_BACKTRACKER_EVENT_TAG, KRUSKAL_EVENT_TAG, WILSON_EVENT_TAG, VERTEX_BASED_EVENT_TAG, type ParsedTape } from "../debug/eventTape";
 import {
   buildStepIndex, stepForNode, nodeIndexForStep, flattenVisibleRows, resolveHighlightTarget,
-  buildNodeCoordIndex, displayStepForRow, resolveBubbleFloor,
+  buildNodeCoordIndex, displayStepForRow, resolveBubbleFloor, resolveIssueBubbleFloors,
 } from "../debug/debugTreeSelectors";
 import type { NodeDto } from "../wasm/types";
 import type { HoveredDebugRef } from "../store/storeTypes";
@@ -460,5 +460,41 @@ describe("resolveBubbleFloor", () => {
       kind: "issue", issueKind: "x", target: { kind: "cycle", edges: [[1n, 3n]], asWall: false }, reasons: [],
     };
     expect(resolveBubbleFloor(target, coords, 5)).toBeNull();
+  });
+});
+
+describe("resolveIssueBubbleFloors (GitHub issue #467)", () => {
+  const levels = new Map<bigint, number>([[1n, 0], [2n, 0], [3n, 1], [4n, 1], [5n, 2]]);
+  const coords = (id: bigint) => (levels.has(id) ? { level: levels.get(id) as number } : null);
+
+  it("returns every distinct floor a region payload touches, deduplicated and sorted ascending", () => {
+    const target: HoveredDebugRef = {
+      kind: "issue", issueKind: "x", target: { kind: "region", nodes: [5n, 1n, 3n, 1n] }, reasons: [],
+    };
+    expect(resolveIssueBubbleFloors(target, coords)).toEqual([0, 1, 2]);
+  });
+
+  it("returns every distinct floor a cycle payload's endpoints touch", () => {
+    const target: HoveredDebugRef = {
+      kind: "issue", issueKind: "x", target: { kind: "cycle", edges: [[1n, 3n], [3n, 5n]], asWall: false }, reasons: [],
+    };
+    expect(resolveIssueBubbleFloors(target, coords)).toEqual([0, 1, 2]);
+  });
+
+  it("skips ids that don't resolve", () => {
+    const target: HoveredDebugRef = {
+      kind: "issue", issueKind: "x", target: { kind: "region", nodes: [1n, 99n] }, reasons: [],
+    };
+    expect(resolveIssueBubbleFloors(target, coords)).toEqual([0]);
+  });
+
+  it("returns [] for an issue with no structural payload", () => {
+    const target: HoveredDebugRef = { kind: "issue", issueKind: "x", target: null, reasons: [] };
+    expect(resolveIssueBubbleFloors(target, coords)).toEqual([]);
+  });
+
+  it("returns [] for a non-issue target", () => {
+    const target: HoveredDebugRef = { kind: "node", id: 3n };
+    expect(resolveIssueBubbleFloors(target, coords)).toEqual([]);
   });
 });

@@ -427,12 +427,22 @@ export class PostEditController extends BaseController {
 
     const nodeKey = this.cellEdgeToNodeKey(edge.from, edge.to, nodeMap, state.postEditActiveSplitNode, level);
     if (nodeKey) {
-      useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
-      if (button === 0 && DRAG_EDGE_TOOLS.has(tool)) {
-        this.beginEdgeDrag(edge.key);
-        this.dragDidApply = true;
-      } else if (state.postEditAutoConfirm) {
-        this.scheduleConfirm();
+      if (button === 2) {
+        // Right click resets the edge to its generation-time state (GitHub issue #459), mirroring
+        // PresetConnectionsController's own right-click reset — regardless of which edge tool is active.
+        // A split connection can't be reset via the edge branch (GitHub issue #327), same as the
+        // dedicated Reset tool: fall through to a no-op there (whole-point reset stays Reset-tool-only).
+        if (!isSplitCell(edge.from, nodeMap) && !isSplitCell(edge.to, nodeMap)) {
+          useMazeStore.getState().applyPostEditToolAt("reset", nodeKey.key, nodeKey.from, nodeKey.to);
+        }
+      } else if (button === 0) {
+        useMazeStore.getState().applyPostEditTool(nodeKey.key, nodeKey.from, nodeKey.to);
+        if (DRAG_EDGE_TOOLS.has(tool)) {
+          this.beginEdgeDrag(edge.key);
+          this.dragDidApply = true;
+        } else if (state.postEditAutoConfirm) {
+          this.scheduleConfirm();
+        }
       }
     }
     this.renderer.updateHover(edge);
