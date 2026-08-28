@@ -6,16 +6,24 @@ import { drawDirectionArrow } from "./wallUtils";
 import { TILE_SIZE } from "../constants";
 
 export const FLOOR_BADGE_STROKE_WIDTH = 3;
+export const CROWDED_BADGE_RADIUS_FACTOR = 0.75;
 
 /// Angle (radians, world space) from `center` toward one of `cell`'s own vertices, cycling through
-/// them by `slot`/`slotCount` — falls back to a fixed 45° when the tessellation has no vertex
-/// geometry (`getCellVertices` returns `null`, e.g. an unrecognized `cfg.type`).
+/// them by `slot`/`slotCount`. When there are more badges than vertices, use an even circular
+/// distribution instead of reusing corners. Falls back to a fixed 45° when the tessellation has no
+/// vertex geometry (`getCellVertices` returns `null`, e.g. an unrecognized `cfg.type`).
 function vertexAngle(cell: [number, number], center: Pos, cfg: TessellationConfig, slot: number, slotCount: number): number {
   const vertices = getCellVertices(cell[0], cell[1], cfg);
   if (!vertices || vertices.length === 0) return Math.PI / 4;
+  if (slotCount > vertices.length) return -Math.PI / 2 + (slot / slotCount) * 2 * Math.PI;
   const index = slotCount <= 1 ? 0 : Math.round((slot / slotCount) * vertices.length) % vertices.length;
   const v = vertices[index];
   return Math.atan2(v.y - center.y, v.x - center.x);
+}
+
+export function isCrossFloorBadgeCrowded(cell: [number, number], cfg: TessellationConfig, slotCount: number): boolean {
+  const vertices = getCellVertices(cell[0], cell[1], cfg);
+  return vertices !== null && vertices.length > 0 && slotCount > vertices.length;
 }
 
 /** Draws one cross-floor badge (GitHub issue #337/#339) at `(cx, cy)` — a plain circle (always
@@ -89,9 +97,10 @@ export function computeCrossFloorBadgePos(
   tileRadius: number,
   slot = 0,
   slotCount = 1,
+  positionRadiusFactor = 1,
 ): Pos {
   const onCenter = getCellCenter(onFloorCell[0], onFloorCell[1], cfg);
-  const dist = Math.max(tileRadius - badgeRadius, 0);
+  const dist = Math.max(tileRadius - badgeRadius, 0) * positionRadiusFactor;
   const angle = vertexAngle(onFloorCell, onCenter, cfg, slot, slotCount);
 
   if (onFloorCell[0] !== offFloorCell[0] || onFloorCell[1] !== offFloorCell[1]) {

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { nodeRadius, buildPairedRenderEdges, buildPathRenderEdges, buildCrossFloorMarkers } from "../pixi/BaseGraphRenderer";
 import { NODE_RADIUS } from "../pixi/renderConstants";
 import { TILE_SIZE } from "../pixi/constants";
+import { computeCrossFloorBadgePos } from "../pixi/renderers/floorBadge";
 import { getCellCenter, nearestCellCoord } from "../pixi/tessellationGeometry";
 import type { Pos } from "../pixi/BaseGraphRenderer";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
@@ -174,6 +175,41 @@ describe("buildCrossFloorMarkers", () => {
     expect(result.map(m => m.targetFloorIndex).sort()).toEqual([1, 2]);
     expect(result.every(m => m.nodeId === 1)).toBe(true);
     // Distinct slots keep the two badges from overlapping.
+    expect(result[0].badgePos).not.toEqual(result[1].badgePos);
+  });
+
+  it("uses 75% of the badge radius for positioning when targets exceed cell corners", () => {
+    const targetLevels = new Map([[1, 0], [3, 1], [4, 2], [5, 3], [6, 4], [7, 5]]);
+    const targetCells = new Map<number, [number, number]>([
+      [1, [0, 0]], [3, [1, 0]], [4, [2, 0]], [5, [3, 0]], [6, [4, 0]], [7, [5, 0]],
+    ]);
+    const result = buildCrossFloorMarkers(
+      [{ from: 1, to: 3 }, { from: 1, to: 4 }, { from: 1, to: 5 }, { from: 1, to: 6 }, { from: 1, to: 7 }],
+      posMap([[1, { x: 0, y: 0 }]]),
+      (id) => targetLevels.get(id),
+      (id) => targetCells.get(id),
+      0, cfg, badgeRadius,
+    );
+    expect(result).toHaveLength(5);
+    expect(result[0].badgePos).toEqual(
+      computeCrossFloorBadgePos([0, 0], [1, 0], cfg, badgeRadius, TILE_SIZE, 0, 5, 0.75),
+    );
+    expect(result[0].badgePos).not.toEqual(
+      computeCrossFloorBadgePos([0, 0], [1, 0], cfg, badgeRadius, TILE_SIZE, 0, 5),
+    );
+  });
+
+  it("assigns distinct layout slots to nodes sharing a cell", () => {
+    const result = buildCrossFloorMarkers(
+      [{ from: 8, to: 10 }, { from: 9, to: 11 }],
+      posMap([[8, { x: 0, y: 0 }], [9, { x: 1, y: 1 }]]),
+      (id) => new Map([[10, 1], [11, 2]]).get(id),
+      (id) => new Map<number, [number, number]>([
+        [8, [0, 0]], [9, [0, 0]], [10, [1, 0]], [11, [2, 0]],
+      ]).get(id),
+      0, cfg, badgeRadius,
+    );
+    expect(result).toHaveLength(2);
     expect(result[0].badgePos).not.toEqual(result[1].badgePos);
   });
 
