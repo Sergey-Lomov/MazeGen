@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { OneWayPattern, RandomWallColorMode } from "../../pixi/renderers/types";
 import { inset, spacing, typography, ui } from "../../styles/theme";
 import { ToggleRow } from "../ToggleRow";
-import { SectionHeader } from "../SectionHeader";
+import { SectionHeader, SubsectionHeader } from "../SectionHeader";
 import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
@@ -188,7 +187,6 @@ export function VectorByWallsSettingsPanel() {
     const hasElevators = rawEdges.some((e) => e.kind === "elevator");
     return { hasTwoWayPassages, hasOneWayPassages, hasElevators };
   }, [rawEdges]);
-  const hasVerticalConnections = hasTwoWayPassages || hasOneWayPassages || hasElevators;
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);
@@ -440,7 +438,7 @@ export function VectorByWallsSettingsPanel() {
         </>
       )}
 
-      {hasVerticalConnections && (
+      {(hasTwoWayPassages || hasOneWayPassages || hasElevators || floors.length > 1) && (
         <>
           <div style={styles.divider} />
 
@@ -461,13 +459,10 @@ export function VectorByWallsSettingsPanel() {
                 onChange={(verticalStyle) => patchVerticalSettings({ verticalStyle })}
               />
 
-              {settings.verticalStyle === "decorative" && hasTwoWayPassages && (
+              {settings.verticalStyle === "decorative" && (
                 <div style={styles.subGroupWrap}>
-                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_two_way")}>
-                    {isExpanded("vertical_two_way") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
-                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.two_way_passage_marker"]()}</div>
-                  </div>
-                  {isExpanded("vertical_two_way") && (
+                  <SubsectionHeader label={m["image_export.vector_by_walls.two_way_passage_marker"]()} expanded={isExpanded("vertical_two_way") && hasTwoWayPassages} disabled={!hasTwoWayPassages} onToggle={() => toggleSection("vertical_two_way")} />
+                  {isExpanded("vertical_two_way") && hasTwoWayPassages && (
                   <div style={styles.subGroup}>
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeStairsTwoWay}
@@ -497,13 +492,10 @@ export function VectorByWallsSettingsPanel() {
                 </div>
               )}
 
-              {settings.verticalStyle === "decorative" && hasOneWayPassages && (
+              {settings.verticalStyle === "decorative" && (
                 <div style={styles.subGroupWrap}>
-                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_one_way")}>
-                    {isExpanded("vertical_one_way") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
-                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.one_way_passage_marker"]()}</div>
-                  </div>
-                  {isExpanded("vertical_one_way") && (
+                  <SubsectionHeader label={m["image_export.vector_by_walls.one_way_passage_marker"]()} expanded={isExpanded("vertical_one_way") && hasOneWayPassages} disabled={!hasOneWayPassages} onToggle={() => toggleSection("vertical_one_way")} />
+                  {isExpanded("vertical_one_way") && hasOneWayPassages && (
                   <div style={styles.subGroup}>
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeStairsOneWay}
@@ -519,13 +511,10 @@ export function VectorByWallsSettingsPanel() {
                 </div>
               )}
 
-              {settings.verticalStyle === "decorative" && hasElevators && (
+              {settings.verticalStyle === "decorative" && (
                 <div style={styles.subGroupWrap}>
-                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_elevator")}>
-                    {isExpanded("vertical_elevator") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
-                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.elevator_marker"]()}</div>
-                  </div>
-                  {isExpanded("vertical_elevator") && (
+                  <SubsectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && hasElevators} disabled={!hasElevators} onToggle={() => toggleSection("vertical_elevator")} />
+                  {isExpanded("vertical_elevator") && hasElevators && (
                   <div style={styles.subGroup}>
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeElevator}
@@ -543,13 +532,10 @@ export function VectorByWallsSettingsPanel() {
                 </div>
               )}
 
-              {settings.verticalStyle === "abstract" && hasTwoWayPassages && (
+              {settings.verticalStyle === "abstract" && (
                 <div style={styles.subGroupWrap}>
-                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_two_way")}>
-                    {isExpanded("vertical_two_way") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
-                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.two_way_passage_marker"]()}</div>
-                  </div>
-                  {isExpanded("vertical_two_way") && (
+                  <SubsectionHeader label={m["image_export.vector_by_walls.two_way_passage_marker"]()} expanded={isExpanded("vertical_two_way") && hasTwoWayPassages} disabled={!hasTwoWayPassages} onToggle={() => toggleSection("vertical_two_way")} />
+                  {isExpanded("vertical_two_way") && hasTwoWayPassages && (
                   <div style={styles.subGroup}>
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
@@ -619,13 +605,10 @@ export function VectorByWallsSettingsPanel() {
                 </div>
               )}
 
-              {settings.verticalStyle === "abstract" && hasOneWayPassages && (
+              {settings.verticalStyle === "abstract" && (
                 <div style={styles.subGroupWrap}>
-                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_one_way")}>
-                    {isExpanded("vertical_one_way") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
-                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.one_way_passage_marker"]()}</div>
-                  </div>
-                  {isExpanded("vertical_one_way") && (
+                  <SubsectionHeader label={m["image_export.vector_by_walls.one_way_passage_marker"]()} expanded={isExpanded("vertical_one_way") && hasOneWayPassages} disabled={!hasOneWayPassages} onToggle={() => toggleSection("vertical_one_way")} />
+                  {isExpanded("vertical_one_way") && hasOneWayPassages && (
                   <div style={styles.subGroup}>
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
@@ -701,13 +684,10 @@ export function VectorByWallsSettingsPanel() {
                 </div>
               )}
 
-              {settings.verticalStyle === "abstract" && hasElevators && (
+              {settings.verticalStyle === "abstract" && (
                 <div style={styles.subGroupWrap}>
-                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_elevator")}>
-                    {isExpanded("vertical_elevator") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
-                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.elevator_marker"]()}</div>
-                  </div>
-                  {isExpanded("vertical_elevator") && (
+                  <SubsectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && hasElevators} disabled={!hasElevators} onToggle={() => toggleSection("vertical_elevator")} />
+                  {isExpanded("vertical_elevator") && hasElevators && (
                   <div style={styles.subGroup}>
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>

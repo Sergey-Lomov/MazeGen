@@ -37,6 +37,27 @@ beforeEach(() => {
 });
 
 describe("VectorByCorridorsSettingsPanel", () => {
+  it("shows all vertical subsections disabled when a multi-floor maze has no vertical edges", () => {
+    useMazeStore.setState({
+      floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }],
+      vectorByCorridorsSectionsExpanded: { vertical: true },
+    });
+    render(<VectorByCorridorsSettingsPanel />);
+
+    for (const label of [
+      m["image_export.vector_by_walls.two_way_passage_marker"](),
+      m["image_export.vector_by_walls.one_way_passage_marker"](),
+      m["image_export.vector_by_walls.elevator_marker"](),
+    ]) {
+      const header = screen.getByText(label);
+      expect(header.parentElement).toHaveAttribute("aria-disabled", "true");
+      fireEvent.click(header);
+    }
+    expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.vertical_two_way).toBeUndefined();
+    expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.vertical_one_way).toBeUndefined();
+    expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.vertical_elevator).toBeUndefined();
+  });
+
   it("the 'Cells' section starts collapsed by default", () => {
     useMazeStore.setState({ vectorByCorridorsSectionsExpanded: {} });
     render(<VectorByCorridorsSettingsPanel />);

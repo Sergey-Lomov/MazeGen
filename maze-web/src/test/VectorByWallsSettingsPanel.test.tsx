@@ -605,14 +605,17 @@ describe("VectorByWallsSettingsPanel", () => {
       expect(screen.getByText(m["image_export.vector_by_walls.two_way_passage_marker"]())).toBeInTheDocument();
     });
 
-    it("hides the two-way passage sub-group when only a one-way edge (no reverse pair) exists", () => {
+    it("shows the two-way passage sub-group disabled when only a one-way edge exists", () => {
       useMazeStore.setState({
         nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 1 }],
         edges: [{ from: 0, to: 1, kind: "vertical_passage" as const }],
         vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, vertical: true },
       });
       render(<VectorByWallsSettingsPanel />);
-      expect(screen.queryByText(m["image_export.vector_by_walls.two_way_passage_marker"]())).not.toBeInTheDocument();
+      const twoWayHeader = screen.getByText(m["image_export.vector_by_walls.two_way_passage_marker"]());
+      expect(twoWayHeader.parentElement).toHaveAttribute("aria-disabled", "true");
+      fireEvent.click(twoWayHeader);
+      expect(useMazeStore.getState().vectorByWallsSectionsExpanded.vertical_two_way).toBeUndefined();
       expect(screen.getByText(m["image_export.vector_by_walls.one_way_passage_marker"]())).toBeInTheDocument();
     });
 
