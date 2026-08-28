@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { ui, typography, radius, muted, spacing } from "../styles/theme";
+import { darken } from "../styles/palette";
 import { useMazeStore } from "../store/mazeStore";
 import { Modal } from "./Modal";
+import { FloorBadgeRow } from "./FloorBadgeRow";
 import * as m from "~/paraglide/messages";
 import type { HoveredDebugRef } from "../store/storeTypes";
 import type React from "react";
@@ -21,26 +23,26 @@ import type React from "react";
  *  rendered as a single line when there's exactly one, or a "Possible reasons:" list when a
  *  merged issue carries more than one.
  *
- *  `targetFloorIndex` (GitHub issue #350) — an `issue` target's own floor, always shown as an
- *  `L{n}` badge right after the bubble (never inside it, unlike a plain coordinate bubble's own
- *  `Lf:x:y` label prefix) — per explicit user decision, only `issue` bubbles get this badge, and
- *  it's unconditional rather than gated on "differs from the active floor": an issue bubble's
- *  label is a resolved kind name, not a coordinate, so it carries no floor information of its own
- *  otherwise. */
+ *  `targetFloorIndices` (GitHub issue #467, superseding the single `L{n}` badge of GitHub issue
+ *  #350) — a row of `L{n}` badges below an `issue` bubble, one per distinct floor the issue's
+ *  structural payload touches, matching Analytics' `IssueBubble`/`IssueFloorBadges` presentation.
+ *  Only `issue` bubbles get these — every other target kind already shows its floor via the label's
+ *  own `Lf:x:y` prefix. `FloorBadgeRow` itself hides on a single-floor maze and wires each badge's
+ *  click-to-navigate. */
 export function DebugRefBubble({
-  target, label, onClickFloor, targetFloorIndex,
+  target, label, onClickFloor, targetFloorIndices,
 }: {
   target: HoveredDebugRef;
   label: string;
   /** Switches the active floor for this bubble's target — `undefined` on a single-floor maze,
    *  where there is nothing to switch to (see `DebugEventTree.tsx`'s `onBubbleClick`). */
   onClickFloor?: (target: HoveredDebugRef) => void;
-  /** This bubble's own target floor (`resolveBubbleFloor` with no "current floor" bias — see
-   *  `DebugEventTree.tsx`'s `onBubbleClick`), 0-based, or `null` when there's no single floor to
-   *  name (unresolvable id, or a multi-floor cycle/region with no shared floor). `undefined` on a
-   *  single-floor maze, where a badge would be meaningless. Only consulted for `target.kind ===
-   *  "issue"` — every other target kind already shows its floor via the label's own prefix. */
-  targetFloorIndex?: number | null;
+  /** Distinct 0-based floor indices this bubble's issue payload touches, deduplicated and sorted
+   *  ascending (`resolveIssueBubbleFloors` — see `DebugEventTree.tsx`). `undefined` on a
+   *  single-floor maze; `[]` for an issue with no structural payload. Only consulted for
+   *  `target.kind === "issue"` — every other target kind already shows its floor via the label's
+   *  own prefix. */
+  targetFloorIndices?: number[];
 }) {
   const [open, setOpen] = useState(false);
   const setHoveredDebugRef = useMazeStore((s) => s.setHoveredDebugRef);
@@ -52,27 +54,33 @@ export function DebugRefBubble({
   // highlight, so it's skipped entirely rather than clearing-and-resetting a highlight that was
   // never set.
   const hoverable = target.kind !== "issue" || target.target !== null;
-  const showFloorBadge = target.kind === "issue" && targetFloorIndex != null;
+  const isIssue = target.kind === "issue";
+  const floorLevels = isIssue ? targetFloorIndices ?? [] : [];
 
   return (
     <>
-      <span style={styles.bubbleGroup}>
-        <span
-          style={target.kind === "issue" ? styles.bubbleWrap : styles.bubble}
-          onMouseEnter={hoverable ? () => setHoveredDebugRef(target) : undefined}
-          onMouseLeave={hoverable ? () => setHoveredDebugRef(null) : undefined}
-          onClick={(e) => {
-            e.stopPropagation();
-            onClickFloor?.(target);
-            if (clickable) setOpen(true);
-          }}
-        >
-          {label}
-        </span>
-        {showFloorBadge && (
-          <span style={styles.floorBadge} title={m["debug.tree.other_floor_badge"]({ floor: targetFloorIndex + 1 })}>
-            {`L${targetFloorIndex + 1}`}
-          </span>
+      <span
+        style={isIssue ? styles.bubbleWrap : styles.bubble}
+        onMouseEnter={hoverable ? () => setHoveredDebugRef(target) : undefined}
+        onMouseLeave={hoverable ? () => setHoveredDebugRef(null) : undefined}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClickFloor?.(target);
+          if (clickable) setOpen(true);
+        }}
+      >
+        {isIssue ? <span style={styles.bubbleLabel}>{label}</span> : label}
+        {/* Same `FloorBadgeRow` Analytics' `IssueBubble` uses (GitHub issue #467) — one `L{n}`
+          * badge per floor the issue's payload touches, on its own row inside the bubble below the
+          * label (matching Analytics' layout). Only issue bubbles carry it; `FloorBadgeRow` also
+          * hides itself on a single-floor maze, so a non-multi-floor issue bubble stays a plain
+          * single-line pill. */}
+        {isIssue && (
+          <FloorBadgeRow
+            levels={floorLevels}
+            bg={darken(ui.debug.issueHighlight.text, 0.2)}
+            text={ui.debug.issueHighlight.bg}
+          />
         )}
       </span>
       {clickable && open && (
@@ -96,13 +104,6 @@ export function DebugRefBubble({
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  // Wraps a bubble plus its own (issue-only) floor badge so the two lay out as one inline unit —
-  // the badge sits *outside* the bubble's own border, not inside it.
-  bubbleGroup: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: spacing.itemGap / 2,
-  },
   // Same shape as `IssueBubble`'s bubble/label in `IssuesBlock.tsx` (Analytics' equivalent
   // reference bubble) — `typography.body`'s own `lineHeight` untouched, no `verticalAlign`
   // override. `display: inline-flex` + `alignItems: center` (instead of `IssueBubble`'s plain
@@ -129,15 +130,22 @@ const styles: Record<string, React.CSSProperties> = {
   // coordinate — those can run long, so unlike the coordinate bubbles above this one wraps instead
   // of overflowing the row (GitHub issue #204). Red (`ui.debug.issueHighlight`, GitHub issue
   // #203), not `refHighlight`'s cyan, so an issue reads as visually distinct at a glance.
+  // `inline-flex` column (GitHub issue #467) — the label on its own row, the `FloorBadgeRow` on a
+  // second row inside the bubble's border below it, matching Analytics' `IssueBubble` layout. Stays
+  // `inline-flex` (not block `flex`) since the bubble sits inline inside the narration text line;
+  // `verticalAlign: top` keeps it from riding up on the baseline once it's taller than one line.
   bubbleWrap: {
     ...typography.body,
     fontFamily: "Consolas, Menlo, Monaco, monospace",
     display: "inline-flex",
-    alignItems: "center",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: spacing.itemGap / 2,
+    verticalAlign: "top",
     borderStyle: "solid",
     borderWidth: 1,
     borderRadius: radius.lg,
-    padding: `0 ${spacing.itemGap}px`,
+    padding: `${spacing.itemGap / 2}px ${spacing.itemGap}px`,
     background: ui.debug.issueHighlight.bg,
     borderColor: ui.debug.issueHighlight.text,
     color: ui.debug.issueHighlight.text,
@@ -145,29 +153,13 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: "normal",
     wordBreak: "break-word" as const,
   },
+  bubbleLabel: {
+    lineHeight: 1.3,
+  },
   description: {
     margin: 0,
     ...muted(typography.body),
     lineHeight: 1.5,
-  },
-  // Issue bubble's own floor badge (GitHub issue #350) — `L{n}`, outside the bubble's border,
-  // always shown (an issue bubble's label carries no coordinate/floor info of its own, unlike a
-  // plain node/edge/cycle/region bubble's `Lf:x:y` label prefix).
-  floorBadge: {
-    ...typography.control,
-    fontFamily: "Consolas, Menlo, Monaco, monospace",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: `0 ${spacing.itemGap / 2}px`,
-    height: 14,
-    minWidth: 14,
-    borderRadius: radius.lg,
-    background: ui.debug.refHighlight.text,
-    color: ui.bg.panel,
-    fontSize: 10,
-    lineHeight: 1,
-    flexShrink: 0,
   },
   reasonsList: {
     margin: `${spacing.itemGap}px 0 0`,

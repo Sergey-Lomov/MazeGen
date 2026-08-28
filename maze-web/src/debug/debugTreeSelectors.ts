@@ -295,3 +295,26 @@ export function resolveBubbleFloor(
         : singleFloorOf(target.target.nodes);
   }
 }
+
+/** Every distinct floor an `issue` bubble's structural payload touches, deduplicated and sorted
+ *  ascending — drives the debug issue bubble's `FloorBadgeRow` (GitHub issue #467), matching the
+ *  Analytics `IssueBubble`'s own `IssueFloorBadges` behavior. Unlike `resolveBubbleFloor` this
+ *  keeps every resolved floor rather than collapsing a multi-floor payload to `null`, and it
+ *  silently skips ids that don't resolve (stale/removed node), same convention as
+ *  `IssueFloorBadges`. Returns `[]` for a non-`issue` target or an issue with no `target` payload
+ *  (a whole-maze issue with no per-element highlight data — nothing to badge). */
+export function resolveIssueBubbleFloors(
+  target: HoveredDebugRef,
+  coords: (id: bigint) => { level: number } | null,
+): number[] {
+  if (target.kind !== "issue" || !target.target) return [];
+  const ids = target.target.kind === "cycle"
+    ? target.target.edges.flatMap(([f, t]) => [f, t])
+    : target.target.nodes;
+  const levels = new Set<number>();
+  for (const id of ids) {
+    const level = coords(id)?.level;
+    if (level !== undefined) levels.add(level);
+  }
+  return Array.from(levels).sort((a, b) => a - b);
+}

@@ -84,3 +84,67 @@ describe("DebugRefBubble", () => {
     expect(screen.queryByText(m["debug.tree.qc.issue_reasons_header"]())).toBeNull();
   });
 });
+
+describe("DebugRefBubble issue floor badges (GitHub issue #467)", () => {
+  const issueTarget: HoveredDebugRef = {
+    kind: "issue", issueKind: "invalid_loop", target: null, reasons: ["Loop shorter than 10 tiles"],
+  };
+
+  it("renders one `L{n}` badge per touched floor on a multi-floor maze; clicking one switches the active floor without opening the modal", () => {
+    const floor0 = { id: "floor_0", title: "Floor 1" };
+    const floor1 = { id: "floor_1", title: "Floor 2" };
+    useMazeStore.setState({ floors: [floor0, floor1], activeFloorId: floor0.id });
+    render(<DebugRefBubble target={issueTarget} label="Loop validation" targetFloorIndices={[0, 1]} />);
+
+    expect(screen.getByText("L1")).toBeInTheDocument();
+    expect(screen.getByText("L2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("L2"));
+    expect(useMazeStore.getState().activeFloorId).toBe(floor1.id);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("renders the badge row inside the bubble's own border (below the label), not as a sibling beside it", () => {
+    useMazeStore.setState({
+      floors: [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }],
+      activeFloorId: "floor_0",
+    });
+    render(<DebugRefBubble target={issueTarget} label="Loop validation" targetFloorIndices={[0, 1]} />);
+
+    // The bubble span wraps both the label and the badge row (GitHub issue #467 layout fix) — a
+    // regression that moves FloorBadgeRow back outside the bubble would make this common ancestor
+    // the fragment root instead.
+    const label = screen.getByText("Loop validation");
+    const badge = screen.getByText("L1");
+    const bubble = label.parentElement as HTMLElement;
+    expect(bubble.contains(badge)).toBe(true);
+  });
+
+  it("renders no badges on a single-floor maze even when floor indices are passed", () => {
+    useMazeStore.setState({ floors: [{ id: "floor_0", title: "Floor 1" }], activeFloorId: "floor_0" });
+    render(<DebugRefBubble target={issueTarget} label="Loop validation" targetFloorIndices={[0]} />);
+
+    expect(screen.queryByText("L1")).not.toBeInTheDocument();
+  });
+
+  it("renders no badges when the issue touches no resolved floor", () => {
+    useMazeStore.setState({
+      floors: [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }],
+      activeFloorId: "floor_0",
+    });
+    render(<DebugRefBubble target={issueTarget} label="Loop validation" targetFloorIndices={[]} />);
+
+    expect(screen.queryByText("L1")).not.toBeInTheDocument();
+  });
+
+  it("renders no badges for a non-issue target", () => {
+    useMazeStore.setState({
+      floors: [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }],
+      activeFloorId: "floor_0",
+    });
+    const edge: HoveredDebugRef = { kind: "edge", from: 1n, to: 2n, bidirectional: true };
+    render(<DebugRefBubble target={edge} label="1:2 <-> 3:4" targetFloorIndices={[0, 1]} />);
+
+    expect(screen.queryByText("L1")).not.toBeInTheDocument();
+  });
+});

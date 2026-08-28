@@ -4,9 +4,10 @@ import { navigateToFloor } from "../pixi/renderers/floorNavigation";
 import { useMazeStore } from "../store/mazeStore";
 
 /** Row of solid `L{n}` click-to-navigate badges naming which floor(s) something spans — shared by
- *  every "which floor is this on" caller (`IssuesBlock`'s issue bubbles, Preset Connections' orphan
- *  split warning, export warnings' `elevator_badges_overlap`/`elevator_badges_too_many`) instead of
- *  each rolling its own copy of the same button row. Hidden on a single-floor maze/project, same as
+ *  every "which floor is this on" caller (`IssuesBlock`'s issue bubbles, the debug event tree's own
+ *  issue bubbles (`DebugRefBubble`, GitHub issue #467), Preset Connections' orphan split warning,
+ *  export warnings' `elevator_badges_overlap`/`elevator_badges_too_many`) instead of each rolling
+ *  its own copy of the same button row. Hidden on a single-floor maze/project, same as
  *  every cross-floor indicator in the app — nothing to badge when there's only one floor. `levels`
  *  is the caller's own already-deduplicated, ascending-sorted list of floor *indices*
  *  (`NodeDto.level ?? 0` convention) — this component does no resolution of its own, since each
