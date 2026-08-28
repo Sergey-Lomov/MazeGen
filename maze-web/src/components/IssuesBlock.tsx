@@ -52,6 +52,14 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const setHoveredIssueRegionGroups = useMazeStore((s) => s.setHoveredIssueRegionGroups);
   const showFullyPresetLockedIssues = useMazeStore((s) => s.showFullyPresetLockedIssues);
   const mazeNodes = useMazeStore((s) => s.nodes);
+  const mazeEdges = useMazeStore((s) => s.edges);
+  // GitHub issue #470: reverse-direction lookup set for one-way-cycle detection below. Declared
+  // here (before any early `return`) to keep hook order stable.
+  const mazeEdgePairs = useMemo(() => {
+    const s = new Set<string>();
+    for (const e of mazeEdges) s.add(`${e.from},${e.to}`);
+    return s;
+  }, [mazeEdges]);
   const { severity } = resolveIssue(issue.kind);
   // No source check (e.g. `cycle_analysis_overflowed`, `repair_limit_reached` — neither is a
   // toggleable `Check<T>`) still checks `details` under the issue's own kind string — the only
@@ -177,10 +185,20 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const visibleGroup = (e: { preset_locked: boolean }) => showFullyPresetLockedIssues || !e.preset_locked;
   const asHighlightEdges = (pairs: [number, number][], asWall: boolean): IssueHighlightEdge[] =>
     pairs.map(([from, to]) => ({ from, to, asWall }));
+  // GitHub issue #470: a cycle is one-way iff at least one of its base-graph edges has no reverse
+  // edge in the maze (mirrors `maze_core`'s `CycleKind::OneWay`). `IssueEdgeGroupPayload.edges` is
+  // ordered along the direction of travel (`resolve_to_edge_ids` walks the cycle and resolves each
+  // step with `Graph::edge_between(from, to)`, which returns the edge pointing that way), so a
+  // one-way cycle's every edge gets `directed: true` and is drawn with a `from` -> `to` arrow.
+  const isOneWayCycle = (edges: [number, number][]): boolean =>
+    edges.some(([from, to]) => !mazeEdgePairs.has(`${to},${from}`));
   // Loop edges form a cycle -- drawn as connected lines, never as walls (see
   // `IssueHighlightEdge`'s doc comment).
   const loopEdges = loopGroups != null
-    ? asHighlightEdges(loopGroups.filter(visibleGroup).flatMap((g) => g.edges), false)
+    ? loopGroups.filter(visibleGroup).flatMap((g) => {
+        const directed = isOneWayCycle(g.edges);
+        return g.edges.map(([from, to]) => ({ from, to, asWall: false, directed }));
+      })
     : null;
   // Teleport edges don't connect tessellation-adjacent cells -- no shared wall to draw, stays a
   // line.

@@ -100,9 +100,20 @@ describe("IssueBubble", () => {
 
     const bubble = screen.getByText("Loop validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 1, to: 2, asWall: false }]);
+    // GitHub issue #470: no maze edges in the store => the loop's [1,2] edge has no reverse =>
+    // the cycle is one-way => every edge carries `directed: true`.
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 1, to: 2, asWall: false, directed: true }]);
     fireEvent.mouseLeave(bubble);
     expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
+  });
+
+  it("a fully bidirectional loop's edges are not marked directed (GitHub issue #470)", () => {
+    useMazeStore.setState({ edges: [{ from: 1, to: 2, kind: "basic" }, { from: 2, to: 1, kind: "basic" }] });
+    const issue = invalidLoopIssue("loop_length");
+    render(<IssueBubble issue={issue} sourceCheck="loop_length" />);
+    fireEvent.mouseEnter(screen.getByText("Loop validation"));
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 1, to: 2, asWall: false, directed: false }]);
+    useMazeStore.setState({ edges: [] });
   });
 
   it("hovering an invalid_teleport bubble sets hoveredIssueLoopEdges (shared edge-highlight path) to this check's flattened groups; leaving clears it", () => {

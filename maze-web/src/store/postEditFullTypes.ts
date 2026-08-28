@@ -23,6 +23,12 @@ export interface IssueHighlightEdge {
   from: number;
   to: number;
   asWall: boolean;
+  /** GitHub issue #470: when set, this edge belongs to a one-way cycle and must be drawn with a
+   *  direction arrow (`from` -> `to`, the cycle's direction of travel) even if the underlying
+   *  base-graph edge is bidirectional — otherwise a one-way cycle traversing bidirectional edges
+   *  is visually indistinguishable from a two-way one. Only ever set for loop highlights
+   *  (`asWall: false`); irrelevant for teleport/one-way/split-route groups. */
+  directed?: boolean;
 }
 
 export interface AnalyticsOverlayState {

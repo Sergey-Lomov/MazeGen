@@ -4,7 +4,7 @@ import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import type { Pos } from "./tessellationGeometry";
 import { buildNodePositions } from "./tessellationGeometry";
-import { drawOneWayWallHighlight } from "./renderers/wallUtils";
+import { drawOneWayWallHighlight, drawDirectionArrow } from "./renderers/wallUtils";
 import { RegionHighlightRenderer } from "./renderers/RegionHighlightRenderer";
 import { touchedNodeIds } from "./renderers/edgeUtils";
 import { canvas } from "./colorTokens";
@@ -103,13 +103,25 @@ export class IssueHighlightOverlay extends BaseGraphRenderer {
     const linePairs: [number, number][] = lineEdges.map((e) => [e.from, e.to]);
 
     const g = new Graphics();
-    for (const [from, to] of linePairs) {
-      const a = nodePos.get(from);
-      const b = nodePos.get(to);
+    for (const edge of lineEdges) {
+      const a = nodePos.get(edge.from);
+      const b = nodePos.get(edge.to);
       if (!a || !b) continue;
       g.moveTo(a.x, a.y);
       g.lineTo(b.x, b.y);
       g.stroke({ width: HIGHLIGHT_WIDTH, color: HIGHLIGHT_COLOR, alpha: HIGHLIGHT_ALPHA });
+
+      // GitHub issue #470: a one-way cycle's edges carry `directed` — draw a direction-of-travel
+      // arrow at the edge midpoint even when the underlying edge is bidirectional, so the cycle
+      // reads as one-way.
+      if (edge.directed) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.hypot(dx, dy);
+        if (len > 0) {
+          drawDirectionArrow(g, (a.x + b.x) / 2, (a.y + b.y) / 2, dx / len, dy / len, HIGHLIGHT_WIDTH * 2, HIGHLIGHT_COLOR, HIGHLIGHT_ALPHA);
+        }
+      }
     }
     this.edgesContainer.addChild(g);
 

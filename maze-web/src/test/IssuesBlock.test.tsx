@@ -26,12 +26,13 @@ describe("IssuesBlock", () => {
     const bubbles = screen.getAllByText("Loop validation");
     expect(bubbles.length).toBe(2);
 
+    // GitHub issue #470: no maze edges in the store => these single-edge cycles are one-way.
     fireEvent.mouseEnter(bubbles[0]);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 1, to: 2, asWall: false }]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 1, to: 2, asWall: false, directed: true }]);
     fireEvent.mouseLeave(bubbles[0]);
 
     fireEvent.mouseEnter(bubbles[1]);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false }]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false, directed: true }]);
     fireEvent.mouseLeave(bubbles[1]);
   });
 
@@ -76,7 +77,7 @@ describe("IssuesBlock", () => {
 
     const bubble = screen.getByText("Loop validation");
     fireEvent.mouseEnter(bubble);
-    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false }]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: false, directed: true }]);
     fireEvent.mouseLeave(bubble);
 
     useMazeStore.getState().setShowFullyPresetLockedIssues(true);
