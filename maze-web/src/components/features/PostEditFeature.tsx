@@ -200,6 +200,7 @@ export function PostEditFeature() {
 
       {postEditFocusedPoint && (
         <ManageSplitNodesDialog
+          key={`${postEditFocusedPoint[0]},${postEditFocusedPoint[1]}`}
           point={postEditFocusedPoint}
           onClose={() => setPostEditFocusedPoint(null)}
         />

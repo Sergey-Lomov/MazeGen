@@ -37,6 +37,44 @@ beforeEach(() => {
 });
 
 describe("VectorByCorridorsSettingsPanel", () => {
+  it("shows all vertical subsections disabled when a multi-floor maze has no vertical edges", () => {
+    useMazeStore.setState({
+      floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }],
+      vectorByCorridorsSectionsExpanded: { vertical: true },
+    });
+
+    render(<VectorByCorridorsSettingsPanel />);
+
+    for (const label of [
+      m["image_export.vector_by_walls.two_way_passage_marker"](),
+      m["image_export.vector_by_walls.one_way_passage_marker"](),
+      m["image_export.vector_by_walls.elevator_marker"](),
+    ]) {
+      const header = screen.getByText(label);
+      expect(header.parentElement).toHaveAttribute("aria-disabled", "true");
+      fireEvent.click(header);
+    }
+    expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.vertical_two_way).toBeUndefined();
+    expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.vertical_one_way).toBeUndefined();
+    expect(useMazeStore.getState().vectorByCorridorsSectionsExpanded.vertical_elevator).toBeUndefined();
+  });
+
+  it("enables the two-way passage settings for elevators when replacement is enabled", () => {
+    useMazeStore.setState({
+      floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }],
+      edges: [{ from: 1, to: 2, kind: "elevator" }],
+      vectorByCorridorsSettings: {
+        ...useMazeStore.getState().vectorByCorridorsSettings,
+        replaceTwoFloorElevatorsWithStairs: true,
+      },
+      vectorByCorridorsSectionsExpanded: { vertical: true },
+    });
+    render(<VectorByCorridorsSettingsPanel />);
+
+    const header = screen.getByText(m["image_export.vector_by_walls.two_way_passage_marker"]());
+    expect(header.parentElement).not.toHaveAttribute("aria-disabled", "true");
+  });
+
   it("the 'Cells' section starts collapsed by default", () => {
     useMazeStore.setState({ vectorByCorridorsSectionsExpanded: {} });
     render(<VectorByCorridorsSettingsPanel />);

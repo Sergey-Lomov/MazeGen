@@ -149,11 +149,13 @@ const {
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
+    replaceTwoFloorElevatorsWithStairs: true,
     background: 0x111111,
     showGrid: true,
     gridColor: 0x222222,
     floorColor: 0x333333,
     wallColor: 0x444444,
+    randomWallColorMode: "off",
     wallJoin: "round",
     wallThickness: 3,
     oneWayPattern: "triangle",
@@ -440,4 +442,3 @@ describe("VectorByWallsRenderer", () => {
     expect(renderer.getBackgroundColor()).toBe(0xabcdef);
   });
 });
-

@@ -29,13 +29,19 @@ vi.mock("pixi.js", () => {
 
 vi.mock("../pixi/tessellationGeometry", () => ({
   getCellCenter: (x: number, y: number) => ({ x: x * 10, y: y * 10 }),
+  getCellVertices: () => [
+    { x: -10, y: -10 },
+    { x: 10, y: -10 },
+    { x: 10, y: 10 },
+    { x: -10, y: 10 },
+  ],
 }));
 
 vi.mock("../pixi/renderers/floorNavigation", () => ({
   navigateToFloor: vi.fn(),
 }));
 
-const { drawCrossFloorStub, drawCrossFloorBadge, computeRegionBadgeRingPos, attachFloorBadgeNavigation, FLOOR_BADGE_STROKE_WIDTH } = await import(
+const { drawCrossFloorStub, drawCrossFloorBadge, computeCrossFloorBadgePos, computeRegionBadgeRingPos, attachFloorBadgeNavigation, FLOOR_BADGE_STROKE_WIDTH } = await import(
   "../pixi/renderers/floorBadge"
 );
 const { navigateToFloor } = await import("../pixi/renderers/floorNavigation");
@@ -124,6 +130,24 @@ describe("computeRegionBadgeRingPos", () => {
   it("places a single badge at the cell center", () => {
     const pos = computeRegionBadgeRingPos([2, 3], cfg, 6, 0, 1);
     expect(pos).toEqual({ x: 20, y: 30 });
+  });
+
+  describe("computeCrossFloorBadgePos", () => {
+    const cfg = {} as never;
+
+    it("distributes more badges than cell corners evenly around the cell", () => {
+      const positions = Array.from({ length: 5 }, (_, slot) =>
+        computeCrossFloorBadgePos([0, 0], [0, 0], cfg, 2, 10, slot, 5),
+      );
+      const radius = 8;
+
+      for (const position of positions) expect(Math.hypot(position.x, position.y)).toBeCloseTo(radius);
+      for (let slot = 0; slot < positions.length; slot++) {
+        const angle = -Math.PI / 2 + (slot / positions.length) * 2 * Math.PI;
+        expect(positions[slot].x).toBeCloseTo(Math.cos(angle) * radius);
+        expect(positions[slot].y).toBeCloseTo(Math.sin(angle) * radius);
+      }
+    });
   });
 
   it("spreads two badges evenly around a ring of radius (badgeRadius+strokeWidth)*1.25", () => {

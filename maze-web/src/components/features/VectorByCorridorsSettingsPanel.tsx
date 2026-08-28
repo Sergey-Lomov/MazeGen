@@ -1,14 +1,13 @@
 import type React from "react";
 import { useEffect, useMemo } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { OneWayPattern } from "../../pixi/renderers/types";
+import type { VerticalArrowStyle } from "../../pixi/renderers/types";
 import { inset, spacing, typography, ui } from "../../styles/theme";
 import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
 import { ToggleRow } from "../ToggleRow";
-import { SectionHeader } from "../SectionHeader";
+import { SectionHeader, SubsectionHeader } from "../SectionHeader";
 import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
@@ -176,11 +175,11 @@ export function VectorByCorridorsSettingsPanel() {
     const passageEdges = rawEdges.filter((e) => e.kind === "vertical_passage");
     const forward = new Set(passageEdges.map((e) => `${e.from}->${e.to}`));
     const hasOneWayPassages = passageEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
-    const hasTwoWayPassages = passageEdges.some((e) => forward.has(`${e.to}->${e.from}`));
     const hasElevators = rawEdges.some((e) => e.kind === "elevator");
+    const hasTwoWayPassages = passageEdges.some((e) => forward.has(`${e.to}->${e.from}`)) ||
+      (settings.replaceTwoFloorElevatorsWithStairs && hasElevators);
     return { hasTwoWayPassages, hasOneWayPassages, hasElevators };
-  }, [rawEdges]);
-  const hasVerticalConnections = hasTwoWayPassages || hasOneWayPassages || hasElevators;
+  }, [rawEdges, settings.replaceTwoFloorElevatorsWithStairs]);
 
   const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(nodes, edges, cfg, settings);
 
@@ -436,7 +435,7 @@ export function VectorByCorridorsSettingsPanel() {
         </>
       )}
 
-      {hasVerticalConnections && (
+      {(hasTwoWayPassages || hasOneWayPassages || hasElevators || floors.length > 1) && (
         <>
           <div style={styles.divider} />
 
@@ -447,13 +446,14 @@ export function VectorByCorridorsSettingsPanel() {
           />
           {isExpanded("vertical") && (
             <div style={styles.block}>
-              {hasTwoWayPassages && (
-                <div style={styles.subGroupWrap}>
-                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_two_way")}>
-                    {isExpanded("vertical_two_way") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
-                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.two_way_passage_marker"]()}</div>
-                  </div>
-                  {isExpanded("vertical_two_way") && (
+              <ToggleRow
+                label={m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]()}
+                checked={settings.replaceTwoFloorElevatorsWithStairs}
+                onChange={(replaceTwoFloorElevatorsWithStairs) => patchVerticalSettings({ replaceTwoFloorElevatorsWithStairs })}
+              />
+              <div style={styles.subGroupWrap}>
+                  <SubsectionHeader label={m["image_export.vector_by_walls.two_way_passage_marker"]()} expanded={isExpanded("vertical_two_way") && hasTwoWayPassages} disabled={!hasTwoWayPassages} onToggle={() => toggleSection("vertical_two_way")} />
+                  {isExpanded("vertical_two_way") && hasTwoWayPassages && (
                   <div style={styles.subGroup}>
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
@@ -479,7 +479,6 @@ export function VectorByCorridorsSettingsPanel() {
                         />
                       </div>
                     </div>
-
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
                       <div style={styles.subGroup}>
@@ -501,9 +500,10 @@ export function VectorByCorridorsSettingsPanel() {
                           label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
                           value={settings.twoWayArrowStyle}
                           options={[
-                            { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
-                            { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
-                            { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                            { value: "triangle" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+                            { value: "chevron" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+                            { value: "arrow" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                            { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
                           ]}
                           onChange={(twoWayArrowStyle) => patchVerticalSettings({ twoWayArrowStyle })}
                         />
@@ -519,17 +519,12 @@ export function VectorByCorridorsSettingsPanel() {
                       </div>
                     </div>
                   </div>
-                  )}
+                )}
                 </div>
-              )}
 
-              {hasOneWayPassages && (
-                <div style={styles.subGroupWrap}>
-                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_one_way")}>
-                    {isExpanded("vertical_one_way") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
-                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.one_way_passage_marker"]()}</div>
-                  </div>
-                  {isExpanded("vertical_one_way") && (
+              <div style={styles.subGroupWrap}>
+                  <SubsectionHeader label={m["image_export.vector_by_walls.one_way_passage_marker"]()} expanded={isExpanded("vertical_one_way") && hasOneWayPassages} disabled={!hasOneWayPassages} onToggle={() => toggleSection("vertical_one_way")} />
+                  {isExpanded("vertical_one_way") && hasOneWayPassages && (
                   <div style={styles.subGroup}>
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
@@ -561,7 +556,6 @@ export function VectorByCorridorsSettingsPanel() {
                         />
                       </div>
                     </div>
-
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
                       <div style={styles.subGroup}>
@@ -583,9 +577,10 @@ export function VectorByCorridorsSettingsPanel() {
                           label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
                           value={settings.oneWayArrowStyle}
                           options={[
-                            { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
-                            { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
-                            { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                            { value: "triangle" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+                            { value: "chevron" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+                            { value: "arrow" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                            { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
                           ]}
                           onChange={(oneWayArrowStyle) => patchVerticalSettings({ oneWayArrowStyle })}
                         />
@@ -601,17 +596,12 @@ export function VectorByCorridorsSettingsPanel() {
                       </div>
                     </div>
                   </div>
-                  )}
+                )}
                 </div>
-              )}
 
-              {hasElevators && (
-                <div style={styles.subGroupWrap}>
-                  <div className="hoverable" style={styles.subHeaderRow} onClick={() => toggleSection("vertical_elevator")}>
-                    {isExpanded("vertical_elevator") ? <ChevronDown size={12} color={ui.text.tertiary} /> : <ChevronRight size={12} color={ui.text.tertiary} />}
-                    <div style={styles.subHeader}>{m["image_export.vector_by_walls.elevator_marker"]()}</div>
-                  </div>
-                  {isExpanded("vertical_elevator") && (
+              <div style={styles.subGroupWrap}>
+                  <SubsectionHeader label={m["image_export.vector_by_walls.elevator_marker"]()} expanded={isExpanded("vertical_elevator") && hasElevators} disabled={!hasElevators} onToggle={() => toggleSection("vertical_elevator")} />
+                  {isExpanded("vertical_elevator") && hasElevators && (
                   <div style={styles.subGroup}>
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_marker"]()}</div>
@@ -659,9 +649,10 @@ export function VectorByCorridorsSettingsPanel() {
                           label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
                           value={settings.elevatorArrowStyle}
                           options={[
-                            { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
-                            { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
-                            { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                            { value: "triangle" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+                            { value: "chevron" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+                            { value: "arrow" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                            { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
                           ]}
                           onChange={(elevatorArrowStyle) => patchVerticalSettings({ elevatorArrowStyle })}
                         />
@@ -685,9 +676,8 @@ export function VectorByCorridorsSettingsPanel() {
                       onResetCornerStyle={() => resetSharedStyleField("cornerStyle", "elevatorBadges")}
                     />
                   </div>
-                  )}
+                )}
                 </div>
-              )}
             </div>
           )}
         </>

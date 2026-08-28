@@ -171,6 +171,7 @@ export class MazeScene {
       getHoverProvider: (st) => this.getHoverProvider(st),
       onHoverChanged: (info) => this.hoverCallback?.(info),
       onViewportChanged: () => this.syncLayersToViewport(),
+      onResetZoom: () => this.resetZoomToOne(),
     });
 
     this.fieldEditController = new FieldEditController(
@@ -256,6 +257,19 @@ export class MazeScene {
     if (cb === this.viewportScaleCallback) return;
     this.viewportScaleCallback = cb;
     this.viewportScaleCallback?.(this.viewport.scale.x);
+  }
+
+  /** Resets the current viewport transform back to a 1:1 scale while keeping the same world point
+   * under the screen center. */
+  resetZoomToOne(): void {
+   const currentScale = this.viewport.scale.x;
+   if (!Number.isFinite(currentScale) || currentScale === 0 || Math.abs(currentScale - 1) < 1e-9) return;
+   const cx = this.app.screen.width / 2;
+   const cy = this.app.screen.height / 2;
+   this.viewport.x = cx + (this.viewport.x - cx) / currentScale;
+   this.viewport.y = cy + (this.viewport.y - cy) / currentScale;
+   this.viewport.scale.set(1);
+   this.syncLayersToViewport();
   }
 
   private subscribeToPreview(): void {

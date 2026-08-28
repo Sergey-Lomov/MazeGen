@@ -114,6 +114,7 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
 const ONE_WAY_ACCENT_DARK = DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayAccentColor;
 
 export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
+  replaceTwoFloorElevatorsWithStairs: true,
   twoWayPassageMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker),
   oneWayPassageMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayPassageMarker),
   elevatorMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorMarker),
@@ -190,6 +191,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = applyVect
     gridColor: DEFAULT_MAZE_RENDER_STYLE.grid.color,
     floorColor: DEFAULT_MAZE_RENDER_STYLE.floorColor,
     wallColor: DEFAULT_MAZE_RENDER_STYLE.wall.color,
+    randomWallColorMode: "off",
     wallJoin: DEFAULT_MAZE_RENDER_STYLE.wall.join,
     wallThickness: DEFAULT_MAZE_RENDER_STYLE.wall.width,
     oneWayPattern: DEFAULT_MAZE_RENDER_STYLE.oneWay.pattern,

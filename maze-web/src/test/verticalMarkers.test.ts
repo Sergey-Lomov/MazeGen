@@ -11,6 +11,19 @@ const squareCfg: TessellationConfig = { type: "square", width: 6, height: 6 };
 const n = (id: number, x: number, y: number, level?: number): NodeDto => ({ id, x, y, i: 0, level });
 
 describe("buildVerticalConnectionMarkers — targetFloorIndices (GitHub issue #430)", () => {
+  it("can render a two-floor elevator as a two-way passage marker", () => {
+    const nodes = [n(0, 0, 0, 0), n(1, 1, 1, 1)];
+    const nodeById = new Map(nodes.map((x) => [x.id, x]));
+    const edges: EdgeDto[] = [{ from: 0, to: 1, kind: "elevator" }];
+    const resolveNodeLevel = selectNodeLevelResolver(nodes);
+    const pairs = selectVerticalPassagePairSet(edges);
+    const markers = buildVerticalConnectionMarkers(nodeById, edges, squareCfg, resolveNodeLevel, 0, pairs, edges, true);
+
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toMatchObject({ kind: "vertical_passage", filled: true, targetFloorIndex: 1 });
+    expect(markers[0].targetFloorIndices).toBeUndefined();
+  });
+
   it("is undefined for a vertical_passage marker", () => {
     const nodes = [n(0, 0, 0, 0), n(1, 1, 1, 1)];
     const nodeById = new Map(nodes.map((x) => [x.id, x]));
@@ -40,6 +53,20 @@ describe("buildVerticalConnectionMarkers — targetFloorIndices (GitHub issue #4
     const markers = buildVerticalConnectionMarkers(nodeById, edges, squareCfg, resolveNodeLevel, 0, pairs, edges);
     const marker = markers.find((m) => m.kind === "elevator");
     expect(marker?.targetFloorIndices).toEqual([1, 2]);
+  });
+
+  it("keeps an elevator marker for elevators reaching multiple floors", () => {
+    const nodes = [n(0, 0, 0, 0), n(1, 1, 1, 1), n(2, 2, 2, 2)];
+    const nodeById = new Map(nodes.map((x) => [x.id, x]));
+    const edges: EdgeDto[] = [
+      { from: 0, to: 1, kind: "elevator" },
+      { from: 0, to: 2, kind: "elevator" },
+    ];
+    const resolveNodeLevel = selectNodeLevelResolver(nodes);
+    const pairs = selectVerticalPassagePairSet(edges);
+    const markers = buildVerticalConnectionMarkers(nodeById, edges, squareCfg, resolveNodeLevel, 0, pairs, edges, true);
+
+    expect(markers[0]).toMatchObject({ kind: "elevator", targetFloorIndices: [1, 2] });
   });
 
   it("is undefined when none of the fan's targets resolve to a floor", () => {

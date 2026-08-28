@@ -8,6 +8,7 @@ export type Viewport = {
 
 export type PassageKind = "both" | "forward" | "backward" | "none";
 export type WallStyle = "solid" | "faint" | "background";
+export type RandomWallColorMode = "off" | "per_pass" | "per_segment";
 
 /** Optional per-call override for a "wall"-colored stroke's color/thickness/join/cap, applied only
  *  to the `solid` `WallStyle` in `WallRenderer` and to `wallFaces` in `SplitJunctionRenderer` — the
@@ -21,6 +22,7 @@ export type WallStyle = "solid" | "faint" | "background";
 export type WallStyleOverride = { color?: number; width?: number; join?: "round" | "miter"; cap?: "round" | "square" };
 
 export type OneWayPattern = "triangle" | "chevron" | "arrow";
+export type VerticalArrowStyle = OneWayPattern | "sign";
 
 /** Optional per-call override for the one-way indicator drawn on a `WallEdge`'s wall segment
  *  midpoint — pattern (shape), color, floor-colored gap (color/width, `gapWidth: 0` draws no gap —

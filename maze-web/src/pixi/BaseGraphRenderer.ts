@@ -4,7 +4,7 @@ import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { drawDirectionArrow } from "./renderers/wallUtils";
 import { TILE_SIZE } from "./constants";
-import { computeCrossFloorBadgePos, drawCrossFloorBadge, drawCrossFloorStub } from "./renderers/floorBadge";
+import { computeCrossFloorBadgePos, drawCrossFloorBadge, drawCrossFloorStub, isCrossFloorBadgeCrowded, CROWDED_BADGE_RADIUS_FACTOR } from "./renderers/floorBadge";
 import type { Pos } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
@@ -158,16 +158,28 @@ export function buildCrossFloorMarkers(
     }
   }
 
-  const result: CrossFloorMarker[] = [];
+  const layoutByCell = new Map<string, { onFloorId: number; onPos: Pos; onCell: [number, number]; offCell: [number, number]; level: number; direction: CrossFloorDirection }[]>();
   for (const [onFloorId, targets] of byNode) {
     const onCell = resolveNodeCell(onFloorId);
     if (!onCell) continue;
-    targets.forEach((t, slot) => {
+    targets.forEach((t) => {
       const offCell = resolveNodeCell(t.offFloorId);
       if (!offCell) return;
-      const badgePos = computeCrossFloorBadgePos(onCell, offCell, cfg, badgeRadius, tileRadius, slot, targets.length);
       const direction: CrossFloorDirection = t.toBadge && t.fromBadge ? "none" : t.toBadge ? "toBadge" : "fromBadge";
-      result.push({ nodeId: onFloorId, nodePos: t.onPos, badgePos, targetFloorIndex: t.level, direction });
+      const cellKey = `${onCell[0]}:${onCell[1]}`;
+      let cellTargets = layoutByCell.get(cellKey);
+      if (!cellTargets) { cellTargets = []; layoutByCell.set(cellKey, cellTargets); }
+      cellTargets.push({ onFloorId, onPos: t.onPos, onCell, offCell, level: t.level, direction });
+    });
+  }
+  const result: CrossFloorMarker[] = [];
+  for (const cellTargets of layoutByCell.values()) {
+    const onCell = cellTargets[0].onCell;
+    const crowded = isCrossFloorBadgeCrowded(onCell, cfg, cellTargets.length);
+    const positionRadiusFactor = crowded ? CROWDED_BADGE_RADIUS_FACTOR : 1;
+    cellTargets.forEach((t, slot) => {
+      const badgePos = computeCrossFloorBadgePos(t.onCell, t.offCell, cfg, badgeRadius, tileRadius, slot, cellTargets.length, positionRadiusFactor);
+      result.push({ nodeId: t.onFloorId, nodePos: t.onPos, badgePos, targetFloorIndex: t.level, direction: t.direction });
     });
   }
   return result;

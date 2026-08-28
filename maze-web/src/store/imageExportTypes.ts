@@ -1,4 +1,4 @@
-import type { MarkerShape, OneWayPattern, TeleportGroupOverride, TeleportCornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight } from "../pixi/renderers/types";
+import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, TeleportCornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight, RandomWallColorMode } from "../pixi/renderers/types";
 
 /** Registry id of a maze image-export rendering mode (see `Specs/image-export.md` and
  * `imageExportRegistry.ts`) — one entry per switcher item in the Image Export feature card. */
@@ -212,6 +212,8 @@ export interface ElevatorBadgeSettings {
  *  fill/border split — there's no fill to split here). The elevator pictogram never draws an arrow
  *  of its own, decorative or not. */
 export interface VerticalSettingsFields {
+  /** Render elevators spanning exactly two floors with the stairs settings instead. */
+  replaceTwoFloorElevatorsWithStairs: boolean;
   twoWayPassageMarker: MarkerSettings;
   oneWayPassageMarker: MarkerSettings;
   elevatorMarker: MarkerSettings;
@@ -220,17 +222,18 @@ export interface VerticalSettingsFields {
   /** Direction-arrow shape (GitHub issue #347 third follow-up) — same three patterns as the
    *  wall one-way indicator (`oneWayPattern`): `"arrow"` (line + arrowhead), `"triangle"`
    *  (filled), `"chevron"` (open `>` stroke). Reuses `drawOneWayArrow`/`drawOneWayTriangle`/
-   *  `drawOneWayChevron` (`wallUtils.ts`) directly — the arrival end's outline look (previously a
-   *  bespoke stroked-triangle draw) is now achieved the same way for all three patterns: the same
+   *  `drawOneWayChevron` (`wallUtils.ts`) directly, plus `"sign"` for compact `+`/`-` markers — the
+   *  arrival end's outline look (previously a
+   *  bespoke stroked-triangle draw) is now achieved the same way for all three glyph patterns: the same
    *  shape drawn twice, a larger pass in the arrow color underneath, a smaller pass in the gap/
    *  floor color on top, reading as a colored outline without any real stroke-only draw path. */
-  twoWayArrowStyle: OneWayPattern;
+  twoWayArrowStyle: VerticalArrowStyle;
   /** Corner style for `twoWayArrowStyle` — `"round"`/`"miter"`, same convention as `oneWayJoin`:
    *  drives the filled triangle's own corner rounding, or the chevron/arrow's stroke join. */
   twoWayArrowCornerStyle: "round" | "miter";
   oneWayArrowColor: number;
   oneWayArrowSize: number;
-  oneWayArrowStyle: OneWayPattern;
+  oneWayArrowStyle: VerticalArrowStyle;
   oneWayArrowCornerStyle: "round" | "miter";
   /** One-way passage's "secondary" accent color (GitHub issue #347 fifth follow-up, simplified from
    *  the fourth follow-up's separate `oneWayEntryColor`/`oneWayExitColor`, which always meant the
@@ -240,7 +243,7 @@ export interface VerticalSettingsFields {
   oneWayAccentColor: number;
   elevatorArrowColor: number;
   elevatorArrowSize: number;
-  elevatorArrowStyle: OneWayPattern;
+  elevatorArrowStyle: VerticalArrowStyle;
   elevatorArrowCornerStyle: "round" | "miter";
   /** "Floor-number badges" (GitHub issue #430) — see `ElevatorBadgeSettings`'s own doc comment.
    *  Independent of `verticalStyle` on modes that have one — draws on top of `elevatorMarker`/
@@ -404,6 +407,9 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
    *  fill) via `WallStyleOverride` — never the `faint`/`background` `WallStyle` variants or a split
    *  passage's own node-identity color. See GitHub issue #291. */
   wallColor: number;
+  /** Optional diagnostic palette for solid wall strokes; omitted by old project files and treated as
+   *  `"off"`. Colors are deterministic and contrast-controlled against floor/background. */
+  randomWallColorMode: RandomWallColorMode;
   /** Drives both the pixi stroke `join` and the derived `cap` together (`round`->`round` cap,
    *  `miter`->`square` cap) when built into a `WallStyleOverride` in `VectorByWallsRenderer`. */
   wallJoin: "round" | "miter";
@@ -654,6 +660,7 @@ export interface ImageExportActions {
     patch: Partial<
       Pick<
         VerticalSettingsFields,
+        | "replaceTwoFloorElevatorsWithStairs"
         | "twoWayArrowColor"
         | "twoWayArrowSize"
         | "twoWayArrowStyle"
@@ -722,6 +729,7 @@ export interface ImageExportActions {
   setVectorByWallsGridColor: (color: number) => void;
   setVectorByWallsFloorColor: (color: number) => void;
   setVectorByWallsWallColor: (color: number) => void;
+  setVectorByWallsRandomWallColorMode: (mode: RandomWallColorMode) => void;
   setVectorByWallsWallJoin: (join: "round" | "miter") => void;
   setVectorByWallsWallThickness: (v: number) => void;
   setVectorByWallsOneWayPattern: (pattern: OneWayPattern) => void;
@@ -750,6 +758,7 @@ export interface ImageExportActions {
     patch: Partial<
       Pick<
         VerticalSettingsFields,
+        | "replaceTwoFloorElevatorsWithStairs"
         | "twoWayArrowColor"
         | "twoWayArrowSize"
         | "twoWayArrowStyle"

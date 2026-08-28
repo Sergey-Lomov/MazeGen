@@ -1,0 +1,14 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "npm": true,
+    "npx": true,
+    "npm run build": true,
+    "npm test": true,
+    "git status": true,
+    "git diff": true,
+    "/^Set-Location '\\.\\\\maze-web'; npm run build$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  }
+}

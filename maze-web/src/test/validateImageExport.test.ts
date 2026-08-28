@@ -3,11 +3,27 @@ import { validateVerticalSettingsFields, validateVerticalDecorativeFields, valid
 import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS } from "../store/slices/imageExportDefaults";
 
 describe("validateVerticalSettingsFields", () => {
+  it("preserves elevator simplification and defaults it on for older projects", () => {
+    expect(validateVerticalSettingsFields({ replaceTwoFloorElevatorsWithStairs: false }, "path", DEFAULT_VERTICAL_SETTINGS).replaceTwoFloorElevatorsWithStairs).toBe(false);
+    expect(validateVerticalSettingsFields({}, "path", DEFAULT_VERTICAL_SETTINGS).replaceTwoFloorElevatorsWithStairs).toBe(true);
+  });
+
   // Arrow style/corner-style fields (GitHub issue #347 third follow-up)
   it("reads twoWayArrowStyle/twoWayArrowCornerStyle as-is when valid", () => {
     const result = validateVerticalSettingsFields({ twoWayArrowStyle: "chevron", twoWayArrowCornerStyle: "miter" }, "path", DEFAULT_VERTICAL_SETTINGS);
     expect(result.twoWayArrowStyle).toBe("chevron");
     expect(result.twoWayArrowCornerStyle).toBe("miter");
+  });
+
+  it("accepts the vertical sign style for every arrow group", () => {
+    const result = validateVerticalSettingsFields(
+      { twoWayArrowStyle: "sign", oneWayArrowStyle: "sign", elevatorArrowStyle: "sign" },
+      "path",
+      DEFAULT_VERTICAL_SETTINGS,
+    );
+    expect(result.twoWayArrowStyle).toBe("sign");
+    expect(result.oneWayArrowStyle).toBe("sign");
+    expect(result.elevatorArrowStyle).toBe("sign");
   });
 
   it("falls back to the default for an invalid arrow style/corner-style", () => {

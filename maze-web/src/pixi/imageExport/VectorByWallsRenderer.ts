@@ -244,6 +244,7 @@ export class VectorByWallsRenderer {
     splitPassages: SplitPassage[];
     splitWallFaces: { v0: { x: number; y: number }; v1: { x: number; y: number } }[];
     splitSpecialShapes: SplitSpecialShape[];
+    replaceTwoFloorElevatorsWithStairs: boolean;
     verticalConnectionMarkers: VerticalConnectionMarker[];
   } | null = null;
 
@@ -413,7 +414,8 @@ export class VectorByWallsRenderer {
       this.geometryCache.cfg !== cfg ||
       this.geometryCache.start !== start ||
       this.geometryCache.finish !== finish ||
-      this.geometryCache.splitNodeColors !== splitNodeColors
+      this.geometryCache.splitNodeColors !== splitNodeColors ||
+      this.geometryCache.replaceTwoFloorElevatorsWithStairs !== state.vectorByWallsSettings.replaceTwoFloorElevatorsWithStairs
     ) {
       const specialNodeIds = new Set<number>();
       if (start !== null) specialNodeIds.add(start);
@@ -444,7 +446,8 @@ export class VectorByWallsRenderer {
         splitPassages,
         splitWallFaces,
         splitSpecialShapes,
-        verticalConnectionMarkers: buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, activeFloorIndex, verticalPairs, state.edges),
+        replaceTwoFloorElevatorsWithStairs: state.vectorByWallsSettings.replaceTwoFloorElevatorsWithStairs,
+        verticalConnectionMarkers: buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, activeFloorIndex, verticalPairs, state.edges, state.vectorByWallsSettings.replaceTwoFloorElevatorsWithStairs),
       };
     }
     const wallStyle = buildWallStyle(state.vectorByWallsSettings);
@@ -456,7 +459,11 @@ export class VectorByWallsRenderer {
       this.geometryCache.splitSpecialShapes,
       state.vectorByWallsSettings.splitSpecialShapes,
     );
-    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg, wallStyle, oneWayStyle, extraWalls, noCapPoints);
+    this.walls.render(
+      { edges: this.geometryCache.wallEdges }, cfg, wallStyle, oneWayStyle, extraWalls, noCapPoints,
+      state.vectorByWallsSettings.randomWallColorMode,
+      { floorColor: state.vectorByWallsSettings.floorColor, backgroundColor: state.vectorByWallsSettings.background },
+    );
     this.splitJunctions.render(
       { passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces, specialShapes: this.geometryCache.splitSpecialShapes },
       wallStyle,
