@@ -50,6 +50,7 @@ export class PostEditController extends BaseController {
       this.cancelPendingTeleport();
       useMazeStore.getState().cancelPostEditVerticalPassagePlacement();
       useMazeStore.getState().cancelPostEditElevatorPlacement();
+      useMazeStore.getState().cancelPostEditSplitTarget();
     }
   };
 
@@ -290,6 +291,28 @@ export class PostEditController extends BaseController {
     if (VERTEX_TOOLS.has(tool)) {
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
+
+      // On a split point the active-node concept must not decide anything for a vertex tool
+      // (GitHub issue #474). A left click there defers to the node picker *before* any
+      // marker/teleport/vertical-passage hit-test below — those all resolve through the active
+      // node and would otherwise silently drag/cycle/complete on it without the dialog. Right
+      // click (remove) still falls through to the hit-tests below.
+      if (button === 0) {
+        const cellNodeIds = nodeMap.get(`${cell.x},${cell.y}`) ?? [];
+        if (cellNodeIds.length > 1) {
+          if (tool === "set_start" || tool === "set_finish") {
+            useMazeStore.getState().requestPostEditSplitTarget({ point: [cell.x, cell.y], level, nodeIds: cellNodeIds, action: { tool } });
+          } else if (VERTICAL_PASSAGE_TOOLS.has(tool)) {
+            useMazeStore.getState().requestPostEditSplitTarget({ point: [cell.x, cell.y], level, nodeIds: cellNodeIds, action: { tool: tool as "vertical_passage_one_way" | "vertical_passage_two_way" } });
+          } else if (tool === "elevator") {
+            useMazeStore.getState().requestPostEditSplitTarget({ point: [cell.x, cell.y], level, nodeIds: cellNodeIds, action: { tool: "elevator" } });
+          } else if (TELEPORT_TOOLS.has(tool)) {
+            useMazeStore.getState().requestPostEditSplitTarget({ point: [cell.x, cell.y], level, nodeIds: cellNodeIds, action: { tool: tool as "teleport_one_way" | "teleport_two_way" } });
+          }
+          return;
+        }
+      }
+
       const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
       const resolveSplit = buildSplitNodeResolver(nodeMap, recordOnLevel(state.postEditDraftSplitPoints, level));
       const nodeId = endpoint !== null ? resolveEndpoint(endpoint, resolveSplit) : undefined;
@@ -365,6 +388,9 @@ export class PostEditController extends BaseController {
       // teleport-clicked yet — no-op, not an error (see postEditEndpoint.ts's doc comment; the
       // same click works once the node is confirmed).
       if (endpoint === null || nodeId === undefined) return;
+
+      // Split points were already handled at the top of this branch (GitHub issue #474) — every
+      // path from here targets a plain single-node point.
       if (tool === "set_start") useMazeStore.getState().setPostEditEndpoint("start", endpoint);
       else if (tool === "set_finish") useMazeStore.getState().setPostEditEndpoint("finish", endpoint);
       else if (tool === "elevator") useMazeStore.getState().startPostEditElevatorPlacement(endpoint);

@@ -554,6 +554,21 @@ describe("buildSplitPassages", () => {
     expect(e0StartSide).not.toBe(e1StartSide);
   });
 
+  it("a would-be bridge with a one-way connection draws ordinary hub connectors with an arrow, not a special shape (GitHub issue #477)", () => {
+    // Same fixture as the degree-4 bridge test above, but node 0's east connection is one-way
+    // (node 0 -> node 1 only) instead of two-way.
+    const nodes = [
+      n(0, 0, 0), n(1, 1, 0), n(2, -1, 0),
+      n(3, 0, 1), n(4, 0, 0), n(5, 0, -1),
+    ];
+    const edges: EdgeDto[] = [e(0, 1), e(0, 2), e(2, 0), e(4, 3), e(3, 4), e(4, 5), e(5, 4)];
+    const { specialShapes, passages } = buildSplitPassages(nodes, edges, squareCfg);
+    expect(specialShapes).toEqual([]);
+    // Node 0 falls back to hub connectors; its one-way east face carries a direction marker.
+    const node0Passage = passages.find((p) => p.wallSegments.length === 2)!;
+    expect(node0Passage.connectors.some((c) => c.oneWayOut === true)).toBe(true);
+  });
+
   it("recognizes a degree-4 diagonal-divider topology (each node an adjacent-face pair)", () => {
     // Point (0,0) split into node 0 (slot 0: east+north) and node 4 (slot 1: west+south).
     const nodes = [
@@ -942,7 +957,9 @@ describe("getSplitAwareNodePosition", () => {
       n(0, 0, 0), n(1, 0, 0),
       n(10, 1, 0), n(11, 0, 1), n(12, -1, 0), n(13, 0, -1), // E,N,W,S neighbors
     ];
-    const edges: EdgeDto[] = [e(0, 10), e(0, 11), e(1, 12), e(1, 13)];
+    const edges: EdgeDto[] = [
+      e(0, 10), e(10, 0), e(0, 11), e(11, 0), e(1, 12), e(12, 1), e(1, 13), e(13, 1),
+    ];
     const pos = getSplitAwareNodePosition(nodes, 0, squareCfg, edges)!;
     const center = getCellCenter(0, 0, squareCfg);
     expect(pos.x).toBeCloseTo(center.x + 40 / 4);
@@ -982,7 +999,9 @@ describe("buildMazeMarkers", () => {
       [0, n(0, 0, 0)], [1, n(1, 0, 0)],
       [10, n(10, 1, 0)], [11, n(11, 0, 1)], [12, n(12, -1, 0)], [13, n(13, 0, -1)], // E,N,W,S neighbors
     ]);
-    const edges: EdgeDto[] = [e(0, 10), e(0, 11), e(1, 12), e(1, 13)];
+    const edges: EdgeDto[] = [
+      e(0, 10), e(10, 0), e(0, 11), e(11, 0), e(1, 12), e(12, 1), e(1, 13), e(13, 1),
+    ];
     const markers = buildMazeMarkers(nodeById, 0, null, squareCfg, undefined, undefined, edges);
     expect(markers).toHaveLength(1);
     const center = getCellCenter(0, 0, squareCfg);

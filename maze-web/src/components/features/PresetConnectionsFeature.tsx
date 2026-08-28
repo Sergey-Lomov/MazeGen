@@ -19,6 +19,7 @@ import { notificationPalette } from "../EmbeddedNotification";
 import { PresetSplitNodesDialog } from "./PresetSplitNodesDialog";
 import { PresetElevatorFloorDialog } from "../dialogs/PresetElevatorFloorDialog";
 import { PresetVerticalDirectionDialog } from "../dialogs/PresetVerticalDirectionDialog";
+import { PresetSplitTargetDialog } from "../dialogs/PresetSplitTargetDialog";
 import * as m from "~/paraglide/messages";
 
 function getEdgeTools(): [PresetConnectionTool, string][] {
@@ -95,6 +96,8 @@ export function PresetConnectionsFeature() {
   const presetSplitPoints = useMazeStore((s) => s.presetSplitPoints);
   const presetFocusedPoint = useMazeStore((s) => s.presetFocusedPoint);
   const setPresetFocusedPoint = useMazeStore((s) => s.setPresetFocusedPoint);
+  const presetSplitTargetPrompt = useMazeStore((s) => s.presetSplitTargetPrompt);
+  const cancelPresetSplitTarget = useMazeStore((s) => s.cancelPresetSplitTarget);
   const floors = useMazeStore((s) => s.floors);
   const activeFloorId = useMazeStore((s) => s.activeFloorId);
   const floorFields = useMazeStore((s) => s.floorFields);
@@ -316,6 +319,10 @@ export function PresetConnectionsFeature() {
 
       {presetVerticalPassagePending && (
         <PresetVerticalDirectionDialog onClose={cancelPresetVerticalPassagePlacement} />
+      )}
+
+      {presetSplitTargetPrompt && (
+        <PresetSplitTargetDialog onClose={cancelPresetSplitTarget} />
       )}
 
       <span style={styles.sectionLabel}>{m["preset.control"]()}</span>

@@ -19,6 +19,7 @@ import { buildPresetTeleportEdges, buildPresetVerticalMarkers } from "./presetCo
 import {
   buildPresetWallGroups,
   buildPresetMarkers,
+  buildPresetNodePositions,
   buildLocks,
   buildIsolatedCellHighlights,
   computeOrphanSplitPoints,
@@ -331,11 +332,16 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const lockEntries = buildLocks(lockedNodes, autoLockedNodes);
     this.locks.render({ locks: lockEntries }, cfg);
 
-    const markerData = buildPresetMarkers(presetStart, presetFinish, cfg, presetSplitPoints, presetConnections);
+    // One node-anchor map per redraw, resolving every preset marker/edge endpoint below (start/
+    // finish markers, teleports, vertical passages, elevators) — a split node draws at the same
+    // shape-aware anchor everywhere (GitHub issue #474 follow-up).
+    const nodePositions = buildPresetNodePositions(cfg, presetSplitPoints, presetConnections);
+
+    const markerData = buildPresetMarkers(presetStart, presetFinish, cfg, presetSplitPoints, presetConnections, nodePositions);
     this.markers.render({ markers: markerData });
 
     this.teleports.render({
-      edges: buildPresetTeleportEdges(presetTeleports, cfg, level),
+      edges: buildPresetTeleportEdges(presetTeleports, cfg, level, nodePositions),
       cfg,
       floorNavigable: state.presetConnectionsTool !== "clear",
     });
@@ -344,7 +350,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     // passage marker specifically (`filled === false`), while the one-way passage tool is active
     // too (that tool's own click on the marker cycles its direction instead).
     this.verticals.render({
-      markers: buildPresetVerticalMarkers(presetVerticalPassages, presetElevators, cfg, level),
+      markers: buildPresetVerticalMarkers(presetVerticalPassages, presetElevators, cfg, level, nodePositions),
       style: DEFAULT_VERTICAL_STYLE,
       interactive: (marker) =>
         state.presetConnectionsTool !== "clear" &&

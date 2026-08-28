@@ -266,6 +266,18 @@ describe("detectSplitSpecialShapeKind", () => {
     expect(detectSplitSpecialShapeKind(threeConnected)).toBeNull();
   });
 
+  it("a one-way connection on any face disqualifies the point from every special shape (GitHub issue #477)", () => {
+    const oneWayOut = (idxs: number[], oneWay: number, degree: number): SplitFaceKind[] =>
+      Array.from({ length: degree }, (_, i) =>
+        i === oneWay ? "one_way_out" : idxs.includes(i) ? "passage" : "wall",
+      );
+    // Same face topology as the "bridge" case above, but one of node 1's faces is one-way.
+    expect(detectSplitSpecialShapeKind([passage([0, 2], 4), oneWayOut([1, 3], 1, 4)])).toBeNull();
+    // ...and a one-way-in variant.
+    const oneWayIn: SplitFaceKind[] = ["passage", "wall", "one_way_in", "wall"];
+    expect(detectSplitSpecialShapeKind([oneWayIn, passage([1, 3], 4)])).toBeNull();
+  });
+
   it("unsupported degree or node count returns null", () => {
     expect(detectSplitSpecialShapeKind([passage([0, 2], 3), passage([1], 3)])).toBeNull();
     expect(detectSplitSpecialShapeKind([passage([0, 3], 6)])).toBeNull(); // degree 6, 1 node

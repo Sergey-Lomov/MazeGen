@@ -717,4 +717,95 @@ describe("mazeStore preset connections", () => {
       expect(useMazeStore.getState().presetElevators).toHaveLength(0);
     });
   });
+
+  describe("applyPresetSplitTargetPick (GitHub issue #474)", () => {
+    const FLOOR_2_ID = "floor_2";
+
+    beforeEach(() => {
+      useMazeStore.setState({
+        presetStart: null, presetFinish: null,
+        presetTeleports: [], presetTeleportPendingFrom: null,
+        presetVerticalPassages: [], presetVerticalPassagePending: null,
+        presetElevators: [], presetElevatorPending: null,
+        presetSplitTargetPrompt: null,
+      });
+    });
+
+    const openPrompt = (action: NonNullable<ReturnType<typeof useMazeStore.getState>["presetSplitTargetPrompt"]>["action"]) =>
+      useMazeStore.getState().requestPresetSplitTarget({ point: [0, 0], slotIds: [0], action });
+
+    it("set_start dispatches setPresetStartEndpoint to the picked slot and clears the prompt", () => {
+      openPrompt({ tool: "set_start" });
+      useMazeStore.getState().applyPresetSplitTargetPick(0);
+      const s = useMazeStore.getState();
+      expect(s.presetSplitTargetPrompt).toBeNull();
+      expect(presetEndpointsEqual(s.presetStart!, presetEndpoint([0, 0], 0))).toBe(true);
+    });
+
+    it("set_finish with slotId undefined attaches to the original node", () => {
+      openPrompt({ tool: "set_finish" });
+      useMazeStore.getState().applyPresetSplitTargetPick(undefined);
+      expect(presetEndpointsEqual(useMazeStore.getState().presetFinish!, presetEndpoint([0, 0]))).toBe(true);
+    });
+
+    it("teleport first pick sets the pending origin, second pick completes the link", () => {
+      openPrompt({ tool: "teleport_two_way" });
+      useMazeStore.getState().applyPresetSplitTargetPick(undefined);
+      expect(presetEndpointsEqual(useMazeStore.getState().presetTeleportPendingFrom!, presetEndpoint([0, 0]))).toBe(true);
+
+      useMazeStore.getState().requestPresetSplitTarget({ point: [1, 0], slotIds: [], action: { tool: "teleport_two_way" } });
+      useMazeStore.getState().applyPresetSplitTargetPick(undefined);
+      const s = useMazeStore.getState();
+      expect(s.presetTeleportPendingFrom).toBeNull();
+      expect(s.presetTeleports).toHaveLength(1);
+      expect(s.presetTeleports[0]).toMatchObject({ direction: "two_way" });
+      expect(presetEndpointsEqual(s.presetTeleports[0].from, presetEndpoint([0, 0]))).toBe(true);
+      expect(presetEndpointsEqual(s.presetTeleports[0].to, presetEndpoint([1, 0]))).toBe(true);
+    });
+
+    it("elevator opens an elevator placement anchored on the picked slot", () => {
+      // Elevator needs a second floor to be a valid placement anchor.
+      const state = useMazeStore.getState();
+      useMazeStore.setState({
+        floors: [...state.floors, { id: FLOOR_2_ID, title: "Floor 2" }],
+        floorFields: {
+          ...state.floorFields,
+          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], tessellationConfig: { type: "square", width: 3, height: 3 } },
+        },
+      });
+      openPrompt({ tool: "elevator" });
+      useMazeStore.getState().applyPresetSplitTargetPick(0);
+      expect(presetEndpointsEqual(useMazeStore.getState().presetElevatorPending!.origin, presetEndpoint([0, 0], 0))).toBe(true);
+    });
+
+    it("vertical passage places a passage anchored on the picked slot, carrying the tool", () => {
+      // A vertical passage needs a floor above to auto-commit (single available direction).
+      const state = useMazeStore.getState();
+      useMazeStore.setState({
+        floors: [...state.floors, { id: FLOOR_2_ID, title: "Floor 2" }],
+        floorFields: {
+          ...state.floorFields,
+          [FLOOR_2_ID]: { ...state.floorFields[state.activeFloorId], tessellationConfig: { type: "square", width: 3, height: 3 } },
+        },
+      });
+      openPrompt({ tool: "vertical_passage_one_way" });
+      useMazeStore.getState().applyPresetSplitTargetPick(0);
+      const s = useMazeStore.getState();
+      expect(s.presetVerticalPassages).toHaveLength(1);
+      expect(presetEndpointsEqual(s.presetVerticalPassages[0].from, presetEndpoint([0, 0], 0))).toBe(true);
+    });
+
+    it("is a no-op when no prompt is open", () => {
+      useMazeStore.getState().applyPresetSplitTargetPick(0);
+      expect(useMazeStore.getState().presetStart).toBeNull();
+    });
+
+    it("cancelPresetSplitTarget drops the prompt without placing anything", () => {
+      openPrompt({ tool: "set_start" });
+      useMazeStore.getState().cancelPresetSplitTarget();
+      const s = useMazeStore.getState();
+      expect(s.presetSplitTargetPrompt).toBeNull();
+      expect(s.presetStart).toBeNull();
+    });
+  });
 });

@@ -1,8 +1,14 @@
 import type { PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "./fieldEditUtils";
-import { makeProjection } from "./tessellationProjection";
 import { getCellCenter, nearestCellCoord } from "./tessellationGeometry";
+import { presetEndpointScreenPos } from "./selectors/presetSelectors";
+import type { PresetEndpoint } from "./presetEndpoint";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { TeleportEdge, VerticalConnectionMarker } from "./renderers/types";
+
+/** The one node-anchor map every preset marker/edge selector resolves endpoints against — built
+ *  by `buildPresetNodePositions` in the renderer, threaded through each `build*` call here. An
+ *  empty map means "no split points", so every endpoint falls back to its plain tile center. */
+type PresetNodePositions = Map<string, { x: number; y: number }>;
 
 /** `teleports` is expected already filtered to entries with at least one endpoint on `activeLevel`
  *  (either `t.from` or `t.to`). Mirrors `mazeSelectors.ts`'s own `buildTeleportEdges` cross-floor
@@ -12,9 +18,17 @@ import type { TeleportEdge, VerticalConnectionMarker } from "./renderers/types";
  *  is set so `TeleportRenderer` draws a floor-number badge there instead of an ordinary marker — the
  *  on-floor endpoint itself still draws as a real marker, connected to that badge by an ordinary
  *  connector, exactly like the generation view. */
-export function buildPresetTeleportEdges(teleports: PresetTeleportEntry[], cfg: TessellationConfig, activeLevel: number | undefined): TeleportEdge[] {
-  const proj = makeProjection(cfg);
+export function buildPresetTeleportEdges(
+  teleports: PresetTeleportEntry[],
+  cfg: TessellationConfig,
+  activeLevel: number | undefined,
+  nodePositions: PresetNodePositions = new Map(),
+): TeleportEdge[] {
   const active = activeLevel ?? 0;
+  const endpointPos = (ep: PresetEndpoint) => {
+    const [x, y] = presetEndpointScreenPos(ep, cfg, nodePositions);
+    return { x, y };
+  };
 
   return teleports.map((t) => {
     // `t.from`/`t.to` are the two click points in placement order — the actual passage direction
@@ -27,8 +41,8 @@ export function buildPresetTeleportEdges(teleports: PresetTeleportEntry[], cfg: 
     const oneWay = t.direction !== "two_way";
 
     if (fromOnActive && toOnActive) {
-      const fromPos = proj.gridToScreen(t.from.point[0], t.from.point[1]);
-      const toPos = proj.gridToScreen(t.to.point[0], t.to.point[1]);
+      const fromPos = endpointPos(t.from);
+      const toPos = endpointPos(t.to);
       return fromIsDeparture
         ? { from: [fromPos.x, fromPos.y], to: [toPos.x, toPos.y], oneWay }
         : { from: [toPos.x, toPos.y], to: [fromPos.x, fromPos.y], oneWay };
@@ -39,7 +53,7 @@ export function buildPresetTeleportEdges(teleports: PresetTeleportEntry[], cfg: 
     const onFloorEndpoint = fromOnActive ? t.from : t.to;
     const offFloorEndpoint = fromOnActive ? t.to : t.from;
     const onFloorIsDeparture = fromOnActive ? fromIsDeparture : !fromIsDeparture;
-    const onPos = proj.gridToScreen(onFloorEndpoint.point[0], onFloorEndpoint.point[1]);
+    const onPos = endpointPos(onFloorEndpoint);
 
     const onCenter = getCellCenter(onFloorEndpoint.point[0], onFloorEndpoint.point[1], cfg);
     const offCenter = getCellCenter(offFloorEndpoint.point[0], offFloorEndpoint.point[1], cfg);
@@ -75,8 +89,8 @@ export function buildPresetVerticalMarkers(
   elevators: PresetElevatorEntry[],
   cfg: TessellationConfig,
   activeLevel: number | undefined,
+  nodePositions: PresetNodePositions = new Map(),
 ): VerticalConnectionMarker[] {
-  const proj = makeProjection(cfg);
   const result: VerticalConnectionMarker[] = [];
   const active = activeLevel ?? 0;
 
@@ -92,14 +106,14 @@ export function buildPresetVerticalMarkers(
     if (!onEntry && !onExit) continue;
     const own = onEntry ? entryCell : exitCell;
     const other = onEntry ? exitCell : entryCell;
-    const pos = proj.gridToScreen(own.point[0], own.point[1]);
+    const [posX, posY] = presetEndpointScreenPos(own, cfg, nodePositions);
     const isOneWay = p.direction !== "two_way";
     // A one-way passage's marker is always empty (`filled: false`) at *both* ends — only the
     // arrow tells departure and arrival apart (solid on entry, outline on exit), same as
     // `mazeSelectors.ts`'s own `buildVerticalConnectionMarkers` for the resolved graph. A two-way
     // passage's marker is always filled, regardless of click-order end.
     result.push({
-      pos: [pos.x, pos.y],
+      pos: [posX, posY],
       fromNode: 0,
       kind: "vertical_passage",
       direction: (other.level ?? 0) > active ? "up" : "down",
@@ -113,12 +127,12 @@ export function buildPresetVerticalMarkers(
     const onFloor = e.floors.filter((f) => (f.level ?? 0) === active);
     if (onFloor.length === 0) continue;
     const ownEndpoint = onFloor[0];
-    const pos = proj.gridToScreen(ownEndpoint.point[0], ownEndpoint.point[1]);
+    const [posX, posY] = presetEndpointScreenPos(ownEndpoint, cfg, nodePositions);
     const others = e.floors.filter((f) => (f.level ?? 0) !== active);
     const sawUp = others.some((f) => (f.level ?? 0) > active);
     const sawDown = others.some((f) => (f.level ?? 0) < active);
     result.push({
-      pos: [pos.x, pos.y],
+      pos: [posX, posY],
       fromNode: 0,
       kind: "elevator",
       direction: sawUp && sawDown ? "both" : sawUp ? "up" : "down",

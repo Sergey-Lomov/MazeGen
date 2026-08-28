@@ -186,7 +186,7 @@ export const createGenerationSlice: StateCreator<MazeStore, [], [], GenerationSt
       : {}),
   })),
 
-  reset: () => set({ ...buildResetMazeState(), error: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftTeleports: [], postEditTeleportPendingFrom: null, _nextPostEditTeleportId: 1, postEditDraftMeta: null, postEditEdges: null, postEditTeleportEdges: [], postEditMeta: null, postEditAnalytics: null, postEditDirty: false, mazeDirty: false, activeRenderMode: null, openRenderModeSettings: null, postEditDraftVerticalPassages: [], postEditVerticalPassagePending: null, _nextPostEditVerticalPassageId: 1, postEditDraftElevators: [], postEditElevatorPending: null, _nextPostEditElevatorId: 1, postEditSuppressedElevatorPairs: new Set<string>(), postEditSuppressedVerticalPassagePairs: new Set<string>() }),
+  reset: () => set({ ...buildResetMazeState(), error: null, generationStatus: "idle" as const, postEditDraftEdges: null, postEditDraftTeleports: [], postEditTeleportPendingFrom: null, _nextPostEditTeleportId: 1, postEditDraftMeta: null, postEditEdges: null, postEditTeleportEdges: [], postEditMeta: null, postEditAnalytics: null, postEditDirty: false, mazeDirty: false, activeRenderMode: null, openRenderModeSettings: null, postEditDraftVerticalPassages: [], postEditVerticalPassagePending: null, _nextPostEditVerticalPassageId: 1, postEditDraftElevators: [], postEditElevatorPending: null, _nextPostEditElevatorId: 1, postEditSuppressedElevatorPairs: new Set<string>(), postEditSuppressedVerticalPassagePairs: new Set<string>(), postEditSplitTargetPrompt: null }),
 
   setDebugFlag: (key, value) => set({ [key]: value }),
 

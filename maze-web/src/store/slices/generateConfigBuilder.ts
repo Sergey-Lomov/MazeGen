@@ -383,6 +383,7 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       _nextPostEditElevatorId: 1,
       postEditSuppressedElevatorPairs: new Set<string>(),
       postEditSuppressedVerticalPassagePairs: new Set<string>(),
+      postEditSplitTargetPrompt: null,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

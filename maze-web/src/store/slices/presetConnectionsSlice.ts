@@ -39,12 +39,14 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetFocusedPoint: null,
   presetHoveredLink: null,
   presetSectionsExpanded: { problems: true },
+  presetSplitTargetPrompt: null,
 
   setPresetConnectionsTool: (tool) => set({
     presetConnectionsTool: tool,
     presetTeleportPendingFrom: null,
     presetVerticalPassagePending: null,
     presetElevatorPending: null,
+    presetSplitTargetPrompt: null,
   }),
 
   setPresetSectionExpanded: (id, expanded) =>
@@ -107,6 +109,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     presetActiveSplitNode: {},
     presetFocusedPoint: null,
     presetHoveredLink: null,
+    presetSplitTargetPrompt: null,
     debugStale: debugStaleOf(state),
   })),
 
@@ -482,6 +485,42 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       presetsDirty: true,
     });
   }),
+
+  requestPresetSplitTarget: (prompt) => set({ presetSplitTargetPrompt: prompt }),
+  cancelPresetSplitTarget: () => set({ presetSplitTargetPrompt: null }),
+  applyPresetSplitTargetPick: (slotId) => {
+    const prompt = get().presetSplitTargetPrompt;
+    if (!prompt) return;
+    set({ presetSplitTargetPrompt: null });
+    const level = prompt.level;
+    const endpoint = presetEndpoint(prompt.point, slotId, level);
+    const { action } = prompt;
+    switch (action.tool) {
+      case "set_start":
+        get().setPresetStartEndpoint(endpoint);
+        break;
+      case "set_finish":
+        get().setPresetFinishEndpoint(endpoint);
+        break;
+      case "vertical_passage_one_way":
+      case "vertical_passage_two_way":
+        get().startPresetVerticalPassagePlacement(endpoint, action.tool);
+        break;
+      case "elevator":
+        get().startPresetElevatorPlacement(endpoint);
+        break;
+      case "teleport_one_way":
+      case "teleport_two_way": {
+        const pendingFrom = get().presetTeleportPendingFrom;
+        if (pendingFrom === null) {
+          get().setPresetTeleportPendingFrom(endpoint);
+        } else if (!presetEndpointsEqual(pendingFrom, endpoint)) {
+          get().addPresetTeleport(pendingFrom, endpoint, action.tool === "teleport_two_way" ? "two_way" : "forward");
+        }
+        break;
+      }
+    }
+  },
 });
 
 /** Builds the new `PresetVerticalPassageEntry` for a single-click placement (GitHub issue #357

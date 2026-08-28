@@ -192,13 +192,19 @@ export function buildPresetSplitPassages(
   return buildSplitPassagesCore([...nodesByKey.values()], directedPairs, cfg, new Set(), activeId, "undefined", wallPairs);
 }
 
-export function buildPresetMarkers(
-  start: PresetEndpoint | null,
-  finish: PresetEndpoint | null,
+/** Node-anchor positions for every preset split node, keyed by `presetEndpointKey` — the
+ *  preset-stage counterpart of `buildNodePositions(allNodes, ...)`. Split-tile siblings land on
+ *  their shape-aware anchor (special split: `specialSplitNodePoint`; otherwise the hub circle)
+ *  rather than stacking at the shared tile center. A node not in the returned map is an ordinary
+ *  unsplit point — its position is just the tile center. Built once per redraw and threaded into
+ *  every preset marker/edge selector via `presetEndpointScreenPos`, so a split endpoint reads at
+ *  the same place across start/finish markers, teleports and vertical passages (GitHub issue #474
+ *  follow-up). */
+export function buildPresetNodePositions(
   cfg: TessellationConfig,
   presetSplitPoints: Record<string, number[]> = {},
   connections: Map<string, PresetConnectionEntry> = new Map(),
-): MarkerData[] {
+): Map<string, { x: number; y: number }> {
   const nodesById = new Map<string, SplitPassageNode<string>>();
   const addNode = (endpoint: PresetEndpoint) => {
     const id = presetEndpointKey(endpoint);
@@ -226,14 +232,41 @@ export function buildPresetMarkers(
         ? [{ from, to }]
         : [{ from, to }, { from: to, to: from }]));
   }
-  const positions = buildNodePositions([...nodesById.values()], cfg, directedPairs);
+  return buildNodePositions([...nodesById.values()], cfg, directedPairs);
+}
 
-  const markerPosition = (endpoint: PresetEndpoint): [number, number] => {
-    const anchored = positions.get(presetEndpointKey(endpoint));
-    if (anchored) return [anchored.x, anchored.y];
-    const center = getCellCenter(endpoint.point[0], endpoint.point[1], cfg);
-    return [center.x, center.y];
-  };
+/** The single screen-position resolver for any `PresetEndpoint` (GitHub issue #474 follow-up) —
+ *  every preset marker/edge selector (`buildPresetMarkers`, `buildPresetTeleportEdges`,
+ *  `buildPresetVerticalMarkers`) resolves its endpoints through here, so a split node always draws
+ *  at the same anchor across start/finish markers, teleports and vertical passages. This is the
+ *  preset-stage counterpart of post-edit resolving every endpoint through one `buildNodePositions`
+ *  map — presets have no shared node list, so the map is built once (`buildPresetNodePositions`)
+ *  and threaded into each selector instead. A node absent from `nodePositions` is an ordinary
+ *  unsplit point → its plain tile center. */
+export function presetEndpointScreenPos(
+  endpoint: PresetEndpoint,
+  cfg: TessellationConfig,
+  nodePositions: Map<string, { x: number; y: number }>,
+): [number, number] {
+  const anchored = nodePositions.get(presetEndpointKey(endpoint));
+  if (anchored) return [anchored.x, anchored.y];
+  const center = getCellCenter(endpoint.point[0], endpoint.point[1], cfg);
+  return [center.x, center.y];
+}
+
+export function buildPresetMarkers(
+  start: PresetEndpoint | null,
+  finish: PresetEndpoint | null,
+  cfg: TessellationConfig,
+  presetSplitPoints: Record<string, number[]> = {},
+  connections: Map<string, PresetConnectionEntry> = new Map(),
+  /** Prebuilt `buildPresetNodePositions` map — pass it when the caller already has one for the
+   *  same redraw (the renderer shares one across every marker/edge selector); omitted, it's built
+   *  here from `presetSplitPoints`/`connections`. */
+  nodePositions?: Map<string, { x: number; y: number }>,
+): MarkerData[] {
+  const positions = nodePositions ?? buildPresetNodePositions(cfg, presetSplitPoints, connections);
+  const markerPosition = (endpoint: PresetEndpoint) => presetEndpointScreenPos(endpoint, cfg, positions);
   const markers: MarkerData[] = [];
   if (start) {
     markers.push(buildMarkerData(markerPosition(start), DEFAULT_MAZE_RENDER_STYLE.startMarker));
