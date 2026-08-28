@@ -51,10 +51,16 @@ export function adjacentTripleOuterFaces(faces: number[], degree: number): [numb
  *  for anything else (wrong degree/node count, not exactly 2 connected faces per node, or a
  *  face-pair combination with no recognized shape). Shared by `buildSplitPassagesCore`
  *  (`mazeSelectors.ts`, drawing) and `getSplitAwareNodePosition`/`buildNodePositions` (GitHub issue
- *  #318, node-point positioning) so both agree on what counts as a recognized shape. */
+ *  #318, node-point positioning) so both agree on what counts as a recognized shape.
+ *
+ *  A one-way connection (`one_way_out`/`one_way_in`) on any face disqualifies the point entirely
+ *  (GitHub issue #477): every special shape draws a symmetric two-way silhouette with no arrowhead,
+ *  so a recognized shape would hide the directionality. Falling back to `null` makes the caller
+ *  render the ordinary per-node hub connectors, which draw the one-way arrow. */
 export function detectSplitSpecialShapeKind(faceKindsByNode: SplitFaceKind[][]): SplitSpecialShapeKind | null {
   const degree = faceKindsByNode[0]?.length ?? 0;
   const nodeCount = faceKindsByNode.length;
+  if (faceKindsByNode.some((kinds) => kinds.some((k) => k === "one_way_out" || k === "one_way_in"))) return null;
   if (degree !== 4 && degree !== 6) return null;
   if (degree === 4 && nodeCount !== 2) return null;
   if (degree === 6 && nodeCount !== 2 && nodeCount !== 3) return null;

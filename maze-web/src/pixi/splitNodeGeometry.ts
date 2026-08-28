@@ -191,11 +191,13 @@ export function specialSplitNodePoint(
   return { x: center.x + dir.x * SQUARE_BRIDGE_CROSS_OFFSET_FRAC * TILE_SIZE, y: center.y + dir.y * SQUARE_BRIDGE_CROSS_OFFSET_FRAC * TILE_SIZE };
 }
 
-/** A degree-4 split point's two nodes' own connected face indices (`getNeighborData`'s ordering) —
- *  a face counts as connected for a node when a directed edge exists (either direction) between it
- *  and any node at the geometrically neighboring point across that face. Only cares about
- *  connected-or-not (never one-way direction/undefined), unlike `buildSplitPassagesCore`'s own
- *  `kindsByFace`/`resolveOther` — feeding `detectSplitSpecialShapeKind` is all this is for. Shared
+/** A degree-4 split point's two nodes' per-face kinds (`getNeighborData`'s ordering) — a face's
+ *  kind for a node comes from the directed edge(s) between it and any node at the geometrically
+ *  neighboring point across that face: `passage` (edges both ways), `one_way_out` (only this
+ *  node -> neighbor), `one_way_in` (only neighbor -> this node), `wall` (no edge). Distinguishes
+ *  one-way from two-way (GitHub issue #477 — a one-way connection disqualifies the point from every
+ *  special shape, so `detectSplitSpecialShapeKind` must see it), but never emits `undefined`,
+ *  unlike `buildSplitPassagesCore`'s own `kindsByFace`/`resolveOther`. Shared
  *  by `getSplitAwareNodePosition` (`mazeSelectors.ts`) and `buildNodePositions` below (GitHub issue
  *  #318). `byTile` (keyed `"${x}:${y}"`, same convention as `buildNodePositions`' own grouping) and
  *  `directed` are precomputed once by the caller and reused across every split point in a single
@@ -213,10 +215,13 @@ export function splitPointFaceKindsByNode<Id extends string | number>(
   return pointNodes.map((pn) =>
     offsets.map(([dx, dy]) => {
       const neighbors = byTile.get(`${pn.x + dx}:${pn.y + dy}`) ?? [];
-      const connected = neighbors.some((nb) =>
-        directed.has(`${pn.id}->${nb.id}`) || directed.has(`${nb.id}->${pn.id}`),
-      );
-      return connected ? "passage" : "wall";
+      let fwd = false;
+      let bwd = false;
+      for (const nb of neighbors) {
+        if (directed.has(`${pn.id}->${nb.id}`)) fwd = true;
+        if (directed.has(`${nb.id}->${pn.id}`)) bwd = true;
+      }
+      return fwd && bwd ? "passage" : fwd ? "one_way_out" : bwd ? "one_way_in" : "wall";
     }),
   );
 }

@@ -21,7 +21,7 @@ vi.mock("../pixi/cartesianCache", () => ({
   },
 }));
 
-const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, splitHubPoint, specialSplitNodePoint, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord } = await import("../pixi/tessellationGeometry");
+const { getTileDiagram, getSharedEdgeSegment, getCellCenter, getCellVertices, getNeighborData, getSplitCircleRotationDeg, splitHubPoint, specialSplitNodePoint, splitPointFaceKindsByNode, buildNodePositions, splitFaceIndexToCore, splitFaceIndexToWeb, splitPatternsToCore, splitPatternsToWeb, nearestCellCoord } = await import("../pixi/tessellationGeometry");
 
 // `maze-core`'s own `Tessellation::faces()` order per space (`Specs/split-patterns.md`,
 // GitHub issue #273) — used here only to name expected indices by face, not to duplicate the
@@ -285,6 +285,11 @@ describe("buildNodePositions", () => {
   // GitHub issue #318 — a degree-4 split point recognized as a "diagonal"/"bridge" special shape
   // gets a dedicated point instead of the generic hub circle, once `directedPairs` are supplied.
   describe("shape-aware positioning for a recognized bridge/diagonal split point", () => {
+    // A special shape is only recognized for two-way passages (GitHub issue #477), so every
+    // directed pair below must be mirrored to represent a bidirectional connection.
+    const bidi = <T extends { from: number | string; to: number | string }>(pairs: T[]) =>
+      pairs.flatMap((p) => [p, { ...p, from: p.to, to: p.from }]);
+
     // Split point at (2,2); neighbors at E(3,2), N(2,3), W(1,2), S(2,1) — face order per
     // `getNeighborData`: 0=E, 1=N, 2=W, 3=S (confirmed by `splitFaceIndexToCore`'s own tests above).
     const east = { id: 100, x: 3, y: 2 };
@@ -300,7 +305,7 @@ describe("buildNodePositions", () => {
         { from: node0.id, to: east.id }, { from: node0.id, to: north.id },
         { from: node1.id, to: west.id }, { from: node1.id, to: south.id },
       ];
-      const nodePos = buildNodePositions(nodes, cfg, directedPairs);
+      const nodePos = buildNodePositions(nodes, cfg, bidi(directedPairs));
       const center = getCellCenter(2, 2, cfg);
 
       // node0 (E,N) — half-centroid direction, scaled to 1/4 tile (GitHub issue #318 follow-up:
@@ -327,7 +332,7 @@ describe("buildNodePositions", () => {
         { from: node0.id, to: east.id }, { from: node0.id, to: west.id },
         { from: node1.id, to: north.id }, { from: node1.id, to: south.id },
       ];
-      const nodePos = buildNodePositions(nodes, cfg, directedPairs);
+      const nodePos = buildNodePositions(nodes, cfg, bidi(directedPairs));
       const center = getCellCenter(2, 2, cfg);
 
       // Slot 1 (node1) sits at plain center.
@@ -358,7 +363,7 @@ describe("buildNodePositions", () => {
         { from: node0.id, to: neighbors[0].id }, { from: node0.id, to: neighbors[1].id },
         { from: node1.id, to: neighbors[3].id }, { from: node1.id, to: neighbors[4].id },
       ];
-      const nodePos = buildNodePositions([node0, node1, ...neighbors], hexCfg, directedPairs);
+      const nodePos = buildNodePositions([node0, node1, ...neighbors], hexCfg, bidi(directedPairs));
       const center = getCellCenter(0, 0, hexCfg);
       expect(nodePos.get(0)).toEqual(specialSplitNodePoint(hexCfg, center, "hex_diagonal", [0, 1], 0));
       expect(nodePos.get(1)).toEqual(specialSplitNodePoint(hexCfg, center, "hex_diagonal", [3, 4], 1));
@@ -373,7 +378,7 @@ describe("buildNodePositions", () => {
       const directedPairs = faces.flatMap((pair, nodeIndex) =>
         pair.map((face) => ({ from: pointNodes[nodeIndex].id, to: neighbors[face].id })),
       );
-      const nodePos = buildNodePositions([...pointNodes, ...neighbors], hexCfg, directedPairs);
+      const nodePos = buildNodePositions([...pointNodes, ...neighbors], hexCfg, bidi(directedPairs));
       const center = getCellCenter(0, 0, hexCfg);
       pointNodes.forEach((node, slot) => {
         expect(nodePos.get(node.id)).toEqual(
@@ -391,7 +396,7 @@ describe("buildNodePositions", () => {
       const directedPairs = faces.flatMap((nodeFaces, nodeIndex) =>
         nodeFaces.map((face) => ({ from: pointNodes[nodeIndex].id, to: neighbors[face].id })),
       );
-      const nodePos = buildNodePositions([...pointNodes, ...neighbors], hexCfg, directedPairs);
+      const nodePos = buildNodePositions([...pointNodes, ...neighbors], hexCfg, bidi(directedPairs));
       const center = getCellCenter(0, 0, hexCfg);
       pointNodes.forEach((node, slot) => {
         expect(nodePos.get(node.id)).toEqual(
@@ -399,6 +404,39 @@ describe("buildNodePositions", () => {
         );
       });
     });
+  });
+});
+
+describe("splitPointFaceKindsByNode", () => {
+  const cfg: TessellationConfig = { type: "square", width: 5, height: 5 };
+  // Split point at (2,2); face order per getNeighborData: 0=E, 1=N, 2=W, 3=S.
+  const node0 = { id: 0, x: 2, y: 2 };
+  const node1 = { id: 1, x: 2, y: 2 };
+  const east = { id: 100, x: 3, y: 2 };
+  const north = { id: 101, x: 2, y: 3 };
+  const byTile = new Map<string, { id: number; x: number; y: number }[]>([
+    ["2:2", [node0, node1]],
+    ["3:2", [east]],
+    ["2:3", [north]],
+  ]);
+
+  it("marks a face `passage` only when directed edges exist both ways", () => {
+    const directed = new Set([`${node0.id}->${east.id}`, `${east.id}->${node0.id}`]);
+    const kinds = splitPointFaceKindsByNode([node0, node1], byTile, directed, cfg);
+    expect(kinds[0][0]).toBe("passage"); // node0, face E
+    expect(kinds[0][1]).toBe("wall"); // node0, face N — no edge
+  });
+
+  it("distinguishes one_way_out (node -> neighbor) from one_way_in (neighbor -> node)", () => {
+    const directed = new Set([`${node0.id}->${east.id}`, `${north.id}->${node0.id}`]);
+    const kinds = splitPointFaceKindsByNode([node0, node1], byTile, directed, cfg);
+    expect(kinds[0][0]).toBe("one_way_out"); // face E: only node0 -> east
+    expect(kinds[0][1]).toBe("one_way_in"); // face N: only north -> node0
+  });
+
+  it("never emits `undefined` — an unconnected face is `wall`", () => {
+    const kinds = splitPointFaceKindsByNode([node0, node1], byTile, new Set(), cfg);
+    expect(kinds.flat().every((k) => k === "wall")).toBe(true);
   });
 });
 
