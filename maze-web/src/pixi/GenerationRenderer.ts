@@ -291,7 +291,19 @@ export class GenerationRenderer {
     // `generationSlice.ts`), so this gate and that reset both independently prevent a stale
     // highlight from surviving debug mode being closed.
     if (state.debugMode) {
-      this.debugRefHighlight.render({ nodes: view.nodes, allNodes: state.debugArena?.allNodes ?? [], edges: view.edges, ref: state.hoveredDebugRef, cfg });
+      this.debugRefHighlight.render({
+        nodes: view.nodes,
+        allNodes: state.debugArena?.allNodes ?? [],
+        edges: view.edges,
+        ref: state.hoveredDebugRef,
+        cfg,
+        resolveNodeLevel: selectNodeLevelResolver(unscopedNodes),
+        resolveNodeCell: (id) => {
+          const node = unscopedNodeById.get(id);
+          return node ? [node.x, node.y] : undefined;
+        },
+        activeFloorIndex: Math.max(activeFloorIndex, 0),
+      });
     } else {
       this.debugRefHighlight.clear();
     }

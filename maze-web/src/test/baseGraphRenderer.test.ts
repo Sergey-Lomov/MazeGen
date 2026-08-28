@@ -5,6 +5,7 @@ import { TILE_SIZE } from "../pixi/constants";
 import { getCellCenter, nearestCellCoord } from "../pixi/tessellationGeometry";
 import type { Pos } from "../pixi/BaseGraphRenderer";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import { debugRefEdgePairs } from "../pixi/DebugRefHighlightOverlay";
 
 // `getCellCenter`/`nearestCellCoord` (square tessellation) round-trip through wasm's own
 // `cartesian_coords` — mocked here as an identity mapping (square cell (x, y) IS its own cartesian
@@ -225,5 +226,20 @@ describe("buildCrossFloorMarkers", () => {
 
     const normalized = ((diffAngle - sameAngle - Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
     expect(normalized).toBeCloseTo(0, 5);
+  });
+});
+
+describe("debugRefEdgePairs (GitHub issue #449)", () => {
+  it("keeps a one-way debug edge as one directed graph connection", () => {
+    expect(debugRefEdgePairs({ kind: "edge", from: 1n, to: 2n, bidirectional: false })).toEqual([
+      { from: 1, to: 2 },
+    ]);
+  });
+
+  it("expands a bidirectional debug edge so the graph marker has a reverse direction", () => {
+    expect(debugRefEdgePairs({ kind: "edge", from: 1n, to: 2n, bidirectional: true })).toEqual([
+      { from: 1, to: 2 },
+      { from: 2, to: 1 },
+    ]);
   });
 });

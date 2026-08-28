@@ -18,7 +18,13 @@ vi.mock("pixi.js", () => {
     children: FakeGraphics[] = [];
     addChild(child: FakeGraphics) { this.children.push(child); return child; }
   }
-  return { Graphics: FakeGraphics, Container: FakeContainer, Text: class {} };
+  return { Graphics: FakeGraphics, Container: FakeContainer, Text: class {
+    options: unknown;
+    anchor = { set: vi.fn() };
+    x = 0;
+    y = 0;
+    constructor(options: unknown) { this.options = options; }
+  } };
 });
 
 vi.mock("../pixi/tessellationGeometry", () => ({
@@ -29,7 +35,7 @@ vi.mock("../pixi/renderers/floorNavigation", () => ({
   navigateToFloor: vi.fn(),
 }));
 
-const { drawCrossFloorStub, computeRegionBadgeRingPos, attachFloorBadgeNavigation, FLOOR_BADGE_STROKE_WIDTH } = await import(
+const { drawCrossFloorStub, drawCrossFloorBadge, computeRegionBadgeRingPos, attachFloorBadgeNavigation, FLOOR_BADGE_STROKE_WIDTH } = await import(
   "../pixi/renderers/floorBadge"
 );
 const { navigateToFloor } = await import("../pixi/renderers/floorNavigation");
@@ -42,7 +48,7 @@ type FakeG = InstanceType<typeof Graphics> & {
   handlers: Record<string, (...args: unknown[]) => void>;
 };
 interface FakeCont {
-  children: FakeG[];
+  children: unknown[];
 }
 function newG(): FakeG {
   return new Graphics() as unknown as FakeG;
@@ -71,6 +77,13 @@ describe("drawCrossFloorStub", () => {
     expect(g.calls.some((c) => c.fn === "poly")).toBe(false);
   });
 
+  it("accepts the debug highlight's width and alpha", () => {
+    const g = newG();
+    drawCrossFloorStub(g, { x: 0, y: 0 }, { x: 100, y: 0 }, "none", 0xffffff, 5, 10, 3, 0.9);
+    const [strokeCall] = g.calls.filter((c) => c.fn === "stroke");
+    expect(strokeCall.args).toEqual([{ width: 3, color: 0xffffff, alpha: 0.9, cap: "round" }]);
+  });
+
   it("draws an arrow pointing toward the badge for direction \"toBadge\"", () => {
     const g = newG();
     drawCrossFloorStub(g, { x: 0, y: 0 }, { x: 100, y: 0 }, "toBadge", 0xffffff, 5, 10);
@@ -90,6 +103,18 @@ describe("drawCrossFloorStub", () => {
     const [tipX] = points;
     const midX = (6 + 89) / 2;
     expect(tipX).toBeLessThan(midX);
+  });
+});
+
+describe("drawCrossFloorBadge", () => {
+  it("places the floor-number label above the opaque badge body", () => {
+    const container = new Container() as unknown as FakeCont;
+    drawCrossFloorBadge(container as never, { x: 20, y: 30 }, 1, 8, 0x111111, 0x222222, 0xffffff);
+    expect(container.children).toHaveLength(3);
+    expect(container.children[0]).toBeInstanceOf(Graphics); // badge body
+    expect(container.children[1]).not.toBeInstanceOf(Graphics); // floor-number Text
+    expect((container.children[1] as { options: { text: string } }).options.text).toBe("2");
+    expect(container.children[2]).toBeInstanceOf(Graphics); // navigation hit area
   });
 });
 
@@ -128,7 +153,7 @@ describe("attachFloorBadgeNavigation", () => {
   it("sizes the hit-circle to radius + FLOOR_BADGE_STROKE_WIDTH, covering the badge's stroked border", () => {
     const container = newContainer();
     attachFloorBadgeNavigation(container as never, 20, 30, 5, 2);
-    const hit = container.children[0];
+    const hit = container.children[0] as FakeG;
     const [circleCall] = hit.calls.filter((c) => c.fn === "circle");
     expect(circleCall.args).toEqual([20, 30, 5 + FLOOR_BADGE_STROKE_WIDTH]);
   });
@@ -136,7 +161,7 @@ describe("attachFloorBadgeNavigation", () => {
   it("wires pointertap to navigateToFloor with the given target floor index", () => {
     const container = newContainer();
     attachFloorBadgeNavigation(container as never, 0, 0, 5, 3);
-    const hit = container.children[0];
+    const hit = container.children[0] as FakeG;
     hit.handlers["pointertap"]();
     expect(navigateToFloor).toHaveBeenCalledWith(3);
   });
@@ -144,7 +169,7 @@ describe("attachFloorBadgeNavigation", () => {
   it("makes the hit-circle interactive with a pointer cursor", () => {
     const container = newContainer();
     attachFloorBadgeNavigation(container as never, 0, 0, 5, 0);
-    const hit = container.children[0];
+    const hit = container.children[0] as FakeG;
     expect(hit.eventMode).toBe("static");
     expect(hit.cursor).toBe("pointer");
   });

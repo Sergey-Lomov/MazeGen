@@ -198,10 +198,12 @@ export function drawCrossFloorMarkers(
   lineColor: number = canvas.edge.default,
   badgeColor: number = CROSS_FLOOR_BADGE_COLOR,
   badgeBorderColor: number = CROSS_FLOOR_BADGE_BORDER,
+  lineWidth = 2,
+  lineAlpha = 1,
 ): void {
   const stubs = new Graphics();
   for (const marker of markers) {
-    drawCrossFloorStub(stubs, marker.nodePos, marker.badgePos, marker.direction, lineColor, NODE_RADIUS, r);
+    drawCrossFloorStub(stubs, marker.nodePos, marker.badgePos, marker.direction, lineColor, NODE_RADIUS, r, lineWidth, lineAlpha);
     drawCrossFloorBadge(
       nodesContainer, marker.badgePos, marker.targetFloorIndex, r,
       badgeColor, badgeBorderColor, canvas.floor.default,

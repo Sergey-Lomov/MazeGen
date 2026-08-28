@@ -104,6 +104,13 @@ The teleport-badge piece is wired in `GenerationRenderer`, `VectorByWallsRendere
 
 ## Cross-floor badges in the graph overlays (GitHub issue #339, unified under `BaseGraphRenderer` in #367)
 
+`DebugRefHighlightOverlay` also reuses the graph overlays' shared `buildCrossFloorMarkers` and
+`drawCrossFloorMarkers` primitives for cross-floor edge, cycle, and issue bubbles (GitHub issue
+#449), while retaining its own feature-owned renderer and containers. Its stub uses the same
+width, alpha, and endpoint-node marker as an ordinary same-floor debug edge highlight; the shared
+badge keeps its floor-number label above its opaque body. A bidirectional edge bubble expands to
+both directed pairs so its stub correctly omits the one-way arrow.
+
 `buildNodePositions` (and `buildPathRenderEdges`/`buildPairedRenderEdges` on top of it) is floor-scoped the same way `selectFloorScopedMaze` is — an edge/nav-edge/hop with one endpoint off the active floor silently resolves to only one `Pos`, so the edge itself is dropped. `NavGraphRenderer`, `MazeGraphRenderer`, `PureCyclesOverlay`, `RouteOverlay`, and `IssueHighlightOverlay` each detect this and draw a cross-floor badge at the on-floor endpoint instead of silently losing the connection, mirroring the `VerticalConnectionRenderer`/`TeleportRenderer` pattern above but for graph-overlay edges rather than literal `vertical_passage`/`elevator`/`teleport` edges. All five now extend `BaseGraphRenderer` (GitHub issue #367 — `PureCyclesOverlay`/`RouteOverlay`/`IssueHighlightOverlay` previously hand-rolled their own edge/node drawing).
 
 - **`buildCrossFloorMarkers`** (`BaseGraphRenderer.ts`) — shared by all five overlays. Takes the overlay's own edge/nav-edge/hop pairs (already collapsed to `{ from, to }` maze-node-id pairs) plus `nodePos` (the floor-scoped positions) and finds every pair with exactly one endpoint resolved. `resolveNodeLevel`/`resolveNodeCell` (both built from the *unscoped* node list, e.g. `selectNodeLevelResolver`) resolve the missing endpoint's own floor/cell; a missing endpoint that doesn't resolve at all (stale/removed node) is silently skipped, same as the edge itself would be. Emits one `CrossFloorMarker` per distinct `(onFloorId, targetLevel)` pair — an elevator/vertical passage reaching several different floors from the same on-floor node draws one badge per target floor, each at its own `slot` (spread evenly around the node's own cell, via `computeCrossFloorBadgePos`'s `slot`/`slotCount`) so they don't overlap.
