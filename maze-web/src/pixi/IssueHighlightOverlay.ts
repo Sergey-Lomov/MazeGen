@@ -14,7 +14,7 @@ import type { IssueHighlightEdge } from "../store/postEditFullTypes";
 
 const HIGHLIGHT_COLOR = canvas.debug.issueHighlight;
 const HIGHLIGHT_WIDTH = 3;
-const HIGHLIGHT_ALPHA = 0.9;
+const HIGHLIGHT_ALPHA = 1;
 
 export interface IssueHighlightData {
   nodes: NodeDto[];
