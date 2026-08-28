@@ -28,7 +28,7 @@ vi.mock("pixi.js", () => {
   return { Container: FakeContainer, Graphics: FakeGraphics };
 });
 
-const { WallRenderer } = await import("../pixi/renderers/WallRenderer");
+const { WallRenderer, randomContrastingWallColor } = await import("../pixi/renderers/WallRenderer");
 const { Container, Graphics } = await import("pixi.js");
 import type { WallEdge, OneWayStyleOverride } from "../pixi/renderers/types";
 
@@ -89,23 +89,15 @@ describe("WallRenderer.render", () => {
     [{ x: 10, y: 0 }, { x: 20, y: -10 }],
   ];
 
-  it("with a round-cap style override, a T-junction vertex (degree 3) never gets a protruding cap — every path stroke there uses butt, and the junction end gets no circle patch (only genuine free ends do)", () => {
+  it("with a round-cap style override, every T-junction endpoint keeps its rounded cap", () => {
     const renderer = new WallRenderer(new Container());
     renderer.render({ edges: [] }, squareCfg, { color: 0x123456, width: 5, join: "round", cap: "round" }, undefined, triJunctionExtraWalls);
     const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
 
     const strokeCalls = g.calls.filter((c) => c.fn === "stroke");
-    // Every one of the 3 paths touching the T-junction has at least one non-free end -> every
-    // stroke uses "butt", never the caller's own "round".
     expect(strokeCalls).toHaveLength(3);
-    expect(strokeCalls.every((c) => (c.args[0] as { cap: string }).cap === "butt")).toBe(true);
-
-    // Exactly 3 genuine free ends exist overall — the shared T-junction vertex (10,0) itself
-    // must never get a circle patch.
-    const circleCalls = g.calls.filter((c) => c.fn === "circle");
-    expect(circleCalls).toHaveLength(3);
-    const circlePositions = circleCalls.map((c) => [c.args[0], c.args[1]]);
-    expect(circlePositions).not.toContainEqual([10, 0]);
+    expect(strokeCalls.every((c) => (c.args[0] as { cap: string }).cap === "round")).toBe(true);
+    expect(g.calls.filter((c) => c.fn === "circle")).toHaveLength(0);
   });
 
   it("with a square-cap style override, a T-junction's genuine free ends get a filled square-cap patch instead of a protruding native cap", () => {
@@ -120,6 +112,20 @@ describe("WallRenderer.render", () => {
     expect(g.calls.filter((c) => c.fn === "circle")).toHaveLength(0);
     const closePathCalls = g.calls.filter((c) => c.fn === "closePath");
     expect(closePathCalls).toHaveLength(3);
+  });
+
+  it("keeps synthetic cut points uncapped for per-segment miter rendering", () => {
+    const renderer = new WallRenderer(new Container());
+    const path = [[{ x: 0, y: 0 }, { x: 10, y: 0 }]];
+    renderer.render({ edges: [] }, squareCfg, { color: 0x123456, width: 5, join: "miter", cap: "square" }, undefined, path, [{ x: 0, y: 0 }], "per_segment", { floorColor: 0xffffff, backgroundColor: 0xffffff });
+    const g = (renderer as unknown as { g: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).g;
+    expect(g.calls.filter((c) => c.fn === "stroke")[0].args[0]).toMatchObject({ cap: "butt" });
+  });
+
+  it("generates deterministic colors that vary by wall index", () => {
+    const first = randomContrastingWallColor(0, 0xffffff, 0xffffff);
+    expect(randomContrastingWallColor(0, 0xffffff, 0xffffff)).toBe(first);
+    expect(randomContrastingWallColor(1, 0xffffff, 0xffffff)).not.toBe(first);
   });
 
   it("draws a one-way indicator (roundPoly triangle, bordered) for an edge with oneWayDir, even without a style override", () => {

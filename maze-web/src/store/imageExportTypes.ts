@@ -1,4 +1,4 @@
-import type { MarkerShape, OneWayPattern, TeleportGroupOverride, TeleportCornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight } from "../pixi/renderers/types";
+import type { MarkerShape, OneWayPattern, TeleportGroupOverride, TeleportCornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight, RandomWallColorMode } from "../pixi/renderers/types";
 
 /** Registry id of a maze image-export rendering mode (see `Specs/image-export.md` and
  * `imageExportRegistry.ts`) — one entry per switcher item in the Image Export feature card. */
@@ -404,6 +404,9 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
    *  fill) via `WallStyleOverride` — never the `faint`/`background` `WallStyle` variants or a split
    *  passage's own node-identity color. See GitHub issue #291. */
   wallColor: number;
+  /** Optional diagnostic palette for solid wall strokes; omitted by old project files and treated as
+   *  `"off"`. Colors are deterministic and contrast-controlled against floor/background. */
+  randomWallColorMode: RandomWallColorMode;
   /** Drives both the pixi stroke `join` and the derived `cap` together (`round`->`round` cap,
    *  `miter`->`square` cap) when built into a `WallStyleOverride` in `VectorByWallsRenderer`. */
   wallJoin: "round" | "miter";
@@ -722,6 +725,7 @@ export interface ImageExportActions {
   setVectorByWallsGridColor: (color: number) => void;
   setVectorByWallsFloorColor: (color: number) => void;
   setVectorByWallsWallColor: (color: number) => void;
+  setVectorByWallsRandomWallColorMode: (mode: RandomWallColorMode) => void;
   setVectorByWallsWallJoin: (join: "round" | "miter") => void;
   setVectorByWallsWallThickness: (v: number) => void;
   setVectorByWallsOneWayPattern: (pattern: OneWayPattern) => void;

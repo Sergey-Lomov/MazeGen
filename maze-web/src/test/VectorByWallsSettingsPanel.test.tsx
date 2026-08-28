@@ -40,6 +40,7 @@ beforeEach(() => {
       gridColor: 0x333333,
       floorColor: 0x2a2a2a,
       wallColor: 0x0a0a0a,
+      randomWallColorMode: "off",
       wallJoin: "round",
       wallThickness: 3,
       oneWayPattern: "triangle",
@@ -110,7 +111,7 @@ describe("VectorByWallsSettingsPanel", () => {
   it("grid color swatch is disabled (aria-disabled) when showGrid is off", () => {
     useMazeStore.setState({
       vectorByWallsSettings: {
-        background: 0, showGrid: false, gridColor: 0, floorColor: 0, wallColor: 0, wallJoin: "round", wallThickness: 3,
+        background: 0, showGrid: false, gridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 3,
         oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 0, oneWaySize: 0.18, oneWayThickness: 4, oneWayJoin: "round",
         startMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
         finishMarker: { shape: "circle", cornerStyle: "sharp", fillColor: 0, borderColor: 0, borderWidth: 0, gapWidth: 0, size: 0.225 },
@@ -167,6 +168,19 @@ describe("VectorByWallsSettingsPanel", () => {
     const inputs = document.querySelectorAll('input[type="color"]');
     fireEvent.change(inputs[3], { target: { value: "#00ff00" } });
     expect(useMazeStore.getState().vectorByWallsSettings.wallColor).toBe(0x00ff00);
+  });
+
+  it("toggles random wall colors and maps the displayed modes to their requested behavior", () => {
+    render(<VectorByWallsSettingsPanel />);
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    expect(screen.queryByText(m["image_export.vector_by_walls.wall_color"]())).not.toBeInTheDocument();
+    expect(screen.getByText(m["image_export.vector_by_walls.random_wall_color_mode"]())).toBeInTheDocument();
+    expect(useMazeStore.getState().vectorByWallsSettings.randomWallColorMode).toBe("per_pass");
+
+    const modeSelect = screen.getByDisplayValue(m["image_export.vector_by_walls.random_wall_colors_per_segment"]());
+    expect(modeSelect).toHaveValue("per_pass");
+    fireEvent.change(modeSelect, { target: { value: "per_segment" } });
+    expect(useMazeStore.getState().vectorByWallsSettings.randomWallColorMode).toBe("per_segment");
   });
 
   it("changing the wall join updates the store", () => {

@@ -312,6 +312,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string): VectorB
     gridColor: optNumber(obj, "gridColor", d.gridColor),
     floorColor: optNumber(obj, "floorColor", d.floorColor),
     wallColor: optNumber(obj, "wallColor", d.wallColor),
+    randomWallColorMode: optEnum(obj, "randomWallColorMode", ["off", "per_pass", "per_segment"] as const, d.randomWallColorMode),
     wallJoin: optJoin(obj, "wallJoin", d.wallJoin),
     wallThickness: optNumber(obj, "wallThickness", d.wallThickness),
     oneWayPattern: optOneWayPattern(obj, "oneWayPattern", d.oneWayPattern),
@@ -478,4 +479,3 @@ export function validateImageExport(v: unknown, path: string): ProjectFileImageE
     pngExportSettings: validatePngExportSettings(obj?.pngExportSettings, `${path}.pngExportSettings`),
   };
 }
-

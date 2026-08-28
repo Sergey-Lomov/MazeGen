@@ -419,6 +419,8 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, floorColor: color } })),
   setVectorByWallsWallColor: (color) =>
     set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, wallColor: color } })),
+  setVectorByWallsRandomWallColorMode: (mode) =>
+    set((s) => ({ vectorByWallsSettings: { ...s.vectorByWallsSettings, randomWallColorMode: mode } })),
   setVectorByWallsWallJoin: (join) =>
     set((s) => ({
       vectorByWallsSettings: {

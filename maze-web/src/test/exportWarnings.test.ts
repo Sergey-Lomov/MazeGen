@@ -35,7 +35,7 @@ const defaultMarker: MarkerSettings = {
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
-    background: 0, showGrid: true, gridColor: 0, floorColor: 0, wallColor: 0, wallJoin: "round", wallThickness: 4,
+    background: 0, showGrid: true, gridColor: 0, floorColor: 0, wallColor: 0, randomWallColorMode: "off", wallJoin: "round", wallThickness: 4,
     oneWayPattern: "triangle", oneWayColor: 0, oneWayGapWidth: 3, oneWaySize: 0.3, oneWayThickness: 4, oneWayJoin: "round",
     startMarker: defaultMarker, finishMarker: defaultMarker,
     teleportLineCornerStyle: "round", teleportLineShape: "diamond", teleportLineSize: 0.16,

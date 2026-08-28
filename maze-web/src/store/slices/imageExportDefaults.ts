@@ -190,6 +190,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = applyVect
     gridColor: DEFAULT_MAZE_RENDER_STYLE.grid.color,
     floorColor: DEFAULT_MAZE_RENDER_STYLE.floorColor,
     wallColor: DEFAULT_MAZE_RENDER_STYLE.wall.color,
+    randomWallColorMode: "off",
     wallJoin: DEFAULT_MAZE_RENDER_STYLE.wall.join,
     wallThickness: DEFAULT_MAZE_RENDER_STYLE.wall.width,
     oneWayPattern: DEFAULT_MAZE_RENDER_STYLE.oneWay.pattern,

@@ -456,7 +456,11 @@ export class VectorByWallsRenderer {
       this.geometryCache.splitSpecialShapes,
       state.vectorByWallsSettings.splitSpecialShapes,
     );
-    this.walls.render({ edges: this.geometryCache.wallEdges }, cfg, wallStyle, oneWayStyle, extraWalls, noCapPoints);
+    this.walls.render(
+      { edges: this.geometryCache.wallEdges }, cfg, wallStyle, oneWayStyle, extraWalls, noCapPoints,
+      state.vectorByWallsSettings.randomWallColorMode,
+      { floorColor: state.vectorByWallsSettings.floorColor, backgroundColor: state.vectorByWallsSettings.background },
+    );
     this.splitJunctions.render(
       { passages: this.geometryCache.splitPassages, wallFaces: this.geometryCache.splitWallFaces, specialShapes: this.geometryCache.splitSpecialShapes },
       wallStyle,

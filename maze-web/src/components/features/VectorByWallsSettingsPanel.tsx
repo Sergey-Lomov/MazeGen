@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { OneWayPattern } from "../../pixi/renderers/types";
+import type { OneWayPattern, RandomWallColorMode } from "../../pixi/renderers/types";
 import { inset, spacing, typography, ui } from "../../styles/theme";
 import { ToggleRow } from "../ToggleRow";
 import { SectionHeader } from "../SectionHeader";
@@ -51,6 +51,7 @@ export function VectorByWallsSettingsPanel() {
   const setGridColor = useMazeStore((s) => s.setVectorByWallsGridColor);
   const setFloorColor = useMazeStore((s) => s.setVectorByWallsFloorColor);
   const setWallColor = useMazeStore((s) => s.setVectorByWallsWallColor);
+  const setRandomWallColorMode = useMazeStore((s) => s.setVectorByWallsRandomWallColorMode);
   const setWallJoin = useMazeStore((s) => s.setVectorByWallsWallJoin);
   const setWallThickness = useMazeStore((s) => s.setVectorByWallsWallThickness);
   const setOneWayPattern = useMazeStore((s) => s.setVectorByWallsOneWayPattern);
@@ -256,7 +257,24 @@ export function VectorByWallsSettingsPanel() {
       {isExpanded("tiles") && (
         <div style={styles.block}>
           <ColorRow label={m["image_export.vector_by_walls.floor_color"]()} color={settings.floorColor} onChange={setFloorColor} />
-          <ColorRow label={m["image_export.vector_by_walls.wall_color"]()} color={settings.wallColor} onChange={setWallColor} />
+          <ToggleRow
+            label={m["image_export.vector_by_walls.random_wall_colors"]()}
+            checked={settings.randomWallColorMode !== "off"}
+            onChange={(enabled) => setRandomWallColorMode(enabled ? "per_pass" : "off")}
+          />
+          {settings.randomWallColorMode === "off" ? (
+            <ColorRow label={m["image_export.vector_by_walls.wall_color"]()} color={settings.wallColor} onChange={setWallColor} />
+          ) : (
+            <SelectRow
+              label={m["image_export.vector_by_walls.random_wall_color_mode"]()}
+              value={settings.randomWallColorMode}
+              options={[
+                { value: "per_pass" as RandomWallColorMode, label: m["image_export.vector_by_walls.random_wall_colors_per_segment"]() },
+                { value: "per_segment" as RandomWallColorMode, label: m["image_export.vector_by_walls.random_wall_colors_per_pass"]() },
+              ]}
+              onChange={setRandomWallColorMode}
+            />
+          )}
           <SelectRow
             label={m["image_export.vector_by_walls.wall_join"]()}
             value={settings.wallJoin}

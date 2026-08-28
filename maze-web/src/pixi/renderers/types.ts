@@ -8,6 +8,7 @@ export type Viewport = {
 
 export type PassageKind = "both" | "forward" | "backward" | "none";
 export type WallStyle = "solid" | "faint" | "background";
+export type RandomWallColorMode = "off" | "per_pass" | "per_segment";
 
 /** Optional per-call override for a "wall"-colored stroke's color/thickness/join/cap, applied only
  *  to the `solid` `WallStyle` in `WallRenderer` and to `wallFaces` in `SplitJunctionRenderer` — the
