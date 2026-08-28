@@ -22,6 +22,7 @@ export type RandomWallColorMode = "off" | "per_pass" | "per_segment";
 export type WallStyleOverride = { color?: number; width?: number; join?: "round" | "miter"; cap?: "round" | "square" };
 
 export type OneWayPattern = "triangle" | "chevron" | "arrow";
+export type VerticalArrowStyle = OneWayPattern | "sign";
 
 /** Optional per-call override for the one-way indicator drawn on a `WallEdge`'s wall segment
  *  midpoint — pattern (shape), color, floor-colored gap (color/width, `gapWidth: 0` draws no gap —

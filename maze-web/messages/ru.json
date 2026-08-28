@@ -1693,6 +1693,7 @@
   "image_export.vector_by_walls.one_way_pattern_triangle": "Треугольник",
   "image_export.vector_by_walls.one_way_pattern_chevron": "Шеврон",
   "image_export.vector_by_walls.one_way_pattern_arrow": "Стрелка",
+  "image_export.vector_by_walls.vertical_arrow_style_sign": "Знак",
   "image_export.vector_by_walls.one_way_color": "Цвет",
   "image_export.vector_by_walls.one_way_gap_width": "Ширина зазора",
   "image_export.vector_by_walls.one_way_join": "Углы и концы",

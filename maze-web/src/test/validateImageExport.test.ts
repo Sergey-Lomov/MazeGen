@@ -15,6 +15,17 @@ describe("validateVerticalSettingsFields", () => {
     expect(result.twoWayArrowCornerStyle).toBe("miter");
   });
 
+  it("accepts the vertical sign style for every arrow group", () => {
+    const result = validateVerticalSettingsFields(
+      { twoWayArrowStyle: "sign", oneWayArrowStyle: "sign", elevatorArrowStyle: "sign" },
+      "path",
+      DEFAULT_VERTICAL_SETTINGS,
+    );
+    expect(result.twoWayArrowStyle).toBe("sign");
+    expect(result.oneWayArrowStyle).toBe("sign");
+    expect(result.elevatorArrowStyle).toBe("sign");
+  });
+
   it("falls back to the default for an invalid arrow style/corner-style", () => {
     const result = validateVerticalSettingsFields({ oneWayArrowStyle: "bogus", elevatorArrowCornerStyle: "bogus" }, "path", DEFAULT_VERTICAL_SETTINGS);
     expect(result.oneWayArrowStyle).toBe(DEFAULT_VERTICAL_SETTINGS.oneWayArrowStyle);

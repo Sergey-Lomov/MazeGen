@@ -38,6 +38,11 @@ export function optOneWayPattern(obj: Record<string, unknown> | null, key: strin
   return v === "triangle" || v === "chevron" || v === "arrow" ? v : fallback;
 }
 
+export function optVerticalArrowStyle(obj: Record<string, unknown> | null, key: string, fallback: "triangle" | "chevron" | "arrow" | "sign"): "triangle" | "chevron" | "arrow" | "sign" {
+  const v = obj?.[key];
+  return v === "triangle" || v === "chevron" || v === "arrow" || v === "sign" ? v : fallback;
+}
+
 export function optTeleportConnectorStyle(obj: Record<string, unknown> | null, key: string, fallback: "none" | "straight" | "orthogonal"): "none" | "straight" | "orthogonal" {
   const v = obj?.[key];
   return v === "none" || v === "straight" || v === "orthogonal" ? v : fallback;
@@ -181,16 +186,16 @@ export function validateVerticalSettingsFields(obj: Record<string, unknown> | nu
     elevatorMarker: validateMarkerSettings(obj?.elevatorMarker, `${path}.elevatorMarker`, d.elevatorMarker),
     twoWayArrowColor: optNumber(obj, "twoWayArrowColor", d.twoWayArrowColor),
     twoWayArrowSize: optNumber(obj, "twoWayArrowSize", d.twoWayArrowSize),
-    twoWayArrowStyle: optOneWayPattern(obj, "twoWayArrowStyle", d.twoWayArrowStyle),
+    twoWayArrowStyle: optVerticalArrowStyle(obj, "twoWayArrowStyle", d.twoWayArrowStyle),
     twoWayArrowCornerStyle: optJoin(obj, "twoWayArrowCornerStyle", d.twoWayArrowCornerStyle),
     oneWayArrowColor: optNumber(obj, "oneWayArrowColor", d.oneWayArrowColor),
     oneWayArrowSize: optNumber(obj, "oneWayArrowSize", d.oneWayArrowSize),
-    oneWayArrowStyle: optOneWayPattern(obj, "oneWayArrowStyle", d.oneWayArrowStyle),
+    oneWayArrowStyle: optVerticalArrowStyle(obj, "oneWayArrowStyle", d.oneWayArrowStyle),
     oneWayArrowCornerStyle: optJoin(obj, "oneWayArrowCornerStyle", d.oneWayArrowCornerStyle),
     oneWayAccentColor: optNumber(obj, "oneWayAccentColor", d.oneWayAccentColor),
     elevatorArrowColor: optNumber(obj, "elevatorArrowColor", d.elevatorArrowColor),
     elevatorArrowSize: optNumber(obj, "elevatorArrowSize", d.elevatorArrowSize),
-    elevatorArrowStyle: optOneWayPattern(obj, "elevatorArrowStyle", d.elevatorArrowStyle),
+    elevatorArrowStyle: optVerticalArrowStyle(obj, "elevatorArrowStyle", d.elevatorArrowStyle),
     elevatorArrowCornerStyle: optJoin(obj, "elevatorArrowCornerStyle", d.elevatorArrowCornerStyle),
     elevatorBadges: validateElevatorBadgeSettings(obj?.elevatorBadges, `${path}.elevatorBadges`, d.elevatorBadges),
   };

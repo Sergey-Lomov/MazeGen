@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo } from "react";
 import { useMazeStore } from "../../store/mazeStore";
-import type { OneWayPattern, RandomWallColorMode } from "../../pixi/renderers/types";
+import type { OneWayPattern, VerticalArrowStyle, RandomWallColorMode } from "../../pixi/renderers/types";
 import { inset, spacing, typography, ui } from "../../styles/theme";
 import { ToggleRow } from "../ToggleRow";
 import { SectionHeader, SubsectionHeader } from "../SectionHeader";
@@ -589,9 +589,10 @@ export function VectorByWallsSettingsPanel() {
                           label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
                           value={settings.twoWayArrowStyle}
                           options={[
-                            { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
-                            { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
-                            { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                            { value: "triangle" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+                            { value: "chevron" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+                            { value: "arrow" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                            { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
                           ]}
                           onChange={(twoWayArrowStyle) => patchVerticalSettings({ twoWayArrowStyle })}
                         />
@@ -668,9 +669,10 @@ export function VectorByWallsSettingsPanel() {
                           label={m["image_export.vector_by_walls.vertical_arrow_style"]()}
                           value={settings.oneWayArrowStyle}
                           options={[
-                            { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
-                            { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
-                            { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                            { value: "triangle" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
+                            { value: "chevron" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
+                            { value: "arrow" as VerticalArrowStyle, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                            { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
                           ]}
                           onChange={(oneWayArrowStyle) => patchVerticalSettings({ oneWayArrowStyle })}
                         />
@@ -744,6 +746,7 @@ export function VectorByWallsSettingsPanel() {
                             { value: "triangle" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_triangle"]() },
                             { value: "chevron" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_chevron"]() },
                             { value: "arrow" as OneWayPattern, label: m["image_export.vector_by_walls.one_way_pattern_arrow"]() },
+                            { value: "sign" as VerticalArrowStyle, label: m["image_export.vector_by_walls.vertical_arrow_style_sign"]() },
                           ]}
                           onChange={(elevatorArrowStyle) => patchVerticalSettings({ elevatorArrowStyle })}
                         />

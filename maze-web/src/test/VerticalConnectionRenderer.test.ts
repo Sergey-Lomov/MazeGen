@@ -315,6 +315,63 @@ describe("VerticalConnectionRenderer", () => {
     expect(roundPolyCalls[0].args[0]).toBeCloseTo(0);
   });
 
+  it("renders sign style as equal-length lines: plus for up and minus for down", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [
+        marker({ pos: [-20, 0], direction: "up" }),
+        marker({ pos: [20, 0], direction: "down" }),
+      ],
+      style: baseStyle({ twoWayArrowStyle: "sign" }),
+    });
+
+    const moveCalls = g.calls.filter((call) => call.method === "moveTo");
+    const lineCalls = g.calls.filter((call) => call.method === "lineTo");
+    expect(moveCalls).toHaveLength(3);
+    expect(lineCalls).toHaveLength(3);
+    expect(moveCalls[0].args[1]).toBeCloseTo(lineCalls[0].args[1]);
+    expect(moveCalls[1].args[0]).toBeCloseTo(lineCalls[1].args[0]);
+    expect(moveCalls[2].args[1]).toBeCloseTo(lineCalls[2].args[1]);
+    expect(Math.abs(moveCalls[0].args[0] - lineCalls[0].args[0])).toBeCloseTo(
+      Math.abs(moveCalls[2].args[0] - lineCalls[2].args[0]),
+    );
+  });
+
+  it("uses smaller, vertically separated signs for a bidirectional elevator", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [0, 0], kind: "elevator", direction: "both" })],
+      style: baseStyle({ elevatorArrowStyle: "sign", elevatorArrowSize: 1 }),
+    });
+
+    const moveCalls = g.calls.filter((call) => call.method === "moveTo");
+    expect(Math.abs(moveCalls[0].args[1] - moveCalls[2].args[1])).toBeGreaterThan(TILE_SIZE * 0.1);
+    expect(Math.abs(moveCalls[0].args[0] - moveCalls[1].args[0])).toBeCloseTo(TILE_SIZE * 0.22 * 0.75);
+    const yCoordinates = g.calls
+      .filter((call) => call.method === "moveTo" || call.method === "lineTo")
+      .flatMap((call) => [call.args[1]]);
+    expect((Math.min(...yCoordinates) + Math.max(...yCoordinates)) / 2).toBeCloseTo(0);
+  });
+
+  it("uses round caps for round-corner sign strokes", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ direction: "up" })],
+      style: baseStyle({ twoWayArrowStyle: "sign", twoWayArrowCornerStyle: "round" }),
+    });
+
+    expect(g.strokeCalls.at(-1)?.cap).toBe("round");
+  });
+
   it("interactive + resolved targetFloorIndex adds a clickable hit-circle wired to navigateToFloor", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);

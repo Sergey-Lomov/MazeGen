@@ -1,6 +1,6 @@
 import { Container, Graphics, Text } from "pixi.js";
 import type { TextStyleFontWeight } from "pixi.js";
-import type { VerticalConnectionMarker, MarkerShape, TeleportCornerStyle, OneWayPattern, ElevatorBadgeFontWeight } from "./types";
+import type { VerticalConnectionMarker, MarkerShape, TeleportCornerStyle, OneWayPattern, VerticalArrowStyle, ElevatorBadgeFontWeight } from "./types";
 import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
 import { drawMarkerShape } from "./markerShapes";
 import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron } from "./wallUtils";
@@ -52,11 +52,11 @@ export type VerticalConnectionStyle = {
   twoWayArrowColor: number;
   /** Direction-arrow size, as a fraction of the marker's own radius (0-1). */
   twoWayArrowSize: number;
-  twoWayArrowStyle: OneWayPattern;
+  twoWayArrowStyle: VerticalArrowStyle;
   twoWayArrowCornerStyle: "round" | "miter";
   oneWayArrowColor: number;
   oneWayArrowSize: number;
-  oneWayArrowStyle: OneWayPattern;
+  oneWayArrowStyle: VerticalArrowStyle;
   oneWayArrowCornerStyle: "round" | "miter";
   /** One-way passage marker colors, "primary"/"secondary" (GitHub issue #347 fifth follow-up,
    *  simplified from the fourth follow-up's separate `oneWayEntryColor`/`oneWayExitColor`, which
@@ -68,7 +68,7 @@ export type VerticalConnectionStyle = {
   oneWayAccentColor: number;
   elevatorArrowColor: number;
   elevatorArrowSize: number;
-  elevatorArrowStyle: OneWayPattern;
+  elevatorArrowStyle: VerticalArrowStyle;
   elevatorArrowCornerStyle: "round" | "miter";
   decorativeStairsTwoWay: VerticalDecorativeLineStyle;
   decorativeStairsOneWay: VerticalDecorativeLineStyle;
@@ -131,9 +131,10 @@ function arrowThickness(arrowSizeFraction: number): number {
   return ARROW_THICKNESS_MIN + t * (ARROW_THICKNESS_MAX - ARROW_THICKNESS_MIN);
 }
 
-/** Dispatches to the one shared one-way-indicator drawing primitive matching `pattern`
- *  (`wallUtils.ts`, GitHub issue #347 third follow-up — same three patterns/corner-style knob as
- *  the wall one-way indicator, `oneWayPattern`/`oneWayJoin`). `size` here is the caller's own
+/** Dispatches to the shared one-way-indicator drawing primitive matching `pattern`, or draws the
+ *  compact plus/minus sign style (`wallUtils.ts`, GitHub issue #347 third follow-up — same
+ *  three patterns/corner-style knob as the wall one-way indicator, `oneWayPattern`/`oneWayJoin`).
+ *  `size` here is the caller's own
  *  desired tip reach from `(cx, cy)` (a marker-relative arrow half-length) — rescaled by
  *  `patternTipFraction` before being passed down as `size` in `OneWayDrawStyle`, since the three
  *  primitives don't agree among themselves on what fraction of their own `size` param reaches the
@@ -161,6 +162,16 @@ function drawArrowFilled(g: Graphics, pattern: OneWayPattern, cx: number, cy: nu
   drawArrowPattern(g, pattern, cx, cy, dx, dy, size, color, join, thickness);
 }
 
+function drawDirectionSign(g: Graphics, cx: number, cy: number, direction: number, size: number, color: number, join: "round" | "miter", thickness: number): void {
+  const halfLength = size;
+  const cap = join === "round" ? "round" : "square";
+  g.moveTo(cx - halfLength, cy).lineTo(cx + halfLength, cy);
+  if (direction < 0) {
+    g.moveTo(cx, cy - halfLength).lineTo(cx, cy + halfLength);
+  }
+  g.stroke({ color, width: thickness, join, cap });
+}
+
 /** Each pattern's own tip/base visual midpoint, as a fraction of `size` — the tip-reach `size`
  *  `drawArrowPattern` itself is called with (GitHub issue #347 fourth follow-up; NOT the rescaled
  *  `drawnSize` passed further down to `wallUtils.ts`, which differs by `patternTipFraction`) —
@@ -177,7 +188,7 @@ function drawArrowFilled(g: Graphics, pattern: OneWayPattern, cx: number, cy: nu
  *  `0`). Used to compensate a bidirectional pair's own `oy` so both arrows' visual centers land on
  *  the same on-screen row instead of straddling it (mirrors the old hand-built
  *  `drawDirectionArrow`'s own `size*0.25` constant, replaced when this dispatch was introduced). */
-function patternMidpointOffset(pattern: OneWayPattern): number {
+function patternMidpointOffset(pattern: VerticalArrowStyle): number {
   if (pattern === "triangle") return -1 / 39;
   if (pattern === "chevron") return 0.2;
   return 0;
@@ -566,13 +577,15 @@ export class VerticalConnectionRenderer {
         // `chevron` alone (GitHub issue #347 sixth follow-up: "spread the elevator's two chevrons a
         // bit further apart vertically") — still fixed to `radius`, not `arrowSize`, per the
         // regression fix above.
-        const originOffset = dys.length > 1 ? radius * (arrowStyle === "chevron" ? 0.5 : 0.4) : 0;
+        const originOffset = dys.length > 1
+          ? radius * (arrowStyle === "sign" ? 0.5 : arrowStyle === "chevron" ? 0.5 : 0.4)
+          : 0;
         const vertical = dys.length > 1 && arrowStyle !== "arrow";
         // A vertically-stacked `triangle` pair draws each triangle at `0.75` of the ordinary
         // `arrowSize` (GitHub issue #347 seventh follow-up) — the two triangles read as too large
         // stacked at full size; single triangles and every other pattern/pair combination are
         // unaffected.
-        const pairArrowSizeFraction = dys.length > 1 && arrowStyle === "triangle" ? 0.75 : 1;
+        const pairArrowSizeFraction = dys.length > 1 && (arrowStyle === "triangle" || arrowStyle === "sign") ? 0.75 : 1;
         const pairArrowSize = arrowSize * pairArrowSizeFraction;
         // Single chevron (not a spread pair) reads visually off-center toward its own back/base
         // with the pair's own `0.2` compensation (GitHub issue #347 sixth follow-up) — a lone
@@ -586,13 +599,18 @@ export class VerticalConnectionRenderer {
         for (const [i, dy] of dys.entries()) {
           const side = i === 0 ? -1 : 1;
           const ox = cx + (vertical ? 0 : side * originOffset);
-          const oy = cy - dy * midpointOffset + (vertical ? side * originOffset : 0);
+          const signPairCentering = arrowStyle === "sign" && dys.length > 1 ? pairArrowSize * 0.5 : 0;
+          const oy = cy - dy * midpointOffset + (vertical ? side * originOffset : 0) + signPairCentering;
           // Both ends of a one-way passage now draw a solid arrow (GitHub issue #347 fourth
           // follow-up redesign) — the old outline-only arrival arrow is redundant with the new
           // dark-border/dark-fill distinction between entry and exit (see `fillColor`/`borderColor`
           // above), and `drawArrowOutline` (still used nowhere else) is kept only if a future
           // pattern needs a real outline-only draw again.
-          drawArrowFilled(this.g, arrowStyle, ox, oy, 0, dy, pairArrowSize, arrowColor, arrowCornerStyle, thickness);
+          if (arrowStyle === "sign") {
+            drawDirectionSign(this.g, ox, oy, dy, pairArrowSize, arrowColor, arrowCornerStyle, thickness);
+          } else {
+            drawArrowFilled(this.g, arrowStyle, ox, oy, 0, dy, pairArrowSize, arrowColor, arrowCornerStyle, thickness);
+          }
         }
       }
 

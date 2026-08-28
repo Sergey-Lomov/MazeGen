@@ -1,4 +1,4 @@
-import type { MarkerShape, OneWayPattern, TeleportGroupOverride, TeleportCornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight, RandomWallColorMode } from "../pixi/renderers/types";
+import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, TeleportCornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight, RandomWallColorMode } from "../pixi/renderers/types";
 
 /** Registry id of a maze image-export rendering mode (see `Specs/image-export.md` and
  * `imageExportRegistry.ts`) — one entry per switcher item in the Image Export feature card. */
@@ -222,17 +222,18 @@ export interface VerticalSettingsFields {
   /** Direction-arrow shape (GitHub issue #347 third follow-up) — same three patterns as the
    *  wall one-way indicator (`oneWayPattern`): `"arrow"` (line + arrowhead), `"triangle"`
    *  (filled), `"chevron"` (open `>` stroke). Reuses `drawOneWayArrow`/`drawOneWayTriangle`/
-   *  `drawOneWayChevron` (`wallUtils.ts`) directly — the arrival end's outline look (previously a
-   *  bespoke stroked-triangle draw) is now achieved the same way for all three patterns: the same
+   *  `drawOneWayChevron` (`wallUtils.ts`) directly, plus `"sign"` for compact `+`/`-` markers — the
+   *  arrival end's outline look (previously a
+   *  bespoke stroked-triangle draw) is now achieved the same way for all three glyph patterns: the same
    *  shape drawn twice, a larger pass in the arrow color underneath, a smaller pass in the gap/
    *  floor color on top, reading as a colored outline without any real stroke-only draw path. */
-  twoWayArrowStyle: OneWayPattern;
+  twoWayArrowStyle: VerticalArrowStyle;
   /** Corner style for `twoWayArrowStyle` — `"round"`/`"miter"`, same convention as `oneWayJoin`:
    *  drives the filled triangle's own corner rounding, or the chevron/arrow's stroke join. */
   twoWayArrowCornerStyle: "round" | "miter";
   oneWayArrowColor: number;
   oneWayArrowSize: number;
-  oneWayArrowStyle: OneWayPattern;
+  oneWayArrowStyle: VerticalArrowStyle;
   oneWayArrowCornerStyle: "round" | "miter";
   /** One-way passage's "secondary" accent color (GitHub issue #347 fifth follow-up, simplified from
    *  the fourth follow-up's separate `oneWayEntryColor`/`oneWayExitColor`, which always meant the
@@ -242,7 +243,7 @@ export interface VerticalSettingsFields {
   oneWayAccentColor: number;
   elevatorArrowColor: number;
   elevatorArrowSize: number;
-  elevatorArrowStyle: OneWayPattern;
+  elevatorArrowStyle: VerticalArrowStyle;
   elevatorArrowCornerStyle: "round" | "miter";
   /** "Floor-number badges" (GitHub issue #430) — see `ElevatorBadgeSettings`'s own doc comment.
    *  Independent of `verticalStyle` on modes that have one — draws on top of `elevatorMarker`/
