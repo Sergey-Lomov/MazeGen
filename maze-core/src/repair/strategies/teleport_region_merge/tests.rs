@@ -4,17 +4,22 @@ use rand::SeedableRng;
 use crate::random::MazeRng;
 use crate::graph::{Graph as G, EdgeKind as EK};
 use crate::IdGenerator;
-use crate::space::{SquareTessellation, square_rect, MultiLevelField};
+use crate::space::{SquareTessellation, square_rect, MultiLevelField, Field};
 use crate::repair::params::build_params;
 use region_merge_core::{MODE_LARGEST, MODE_SMALLEST};
 use crate::repair::strategies::test_utils::apply_and_commit;
 
 fn params_with(mode: &str, direction_mode: &str, prefer_partial: bool, min_distance: f64) -> StrategyParams {
+    params_with_cross_floor(mode, direction_mode, prefer_partial, min_distance, true)
+}
+
+fn params_with_cross_floor(mode: &str, direction_mode: &str, prefer_partial: bool, min_distance: f64, allow_cross_floor: bool) -> StrategyParams {
     let mut overrides = StdHashMap::new();
     overrides.insert(PARAM_TARGET_MODE.to_string(), mode.to_string());
     overrides.insert(PARAM_DIRECTION_MODE.to_string(), direction_mode.to_string());
     overrides.insert(PARAM_PREFER_PARTIALLY_CONNECTED.to_string(), prefer_partial.to_string());
     overrides.insert(PARAM_MIN_DISTANCE.to_string(), min_distance.to_string());
+    overrides.insert(PARAM_ALLOW_CROSS_FLOOR.to_string(), allow_cross_floor.to_string());
     build_params(
         <TeleportRegionMergeStrategy as RepairStrategy<SquareTessellation, RegionNeedsExpansionIssue>>::params(&TeleportRegionMergeStrategy),
         Some(&overrides),
@@ -414,6 +419,146 @@ fn is_deterministic_for_fixed_seed() {
     let edges_b: Vec<_> = maze_b.graph.edges().map(|e| (e.from, e.to, e.kind.clone())).collect();
     assert_eq!(edges_a, edges_b);
 }
+
+/// 1x2 row replicated on 2 floors, no edges -> 4 singleton SCC regions, 2 per floor. The
+/// flagged region (`nodes[0][0]`) can only reach its same-floor sibling within one floor.
+fn maze_two_floors_2x1() -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
+    let mut ids = IdGenerator::new();
+    let fields: Vec<_> = (0..2).map(|_| Field::new(square_rect(2, 1), &mut ids).unwrap()).collect();
+    let field = MultiLevelField::<SquareTessellation>::new(fields);
+    let mut g = G::new();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let level_ids: Vec<_> = field.levels_ordered().collect();
+    let nodes: Vec<Vec<NodeId>> = level_ids.iter()
+        .map(|&lvl| field.field_of(lvl).unwrap().all_points().map(|p| field.node_at(lvl, p).unwrap()).collect())
+        .collect();
+    (Maze::new(field, g), nodes)
+}
+
+/// 1x1 cell replicated on 2 floors, no edges -> exactly 2 singleton SCC regions, one per
+/// floor. The flagged bottom-floor region's only possible neighbor is the top-floor node.
+fn maze_two_floors_1x1() -> (Maze<SquareTessellation>, Vec<Vec<NodeId>>) {
+    let mut ids = IdGenerator::new();
+    let fields: Vec<_> = (0..2).map(|_| Field::new(square_rect(1, 1), &mut ids).unwrap()).collect();
+    let field = MultiLevelField::<SquareTessellation>::new(fields);
+    let mut g = G::new();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let level_ids: Vec<_> = field.levels_ordered().collect();
+    let nodes: Vec<Vec<NodeId>> = level_ids.iter()
+        .map(|&lvl| field.field_of(lvl).unwrap().all_points().map(|p| field.node_at(lvl, p).unwrap()).collect())
+        .collect();
+    (Maze::new(field, g), nodes)
+}
+
+#[test]
+fn allow_cross_floor_true_lets_a_teleport_cross_floors() {
+    // The only candidate neighbor is the top-floor node -- allowed only with allow_cross_floor.
+    let (mut maze, nodes) = maze_two_floors_1x1();
+    let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0][0]).unwrap();
+    let issue = issue_for(vec![region_idx]);
+    let mut rng = MazeRng::seed_from_u64(1);
+    let result = apply_and_commit(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut rng, &params_with_cross_floor(MODE_RANDOM, DIRECTION_TWO_WAY, false, 0.0, true), &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+    let teleport_edges: Vec<_> = maze.graph.edges().filter(|e| e.kind == EK::Teleport).collect();
+    assert_eq!(teleport_edges.len(), 2);
+    assert!(teleport_edges.iter().all(|e|
+        (e.from == nodes[0][0] && e.to == nodes[1][0]) || (e.from == nodes[1][0] && e.to == nodes[0][0])));
+}
+
+#[test]
+fn allow_cross_floor_false_fails_when_the_only_neighbor_is_on_another_floor() {
+    let (mut maze, nodes) = maze_two_floors_1x1();
+    let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0][0]).unwrap();
+    let issue = issue_for(vec![region_idx]);
+    let mut rng = MazeRng::seed_from_u64(1);
+    let result = apply_and_commit(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut rng, &params_with_cross_floor(MODE_RANDOM, DIRECTION_TWO_WAY, false, 0.0, false), &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Failed));
+    assert_eq!(maze.graph.edges().count(), 0);
+}
+
+#[test]
+fn allow_cross_floor_false_keeps_endpoints_on_floor_even_when_the_neighbor_spans_floors() {
+    // Bottom-floor singleton region `nodes[0][0]`. The only other component spans BOTH floors:
+    // `nodes[0][1]` (bottom) <-> `nodes[1][1]` (top) via a basic edge. Filtering candidate
+    // components alone would still let the teleport's neighbor-side endpoint land on the top
+    // floor -- the endpoint-level restriction must keep the pair on the bottom floor.
+    let mut ids = IdGenerator::new();
+    let fields: Vec<_> = (0..2).map(|_| Field::new(square_rect(2, 1), &mut ids).unwrap()).collect();
+    let field = MultiLevelField::<SquareTessellation>::new(fields);
+    let mut g = G::new();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let level_ids: Vec<_> = field.levels_ordered().collect();
+    let nodes: Vec<Vec<NodeId>> = level_ids.iter()
+        .map(|&lvl| field.field_of(lvl).unwrap().all_points().map(|p| field.node_at(lvl, p).unwrap()).collect())
+        .collect();
+    let mut maze = Maze::new(field, g);
+    maze.graph.add_bidirectional_edge(nodes[0][1], nodes[1][1], EK::Basic);
+
+    let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0][0]).unwrap();
+    let issue = issue_for(vec![region_idx]);
+    let mut rng = MazeRng::seed_from_u64(1);
+    let result = apply_and_commit(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut rng, &params_with_cross_floor(MODE_RANDOM, DIRECTION_TWO_WAY, false, 0.0, false), &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+    let bottom_floor: std::collections::HashSet<NodeId> = nodes[0].iter().copied().collect();
+    for e in maze.graph.edges().filter(|e| e.kind == EK::Teleport) {
+        assert!(bottom_floor.contains(&e.from) && bottom_floor.contains(&e.to),
+            "endpoint on another floor despite allow_cross_floor=false: {} -> {}", e.from, e.to);
+    }
+    assert!(maze.graph.edges().any(|e| e.kind == EK::Teleport), "the merge must still connect via a teleport");
+}
+
+#[test]
+fn allow_cross_floor_false_keeps_one_way_endpoints_on_floor() {
+    // Same floor-spanning-neighbor fixture, but direction_mode = one_way: both distinct pairs
+    // the one_way path picks must also stay on the region's floor.
+    let mut ids = IdGenerator::new();
+    let fields: Vec<_> = (0..2).map(|_| Field::new(square_rect(3, 1), &mut ids).unwrap()).collect();
+    let field = MultiLevelField::<SquareTessellation>::new(fields);
+    let mut g = G::new();
+    for node in field.all_node_ids() { g.add_node(node); }
+    let level_ids: Vec<_> = field.levels_ordered().collect();
+    let nodes: Vec<Vec<NodeId>> = level_ids.iter()
+        .map(|&lvl| field.field_of(lvl).unwrap().all_points().map(|p| field.node_at(lvl, p).unwrap()).collect())
+        .collect();
+    let mut maze = Maze::new(field, g);
+    // Neighbor component spans both floors: bottom nodes[0][1],nodes[0][2] plus top nodes[1][1].
+    maze.graph.add_bidirectional_edge(nodes[0][1], nodes[0][2], EK::Basic);
+    maze.graph.add_bidirectional_edge(nodes[0][1], nodes[1][1], EK::Basic);
+
+    let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0][0]).unwrap();
+    let issue = issue_for(vec![region_idx]);
+    let mut rng = MazeRng::seed_from_u64(2);
+    let result = apply_and_commit(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut rng, &params_with_cross_floor(MODE_RANDOM, DIRECTION_ONE_WAY, false, 0.0, false), &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+    let bottom_floor: std::collections::HashSet<NodeId> = nodes[0].iter().copied().collect();
+    let teleport_edges: Vec<_> = maze.graph.edges().filter(|e| e.kind == EK::Teleport).collect();
+    assert_eq!(teleport_edges.len(), 2);
+    for e in &teleport_edges {
+        assert!(bottom_floor.contains(&e.from) && bottom_floor.contains(&e.to),
+            "one_way endpoint on another floor despite allow_cross_floor=false: {} -> {}", e.from, e.to);
+    }
+}
+
+#[test]
+fn allow_cross_floor_false_keeps_the_merge_within_one_floor() {
+    let (mut maze, nodes) = maze_two_floors_2x1();
+    let region_idx = maze.analysis.scc(&maze.graph).component_of(nodes[0][0]).unwrap();
+    let issue = issue_for(vec![region_idx]);
+    let mut rng = MazeRng::seed_from_u64(1);
+    let result = apply_and_commit(&TeleportRegionMergeStrategy, &issue, &mut maze, &mut rng, &params_with_cross_floor(MODE_RANDOM, DIRECTION_TWO_WAY, false, 0.0, false), &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+    // Every teleport endpoint must stay on the bottom floor.
+    let bottom_floor: std::collections::HashSet<NodeId> = nodes[0].iter().copied().collect();
+    for e in maze.graph.edges().filter(|e| e.kind == EK::Teleport) {
+        assert!(bottom_floor.contains(&e.from) && bottom_floor.contains(&e.to),
+            "allow_cross_floor=false must never place a teleport endpoint on another floor");
+    }
+}
+
 
 #[test]
 fn apply_respects_preset_blocked_direction() {

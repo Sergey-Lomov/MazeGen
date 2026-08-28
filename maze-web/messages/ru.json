@@ -1416,6 +1416,8 @@
   "param.cross_floor_mode.option.natural.explanation": "Этаж полностью игнорируется — все узлы равноправны как выход независимо от этажа.",
   "param.cross_floor_mode.option.manual": "Ручная",
   "param.cross_floor_mode.option.manual.explanation": "Этаж выхода выбирается согласно слайдеру баланса межэтажности.",
+  "param.allow_cross_floor.label": "Разрешить межэтажные телепорты",
+  "param.allow_cross_floor.description": "Когда включено, телепорт может объединить регион с регионом на другом этаже. Когда выключено, слияние ограничено регионами на том же этаже.",
   "quality.nested_strategy.merge_label": "Стратегия слияния",
   "quality.nested_strategy.removal_label": "Стратегия удаления",
   "quality.nested_strategy.add_elevator_label": "Стратегия добавления лифта",

@@ -1405,6 +1405,8 @@
   "param.cross_floor_mode.option.natural.explanation": "Floor is ignored entirely — every node is an equally eligible exit regardless of floor.",
   "param.cross_floor_mode.option.manual": "Manual",
   "param.cross_floor_mode.option.manual.explanation": "The exit's floor is chosen according to the cross-floor balance slider.",
+  "param.allow_cross_floor.label": "Allow cross-floor teleports",
+  "param.allow_cross_floor.description": "When on, a teleport may merge the region into a region on another floor. When off, the merge is restricted to regions on the same floor.",
   "quality.nested_strategy.merge_label": "Merge strategy",
   "quality.nested_strategy.removal_label": "Removal strategy",
   "quality.nested_strategy.add_elevator_label": "Add-elevator strategy",

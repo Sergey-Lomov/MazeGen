@@ -531,6 +531,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.cross_floor_mode.label"] as MessageFn,
     description: m["param.cross_floor_mode.description"] as MessageFn,
   },
+  allow_cross_floor: {
+    label: m["param.allow_cross_floor.label"] as MessageFn,
+    description: m["param.allow_cross_floor.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`

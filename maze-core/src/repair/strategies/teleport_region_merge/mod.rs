@@ -2,6 +2,7 @@ use rand::{Rng, RngCore};
 use std::collections::{HashMap, HashSet, VecDeque};
 use crate::Maze;
 use crate::ids::NodeId;
+use crate::space::LevelId;
 use crate::graph::Graph;
 use crate::graph::scc::{ComponentId, ConnectedComponents};
 use crate::space::Tessellation;
@@ -55,6 +56,7 @@ impl PendingTeleports {
 
 pub const PARAM_DIRECTION_MODE: &str = "direction_mode";
 pub const PARAM_MIN_DISTANCE: &str = "min_distance";
+pub const PARAM_ALLOW_CROSS_FLOOR: &str = "allow_cross_floor";
 
 pub const DIRECTION_TWO_WAY: &str = "two_way";
 pub const DIRECTION_ONE_WAY: &str = "one_way";
@@ -86,6 +88,11 @@ static PARAMS: &[StrategyParam] = &[
         id: PARAM_MIN_DISTANCE,
         label: "Minimum logical distance between teleport endpoints",
         kind: StrategyParamKind::Float { default: 1.0, min: 0.0, max: 1000.0 },
+    },
+    StrategyParam {
+        id: PARAM_ALLOW_CROSS_FLOOR,
+        label: "Allow merging with regions on another floor",
+        kind: StrategyParamKind::Bool { default: true },
     },
 ];
 
@@ -141,6 +148,10 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for TeleportR
             Some(StrategyParamValue::Float(f)) => (*f).round().max(0.0) as usize,
             _ => 0,
         };
+        let allow_cross_floor = match params.get(PARAM_ALLOW_CROSS_FLOOR) {
+            Some(StrategyParamValue::Bool(b)) => *b,
+            _ => true,
+        };
 
         // One fixed snapshot for the whole apply() call — see Specs/repair.md's decision for
         // this strategy (same rationale as ExpandRegionPassageStrategy): `scc` read once, not
@@ -152,7 +163,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for TeleportR
             let region = scc.components.get(region_idx)?;
             find_merge_candidate(
                 region, region_idx, &scc, maze, preset_state, mode, direction_mode,
-                prefer_partial, min_distance, needy, rng, &mut pending,
+                prefer_partial, min_distance, allow_cross_floor, needy, rng, &mut pending,
             )
         });
 
@@ -165,6 +176,18 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for TeleportR
 }
 
 crate::impl_erased_repair_strategy!(TeleportRegionMergeStrategy, RegionNeedsExpansionIssue);
+
+/// The subset of `nodes` whose floor is in `levels` — used to keep freshly-picked teleport
+/// endpoints on the flagged region's own floor(s) when `allow_cross_floor` is off.
+fn filter_nodes_on_levels<T: Tessellation>(
+    field: &crate::space::MultiLevelField<T>,
+    nodes: &[NodeId],
+    levels: &HashSet<LevelId>,
+) -> Vec<NodeId> {
+    nodes.iter().copied()
+        .filter(|&n| field.level_of(n).is_some_and(|l| levels.contains(&l)))
+        .collect()
+}
 
 /// Existing directed-edge state (any `EdgeKind`) between `region` and one other component —
 /// unlike `ExpandRegionPassageStrategy`'s `NeighborInfo`, no bridging cell pairs are enumerated
@@ -239,6 +262,7 @@ fn find_merge_candidate<T: Tessellation>(
     direction_mode: &str,
     prefer_partial: bool,
     min_distance: usize,
+    allow_cross_floor: bool,
     needy: &HashSet<ComponentId>,
     rng: &mut dyn RngCore,
     pending: &mut PendingTeleports,
@@ -250,6 +274,27 @@ fn find_merge_candidate<T: Tessellation>(
 
     let mut keys: Vec<ComponentId> = by_neighbor.keys().copied().collect();
     keys.sort_unstable();
+
+    // `allow_cross_floor == false` (GitHub issue #472): drop every candidate component that
+    // shares no floor with the flagged region, so a teleport merge stays within one floor.
+    // A region flagged as an undersized SCC is single-floor in practice, but its full level
+    // set is used rather than assuming that. Below, freshly-picked endpoints on both sides are
+    // also restricted to the region's floor set (`region_levels`) — filtering the candidate
+    // components alone would still allow a cross-floor pair when the chosen neighbor spans
+    // several floors.
+    let region_levels: Option<HashSet<LevelId>> = (!allow_cross_floor).then(|| {
+        region.iter().filter_map(|&n| maze.field.level_of(n)).collect()
+    });
+    if let Some(region_levels) = &region_levels {
+        keys.retain(|&idx| {
+            scc.components[idx]
+                .iter()
+                .any(|&n| maze.field.level_of(n).is_some_and(|l| region_levels.contains(&l)))
+        });
+        if keys.is_empty() {
+            return None;
+        }
+    }
 
     let partial: Vec<ComponentId> = keys.iter().copied()
         .filter(|i| {
@@ -263,7 +308,20 @@ fn find_merge_candidate<T: Tessellation>(
     let info = &by_neighbor[&chosen];
     let neighbor = &scc.components[chosen];
 
-    let applied = apply_teleport(maze, region, neighbor, info, direction_mode, min_distance, preset_state, rng, pending);
+    // When cross-floor merges are forbidden, restrict fresh endpoint picks on both sides to the
+    // region's floor set. `region` is single-floor in practice so its filtered form is the same
+    // slice; `neighbor` can legitimately span floors, and only its on-floor nodes are eligible.
+    let (region_on_floor, neighbor_on_floor);
+    let (region_pool, neighbor_pool): (&[NodeId], &[NodeId]) = match &region_levels {
+        Some(levels) => {
+            region_on_floor = filter_nodes_on_levels(&maze.field, region, levels);
+            neighbor_on_floor = filter_nodes_on_levels(&maze.field, neighbor, levels);
+            (&region_on_floor, &neighbor_on_floor)
+        }
+        None => (region, neighbor),
+    };
+
+    let applied = apply_teleport(maze, region_pool, neighbor_pool, info, direction_mode, min_distance, preset_state, rng, pending);
 
     Some((chosen, applied))
 }
