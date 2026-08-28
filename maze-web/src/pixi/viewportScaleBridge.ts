@@ -14,3 +14,18 @@ export function setViewportScaleGetter(fn: (() => number) | null): void {
 export function getCurrentViewportScale(): number {
   return getter ? getter() : 1;
 }
+
+/** Second slot of the same bridge (GitHub issue #476): the print settings panel's "Physical size
+ * (1:1)" button is a viewport command (`MazeScene.applyPrintPhysicalZoom`), and — like the "match
+ * current zoom" getter above — the panel is reached generically through `exportFormatRegistry.ts`
+ * with no props, so a scene-bound callback can't be prop-drilled to it. `App.tsx` registers the
+ * applier once the scene is ready; the panel calls it on click. Not reactive. */
+let physicalZoomApplier: ((targetViewportScale: number) => void) | null = null;
+
+export function setPhysicalZoomApplier(fn: ((targetViewportScale: number) => void) | null): void {
+  physicalZoomApplier = fn;
+}
+
+export function applyPhysicalZoom(targetViewportScale: number): void {
+  physicalZoomApplier?.(targetViewportScale);
+}

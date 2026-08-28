@@ -12,7 +12,7 @@ import type { FeatureId } from "./store/mazeStore";
 import { ui, typography, disabled, inset } from "./styles/theme";
 import { canvas } from "./pixi/colorTokens";
 import { useLocale } from "./i18n/useLocale";
-import { setViewportScaleGetter } from "./pixi/viewportScaleBridge";
+import { setViewportScaleGetter, setPhysicalZoomApplier } from "./pixi/viewportScaleBridge";
 import * as m from "~/paraglide/messages";
 
 const PANEL_WIDTH = 260;
@@ -68,12 +68,14 @@ export function App() {
         canvasRef.current!.appendChild(app.canvas);
         sceneRef.current = new MazeScene(app);
         setViewportScaleGetter(() => sceneRef.current?.getViewportScale() ?? 1);
+        setPhysicalZoomApplier((scale) => sceneRef.current?.applyPrintPhysicalZoom(scale));
         setReady(true);
       });
 
     return () => {
       cancelled = true;
       setViewportScaleGetter(null);
+      setPhysicalZoomApplier(null);
       sceneRef.current?.destroy();
       sceneRef.current = null;
     };

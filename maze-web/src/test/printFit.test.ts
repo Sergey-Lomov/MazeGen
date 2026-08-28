@@ -7,7 +7,7 @@ vi.mock("../pixi/cartesianCache", () => ({
   getCartesian: (x: number, y: number): [number, number] => [x, y],
 }));
 
-const { computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../pixi/imageExport/printFit");
+const { computePrintExportFit, computeAutoFitPrintScale, computeSheetScreenLayout, computePrintPlacementFromViewport, computePhysicalOneToOneViewportScale, resolveSheetSizeMm, mmToPx, pxToMm, DPI_BY_DENSITY } = await import("../pixi/imageExport/printFit");
 
 const cfg: TessellationConfig = { type: "square", width: 10, height: 10 };
 const zeroMargin: ExportMargin = { left: 0, right: 0, top: 0, bottom: 0 };
@@ -194,5 +194,22 @@ describe("computePrintPlacementFromViewport", () => {
     const panned = computePrintPlacementFromViewport(cfg, nodes, zeroMargin, baseSettings, { x: 50, y: 30, scale: 1 }, layout);
     expect(panned.offsetXMm).toBeGreaterThan(base.offsetXMm);
     expect(panned.offsetYMm).toBeGreaterThan(base.offsetYMm);
+  });
+});
+
+describe("computePhysicalOneToOneViewportScale", () => {
+  it("printScale 1 at print_300 (300 dpi) with a 96 CSS PPI screen -> 96/300", () => {
+    expect(computePhysicalOneToOneViewportScale(1, "print_300", 96)).toBeCloseTo(96 / 300);
+  });
+
+  it("when calibrated CSS PPI equals the print DPI, the viewport scale is just printScale", () => {
+    expect(computePhysicalOneToOneViewportScale(2.5, "print_300", 300)).toBeCloseTo(2.5);
+    expect(computePhysicalOneToOneViewportScale(1, "screen_96", 96)).toBeCloseTo(1);
+  });
+
+  it("scales linearly with printScale", () => {
+    const a = computePhysicalOneToOneViewportScale(1, "high_600", 110);
+    const b = computePhysicalOneToOneViewportScale(3, "high_600", 110);
+    expect(b).toBeCloseTo(a * 3);
   });
 });

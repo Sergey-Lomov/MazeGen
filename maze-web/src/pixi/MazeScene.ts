@@ -388,6 +388,14 @@ export class MazeScene {
     return this.viewport.scale.x;
   }
 
+  /** Physical 1:1 request from the print settings panel (GitHub issue #476) — a pure viewport
+   * command: zoom the editor to `targetScale`, keeping the point under the print frame's centre
+   * fixed on screen. Does NOT touch print placement (`print.scale`/`anchor`/`offset`) — that
+   * stays the export contract; a later real pan/zoom moves placement as usual. */
+  applyPrintPhysicalZoom(targetScale: number): void {
+    this.exportFrameOverlay.applyViewportScaleAroundFrameCentre(targetScale);
+  }
+
   /** Re-notifies every `viewportListeners` entry (and `ExportFrameOverlay`'s screen-space frame,
    * via `syncLayersToViewport`'s fresh `app.screen.width/height` read) with the current viewport
    * transform, without changing it — for a real canvas-size change (the DOM element itself

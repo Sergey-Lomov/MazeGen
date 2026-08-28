@@ -19,6 +19,20 @@ export function mmToPx(mm: number, dpi: number): number {
   return (mm / MM_PER_INCH) * dpi;
 }
 
+/** Editor-viewport scale that renders the maze at physical 1:1 with the target paper — one
+ * on-screen millimeter equals one printed millimeter (GitHub issue #476). `calibratedCssPpi` is
+ * the user-calibrated effective CSS pixels-per-inch (`screenCalibration.ts`); `density` picks the
+ * print DPI via `DPI_BY_DENSITY`. Independent of `TILE_SIZE`: both the on-paper and on-screen cell
+ * size are `TILE_SIZE * scale`, so it cancels. Pure — a viewport command, it does not read or
+ * write `print.scale`. */
+export function computePhysicalOneToOneViewportScale(
+  printScale: number,
+  density: PrintExportSettings["density"],
+  calibratedCssPpi: number,
+): number {
+  return (printScale * calibratedCssPpi) / DPI_BY_DENSITY[density];
+}
+
 export function pxToMm(px: number, dpi: number): number {
   return (px / dpi) * MM_PER_INCH;
 }
