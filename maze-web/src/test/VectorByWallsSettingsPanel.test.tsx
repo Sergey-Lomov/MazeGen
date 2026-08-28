@@ -78,6 +78,20 @@ beforeEach(() => {
 });
 
 describe("VectorByWallsSettingsPanel", () => {
+  it("renders elevator simplification under the vertical style setting", () => {
+    useMazeStore.setState({
+      floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }],
+      edges: [{ from: 0, to: 1, kind: "elevator" }],
+      vectorByWallsSectionsExpanded: { vertical: true },
+    });
+    render(<VectorByWallsSettingsPanel />);
+
+    const toggle = screen.getByText(m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]());
+    expect(toggle).toBeInTheDocument();
+    fireEvent.click(toggle.parentElement!.querySelector('input[type="checkbox"]')!);
+    expect(useMazeStore.getState().vectorByWallsSettings.replaceTwoFloorElevatorsWithStairs).toBe(false);
+  });
+
   it("all sections start collapsed (no stored expand state yet)", () => {
     useMazeStore.setState({ vectorByWallsSectionsExpanded: {} });
     render(<VectorByWallsSettingsPanel />);

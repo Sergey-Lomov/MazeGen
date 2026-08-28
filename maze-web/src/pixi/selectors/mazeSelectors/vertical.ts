@@ -53,6 +53,7 @@ export function buildVerticalConnectionMarkers(
   activeFloorIndex: number,
   verticalPairs: ReadonlySet<string>,
   allEdges: EdgeDto[],
+  replaceTwoFloorElevatorsWithStairs = false,
 ): VerticalConnectionMarker[] {
   const isVertical = (e: EdgeDto): e is EdgeDto & { kind: "vertical_passage" | "elevator" } =>
     e.kind === "vertical_passage" || e.kind === "elevator";
@@ -112,11 +113,15 @@ export function buildVerticalConnectionMarkers(
     if (!pos) continue;
 
     const targets = targetsByFromKind.get(groupKey)!;
+    const targetLevels = targets.map(resolveNodeLevel);
+    const renderAsStairs = replaceTwoFloorElevatorsWithStairs && kind === "elevator" &&
+      targetLevels.every((l): l is number => l !== undefined) && new Set(targetLevels).size === 1;
+    const markerKind = renderAsStairs ? "vertical_passage" : kind;
     // A one-way VerticalPassage's departure marker draws empty (`filled: false`) with a solid
     // arrow (`arrowFilled: true`) — only the arrow, not the circle fill, distinguishes it from its
     // own arrival-only marker below. Bidirectional/Elevator draw the ordinary solid marker.
-    const isOneWay = kind === "vertical_passage" && !byPair.has(`${targets[0]}->${from}`);
-    const targetFloorIndex = kind === "vertical_passage" ? resolveNodeLevel(targets[0]) : undefined;
+    const isOneWay = markerKind === "vertical_passage" && !renderAsStairs && !byPair.has(`${targets[0]}->${from}`);
+    const targetFloorIndex = markerKind === "vertical_passage" ? resolveNodeLevel(targets[0]) : undefined;
     // Every floor this Elevator's fan reaches (GitHub issue #430) — sorted ascending, deduplicated.
     // Only resolved for `elevator`; a `vertical_passage` always has exactly one target, already
     // covered by `targetFloorIndex`.
@@ -124,7 +129,8 @@ export function buildVerticalConnectionMarkers(
       ? Array.from(new Set(targets.map(resolveNodeLevel).filter((l): l is number => l !== undefined))).sort((a, b) => a - b)
       : undefined;
     result.push({
-      pos: [pos.x, pos.y], fromNode: from, kind, direction: directionAcross(targets), targetFloorIndex, targetFloorIndices,
+      pos: [pos.x, pos.y], fromNode: from, kind: markerKind, direction: directionAcross(targets), targetFloorIndex,
+      targetFloorIndices: markerKind === "elevator" ? targetFloorIndices : undefined,
       filled: !isOneWay, arrowFilled: true,
     });
   }

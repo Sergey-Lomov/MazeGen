@@ -175,6 +175,7 @@ export function validateElevatorBadgeSettings(v: unknown, path: string, fallback
 export function validateVerticalSettingsFields(obj: Record<string, unknown> | null, path: string, d: VerticalSettingsFields): VerticalSettingsFields {
   const legacyMarker = obj?.["verticalPassageMarker"];
   return {
+    replaceTwoFloorElevatorsWithStairs: optBool(obj, "replaceTwoFloorElevatorsWithStairs", d.replaceTwoFloorElevatorsWithStairs),
     twoWayPassageMarker: validateMarkerSettings(obj?.twoWayPassageMarker ?? legacyMarker, `${path}.twoWayPassageMarker`, d.twoWayPassageMarker),
     oneWayPassageMarker: validateMarkerSettings(obj?.oneWayPassageMarker ?? legacyMarker, `${path}.oneWayPassageMarker`, d.oneWayPassageMarker),
     elevatorMarker: validateMarkerSettings(obj?.elevatorMarker, `${path}.elevatorMarker`, d.elevatorMarker),

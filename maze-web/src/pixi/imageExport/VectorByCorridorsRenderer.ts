@@ -91,6 +91,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     teleportEdges: TeleportEdge[];
     splitPassages: SplitPassage[];
     splitSpecialShapes: SplitSpecialShape[];
+    replaceTwoFloorElevatorsWithStairs: boolean;
     verticalConnectionMarkers: VerticalConnectionMarker[];
   } | null = null;
 
@@ -243,6 +244,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       this.geometryCache.start !== effStart ||
       this.geometryCache.finish !== effFinish ||
       this.geometryCache.splitNodeColors !== splitNodeColors ||
+      this.geometryCache.replaceTwoFloorElevatorsWithStairs !== settings.replaceTwoFloorElevatorsWithStairs ||
       this.geometryCache.thickness !== settings.thickness
     ) {
       const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -269,7 +271,8 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         teleportEdges: buildTeleportEdges(nodeById, edges, cfg),
         splitPassages,
         splitSpecialShapes,
-        verticalConnectionMarkers: buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, activeFloorIndex, verticalPairs, state.edges),
+        replaceTwoFloorElevatorsWithStairs: settings.replaceTwoFloorElevatorsWithStairs,
+        verticalConnectionMarkers: buildVerticalConnectionMarkers(nodeById, edges, cfg, resolveNodeLevel, activeFloorIndex, verticalPairs, state.edges, state.vectorByCorridorsSettings.replaceTwoFloorElevatorsWithStairs),
       };
     }
 

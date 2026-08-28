@@ -1761,6 +1761,7 @@
   "image_export.vector_by_walls.vertical_style": "Общий стиль",
   "image_export.vector_by_walls.vertical_style_abstract": "Абстрактный",
   "image_export.vector_by_walls.vertical_style_decorative": "Декоративный",
+  "image_export.vector_by_walls.replace_two_floor_elevators_with_stairs": "Упрощение лифтов",
   "image_export.vector_by_walls.vertical_arrow_color": "Цвет",
   "image_export.vector_by_walls.vertical_arrow_size": "Размер",
   "image_export.vector_by_walls.vertical_arrow_style": "Стиль",

@@ -114,6 +114,7 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
 const ONE_WAY_ACCENT_DARK = DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayAccentColor;
 
 export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
+  replaceTwoFloorElevatorsWithStairs: true,
   twoWayPassageMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.verticalConnections.twoWayPassageMarker),
   oneWayPassageMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.verticalConnections.oneWayPassageMarker),
   elevatorMarker: markerSettings(DEFAULT_MAZE_RENDER_STYLE.verticalConnections.elevatorMarker),

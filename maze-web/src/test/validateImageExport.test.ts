@@ -3,6 +3,11 @@ import { validateVerticalSettingsFields, validateVerticalDecorativeFields, valid
 import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS } from "../store/slices/imageExportDefaults";
 
 describe("validateVerticalSettingsFields", () => {
+  it("preserves elevator simplification and defaults it on for older projects", () => {
+    expect(validateVerticalSettingsFields({ replaceTwoFloorElevatorsWithStairs: false }, "path", DEFAULT_VERTICAL_SETTINGS).replaceTwoFloorElevatorsWithStairs).toBe(false);
+    expect(validateVerticalSettingsFields({}, "path", DEFAULT_VERTICAL_SETTINGS).replaceTwoFloorElevatorsWithStairs).toBe(true);
+  });
+
   // Arrow style/corner-style fields (GitHub issue #347 third follow-up)
   it("reads twoWayArrowStyle/twoWayArrowCornerStyle as-is when valid", () => {
     const result = validateVerticalSettingsFields({ twoWayArrowStyle: "chevron", twoWayArrowCornerStyle: "miter" }, "path", DEFAULT_VERTICAL_SETTINGS);

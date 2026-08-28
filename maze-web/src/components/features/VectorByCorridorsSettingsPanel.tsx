@@ -175,10 +175,11 @@ export function VectorByCorridorsSettingsPanel() {
     const passageEdges = rawEdges.filter((e) => e.kind === "vertical_passage");
     const forward = new Set(passageEdges.map((e) => `${e.from}->${e.to}`));
     const hasOneWayPassages = passageEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
-    const hasTwoWayPassages = passageEdges.some((e) => forward.has(`${e.to}->${e.from}`));
     const hasElevators = rawEdges.some((e) => e.kind === "elevator");
+    const hasTwoWayPassages = passageEdges.some((e) => forward.has(`${e.to}->${e.from}`)) ||
+      (settings.replaceTwoFloorElevatorsWithStairs && hasElevators);
     return { hasTwoWayPassages, hasOneWayPassages, hasElevators };
-  }, [rawEdges]);
+  }, [rawEdges, settings.replaceTwoFloorElevatorsWithStairs]);
 
   const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(nodes, edges, cfg, settings);
 
@@ -445,6 +446,11 @@ export function VectorByCorridorsSettingsPanel() {
           />
           {isExpanded("vertical") && (
             <div style={styles.block}>
+              <ToggleRow
+                label={m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]()}
+                checked={settings.replaceTwoFloorElevatorsWithStairs}
+                onChange={(replaceTwoFloorElevatorsWithStairs) => patchVerticalSettings({ replaceTwoFloorElevatorsWithStairs })}
+              />
               <div style={styles.subGroupWrap}>
                   <SubsectionHeader label={m["image_export.vector_by_walls.two_way_passage_marker"]()} expanded={isExpanded("vertical_two_way") && hasTwoWayPassages} disabled={!hasTwoWayPassages} onToggle={() => toggleSection("vertical_two_way")} />
                   {isExpanded("vertical_two_way") && hasTwoWayPassages && (

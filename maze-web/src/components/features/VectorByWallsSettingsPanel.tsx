@@ -183,10 +183,11 @@ export function VectorByWallsSettingsPanel() {
     const passageEdges = rawEdges.filter((e) => e.kind === "vertical_passage");
     const forward = new Set(passageEdges.map((e) => `${e.from}->${e.to}`));
     const hasOneWayPassages = passageEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
-    const hasTwoWayPassages = passageEdges.some((e) => forward.has(`${e.to}->${e.from}`));
     const hasElevators = rawEdges.some((e) => e.kind === "elevator");
+    const hasTwoWayPassages = passageEdges.some((e) => forward.has(`${e.to}->${e.from}`)) ||
+      (settings.replaceTwoFloorElevatorsWithStairs && hasElevators);
     return { hasTwoWayPassages, hasOneWayPassages, hasElevators };
-  }, [rawEdges]);
+  }, [rawEdges, settings.replaceTwoFloorElevatorsWithStairs]);
 
   const sectionsExpanded = useMazeStore((s) => s.vectorByWallsSectionsExpanded);
   const setSectionExpanded = useMazeStore((s) => s.setVectorByWallsSectionExpanded);
@@ -457,6 +458,11 @@ export function VectorByWallsSettingsPanel() {
                   { value: "decorative", label: m["image_export.vector_by_walls.vertical_style_decorative"]() },
                 ]}
                 onChange={(verticalStyle) => patchVerticalSettings({ verticalStyle })}
+              />
+              <ToggleRow
+                label={m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]()}
+                checked={settings.replaceTwoFloorElevatorsWithStairs}
+                onChange={(replaceTwoFloorElevatorsWithStairs) => patchVerticalSettings({ replaceTwoFloorElevatorsWithStairs })}
               />
 
               {settings.verticalStyle === "decorative" && (

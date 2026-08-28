@@ -212,6 +212,8 @@ export interface ElevatorBadgeSettings {
  *  fill/border split — there's no fill to split here). The elevator pictogram never draws an arrow
  *  of its own, decorative or not. */
 export interface VerticalSettingsFields {
+  /** Render elevators spanning exactly two floors with the stairs settings instead. */
+  replaceTwoFloorElevatorsWithStairs: boolean;
   twoWayPassageMarker: MarkerSettings;
   oneWayPassageMarker: MarkerSettings;
   elevatorMarker: MarkerSettings;
@@ -657,6 +659,7 @@ export interface ImageExportActions {
     patch: Partial<
       Pick<
         VerticalSettingsFields,
+        | "replaceTwoFloorElevatorsWithStairs"
         | "twoWayArrowColor"
         | "twoWayArrowSize"
         | "twoWayArrowStyle"
@@ -754,6 +757,7 @@ export interface ImageExportActions {
     patch: Partial<
       Pick<
         VerticalSettingsFields,
+        | "replaceTwoFloorElevatorsWithStairs"
         | "twoWayArrowColor"
         | "twoWayArrowSize"
         | "twoWayArrowStyle"

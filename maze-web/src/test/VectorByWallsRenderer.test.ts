@@ -149,6 +149,7 @@ const {
 
 function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByWallsSettings {
   return {
+    replaceTwoFloorElevatorsWithStairs: true,
     background: 0x111111,
     showGrid: true,
     gridColor: 0x222222,
