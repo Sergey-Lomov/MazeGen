@@ -1539,7 +1539,6 @@
   "post_edit.auto_confirm": "Авто-подтверждение",
   "post_edit.auto_confirm_hint": "может вызывать проблемы с производительностью",
   "post_edit.reset_to_generation": "Сбросить всё",
-  "post_edit.confirm_reset": "Изменения постобработки будут отменены. Продолжить?",
   "post_edit.confirm_regenerate": "Изменения постобработки будут сброшены при повторной генерации. Продолжить?",
   "post_edit.manage_split_nodes": "Управление split-нодами: {x}, {y}",
   "post_edit.manage_split_nodes_tool": "Split-ноды",

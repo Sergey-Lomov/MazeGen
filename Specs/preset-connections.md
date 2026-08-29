@@ -320,6 +320,8 @@ Used by `computeInvalidKeys`. Renderer and Controller skip this at render time b
 
 `presetConnections`, markers, locks, and `defaultEdgeState` reset when tessellation changes with a different kind (`confirmTessellation` with `clearMaze = true`) or when `resetPresetConnections()` is called.
 
+The "Reset all" action is confirmed with a compact alert whose title is "Reset all" and whose body is omitted. Its Cancel/OK footer has no divider, matching the post-edit reset confirmation layout.
+
 `highlightInvalidPresets` and `highlightIsolatedNodes` reset to `false` whenever `setPresetConnectionsOpen(false)` is called.
 
 ## Tools

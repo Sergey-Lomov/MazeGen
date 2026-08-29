@@ -5,16 +5,17 @@ import { ui, radius, dialogSpacing, typography, inset } from "../styles/theme";
 import * as m from "~/paraglide/messages";
 
 interface Props {
-  message: string;
+  title?: string;
+  message?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export function ConfirmModal({ message, onConfirm, onCancel }: Props) {
+export function ConfirmModal({ title = m["common.confirm"](), message, onConfirm, onCancel }: Props) {
   return (
-    <Modal title={m["common.confirm"]()} size="approve" onClose={onCancel}>
-      <div style={styles.message}>{message}</div>
-      <div style={styles.footer}>
+    <Modal title={title} size="approve" onClose={onCancel}>
+      {message && <div style={styles.message}>{message}</div>}
+      <div style={{ ...styles.footer, ...(message ? styles.footerWithMessage : {}) }}>
         <Button variant="secondary" layoutStyle={styles.btnCancel} onClick={onCancel}>{m["common.cancel"]()}</Button>
         <Button variant="primary" layoutStyle={styles.btnOk} onClick={onConfirm}>{m["common.ok"]()}</Button>
       </div>
@@ -31,6 +32,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     justifyContent: "flex-end",
     gap: dialogSpacing.gap,
+  },
+  footerWithMessage: {
     paddingTop: dialogSpacing.paddingY,
     borderTop: `1px solid ${ui.border.default}`,
   },

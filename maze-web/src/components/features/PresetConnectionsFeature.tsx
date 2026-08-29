@@ -374,7 +374,7 @@ export function PresetConnectionsFeature() {
       </Stack>
       {confirmReset && (
         <ConfirmModal
-          message={m["common.reset_all"]() + "?"}
+          title={m["common.reset_all"]()}
           onConfirm={() => { resetPresetConnections(); setConfirmReset(false); }}
           onCancel={() => setConfirmReset(false)}
         />
