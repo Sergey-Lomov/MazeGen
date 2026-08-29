@@ -4,6 +4,45 @@ import { presetEndpointScreenPos } from "./selectors/presetSelectors";
 import type { PresetEndpoint } from "./presetEndpoint";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { TeleportEdge, VerticalConnectionMarker } from "./renderers/types";
+import { resolveCrossFloorBadgeCells, type CrossFloorBadgePair } from "./selectors/mazeSelectors/teleport";
+
+/** Per-floor cells that draw a *center* marker in the preset editor (GitHub issue #480) — the preset
+ *  analogue of `buildTeleportBadgeBlockedCells`, so a cross-floor teleport badge is relocated off any
+ *  start/finish, split-junction, vertical-passage/elevator or teleport-endpoint cell the same way it
+ *  is in the generation/post-edit views. All inputs are the full maze-wide preset lists (not the
+ *  active-floor-filtered ones), keyed by `PresetEndpoint.level ?? 0`. One-way passage markers are
+ *  excluded (cell edges, not centers). */
+export function buildPresetTeleportBadgeBlockedCells(
+  presetStart: PresetEndpoint | null,
+  presetFinish: PresetEndpoint | null,
+  presetSplitPointsByLevel: Map<number, [number, number][]>,
+  verticalPassages: PresetVerticalPassageEntry[],
+  elevators: PresetElevatorEntry[],
+  teleports: PresetTeleportEntry[],
+): Map<number, [number, number][]> {
+  const perFloor = new Map<number, Set<string>>();
+  const add = (level: number, x: number, y: number) => {
+    let set = perFloor.get(level);
+    if (!set) { set = new Set(); perFloor.set(level, set); }
+    set.add(`${x},${y}`);
+  };
+  const addEndpoint = (ep: PresetEndpoint) => add(ep.level ?? 0, ep.point[0], ep.point[1]);
+
+  if (presetStart) addEndpoint(presetStart);
+  if (presetFinish) addEndpoint(presetFinish);
+  for (const [level, cells] of presetSplitPointsByLevel) {
+    for (const [x, y] of cells) add(level, x, y);
+  }
+  for (const p of verticalPassages) { addEndpoint(p.from); addEndpoint(p.to); }
+  for (const e of elevators) for (const f of e.floors) addEndpoint(f);
+  for (const t of teleports) { addEndpoint(t.from); addEndpoint(t.to); }
+
+  const out = new Map<number, [number, number][]>();
+  for (const [level, set] of perFloor) {
+    out.set(level, [...set].map((k) => k.split(",").map(Number) as [number, number]));
+  }
+  return out;
+}
 
 /** The one node-anchor map every preset marker/edge selector resolves endpoints against — built
  *  by `buildPresetNodePositions` in the renderer, threaded through each `build*` call here. An
@@ -17,12 +56,25 @@ type PresetNodePositions = Map<string, { x: number; y: number }>;
  *  snapped midpoint between the on-floor cell and the real (off-image) off-floor cell, and `toFloor`
  *  is set so `TeleportRenderer` draws a floor-number badge there instead of an ordinary marker — the
  *  on-floor endpoint itself still draws as a real marker, connected to that badge by an ordinary
- *  connector, exactly like the generation view. */
+ *  connector, exactly like the generation view.
+ *
+ *  Cross-floor badge collision relocation (GitHub issue #480) matches the generation view too: pass
+ *  `allTeleports` (the *unfiltered* maze-wide list) and `blockedCellsByFloor`
+ *  (`buildPresetTeleportBadgeBlockedCells`) and every cross-floor badge is moved off any marker cell
+ *  or another badge, floor-independently, via the shared `resolveCrossFloorBadgeCells`. Omit both for
+ *  the pre-#480 behavior (badge left exactly on its snapped midpoint). `fieldCells` + `allowOutOfField`
+ *  are forwarded straight through — the preset editor always passes `allowOutOfField: true`. */
 export function buildPresetTeleportEdges(
   teleports: PresetTeleportEntry[],
   cfg: TessellationConfig,
   activeLevel: number | undefined,
   nodePositions: PresetNodePositions = new Map(),
+  spread?: {
+    allTeleports: PresetTeleportEntry[];
+    blockedCellsByFloor?: Map<number, [number, number][]>;
+    allowOutOfField?: boolean;
+    fieldCells?: [number, number][];
+  },
 ): TeleportEdge[] {
   const active = activeLevel ?? 0;
   const endpointPos = (ep: PresetEndpoint) => {
@@ -30,7 +82,7 @@ export function buildPresetTeleportEdges(
     return { x, y };
   };
 
-  return teleports.map((t) => {
+  const edges: TeleportEdge[] = teleports.map((t): TeleportEdge => {
     // `t.from`/`t.to` are the two click points in placement order — the actual passage direction
     // for "backward" runs the other way (mirrors PresetConnectionState::TeleportBackward on the
     // Rust side, which builds the edge to→from): `fromIsDeparture` says whether `t.from` (not
@@ -73,6 +125,35 @@ export function buildPresetTeleportEdges(
       ? { from: onFinal, to: badgeFinal, oneWay, toFloor: offFloorEndpoint.level ?? 0 }
       : { from: badgeFinal, to: onFinal, oneWay, fromFloor: offFloorEndpoint.level ?? 0 };
   });
+
+  if (spread) {
+    // Floor-independent cross-floor badge relocation, shared with the generation view (GitHub issue
+    // #480). Pairs are keyed by preset teleport id; `endA`/`endB` are the two real endpoint cells.
+    const pairs: CrossFloorBadgePair[] = [];
+    for (const t of spread.allTeleports) {
+      const fromLevel = t.from.level ?? 0;
+      const toLevel = t.to.level ?? 0;
+      if (fromLevel === toLevel) continue;
+      pairs.push({
+        key: String(t.id),
+        floors: [fromLevel, toLevel],
+        endA: [t.from.point[0], t.from.point[1]],
+        endB: [t.to.point[0], t.to.point[1]],
+      });
+    }
+    const posByPair = resolveCrossFloorBadgeCells(
+      pairs, cfg, spread.blockedCellsByFloor, spread.allowOutOfField ?? true, spread.fieldCells,
+    );
+    edges.forEach((edge, i) => {
+      if (edge.fromFloor === undefined && edge.toFloor === undefined) return;
+      const pos = posByPair.get(String(teleports[i].id));
+      if (!pos) return;
+      if (edge.fromFloor !== undefined) edge.from = [pos[0], pos[1]];
+      else edge.to = [pos[0], pos[1]];
+    });
+  }
+
+  return edges;
 }
 
 /** Preset `VerticalPassage`/`Elevator` links (GitHub issue #357), on the active floor, converted to

@@ -15,7 +15,7 @@ import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer
 import { TeleportRenderer, clipDistance } from "./renderers/TeleportRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
-import { buildPresetTeleportEdges, buildPresetVerticalMarkers } from "./presetConnectionsGeometry";
+import { buildPresetTeleportEdges, buildPresetVerticalMarkers, buildPresetTeleportBadgeBlockedCells } from "./presetConnectionsGeometry";
 import {
   buildPresetWallGroups,
   buildPresetMarkers,
@@ -340,8 +340,37 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     const markerData = buildPresetMarkers(presetStart, presetFinish, cfg, presetSplitPoints, presetConnections, nodePositions);
     this.markers.render({ markers: markerData });
 
+    // Cross-floor teleport badge collision relocation (GitHub issue #480) — the same shared core the
+    // generation/post-edit views use, fed the *maze-wide* (not active-floor-filtered) preset lists so
+    // the relocation is floor-independent and a pair's two badges stay together across a floor switch.
+    // Skipped entirely when no teleport actually spans two floors.
+    const hasCrossFloorTeleport = state.presetTeleports.some((t) => (t.from.level ?? 0) !== (t.to.level ?? 0));
+    let teleportSpread: Parameters<typeof buildPresetTeleportEdges>[4] | undefined;
+    if (hasCrossFloorTeleport) {
+      const splitPointsByLevel = new Map<number, [number, number][]>();
+      for (const key of Object.keys(state.presetSplitPoints)) {
+        const at = key.indexOf("@");
+        const lvl = at === -1 ? 0 : Number(key.slice(at + 1));
+        const [x, y] = (at === -1 ? key : key.slice(0, at)).split(",").map(Number);
+        const list = splitPointsByLevel.get(lvl) ?? [];
+        list.push([x, y]);
+        splitPointsByLevel.set(lvl, list);
+      }
+      teleportSpread = {
+        allTeleports: state.presetTeleports,
+        blockedCellsByFloor: buildPresetTeleportBadgeBlockedCells(
+          state.presetStart ?? null,
+          state.presetFinish ?? null,
+          splitPointsByLevel,
+          state.presetVerticalPassages,
+          state.presetElevators,
+          state.presetTeleports,
+        ),
+        allowOutOfField: true,
+      };
+    }
     this.teleports.render({
-      edges: buildPresetTeleportEdges(presetTeleports, cfg, level, nodePositions),
+      edges: buildPresetTeleportEdges(presetTeleports, cfg, level, nodePositions, teleportSpread),
       cfg,
       floorNavigable: state.presetConnectionsTool !== "clear",
     });
@@ -566,4 +595,4 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   }
 }
 
-export { buildPresetTeleportEdges, buildPresetVerticalMarkers } from "./presetConnectionsGeometry";
+export { buildPresetTeleportEdges, buildPresetVerticalMarkers, buildPresetTeleportBadgeBlockedCells } from "./presetConnectionsGeometry";

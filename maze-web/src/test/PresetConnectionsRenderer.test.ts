@@ -20,7 +20,7 @@ vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
 }));
 
-const { buildPresetTeleportEdges, buildPresetVerticalMarkers } = await import("../pixi/PresetConnectionsRenderer");
+const { buildPresetTeleportEdges, buildPresetVerticalMarkers, buildPresetTeleportBadgeBlockedCells } = await import("../pixi/PresetConnectionsRenderer");
 
 const cfg: TessellationConfig = { type: "square", width: 4, height: 4 };
 const proj = makeProjection(cfg);
@@ -82,6 +82,38 @@ describe("buildPresetTeleportEdges", () => {
     expect(result[0].fromFloor).toBe(0);
     expect(result[0].toFloor).toBeUndefined();
     expect(result[0].from).not.toEqual(result[0].to);
+  });
+
+  it("cross-floor badge is relocated off a start marker and lands in the same cell whichever floor is rendered (GitHub issue #480)", () => {
+    // Teleport 0@(0,0)L0 <-> 0@(0,2)L1: badge midpoint snaps to (0,1). A start marker sits on (0,1)
+    // on floor 0 -> the badge must move, and to the same cell seen from floor 0 and from floor 1.
+    const teleports: PresetTeleportEntry[] = [
+      { id: 7, from: presetEndpoint([0, 0]), to: presetEndpoint([0, 2], undefined, 1), direction: "two_way" },
+    ];
+    const blocked = new Map<number, [number, number][]>([[0, [[0, 1]]]]);
+    const spread = { allTeleports: teleports, blockedCellsByFloor: blocked, allowOutOfField: true };
+    const f0 = buildPresetTeleportEdges(teleports, cfg, 0, new Map(), spread);
+    const f1 = buildPresetTeleportEdges(teleports, cfg, 1, new Map(), spread);
+    const badge0 = f0[0].toFloor !== undefined ? f0[0].to : f0[0].from;
+    const badge1 = f1[0].fromFloor !== undefined ? f1[0].from : f1[0].to;
+    expect(badge0).not.toEqual(posOf(0, 1)); // moved off the start cell
+    expect(badge0).toEqual(badge1);          // same cell whichever floor
+  });
+
+  it("a same-floor teleport mixed into the spread's allTeleports list is ignored (no pair, no shift)", () => {
+    const teleports: PresetTeleportEntry[] = [
+      { id: 3, from: presetEndpoint([0, 0]), to: presetEndpoint([2, 2]), direction: "two_way" }, // same-floor
+      { id: 7, from: presetEndpoint([0, 0]), to: presetEndpoint([0, 2], undefined, 1), direction: "two_way" }, // cross-floor
+    ];
+    const spread = { allTeleports: teleports, blockedCellsByFloor: new Map<number, [number, number][]>(), allowOutOfField: true };
+    const result = buildPresetTeleportEdges(teleports, cfg, 0, new Map(), spread);
+    // Same-floor entry untouched (both endpoints at their real cells, no badge).
+    expect(result[0].from).toEqual(posOf(0, 0));
+    expect(result[0].to).toEqual(posOf(2, 2));
+    expect(result[0].toFloor).toBeUndefined();
+    // Cross-floor entry still got its badge (snapped midpoint of (0,0)/(0,2) = (0,1)).
+    expect(result[1].toFloor).toBe(1);
+    expect(result[1].to).toEqual(posOf(0, 1));
   });
 
   it("split-node endpoint draws at its supplied node-anchor position, not the tile center (GitHub issue #474)", () => {
@@ -169,5 +201,39 @@ describe("buildPresetVerticalMarkers", () => {
     ];
     const elevatorResult = buildPresetVerticalMarkers([], elevators, cfg, undefined, nodePositions);
     expect(elevatorResult[0].pos).toEqual([anchor.x, anchor.y]);
+  });
+});
+
+describe("buildPresetTeleportBadgeBlockedCells (GitHub issue #480)", () => {
+  const cells = (m: Map<number, [number, number][]>, level: number) =>
+    (m.get(level) ?? []).map(([x, y]) => `${x},${y}`).sort();
+
+  it("collects start/finish, split points, vertical passages, elevators and teleport endpoints, keyed per floor", () => {
+    const start = presetEndpoint([0, 0]); // level 0
+    const finish = presetEndpoint([9, 9], undefined, 1); // level 1
+    const splitByLevel = new Map<number, [number, number][]>([
+      [0, [[1, 1]]],
+      [2, [[3, 3]]],
+    ]);
+    const verticalPassages: PresetVerticalPassageEntry[] = [
+      { id: 1, from: presetEndpoint([4, 4]), to: presetEndpoint([4, 4], undefined, 1), direction: "two_way" },
+    ];
+    const elevators: PresetElevatorEntry[] = [
+      { id: 1, floors: [presetEndpoint([5, 5]), presetEndpoint([5, 5], undefined, 1), presetEndpoint([5, 5], undefined, 2)] },
+    ];
+    const teleports: PresetTeleportEntry[] = [
+      { id: 1, from: presetEndpoint([6, 6]), to: presetEndpoint([7, 7], undefined, 1), direction: "two_way" },
+    ];
+
+    const m = buildPresetTeleportBadgeBlockedCells(start, finish, splitByLevel, verticalPassages, elevators, teleports);
+
+    expect(cells(m, 0)).toEqual(["0,0", "1,1", "4,4", "5,5", "6,6"].sort());
+    expect(cells(m, 1)).toEqual(["4,4", "5,5", "7,7", "9,9"].sort());
+    expect(cells(m, 2)).toEqual(["3,3", "5,5"].sort());
+  });
+
+  it("null start/finish contribute nothing", () => {
+    const m = buildPresetTeleportBadgeBlockedCells(null, null, new Map(), [], [], []);
+    expect(m.size).toBe(0);
   });
 });

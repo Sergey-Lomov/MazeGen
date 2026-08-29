@@ -12,7 +12,7 @@ import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, type TeleportFloorContext } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportBadgeBlockedCells, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, type TeleportFloorContext } from "./selectors/mazeSelectors";
 import { postEditTeleportsToDto, postEditVerticalToDto, pruneRemovedSplitNodes } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
@@ -387,13 +387,25 @@ export class PostEditRenderer extends BaseFieldRenderer {
       ...postEditTeleportsToDto(state.postEditDraftTeleports, unscopedResolveSplit),
     ];
     const activeFloorIndex = state.floors.findIndex((f) => f.id === state.activeFloorId);
+    const resolveNodeLevel = selectNodeLevelResolver(state.nodes);
     const teleportFloorContext: TeleportFloorContext = {
-      resolveNodeLevel: selectNodeLevelResolver(state.nodes),
+      resolveNodeLevel,
       unscopedNodeById: new Map<number, NodeDto>(state.nodes.map((n) => [n.id, n])),
       unscopedEdges: unscopedActiveEdges,
       activeFloorIndex: Math.max(activeFloorIndex, 0),
     };
-    const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg, teleportFloorContext);
+    const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg, teleportFloorContext, {
+      blockedCellsByFloor: buildTeleportBadgeBlockedCells(
+        state.nodes,
+        [...state.edges, ...unscopedActiveEdges],
+        resolveNodeLevel,
+        // Post-edit's *draft* start/finish (resolved to node ids above), not `state.start`/`.finish`,
+        // which stay pointing at the pre-edit endpoints until the draft is confirmed.
+        start,
+        finish,
+      ),
+      allowOutOfField: true,
+    });
     this.teleports.render({ edges: teleportEdges, cfg, floorNavigable: state.postEditTool !== "reset" });
 
     // Vertical passages/elevators — generation-time ones are read from the confirmed
@@ -427,7 +439,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       return fromNode !== undefined;
     })];
     const verticalConnectionMarkers = buildVerticalConnectionMarkers(
-      nodeById, floorScopedVerticalEdges, cfg, selectNodeLevelResolver(state.nodes), Math.max(activeFloorIndex, 0),
+      nodeById, floorScopedVerticalEdges, cfg, resolveNodeLevel, Math.max(activeFloorIndex, 0),
       selectVerticalPassagePairSet(allVerticalEdges), allVerticalEdges,
     );
     // Click-to-switch-floor (GitHub issue #341 follow-up): withheld while the reset tool is

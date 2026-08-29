@@ -10,7 +10,7 @@ import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/
 import { DebugRefHighlightOverlay } from "./DebugRefHighlightOverlay";
 import { DebugValueHighlightOverlay } from "./DebugValueHighlightOverlay";
 import { KruskalDsuHighlightOverlay } from "./KruskalDsuHighlightOverlay";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildClosedCells, buildSplitPassages, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet } from "./selectors/mazeSelectors";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
@@ -246,6 +246,7 @@ export class GenerationRenderer {
 
       const { passages: splitPassages, wallFaces: splitWallFaces, specialShapes: splitSpecialShapes } =
         buildSplitPassages(view.nodes, view.edges, cfg, specialNodeIds);
+      const resolveNodeLevel = selectNodeLevelResolver(unscopedNodes);
       this.geometryCache = {
         nodes: view.nodes,
         edges: view.edges,
@@ -255,16 +256,21 @@ export class GenerationRenderer {
         closedCells: buildClosedCells(view.nodes, view.edges, unscopedEdges),
         wallEdges: buildMazeWalls(view.nodes, view.edges, cfg),
         teleportEdges: buildTeleportEdges(nodeById, view.edges, cfg, {
-          resolveNodeLevel: selectNodeLevelResolver(unscopedNodes),
+          resolveNodeLevel,
           unscopedNodeById,
           unscopedEdges,
           activeFloorIndex: Math.max(activeFloorIndex, 0),
+        }, {
+          blockedCellsByFloor: buildTeleportBadgeBlockedCells(
+            unscopedNodes, unscopedEdges, resolveNodeLevel, view.start, view.finish,
+          ),
+          allowOutOfField: true,
         }),
         splitPassages,
         splitWallFaces,
         splitSpecialShapes,
         verticalConnectionMarkers: buildVerticalConnectionMarkers(
-          nodeById, view.edges, cfg, selectNodeLevelResolver(unscopedNodes), activeFloorIndex,
+          nodeById, view.edges, cfg, resolveNodeLevel, activeFloorIndex,
           selectVerticalPassagePairSet(unscopedEdges), unscopedEdges,
         ),
       };
