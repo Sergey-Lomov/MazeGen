@@ -70,11 +70,18 @@ export function buildPathRenderEdges(
   nodePos: Map<number, Pos>,
   reverseCheckEdges: { path: number[] }[] = navEdges,
 ): RenderEdge[] {
-  const edgeKeys = new Set<string>();
+  // `hasReverse` keys on the endpoint pair first; when a same-endpoint reverse candidate exists it's
+  // then confirmed by the exact node path (reversed). This distinguishes a genuine two-way corridor
+  // (its reverse hop retraces the same interior nodes) from a one-way teleport hop that merely shares
+  // endpoints with a two-way corridor between the same pair — the teleport's `[to, from]` reversal
+  // has no matching nav-edge, so it still gets its one-way arrow.
+  const endpointKeys = new Set<string>();
+  const pathKeys = new Set<string>();
   for (const e of reverseCheckEdges) {
     const fromNode = e.path[0];
     const toNode = e.path[e.path.length - 1];
-    edgeKeys.add(`${fromNode}->${toNode}`);
+    endpointKeys.add(`${fromNode}->${toNode}`);
+    pathKeys.add(e.path.join(","));
   }
 
   const renderEdges: RenderEdge[] = [];
@@ -83,7 +90,9 @@ export function buildPathRenderEdges(
     if (path.length < 2) continue;
     const fromNode = e.path[0];
     const toNode = e.path[e.path.length - 1];
-    const hasReverse = edgeKeys.has(`${toNode}->${fromNode}`);
+    const hasReverse =
+      endpointKeys.has(`${toNode}->${fromNode}`) &&
+      pathKeys.has([...e.path].reverse().join(","));
     renderEdges.push({ path, hasReverse });
   }
   return renderEdges;
@@ -212,10 +221,11 @@ export function drawCrossFloorMarkers(
   badgeBorderColor: number = CROSS_FLOOR_BADGE_BORDER,
   lineWidth = 2,
   lineAlpha = 1,
+  nodeGapless = false,
 ): void {
   const stubs = new Graphics();
   for (const marker of markers) {
-    drawCrossFloorStub(stubs, marker.nodePos, marker.badgePos, marker.direction, lineColor, NODE_RADIUS, r, lineWidth, lineAlpha);
+    drawCrossFloorStub(stubs, marker.nodePos, marker.badgePos, marker.direction, lineColor, NODE_RADIUS, r, lineWidth, lineAlpha, nodeGapless);
     drawCrossFloorBadge(
       nodesContainer, marker.badgePos, marker.targetFloorIndex, r,
       badgeColor, badgeBorderColor, canvas.floor.default,
@@ -311,8 +321,8 @@ export abstract class BaseGraphRenderer {
    *  itself into `nodesContainer` (since it stands in for an off-floor node at the on-floor
    *  endpoint). `lineColor` defaults to the ordinary edge color; pass the caller's own edge color
    *  (e.g. `PureCyclesOverlay`'s green) to match that overlay's own edge style. */
-  protected renderCrossFloorMarkers(markers: CrossFloorMarker[], radius: number, lineColor?: number, badgeColor?: number, badgeBorderColor?: number): void {
-    drawCrossFloorMarkers(this.edgesContainer, this.nodesContainer, markers, radius, lineColor, badgeColor, badgeBorderColor);
+  protected renderCrossFloorMarkers(markers: CrossFloorMarker[], radius: number, lineColor?: number, badgeColor?: number, badgeBorderColor?: number, nodeGapless = false, lineWidth?: number): void {
+    drawCrossFloorMarkers(this.edgesContainer, this.nodesContainer, markers, radius, lineColor, badgeColor, badgeBorderColor, lineWidth, undefined, nodeGapless);
   }
 
   protected redrawNode(g: Graphics, r: number, color: number): void {

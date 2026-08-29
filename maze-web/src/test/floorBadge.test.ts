@@ -71,6 +71,13 @@ describe("drawCrossFloorStub", () => {
     expect(lineToCall.args).toEqual([89, 0]); // 100 - (badgeRadius(10) + 1)
   });
 
+  it("runs to the node's own center when nodeGapless is set (no nodeRadius trim)", () => {
+    const g = newG();
+    drawCrossFloorStub(g, { x: 0, y: 0 }, { x: 100, y: 0 }, "none", 0xffffff, 5, 10, 2, 1, true);
+    const [moveToCall] = g.calls.filter((c) => c.fn === "moveTo");
+    expect(moveToCall.args).toEqual([0, 0]);
+  });
+
   it("does nothing when node and badge positions coincide (zero-length stub)", () => {
     const g = newG();
     drawCrossFloorStub(g, { x: 5, y: 5 }, { x: 5, y: 5 }, "none", 0xffffff, 5, 10);
@@ -87,7 +94,7 @@ describe("drawCrossFloorStub", () => {
     const g = newG();
     drawCrossFloorStub(g, { x: 0, y: 0 }, { x: 100, y: 0 }, "none", 0xffffff, 5, 10, 3, 0.9);
     const [strokeCall] = g.calls.filter((c) => c.fn === "stroke");
-    expect(strokeCall.args).toEqual([{ width: 3, color: 0xffffff, alpha: 0.9, cap: "round" }]);
+    expect(strokeCall.args).toEqual([{ width: 3, color: 0xffffff, alpha: 0.9, cap: "butt" }]);
   });
 
   it("draws an arrow pointing toward the badge for direction \"toBadge\"", () => {
@@ -96,8 +103,8 @@ describe("drawCrossFloorStub", () => {
     const [polyCall] = g.calls.filter((c) => c.fn === "poly");
     const [points] = polyCall.args as [number[]];
     const [tipX] = points;
-    // Arrow tip sits ahead of the midpoint along +x (toward the badge).
-    const midX = (6 + 89) / 2;
+    // Arrow tip sits ahead of the node-center → badge-center midpoint along +x (toward the badge).
+    const midX = (0 + 100) / 2;
     expect(tipX).toBeGreaterThan(midX);
   });
 
@@ -107,7 +114,7 @@ describe("drawCrossFloorStub", () => {
     const [polyCall] = g.calls.filter((c) => c.fn === "poly");
     const [points] = polyCall.args as [number[]];
     const [tipX] = points;
-    const midX = (6 + 89) / 2;
+    const midX = (0 + 100) / 2;
     expect(tipX).toBeLessThan(midX);
   });
 });

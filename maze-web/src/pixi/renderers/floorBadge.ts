@@ -160,6 +160,9 @@ export function drawCrossFloorStub(
   badgeRadius: number,
   lineWidth = 2,
   lineAlpha = 1,
+  /** `true` runs the stub all the way to the node's own center (no `nodeRadius` trim), matching an
+   *  overlay whose vertex-to-vertex edges are drawn gapless too (`IssueHighlightOverlay`). */
+  nodeGapless = false,
 ): void {
   const dx = badgePos.x - nodePos.x;
   const dy = badgePos.y - nodePos.y;
@@ -168,21 +171,24 @@ export function drawCrossFloorStub(
 
   const ux = dx / len;
   const uy = dy / len;
-  const nodeMargin = nodeRadius + 1;
+  const nodeMargin = nodeGapless ? 0 : nodeRadius + 1;
   const badgeMargin = badgeRadius + 1;
   const startPt: Pos = { x: nodePos.x + ux * nodeMargin, y: nodePos.y + uy * nodeMargin };
   const endPt: Pos = { x: badgePos.x - ux * badgeMargin, y: badgePos.y - uy * badgeMargin };
 
   g.moveTo(startPt.x, startPt.y).lineTo(endPt.x, endPt.y).stroke({
-    width: lineWidth, color: lineColor, alpha: lineAlpha, cap: "round",
+    width: lineWidth, color: lineColor, alpha: lineAlpha, cap: "butt",
   });
 
   if (direction !== "none") {
     const segLen = Math.hypot(endPt.x - startPt.x, endPt.y - startPt.y);
     if (segLen >= 1) {
       const sign = direction === "toBadge" ? 1 : -1;
-      const midX = (startPt.x + endPt.x) / 2;
-      const midY = (startPt.y + endPt.y) / 2;
+      // Midpoint of the full node-center → badge-center span, not of the trimmed stroke — the trim
+      // is asymmetric (node end may be gapless, badge end never is), which would otherwise pull
+      // the arrow visibly off the connection's true center.
+      const midX = (nodePos.x + badgePos.x) / 2;
+      const midY = (nodePos.y + badgePos.y) / 2;
       drawDirectionArrow(g, midX, midY, ux * sign, uy * sign, TILE_SIZE * 0.18, lineColor, lineAlpha);
     }
   }

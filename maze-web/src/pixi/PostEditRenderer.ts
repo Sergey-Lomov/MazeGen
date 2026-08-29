@@ -279,6 +279,13 @@ export class PostEditRenderer extends BaseFieldRenderer {
       return n ? [n.x, n.y] : undefined;
     };
     const activeFloorIndex = Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
+    // Same one-way detection the Analytics overlay uses — built from the *unscoped* confirmed
+    // `state.edges` (a two-way connection's reverse edge lives on the other floor, GitHub issue
+    // #337/#347). Uncommitted post-edit draft changes to a cross-floor connection aren't reflected
+    // here; the hovered-issue highlight is a read-only locator, not a live edit preview.
+    const crossFloorEdgeKeys = new Set(
+      state.edges.filter((e) => e.kind !== "basic").map((e) => `${e.from}->${e.to}`),
+    );
     this.issueHighlight.render({
       nodes,
       edges: state.hoveredIssueLoopEdges,
@@ -288,6 +295,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       resolveNodeLevel,
       resolveNodeCell,
       activeFloorIndex,
+      crossFloorEdgeKeys,
     });
   }
 

@@ -116,6 +116,29 @@ describe("buildPathRenderEdges", () => {
     const result = buildPathRenderEdges([{ path: [1, 2, 3] }], nodePos);
     expect(result[0].hasReverse).toBe(false);
   });
+
+  it("keeps hasReverse=false for a direct one-way hop parallel to a two-way corridor between the same endpoints", () => {
+    // A one-way teleport hop `[3, 1]` shares its endpoints with a genuine two-way corridor
+    // (`[1, 2, 3]` + `[3, 2, 1]`). Endpoint-pair matching alone would see `1->3` present and
+    // suppress the hop's one-way arrow; matching the reversed *full path* keeps them distinct —
+    // the hop's reversal `[1, 3]` is not among the nav-edges, so it stays one-way.
+    const graph = [{ path: [1, 2, 3] }, { path: [3, 2, 1] }, { path: [3, 1] }];
+    const result = buildPathRenderEdges(graph, nodePos);
+    const hop = result.find(e => e.path.length === 2)!;
+    expect(hop.hasReverse).toBe(false);
+    const corridors = result.filter(e => e.path.length === 3);
+    expect(corridors.every(e => e.hasReverse)).toBe(true);
+  });
+
+  it("still marks a two-way corridor pair as reversed when an unrelated same-endpoint edge of a third shape is present", () => {
+    // `[1, 2, 3]` / `[3, 2, 1]` are a true reverse pair; a stray `[1, 3]` between the same
+    // endpoints must not prevent the corridor pair from being recognised as bidirectional.
+    const graph = [{ path: [1, 2, 3] }, { path: [3, 2, 1] }, { path: [1, 3] }];
+    const result = buildPathRenderEdges(graph, nodePos);
+    const corridors = result.filter(e => e.path.length === 3);
+    expect(corridors).toHaveLength(2);
+    expect(corridors.every(e => e.hasReverse)).toBe(true);
+  });
 });
 
 describe("buildCrossFloorMarkers", () => {
