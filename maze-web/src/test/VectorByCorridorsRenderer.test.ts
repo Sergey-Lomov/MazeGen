@@ -11,7 +11,7 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByCorridorsSettings } from "../store/storeTypes";
-import { DEFAULT_VERTICAL_SETTINGS } from "../store/slices/imageExportDefaults";
+import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportDefaults";
 import { chainSegmentsAtSharedVertices } from "../pixi/renderers/WallRenderer";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path
@@ -144,8 +144,8 @@ const splitDefaults: Pick<VectorByCorridorsSettings, "splitNodeColors" | "splitS
   splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
 };
 const sharedStyle: VectorByCorridorsSettings["sharedStyle"] = { cornerStyle: "round", markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3, overrides: {} };
-const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, sharedStyle };
-const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, sharedStyle };
+const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, sharedStyle };
+const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, sharedStyle };
 
 // Stable references reused across `baseState()` calls — the renderer's own geometry cache keys off
 // reference-equality of `nodes`/`edges`/`activeTessellationConfig` (same convention as

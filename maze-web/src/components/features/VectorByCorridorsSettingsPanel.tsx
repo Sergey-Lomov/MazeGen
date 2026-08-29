@@ -10,6 +10,7 @@ import { ToggleRow } from "../ToggleRow";
 import { SectionHeader, SubsectionHeader } from "../SectionHeader";
 import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
+import { MarkerIndexSection } from "./MarkerIndexSection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, sharedStyleFieldReset } from "./SharedStyleSection";
 import { computeVectorByCorridorsWarnings } from "../../pixi/selectors/exportWarnings";
@@ -72,6 +73,7 @@ export function VectorByCorridorsSettingsPanel() {
   const patchOneWaySettings = useMazeStore((s) => s.patchVectorByCorridorsOneWaySettings);
   const patchVerticalSettings = useMazeStore((s) => s.patchVectorByCorridorsVerticalSettings);
   const patchElevatorBadges = useMazeStore((s) => s.patchVectorByCorridorsElevatorBadges);
+  const patchMarkerIndex = useMazeStore((s) => s.patchVectorByCorridorsMarkerIndexSettings);
   const setElevatorBadgesCornerStyle = useMazeStore((s) => s.setVectorByCorridorsElevatorBadgesCornerStyle);
   const setTwoWayPassageMarkerShape = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerShape);
   const setTwoWayPassageMarkerCornerStyle = useMazeStore((s) => s.setVectorByCorridorsTwoWayPassageMarkerCornerStyle);
@@ -731,6 +733,21 @@ export function VectorByCorridorsSettingsPanel() {
             </div>
           )}
         </>
+      )}
+
+      <div style={styles.divider} />
+
+      <SectionHeader
+        label={m["image_export.vector_by_walls.section_marker_index"]()}
+        expanded={isExpanded("marker_index")}
+        onToggle={() => toggleSection("marker_index")}
+      />
+      {isExpanded("marker_index") && (
+        <MarkerIndexSection
+          settings={settings.markerIndex}
+          onChange={patchMarkerIndex}
+          gapResetButton={sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "markerIndex", () => resetSharedStyleField("gapWidth", "markerIndex"))}
+        />
       )}
 
       <ExportWarningsSection

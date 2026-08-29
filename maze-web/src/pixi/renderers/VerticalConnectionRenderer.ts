@@ -1,5 +1,4 @@
 import { Container, Graphics, Text } from "pixi.js";
-import type { TextStyleFontWeight } from "pixi.js";
 import type { VerticalConnectionMarker, MarkerShape, TeleportCornerStyle, OneWayPattern, VerticalArrowStyle, ElevatorBadgeFontWeight } from "./types";
 import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
 import { drawMarkerShape } from "./markerShapes";
@@ -7,6 +6,7 @@ import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron } from "./wallUt
 import { TILE_SIZE } from "../constants";
 import { navigateToFloor } from "./floorNavigation";
 import { computeElevatorBadgePositions, formatElevatorBadgeLabel } from "./elevatorBadgeLayout";
+import { LABEL_FONT_WEIGHTS } from "./indexLabel";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 
 /** Same field shape as `MarkerSettings` (`storeTypes.ts`) plus `gapColor`, by design — kept as its
@@ -347,10 +347,7 @@ function drawElevatorBadgeGap(container: Container, pos: { x: number; y: number 
  *  stencil cutout. No gap ring here — see `drawElevatorBadgeGap`. Click-to-switch-floor wiring is a
  *  separate hit-area pass in `drawElevatorBadges` (GitHub issue #478 follow-up), gated the same way
  *  the marker's own `interactive` flag is. */
-const ELEVATOR_BADGE_FONT_WEIGHTS: Record<ElevatorBadgeFontWeight, TextStyleFontWeight> = {
-  regular: "normal",
-  bold: "bold",
-};
+const ELEVATOR_BADGE_FONT_WEIGHTS = LABEL_FONT_WEIGHTS;
 
 function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, label: string, fillColor: number, textColor: number, fontSize: number, fontWeight: ElevatorBadgeFontWeight): void {
   const g = new Graphics();

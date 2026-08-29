@@ -69,6 +69,27 @@ describe("applyVectorByWallsSharedStyle", () => {
     expect(next.teleportEdgeGapWidth).toBe(6);
     expect(next.teleportConnectorGapWidth).toBe(6);
   });
+
+  it("propagates gapWidth to markerIndex.gap, and skips it when overridden", () => {
+    const followed = applyVectorByWallsSharedStyle(
+      wallsSettings({ sharedStyle: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle, gapWidth: 6 } }),
+      ["gapWidth"],
+    );
+    expect(followed.markerIndex.gap).toBe(6);
+
+    const overridden = applyVectorByWallsSharedStyle(
+      wallsSettings({
+        markerIndex: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.markerIndex, gap: 2 },
+        sharedStyle: {
+          ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.sharedStyle,
+          gapWidth: 6,
+          overrides: { gapWidth: { markerIndex: true } },
+        },
+      }),
+      ["gapWidth"],
+    );
+    expect(overridden.markerIndex.gap).toBe(2);
+  });
 });
 
 describe("applyVectorByCorridorsSharedStyle", () => {
@@ -208,6 +229,13 @@ describe("reconcileVectorByWallsSharedStyle", () => {
     expect(next.sharedStyle.overrides.markerBorderWidth?.finishMarker).toBe(true);
     expect(next.sharedStyle.overrides.gapWidth?.startMarker).toBe(true);
     expect(next.sharedStyle.overrides.gapWidth?.finishMarker).toBe(true);
+  });
+
+  it("detects a markerIndex.gap mismatch against the shared gapWidth", () => {
+    const settings = wallsSettings({ markerIndex: { ...DEFAULT_VECTOR_BY_WALLS_SETTINGS.markerIndex, gap: 9 } });
+    const next = reconcileVectorByWallsSharedStyle(settings);
+    expect(next.sharedStyle.overrides.gapWidth?.markerIndex).toBe(true);
+    expect(next.markerIndex.gap).toBe(9);
   });
 
 });

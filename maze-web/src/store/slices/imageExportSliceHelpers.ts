@@ -6,6 +6,7 @@ import type {
   VectorByWallsSharedStyleOverrides,
   VectorByCorridorsSharedStyleOverrides,
   SharedStyleField,
+  MarkerIndexSettings,
 } from "../storeTypes";
 import type { TeleportCornerStyle } from "../../pixi/renderers/types";
 
@@ -139,6 +140,19 @@ type TeleportSharedFields = {
  *  group's fields) and by "Force shared style" (every group, after clearing all overrides first).
  *  Delegates the fields common to both modes to `applySharedCommonFields`, then layers this mode's
  *  own extra `cornerStyle`-group field (`wallJoin`) on top. */
+/** Applies the shared `gapWidth` value to `markerIndex.gap` (GitHub issue #471) unless that field
+ *  is marked overridden — a `gapWidth`-group member on both modes, same convention as the marker
+ *  gap-ring fields. Kept as its own helper since `markerIndex` is a top-level settings field, not
+ *  one of `applyVerticalSharedFields`'s `VerticalMarkerFields`. */
+function applyMarkerIndexSharedGap<S extends { markerIndex: MarkerIndexSettings; sharedStyle: { gapWidth: number; overrides: { gapWidth?: { markerIndex?: true } } } }>(
+  next: S,
+  groups: SharedStyleGroupName[],
+): S {
+  if (!groups.includes("gapWidth")) return next;
+  if (next.sharedStyle.overrides.gapWidth?.markerIndex) return next;
+  return { ...next, markerIndex: { ...next.markerIndex, gap: next.sharedStyle.gapWidth } };
+}
+
 export function applyVectorByWallsSharedStyle(
   settings: VectorByWallsSettings,
   groups: (keyof VectorByWallsSharedStyleOverrides)[],
@@ -146,6 +160,7 @@ export function applyVectorByWallsSharedStyle(
   const shared = settings.sharedStyle;
   let next = applySharedCommonFields(settings, shared, groups);
   next = applyVerticalSharedFields(next, shared, groups);
+  next = applyMarkerIndexSharedGap(next, groups);
   if (groups.includes("cornerStyle")) {
     const join = cornerStyleToJoin(shared.cornerStyle);
     next = {
@@ -167,6 +182,7 @@ export function applyVectorByCorridorsSharedStyle(
   const shared = settings.sharedStyle;
   let next = applySharedCommonFields(settings, shared, groups);
   next = applyVerticalSharedFields(next, shared, groups);
+  next = applyMarkerIndexSharedGap(next, groups);
   if (groups.includes("cornerStyle")) {
     const join = cornerStyleToJoin(shared.cornerStyle);
     next = {
@@ -258,6 +274,7 @@ export function reconcileVectorByWallsSharedStyle(settings: VectorByWallsSetting
   if (settings.twoWayPassageMarker.gapWidth !== shared.gapWidth) overrides = withOverride(overrides, "gapWidth", "twoWayPassage");
   if (settings.oneWayPassageMarker.gapWidth !== shared.gapWidth) overrides = withOverride(overrides, "gapWidth", "oneWayPassage");
   if (settings.elevatorMarker.gapWidth !== shared.gapWidth) overrides = withOverride(overrides, "gapWidth", "elevator");
+  if (settings.markerIndex.gap !== shared.gapWidth) overrides = withOverride(overrides, "gapWidth", "markerIndex");
   return { ...settings, sharedStyle: { ...shared, overrides } };
 }
 
@@ -283,6 +300,7 @@ export function reconcileVectorByCorridorsSharedStyle(settings: VectorByCorridor
   if (settings.twoWayPassageMarker.gapWidth !== shared.gapWidth) overrides = withOverride(overrides, "gapWidth", "twoWayPassage");
   if (settings.oneWayPassageMarker.gapWidth !== shared.gapWidth) overrides = withOverride(overrides, "gapWidth", "oneWayPassage");
   if (settings.elevatorMarker.gapWidth !== shared.gapWidth) overrides = withOverride(overrides, "gapWidth", "elevator");
+  if (settings.markerIndex.gap !== shared.gapWidth) overrides = withOverride(overrides, "gapWidth", "markerIndex");
   return { ...settings, sharedStyle: { ...shared, overrides } };
 }
 

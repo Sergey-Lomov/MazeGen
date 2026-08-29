@@ -1,5 +1,5 @@
 import {
-  type MarkerSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type VectorByWallsSettings, type VectorByCorridorsSettings, type VectorByWallsSharedStyle, type VectorByCorridorsSharedStyle, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
+  type MarkerSettings, type DecorativeLineStyle, type ElevatorBadgeSettings, type ElevatorBadgeLabelType, type ElevatorBadgePlacement, type MarkerIndexSettings, type VectorByWallsSettings, type VectorByCorridorsSettings, type VectorByWallsSharedStyle, type VectorByCorridorsSharedStyle, type TeleportSettingsFields, type VerticalSettingsFields, type VerticalDecorativeFields, type MarkerWidenShape, type PngExportSettings,
   type PngExportOutputMode, type PngCanvasMode, type PrintDensity, type PaperSize, type PaperOrientation, type PrintAnchor,
   type DigitalExportSettings, type PrintExportSettings,
 } from "../storeTypes";
@@ -169,6 +169,51 @@ export function validateElevatorBadgeSettings(v: unknown, path: string, fallback
   };
 }
 
+/** `MarkerIndexSettings` validation (GitHub issue #471) — same lenient-recovery convention as
+ * `validateElevatorBadgeSettings`. `labelStyle`/`fontWeight` reuse the elevator-badge validators
+ * (their types are aliases). */
+export function validateMarkerIndexSettings(v: unknown, path: string, fallback: MarkerIndexSettings): MarkerIndexSettings {
+  if (v == null) return fallback;
+  let obj: Record<string, unknown> | null;
+  try {
+    obj = assertObject(v, path);
+  } catch {
+    return fallback;
+  }
+  return {
+    enabled: optBool(obj, "enabled", fallback.enabled),
+    labelStyle: optElevatorBadgeLabelType(obj, "labelStyle", fallback.labelStyle),
+    height: optNumber(obj, "height", fallback.height),
+    offset: optNumber(obj, "offset", fallback.offset),
+    cornerRadius: optNumber(obj, "cornerRadius", fallback.cornerRadius),
+    paddingX: optNumber(obj, "paddingX", fallback.paddingX),
+    gap: optNumber(obj, "gap", fallback.gap),
+    fillColor: optNumber(obj, "fillColor", fallback.fillColor),
+    textColor: optNumber(obj, "textColor", fallback.textColor),
+    borderColor: optNumber(obj, "borderColor", fallback.borderColor),
+    borderColorFromMarker: optBool(obj, "borderColorFromMarker", fallback.borderColorFromMarker),
+    borderWidth: optNumber(obj, "borderWidth", fallback.borderWidth),
+    fontWeight: optElevatorBadgeFontWeight(obj, "fontWeight", fallback.fontWeight),
+    coverage: validateMarkerIndexCoverage(obj.coverage, `${path}.coverage`, fallback.coverage),
+  };
+}
+
+function validateMarkerIndexCoverage(v: unknown, path: string, fallback: MarkerIndexSettings["coverage"]): MarkerIndexSettings["coverage"] {
+  if (v == null) return fallback;
+  let obj: Record<string, unknown> | null;
+  try {
+    obj = assertObject(v, path);
+  } catch {
+    return fallback;
+  }
+  return {
+    singleFloorTeleport: optBool(obj, "singleFloorTeleport", fallback.singleFloorTeleport),
+    crossFloorTeleport: optBool(obj, "crossFloorTeleport", fallback.crossFloorTeleport),
+    verticalPassage: optBool(obj, "verticalPassage", fallback.verticalPassage),
+    elevator: optBool(obj, "elevator", fallback.elevator),
+  };
+}
+
 /** "Vertical connections" fields shared by both vector modes (GitHub issue #347, three-style
  * follow-up, three-section split follow-up; GitHub issue #348 "Vector by corridors" parity) — same
  * lenient-recovery convention as `validateTeleportSettingsFields`. `twoWayPassageMarker`/
@@ -335,6 +380,7 @@ export function validateVectorByWallsSettings(v: unknown, path: string): VectorB
     splitNodeColors: Array.isArray(obj.splitNodeColors) ? obj.splitNodeColors.filter((n): n is number => typeof n === "number") : d.splitNodeColors,
     splitSpecialShapes: optBool(obj, "splitSpecialShapes", d.splitSpecialShapes),
     sharedStyle: validateVectorByWallsSharedStyle(obj.sharedStyle, d.sharedStyle),
+    markerIndex: validateMarkerIndexSettings(obj.markerIndex, `${path}.markerIndex`, d.markerIndex),
   });
 }
 
@@ -459,6 +505,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string): Vec
     splitGapWidth: optNumber(obj, "splitGapWidth", d.splitGapWidth),
     splitDiagonalBowAmount: optNumber(obj, "splitDiagonalBowAmount", d.splitDiagonalBowAmount),
     sharedStyle: validateVectorByCorridorsSharedStyle(obj?.sharedStyle, d.sharedStyle),
+    markerIndex: validateMarkerIndexSettings(obj?.markerIndex, `${path}.markerIndex`, d.markerIndex),
   });
 }
 

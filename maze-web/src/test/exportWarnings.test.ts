@@ -4,7 +4,7 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, MarkerSettings } from "../store/storeTypes";
 import { canvas } from "../pixi/colorTokens";
-import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS } from "../store/slices/imageExportSlice";
+import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
 
 vi.mock("../wasm/mazeService", () => ({
   getCartesianCoords: (cfg: { points: [number, number][] }) => cfg.points.map(([x, y]) => [x, y]),
@@ -47,6 +47,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     ...DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
     splitNodeColors: [], splitSpecialShapes: true,
     sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
+    markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
     ...overrides,
   };
 }
@@ -66,9 +67,63 @@ function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {
     ...DEFAULT_VERTICAL_SETTINGS,
     splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
     sharedStyle: DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE,
+    markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
     ...overrides,
   };
 }
+
+const elevatorEdge = (from: number, to: number): EdgeDto => ({ from, to, kind: "elevator" });
+const offBadges = { enabled: false } as const;
+
+describe("elevator_indistinguishable (GitHub issue #471)", () => {
+  // Two distinct elevator nodes sharing a cell on the drawn floor (already floor-scoped input).
+  // Floor-scoped input (what the panel passes): only the drawn floor's nodes. Two distinct
+  // elevator shafts land in cell (2,2) here.
+  const nodes = [n(0, 2, 2, 0), n(1, 2, 2, 0)];
+  const edges = [elevatorEdge(0, 2), elevatorEdge(1, 3)];
+
+  it("fires when marker indices and elevator badges are both off", () => {
+    const settings = baseSettings({ elevatorBadges: { ...DEFAULT_VERTICAL_SETTINGS.elevatorBadges, ...offBadges }, markerIndex: { ...DEFAULT_MARKER_INDEX_SETTINGS, enabled: false } });
+    const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null);
+    const w = warnings.filter((x) => x.id === "elevator_indistinguishable");
+    expect(w).toHaveLength(1);
+    expect(w[0].nodes).toEqual([0, 1]);
+  });
+
+  it("does not fire when marker indices are enabled", () => {
+    const settings = baseSettings({ elevatorBadges: { ...DEFAULT_VERTICAL_SETTINGS.elevatorBadges, ...offBadges }, markerIndex: { ...DEFAULT_MARKER_INDEX_SETTINGS, enabled: true } });
+    const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null);
+    expect(warnings.filter((x) => x.id === "elevator_indistinguishable")).toHaveLength(0);
+  });
+
+  it("still fires when marker indices are enabled but elevator coverage is off", () => {
+    const settings = baseSettings({
+      elevatorBadges: { ...DEFAULT_VERTICAL_SETTINGS.elevatorBadges, ...offBadges },
+      markerIndex: { ...DEFAULT_MARKER_INDEX_SETTINGS, enabled: true, coverage: { ...DEFAULT_MARKER_INDEX_SETTINGS.coverage, elevator: false } },
+    });
+    const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null);
+    expect(warnings.filter((x) => x.id === "elevator_indistinguishable")).toHaveLength(1);
+  });
+
+  it("does not fire when elevator badges are enabled", () => {
+    const settings = baseSettings({ markerIndex: { ...DEFAULT_MARKER_INDEX_SETTINGS, enabled: false } });
+    const warnings = computeVectorByWallsWarnings(nodes, edges, squareCfg, settings, null, null);
+    expect(warnings.filter((x) => x.id === "elevator_indistinguishable")).toHaveLength(0);
+  });
+
+  it("does not fire for a single elevator node in a cell", () => {
+    const single = [n(0, 2, 2, 0)];
+    const settings = baseSettings({ elevatorBadges: { ...DEFAULT_VERTICAL_SETTINGS.elevatorBadges, ...offBadges }, markerIndex: { ...DEFAULT_MARKER_INDEX_SETTINGS, enabled: false } });
+    const warnings = computeVectorByWallsWarnings(single, [elevatorEdge(0, 2)], squareCfg, settings, null, null);
+    expect(warnings.filter((x) => x.id === "elevator_indistinguishable")).toHaveLength(0);
+  });
+
+  it("is also emitted by computeVectorByCorridorsWarnings", () => {
+    const settings = baseCorridorsSettings({ elevatorBadges: { ...DEFAULT_VERTICAL_SETTINGS.elevatorBadges, ...offBadges }, markerIndex: { ...DEFAULT_MARKER_INDEX_SETTINGS, enabled: false } });
+    const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
+    expect(warnings.filter((x) => x.id === "elevator_indistinguishable")).toHaveLength(1);
+  });
+});
 
 describe("computeVectorByWallsWarnings", () => {
   describe("teleport_marker_invisible", () => {

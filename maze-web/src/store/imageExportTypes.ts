@@ -1,4 +1,5 @@
 import type { MarkerShape, OneWayPattern, VerticalArrowStyle, TeleportGroupOverride, TeleportCornerStyle, TeleportConnectorStyle, TeleportArrowMode, ElevatorBadgeFontWeight, RandomWallColorMode } from "../pixi/renderers/types";
+import type { IndexLabelStyle, LabelFontWeight } from "../pixi/renderers/indexLabel";
 
 /** Registry id of a maze image-export rendering mode (see `Specs/image-export.md` and
  * `imageExportRegistry.ts`) — one entry per switcher item in the Image Export feature card. */
@@ -88,8 +89,9 @@ export interface DecorativeLineStyle {
 }
 
 /** Numbering style for `ElevatorBadgeSettings.labelType` (GitHub issue #430) — each badge shows the
- *  reached floor's 1-based display number (`floor index + 1`) formatted per this style. */
-export type ElevatorBadgeLabelType = "arabic" | "roman" | "letters";
+ *  reached floor's 1-based display number (`floor index + 1`) formatted per this style. Alias of
+ *  the neutral `IndexLabelStyle` (shared with GitHub issue #471's marker index labels). */
+export type ElevatorBadgeLabelType = IndexLabelStyle;
 
 /** Placement pattern for the badge ring around an elevator marker (GitHub issue #430). `"left_right"`/
  *  `"right_left"` both lay out **two** single rows, one to the left of the marker and one to the
@@ -341,7 +343,7 @@ export interface VectorByWallsSharedStyleOverrides {
   cornerStyle?: { wallJoin?: true; oneWayJoin?: true; startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true; elevatorBadges?: true };
   markerSize?: { startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
   markerBorderWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
-  gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
+  gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true; markerIndex?: true };
 }
 
 /** "Vector by walls" mode's centralized marker/corner-style settings (GitHub issue #322) — one
@@ -369,7 +371,7 @@ export interface VectorByCorridorsSharedStyleOverrides {
   cornerStyle?: { join?: true; oneWayJoin?: true; startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true; elevatorBadges?: true };
   markerSize?: { startMarker?: true; finishMarker?: true; teleportLine?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
   markerBorderWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
-  gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true; split?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true };
+  gapWidth?: { startMarker?: true; finishMarker?: true; teleportEdge?: true; teleportConnector?: true; split?: true; twoWayPassage?: true; oneWayPassage?: true; elevator?: true; markerIndex?: true };
 }
 
 /** Same role as `VectorByWallsSharedStyle`, for "Vector by corridors" (GitHub issue #322) — see
@@ -390,6 +392,71 @@ export interface VectorByCorridorsSharedStyle {
  *  previously a bare `string`). */
 export type SharedStyleField<O extends VectorByWallsSharedStyleOverrides | VectorByCorridorsSharedStyleOverrides, G extends keyof O> =
   keyof NonNullable<O[G]> & string;
+
+/** "Marker indices" settings (GitHub issue #471) — an independent decorative layer, drawn only in
+ *  the two vector export modes, that links the two endpoints of every cross-floor connection
+ *  (stairs / elevator / teleport) with a shared numeric index so the player can match entrance and
+ *  exit across per-floor images. The index is drawn on a rectangular framed plate placed flush
+ *  under the connection's own marker. Separate mechanism from the elevator floor-number badges
+ *  (#430/#478) and the cross-floor teleport badges (#480), and not wired to "Shared style".
+ *
+ *  A connection's identity is direction-independent: a teleport / vertical passage is identified by
+ *  its unordered endpoint node pair, an elevator by its connected component of `elevator` edges (an
+ *  elevator fan spanning 3+ floors gets one index for the whole elevator). The `coverage` field
+ *  filters which connection kinds are numbered at all — a disabled kind takes no index and the
+ *  numbering closes up over what remains. The surviving connections are numbered `1..N` by a
+ *  canonical order (endpoint `node.level`, then `nodeId`), stable under any input reordering.
+ *
+ *  `height` / `offset` / `cornerRadius` / `paddingX` are a fraction of `TILE_SIZE` — the unit
+ *  system the vector export settings use; `borderWidth` and `gap` are whole-pixel counts. The
+ *  plate width is uniform across the whole project: sized to the widest label in the project (so
+ *  a given index looks identical on every floor), plus `2 * paddingX`. */
+export interface MarkerIndexSettings {
+  /** Off by default. */
+  enabled: boolean;
+  /** Arabic numerals / Roman numerals / letters — same three styles as `ElevatorBadgeLabelType`.
+   *  Roman tends to stay legible at small font sizes. */
+  labelStyle: IndexLabelStyle;
+  /** Plate height. */
+  height: number;
+  /** Distance the plate's *center* sits below the marker's own outer edge. `0` places the plate
+   *  center exactly on the marker's bottom edge; the plate's own gap ring is drawn under the
+   *  marker (draw order: plate gap, marker, plate body) so it never occludes the marker. */
+  offset: number;
+  /** Plate corner rounding radius (`0` = sharp corners). */
+  cornerRadius: number;
+  /** Horizontal padding between the label text and each plate edge — also drives the uniform
+   *  plate width (widest label + `2 * paddingX`). */
+  paddingX: number;
+  /** Floor-colored gap ring drawn around the plate, in whole pixels (`0` = none) — same convention
+   *  and unit as every other marker's gap ring, and a member of "Shared style"'s `gapWidth` group.
+   *  Drawn *below* the connection marker so the plate never eats into it. */
+  gap: number;
+  fillColor: number;
+  textColor: number;
+  /** Plate border color. Ignored when `borderColorFromMarker` is on. */
+  borderColor: number;
+  /** When on (the default), the plate border takes its color from the connection marker it hangs
+   *  off: that marker's own border color if the marker has a border (`borderWidth > 0`), else the
+   *  marker's fill color. Disables the `borderColor` setting in the panel. */
+  borderColorFromMarker: boolean;
+  /** Whole pixels. `0` (the default) draws no border. */
+  borderWidth: number;
+  fontWeight: LabelFontWeight;
+  /** "Coverage" sub-section — which connection kinds get an index plate. A `teleport` link counts
+   *  as `singleFloorTeleport` when both endpoints share a `node.level`, `crossFloorTeleport`
+   *  otherwise. Defaults: `singleFloorTeleport` off, the other three on (an index is chiefly
+   *  useful when entrance and exit land on different floors). */
+  coverage: MarkerIndexCoverage;
+}
+
+/** See `MarkerIndexSettings.coverage`. */
+export interface MarkerIndexCoverage {
+  singleFloorTeleport: boolean;
+  crossFloorTeleport: boolean;
+  verticalPassage: boolean;
+  elevator: boolean;
+}
 
 /** "Vector by walls" mode's own settings (GitHub issue #289, floor color added in #290) —
  * background appearance and floor appearance ("general settings" and "floor" sections of #288's
@@ -451,6 +518,9 @@ export interface VectorByWallsSettings extends TeleportSettingsFields, VerticalS
   /** Centralized corner-style/marker-size/marker-border/gap settings (GitHub issue #322) — see
    *  `VectorByWallsSharedStyle`'s own doc comment. */
   sharedStyle: VectorByWallsSharedStyle;
+  /** "Marker indices" (GitHub issue #471) — see `MarkerIndexSettings`'s own doc comment.
+   *  Independent layer, not part of "Shared style". */
+  markerIndex: MarkerIndexSettings;
 }
 
 /** One-way passage indicator settings (GitHub issue #312) — a row of chevrons ("`>`" shapes with
@@ -555,6 +625,9 @@ export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWa
   /** Centralized corner-style/marker-size/marker-border/gap settings (GitHub issue #322) — see
    *  `VectorByCorridorsSharedStyle`'s own doc comment. */
   sharedStyle: VectorByCorridorsSharedStyle;
+  /** "Marker indices" (GitHub issue #471) — see `MarkerIndexSettings`'s own doc comment.
+   *  Independent layer, not part of "Shared style". */
+  markerIndex: MarkerIndexSettings;
 }
 
 /** See `VectorByCorridorsSettings.markerWidenShape`'s own doc comment. */
@@ -681,6 +754,9 @@ export interface ImageExportActions {
   patchVectorByCorridorsElevatorBadges: (patch: Partial<ElevatorBadgeSettings>) => void;
   /** See `setVectorByWallsElevatorBadgesCornerStyle`'s own doc comment. */
   setVectorByCorridorsElevatorBadgesCornerStyle: (style: TeleportCornerStyle) => void;
+  /** Patches "Marker indices" settings (GitHub issue #471) — single-patch-call convention, no
+   *  "Shared style" override to track. */
+  patchVectorByCorridorsMarkerIndexSettings: (patch: Partial<MarkerIndexSettings>) => void;
   setVectorByCorridorsTwoWayPassageMarkerShape: (shape: MarkerShape) => void;
   setVectorByCorridorsTwoWayPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
   setVectorByCorridorsTwoWayPassageMarkerFillColor: (color: number) => void;
@@ -792,6 +868,9 @@ export interface ImageExportActions {
   /** Same "Shared style"-tracked convention as `setVectorByWallsElevatorMarkerCornerStyle` — marks
    *  the `cornerStyle` group's `elevatorBadges` field overridden before writing the value. */
   setVectorByWallsElevatorBadgesCornerStyle: (style: TeleportCornerStyle) => void;
+  /** Patches "Marker indices" settings (GitHub issue #471) — single-patch-call convention, no
+   *  "Shared style" override to track. */
+  patchVectorByWallsMarkerIndexSettings: (patch: Partial<MarkerIndexSettings>) => void;
   setVectorByWallsTwoWayPassageMarkerShape: (shape: MarkerShape) => void;
   setVectorByWallsTwoWayPassageMarkerCornerStyle: (style: TeleportCornerStyle) => void;
   setVectorByWallsTwoWayPassageMarkerFillColor: (color: number) => void;

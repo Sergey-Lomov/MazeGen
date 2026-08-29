@@ -29,6 +29,7 @@ export {
   DEFAULT_TELEPORT_SETTINGS,
   DEFAULT_VERTICAL_SETTINGS,
   DEFAULT_VERTICAL_DECORATIVE_SETTINGS,
+  DEFAULT_MARKER_INDEX_SETTINGS,
   DEFAULT_ONE_WAY_SETTINGS,
   DEFAULT_VECTOR_BY_WALLS_SETTINGS,
   DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS,
@@ -256,6 +257,16 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       vectorByCorridorsSettings: {
         ...s.vectorByCorridorsSettings,
         elevatorBadges: { ...s.vectorByCorridorsSettings.elevatorBadges, ...patch },
+      },
+    })),
+  patchVectorByCorridorsMarkerIndexSettings: (patch) =>
+    set((s) => ({
+      vectorByCorridorsSettings: {
+        ...s.vectorByCorridorsSettings,
+        markerIndex: { ...s.vectorByCorridorsSettings.markerIndex, ...patch },
+        ...(patch.gap !== undefined
+          ? { sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "gapWidth", "markerIndex") } }
+          : {}),
       },
     })),
   setVectorByCorridorsElevatorBadgesCornerStyle: (style) =>
@@ -539,6 +550,18 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
       vectorByWallsSettings: {
         ...s.vectorByWallsSettings,
         elevatorBadges: { ...s.vectorByWallsSettings.elevatorBadges, ...patch },
+      },
+    })),
+  patchVectorByWallsMarkerIndexSettings: (patch) =>
+    set((s) => ({
+      vectorByWallsSettings: {
+        ...s.vectorByWallsSettings,
+        markerIndex: { ...s.vectorByWallsSettings.markerIndex, ...patch },
+        // `gap` is a "Shared style" `gapWidth`-group member — editing it directly detaches it
+        // from the shared value (GitHub issue #471), same convention as the marker gap-ring setters.
+        ...(patch.gap !== undefined
+          ? { sharedStyle: { ...s.vectorByWallsSettings.sharedStyle, overrides: withOverride(s.vectorByWallsSettings.sharedStyle.overrides, "gapWidth", "markerIndex") } }
+          : {}),
       },
     })),
   setVectorByWallsElevatorBadgesCornerStyle: (style) =>

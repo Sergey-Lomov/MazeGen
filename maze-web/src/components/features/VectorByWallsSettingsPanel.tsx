@@ -16,6 +16,7 @@ import { ExportWarningsSection } from "./ExportWarningsSection";
 import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
 import { DecorativeLineStyleGroup } from "./DecorativeLineStyleGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
+import { MarkerIndexSection } from "./MarkerIndexSection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, sharedStyleFieldReset } from "./SharedStyleSection";
 import * as m from "~/paraglide/messages";
@@ -76,6 +77,7 @@ export function VectorByWallsSettingsPanel() {
   const patchVerticalSettings = useMazeStore((s) => s.patchVectorByWallsVerticalSettings);
   const patchDecorativeLineStyle = useMazeStore((s) => s.patchVectorByWallsDecorativeLineStyle);
   const patchElevatorBadges = useMazeStore((s) => s.patchVectorByWallsElevatorBadges);
+  const patchMarkerIndex = useMazeStore((s) => s.patchVectorByWallsMarkerIndexSettings);
   const setElevatorBadgesCornerStyle = useMazeStore((s) => s.setVectorByWallsElevatorBadgesCornerStyle);
   const setTwoWayPassageMarkerShape = useMazeStore((s) => s.setVectorByWallsTwoWayPassageMarkerShape);
   const setTwoWayPassageMarkerCornerStyle = useMazeStore((s) => s.setVectorByWallsTwoWayPassageMarkerCornerStyle);
@@ -805,6 +807,21 @@ export function VectorByWallsSettingsPanel() {
             </div>
           )}
         </>
+      )}
+
+      <div style={styles.divider} />
+
+      <SectionHeader
+        label={m["image_export.vector_by_walls.section_marker_index"]()}
+        expanded={isExpanded("marker_index")}
+        onToggle={() => toggleSection("marker_index")}
+      />
+      {isExpanded("marker_index") && (
+        <MarkerIndexSection
+          settings={settings.markerIndex}
+          onChange={patchMarkerIndex}
+          gapResetButton={sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "markerIndex", () => resetSharedStyleField("gapWidth", "markerIndex"))}
+        />
       )}
 
       <ExportWarningsSection

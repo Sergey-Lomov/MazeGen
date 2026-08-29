@@ -1,47 +1,10 @@
-import type { ElevatorBadgePlacement, ElevatorBadgeLabelType } from "../../store/imageExportTypes";
+import type { ElevatorBadgePlacement } from "../../store/imageExportTypes";
 import { TILE_SIZE } from "../constants";
 
-const ROMAN_VALUES: [number, string][] = [
-  [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"],
-  [100, "C"], [90, "XC"], [50, "L"], [40, "XL"],
-  [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"],
-];
-
-function toRoman(n: number): string {
-  let remaining = n;
-  let result = "";
-  for (const [value, symbol] of ROMAN_VALUES) {
-    while (remaining >= value) {
-      result += symbol;
-      remaining -= value;
-    }
-  }
-  return result;
-}
-
-/** Spreadsheet-style base-26 letters (`A`, ..., `Z`, `AA`, `AB`, ...) — `n` is 1-based. */
-function toLetters(n: number): string {
-  let remaining = n;
-  let result = "";
-  while (remaining > 0) {
-    const rem = (remaining - 1) % 26;
-    result = String.fromCharCode(65 + rem) + result;
-    remaining = Math.floor((remaining - 1) / 26);
-  }
-  return result;
-}
-
-/** Formats `floorIndex` (0-based) as its badge label (GitHub issue #430) — displayed as `floorIndex
- *  + 1` (1-based), same convention `drawFloorBadge` uses for its own plain-Arabic display number.
- *  Roman numerals and letters only have a "1 and up" convention; `floorIndex + 1 <= 0` (impossible
- *  in practice — `floorIndex` is always >= 0 — but kept total) falls back to the Arabic digit for
- *  those two styles rather than producing an empty/invalid string. */
-export function formatElevatorBadgeLabel(floorIndex: number, labelType: ElevatorBadgeLabelType): string {
-  const n = floorIndex + 1;
-  if (labelType === "roman") return n >= 1 ? toRoman(n) : String(n);
-  if (labelType === "letters") return n >= 1 ? toLetters(n) : String(n);
-  return String(n);
-}
+// Label formatting moved to the neutral `indexLabel.ts` (shared with GitHub issue #471's marker
+// index labels). Re-exported here so existing importers keep working unchanged.
+export { toRoman, toLetters } from "./indexLabel";
+export { formatIndexLabel as formatElevatorBadgeLabel } from "./indexLabel";
 
 /** One badge's own world-space center, in layout order (ascending floor index — see
  *  `ElevatorBadgeSettings`'s own doc comment). Pure geometry, no drawing — shared by
