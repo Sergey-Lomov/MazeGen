@@ -29,6 +29,12 @@ export interface MazeGraphData {
   resolveNodeCell?: NodeCellResolver;
   /** The active floor's own `levels_ordered()` index — required alongside `resolveNodeLevel`. */
   activeFloorIndex?: number;
+  /** Cross-floor `vertical_passage`/`elevator` edges that leave the active floor (GitHub issue
+   *  #461). `edges` above is the post-edit draft, which by design never carries these — they live
+   *  on the confirmed `state.edges` graph and survive a post-edit confirm (see `floors.md`). Passed
+   *  separately so `buildCrossFloorMarkers` can still draw a floor badge for each one. Only their
+   *  endpoints are read; they are never rendered as ordinary edge lines. */
+  crossFloorEdges?: EdgeDto[];
 }
 
 export class MazeGraphRenderer extends BaseGraphRenderer {
@@ -48,7 +54,8 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
       || data.cfg !== prev.cfg
       || data.resolveNodeLevel !== prev.resolveNodeLevel
       || data.resolveNodeCell !== prev.resolveNodeCell
-      || data.activeFloorIndex !== prev.activeFloorIndex;
+      || data.activeFloorIndex !== prev.activeFloorIndex
+      || data.crossFloorEdges !== prev.crossFloorEdges;
     const debugChanged = !prev
       || data.showNodeIds !== prev.showNodeIds
       || data.showCoords !== prev.showCoords;
@@ -70,7 +77,7 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
   }
 
   private renderGraph(data: MazeGraphData): void {
-    const { nodes, edges, showNodeIds, showCoords, selectedNode, start, finish, cfg, interactive = true, resolveNodeLevel, resolveNodeCell, activeFloorIndex } = data;
+    const { nodes, edges, showNodeIds, showCoords, selectedNode, start, finish, cfg, interactive = true, resolveNodeLevel, resolveNodeCell, activeFloorIndex, crossFloorEdges } = data;
     this.nodeViews.clear();
     this.nodeLabels.clear();
     this.resetContainers();
@@ -85,7 +92,8 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
     this.nodeViews = this.drawNodes(renderNodes, selectedNode, start, finish, interactive);
 
     if (resolveNodeLevel && resolveNodeCell && activeFloorIndex !== undefined) {
-      const markers = buildCrossFloorMarkers(edges, nodePos, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, NODE_RADIUS);
+      const markerEdges = crossFloorEdges ? [...edges, ...crossFloorEdges] : edges;
+      const markers = buildCrossFloorMarkers(markerEdges, nodePos, resolveNodeLevel, resolveNodeCell, activeFloorIndex, cfg, NODE_RADIUS);
       this.renderCrossFloorMarkers(markers, NODE_RADIUS);
     }
 
