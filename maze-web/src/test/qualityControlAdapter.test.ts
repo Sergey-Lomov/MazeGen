@@ -197,6 +197,52 @@ describe("narrationTokensForQc — CheckRan/IssuesMerged/*Proposed ignore titleL
     ]);
   });
 
+  it("CheckRan with an InvalidVerticalPassage payload carries a region-shaped highlight target over the flagged edges' endpoint cells (GitHub issue #466), not a cycle-shaped one", () => {
+    // A vertical passage connects two floors at the same x-y point -- a line between its endpoints
+    // reads as a stray diagonal. Highlighted as cells instead, matching Analytics' IssuesBlock.
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_vertical_passage", payload: { kind: "InvalidVerticalPassage", groups: new Map([["check1", [{ edges: [[1n, 2n]], presetLocked: false }]]]) }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "invalid_vertical_passage", target: { kind: "region", nodes: [1n, 2n] }, reasons: ["Vertical passage validation"] },
+    ]);
+  });
+
+  it("an InvalidVerticalPassage payload with no actual groups (empty map) resolves to a null highlight target", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_vertical_passage", payload: { kind: "InvalidVerticalPassage", groups: new Map() }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "invalid_vertical_passage", target: null, reasons: ["Vertical passage validation"] },
+    ]);
+  });
+
+  it("CheckRan with an InvalidElevator payload carries a region-shaped highlight target over the elevator's fan-edge endpoint cells (GitHub issue #466), not a cycle-shaped one", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_elevator", payload: { kind: "InvalidElevator", groups: new Map([["check1", [{ edges: [[1n, 2n], [1n, 3n]], presetLocked: false }]]]) }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "invalid_elevator", target: { kind: "region", nodes: [1n, 2n, 1n, 3n] }, reasons: ["Elevator validation"] },
+    ]);
+  });
+
+  it("an InvalidElevator payload with no actual groups (empty map) resolves to a null highlight target", () => {
+    const tokens = adapterFor("quality_control").narrationTokensFor({
+      kind: "CheckRan", checkId: "check1",
+      issue: { issueKind: "invalid_elevator", payload: { kind: "InvalidElevator", groups: new Map() }, details: new Map() },
+    });
+    expect(tokens).toEqual([
+      { kind: "text", text: 'Check "check1": issue found ' },
+      { kind: "issue", issueKind: "invalid_elevator", target: null, reasons: ["Elevator validation"] },
+    ]);
+  });
+
   it("StrategyFailed narrates the strategy's resolved display label", () => {
     const tokens = adapterFor("quality_control").narrationTokensFor({ kind: "StrategyFailed", strategyId: "remove_split" });
     expect(tokens).toEqual([{ kind: "text", text: 'Strategy "Split tile removal" failed' }]);
