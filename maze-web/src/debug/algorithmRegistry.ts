@@ -96,14 +96,19 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       // No structural highlight data — this issue never points at specific regions on the canvas.
       return null;
     case "InvalidVerticalPassage": {
-      // Reuses the "cycle" shape, same rationale as InvalidTeleport/InvalidOneWay above.
-      const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
-      return edges.length > 0 ? { kind: "cycle", edges, asWall: false } : null;
+      // Reuses the "region" shape over the flagged passage edges' endpoint cells -- a vertical
+      // passage connects two floors at the same x-y point, so a line between its endpoints reads as
+      // a stray diagonal rather than "these cells have a problem" (GitHub issue #466). Matches
+      // Analytics' `verticalPassageCellNodes` in `IssuesBlock.tsx`.
+      const nodes = [...payload.groups.values()].flat().flatMap((group) => group.edges.flat());
+      return nodes.length > 0 ? { kind: "region", nodes } : null;
     }
     case "InvalidElevator": {
-      // Reuses the "cycle" shape, same rationale as InvalidTeleport/InvalidOneWay above.
-      const edges = [...payload.groups.values()].flat().flatMap((group) => group.edges);
-      return edges.length > 0 ? { kind: "cycle", edges, asWall: false } : null;
+      // Reuses the "region" shape over the elevator's fan-edge endpoint cells -- a flagged
+      // elevator's edges span multiple floors, so a line-per-edge highlight would read as stray
+      // diagonals (GitHub issue #466). Matches Analytics' `elevatorCellNodes` in `IssuesBlock.tsx`.
+      const nodes = [...payload.groups.values()].flat().flatMap((group) => group.edges.flat());
+      return nodes.length > 0 ? { kind: "region", nodes } : null;
     }
     case "InvalidElevatorStop": {
       const nodes = [...payload.nodes.values()].flat().flatMap((group) => group.region);

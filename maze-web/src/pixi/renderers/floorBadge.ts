@@ -124,17 +124,18 @@ export function computeCrossFloorBadgePos(
  *  node" to stand in for: any cell in the region can carry one, and there's no connector line to
  *  another drawn point (the whole point is that the region's own fill color already carries the
  *  continuity across floors — see `Specs/regions.md`). A single badge sits at the cell's own
- *  center; two or more are spread evenly around a ring of radius `badgeRadius * 1.25` centered on
- *  the cell, starting straight up (`-90°`) and going clockwise, so badges never overlap each other
- *  or (mostly) the cell's own perimeter stroke. See `Specs/floors.md`'s "Cross-floor region badges"
- *  section for the full feature description. */
+ *  center; two or more are spread evenly around a ring of radius `(badgeRadius + strokeWidth) * 1.5`
+ *  centered on the cell, starting straight up (`-90°`) and going clockwise, so badges never overlap
+ *  each other or (mostly) the cell's own perimeter stroke. See `Specs/floors.md`'s "Cross-floor
+ *  region badges" section for the full feature description. */
 export function computeRegionBadgeRingPos(cell: [number, number], cfg: TessellationConfig, badgeRadius: number, slot: number, slotCount: number): Pos {
   const center = getCellCenter(cell[0], cell[1], cfg);
   if (slotCount <= 1) return center;
   // Ring radius accounts for the badge's own stroke (drawn outward, `alignment: 0`) — otherwise
   // two adjacent badges' outer rings (radius `badgeRadius + strokeWidth`) overlap despite sitting
-  // 1.25x the bare fill radius apart.
-  const ringRadius = (badgeRadius + FLOOR_BADGE_STROKE_WIDTH) * 1.25;
+  // apart. The 1.5x factor (was 1.25x) spreads the ring further so crowded region cells read
+  // clearly (GitHub issue #461 follow-up).
+  const ringRadius = (badgeRadius + FLOOR_BADGE_STROKE_WIDTH) * 1.5;
   const angle = -Math.PI / 2 + (slot / slotCount) * 2 * Math.PI;
   return { x: center.x + Math.cos(angle) * ringRadius, y: center.y + Math.sin(angle) * ringRadius };
 }

@@ -16,6 +16,7 @@ import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
 import type { Viewport } from "./renderers/types";
 import type { PostEditEdge } from "../store/mazeStore";
+import type { EdgeDto } from "../wasm/types";
 
 export class AnalyticsRenderer {
   private readonly gridContainer: Container;
@@ -54,6 +55,12 @@ export class AnalyticsRenderer {
   private readonly pureCyclesRenderer: PureCyclesOverlay;
   private readonly routeRenderer: RouteOverlay;
   private readonly issueHighlightRenderer: IssueHighlightOverlay;
+
+  /** Memoised `state.edges.filter(vertical/elevator)` — recomputed only when `state.edges` itself
+   *  changes identity (GitHub issue #461). Passed by reference to `MazeGraphRenderer`, whose own
+   *  dirty check compares `crossFloorEdges` by identity; a fresh `.filter()` array every `syncAll`
+   *  would force a full graph rebuild on every unrelated overlay toggle. */
+  private crossFloorEdgesCache: { source: EdgeDto[]; filtered: EdgeDto[] } | null = null;
 
   private viewport: Viewport = { x: 0, y: 0, w: 0, h: 0, scale: 1 };
   private unsubscribe: (() => void) | null = null;
@@ -319,6 +326,21 @@ export class AnalyticsRenderer {
     const showGraph = analyticsOpen && showGraphOverlay && nodes.length > 0;
     this.graphContainer.visible = showGraph;
     if (showGraph) {
+      // `vertical_passage`/`elevator` edges never appear in `edges` (post-edit draft — see the
+      // vertical-passage marker comment above), so the graph overlay's own cross-floor badges would
+      // be missing without passing them separately (GitHub issue #461). Taken from the *unscoped*
+      // `state.edges` (not `floorScopedStateEdges`, which drops the reverse-direction entry of a
+      // bidirectional passage since its `from` is on the other floor) so `buildCrossFloorMarkers`
+      // sees both directions and draws no one-way arrow for a two-way passage. Memoised on
+      // `state.edges` identity so an unrelated overlay toggle doesn't hand `MazeGraphRenderer` a
+      // fresh array and force a full graph rebuild.
+      if (this.crossFloorEdgesCache?.source !== state.edges) {
+        this.crossFloorEdgesCache = {
+          source: state.edges,
+          filtered: state.edges.filter((e) => e.kind === "vertical_passage" || e.kind === "elevator"),
+        };
+      }
+      const crossFloorEdges = this.crossFloorEdgesCache.filtered;
       this.graphRenderer.render({
         nodes, edges,
         showNodeIds: false,
@@ -327,6 +349,7 @@ export class AnalyticsRenderer {
         start, finish, cfg,
         interactive: false,
         resolveNodeLevel, resolveNodeCell, activeFloorIndex: resolvedActiveFloorIndex,
+        crossFloorEdges,
       });
     }
 

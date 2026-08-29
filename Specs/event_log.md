@@ -1720,15 +1720,18 @@ currentFloorIndex)`:
 
 - **`node`** — that node's own floor.
 - **`edge`/`issue`-with-`cycle`-target** — the one shape with two floors in play at once (a
-  `vertical_passage`/`elevator` edge connects different floors, #337): per explicit user decision,
-  switches to `from`'s floor, *unless* already standing on `to`'s floor, in which case it stays put
-  rather than jumping back to `from`. `currentFloorIndex` is the caller's own current active-floor
-  index for this comparison — the bubble's own floor **badge** (unlike the click) has no such bias,
-  so `DebugEventTree.tsx` calls `resolveBubbleFloor` with `currentFloorIndex: -1` (a value no real
+  cross-floor edge connects different floors, #337): per explicit user decision, switches to
+  `from`'s floor, *unless* already standing on `to`'s floor, in which case it stays put rather than
+  jumping back to `from`. `currentFloorIndex` is the caller's own current active-floor index for
+  this comparison — the bubble's own floor **badge** (unlike the click) has no such bias, so
+  `DebugEventTree.tsx` calls `resolveBubbleFloor` with `currentFloorIndex: -1` (a value no real
   floor ever has) when resolving the badge, forcing the `from`-floor branch unconditionally.
 - **`cycle`/`region`/`issue`-with-`region`-target** — no `from`/`to` asymmetry: switches to the one
   floor every referenced node shares, or stays put if they span more than one (no principled single
-  target to pick).
+  target to pick). `invalid_vertical_passage`/`invalid_elevator` issue targets use the `region`
+  shape over the flagged edges' endpoint cells (GitHub issue #466) — same cell-highlight treatment
+  Analytics' `IssuesBlock` gives them, since a line between two floors' same-x-y points reads as a
+  stray diagonal rather than "these cells".
 - **`issue`-with-`null`-target** — stays put (nothing to resolve).
 
 A bubble click always switches floor, entirely independent of the auto-switch toggle below

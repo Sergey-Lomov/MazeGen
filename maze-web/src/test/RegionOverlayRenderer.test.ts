@@ -51,7 +51,7 @@ const { RegionOverlayRenderer, buildRegionRingMarkers, buildRegionTeleportMarker
   "../pixi/renderers/RegionOverlayRenderer"
 );
 const { navigateToFloor } = await import("../pixi/renderers/floorNavigation");
-const { Container } = await import("pixi.js");
+const { Container, Graphics: FakeGraphics, Text: FakeText } = await import("pixi.js");
 import type { NodeDto } from "../wasm/generated/dto";
 import type { EdgeDto } from "../wasm/generated/dto";
 import type { TeleportEdge } from "../pixi/renderers/types";
@@ -177,6 +177,29 @@ describe("RegionOverlayRenderer.render", () => {
 
     hit!.listeners!["pointertap"][0]();
     expect(navigateToFloor).toHaveBeenCalledWith(1);
+  });
+
+  it("adds the badge fill Graphics before its digit Text so the number stays visible (GitHub issue #461)", () => {
+    const cellsContainer = new Container() as unknown as FakeCont;
+    const badgesContainer = new Container() as unknown as FakeCont;
+    const renderer = new RegionOverlayRenderer(cellsContainer as never, badgesContainer as never);
+
+    const nodes: NodeDto[] = [node(1, 0, 0), node(2, 5, 5)];
+    const components = [[1, 2]];
+    const resolveNodeLevel = (id: number) => (id === 1 ? 0 : 1);
+    const allEdges: EdgeDto[] = [{ from: 1, to: 2, kind: "elevator" }];
+
+    renderer.render({
+      nodes, components, componentColors: [0xff0000], alpha: 0.5, cfg,
+      allEdges, resolveNodeLevel, activeFloorIndex: 0,
+    });
+
+    const inner = badgesContainer.children[badgesContainer.children.length - 1] as unknown as { children: unknown[] };
+    const fillIdx = inner.children.findIndex((c) => c instanceof FakeGraphics && (c as unknown as { calls: { fn: string }[] }).calls.some((k) => k.fn === "fill"));
+    const textIdx = inner.children.findIndex((c) => c instanceof FakeText);
+    expect(fillIdx).toBeGreaterThanOrEqual(0);
+    expect(textIdx).toBeGreaterThanOrEqual(0);
+    expect(fillIdx).toBeLessThan(textIdx);
   });
 
   it("draws a clickable hit-circle wired to navigateToFloor for a cross-floor teleport marker", () => {

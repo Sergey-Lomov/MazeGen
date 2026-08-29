@@ -157,10 +157,10 @@ describe("computeRegionBadgeRingPos", () => {
     });
   });
 
-  it("spreads two badges evenly around a ring of radius (badgeRadius+strokeWidth)*1.25", () => {
+  it("spreads two badges evenly around a ring of radius (badgeRadius+strokeWidth)*1.5", () => {
     const a = computeRegionBadgeRingPos([0, 0], cfg, 8, 0, 2);
     const b = computeRegionBadgeRingPos([0, 0], cfg, 8, 1, 2);
-    const ringRadius = 13.75; // (8 + 3) * 1.25
+    const ringRadius = 16.5; // (8 + 3) * 1.5
     expect(Math.hypot(a.x, a.y)).toBeCloseTo(ringRadius);
     expect(Math.hypot(b.x, b.y)).toBeCloseTo(ringRadius);
     // Opposite sides of the ring (slot 0 vs slot 1 of 2).
@@ -170,7 +170,7 @@ describe("computeRegionBadgeRingPos", () => {
 
   it("starts the first slot straight up from the cell center", () => {
     const pos = computeRegionBadgeRingPos([1, 1], cfg, 4, 0, 3);
-    const ringRadius = 8.75; // (4 + 3) * 1.25
+    const ringRadius = 10.5; // (4 + 3) * 1.5
     expect(pos.x).toBeCloseTo(10);
     expect(pos.y).toBeCloseTo(10 - ringRadius); // center.y - ringRadius (straight up)
   });
