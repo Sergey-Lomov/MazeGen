@@ -32,6 +32,9 @@ export const sharedStyles = {
 
   select: {
     ...typography.field,
+    // Native <select> needs an explicit line-height — without it Chromium seats the label text
+    // low in the line box and clips descenders (GitHub issue #457).
+    lineHeight: "16px",
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     padding: "3px 20px 3px 6px",
@@ -39,14 +42,17 @@ export const sharedStyles = {
     ...selectArrow,
   } satisfies React.CSSProperties,
 
+  // `controlRowHeight` is reached via line-height + symmetric vertical padding rather than a fixed
+  // `height` — a fixed height with zero vertical padding left the text seated low and clipped its
+  // descenders (GitHub issue #457).
   selectSm: {
     ...typography.field,
-    height: controlRowHeight,
+    lineHeight: "16px",
     boxSizing: "border-box",
     background: ui.bg.input,
     border: `1px solid ${ui.border.strong}`,
     borderRadius: radius.sm,
-    padding: "0 18px 0 4px",
+    padding: "2px 18px 2px 4px",
     ...selectArrow,
   } satisfies React.CSSProperties,
 
