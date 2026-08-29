@@ -5,6 +5,7 @@ import { Button } from "../Button";
 import { typography, font, spacing, ui, radius } from "../../styles/theme";
 import { resolveParamOptionLabel, resolveParamOptionExplanation, resolvePriorityOptionLabel } from "./qualityI18n";
 import { Switch } from "../Switch";
+import { NumberInput } from "../NumberInput";
 import { Inline } from "../Layout";
 import { Modal } from "../Modal";
 import { SplitPatternListEditor } from "../dialogs/SplitPatternListEditor";
@@ -152,36 +153,6 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
     return Boolean(disabled) || Boolean(disabledIds?.has(p.id));
   }
 
-  // Integer-kind fields must never accept a fractional value the user didn't intend (GitHub
-  // issue #387) -- block the decimal separator at the keystroke, so there's never an
-  // in-progress "2." to round or discard later.
-  function blockDecimalPoint(p: ParamDescriptor, e: React.KeyboardEvent<HTMLInputElement>) {
-    if (p.kind.type === "integer" && (e.key === "." || e.key === ",")) {
-      e.preventDefault();
-    }
-  }
-
-  // Keydown only guards typed input -- a paste bypasses it entirely, so a pasted "7.5" would
-  // otherwise sit in the field (and reach onChange) until blur rounds it away. Reject the
-  // paste outright when its content has a decimal separator.
-  function blockDecimalPaste(p: ParamDescriptor, e: React.ClipboardEvent<HTMLInputElement>) {
-    if (p.kind.type === "integer" && /[.,]/.test(e.clipboardData.getData("text"))) {
-      e.preventDefault();
-    }
-  }
-
-  // Final normalization once editing is done -- round a stray fractional value (e.g. pasted
-  // in) to the nearest integer and clamp it to the param's own bounds, or fall back to the
-  // param's default if the field was left empty/unparseable.
-  function handleIntegerBlur(p: ParamDescriptor, raw: string) {
-    if (p.kind.type !== "integer") return;
-    const n = Number(raw);
-    const next = raw === "" || !Number.isFinite(n)
-      ? p.kind.default
-      : Math.min(p.kind.max, Math.max(p.kind.min, Math.round(n)));
-    onChange(p.id, String(next));
-  }
-
   // "min,max" -- mirrors maze-core's `parse_param` Interval encoding (repair/params.rs).
   function getIntervalParts(p: ParamDescriptor): [string, string] {
     const raw = get(p);
@@ -323,18 +294,14 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
               {(p.kind.type === "float" || p.kind.type === "integer") &&
                 !PERCENT_SLIDER_PARAM_IDS.has(p.id) &&
                 !PERCENT_FRACTION_SLIDER_PARAM_IDS.has(p.id) && (
-                  <input
-                    type="number"
+                  <NumberInput
                     style={styles.input}
                     value={get(p)}
                     min={p.kind.min}
                     max={p.kind.max}
-                    step={p.kind.type === "integer" ? 1 : 0.1}
+                    integer={p.kind.type === "integer"}
                     disabled={isDisabled(p)}
-                    onChange={(e) => onChange(p.id, e.target.value)}
-                    onKeyDown={(e) => blockDecimalPoint(p, e)}
-                    onPaste={(e) => blockDecimalPaste(p, e)}
-                    onBlur={(e) => handleIntegerBlur(p, e.target.value)}
+                    onChange={(v) => onChange(p.id, v)}
                     onClick={(e) => e.stopPropagation()}
                   />
                 )}
@@ -345,55 +312,39 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                     const kind = p.kind;
                     return (
                       <>
-                        <input
-                          type="number"
+                        <NumberInput
                           style={styles.input}
                           value={lo}
                           min={kind.min}
                           max={kind.max}
                           disabled={isDisabled(p)}
-                          onChange={(e) => onChange(p.id, `${e.target.value},${hi}`)}
-                          onBlur={(e) => {
-                            // Clamp on blur, not on every keystroke -- an onChange clamp would
-                            // cap the value against the OLD hi mid-edit, making it impossible to
-                            // type a min above the current max (e.g. raising min from 3 to 30
-                            // while max is still 10 would freeze at 10 on the first keystroke).
-                            // Deferring to blur lets the field hold a temporarily-inverted value
-                            // while both ends are being edited in sequence.
-                            // Empty string parses to 0 via Number(), not NaN -- an explicit
-                            // emptiness check catches "cleared, then blurred without typing"
-                            // separately from a genuine out-of-order numeric value.
-                            const raw = e.target.value;
+                          onChange={(v) => onChange(p.id, `${v},${hi}`)}
+                          onBlurCommit={(loRaw) => {
+                            // `NumberInput` has already restored an emptied field to its last
+                            // valid value and clamped to [min, max] -- the only adjustment left
+                            // is the cross-field one it can't see: an inverted range (min > max)
+                            // collapses to a single point at the other endpoint. Deferred to blur
+                            // (not onChange) so both ends can be edited in sequence through a
+                            // temporarily-inverted state.
+                            const loNum = Number(loRaw);
                             const hiNum = Number(hi);
-                            if (raw === "" && Number.isFinite(hiNum)) {
-                              onChange(p.id, `${kind.min},${hi}`);
-                              return;
-                            }
-                            const loNum = Number(raw);
                             if (Number.isFinite(loNum) && Number.isFinite(hiNum) && loNum > hiNum) {
                               onChange(p.id, `${hiNum},${hiNum}`);
                             }
                           }}
                         />
                         <span style={styles.intervalSeparator}>–</span>
-                        <input
-                          type="number"
+                        <NumberInput
                           style={styles.input}
                           value={hi}
                           min={kind.min}
                           max={kind.max}
                           disabled={isDisabled(p)}
-                          onChange={(e) => onChange(p.id, `${lo},${e.target.value}`)}
-                          onBlur={(e) => {
-                            // Same rationale as the min input's own onBlur clamp above, including
-                            // the empty-string special case.
-                            const raw = e.target.value;
+                          onChange={(v) => onChange(p.id, `${lo},${v}`)}
+                          onBlurCommit={(hiRaw) => {
+                            // Same as the min field's own cross-field clamp above.
                             const loNum = Number(lo);
-                            if (raw === "" && Number.isFinite(loNum)) {
-                              onChange(p.id, `${lo},${kind.max}`);
-                              return;
-                            }
-                            const hiNum = Number(raw);
+                            const hiNum = Number(hiRaw);
                             if (Number.isFinite(loNum) && Number.isFinite(hiNum) && hiNum < loNum) {
                               onChange(p.id, `${loNum},${loNum}`);
                             }
@@ -460,15 +411,13 @@ export function ParamFields({ params, values, getValue, onChange, getDescription
                 </Button>
               )}
               {p.kind.type === "add_split_config" && !addSplitPatternsOverride?.length && (
-                <input
-                  type="number"
+                <NumberInput
                   style={styles.input}
                   value={getMaxSplitNodes(p)}
                   min={1}
-                  step={1}
+                  integer
                   disabled={isDisabled(p)}
-                  onChange={(e) => onChange(p.id, e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "." || e.key === ",") e.preventDefault(); }}
+                  onChange={(v) => onChange(p.id, v)}
                   onClick={(e) => e.stopPropagation()}
                 />
               )}

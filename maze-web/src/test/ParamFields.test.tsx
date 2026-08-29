@@ -146,97 +146,96 @@ describe("ParamFields", () => {
       expect(onCommit).toHaveBeenLastCalledWith("desired_length", "10,10");
     });
 
-    it("onBlur leaves an in-order range untouched", () => {
+    it("onBlur leaves an in-order range at its final value", () => {
       const onCommit = vi.fn();
       render(<StatefulParamFields params={[intervalParam]} initial={{ desired_length: "3,10" }} onCommit={onCommit} />);
       const [minInput] = screen.getAllByRole("spinbutton");
       fireEvent.change(minInput, { target: { value: "5" } });
-      onCommit.mockClear();
       fireEvent.blur(minInput);
-      expect(onCommit).not.toHaveBeenCalled();
+      // No inversion clamp -- 5 <= 10, so the range stays as typed.
+      expect(onCommit).toHaveBeenLastCalledWith("desired_length", "5,10");
     });
 
-    it("onBlur on an emptied min field falls back to the param's own min bound instead of leaving an invalid string", () => {
+    it("onBlur on an emptied min field restores the last valid min instead of the param bound", () => {
       const onCommit = vi.fn();
       render(<StatefulParamFields params={[intervalParam]} initial={{ desired_length: "3,10" }} onCommit={onCommit} />);
-      const [minInput] = screen.getAllByRole("spinbutton");
+      const [minInput] = screen.getAllByRole("spinbutton") as HTMLInputElement[];
       fireEvent.change(minInput, { target: { value: "" } });
-      onCommit.mockClear();
+      // Never commits a "" half -- it commits the last valid min (GitHub issue #452).
+      expect(onCommit).toHaveBeenLastCalledWith("desired_length", "3,10");
       fireEvent.blur(minInput);
-      expect(onCommit).toHaveBeenCalledWith("desired_length", "0,10");
+      expect(onCommit).toHaveBeenLastCalledWith("desired_length", "3,10");
+      expect(minInput.value).toBe("3");
     });
 
-    it("onBlur on an emptied max field falls back to the param's own max bound", () => {
+    it("onBlur on an emptied max field restores the last valid max", () => {
       const onCommit = vi.fn();
       render(<StatefulParamFields params={[intervalParam]} initial={{ desired_length: "3,10" }} onCommit={onCommit} />);
-      const [, maxInput] = screen.getAllByRole("spinbutton");
+      const [, maxInput] = screen.getAllByRole("spinbutton") as HTMLInputElement[];
       fireEvent.change(maxInput, { target: { value: "" } });
-      onCommit.mockClear();
+      expect(onCommit).toHaveBeenLastCalledWith("desired_length", "3,10");
       fireEvent.blur(maxInput);
-      expect(onCommit).toHaveBeenCalledWith("desired_length", "3,100000");
+      expect(maxInput.value).toBe("10");
+    });
+
+    it("onBlur restores the last valid half even after it was edited to a new value first", () => {
+      const onCommit = vi.fn();
+      render(<StatefulParamFields params={[intervalParam]} initial={{ desired_length: "3,10" }} onCommit={onCommit} />);
+      const [minInput] = screen.getAllByRole("spinbutton") as HTMLInputElement[];
+      fireEvent.change(minInput, { target: { value: "7" } });
+      fireEvent.change(minInput, { target: { value: "" } });
+      fireEvent.blur(minInput);
+      expect(minInput.value).toBe("7");
+      expect(onCommit).toHaveBeenLastCalledWith("desired_length", "7,10");
     });
   });
 
-  describe("integer param", () => {
-    it("blocks typing a decimal point", () => {
-      const onChange = vi.fn();
-      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={onChange} />);
+  // ParamFields renders float/integer params through the shared `NumberInput` (see
+  // NumberInput.test.tsx for its round/clamp/last-valid/decimal-guard contract). These tests only
+  // pin what ParamFields itself is responsible for: wiring the right props into it and forwarding
+  // its commits under the param's own id.
+  describe("float / integer param wiring", () => {
+    it("forwards an integer param's committed value under its own id", () => {
+      const onCommit = vi.fn();
+      render(<StatefulParamFields params={[plainIntegerParam]} initial={{ max_attempts: "5" }} onCommit={onCommit} />);
       const input = screen.getByRole("spinbutton");
-      const event = new KeyboardEvent("keydown", { key: ".", bubbles: true, cancelable: true });
-      const prevented = !input.dispatchEvent(event);
-      expect(prevented).toBe(true);
+      fireEvent.change(input, { target: { value: "9" } });
+      expect(onCommit).toHaveBeenLastCalledWith("max_attempts", "9");
     });
 
-    it("rounds a fractional value to the nearest integer on blur", () => {
-      const onChange = vi.fn();
-      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={onChange} />);
-      fireEvent.blur(screen.getByRole("spinbutton"), { target: { value: "7.6" } });
-      expect(onChange).toHaveBeenCalledWith("max_attempts", "8");
-    });
-
-    it("falls back to the param's default when left empty on blur", () => {
-      const onChange = vi.fn();
-      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={onChange} />);
-      fireEvent.blur(screen.getByRole("spinbutton"), { target: { value: "" } });
-      expect(onChange).toHaveBeenCalledWith("max_attempts", "5");
-    });
-
-    it("falls back to the param's default when left unparseable on blur", () => {
-      const onChange = vi.fn();
-      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={onChange} />);
-      fireEvent.blur(screen.getByRole("spinbutton"), { target: { value: "-" } });
-      expect(onChange).toHaveBeenCalledWith("max_attempts", "5");
-    });
-
-    it("clamps a value above the param's max on blur", () => {
-      const onChange = vi.fn();
-      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={onChange} />);
-      fireEvent.blur(screen.getByRole("spinbutton"), { target: { value: "500" } });
-      expect(onChange).toHaveBeenCalledWith("max_attempts", "100");
-    });
-
-    it("clamps a value below the param's min on blur", () => {
-      const onChange = vi.fn();
-      render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={onChange} />);
-      fireEvent.blur(screen.getByRole("spinbutton"), { target: { value: "-20" } });
-      expect(onChange).toHaveBeenCalledWith("max_attempts", "0");
-    });
-
-    it("blocks pasting text containing a decimal separator", () => {
+    it("passes integer=true for an integer param (decimal point blocked)", () => {
       render(<ParamFields params={[plainIntegerParam]} values={{ max_attempts: "5" }} onChange={vi.fn()} />);
       const input = screen.getByRole("spinbutton");
-      const clipboardData = { getData: () => "7.5" } as unknown as DataTransfer;
-      const event = new Event("paste", { bubbles: true, cancelable: true }) as unknown as ClipboardEvent;
-      Object.defineProperty(event, "clipboardData", { value: clipboardData });
-      const prevented = !input.dispatchEvent(event);
-      expect(prevented).toBe(true);
+      const event = new KeyboardEvent("keydown", { key: ".", bubbles: true, cancelable: true });
+      expect(input.dispatchEvent(event)).toBe(false);
     });
 
-    it("does not round a plain float param on blur", () => {
-      const onChange = vi.fn();
-      render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={onChange} />);
-      fireEvent.blur(screen.getByRole("spinbutton"), { target: { value: "7.6" } });
-      expect(onChange).not.toHaveBeenCalled();
+    it("does not pass integer=true for a float param (decimal point allowed)", () => {
+      render(<ParamFields params={[plainFloatParam]} values={{ reserve_percent: "50" }} onChange={vi.fn()} />);
+      const input = screen.getByRole("spinbutton");
+      const event = new KeyboardEvent("keydown", { key: ".", bubbles: true, cancelable: true });
+      expect(input.dispatchEvent(event)).toBe(true);
+    });
+
+    it("passes the param's own min/max so blur clamps to them", () => {
+      const onCommit = vi.fn();
+      render(<StatefulParamFields params={[plainIntegerParam]} initial={{ max_attempts: "5" }} onCommit={onCommit} />);
+      const input = screen.getByRole("spinbutton");
+      fireEvent.change(input, { target: { value: "500" } });
+      fireEvent.blur(input);
+      // plainIntegerParam's max is 100.
+      expect(onCommit).toHaveBeenLastCalledWith("max_attempts", "100");
+    });
+
+    it("an emptied field commits the last valid value, never \"\" (GitHub issue #452)", () => {
+      const onCommit = vi.fn();
+      render(<StatefulParamFields params={[plainIntegerParam]} initial={{ max_attempts: "42" }} onCommit={onCommit} />);
+      const input = screen.getByRole("spinbutton") as HTMLInputElement;
+      fireEvent.change(input, { target: { value: "" } });
+      fireEvent.blur(input);
+      expect(onCommit).not.toHaveBeenCalledWith("max_attempts", "");
+      expect(onCommit).toHaveBeenLastCalledWith("max_attempts", "42");
+      expect(input.value).toBe("42");
     });
   });
 
