@@ -4,7 +4,7 @@ import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, type TeleportFloorContext } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, type TeleportFloorContext, type TeleportBadgeSpreadOptions } from "./selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { canvas } from "./colorTokens";
@@ -28,6 +28,9 @@ export interface MazeOverlayData {
    *  the cell would be wrongly rendered as a closed wall. Omitted by a caller with no unscoped list
    *  in hand, same fallback `buildClosedCells`'s own optional param already has. */
   allEdges?: EdgeDto[];
+  /** Cross-floor teleport badge collision-relocation inputs (GitHub issue #480) — forwarded to
+   *  `buildTeleportEdges`. Omitted → badges only avoid each other, not maze markers. */
+  teleportBadgeSpread?: TeleportBadgeSpreadOptions;
 }
 
 export interface MazeOverlayContainers {
@@ -57,7 +60,7 @@ export class MazeOverlayRenderer {
   }
 
   render(data: MazeOverlayData): void {
-    const { nodes, edges, start, finish, cfg, teleportFloorContext, teleportFloorNavigable, allEdges } = data;
+    const { nodes, edges, start, finish, cfg, teleportFloorContext, teleportFloorNavigable, allEdges, teleportBadgeSpread } = data;
 
     const cells: [number, number][] = nodes.map(n => [n.x, n.y]);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
@@ -83,7 +86,7 @@ export class MazeOverlayRenderer {
     this.splitJunctions.render({ passages: splitPassages, wallFaces, specialShapes });
 
     const nodeById = new Map(nodes.map(n => [n.id, n]));
-    const teleportEdges = buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext);
+    const teleportEdges = buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext, teleportBadgeSpread);
     this.teleports.render({ edges: teleportEdges, cfg, floorNavigable: teleportFloorNavigable ?? false });
 
     const markerData = buildMazeMarkers(nodeById, start, finish, cfg, undefined, undefined, edges);

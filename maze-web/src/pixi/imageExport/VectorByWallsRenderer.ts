@@ -8,7 +8,7 @@ import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "../renderers/SplitJunctionRenderer";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet } from "../selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet } from "../selectors/mazeSelectors";
 import { computeVectorByWallsWarnings } from "../selectors/exportWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
@@ -442,6 +442,12 @@ export class VectorByWallsRenderer {
           unscopedNodeById: new Map(state.nodes.map((n) => [n.id, n])),
           unscopedEdges: state.edges,
           activeFloorIndex,
+        }, {
+          blockedCellsByFloor: buildTeleportBadgeBlockedCells(
+            state.nodes, state.edges, resolveNodeLevel, rawEndpoints.start, rawEndpoints.finish,
+          ),
+          allowOutOfField: !state.vectorByWallsSettings.teleportAvoidFieldExit,
+          fieldCells: state.nodes.map((n): [number, number] => [n.x, n.y]),
         }),
         splitPassages,
         splitWallFaces,

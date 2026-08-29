@@ -10,7 +10,7 @@ import { RouteOverlay } from "./RouteOverlay";
 import { PureCyclesOverlay } from "./PureCyclesOverlay";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
-import { postEditEdgesToDto, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportEdges, type TeleportFloorContext } from "./selectors/mazeSelectors";
+import { postEditEdgesToDto, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportEdges, buildTeleportBadgeBlockedCells, type TeleportFloorContext, type TeleportBadgeSpreadOptions } from "./selectors/mazeSelectors";
 import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "./postEditEndpoint";
 import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
@@ -240,6 +240,14 @@ export class AnalyticsRenderer {
     };
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
+    // Cross-floor teleport badge collision relocation (GitHub issue #480) — per-floor cells that
+    // already draw a center marker, so a relocated badge never lands on one. Editor canvas: badges
+    // are allowed off the field edge (`allowOutOfField: true`).
+    const teleportBadgeSpread: TeleportBadgeSpreadOptions = {
+      blockedCellsByFloor: buildTeleportBadgeBlockedCells(state.nodes, state.edges, resolveNodeLevel, state.start, state.finish),
+      allowOutOfField: true,
+    };
+
     // Maze overlay (floor + walls + markers)
     const showMaze = analyticsOpen && showMazeOverlay && nodes.length > 0;
     this.floorContainer.visible       = showMaze;
@@ -259,11 +267,11 @@ export class AnalyticsRenderer {
     // Built once, only when something will actually consume it — the maze overlay's own teleport
     // connectors/badges, and/or the regions overlays' teleport-anchored cross-floor badges (#345).
     const teleportEdges = (showMaze || showRegions || showRegionClasses)
-      ? buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext)
+      ? buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext, teleportBadgeSpread)
       : undefined;
 
     if (showMaze) {
-      this.mazeOverlay.render({ nodes, edges, start, finish, cfg, teleportFloorContext, teleportFloorNavigable: true, allEdges: state.edges });
+      this.mazeOverlay.render({ nodes, edges, start, finish, cfg, teleportFloorContext, teleportBadgeSpread, teleportFloorNavigable: true, allEdges: state.edges });
     }
 
     // Vertical passage/elevator markers — read from the confirmed `state.nodes`/`state.edges`

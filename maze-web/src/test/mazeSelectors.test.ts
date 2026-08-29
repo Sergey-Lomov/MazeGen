@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, type MarkerStyle } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
-import { getCellCenter, getCellVertices } from "../pixi/tessellationGeometry";
+import { getCellCenter, getCellVertices, nearestCellCoord } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
 import type { NodeDto, EdgeDto } from "../wasm/types";
@@ -923,6 +923,188 @@ describe("buildTeleportEdges", () => {
     // The real, on-floor marker (node 1) is `to` — the badge (standing in for the off-floor
     // departure end) is `from`.
     expect(result[0].to).toEqual([getCellCenter(3, 3, squareCfg).x, getCellCenter(3, 3, squareCfg).y]);
+  });
+
+  // --- cross-floor badge collision spread (GitHub issue #480) ---
+
+  const spreadCtx = (nodes: NodeDto[], unscopedEdges: EdgeDto[], activeFloorIndex: number) => ({
+    resolveNodeLevel: selectNodeLevelResolver(nodes),
+    unscopedNodeById: new Map(nodes.map((nd) => [nd.id, nd])),
+    unscopedEdges,
+    activeFloorIndex,
+  });
+  const blockOpts = (nodes: NodeDto[], unscopedEdges: EdgeDto[], extra: Partial<TeleportBadgeSpreadOptions> = {}) => ({
+    blockedCellsByFloor: buildTeleportBadgeBlockedCells(nodes, unscopedEdges, selectNodeLevelResolver(nodes), null, null),
+    ...extra,
+  });
+  const isCellCenter = (p: [number, number], cfg: TessellationConfig): boolean => {
+    const [gx, gy] = nearestCellCoord(p[0], p[1], cfg);
+    const c = getCellCenter(gx, gy, cfg);
+    return Math.abs(c.x - p[0]) < 1e-6 && Math.abs(c.y - p[1]) < 1e-6;
+  };
+
+  it("a cross-floor badge is never left on a cell that carries a node marker", () => {
+    // node 0 @ (1,1) f0 -> node 1 @ (1,1) f1: raw midpoint snaps to (1,1), where node 0's own teleport
+    // marker sits. The badge must move off it.
+    const nodes: NodeDto[] = [nLevel(0, 1, 1, 0), nLevel(1, 1, 1, 1)];
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1)];
+    const result = buildTeleportEdges(
+      new Map([[0, nodes[0]]]), unscopedEdges, squareCfg, spreadCtx(nodes, unscopedEdges, 0),
+      blockOpts(nodes, unscopedEdges),
+    );
+    const badge = result.find((r) => r.toFloor !== undefined)!;
+    expect(badge).toBeDefined();
+    // Not on the marker cell (1,1); still snapped to some real cell center.
+    expect(nearestCellCoord(badge.to[0], badge.to[1], squareCfg)).not.toEqual([1, 1]);
+    expect(isCellCenter(badge.to, squareCfg)).toBe(true);
+  });
+
+  it("two cross-floor badges resolving to the same cell land on different cells", () => {
+    // Two one-way cross-floor teleports whose midpoints both snap to (1,1):
+    //   node 0 @ (0,0) -> node 1 @ (2,2)   midpoint (1,1)
+    //   node 2 @ (2,0) -> node 3 @ (0,2)   midpoint (1,1)
+    const nodes: NodeDto[] = [
+      nLevel(0, 0, 0, 0), nLevel(1, 2, 2, 1),
+      nLevel(2, 2, 0, 0), nLevel(3, 0, 2, 1),
+    ];
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1), teleport(2, 3)];
+    const result = buildTeleportEdges(
+      new Map([[0, nodes[0]], [2, nodes[2]]]), unscopedEdges, squareCfg, spreadCtx(nodes, unscopedEdges, 0),
+      blockOpts(nodes, unscopedEdges),
+    );
+    expect(result).toHaveLength(2);
+    expect(result[0].toFloor).toBe(1);
+    expect(result[1].toFloor).toBe(1);
+    expect(nearestCellCoord(result[0].to[0], result[0].to[1], squareCfg))
+      .not.toEqual(nearestCellCoord(result[1].to[0], result[1].to[1], squareCfg));
+  });
+
+  it("the same cross-floor pair picks the identical badge cell whichever floor is rendered", () => {
+    const nodes: NodeDto[] = [nLevel(0, 0, 0, 0), nLevel(1, 2, 2, 1)];
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1), teleport(1, 0)];
+    const fromFloor0 = buildTeleportEdges(
+      new Map([[0, nodes[0]]]), [teleport(0, 1)], squareCfg, spreadCtx(nodes, unscopedEdges, 0),
+      blockOpts(nodes, unscopedEdges),
+    );
+    const fromFloor1 = buildTeleportEdges(
+      new Map([[1, nodes[1]]]), [teleport(1, 0)], squareCfg, spreadCtx(nodes, unscopedEdges, 1),
+      blockOpts(nodes, unscopedEdges),
+    );
+    expect(fromFloor0[0].to).toEqual(fromFloor1[0].to);
+  });
+
+  it("a badge on floors 0<->2 ignores a marker that only exists on floor 1", () => {
+    // Cross-floor pair node 0 @ (1,1) f0 -> node 1 @ (1,1) f2, midpoint snaps to (1,1). A floor-1
+    // node also sits at (1,1) but must NOT push the badge — the pair never touches floor 1.
+    const nodes: NodeDto[] = [nLevel(0, 1, 1, 0), nLevel(1, 1, 1, 2), nLevel(9, 1, 1, 1)];
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1)];
+    const withFloor1Marker = buildTeleportEdges(
+      new Map([[0, nodes[0]]]), unscopedEdges, squareCfg, spreadCtx(nodes, unscopedEdges, 0),
+      blockOpts(nodes, unscopedEdges),
+    );
+    // node 0's own teleport marker is on floor 0 at (1,1), so the badge still moves; but the result
+    // must match the case where the floor-1 marker isn't there at all.
+    const noFloor1Marker = buildTeleportEdges(
+      new Map([[0, nodes[0]]]), unscopedEdges, squareCfg,
+      spreadCtx([nodes[0], nodes[1]], unscopedEdges, 0),
+      blockOpts([nodes[0], nodes[1]], unscopedEdges),
+    );
+    expect(withFloor1Marker[0].to).toEqual(noFloor1Marker[0].to);
+  });
+
+  it("allowOutOfField:false keeps a relocated badge inside fieldCells", () => {
+    // node 0 @ (0,0) f0 -> node 1 @ (0,0) f1: midpoint snaps to (0,0), a node cell -> must relocate.
+    // Field is only the single column x=0, so the badge can only go to (0,1)/(0,-1) etc., never x!=0.
+    const nodes: NodeDto[] = [nLevel(0, 0, 0, 0), nLevel(1, 0, 0, 1)];
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1)];
+    const fieldCells: [number, number][] = [[0, 0], [0, 1], [0, 2], [0, 3], [0, -1], [0, -2]];
+    const result = buildTeleportEdges(
+      new Map([[0, nodes[0]]]), unscopedEdges, squareCfg, spreadCtx(nodes, unscopedEdges, 0),
+      blockOpts(nodes, unscopedEdges, { allowOutOfField: false, fieldCells }),
+    );
+    const badge = result.find((r) => r.toFloor !== undefined)!;
+    const [gx] = nearestCellCoord(badge.to[0], badge.to[1], squareCfg);
+    expect(gx).toBe(0);
+  });
+
+  it("a pair's badge stays in the same cell even when a competing cross-floor badge exists on only one of the two floors", () => {
+    // Pair P: node 0 @ (2,2) f0 <-> node 1 @ (2,2) f1, midpoint snaps to (2,2).
+    // Pair Q: node 2 @ (2,2) f0 -> node 3 @ (4,4) f2 (one-way), its midpoint also snaps to (3,3)...
+    // Force a collision: put Q's snap at (2,2) too -> node 3 @ (2,2) f2.
+    // Q is visible from floor 0 (its `from` node 2 is on f0) but NOT from floor 1.
+    // P must resolve to the identical cell whether rendered from floor 0 or floor 1.
+    const nodes: NodeDto[] = [
+      nLevel(0, 2, 2, 0), nLevel(1, 2, 2, 1),
+      nLevel(2, 2, 2, 0), nLevel(3, 2, 2, 2),
+    ];
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1), teleport(1, 0), teleport(2, 3)];
+    const fromFloor0 = buildTeleportEdges(
+      new Map([[0, nodes[0]], [2, nodes[2]]]),
+      [teleport(0, 1), teleport(2, 3)],
+      squareCfg, spreadCtx(nodes, unscopedEdges, 0), blockOpts(nodes, unscopedEdges),
+    );
+    const fromFloor1 = buildTeleportEdges(
+      new Map([[1, nodes[1]]]), [teleport(1, 0)],
+      squareCfg, spreadCtx(nodes, unscopedEdges, 1), blockOpts(nodes, unscopedEdges),
+    );
+    const p0 = fromFloor0.find((r) => (r.fromNode === 0 && r.toNode === 1) || (r.fromNode === 1 && r.toNode === 0))!;
+    const p1 = fromFloor1.find((r) => (r.fromNode === 0 && r.toNode === 1) || (r.fromNode === 1 && r.toNode === 0))!;
+    const posOf = (r: typeof p0) => (r.toFloor !== undefined ? r.to : r.from);
+    expect(posOf(p0)).toEqual(posOf(p1));
+  });
+
+  it("a cross-floor badge is relocated off the start/finish node cell (post-edit draft start/finish path)", () => {
+    // node 0 @ (1,1) f0 -> node 1 @ (1,1) f1: badge snaps to (1,1). No teleport/vertical marker sits
+    // there other than node 0's own — but node 9 @ (1,1) f0 is the *start*, passed as `startNodeId`.
+    // `blockOpts` hardcodes null/null, so build the block map by hand here to exercise the branch.
+    const nodes: NodeDto[] = [nLevel(0, 1, 1, 0), nLevel(1, 1, 1, 1), nLevel(9, 1, 1, 0)];
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1)];
+    const withStart = buildTeleportEdges(
+      new Map([[0, nodes[0]]]), unscopedEdges, squareCfg, spreadCtx(nodes, unscopedEdges, 0),
+      { blockedCellsByFloor: buildTeleportBadgeBlockedCells(nodes, unscopedEdges, selectNodeLevelResolver(nodes), 9, null) },
+    );
+    const badge = withStart.find((r) => r.toFloor !== undefined)!;
+    expect(nearestCellCoord(badge.to[0], badge.to[1], squareCfg)).not.toEqual([1, 1]);
+  });
+
+  it("a vertical_passage / elevator endpoint on the badge cell also pushes the badge off", () => {
+    // Cross-floor pair node 0 @ (1,1) f0 -> node 1 @ (1,1) f1, snap (1,1). node 0 itself is a teleport
+    // marker there anyway, so instead test a *different* snap: node 0 @ (0,0) f0 -> node 1 @ (2,2) f1,
+    // snap (1,1); a vertical_passage edge node 5 @ (1,1) f0 -- node 6 @ (1,1) f1 puts a marker on (1,1).
+    const nodes: NodeDto[] = [
+      nLevel(0, 0, 0, 0), nLevel(1, 2, 2, 1),
+      nLevel(5, 1, 1, 0), nLevel(6, 1, 1, 1),
+    ];
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1), { from: 5, to: 6, kind: "vertical_passage" }];
+    const withMarker = buildTeleportEdges(
+      new Map([[0, nodes[0]]]), [teleport(0, 1)], squareCfg, spreadCtx(nodes, unscopedEdges, 0),
+      blockOpts(nodes, unscopedEdges),
+    );
+    const badge = withMarker.find((r) => r.toFloor !== undefined)!;
+    expect(nearestCellCoord(badge.to[0], badge.to[1], squareCfg)).not.toEqual([1, 1]);
+
+    // Same, with the blocker as an elevator edge instead.
+    const elevatorEdges: EdgeDto[] = [teleport(0, 1), { from: 5, to: 6, kind: "elevator" }];
+    const withElevator = buildTeleportEdges(
+      new Map([[0, nodes[0]]]), [teleport(0, 1)], squareCfg, spreadCtx(nodes, elevatorEdges, 0),
+      blockOpts(nodes, elevatorEdges),
+    );
+    expect(nearestCellCoord(withElevator.find((r) => r.toFloor !== undefined)!.to[0], withElevator.find((r) => r.toFloor !== undefined)!.to[1], squareCfg))
+      .not.toEqual([1, 1]);
+  });
+
+  it("a badge with no free cell within the search radius falls back to the raw snapped midpoint", () => {
+    // node 0 @ (0,0) f0 -> node 1 @ (0,0) f1: snap (0,0). allowOutOfField:false with fieldCells = the
+    // single cell (0,0) -> every other cell is out of field and (0,0) itself is blocked (node marker),
+    // so nothing is ever free -> badge stays on the raw snapped midpoint = (0,0)'s center.
+    const nodes: NodeDto[] = [nLevel(0, 0, 0, 0), nLevel(1, 0, 0, 1)];
+    const unscopedEdges: EdgeDto[] = [teleport(0, 1)];
+    const result = buildTeleportEdges(
+      new Map([[0, nodes[0]]]), unscopedEdges, squareCfg, spreadCtx(nodes, unscopedEdges, 0),
+      blockOpts(nodes, unscopedEdges, { allowOutOfField: false, fieldCells: [[0, 0]] }),
+    );
+    const badge = result.find((r) => r.toFloor !== undefined)!;
+    expect(nearestCellCoord(badge.to[0], badge.to[1], squareCfg)).toEqual([0, 0]);
   });
 });
 

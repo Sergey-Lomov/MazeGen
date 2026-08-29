@@ -37,6 +37,7 @@ vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildMazeWalls: vi.fn(() => []),
   buildMazeMarkers: vi.fn(() => []),
   buildTeleportEdges: vi.fn(() => []),
+  buildTeleportBadgeBlockedCells: vi.fn(() => new Map()),
   buildClosedCells: vi.fn(() => []),
   buildSplitPassages: vi.fn(() => ({ passages: [], wallFaces: [], specialShapes: [] })),
   maxSplitNodeCount: vi.fn(() => 0),
