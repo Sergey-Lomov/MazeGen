@@ -71,6 +71,7 @@ interface FakeText {
   style: Record<string, unknown>;
   width: number;
   anchor: { set: (v: number) => void };
+  pivot: { y: number };
   x: number;
   y: number;
   destroy: () => void;
@@ -86,15 +87,20 @@ vi.mock("pixi.js", () => ({
   Graphics: vi.fn().mockImplementation(function (this: FakeGraphics) {
     installFakeGraphics(this);
   }),
-  Text: vi.fn().mockImplementation(function (this: FakeText, opts: { text: string; style: Record<string, unknown> }) {
+  // `BitmapText` (GitHub issue #352 — MSDF label font) has the same constructor/instance shape this
+  // renderer relies on as the old `Text` did: `{ text, style: { fontSize, ... } }`, `.width`,
+  // `.anchor.set`, `.x/.y`, `.destroy`.
+  BitmapText: vi.fn().mockImplementation(function (this: FakeText, opts: { text: string; style: Record<string, unknown> }) {
     this.text = opts.text;
     this.style = opts.style;
     this.width = opts.text.length * (opts.style.fontSize as number) * 0.6;
     this.anchor = { set: vi.fn() };
+    this.pivot = { y: 0 };
     this.x = 0;
     this.y = 0;
     this.destroy = vi.fn();
   }),
+  Cache: { get: () => undefined },
 }));
 
 const { VerticalConnectionRenderer } = await import("../pixi/renderers/VerticalConnectionRenderer");

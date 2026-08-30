@@ -1,16 +1,10 @@
-import type { TextStyleFontWeight } from "pixi.js";
-
 /** Label numbering style shared by elevator floor-number badges (GitHub issue #430) and marker
  *  index labels (GitHub issue #471). "roman" tends to stay legible at small font sizes. */
 export type IndexLabelStyle = "arabic" | "roman" | "letters";
 
-/** Font weight choice for a label, shared by the same two features. */
+/** Font weight choice for a label, shared by the same two features — resolved to a baked MSDF
+ *  atlas family name by `msdfFont.ts`'s `msdfFontFamily` (GitHub issue #352). */
 export type LabelFontWeight = "regular" | "bold";
-
-export const LABEL_FONT_WEIGHTS: Record<LabelFontWeight, TextStyleFontWeight> = {
-  regular: "normal",
-  bold: "bold",
-};
 
 const ROMAN_VALUES: [number, string][] = [
   [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"],

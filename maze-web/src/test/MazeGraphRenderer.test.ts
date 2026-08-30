@@ -33,22 +33,23 @@ vi.mock("pixi.js", () => {
     removeChildren() { const c = this.children; this.children = []; return c; }
     destroy() {}
   }
-  class FakeText {
+  // Stands in for pixi's `BitmapText` (GitHub issue #352 — MSDF label font). Node labels are
+  // constructed directly (top-left, no centering); cross-floor badge digits go through
+  // `makeCenteredLabel`, which sets `anchor`/`pivot` — so both must exist here.
+  class FakeBitmapText {
     anchor = { set: vi.fn() };
+    pivot = { y: 0 };
     x = 0;
     y = 0;
     options: { text: string };
     constructor(opts: { text: string }) { this.options = opts; }
     destroy() {}
   }
-  class FakeTextStyle {
-    constructor(public opts: unknown) {}
-  }
-  return { Container: FakeContainer, Graphics: FakeGraphics, Text: FakeText, TextStyle: FakeTextStyle };
+  return { Container: FakeContainer, Graphics: FakeGraphics, BitmapText: FakeBitmapText, Cache: { get: () => undefined } };
 });
 
 const { MazeGraphRenderer } = await import("../pixi/MazeGraphRenderer");
-const { Graphics: FakeGraphics, Text: FakeText, Container } = await import("pixi.js");
+const { Graphics: FakeGraphics, BitmapText: FakeText, Container } = await import("pixi.js");
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 

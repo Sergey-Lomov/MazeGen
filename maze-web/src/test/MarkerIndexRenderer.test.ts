@@ -3,9 +3,9 @@ import { TILE_SIZE } from "../pixi/constants";
 import type { MarkerIndexLabel } from "../pixi/selectors/mazeSelectors/markerIndex";
 import type { MarkerIndexSettings } from "../store/imageExportTypes";
 
-// Minimal pixi stubs — the renderer only calls `roundRect().fill().stroke()` on `Graphics`,
-// `CanvasTextMetrics.measureText` for width, and constructs `Text`/`TextStyle`. Same
-// mocked-pixi convention as `VerticalConnectionRenderer.test.ts`.
+// Minimal pixi stubs — the renderer only calls `roundRect().fill().stroke()` on `Graphics` and
+// constructs `BitmapText` (GitHub issue #352 — MSDF label font), reading `.width` off a throwaway
+// instance to size the plate. Same mocked-pixi convention as `VerticalConnectionRenderer.test.ts`.
 type RoundRect = { x: number; y: number; w: number; h: number; r: number };
 interface FakeGraphics {
   roundRectCalls: RoundRect[];
@@ -20,7 +20,9 @@ interface FakeText {
   text: string;
   x: number;
   y: number;
+  width: number;
   anchor: { set: (v: number) => void };
+  pivot: { y: number };
   destroy: () => void;
 }
 
@@ -40,20 +42,17 @@ vi.mock("pixi.js", () => ({
     this.stroke = (a) => { this.strokeCalls.push(a); return this; };
     this.destroy = vi.fn();
   }),
-  Text: vi.fn().mockImplementation(function (this: FakeText, opts: { text: string }) {
+  BitmapText: vi.fn().mockImplementation(function (this: FakeText, opts: { text: string; style: { fontSize: number } }) {
     this.text = opts.text;
     this.x = 0;
     this.y = 0;
+    // Width scales with text length so the widest label reliably wins, no real font needed.
+    this.width = opts.text.length * opts.style.fontSize * 0.6;
     this.anchor = { set: vi.fn() };
+    this.pivot = { y: 0 };
     this.destroy = vi.fn();
   }),
-  TextStyle: vi.fn().mockImplementation(function (this: Record<string, unknown>, opts: Record<string, unknown>) {
-    Object.assign(this, opts);
-  }),
-  CanvasTextMetrics: {
-    // Width scales with text length so the widest label reliably wins, no real font needed.
-    measureText: (text: string, style: { fontSize: number }) => ({ width: text.length * style.fontSize * 0.6 }),
-  },
+  Cache: { get: () => undefined },
 }));
 
 const { MarkerIndexRenderer } = await import("../pixi/renderers/MarkerIndexRenderer");

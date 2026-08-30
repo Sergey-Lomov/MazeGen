@@ -1,8 +1,8 @@
-import { CanvasTextMetrics, Container, Graphics, Text, TextStyle } from "pixi.js";
+import { BitmapText, Container, Graphics } from "pixi.js";
 import type { MarkerIndexSettings } from "../../store/imageExportTypes";
 import type { MarkerIndexLabel } from "../selectors/mazeSelectors/markerIndex";
 import { TILE_SIZE } from "../constants";
-import { LABEL_FONT_WEIGHTS } from "./indexLabel";
+import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
 
 /** Fraction of the plate's height the label text occupies (the rest is vertical padding). Chosen
  *  so the tallest glyphs ("VIII", "W") clear the plate edges with a small margin. */
@@ -74,12 +74,17 @@ export class MarkerIndexRenderer {
     const gap = Math.max(0, style.gap);
     const borderWidth = Math.max(0, Math.round(style.borderWidth));
     const fontSize = fitMarkerIndexFontSize(plateH);
-    const fontWeight = LABEL_FONT_WEIGHTS[style.fontWeight];
+    const fontFamily = msdfFontFamily(style.fontWeight);
 
-    const measureStyle = new TextStyle({ fontSize, fontWeight, trim: true });
+    // Plate width is sized to the widest label as rendered — an MSDF `BitmapText` (GitHub issue
+    // #352), so it must be measured with one too, not `CanvasTextMetrics` (which measures the
+    // system font, a different set of advance widths). A throwaway instance per unique string,
+    // destroyed right after reading `.width`.
     let widestText = 0;
     for (const s of allLabelStrings) {
-      widestText = Math.max(widestText, CanvasTextMetrics.measureText(s, measureStyle).width);
+      const probe = new BitmapText({ text: s, style: { fontFamily, fontSize } });
+      widestText = Math.max(widestText, probe.width);
+      probe.destroy();
     }
     const plateW = widestText + 2 * paddingX;
 
@@ -120,12 +125,7 @@ export class MarkerIndexRenderer {
       if (borderWidth > 0) g.stroke({ color: b.borderColor, width: borderWidth });
       this.bodyLayer.addChild(g);
 
-      const text = new Text({
-        text: labels[i].label,
-        style: { fontSize, fill: style.textColor, fontWeight, trim: true },
-        resolution: 4,
-      });
-      text.anchor.set(0.5);
+      const text = makeCenteredLabel(labels[i].label, fontFamily, fontSize, style.textColor);
       text.x = b.x + b.w / 2;
       text.y = b.y + b.h / 2;
       this.bodyLayer.addChild(text);

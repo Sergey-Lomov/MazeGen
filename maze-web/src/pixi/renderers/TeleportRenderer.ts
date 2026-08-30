@@ -39,7 +39,7 @@ export class TeleportRenderer {
   // actual z-order rather than "every connector below every marker" regardless of grouping.
   private readonly view: Graphics;
   /** Hosts every child that can't live on `this.view` itself (a `Graphics` instance) — floor-badge
-   *  digit `Text` (`drawFloorBadge`), floor-badge hit-circles (`attachFloorBadgeNavigation`), and a
+   *  digit `BitmapText` (`drawFloorBadge`), floor-badge hit-circles (`attachFloorBadgeNavigation`), and a
    *  `mixed` marker's mask/half-fill `Graphics` pair (`drawMarker`) — PixiJS v8 deprecates `addChild`
    *  on non-`Container` objects and disallows it in a future major version (GitHub issue #432). A
    *  sibling layer drawn above `this.view`, cleared/rebuilt alongside it every render. */

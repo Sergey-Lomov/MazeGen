@@ -3,8 +3,7 @@ import { nodeColor } from "../pixi/BaseGraphRenderer";
 import { canvas } from "../pixi/colorTokens";
 
 vi.mock("pixi.js", () => {
-  class FakeTextStyle {}
-  class FakeText {}
+  class FakeBitmapText {}
   class FakeGraphics {
     circle() { return this; }
     fill() { return this; }
@@ -19,7 +18,7 @@ vi.mock("pixi.js", () => {
     addChild() {}
     destroy() {}
   }
-  return { Container: FakeContainer, Graphics: FakeGraphics, Text: FakeText, TextStyle: FakeTextStyle };
+  return { Container: FakeContainer, Graphics: FakeGraphics, BitmapText: FakeBitmapText };
 });
 
 vi.mock("../store/mazeStore", () => ({

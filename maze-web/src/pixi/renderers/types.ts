@@ -301,9 +301,9 @@ export type VerticalConnectionMarker = {
  *  regular-polygon equivalent to round. */
 export type TeleportCornerStyle = "sharp" | "round";
 
-/** Weight of an elevator floor-number badge's own label text (GitHub issue #430 follow-up) — maps
- *  to pixi `TextStyle.fontWeight`. Alias of the neutral `LabelFontWeight` (shared with GitHub
- *  issue #471's marker index labels). */
+/** Weight of an elevator floor-number badge's own label text (GitHub issue #430 follow-up) —
+ *  resolved to a baked MSDF atlas family by `msdfFontFamily` (GitHub issue #352). Alias of the
+ *  neutral `LabelFontWeight` (shared with GitHub issue #471's marker index labels). */
 export type { LabelFontWeight as ElevatorBadgeFontWeight } from "./indexLabel";
 
 /** `"none"`: no connector line at all, just the two endpoint markers — with "group customization"

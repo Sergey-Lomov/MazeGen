@@ -1,9 +1,10 @@
-import { Container, Graphics, Text } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellCenter, getCellVertices, nearestCellCoord, type Pos } from "../tessellationGeometry";
 import { navigateToFloor } from "./floorNavigation";
 import { drawDirectionArrow } from "./wallUtils";
 import { TILE_SIZE } from "../constants";
+import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
 
 export const FLOOR_BADGE_STROKE_WIDTH = 3;
 export const CROWDED_BADGE_RADIUS_FACTOR = 0.75;
@@ -33,36 +34,21 @@ export function isCrossFloorBadgeCrowded(cell: [number, number], cfg: Tessellati
  *  stencil digit reads against a solid background) — not `borderColor` text on a `floorColor`
  *  fill, which would make the badge blend into the surrounding floor instead of reading as a solid
  *  marker. Sized well past the ordinary marker-label convention since a single digit needs to be
- *  legible at a glance among other overlapping canvas markers. Plain `Text` for now (blurs past its
- *  own rasterized size on zoom-in) — true distance-field text is tracked separately (GitHub issue
- *  #352); `resolution` is set well above 1 so this stays acceptably sharp for typical zoom levels in
- *  the meantime. Shared by `TeleportRenderer` (teleport cross-floor badges) and the graph overlays'
+ *  legible at a glance among other overlapping canvas markers. The digit is an MSDF `BitmapText`
+ *  (GitHub issue #352) — the GPU reconstructs its edges from the distance field, so it stays crisp
+ *  at any viewport zoom. Shared by `TeleportRenderer` (teleport cross-floor badges) and the graph overlays'
  *  own cross-floor markers (`NavGraphRenderer`/`MazeGraphRenderer`/`PureCyclesOverlay`/
  *  `RouteOverlay`, GitHub issue #339) — per `maze-web/CLAUDE.md`'s feature-renderer ownership rule,
  *  shared drawing logic between feature-renderers lives in a shared utility, never a shared
  *  renderer instance.
  *
- *  `labelsContainer` hosts the digit `Text` alone — PixiJS v8 deprecates `addChild` on a `Graphics`
- *  instance (`g`) and disallows it in a future major version (GitHub issue #432), so the label can
- *  no longer be a child of `g` itself; callers pass any actual `Container` sitting above `g` in
- *  z-order (a sibling layer, or the same container `g` was itself added to). */
+ *  `labelsContainer` hosts the digit `BitmapText` alone — PixiJS v8 deprecates `addChild` on a
+ *  `Graphics` instance (`g`) and disallows it in a future major version (GitHub issue #432), so the
+ *  label can no longer be a child of `g` itself; callers pass any actual `Container` sitting above
+ *  `g` in z-order (a sibling layer, or the same container `g` was itself added to). */
 export function drawFloorBadge(g: Graphics, labelsContainer: Container, r: number, cx: number, cy: number, color: number, borderColor: number, floorColor: number, floorNumber: number): void {
   g.circle(cx, cy, r).fill(color).stroke({ width: FLOOR_BADGE_STROKE_WIDTH, color: borderColor, alignment: 0 });
-  const label = new Text({
-    text: `${floorNumber}`,
-    // `trim: true` makes pixi measure the digit's own tight ink bounding box (`Text.updateBounds`
-    // switches from `CanvasTextMetrics.measureText`'s nominal line-height box to
-    // `getCanvasBoundingBox`'s actual rendered-pixel scan — see pixi's own `CanvasTextGenerator`)
-    // instead of the font's nominal line-height box — without it, `anchor.set(0.5)` centers on the
-    // line-height box, which sits a typical font's digits (no descenders to balance the ascent
-    // above the baseline) visibly above true center. No headless canvas is available in this repo
-    // to pixel-verify the resulting centering directly (and per `maze-web/CLAUDE.md`, a browser
-    // isn't used for visual checks either) — this relies on reading pixi's own measurement code,
-    // not a rendered comparison.
-    style: { fontSize: Math.max(r * 1.6, 12), fill: floorColor, fontWeight: "bold", trim: true },
-    resolution: 4,
-  });
-  label.anchor.set(0.5);
+  const label = makeCenteredLabel(`${floorNumber}`, msdfFontFamily("bold"), Math.max(r * 1.6, 12), floorColor);
   label.x = cx;
   label.y = cy;
   labelsContainer.addChild(label);
@@ -224,7 +210,7 @@ export function drawCrossFloorBadge(
   floorColor: number,
 ): void {
   const g = new Graphics();
-  // The body must sit below the label `Text` that `drawFloorBadge` adds to the same container.
+  // The body must sit below the label `BitmapText` that `drawFloorBadge` adds to the same container.
   // Adding `g` afterwards covered the digit with the badge's opaque fill (GitHub issue #449).
   nodesContainer.addChild(g);
   drawFloorBadge(g, nodesContainer, radius, badgePos.x, badgePos.y, color, borderColor, floorColor, targetFloorIndex + 1);
