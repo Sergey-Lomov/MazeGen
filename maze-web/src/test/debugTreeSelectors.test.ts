@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { parseTape, TAG_SCOPE, NO_NODE, RECURSIVE_BACKTRACKER_EVENT_TAG, KRUSKAL_EVENT_TAG, WILSON_EVENT_TAG, VERTEX_BASED_EVENT_TAG, type ParsedTape } from "../debug/eventTape";
 import {
-  buildStepIndex, stepForNode, nodeIndexForStep, flattenVisibleRows, resolveHighlightTarget,
+  buildStepIndex, stepForNode, nodeIndexForStep, flattenVisibleRows, allRenderableRows,
+  resolveHighlightTarget, nearestVisibleAncestor, buildSearchMatches,
   buildNodeCoordIndex, displayStepForRow, resolveBubbleFloor, resolveIssueBubbleFloors,
 } from "../debug/debugTreeSelectors";
 import type { NodeDto } from "../wasm/types";
@@ -300,6 +301,84 @@ describe("flattenVisibleRows", () => {
     const twoLevels = flattenVisibleRows(tape, new Set([1, 2]));
     expect(twoLevels.map((r) => r.nodeIndex)).toEqual([1, 2, 3]);
     expect(twoLevels.find((r) => r.nodeIndex === 3)?.depth).toBe(3);
+  });
+});
+
+describe("allRenderableRows (GitHub issue #482)", () => {
+  it("returns every node regardless of expanded state, root excluded, in DFS order", () => {
+    const tape = buildTwoStepTape();
+    const rows = allRenderableRows(tape);
+    // Same as flattenVisibleRows with every scope expanded — full DFS pre-order, not "= nodeIndex".
+    expect(rows.map((r) => r.nodeIndex)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(rows.find((r) => r.nodeIndex === 2)?.depth).toBe(2);
+    expect(rows.find((r) => r.nodeIndex === 6)?.depth).toBe(2);
+  });
+
+  it("skips transparent nodes and renders their children one depth shallower, same as flattenVisibleRows", () => {
+    // root (0) -> "generation" (1) -> former root (2, transparent) -> "step" (3) -> EdgeAdded (4)
+    const tape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+      { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step") },
+      { parent: 3, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.EDGE_ADDED, payloadBytes: edgeAddedPayload(1n, 2n) },
+    ]);
+    const transparent = new Set([2]);
+    expect(allRenderableRows(tape, transparent).map((r) => r.nodeIndex)).toEqual([1, 3, 4]);
+    expect(allRenderableRows(tape, transparent).find((r) => r.nodeIndex === 3)?.depth).toBe(2);
+  });
+});
+
+describe("nearestVisibleAncestor (GitHub issue #482)", () => {
+  it("returns the node itself when it is visible", () => {
+    const tape = buildTwoStepTape();
+    const visible = new Map([[2, 0]]);
+    expect(nearestVisibleAncestor(tape, 2, visible)).toBe(2);
+  });
+
+  it("walks up to the first visible ancestor", () => {
+    const tape = buildTwoStepTape();
+    const visible = new Map([[1, 0]]); // only the top-level scope is visible
+    expect(nearestVisibleAncestor(tape, 4, visible)).toBe(1);
+  });
+
+  it("throws when no ancestor is visible", () => {
+    const tape = buildTwoStepTape();
+    expect(() => nearestVisibleAncestor(tape, 4, new Map())).toThrow(/no visible ancestor/);
+  });
+});
+
+describe("buildSearchMatches (GitHub issue #482)", () => {
+  const rows = [
+    { nodeIndex: 1, text: "generation" },
+    { nodeIndex: 3, text: "step 1" },
+    { nodeIndex: 4, text: "passage added 1:0 -> 3:4" },
+    { nodeIndex: 5, text: "step 2" },
+    { nodeIndex: 6, text: "passage added 5:5 -> 6:6" },
+  ];
+
+  it("matches a normalized substring across every row, preserving row order", () => {
+    expect(buildSearchMatches(rows, "passage")).toEqual([4, 6]);
+  });
+
+  it("matches a scope-header row too", () => {
+    expect(buildSearchMatches(rows, "generation")).toEqual([1]);
+  });
+
+  it("returns [] for an empty query", () => {
+    expect(buildSearchMatches(rows, "")).toEqual([]);
+  });
+
+  it("returns [] when nothing matches", () => {
+    expect(buildSearchMatches(rows, "nonesuch")).toEqual([]);
+  });
+
+  it("returns both node indices when two rows share the same text", () => {
+    const dup = [
+      { nodeIndex: 4, text: "passage added" },
+      { nodeIndex: 9, text: "passage added" },
+    ];
+    expect(buildSearchMatches(dup, "passage added")).toEqual([4, 9]);
   });
 });
 

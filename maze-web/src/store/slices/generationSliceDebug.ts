@@ -3,11 +3,12 @@ import type { MazeStore, GenerationActions } from "../storeTypes";
 import { resolveStepFloorIndex } from "../debugSelectors";
 
 type DebugSliceKeys =
-  | "setDebugMode" | "setDebugStep" | "toggleDebugAutoSwitchFloor" | "focusDebugStep" | "setDebugAutoPlayDelay"
-  | "setHoveredDebugRef" | "toggleDebugValue" | "toggleKruskalDsuGroups";
+  | "setDebugMode" | "setDebugStep" | "toggleDebugAutoSwitchFloor" | "focusDebugStep" | "focusDebugNode"
+  | "setDebugAutoPlayDelay" | "setHoveredDebugRef" | "toggleDebugValue" | "toggleKruskalDsuGroups"
+  | "setDebugSearchQuery";
 
 export const createGenerationDebugSlice: StateCreator<MazeStore, [], [], Pick<GenerationActions, DebugSliceKeys>> = (set) => ({
-  setDebugMode: (v) => set(v ? { debugMode: true } : { debugMode: false, debugStale: false, hoveredDebugRef: null, debugValueToggles: new Set(), showKruskalDsuGroups: false }),
+  setDebugMode: (v) => set(v ? { debugMode: true } : { debugMode: false, debugStale: false, hoveredDebugRef: null, debugValueToggles: new Set(), showKruskalDsuGroups: false, debugSearchQuery: "", debugFocusNodeIndex: null }),
   // GitHub issue #350: every playback path (autoplay, next/prev, scrubber, tree row click) goes
   // through this one action, so auto-switching the active floor to match the step being shown
   // lives here rather than being duplicated at each caller. `resolveStepFloorIndex` returns `null`
@@ -28,7 +29,8 @@ export const createGenerationDebugSlice: StateCreator<MazeStore, [], [], Pick<Ge
     return floor ? { debugStep: step, activeFloorId: floor.id } : { debugStep: step };
   }),
   toggleDebugAutoSwitchFloor: () => set((state) => ({ debugAutoSwitchFloor: !state.debugAutoSwitchFloor })),
-  focusDebugStep: () => set((state) => ({ debugStepFocusToken: state.debugStepFocusToken + 1 })),
+  focusDebugStep: () => set((state) => ({ debugFocusToken: state.debugFocusToken + 1, debugFocusNodeIndex: null })),
+  focusDebugNode: (nodeIndex) => set((state) => ({ debugFocusToken: state.debugFocusToken + 1, debugFocusNodeIndex: nodeIndex })),
   setDebugAutoPlayDelay: (ms) => set({ debugAutoPlayDelay: ms }),
   setHoveredDebugRef: (ref) => set({ hoveredDebugRef: ref }),
   toggleDebugValue: (name) => set((state) => {
@@ -38,4 +40,5 @@ export const createGenerationDebugSlice: StateCreator<MazeStore, [], [], Pick<Ge
     return { debugValueToggles: next };
   }),
   toggleKruskalDsuGroups: () => set((state) => ({ showKruskalDsuGroups: !state.showKruskalDsuGroups })),
+  setDebugSearchQuery: (query) => set({ debugSearchQuery: query }),
 });

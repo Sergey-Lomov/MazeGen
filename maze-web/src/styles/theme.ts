@@ -66,6 +66,10 @@ export const ui = {
       bg: base.errorBg,
       text: base.error,
     },
+    // Debug event tree search-match dot (GitHub issue #482) — shown on every row that matches the
+    // query or has a match somewhere in its subtree. Amber (`base.warning`), semantically "found /
+    // attention", distinct from `refHighlight`'s cyan (info) and `issueHighlight`'s red (error).
+    searchMatch: base.warning,
   },
 } as const;
 

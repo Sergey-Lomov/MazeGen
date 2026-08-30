@@ -1,23 +1,26 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react";
 import { useMazeStore } from "../store/mazeStore";
 import {
-  buildStepIndex, flattenVisibleRows, resolveHighlightTarget, buildNodeCoordIndex,
-  displayStepForRow, nodeIndexForStep, resolveBubbleFloor, resolveIssueBubbleFloors, type TreeRow,
+  buildStepIndex, flattenVisibleRows, allRenderableRows, resolveHighlightTarget, buildNodeCoordIndex,
+  buildSearchMatches, nearestVisibleAncestor, displayStepForRow, nodeIndexForStep, stepForNode,
+  resolveBubbleFloor, resolveIssueBubbleFloors, type TreeRow,
 } from "../debug/debugTreeSelectors";
 import { nodeAt, nodeView, topLevelSourceScopes, type ParsedTape } from "../debug/eventTape";
 import { adapterForNode, type Token, type BaseAlgorithmAdapter, type ScopeTitleLookup } from "../debug/algorithmRegistry";
+import { buildDebugRowText, normalizeSearchText, bubbleLabel } from "../debug/debugRowText";
 import type { EventedEventKind } from "../wasm/mazeService";
 import type { HoveredDebugRef } from "../store/storeTypes";
 import { DebugRefBubble } from "./DebugRefBubble";
-import { resolveIssue } from "./issueRegistry";
-import { ui, typography, muted, spacing, indent } from "../styles/theme";
+import { ui, typography, muted, spacing, indent, radius, inset } from "../styles/theme";
 import * as m from "~/paraglide/messages";
+
+export { bubbleLabel } from "../debug/debugRowText";
 
 const ROW_MIN_HEIGHT = 26;
 const INDENT_PX = indent.tree;
-const STEP_COL_WIDTH = 34;
+const STEP_COL_WIDTH = 46;
 const ROW_BODY_PADDING_LEFT = spacing.rowGap;
 const ROW_BODY_PADDING_RIGHT = spacing.rowGap;
 const DISCLOSURE_WIDTH = 14;
@@ -44,47 +47,6 @@ function estimateRowHeight(tokens: Token[], depth: number, containerWidth: numbe
   const charCount = tokens.reduce((sum, t) => sum + (t.kind === "text" ? t.text.length : bubbleLabel(t).length + BUBBLE_CHAR_OVERHEAD), 0);
   const lineCount = Math.max(1, Math.ceil(charCount / charsPerLine));
   return Math.max(ROW_MIN_HEIGHT, lineCount * ROW_LINE_HEIGHT_PX + ROW_VERTICAL_PADDING_PX);
-}
-
-/** Bubble label — coordinates only, per user decision (narration text around it stays wordless,
- *  e.g. "Passage added", not "Passage added: 3:18 → 3:19"). Format is `x:y`, no parens/comma —
- *  or, on a multi-floor maze (GitHub issue #350), `Lf:x:y` (1-based floor index, `L` prefix so
- *  it's unambiguous this is a floor, not another coordinate), so a bubble stays readable when
- *  nodes on different floors legitimately share the same `(x, y)`. The floor prefix is only shown
- *  when `multiFloor` — a single-floor maze's bubbles are unchanged, since every node is trivially
- *  floor 1. `issue` tokens are the one exception: there's no id to format, so the label is the
- *  issue kind's own resolved display name (`resolveIssue`, the same registry `IssuesBlock`'s
- *  `IssueBubble` reads), not a coordinate. */
-export function bubbleLabel(
-  token: Token,
-  coords?: (id: bigint) => { x: number; y: number; level: number; i: number; split: boolean } | null,
-  multiFloor = false,
-): string {
-  const fmt = (id: bigint) => {
-    if (!coords) return `${id}`;
-    const p = coords(id);
-    // `coords` joins against `debugArena.nodes` concatenated with `debugArena.allNodes` (GitHub
-    // issue #271) — the union of every node that ever existed during the run, including ones a
-    // later QC command removed/replaced (`RemoveNode`, `ReplacePointNodes`), not just
-    // `debugArena.nodes`'s final survivors (see `coordIndex`'s own `useMemo` below for why both
-    // are needed). The `#id` fallback below is now only reached for a genuinely unresolvable id (a
-    // real core/web tape desync), not for the common "removed later" case — degrades gracefully
-    // rather than crashing the whole tree either way (a React render-time throw here previously
-    // took down the entire debug panel).
-    if (!p) return `#${id}`;
-    const coord = multiFloor ? `L${p.level + 1}:${p.x}:${p.y}` : `${p.x}:${p.y}`;
-    // A split point's node also names which node of the point it is (GitHub issue #468) — 1-based
-    // compact "N{N}" form, the point's original node is "N1". Non-split points stay bare coords.
-    return p.split ? `${coord} (${m["post_edit.split_node_label_short"]({ slotId: p.i + 1 })})` : coord;
-  };
-  switch (token.kind) {
-    case "text": return token.text;
-    case "node": return fmt(token.id);
-    case "edge": return `${fmt(token.from)} ${token.bidirectional ? "<->" : "->"} ${fmt(token.to)}`;
-    case "cycle": return token.edges.map(([f, t]) => `${fmt(f)}–${fmt(t)}`).join(", ");
-    case "region": return token.nodes.map(fmt).join(", ");
-    case "issue": return resolveIssue(token.issueKind).label;
-  }
 }
 
 /** Runs one adapter's full scope-label / decode+narrate pipeline for a row. Generic over the
@@ -144,7 +106,11 @@ function rowTokens(
 export function DebugEventTree() {
   const debugArena = useMazeStore((s) => s.debugArena);
   const debugStep = useMazeStore((s) => s.debugStep);
-  const debugStepFocusToken = useMazeStore((s) => s.debugStepFocusToken);
+  const debugFocusToken = useMazeStore((s) => s.debugFocusToken);
+  const debugFocusNodeIndex = useMazeStore((s) => s.debugFocusNodeIndex);
+  const debugSearchQuery = useMazeStore((s) => s.debugSearchQuery);
+  const setDebugSearchQuery = useMazeStore((s) => s.setDebugSearchQuery);
+  const focusDebugNode = useMazeStore((s) => s.focusDebugNode);
   const setDebugStep = useMazeStore((s) => s.setDebugStep);
   const stages = useMazeStore((s) => s.stages);
   const rules = useMazeStore((s) => s.rules);
@@ -273,6 +239,52 @@ export function DebugEventTree() {
   const highlightedNodeIndex =
     clickedNodeIndex !== null && rowIndexByNodeIndex.has(clickedNodeIndex) ? clickedNodeIndex : stepBasedHighlight;
 
+  // Search index (GitHub issue #482): canonical plain text of *every* renderable row — collapsed
+  // scopes included, since a match inside a collapsed scope must still be findable — built once per
+  // tape/config, not per keystroke. `allRenderableRows` gets the real `transparentNodeIndices` (not
+  // its default) so each merged source's former-root artifact isn't indexed as a bogus row. Same
+  // dep set as `labels` plus `transparentNodeIndices`/`coords`/`multiFloor`.
+  const searchIndex = useMemo(() => {
+    if (!tape) return [] as { nodeIndex: number; text: string }[];
+    return allRenderableRows(tape, transparentNodeIndices).map((row) => {
+      const { tokens } = rowTokens(tape, row, sourceEventKinds, topLevelScopeKinds, titleLookup);
+      return { nodeIndex: row.nodeIndex, text: normalizeSearchText(buildDebugRowText(tokens, coords, multiFloor)) };
+    });
+  }, [tape, transparentNodeIndices, sourceEventKinds, topLevelScopeKinds, titleLookup, coords, multiFloor]);
+
+  const normalizedQuery = normalizeSearchText(debugSearchQuery.trim());
+  const matches = useMemo(() => buildSearchMatches(searchIndex, normalizedQuery), [searchIndex, normalizedQuery]);
+  const matchNodeIndexSet = useMemo(() => new Set(matches), [matches]);
+
+  // A row gets the search dot if it matches *or* any node in its subtree matches (so a collapsed
+  // scope still signals "there's a hit in here") — every matched node plus all its arena ancestors.
+  const matchOrAncestorSet = useMemo(() => {
+    const set = new Set<number>();
+    if (!tape) return set;
+    for (const nodeIndex of matches) {
+      let current: number | null = nodeIndex;
+      while (current !== null && !set.has(current)) {
+        set.add(current);
+        current = nodeAt(tape, current).parent;
+      }
+    }
+    return set;
+  }, [tape, matches]);
+
+  // Raw current-match anchor — set only by search navigation (`navigate` below). Resolved to an
+  // effective value in `effectiveCurrentNodeIndex`, which also handles "query just changed" and
+  // "external click landed on a match".
+  const [currentMatchNodeIndex, setCurrentMatchNodeIndex] = useState<number | null>(null);
+  const effectiveCurrentNodeIndex = useMemo(() => {
+    if (currentMatchNodeIndex !== null && matchNodeIndexSet.has(currentMatchNodeIndex)) return currentMatchNodeIndex;
+    if (highlightedNodeIndex !== null && matchNodeIndexSet.has(highlightedNodeIndex)) return highlightedNodeIndex;
+    return matches[0] ?? null;
+  }, [currentMatchNodeIndex, matchNodeIndexSet, highlightedNodeIndex, matches]);
+
+  const matchCount = matches.length;
+  const currentMatchOrdinal =
+    effectiveCurrentNodeIndex !== null ? matches.indexOf(effectiveCurrentNodeIndex) + 1 : 0;
+
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -294,33 +306,52 @@ export function DebugEventTree() {
     overscan: 20,
   });
 
-  // Step-label click (`focusDebugStep`, bumps `debugStepFocusToken`) must force the current
-  // step's exact row into view, unlike ordinary playback sync — `resolveHighlightTarget` below
-  // deliberately walks up to the nearest *already-visible* ancestor and stops there without
-  // expanding anything (per its own doc comment), so if the target row's scope chain is
-  // collapsed, a plain re-scroll just re-centers on that same collapsed ancestor with no visible
-  // change. Set (not cleared) here on every `debugStepFocusToken` bump, cleared once the scroll
-  // effect below has actually scrolled for it — gates that effect's reaction to `expanded`
-  // changes so an ordinary manual expand/collapse (this flag false) never re-triggers a scroll.
+  // A focus request (step-label click via `focusDebugStep`, or a search-match jump via
+  // `focusDebugNode` — GitHub issue #482) must force a specific row into view, unlike ordinary
+  // playback sync — `resolveHighlightTarget`/`nearestVisibleAncestor` deliberately walk up to the
+  // nearest *already-visible* ancestor and stop there without expanding anything, so if the target
+  // row's scope chain is collapsed, a plain re-scroll just re-centers on that same collapsed
+  // ancestor with no visible change. Set (not cleared) here on every `debugFocusToken` bump,
+  // cleared once the scroll effect below has actually scrolled for it — gates that effect's
+  // reaction to `expanded` changes so an ordinary manual expand/collapse never re-triggers a scroll.
   const pendingFocusScrollRef = useRef(false);
-  const lastFocusTokenRef = useRef(debugStepFocusToken);
-  if (lastFocusTokenRef.current !== debugStepFocusToken) {
-    lastFocusTokenRef.current = debugStepFocusToken;
+  const lastFocusTokenRef = useRef(debugFocusToken);
+  if (lastFocusTokenRef.current !== debugFocusToken) {
+    lastFocusTokenRef.current = debugFocusToken;
     pendingFocusScrollRef.current = true;
   }
+  // A search prev/next jump in flight (`navigate`): the row it selected and the `debugStep` it
+  // moved to. The focus effect re-runs while it expands the target's collapsed ancestors (each
+  // `setExpanded` commits and re-fires the effect via its `expanded` dep, returning early before
+  // the scroll) — on those intermediate runs `debugStep` already holds the jump's target value, so
+  // without this the effect's "debugStep changed for a non-click reason -> drop the selection"
+  // branch would clear the just-navigated row. The ref pins `clickedNodeIndex` to `nodeIndex`
+  // until `debugStep` has settled on `step`, then clears.
+  const navPendingRef = useRef<{ nodeIndex: number; step: number } | null>(null);
 
-  // Distinguishes "this run was caused by debugStep/debugStepFocusToken changing" (always allowed
-  // to scroll) from "this run was caused only by `expanded` changing" (allowed to scroll only
-  // while a focus-scroll is pending — see below) — `expanded` is a dep of the effect below purely
-  // so it can re-check after its own `setExpanded` call, not to license scrolling on every manual
-  // toggle.
-  const lastScrollTriggerRef = useRef<{ debugStep: number; token: number }>({ debugStep, token: debugStepFocusToken });
+  // Distinguishes "this run was caused by debugStep/debugFocusToken changing" (always allowed to
+  // scroll) from "this run was caused only by `expanded` changing" (allowed to scroll only while a
+  // focus-scroll is pending — see below) — `expanded` is a dep of the effect below purely so it
+  // can re-check after its own `setExpanded` call, not to license scrolling on every manual toggle.
+  const lastScrollTriggerRef = useRef<{ debugStep: number; token: number }>({ debugStep, token: debugFocusToken });
 
   useLayoutEffect(() => {
-    // `debugStep` changed for a reason other than a row click in this tree (playback controls,
-    // scrubber, a fresh generate()) — the click-selected row no longer applies.
-    if (lastClickedStepRef.current !== debugStep) setClickedNodeIndex(null);
-    lastClickedStepRef.current = null;
+    const navPending = navPendingRef.current;
+    if (navPending !== null) {
+      // A search prev/next jump: keep its row selected across the effect's re-runs while it
+      // expands collapsed ancestors; only stop shielding once `debugStep` has settled on the
+      // jump's target step.
+      setClickedNodeIndex(navPending.nodeIndex);
+      lastClickedStepRef.current = navPending.step;
+      if (debugStep === navPending.step) navPendingRef.current = null;
+    } else if (lastClickedStepRef.current !== debugStep) {
+      // `debugStep` changed for a reason other than a row click in this tree (playback controls,
+      // scrubber, a fresh generate()) — the click-selected row no longer applies.
+      setClickedNodeIndex(null);
+      lastClickedStepRef.current = null;
+    } else {
+      lastClickedStepRef.current = null;
+    }
 
     if (skipNextScrollRef.current) {
       skipNextScrollRef.current = false;
@@ -328,22 +359,28 @@ export function DebugEventTree() {
     }
 
     const triggeredByStepOrToken =
-      lastScrollTriggerRef.current.debugStep !== debugStep || lastScrollTriggerRef.current.token !== debugStepFocusToken;
-    lastScrollTriggerRef.current = { debugStep, token: debugStepFocusToken };
+      lastScrollTriggerRef.current.debugStep !== debugStep || lastScrollTriggerRef.current.token !== debugFocusToken;
+    lastScrollTriggerRef.current = { debugStep, token: debugFocusToken };
 
     if (!triggeredByStepOrToken && !pendingFocusScrollRef.current) return;
 
-    if (pendingFocusScrollRef.current && tape && stepIndex && debugStep < stepIndex.stepToNodeIndex.length) {
-      // Expand every collapsed ancestor of the step's own node before scrolling — otherwise
-      // `highlightedNodeIndex` below resolves (via `resolveHighlightTarget`) to the nearest
-      // already-visible ancestor instead of the real target row. Only done for an explicit
-      // step-label focus (`pendingFocusScrollRef`), never on ordinary playback/scrubber steps —
-      // those must not auto-expand. `setExpanded` triggers a new render/commit; this effect is
-      // also keyed on `expanded` (see deps below) so it re-runs once that commit lands, at which
-      // point `missing` is empty and this branch falls through to the scroll below.
-      const targetNodeIndex = nodeIndexForStep(stepIndex, debugStep);
+    // The row a pending focus request targets: an explicit arena node (`focusDebugNode`, e.g. a
+    // search-match jump to a scope/trace row that has no `debugStep` of its own) takes priority;
+    // `null` (`focusDebugStep`) means "the current step's own row".
+    const focusTargetNodeIndex =
+      debugFocusNodeIndex ??
+      (stepIndex && debugStep < stepIndex.stepToNodeIndex.length ? nodeIndexForStep(stepIndex, debugStep) : null);
+    const wasFocusScroll = pendingFocusScrollRef.current;
+
+    if (pendingFocusScrollRef.current && tape && focusTargetNodeIndex !== null) {
+      // Expand every collapsed ancestor of the focus target before scrolling — otherwise the
+      // scroll target below resolves (via `nearestVisibleAncestor`) to the nearest already-visible
+      // ancestor instead of the real target row. Only done for an explicit focus request, never on
+      // ordinary playback/scrubber steps. `setExpanded` triggers a new render/commit; this effect
+      // is also keyed on `expanded` (see deps below) so it re-runs once that commit lands, at
+      // which point `missing` is empty and this branch falls through to the scroll below.
       const ancestors: number[] = [];
-      let current: number | null = nodeAt(tape, targetNodeIndex).parent;
+      let current: number | null = nodeAt(tape, focusTargetNodeIndex).parent;
       while (current !== null) {
         ancestors.push(current);
         current = nodeAt(tape, current).parent;
@@ -356,15 +393,24 @@ export function DebugEventTree() {
     }
     pendingFocusScrollRef.current = false;
 
+    if (wasFocusScroll && tape && focusTargetNodeIndex !== null) {
+      // Focus-scroll: ancestors are expanded now (branch above), so `nearestVisibleAncestor`
+      // returns the target row itself.
+      const rowIdx = rowIndexByNodeIndex.get(nearestVisibleAncestor(tape, focusTargetNodeIndex, rowIndexByNodeIndex));
+      if (rowIdx !== undefined) virtualizer.scrollToIndex(rowIdx, { align: "center" });
+      return;
+    }
+
+    // Playback-scroll: follow the step-based highlight, no auto-expand.
     if (highlightedNodeIndex === null) return;
     const rowIdx = rowIndexByNodeIndex.get(highlightedNodeIndex);
     if (rowIdx === undefined) return;
     virtualizer.scrollToIndex(rowIdx, { align: "center" });
-    // debugStep/debugStepFocusToken changing, or `expanded` catching up while a focus-scroll is
+    // debugStep/debugFocusToken changing, or `expanded` catching up while a focus-scroll is
     // pending (see the `pendingFocusScrollRef` guard above), are the only paths that reach this
     // point — an ordinary manual expand/collapse returns earlier and never scrolls.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debugStep, debugStepFocusToken, expanded]);
+  }, [debugStep, debugFocusToken, expanded]);
 
   if (!tape || !stepIndex) return null;
 
@@ -393,13 +439,67 @@ export function DebugEventTree() {
     setDebugStep(step);
   }
 
+  // Search-match navigation (GitHub issue #482). `delta` +1 = next, -1 = prev, both wrap. No-op
+  // when there's 0 or 1 match. Behaves like clicking the match row: moves `debugStep` (a mutating
+  // match to its own step, a scope/trace match to its nearest-preceding step) *and* selects the
+  // row itself via `setClickedNodeIndex`, so the highlighted row is the one navigated to, not that
+  // step's own mutating row. All four state updates batch into one commit; `focusDebugNode` drives
+  // expand-ancestors + scroll in the focus effect, and `navPendingRef` shields the selection from
+  // that effect's re-runs while it expands (see `navPendingRef`'s declaration).
+  function navigate(delta: 1 | -1) {
+    if (matchCount <= 1 || !stepIndex) return;
+    const cur = effectiveCurrentNodeIndex !== null ? matches.indexOf(effectiveCurrentNodeIndex) : 0;
+    const n = matches[(cur + delta + matchCount) % matchCount];
+    const step = stepForNode(stepIndex, n);
+    navPendingRef.current = { nodeIndex: n, step };
+    setCurrentMatchNodeIndex(n);
+    setClickedNodeIndex(n);
+    focusDebugNode(n);
+    setDebugStep(step);
+  }
+
   return (
-    <div ref={scrollRef} style={styles.scroll}>
+    <div style={styles.container}>
+      <div style={styles.searchRow}>
+        <input
+          type="text"
+          value={debugSearchQuery}
+          onChange={(e) => setDebugSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            navigate(e.shiftKey ? -1 : 1);
+          }}
+          placeholder={m["debug.search.placeholder"]()}
+          style={styles.searchInput}
+        />
+        <span style={styles.searchCounter}>{`${currentMatchOrdinal} / ${matchCount}`}</span>
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          disabled={matchCount <= 1}
+          title={m["debug.search.prev"]()}
+          style={styles.searchNavBtn}
+        >
+          <ChevronUp size={14} color={ui.text.secondary} />
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate(1)}
+          disabled={matchCount <= 1}
+          title={m["debug.search.next"]()}
+          style={styles.searchNavBtn}
+        >
+          <ChevronDown size={14} color={ui.text.secondary} />
+        </button>
+      </div>
+      <div ref={scrollRef} style={styles.scroll}>
       <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
         {virtualizer.getVirtualItems().map((virtualRow) => {
           const row = rows[virtualRow.index];
           const { tokens, mutating } = labels[virtualRow.index];
           const highlighted = row.nodeIndex === highlightedNodeIndex;
+          const isSearchMatch = matchOrAncestorSet.has(row.nodeIndex);
           const isExpanded = expanded.has(row.nodeIndex);
           const displayStep = displayStepForRow(tape, stepIndex, row);
           return (
@@ -423,7 +523,8 @@ export function DebugEventTree() {
                 style={styles.stepCol}
                 onClick={(e) => displayStep !== null && handleStepClick(displayStep, row.nodeIndex, e)}
               >
-                {displayStep !== null ? displayStep + 1 : "—"}
+                <span style={styles.stepNum}>{displayStep !== null ? displayStep + 1 : "—"}</span>
+                {isSearchMatch && <span data-testid="search-match-dot" style={styles.searchMatchDot} />}
               </span>
               <span style={{ ...styles.rowBody, paddingLeft: ROW_BODY_PADDING_LEFT + row.depth * INDENT_PX }}>
                 {row.hasChildren ? (
@@ -451,11 +552,63 @@ export function DebugEventTree() {
           );
         })}
       </div>
+      </div>
     </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  container: {
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+  },
+  searchRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: spacing.itemGap,
+    padding: `6px ${spacing.rowGap}px`,
+    borderBottom: `1px solid ${ui.border.default}`,
+    flexShrink: 0,
+  },
+  searchInput: {
+    ...typography.field,
+    flex: 1,
+    minWidth: 0,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.default}`,
+    borderRadius: radius.sm,
+    padding: "2px 6px",
+  },
+  searchCounter: {
+    ...muted(typography.caption),
+    flexShrink: 0,
+    fontVariantNumeric: "tabular-nums",
+  },
+  searchNavBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: inset.iconButtonInset,
+    background: "transparent",
+    border: `1px solid ${ui.border.default}`,
+    borderRadius: radius.sm,
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  // Absolute inside the column's reserved right padding — out of flow, so it never shifts the
+  // digits regardless of how many there are.
+  searchMatchDot: {
+    position: "absolute",
+    top: 1,
+    right: 2,
+    width: 5,
+    height: 5,
+    borderRadius: "50%",
+    background: ui.debug.searchMatch,
+    pointerEvents: "none",
+  },
   scroll: {
     flex: 1,
     overflowY: "auto",
@@ -474,13 +627,19 @@ const styles: Record<string, React.CSSProperties> = {
   },
   stepCol: {
     ...muted(typography.body),
+    position: "relative",
     width: STEP_COL_WIDTH,
     flexShrink: 0,
     textAlign: "right" as const,
     alignSelf: "center" as const,
-    padding: "0 6px",
+    // Right padding reserves the strip the absolute dot lives in — digits stop at its left edge,
+    // so the dot never pushes or overlaps the number at any digit count.
+    padding: "0 10px 0 4px",
     boxSizing: "border-box" as const,
     cursor: "default",
+  },
+  stepNum: {
+    display: "inline-block",
   },
   rowBody: {
     display: "flex",

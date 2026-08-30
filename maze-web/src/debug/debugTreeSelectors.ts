@@ -154,10 +154,20 @@ export function displayStepForRow(
  *  differently-shaped tree (this module's own unit tests build several). Callers that know which
  *  nodes are merge artifacts (via `topLevelSourceScopes`) say so explicitly instead. Defaults to
  *  empty, so callers unaware of merge semantics keep exactly their previous behavior. */
-export function flattenVisibleRows(
+/** Module-level empty set — a shared immutable default so callers that don't pass
+ *  `transparentNodeIndices` don't allocate a fresh `Set` per call (and don't destabilize a
+ *  `useMemo` that lists it as a dependency). */
+const EMPTY_NODE_INDEX_SET: ReadonlySet<number> = new Set();
+
+/** Shared DFS walk backing `flattenVisibleRows` and `allRenderableRows` (GitHub issue #482).
+ *  `descend(index, hasChildren)` decides whether to recurse into a node's children — the only
+ *  difference between the two callers: the visible-rows walk gates on `expanded`, the all-rows
+ *  walk always descends. Root (index 0) and `transparentNodeIndices` are skipped as rows and
+ *  rendered one depth shallower, identically for both. */
+function walkTree(
   tape: ParsedTape,
-  expanded: ReadonlySet<number>,
-  transparentNodeIndices: ReadonlySet<number> = new Set(),
+  transparentNodeIndices: ReadonlySet<number>,
+  descend: (index: number, hasChildren: boolean) => boolean,
 ): TreeRow[] {
   const rows: TreeRow[] = [];
 
@@ -169,7 +179,7 @@ export function flattenVisibleRows(
       const view = nodeView(tape, index);
       rows.push({ nodeIndex: index, depth, payload: view.payload(), hasChildren });
     }
-    if (depth === 0 || isTransparent || (hasChildren && expanded.has(index))) {
+    if (depth === 0 || isTransparent || (hasChildren && descend(index, hasChildren))) {
       let child = record.firstChild;
       while (child !== null) {
         const childRecord = nodeAt(tape, child);
@@ -181,6 +191,29 @@ export function flattenVisibleRows(
 
   visit(0, 0);
   return rows;
+}
+
+export function flattenVisibleRows(
+  tape: ParsedTape,
+  expanded: ReadonlySet<number>,
+  transparentNodeIndices: ReadonlySet<number> = EMPTY_NODE_INDEX_SET,
+): TreeRow[] {
+  return walkTree(tape, transparentNodeIndices, (index) => expanded.has(index));
+}
+
+/** Every row the tree *could* show, ignoring the current `expanded` state — the collapsed-scope-
+ *  independent row set the debug search index (`buildSearchMatches`) is built over (GitHub issue
+ *  #482), so a match inside a collapsed scope is still found. Same row shape, skip rules, and
+ *  DFS order (= visual row order) as `flattenVisibleRows` with everything expanded.
+ *
+ *  Callers building the search index MUST pass the real `transparentNodeIndices` (each merged
+ *  source's former-root artifact) — with the default empty set those nodes would appear as rows
+ *  with a meaningless label. */
+export function allRenderableRows(
+  tape: ParsedTape,
+  transparentNodeIndices: ReadonlySet<number> = EMPTY_NODE_INDEX_SET,
+): TreeRow[] {
+  return walkTree(tape, transparentNodeIndices, () => true);
 }
 
 /** Resolves the row to scroll to / highlight for the current `debugStep`. If the target node
@@ -205,18 +238,53 @@ export function resolveHighlightTarget(
   visibleRowIndexByNodeIndex: ReadonlyMap<number, number>,
   fallbackNodeIndex: number,
 ): number {
-  let nodeIndex: number | null =
+  const start =
     debugStep < stepIndex.stepToNodeIndex.length ? nodeIndexForStep(stepIndex, debugStep) : fallbackNodeIndex;
-  while (nodeIndex !== null && !visibleRowIndexByNodeIndex.has(nodeIndex)) {
-    nodeIndex = nodeAt(tape, nodeIndex).parent;
+  return nearestVisibleAncestor(tape, start, visibleRowIndexByNodeIndex);
+}
+
+/** Walks up via the raw `NodeRecord.parent` (not `NodeView.parent()`, which allocates a full view
+ *  object per step) from `nodeIndex` until it finds a node present in `visibleRowIndexByNodeIndex`,
+ *  returning that node — `nodeIndex` itself if it's already visible. Always terminates without
+ *  reaching `parent === null`: every top-level source/step scope is unconditionally present in
+ *  the visible-rows map (see `flattenVisibleRows`), so any walk stops at its top-level ancestor at
+ *  the latest. Throws if it somehow reaches the root without a hit (a malformed visible-rows map).
+ *  Used both by `resolveHighlightTarget` (playback highlight) and by the debug tree's search-match
+ *  focus-scroll (GitHub issue #482), where the target may be a scope/trace node with no `debugStep`. */
+export function nearestVisibleAncestor(
+  tape: ParsedTape,
+  nodeIndex: number,
+  visibleRowIndexByNodeIndex: ReadonlyMap<number, number>,
+): number {
+  let current: number | null = nodeIndex;
+  while (current !== null && !visibleRowIndexByNodeIndex.has(current)) {
+    current = nodeAt(tape, current).parent;
   }
-  if (nodeIndex === null) {
+  if (current === null) {
     throw new Error(
-      `resolveHighlightTarget: no visible ancestor found for debugStep ${debugStep} — ` +
-      "visibleRowIndexByNodeIndex must contain every top-level step scope (see flattenVisibleRows)",
+      `nearestVisibleAncestor: no visible ancestor found for node ${nodeIndex} — ` +
+      "visibleRowIndexByNodeIndex must contain every top-level scope (see flattenVisibleRows)",
     );
   }
-  return nodeIndex;
+  return current;
+}
+
+/** Substring search over the debug event tree's rendered row text (GitHub issue #482). `rows` is
+ *  the full renderable-row set in visual order (from `allRenderableRows` + `buildDebugRowText` +
+ *  `normalizeSearchText`, done once per tape in `DebugEventTree`); `normalizedQuery` is the
+ *  already-trimmed, already-case-folded query (empty string when there's nothing to search).
+ *  Returns the matching rows' arena node indices, order preserved (= visual row order — never
+ *  re-sorted). Pure: no knowledge of tokens, adapters, or the store. */
+export function buildSearchMatches(
+  rows: ReadonlyArray<{ nodeIndex: number; text: string }>,
+  normalizedQuery: string,
+): number[] {
+  if (normalizedQuery === "") return [];
+  const result: number[] = [];
+  for (const row of rows) {
+    if (row.text.includes(normalizedQuery)) result.push(row.nodeIndex);
+  }
+  return result;
 }
 
 export interface NodeCoordIndex {
