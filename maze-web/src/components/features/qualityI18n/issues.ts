@@ -216,9 +216,9 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   invalid_elevator_group: m["issue_select.short_label.validate_groups"] as MessageFn,
   invalid_elevator_stop: m["issue_select.short_label.validate"] as MessageFn,
   invalid_elevator_stop_group: m["issue_select.short_label.validate_stop_groups"] as MessageFn,
-  missing_elevators: m["issue_select.short_label.add"] as MessageFn,
-  area_missing_elevator_stops: m["issue_select.short_label.add"] as MessageFn,
-  missing_elevator_stop_count: m["issue_select.short_label.add_stops"] as MessageFn,
+  missing_elevators: m["issue_select.short_label.add_elevators"] as MessageFn,
+  area_missing_elevator_stops: m["issue_select.short_label.add_stops_to_maze"] as MessageFn,
+  missing_elevator_stop_count: m["issue_select.short_label.add_stops_to_elevator"] as MessageFn,
   missing_elevator_height: m["issue_select.short_label.expand_elevator"] as MessageFn,
   excessive_elevator_stop_gap: m["issue_select.short_label.close_gaps"] as MessageFn,
 };

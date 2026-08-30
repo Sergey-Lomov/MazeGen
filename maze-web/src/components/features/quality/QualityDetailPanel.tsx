@@ -59,7 +59,7 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
     return (
       <ParamizedDetail
         id={check.id}
-        label={check.label}
+        label={check.cardLabel}
         description={check.description}
         params={check.params}
         storeValues={storeValues}

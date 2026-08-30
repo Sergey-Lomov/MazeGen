@@ -136,12 +136,14 @@ export const checkI18n: Record<string, { label: ParamLabelFn; description: Param
     description: m["check.max_one_way_ratio.description"] as MessageFn,
   },
   min_teleport_count: {
-    label: m["check.min_teleport_count.label"] as MessageFn,
+    label: m["check.min_teleport_count.short_label"] as MessageFn,
     description: m["check.min_teleport_count.description"] as MessageFn,
+    cardLabel: m["check.min_teleport_count.label"] as MessageFn,
   },
   min_teleport_ratio: {
-    label: m["check.min_teleport_ratio.label"] as MessageFn,
+    label: m["check.min_teleport_ratio.short_label"] as MessageFn,
     description: m["check.min_teleport_ratio.description"] as MessageFn,
+    cardLabel: m["check.min_teleport_ratio.label"] as MessageFn,
   },
   split_distance_from_waypoint: {
     label: m["check.split_distance_from_waypoint.label"] as MessageFn,
@@ -291,8 +293,9 @@ export const checkI18n: Record<string, { label: ParamLabelFn; description: Param
     description: m["check.min_elevator_height.description"] as MessageFn,
   },
   min_elevator_stop_count: {
-    label: m["check.min_elevator_stop_count.label"] as MessageFn,
+    label: m["check.min_elevator_stop_count.short_label"] as MessageFn,
     description: m["check.min_elevator_stop_count.description"] as MessageFn,
+    cardLabel: m["check.min_elevator_stop_count.label"] as MessageFn,
   },
   elevator_stop_group_geometric_proximity: {
     label: m["check.elevator_stop_group_geometric_proximity.short_label"] as MessageFn,
