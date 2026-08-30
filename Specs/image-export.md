@@ -227,7 +227,17 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   replacing dozens of one-field-each setters), same `TeleportRenderer` instance drawn via its own
   `Container` (per the feature-renderer ownership rule — never `VectorByWallsRenderer`'s own
   instance), same group-customization/selection/click-to-select behavior described under "Vector by
-  walls"' own Teleports section above. Two differences: `floorColor` passed to
+  walls"' own Teleports section above. Cross-floor teleports render identically to "Vector by walls"
+  (GitHub issue #481): `VectorByCorridorsRenderer.renderAll` passes `buildTeleportEdges` the same
+  optional `floorContext` (`resolveNodeLevel`, `unscopedNodeById`, `unscopedEdges`,
+  `activeFloorIndex`) and badge-spread bag (`buildTeleportBadgeBlockedCells`,
+  `allowOutOfField: !teleportAvoidFieldExit`, all-floor `fieldCells`) that `VectorByWallsRenderer`
+  does — see `Specs/floors.md`'s "Cross-floor teleport badges". Without `floorContext` the selector
+  can't resolve a teleport's far-floor endpoint and a cross-floor teleport is dropped entirely (the
+  original bug). `teleportAvoidFieldExit` is part of the `geometryCache` invalidation key in both
+  renderers, so toggling it rebuilds `teleportEdges`.
+
+  Two differences from "Vector by walls": `floorColor` passed to
   `buildTeleportLineStyle` and `buildMarkerStyle` (start/finish markers) is this mode's own
   `settings.color` (the corridor's own stroke color, not a canvas background) — a teleport point (and
   a start/finish waypoint) sits directly on the passage line here, not on an empty floor tile, so an
@@ -238,7 +248,12 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   directly), reusing the Cells section's `markerWidenPadding`/`markerWidenShape` rather than a
   separate teleport-only setting, with each point's own shape/corner-style resolved from its
   group's `TeleportGroupOverride` when one applies (so the widen patch never mismatches what
-  `TeleportRenderer` actually draws there). `buildTeleportWidenMarkers`'s own `groups` param is
+  `TeleportRenderer` actually draws there). A cross-floor badge endpoint (a coordinate tagged
+  `toFloor`/`fromFloor` on any teleport edge, keyed by coordinate exactly like
+  `computeFloorBadges`) is the exception: its widen patch is always a `circle`, never the marker
+  shape or a group-override shape, because `TeleportRenderer` draws that endpoint as a plain
+  circular floor-number badge ring (`drawFloorBadge`), not a `teleportLineShape` marker.
+  `buildTeleportWidenMarkers`'s own `groups` param is
   computed once per `renderAll` and handed in, rather than the function recomputing
   `buildTeleportGroups` itself — `TeleportRenderer.render` already computes the same grouping
   internally for the same edges, so a second independent call would repeat that work for nothing.

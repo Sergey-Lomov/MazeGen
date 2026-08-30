@@ -5,6 +5,7 @@ import { TILE_SIZE } from "../pixi/constants";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
 import type { VectorByWallsSettings } from "../store/storeTypes";
+import { buildTeleportEdges } from "../pixi/selectors/mazeSelectors";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path only
 // ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`) — same convention as
@@ -449,6 +450,25 @@ describe("VectorByWallsRenderer", () => {
     currentState = baseState({ vectorByWallsSettings: baseSettings({ background: 0xabcdef }) });
     const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
     expect(renderer.getBackgroundColor()).toBe(0xabcdef);
+  });
+
+  it("passes allowOutOfField to buildTeleportEdges as the negation of teleportAvoidFieldExit", () => {
+    currentState = baseState({ vectorByWallsSettings: baseSettings({ teleportAvoidFieldExit: true }) });
+    new VectorByWallsRenderer({ addChild: vi.fn() } as never);
+    expect(buildTeleportEdges).toHaveBeenLastCalledWith(
+      expect.any(Map), expect.any(Array), stableCfg,
+      expect.any(Object),
+      expect.objectContaining({ allowOutOfField: false }),
+    );
+
+    vi.mocked(buildTeleportEdges).mockClear();
+    currentState = baseState({ vectorByWallsSettings: baseSettings({ teleportAvoidFieldExit: false }) });
+    new VectorByWallsRenderer({ addChild: vi.fn() } as never);
+    expect(buildTeleportEdges).toHaveBeenLastCalledWith(
+      expect.any(Map), expect.any(Array), stableCfg,
+      expect.any(Object),
+      expect.objectContaining({ allowOutOfField: true }),
+    );
   });
 
   it("wires cross-floor teleport badges and vertical-passage markers as always-on click-to-switch-floor (GitHub issue #478)", () => {

@@ -246,6 +246,7 @@ export class VectorByWallsRenderer {
     start: number | null;
     finish: number | null;
     splitNodeColors: readonly number[];
+    teleportAvoidFieldExit: boolean;
     closedCells: [number, number][];
     wallEdges: WallEdge[];
     teleportEdges: TeleportEdge[];
@@ -430,7 +431,8 @@ export class VectorByWallsRenderer {
       this.geometryCache.start !== start ||
       this.geometryCache.finish !== finish ||
       this.geometryCache.splitNodeColors !== splitNodeColors ||
-      this.geometryCache.replaceTwoFloorElevatorsWithStairs !== state.vectorByWallsSettings.replaceTwoFloorElevatorsWithStairs
+      this.geometryCache.replaceTwoFloorElevatorsWithStairs !== state.vectorByWallsSettings.replaceTwoFloorElevatorsWithStairs ||
+      this.geometryCache.teleportAvoidFieldExit !== state.vectorByWallsSettings.teleportAvoidFieldExit
     ) {
       const specialNodeIds = new Set<number>();
       if (start !== null) specialNodeIds.add(start);
@@ -450,6 +452,7 @@ export class VectorByWallsRenderer {
         start,
         finish,
         splitNodeColors,
+        teleportAvoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit,
         closedCells: buildClosedCells(nodes, edges, state.edges),
         wallEdges: buildMazeWalls(nodes, edges, cfg),
         teleportEdges: buildTeleportEdges(nodeById, edges, cfg, {
