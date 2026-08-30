@@ -5,6 +5,7 @@ import { TILE_SIZE } from "../pixi/constants";
 import { splitSlotColor } from "../pixi/colorUtils";
 import { canvas } from "../pixi/colorTokens";
 import type { VectorByWallsSettings } from "../store/storeTypes";
+import { buildTeleportEdges } from "../pixi/selectors/mazeSelectors";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path only
 // ever reads `.minX/.minY/.maxX/.maxY` and calls `.clone()`/`.addBounds()`) — same convention as
@@ -217,6 +218,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     elevatorBadges: { enabled: false, labelType: "arabic", size: 0.5, placement: "left_right", distance: 4, gap: 1, gapWidth: 0, cornerStyle: "round", evenDistribution: true, shape: "circle", fillColor: 0x555555, textColor: 0x666666, fontWeight: "bold" },
     splitNodeColors: [],
     splitSpecialShapes: false,
+    markerIndex: { enabled: false, labelStyle: "roman", height: 0.35, offset: 0, cornerRadius: 0.03, paddingX: 0.04, gap: 0, fillColor: 0xf0c900, textColor: 0x333333, borderColor: 0x444444, borderColorFromMarker: false, borderWidth: 0, fontWeight: "bold", coverage: { singleFloorTeleport: true, crossFloorTeleport: true, verticalPassage: true, elevator: true } },
     sharedStyle: { cornerStyle: "round", markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3, overrides: {} },
     ...overrides,
   };
@@ -448,6 +450,25 @@ describe("VectorByWallsRenderer", () => {
     currentState = baseState({ vectorByWallsSettings: baseSettings({ background: 0xabcdef }) });
     const renderer = new VectorByWallsRenderer({ addChild: vi.fn() } as never);
     expect(renderer.getBackgroundColor()).toBe(0xabcdef);
+  });
+
+  it("passes allowOutOfField to buildTeleportEdges as the negation of teleportAvoidFieldExit", () => {
+    currentState = baseState({ vectorByWallsSettings: baseSettings({ teleportAvoidFieldExit: true }) });
+    new VectorByWallsRenderer({ addChild: vi.fn() } as never);
+    expect(buildTeleportEdges).toHaveBeenLastCalledWith(
+      expect.any(Map), expect.any(Array), stableCfg,
+      expect.any(Object),
+      expect.objectContaining({ allowOutOfField: false }),
+    );
+
+    vi.mocked(buildTeleportEdges).mockClear();
+    currentState = baseState({ vectorByWallsSettings: baseSettings({ teleportAvoidFieldExit: false }) });
+    new VectorByWallsRenderer({ addChild: vi.fn() } as never);
+    expect(buildTeleportEdges).toHaveBeenLastCalledWith(
+      expect.any(Map), expect.any(Array), stableCfg,
+      expect.any(Object),
+      expect.objectContaining({ allowOutOfField: true }),
+    );
   });
 
   it("wires cross-floor teleport badges and vertical-passage markers as always-on click-to-switch-floor (GitHub issue #478)", () => {

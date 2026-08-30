@@ -1,8 +1,10 @@
 import { useMazeStore } from "../../store/mazeStore";
-import type { Viewport, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle } from "../renderers/types";
+import type { Viewport, WallStyleOverride, OneWayStyleOverride, TeleportLineStyle, TeleportEdge, TeleportGroupOverride } from "../renderers/types";
 import type { VerticalConnectionStyle, VerticalMarkerStyle } from "../renderers/VerticalConnectionRenderer";
 import type { MarkerSettings, TeleportSettingsFields, VerticalSettingsFields, VerticalDecorativeFields } from "../../store/storeTypes";
 import type { MarkerStyle } from "../selectors/mazeSelectors";
+import type { MarkerEndpointVisual, MarkerIndexLinkKind, ResolveMarkerEndpointVisual } from "../selectors/mazeSelectors/markerIndex";
+import { buildTeleportGroups, coordKey } from "../selectors/teleportGroups";
 import { resolveEndpoint, buildSplitNodeResolver } from "../postEditEndpoint";
 import { TILE_SIZE } from "../constants";
 import { canvas } from "../colorTokens";
@@ -179,5 +181,65 @@ export function resolveEffectiveEndpoints(
   return {
     start: startEp !== null ? resolveEndpoint(startEp, resolveSplit) ?? null : null,
     finish: finishEp !== null ? resolveEndpoint(finishEp, resolveSplit) ?? null : null,
+  };
+}
+
+/** The visual (outer radius + border-match color) a connection marker draws with, per link kind
+ *  — the "match" color is the marker's own border color when it has a border, else its fill color
+ *  (GitHub issue #471, `borderColorFromMarker` refinement). */
+function markerEndpointVisual(m: MarkerSettings | VerticalMarkerStyle, fill: number, border: number, borderWidth: number): MarkerEndpointVisual {
+  return {
+    outerRadius: m.size * TILE_SIZE + Math.max(0, borderWidth),
+    borderMatchColor: borderWidth > 0 ? border : fill,
+  };
+}
+
+/** Builds the `resolveEndpointVisual` callback `buildMarkerIndexLabels` needs (GitHub issue #471) —
+ *  keeps the selector free of per-kind marker-settings / teleport-group-override knowledge. Both
+ *  vector modes build it the same way from their already-resolved teleport + vertical styles.
+ *
+ *  A teleport endpoint's color follows any `TeleportGroupOverride` covering its cell (same rule
+ *  `TeleportRenderer.drawGroupPoints` uses); a vertical/elevator endpoint uses the elevator marker
+ *  style for elevators and the two-way-passage marker style otherwise (the dominant look — the
+ *  one-way tinted variant only differs in fill, which `borderColorFromMarker` rarely reaches). */
+export function buildMarkerIndexEndpointResolver(args: {
+  teleportEdges: TeleportEdge[];
+  teleportStyle: TeleportLineStyle;
+  groupCustomization: boolean;
+  groupOverrides: Record<string, TeleportGroupOverride>;
+  verticalStyle: VerticalConnectionStyle;
+}): ResolveMarkerEndpointVisual {
+  const { teleportEdges, teleportStyle, groupCustomization, groupOverrides, verticalStyle } = args;
+
+  const groups = groupCustomization ? buildTeleportGroups(teleportEdges) : [];
+  const groupKeyByPoint = new Map<string, string>();
+  for (const group of groups) {
+    for (const [px, py] of group.points) groupKeyByPoint.set(coordKey(px, py), group.key);
+  }
+  const overrideAt = (px: number, py: number): TeleportGroupOverride | undefined => {
+    const key = groupKeyByPoint.get(coordKey(px, py));
+    return key !== undefined ? groupOverrides[key] : undefined;
+  };
+  // Teleport endpoint world positions are keyed off the edge geometry, not the node — match a
+  // node's own coord to a teleport edge endpoint by rounding.
+  const teleportPointByNode = new Map<number, [number, number]>();
+  for (const e of teleportEdges) {
+    if (e.fromNode !== undefined) teleportPointByNode.set(e.fromNode, e.from);
+    if (e.toNode !== undefined) teleportPointByNode.set(e.toNode, e.to);
+  }
+
+  return (nodeId: number, kind: MarkerIndexLinkKind): MarkerEndpointVisual => {
+    if (kind === "teleport") {
+      const pt = teleportPointByNode.get(nodeId);
+      const override = pt ? overrideAt(pt[0], pt[1]) : undefined;
+      const fill = override?.fillColor ?? teleportStyle.edgeColor;
+      const border = override?.borderColor ?? teleportStyle.edgeBorderColor;
+      return {
+        outerRadius: teleportStyle.size * TILE_SIZE + Math.max(0, teleportStyle.borderWidth),
+        borderMatchColor: teleportStyle.borderWidth > 0 ? border : fill,
+      };
+    }
+    const m = kind === "elevator" ? verticalStyle.elevatorMarker : verticalStyle.twoWayPassageMarker;
+    return markerEndpointVisual(m, m.fillColor, m.borderColor, m.borderWidth ?? 0);
   };
 }

@@ -302,8 +302,9 @@ export type VerticalConnectionMarker = {
 export type TeleportCornerStyle = "sharp" | "round";
 
 /** Weight of an elevator floor-number badge's own label text (GitHub issue #430 follow-up) — maps
- *  to pixi `TextStyle.fontWeight` (`"normal"`/`"600"`/`"bold"`). */
-export type ElevatorBadgeFontWeight = "regular" | "bold";
+ *  to pixi `TextStyle.fontWeight`. Alias of the neutral `LabelFontWeight` (shared with GitHub
+ *  issue #471's marker index labels). */
+export type { LabelFontWeight as ElevatorBadgeFontWeight } from "./indexLabel";
 
 /** `"none"`: no connector line at all, just the two endpoint markers — with "group customization"
  *  enabled (see `TeleportGroupOverride`) this reproduces the old, now-removed `"grouped"` pattern's

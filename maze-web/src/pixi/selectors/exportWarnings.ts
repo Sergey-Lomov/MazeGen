@@ -64,7 +64,14 @@ export type ExportWarningId =
    *  hover-highlight treatment `elevator_badges_overlap` gets; never fires for `"full_circle"`,
    *  which has no per-row capacity (an overflowing uneven arc falls back to the even ring instead of
    *  ever visually breaking, see `computeElevatorBadgePositions`). */
-  | "elevator_badges_too_many";
+  | "elevator_badges_too_many"
+  /** Both vector modes (GitHub issue #471) — "Marker indices" are not shown for elevators (the
+   *  feature is off, or its "Coverage" → elevators toggle is off) AND elevator
+   *  floor-number badges are disabled AND two unlinked elevators share the same cell on the active
+   *  floor, so the player has no way to tell the two apart. One warning total, covering every such
+   *  cell (one elevator shaft has at most one node per floor, so two elevator nodes in one cell are
+   *  always distinct shafts). */
+  | "elevator_indistinguishable";
 
 export type ExportWarning = {
   id: ExportWarningId;
@@ -264,6 +271,46 @@ function computeTeleportWarnings(
  *  other floors, absent from this function's own floor-scoped `nodes`). Optional and defaulted to
  *  `nodes` so existing single-floor callers/tests need no change — that warning simply never fires
  *  without real cross-floor data to resolve. */
+/** "Marker indices" disabled + elevator badges disabled + two distinct elevator nodes in one cell
+ *  of the drawn floor (GitHub issue #471) — the player can't tell the two shafts apart. `nodes` is
+ *  the already floor-scoped node list; `edges` its scoped edge list. One elevator shaft has at most
+ *  one node per floor, so two elevator nodes sharing a cell are always distinct shafts — no
+ *  connected-component check needed. Returns a single warning, or `null`. */
+function computeElevatorIndistinguishableWarning(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  markerIndexElevatorsShown: boolean,
+  elevatorBadgesEnabled: boolean,
+): ExportWarning | null {
+  if (markerIndexElevatorsShown || elevatorBadgesEnabled) return null;
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const elevatorNodeIds = new Set<number>();
+  for (const e of edges) {
+    if (e.kind !== "elevator") continue;
+    if (nodeById.has(e.from)) elevatorNodeIds.add(e.from);
+    if (nodeById.has(e.to)) elevatorNodeIds.add(e.to);
+  }
+  const byCell = new Map<string, number[]>();
+  for (const id of elevatorNodeIds) {
+    const n = nodeById.get(id)!;
+    const key = `${n.x},${n.y}`;
+    const list = byCell.get(key) ?? [];
+    list.push(id);
+    byCell.set(key, list);
+  }
+  const flagged: number[] = [];
+  for (const list of byCell.values()) {
+    if (list.length >= 2) flagged.push(...list);
+  }
+  if (flagged.length === 0) return null;
+  return {
+    id: "elevator_indistinguishable",
+    key: "elevator_indistinguishable",
+    nodes: flagged.sort((a, b) => a - b),
+    edges: [],
+  };
+}
+
 export function computeVectorByWallsWarnings(
   nodes: NodeDto[],
   edges: EdgeDto[],
@@ -413,6 +460,11 @@ export function computeVectorByWallsWarnings(
     }
   }
 
+  const indistinguishable = computeElevatorIndistinguishableWarning(
+    nodes, edges, settings.markerIndex.enabled && settings.markerIndex.coverage.elevator, settings.elevatorBadges.enabled,
+  );
+  if (indistinguishable) warnings.push(indistinguishable);
+
   return warnings;
 }
 
@@ -520,6 +572,11 @@ export function computeVectorByCorridorsWarnings(
       });
     }
   }
+
+  const indistinguishable = computeElevatorIndistinguishableWarning(
+    nodes, edges, settings.markerIndex.enabled && settings.markerIndex.coverage.elevator, settings.elevatorBadges.enabled,
+  );
+  if (indistinguishable) warnings.push(indistinguishable);
 
   return warnings;
 }

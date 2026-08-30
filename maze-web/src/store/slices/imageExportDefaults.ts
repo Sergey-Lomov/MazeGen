@@ -9,6 +9,7 @@ import type {
   VerticalDecorativeFields,
   PngExportSettings,
   MarkerSettings,
+  MarkerIndexSettings,
 } from "../storeTypes";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
@@ -154,6 +155,36 @@ export const DEFAULT_VERTICAL_SETTINGS: VerticalSettingsFields = {
   },
 };
 
+/** "Marker indices" defaults (GitHub issue #471) — shared by both vector modes and
+ * `projectExport/validateImageExport.ts`'s recovery defaults, same single-const convention as
+ * `DEFAULT_TELEPORT_SETTINGS` etc. Disabled by default (opt-in decorative layer). Roman numerals
+ * by default (stay legible at small font sizes). `height`/`offset`/`cornerRadius`/`paddingX` are
+ * TILE_SIZE fractions; `borderWidth` and `gap` are whole pixels. A plate ~0.35 tall whose center
+ * sits on the marker's bottom edge, lightly rounded corners, a 3px gap ring (follows "Shared
+ * style"'s `gapWidth` — not pre-overridden), border color taken from the connection marker, a
+ * yellow accent plate with dark text matching the elevator-badge palette. */
+export const DEFAULT_MARKER_INDEX_SETTINGS: MarkerIndexSettings = {
+  enabled: false,
+  labelStyle: "roman",
+  height: 0.35,
+  offset: 0,
+  cornerRadius: 0.03,
+  paddingX: 0.04,
+  gap: 3,
+  fillColor: 0xf0c900,
+  textColor: canvas.floor.default,
+  borderColor: canvas.vertical.default,
+  borderColorFromMarker: true,
+  borderWidth: 2,
+  fontWeight: "bold",
+  coverage: {
+    singleFloorTeleport: false,
+    crossFloorTeleport: true,
+    verticalPassage: true,
+    elevator: true,
+  },
+};
+
 /** "Vector by walls"-only — see `VerticalDecorativeFields`'s own doc comment. `verticalStyle`
  * defaults to `"abstract"` (not `"decorative"`) — a plain opening marker is the one style that's
  * also correct for a physical single-sheet two-floor build, per the issue's own rationale;
@@ -208,6 +239,7 @@ export const DEFAULT_VECTOR_BY_WALLS_SETTINGS: VectorByWallsSettings = applyVect
     splitNodeColors: [...DEFAULT_MAZE_RENDER_STYLE.split.nodeColors],
     splitSpecialShapes: DEFAULT_MAZE_RENDER_STYLE.split.specialShapes,
     sharedStyle: DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE,
+    markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
   },
   ["cornerStyle", "markerSize", "markerBorderWidth", "gapWidth"],
 );
@@ -255,6 +287,7 @@ export const DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS: VectorByCorridorsSettings = a
     splitGapWidth: 0,
     splitDiagonalBowAmount: 0.5,
     sharedStyle: DEFAULT_VECTOR_BY_CORRIDORS_SHARED_STYLE,
+    markerIndex: DEFAULT_MARKER_INDEX_SETTINGS,
   },
   ["cornerStyle", "markerSize", "markerBorderWidth", "gapWidth"],
 );

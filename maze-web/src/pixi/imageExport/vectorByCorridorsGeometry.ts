@@ -29,6 +29,17 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
     for (const [px, py] of group.points) overrideByPoint.set(`${px},${py}`, override);
   }
 
+  // Coordinates `TeleportRenderer` draws as a cross-floor floor-number badge (`drawFloorBadge`) —
+  // keyed by coordinate exactly like `computeFloorBadges`, so a coord that is a badge on any edge is
+  // a badge everywhere (matching `TeleportRenderer`), independent of which endpoint of which edge
+  // this loop happens to reach first. A badge is a plain circular gap ring, ignoring
+  // `teleportLineShape`/group overrides — its widen patch must match: always `circle`.
+  const badgeKeys = new Set<string>();
+  for (const e of teleportEdges) {
+    if (e.fromFloor !== undefined) badgeKeys.add(`${e.from[0]},${e.from[1]}`);
+    if (e.toFloor !== undefined) badgeKeys.add(`${e.to[0]},${e.to[1]}`);
+  }
+
   const radius = settings.teleportLineSize * TILE_SIZE;
   const seen = new Set<string>();
   const markers: MarkerData[] = [];
@@ -37,12 +48,13 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
       const key = `${pos[0]},${pos[1]}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      const isBadge = badgeKeys.has(key);
       const override = overrideByPoint.get(key);
       markers.push({
         pos,
         color: 0,
         radius,
-        shape: override?.shape ?? settings.teleportLineShape,
+        shape: isBadge ? "circle" : (override?.shape ?? settings.teleportLineShape),
         cornerStyle: settings.teleportLineCornerStyle,
         borderWidth: settings.teleportEdgeBorderWidth,
         gapWidth: settings.teleportEdgeGapWidth,

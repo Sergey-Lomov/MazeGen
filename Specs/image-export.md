@@ -130,6 +130,18 @@ Its settings panel (`VectorByWallsSettingsPanel.tsx`) has six collapsible sectio
 
   **Floor badges in the warning bubble** (round-4 GitHub issue #430 follow-up) — a row of solid `L{n}` buttons rendered *inside* the warning list bubble itself, below its label/info-icon row, one per distinct floor `warning.crossFloorTargets` reaches (deduplicated across every flagged marker the warning covers). Uses the shared `FloorBadgeRow` component (`components/FloorBadgeRow.tsx`, extracted this same follow-up out of what were previously three near-identical copies — `IssuesBlock`'s `IssueFloorBadges`, Preset Connections' `OrphanSplitFloorBadges`, and this one) rather than a fourth bespoke copy: `ExportWarningBubble` passes it `warning.crossFloorTargets`'s deduplicated, sorted `targetFloorIndex` list directly (no node-id resolution needed, unlike `IssueFloorBadges`'s own node-id-to-level lookup), the bubble's own palette-derived badge colors, and `hoverable-tint-counter` to cancel the parent bubble's own hover-brightness filter — same composition every `FloorBadgeRow` caller uses. `FloorBadgeRow` itself owns the single-floor-maze hide check and the `navigateToFloor`/`stopPropagation` click wiring, so every caller gets identical behavior for free.
 
+  **Marker indices** ("Marker indices" section, GitHub issue #471) — a rectangular framed plate carrying a shared index drawn *under* every cross-floor connection marker (staircase / elevator / teleport), so a player matching the per-floor export images can tell where each one leads. A **separate, independent mechanism** from the elevator floor-number badges above (#430/#478) and the cross-floor teleport navigation badges (#480) — it is not wired into "Shared style". Off by default (`markerIndex.enabled`). Both vector modes draw it (`VectorByWallsRenderer`, `VectorByCorridorsRenderer`); it is **not** drawn on the Generation/Analytics canvas. Own renderer `MarkerIndexRenderer` (per `maze-web/CLAUDE.md`'s feature-renderer ownership rule).
+
+  **Two-layer draw order.** `MarkerIndexRenderer` takes *two* caller containers: a **gap layer** the vector renderer places *below* the teleport/vertical/waypoint marker containers, and a **body layer** it places *above* them. So the sequence is: every plate's gap ring → the connection markers → every plate body. A plate's floor-colored gap ring thus lands *under* the marker it hangs off and never occludes it, even when `offset` is small enough that the plate overlaps the marker. `offset` is the distance from the marker's outer edge to the plate's **center** (`0` = plate center on the marker's bottom edge).
+
+  Link identity is **direction-independent** and computed from the *unscoped* `nodes`/`edges` (cross-floor edges never survive `selectFloorScopedMaze` intact): a `teleport` or `vertical_passage` link is its unordered endpoint node pair (a bidirectional pair of directed edges, or a one-way edge plus a separate reverse directed edge, collapses to one link); an `elevator` link is its connected component of `elevator` edges (`elevatorComponent`, `postEditVerticalUtils.ts`), so an elevator fan spanning 3+ floors gets **one** index for the whole shaft. Graph invariants relied on (no defensive code): at most one `teleport` edge between a node pair; one elevator shaft owns at most one node per floor (a shared node ⟹ one shaft). Links are numbered `1..N` by a canonical sort key — `[kindRank (teleport 0, vertical 1, elevator 2), then each endpoint's (node.level, nodeId) sorted]` — deterministic regardless of node/edge input order. `node.level ?? 0` is the true 0-based floor; the client-side `floors` array order is not used. Labels are formatted by `formatIndexLabel` from the neutral `indexLabel.ts` (shared with #430's badge labels), `labelStyle` = `"arabic"`/`"roman"`/`"letters"`.
+
+  `buildMarkerIndexLabels` (`mazeSelectors/markerIndex.ts`) takes a `resolveEndpointVisual(nodeId, kind)` callback supplied by the vector renderer (`buildMarkerIndexEndpointResolver`, `exportStyleBuilders.ts`) — the selector itself carries no per-kind marker-settings or teleport-group-override knowledge. The resolver returns each endpoint marker's real `outerRadius` (`size * TILE_SIZE + borderWidth`) and a `borderMatchColor` for `borderColorFromMarker`: the marker's own border color when it has a border (`borderWidth > 0`), else its fill color — for a teleport endpoint, resolved through any `TeleportGroupOverride` covering its cell, exactly as `TeleportRenderer.drawGroupPoints` does; for a vertical/elevator endpoint, the `elevatorMarker` style for elevators and the `twoWayPassageMarker` style otherwise. `buildMarkerIndexLabels` returns `allLabelStrings` (all N formatted indices — the renderer sizes the plate width to the widest of these so a given index looks identical on every floor) and `labels` for the active floor (`pos` = cell center, plus `markerOuterRadius` / `borderMatchColor` from the resolver). An elevator fan with several nodes in one cell of the drawn floor yields a **single** plate there (dedup by `(level, x, y)`); distinct links sharing a cell (a teleport and a staircase, say) stack — the issue only requires distinguishing elevators.
+
+  **Coverage.** Only the master `enabled` toggle sits at the section's top level; everything else is nested one indent deep under two sub-groups, "Coverage" then "Settings". "Coverage" is four per-kind toggles — `coverage.singleFloorTeleport` (off by default), `coverage.crossFloorTeleport`, `coverage.verticalPassage`, `coverage.elevator` (the last three on) — filtering which connection kinds `buildMarkerIndexLabels` builds a link for at all (a filtered-out kind takes no index; numbering closes up over what remains). A `teleport` link counts as cross-floor when its two endpoints differ in `node.level`, single-floor otherwise. The `elevator_indistinguishable` warning treats elevator indices as "shown" only when `enabled && coverage.elevator`.
+
+Settings (`MarkerIndexSettings`, `imageExportTypes.ts`; geometric fields other than `borderWidth` and `gap` are a fraction of `TILE_SIZE`, `borderWidth` and `gap` are whole pixels): `enabled`, `coverage` (above), `labelStyle`, `height` (plate height), `offset` (marker edge → plate center), `cornerRadius` (`roundRect` corner, 0 = sharp), `paddingX` (text horizontal padding, drives the uniform plate width), `gap` (floor-colored gap ring around the plate, whole pixels, 0 = none — drawn in the gap layer so it never eats into the marker; wraps the plate's *outer* edge, i.e. `gap + borderWidth / 2` beyond the box since the border stroke is centered on the box edge; a member of the "Shared style" `gapWidth` group, default 3 = the shared default, so it follows the shared value until overridden), `fillColor`, `textColor`, `borderColor`, `borderColorFromMarker` (on by default; when on, the plate border takes the endpoint marker's `borderMatchColor` and the `borderColor` row is disabled in the panel), `borderWidth`, `fontWeight` (`"regular"`/`"bold"`). Plate width is uniform project-wide = widest measured `allLabelStrings` text + `2 * paddingX * TILE_SIZE` (`CanvasTextMetrics.measureText` once over one reusable `TextStyle`). Font size is `fitMarkerIndexFontSize(plateHeightPx)` — a pure function (text occupies a fixed fraction of the plate height). Both marker-index containers are included in `measureContentMargin` so an enabled plate near the content's bottom edge grows the export margin. Panel section is the last item in both settings panels (before `ExportWarningsSection`), a self-contained collapsible; only its `gap` field is wired to "Shared style" (the `gapWidth` group), with an `OverrideResetButton` like the other `gapWidth` members. Persistence: `validateMarkerIndexSettings` (`validateImageExport.ts`), lenient recovery like `validateElevatorBadgeSettings`.
+
 ### "Vector by corridors" (`VectorByCorridorsRenderer`)
 
 Renders the maze the inverse way "Vector by walls" does: instead of walls-as-gaps, every basic
@@ -215,7 +227,17 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   replacing dozens of one-field-each setters), same `TeleportRenderer` instance drawn via its own
   `Container` (per the feature-renderer ownership rule — never `VectorByWallsRenderer`'s own
   instance), same group-customization/selection/click-to-select behavior described under "Vector by
-  walls"' own Teleports section above. Two differences: `floorColor` passed to
+  walls"' own Teleports section above. Cross-floor teleports render identically to "Vector by walls"
+  (GitHub issue #481): `VectorByCorridorsRenderer.renderAll` passes `buildTeleportEdges` the same
+  optional `floorContext` (`resolveNodeLevel`, `unscopedNodeById`, `unscopedEdges`,
+  `activeFloorIndex`) and badge-spread bag (`buildTeleportBadgeBlockedCells`,
+  `allowOutOfField: !teleportAvoidFieldExit`, all-floor `fieldCells`) that `VectorByWallsRenderer`
+  does — see `Specs/floors.md`'s "Cross-floor teleport badges". Without `floorContext` the selector
+  can't resolve a teleport's far-floor endpoint and a cross-floor teleport is dropped entirely (the
+  original bug). `teleportAvoidFieldExit` is part of the `geometryCache` invalidation key in both
+  renderers, so toggling it rebuilds `teleportEdges`.
+
+  Two differences from "Vector by walls": `floorColor` passed to
   `buildTeleportLineStyle` and `buildMarkerStyle` (start/finish markers) is this mode's own
   `settings.color` (the corridor's own stroke color, not a canvas background) — a teleport point (and
   a start/finish waypoint) sits directly on the passage line here, not on an empty floor tile, so an
@@ -226,7 +248,12 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
   directly), reusing the Cells section's `markerWidenPadding`/`markerWidenShape` rather than a
   separate teleport-only setting, with each point's own shape/corner-style resolved from its
   group's `TeleportGroupOverride` when one applies (so the widen patch never mismatches what
-  `TeleportRenderer` actually draws there). `buildTeleportWidenMarkers`'s own `groups` param is
+  `TeleportRenderer` actually draws there). A cross-floor badge endpoint (a coordinate tagged
+  `toFloor`/`fromFloor` on any teleport edge, keyed by coordinate exactly like
+  `computeFloorBadges`) is the exception: its widen patch is always a `circle`, never the marker
+  shape or a group-override shape, because `TeleportRenderer` draws that endpoint as a plain
+  circular floor-number badge ring (`drawFloorBadge`), not a `teleportLineShape` marker.
+  `buildTeleportWidenMarkers`'s own `groups` param is
   computed once per `renderAll` and handed in, rather than the function recomputing
   `buildTeleportGroups` itself — `TeleportRenderer.render` already computes the same grouping
   internally for the same edges, so a second independent call would repeat that work for nothing.
@@ -298,7 +325,7 @@ shares them:
 | `cornerStyle` (sharp/round) | round | `startMarker`/`finishMarker.cornerStyle`, `teleportLineCornerStyle`, "Vector by walls"' own `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.cornerStyle` (GitHub issue #347 follow-ups), and each mode's own wall/corridor join field (`wallJoin`+`oneWayJoin` for "Vector by walls", `join`+`oneWayJoin` for "Vector by corridors") |
 | `markerSize` | 0.16 | `startMarker`/`finishMarker.size`, `teleportLineSize`, "Vector by walls"' own `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.size` |
 | `markerBorderWidth` | 3 | `startMarker`/`finishMarker.borderWidth`, `teleportEdgeBorderWidth`, "Vector by walls"' own `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.borderWidth` |
-| `gapWidth` | 3 | `startMarker`/`finishMarker.gapWidth`, `teleportEdgeGapWidth`, `teleportConnectorGapWidth`, "Vector by walls"' own `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.gapWidth`, and "Vector by corridors"' own `splitGapWidth` |
+| `gapWidth` | 3 | `startMarker`/`finishMarker.gapWidth`, `teleportEdgeGapWidth`, `teleportConnectorGapWidth`, "Vector by walls"' own `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker.gapWidth`, both modes' own `markerIndex.gap`, and "Vector by corridors"' own `splitGapWidth` |
 
 `twoWayPassageMarker`/`oneWayPassageMarker`/`elevatorMarker` start pre-overridden in all four groups
 (see the "Vertical connections" section above), so out of the box they keep their own default look
@@ -431,7 +458,7 @@ A maze can be perfectly valid QC-wise (`Specs/quality_control.md`) but a specifi
 
 **One warning entry per `ExportWarningId`, always** — every occurrence of the same kind of caveat collapses into a single entry (e.g. every colliding teleport group, every overlapping waypoint) rather than one entry per affected entity, so the panel shows one bubble per warning *type*. `nodes`/`edges` still span every entity the warning covers, so hovering the one bubble highlights all of them at once.
 
-Five checks, all computed unconditionally on every call (cheap relative to a maze regenerate):
+Checks, all computed unconditionally on every call (cheap relative to a maze regenerate):
 
 - **`teleport_marker_invisible`** — a one-way teleport's exit-only endpoint draws with a floor-colored fill instead of `edgeColor` (`"outline"` fill state, see `TeleportRenderer.ts`'s `resolvePointFillState`), so with `teleportEdgeBorderWidth === 0` it has nothing to draw at all. `buildPointFillStates` resolves every teleport point's fill state in one pass over `teleportEdges` (not one `resolvePointFillState` call per endpoint, which would be quadratic).
 - **`teleport_group_ambiguous`** — two or more teleport connection groups (`buildTeleportGroups`) resolve to the same color+shape while `teleportConnectorStyle === "none"` — with no connector line, nothing else tells them apart visually.
@@ -440,6 +467,8 @@ Five checks, all computed unconditionally on every call (cheap relative to a maz
 - **`teleport_on_special_split`** — same rationale as `waypoint_on_split`, checked separately for teleport endpoints (a teleport marker's geometry differs from a waypoint marker's).
 
 Both split-point checks share one `specialSplitPointKeys` set (built once via `buildSplitPassages(...).specialShapes`, keyed by `pointKey`) and a common `filterNodesOnSpecialSplit` helper.
+
+- **`elevator_indistinguishable`** (GitHub issue #471) — fires only when marker indices are not shown for elevators (`!(markerIndex.enabled && markerIndex.coverage.elevator)`) **and** elevator floor badges are off (`elevatorBadges.enabled === false`) **and** two or more distinct `elevator` nodes occupy the same cell on the drawn (already floor-scoped) floor. By the one-node-per-shaft-per-floor invariant, two distinct elevator nodes in one cell are always different shafts, so no component analysis is needed — the check groups `elevator`-edge-incident node ids by `${x},${y}` and flags any cell with ≥2. Emitted by both `computeVectorByWallsWarnings` and `computeVectorByCorridorsWarnings`; `nodes` is the sorted union of the flagged node ids, `edges` empty.
 
 **Panel UI** (`VectorByWallsSettingsPanel.tsx`): a collapsible "Warnings" section at the bottom of the panel (title shows the count, e.g. "Warnings (2)"), hidden entirely when there are no warnings. Each warning renders as an `ExportWarningBubble` — same look/interaction as `IssuesBlock`'s `IssueBubble` (Analytics feature): an info icon opens a `Modal` with the warning's description (`resolveExportWarningDescription`, `exportWarningsI18n.ts` — descriptions state the problem only, no fix suggestions), hovering the bubble sets `hoveredExportWarningKey` in the store.
 

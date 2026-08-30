@@ -11,7 +11,7 @@ import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { VectorByCorridorsSettings } from "../store/storeTypes";
-import { DEFAULT_VERTICAL_SETTINGS } from "../store/slices/imageExportDefaults";
+import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportDefaults";
 import { chainSegmentsAtSharedVertices } from "../pixi/renderers/WallRenderer";
 
 // Minimal stand-in for Pixi v8's `Bounds` (`getRequiredExportMargin`'s pixel-accurate path
@@ -44,6 +44,7 @@ vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildCorridorSegments: vi.fn(() => []),
   buildMazeMarkers: vi.fn(() => []),
   buildTeleportEdges: vi.fn(() => []),
+  buildTeleportBadgeBlockedCells: vi.fn(() => new Map()),
   buildSplitPassages: vi.fn(() => ({ passages: [], wallFaces: [], specialShapes: [] })),
   maxSplitNodeCount: vi.fn(() => 0),
   buildVerticalConnectionMarkers: vi.fn(() => []),
@@ -144,8 +145,8 @@ const splitDefaults: Pick<VectorByCorridorsSettings, "splitNodeColors" | "splitS
   splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
 };
 const sharedStyle: VectorByCorridorsSettings["sharedStyle"] = { cornerStyle: "round", markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3, overrides: {} };
-const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, sharedStyle };
-const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, sharedStyle };
+const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, sharedStyle };
+const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, sharedStyle };
 
 // Stable references reused across `baseState()` calls — the renderer's own geometry cache keys off
 // reference-equality of `nodes`/`edges`/`activeTessellationConfig` (same convention as
@@ -231,6 +232,42 @@ describe("buildTeleportWidenMarkers", () => {
 
   it("returns an empty list for no teleport edges", () => {
     expect(buildTeleportWidenMarkers([], settingsA, [])).toEqual([]);
+  });
+
+  it("forces a circle widen patch for a cross-floor badge endpoint, ignoring teleportLineShape", () => {
+    const settings: VectorByCorridorsSettings = { ...settingsA, teleportLineShape: "square" };
+    const markers = buildTeleportWidenMarkers(
+      [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }],
+      settings,
+      [],
+    );
+    const badge = markers.find((m) => m.pos[0] === 10 && m.pos[1] === 10);
+    const real = markers.find((m) => m.pos[0] === 0 && m.pos[1] === 0);
+    expect(badge?.shape).toBe("circle");
+    expect(real?.shape).toBe("square");
+  });
+
+  it("forces a circle widen patch for a fromFloor-tagged badge endpoint too", () => {
+    const settings: VectorByCorridorsSettings = { ...settingsA, teleportLineShape: "square" };
+    const [badge] = buildTeleportWidenMarkers(
+      [{ from: [0, 0], to: [10, 10], oneWay: true, fromFloor: 1 }],
+      settings,
+      [],
+    );
+    expect(badge.pos).toEqual([0, 0]);
+    expect(badge.shape).toBe("circle");
+  });
+
+  it("ignores a group override shape for a badge endpoint", () => {
+    const settings: VectorByCorridorsSettings = {
+      ...settingsA,
+      teleportGroupCustomization: true,
+      teleportGroupOverrides: { "0-1": { shape: "square" } },
+    };
+    const edges = [{ from: [0, 0] as [number, number], to: [10, 10] as [number, number], oneWay: true, fromNode: 0, toNode: 1, toFloor: 1 }];
+    const [, badge] = buildTeleportWidenMarkers(edges, settings, buildTeleportGroups(edges));
+    expect(badge.pos).toEqual([10, 10]);
+    expect(badge.shape).toBe("circle");
   });
 });
 
@@ -542,6 +579,40 @@ describe("VectorByCorridorsRenderer", () => {
       expect.objectContaining(startMarker),
       expect.objectContaining(finishMarker),
       expect.any(Array),
+    );
+  });
+
+  it("passes a floor context and badge-spread bag to buildTeleportEdges (cross-floor teleports, issue #481)", () => {
+    new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    expect(buildTeleportEdges).toHaveBeenCalledWith(
+      expect.any(Map),
+      expect.any(Array),
+      stableCfg,
+      expect.objectContaining({
+        resolveNodeLevel: expect.any(Function),
+        unscopedNodeById: expect.any(Map),
+        unscopedEdges: expect.any(Array),
+        activeFloorIndex: expect.any(Number),
+      }),
+      expect.objectContaining({
+        blockedCellsByFloor: expect.any(Map),
+        allowOutOfField: expect.any(Boolean),
+        fieldCells: expect.any(Array),
+      }),
+    );
+  });
+
+  it("rebuilds teleport edges when teleportAvoidFieldExit toggles", () => {
+    new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    vi.mocked(buildTeleportEdges).mockClear();
+
+    subscribeCallback?.(baseState({ vectorByCorridorsSettings: { ...settingsA, teleportAvoidFieldExit: true } }));
+
+    expect(buildTeleportEdges).toHaveBeenCalledTimes(1);
+    expect(buildTeleportEdges).toHaveBeenLastCalledWith(
+      expect.any(Map), expect.any(Array), stableCfg,
+      expect.any(Object),
+      expect.objectContaining({ allowOutOfField: false }),
     );
   });
 
