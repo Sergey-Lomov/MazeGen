@@ -85,12 +85,18 @@ export interface GenerationState {
   debugArena: DebugArenaHandle | null;
   debugStep: number;
   debugStale: boolean;
-  /** Bumped every time the step-count label in `DebugPanel`'s top row is clicked — lets
-   *  `DebugEventTree` re-scroll to the current step's row even when `debugStep` itself hasn't
-   *  changed (e.g. the user scrolled the tree away from the highlighted row manually). A plain
-   *  counter rather than a boolean so two clicks in a row (no other state change between them)
-   *  each still produce a distinct value the tree's effect can react to. */
-  debugStepFocusToken: number;
+  /** Bumped every time a focus request is issued for the debug event tree — a step-label click
+   *  (`focusDebugStep`, `debugFocusNodeIndex === null` = focus the current `debugStep`'s row) or
+   *  a search-match jump (`focusDebugNode`, `debugFocusNodeIndex` set to a specific arena node).
+   *  Lets `DebugEventTree` expand collapsed ancestors and re-scroll even when `debugStep` itself
+   *  hasn't changed (a scope/trace match has no step of its own; the user may also have scrolled
+   *  the tree away manually). A plain counter rather than a boolean so two requests in a row still
+   *  produce distinct values the tree's effect can react to. */
+  debugFocusToken: number;
+  /** Target arena node index for the pending `debugFocusToken` focus request, or `null` to mean
+   *  "focus the current `debugStep`'s row". Set by `focusDebugNode` (search-match jump), cleared
+   *  to `null` by `focusDebugStep` and on debug-tape lifecycle resets. */
+  debugFocusNodeIndex: number | null;
   /** Whether stepping through the debug tape (autoplay, next/prev, scrubber settle, tree row
    *  click) auto-switches the active floor to match the step being shown (GitHub issue #350's
    *  follow-up) — on by default, matching the feature's original always-on behavior; the toggle
@@ -125,6 +131,11 @@ export interface GenerationState {
    *  whenever `debugArena` changes or `debugMode` turns off, mirroring `debugValueToggles`. Not
    *  persisted/serialized. */
   showKruskalDsuGroups: boolean;
+  /** Substring the user typed into the debug event tree's search field (GitHub issue #482) — raw
+   *  (not trimmed/lowercased; that normalization happens at the point of use). Drives per-row
+   *  match dots + the match counter + prev/next navigation in `DebugEventTree`. Reset to `""`
+   *  whenever `debugArena` changes or `debugMode` turns off. Not persisted/serialized. */
+  debugSearchQuery: string;
   /** True after the maze has been generated since the last confirmTessellation. */
   mazeDirty: boolean;
   /** Caps on the QC repair fixpoint loop (see `Specs/repair.md`'s `RepairLimits`). Both are
@@ -283,14 +294,21 @@ export interface GenerationActions {
   setDebugStep: (step: number, switchFloor?: boolean) => void;
   /** Flips `debugAutoSwitchFloor`. */
   toggleDebugAutoSwitchFloor: () => void;
-  /** Bumps `debugStepFocusToken` — see that field's doc comment. */
+  /** Requests a focus-scroll to the current `debugStep`'s row (bumps `debugFocusToken`, clears
+   *  `debugFocusNodeIndex` to `null`) — see `debugFocusToken`'s doc comment. */
   focusDebugStep: () => void;
+  /** Requests a focus-scroll to a specific arena node's row (bumps `debugFocusToken`, sets
+   *  `debugFocusNodeIndex`) — used by the debug event tree's search-match navigation to jump to a
+   *  matched row, including a scope/trace row that has no `debugStep` of its own. */
+  focusDebugNode: (nodeIndex: number) => void;
   setDebugAutoPlayDelay: (ms: number) => void;
   setHoveredDebugRef: (ref: HoveredDebugRef | null) => void;
   /** Flips `name`'s membership in `debugValueToggles`. */
   toggleDebugValue: (name: string) => void;
   /** Flips `showKruskalDsuGroups`. */
   toggleKruskalDsuGroups: () => void;
+  /** Sets `debugSearchQuery` (raw substring typed into the debug event tree's search field). */
+  setDebugSearchQuery: (query: string) => void;
   setError: (msg: string | null) => void;
   setRepairMaxIterations: (v: number | null) => void;
   setRepairTimeBudgetSecs: (v: number | null) => void;

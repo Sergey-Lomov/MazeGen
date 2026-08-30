@@ -113,6 +113,35 @@ describe("mazeStore generation misc actions", () => {
     expect(useMazeStore.getState().debugStale).toBe(true);
   });
 
+  it("setDebugMode(false) clears the debug search query and pending focus target (GitHub issue #482)", () => {
+    useMazeStore.setState({ debugMode: true, debugSearchQuery: "passage", debugFocusNodeIndex: 7 });
+    useMazeStore.getState().setDebugMode(false);
+    const s = useMazeStore.getState();
+    expect(s.debugSearchQuery).toBe("");
+    expect(s.debugFocusNodeIndex).toBeNull();
+  });
+
+  it("setDebugSearchQuery stores the raw query verbatim (GitHub issue #482)", () => {
+    useMazeStore.getState().setDebugSearchQuery("  Edge Added  ");
+    expect(useMazeStore.getState().debugSearchQuery).toBe("  Edge Added  ");
+  });
+
+  it("focusDebugStep bumps the focus token and clears the node target (GitHub issue #482)", () => {
+    useMazeStore.setState({ debugFocusToken: 4, debugFocusNodeIndex: 7 });
+    useMazeStore.getState().focusDebugStep();
+    const s = useMazeStore.getState();
+    expect(s.debugFocusToken).toBe(5);
+    expect(s.debugFocusNodeIndex).toBeNull();
+  });
+
+  it("focusDebugNode bumps the focus token and sets the node target (GitHub issue #482)", () => {
+    useMazeStore.setState({ debugFocusToken: 4, debugFocusNodeIndex: null });
+    useMazeStore.getState().focusDebugNode(11);
+    const s = useMazeStore.getState();
+    expect(s.debugFocusToken).toBe(5);
+    expect(s.debugFocusNodeIndex).toBe(11);
+  });
+
   it("setDebugStep / setDebugAutoPlayDelay update their fields", () => {
     useMazeStore.getState().setDebugStep(3);
     useMazeStore.getState().setDebugAutoPlayDelay(500);
@@ -185,6 +214,16 @@ describe("mazeStore generation misc actions", () => {
     expect(s.debugArena).not.toBeNull();
     expect(s.debugArena?.totalSteps).toBe(3);
     expect(s.debugStep).toBe(2);
+  });
+
+  it("generate() clears a stale debug search query and pending focus target (GitHub issue #482)", () => {
+    const debugTape = encodeEdgeAddedTape([[1n, 2n], [2n, 3n]]);
+    vi.mocked(generateMaze).mockReturnValue({ snapshot: mockSnapshot, debugTape });
+    useMazeStore.setState({ seed: 7, randomSeed: false, rules: [], debugMode: true, debugSearchQuery: "passage", debugFocusNodeIndex: 5 });
+    useMazeStore.getState().generate();
+    const s = useMazeStore.getState();
+    expect(s.debugSearchQuery).toBe("");
+    expect(s.debugFocusNodeIndex).toBeNull();
   });
 
   it("generate() with debugMode on and a long-enough tape resolves a web-computed snapshot into debugArena.checkpointFroms (GitHub issue #128)", () => {

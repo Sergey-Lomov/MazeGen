@@ -1,5 +1,5 @@
 ﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { DebugEventTree, bubbleLabel } from "../components/DebugEventTree";
 import { useMazeStore } from "../store/mazeStore";
 import { TAG_SCOPE, RECURSIVE_BACKTRACKER_EVENT_TAG } from "../debug/eventTape";
@@ -427,5 +427,206 @@ describe("DebugEventTree with a two-source (generation + QC) tape (GitHub issue 
     fireEvent.click(screen.getByText('Stage "Waypoints"'));
     fireEvent.click(screen.getByText(m["debug.tree.qc.iteration_scope"]({ iteration: 1 })));
     expect(screen.getByText('Rule "No dead ends"')).toBeInTheDocument();
+  });
+});
+
+// --- Step-message search (GitHub issue #482) ---
+
+describe("DebugEventTree step-message search", () => {
+  const twoStepArena = () => ({
+    tape: buildTwoStepTape(),
+    algorithmKind: "recursive_backtracker" as const,
+    sources: [{ scopeName: "generation", kind: "recursive_backtracker" as const, nodeIndex: 1, startStep: 0, endStep: 4, checkpointFroms: [] }],
+    nodes,
+    allNodes: nodes,
+    totalSteps: 4,
+    debugValueNames: [],
+  });
+
+  beforeEach(() => {
+    useMazeStore.setState({ debugArena: twoStepArena(), debugStep: 0, debugSearchQuery: "", debugFocusNodeIndex: null, debugFocusToken: 0 });
+  });
+
+  function searchInput() {
+    return screen.getByPlaceholderText(m["debug.search.placeholder"]()) as HTMLInputElement;
+  }
+
+  it("marks the collapsed ancestor scope of a match with a dot, without jumping", () => {
+    const setDebugStep = vi.fn();
+    useMazeStore.setState({ setDebugStep });
+    render(<DebugEventTree />);
+    // Tree is fully collapsed — "Cell" ("Cell marked visited"/"Cell added to stack"/"Cell removed
+    // from stack") matches 3 event rows nested under the collapsed "Generation" row, which is the
+    // only rendered ancestor and so is the one that carries the dot.
+    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+
+    const generationRow = screen.getByText(m["debug.tree.source_scope.generation"]()).closest("[data-index]")!;
+    expect(generationRow.querySelector('[data-testid="search-match-dot"]')).toBeInTheDocument();
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    expect(setDebugStep).not.toHaveBeenCalled();
+  });
+
+  it("shows dots on matched rows once their scope is expanded", () => {
+    render(<DebugEventTree />);
+    expandGeneration();
+    fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
+    fireEvent.change(searchInput(), { target: { value: "passage added" } });
+
+    // Only EdgeAdded ("Passage added ...") matches.
+    expect(screen.getByText("1 / 1")).toBeInTheDocument();
+    const dotted = screen.getByText(/Passage added/).closest('[data-index]')!;
+    expect(dotted.querySelector('[data-testid="search-match-dot"]')).toBeInTheDocument();
+    // Its ancestor "step 1" scope also carries the dot (a match anywhere in the subtree).
+    const stepRow = screen.getByText(m["debug.tree.step_scope"]({ index: 1 })).closest("[data-index]")!;
+    expect(stepRow.querySelector('[data-testid="search-match-dot"]')).toBeInTheDocument();
+  });
+
+  it("highlights the match row the same way a step-number click does, and moves debugStep for a mutating match", () => {
+    // Real store actions (prior tests in this block inject vi.fn() mocks that leak — the setup has
+    // no per-test store reset), no floor-switch path.
+    const realActions = useMazeStore.getInitialState();
+    useMazeStore.setState({
+      floors: [], debugAutoSwitchFloor: false,
+      setDebugStep: realActions.setDebugStep, focusDebugNode: realActions.focusDebugNode,
+    });
+    render(<DebugEventTree />);
+    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    // matches[0] = VertexVisited (step 1). Enter -> matches[1] = VertexPushed (step 2, mutating).
+    fireEvent.keyDown(searchInput(), { key: "Enter" });
+
+    expect(useMazeStore.getState().debugStep).toBe(2);
+    const pushedRow = screen.getByText(m["debug.tree.vertex_pushed"]()).closest("[data-index]") as HTMLElement;
+    expect(pushedRow.style.background).not.toBe("");
+  });
+
+  it("Enter advances to the next match and wraps; a mutating match also moves debugStep", () => {
+    const focusDebugNode = vi.fn();
+    const setDebugStep = vi.fn();
+    useMazeStore.setState({ focusDebugNode, setDebugStep });
+    render(<DebugEventTree />);
+    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    // 3 matches: VertexVisited (step 1), VertexPushed (step 2), VertexPopped (step 3). Initial
+    // current = matches[0]; first Enter -> matches[1].
+    fireEvent.keyDown(searchInput(), { key: "Enter" });
+    expect(focusDebugNode).toHaveBeenCalledTimes(1);
+    expect(setDebugStep).toHaveBeenLastCalledWith(2);
+
+    fireEvent.keyDown(searchInput(), { key: "Enter" }); // -> matches[2], step 3
+    fireEvent.keyDown(searchInput(), { key: "Enter" }); // wrap -> matches[0], step 1
+    expect(setDebugStep).toHaveBeenLastCalledWith(1);
+    expect(focusDebugNode).toHaveBeenCalledTimes(3);
+  });
+
+  it("Shift+Enter goes to the previous match, wrapping from the first", () => {
+    const setDebugStep = vi.fn();
+    useMazeStore.setState({ setDebugStep });
+    render(<DebugEventTree />);
+    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    // current = matches[0]; Shift+Enter wraps to matches[2] (VertexPopped, step 3).
+    fireEvent.keyDown(searchInput(), { key: "Enter", shiftKey: true });
+    expect(setDebugStep).toHaveBeenLastCalledWith(3);
+  });
+
+  it("disables the nav buttons and makes Enter a no-op when there is 0 or 1 match", () => {
+    const focusDebugNode = vi.fn();
+    useMazeStore.setState({ focusDebugNode });
+    render(<DebugEventTree />);
+    fireEvent.change(searchInput(), { target: { value: "passage added" } }); // exactly 1 match
+
+    expect(screen.getByTitle(m["debug.search.next"]())).toBeDisabled();
+    expect(screen.getByTitle(m["debug.search.prev"]())).toBeDisabled();
+    fireEvent.keyDown(searchInput(), { key: "Enter" });
+    expect(focusDebugNode).not.toHaveBeenCalled();
+  });
+
+  it("navigating a scope-header match jumps debugStep to that scope's nearest-preceding step and selects the scope row (GitHub issue #482)", () => {
+    const focusDebugNode = vi.fn();
+    const setDebugStep = vi.fn();
+    useMazeStore.setState({ focusDebugNode, setDebugStep });
+    render(<DebugEventTree />);
+    fireEvent.change(searchInput(), { target: { value: "step" } }); // "Step 1" + "Step 2" headers
+    expect(screen.getByText("1 / 2")).toBeInTheDocument();
+
+    fireEvent.keyDown(searchInput(), { key: "Enter" }); // -> "Step 2" scope (nodeIndex 7)
+    expect(focusDebugNode).toHaveBeenCalledTimes(1);
+    // "Step 2" scope's nearest-preceding step is VertexPushed (step 2), the same one its step
+    // column shows — navigation activates it exactly as a row click would.
+    expect(setDebugStep).toHaveBeenCalledWith(2);
+  });
+
+  it("syncs the match counter when an external step-column click lands on a match row (GitHub issue #482)", () => {
+    // Real store actions (prior tests inject vi.fn() mocks that leak — no per-test store reset).
+    const realActions = useMazeStore.getInitialState();
+    useMazeStore.setState({
+      floors: [], debugAutoSwitchFloor: false,
+      setDebugStep: realActions.setDebugStep, focusDebugNode: realActions.focusDebugNode,
+      focusDebugStep: realActions.focusDebugStep,
+    });
+    render(<DebugEventTree />);
+    expandGeneration();
+    fireEvent.click(screen.getByText(m["debug.tree.step_scope"]({ index: 1 })));
+    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    // 3 matches: VertexVisited (step 1), VertexPushed (step 2), VertexPopped (step 3). Counter
+    // starts at matches[0].
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+
+    // Click VertexPushed's own step column — a step change from outside the search nav that lands
+    // on matches[1]. `effectiveCurrentNodeIndex` picks it up via `highlightedNodeIndex`.
+    const pushedStepCol = screen.getByText(m["debug.tree.vertex_pushed"]())
+      .closest("div")!.querySelector('[data-testid="step-col"]')!;
+    fireEvent.click(pushedStepCol);
+    expect(screen.getByText("2 / 3")).toBeInTheDocument();
+  });
+
+  it("the input reflects debugSearchQuery, including an external reset to empty", () => {
+    render(<DebugEventTree />);
+    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    expect(searchInput().value).toBe("Cell");
+
+    act(() => useMazeStore.getState().setDebugMode(false));
+    expect(searchInput().value).toBe("");
+  });
+
+  it("counts two matches when two rows render the same text", () => {
+    // "Cell added to stack" (VertexPushed) and a second identical VertexPushed row — build a tape
+    // where two mutating events narrate identically.
+    const dupTape = buildFixture([
+      { parent: null, firstChild: 1, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 0, firstChild: 2, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("generation") },
+      { parent: 1, firstChild: 3, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("root") },
+      { parent: 2, firstChild: 4, nextSibling: null, tag: TAG_SCOPE, payloadBytes: scopePayload("step 1") },
+      { parent: 3, firstChild: null, nextSibling: 5, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_PUSHED, payloadBytes: vertexPayload(2n) },
+      { parent: 3, firstChild: null, nextSibling: null, tag: RECURSIVE_BACKTRACKER_EVENT_TAG.VERTEX_PUSHED, payloadBytes: vertexPayload(2n) },
+    ]);
+    useMazeStore.setState({
+      debugArena: { ...twoStepArena(), tape: dupTape, totalSteps: 2 },
+      debugStep: 0,
+    });
+    render(<DebugEventTree />);
+    fireEvent.change(searchInput(), { target: { value: m["debug.tree.vertex_pushed"]().toLowerCase() } });
+    expect(screen.getByText("1 / 2")).toBeInTheDocument();
+  });
+
+  it("recomputes matches and resets the current match when the tape changes under an active query", () => {
+    render(<DebugEventTree />);
+    fireEvent.change(searchInput(), { target: { value: "Cell" } });
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+
+    // Swap in the generation+QC tape — "Cell" no longer matches anything there.
+    act(() => useMazeStore.setState({
+      debugArena: {
+        tape: buildGenerationPlusQcTape(),
+        algorithmKind: "recursive_backtracker",
+        sources: [
+          { scopeName: "generation", kind: "recursive_backtracker", nodeIndex: 1, startStep: 0, endStep: 1, checkpointFroms: [] },
+          { scopeName: "quality_control", kind: "quality_control", nodeIndex: 5, startStep: 1, endStep: 2, checkpointFroms: [] },
+        ],
+        nodes, allNodes: nodes, totalSteps: 2, debugValueNames: [],
+      },
+      debugStep: 0,
+      stages: [{ id: "s1", name: "Waypoints" }] as never,
+      rules: [{ id: "r1", name: "No dead ends" }] as never,
+    }));
+    expect(screen.getByText("0 / 0")).toBeInTheDocument();
   });
 });

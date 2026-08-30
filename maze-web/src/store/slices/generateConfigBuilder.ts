@@ -341,6 +341,8 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       debugStale: false,
       debugValueToggles: new Set(),
       showKruskalDsuGroups: false,
+      debugSearchQuery: "",
+      debugFocusNodeIndex: null,
       postEditDraftEdges: draftEdges,
       postEditDraftTeleports: generatedTeleports,
       postEditDraftSplitPoints: generatedSplitPoints,

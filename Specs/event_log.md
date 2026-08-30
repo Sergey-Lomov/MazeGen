@@ -1803,6 +1803,107 @@ display of the same underlying `NodeDto.level`/array-position value.
   the cost for this issue's own scope; the underlying floor-resolution math is already fully
   covered via `resolveBubbleFloor`'s equivalent `cycle`/`region` cases.
 
+## Step-Message Text Search (#482)
+
+The debug tree can hold hundreds of rows; finding the one that mentions a given node id, event
+kind, or phrase meant scrolling by eye. A search field above the tree now marks every row whose
+rendered text contains a substring (case-insensitive, scope headers included), with a `N / M`
+match counter and prev/next navigation. The list is **not** filtered — matches are annotated in
+place. Web-only; no core changes (narration text never crosses the WASM boundary — mirrors #130's
+principle), so this is a pure consumer of the tokens the replay engine already produces.
+
+### Canonical row text (`maze-web/src/debug/debugRowText.ts`)
+
+`buildDebugRowText(tokens, coords, multiFloor)` joins a row's `Token[]` into one plain string —
+`text` tokens verbatim, every bubble token via `bubbleLabel` — single-space separated so a query
+can span a token boundary (prose then a coordinate) without matching across it with no gap. This
+is the single source of truth for "what text does this row show"; the row itself renders the same
+`tokens` array directly, so the two never drift. `bubbleLabel` moved here from `DebugEventTree.tsx`
+(re-exported from its old location for existing callers); its `edge`/`cycle` separators are plain
+ASCII (`->`, `<->`, `-`) so a query typed with ordinary keyboard characters matches.
+`normalizeSearchText` is plain
+`toLowerCase()` — deliberately not `toLocaleLowerCase()`: a deterministic fold independent of the
+browser locale (Turkish `I`/`i`) matters more than locale-correct casing for technical text, and
+the same function normalizes both the indexed text and the query so the two sides stay symmetric.
+
+### Search index and matching (`debugTreeSelectors.ts`)
+
+`allRenderableRows(tape, transparentNodeIndices)` is `flattenVisibleRows` with every scope treated
+as expanded — the collapsed-state-independent row set the index is built over, so a match inside a
+collapsed scope is still found. Both now share one `walkTree` DFS helper; the only difference is
+whether the descend predicate consults `expanded`. Callers building the index **must** pass the
+real `transparentNodeIndices` (each merged source's former-root artifact, #147/#169) — with the
+default empty set those nodes would be indexed as rows with a meaningless label.
+
+`buildSearchMatches(rows, normalizedQuery)` is pure — `rows` is `{ nodeIndex, text }[]` in visual
+order with `text` already normalized; returns the matching node indices, order preserved (= visual
+order, never re-sorted, since arena index order *is* DFS pre-order *is* row order by the
+linearization invariant). Empty query → `[]`.
+
+`DebugEventTree` builds the index once per tape/config (`useMemo` over the same dep set as the
+existing row `labels`, plus `transparentNodeIndices`/`coords`/`multiFloor`): `allRenderableRows` →
+`rowTokens` per row (which resolves top-level source scopes via `topLevelScopeKinds` *before*
+`adapterForNode`, so a wrapper node never reaches an adapter that would throw on it) →
+`buildDebugRowText` → `normalizeSearchText`. Each keystroke only re-runs `buildSearchMatches` (a
+string `includes` sweep over the prebuilt array — microseconds on hundreds of rows), so there is
+no debounce: a debounce would only add a stale-UI window and a class of race/reset bugs.
+
+### Focus mechanism — generalized, not duplicated
+
+The pre-existing step-label-click focus (`focusDebugStep`) bumped a token and drove the scroll
+effect off `debugStep` — no good for a scope/trace row that has no step of its own. Replaced with:
+
+- `debugFocusToken: number` + `debugFocusNodeIndex: number | null` (`GenerationState`).
+- `focusDebugNode(nodeIndex)` — bumps the token, sets a specific arena node (search-match jump).
+- `focusDebugStep()` — kept (still called from `DebugPanel`'s step-label click, which has no node
+  index handy); bumps the token, sets `debugFocusNodeIndex: null` = "resolve from the current
+  `debugStep` in the effect".
+
+The `useLayoutEffect` resolves `focusTargetNodeIndex` (the explicit node, or the current step's
+node when `null`), expands its collapsed ancestors, then scrolls to `nearestVisibleAncestor` of it
+(a small pure helper extracted from `resolveHighlightTarget`'s former inline walk — both now share
+it). Ordinary playback keeps its existing "follow `highlightedNodeIndex`, never auto-expand"
+branch. `debugFocusNodeIndex`/`debugSearchQuery` reset on `setDebugMode(false)` and on a fresh
+`generate()`, like the other per-session debug UI state.
+
+### Navigation and presentation (`DebugEventTree.tsx`)
+
+Search row sits above the tree, outside the scroll container. The input is controlled straight
+from `debugSearchQuery` (no local draft). `currentMatchNodeIndex` (local state, set only by
+navigation) resolves through `effectiveCurrentNodeIndex` (used only for the `N` counter): the raw
+anchor if still a match, else `highlightedNodeIndex` if an external click/scrub landed on a match,
+else `matches[0]`. Typing a query points the counter at the first hit (`1 / M`) but does **not**
+scroll; the first next/Enter goes to `matches[1]`.
+
+`navigate(±1)` (next/prev buttons, Enter/Shift+Enter, both wrap; no-op at `M <= 1`) behaves
+**exactly like clicking the match row**: `focusDebugNode(n)` drives expand-ancestors + scroll,
+`setDebugStep(stepForNode(n))` moves the step (a mutating match to its own step, a scope/trace
+match to its nearest-preceding step — the same number that row's step column shows), and
+`setClickedNodeIndex(n)` selects the row itself so the highlight lands on the navigated-to row,
+not that step's own mutating row. There is no separate "current match" visual — the selected step
+and the current match are one highlight (normal `ui.bg.panelAlt` row background).
+
+`navigate`'s four state updates batch into one commit, so the focus effect first runs with
+`debugStep` already at the jump's target. It then re-runs while it expands the target's collapsed
+ancestors — each `setExpanded` commits and re-fires the effect via its `expanded` dep, returning
+early before the scroll. On those intermediate runs `debugStep` already equals the target, so the
+effect's "debugStep changed for a non-click reason → drop the selection" branch would clear the
+just-navigated row. `navPendingRef` (`{ nodeIndex, step }`) pins `clickedNodeIndex` to `nodeIndex`
+across them, clearing once `debugStep` has settled on `step`.
+
+The only search-specific mark is a small amber dot (`ui.debug.searchMatch` = `base.warning`) in
+the **top-right of the step-number column**, next to the digit. It shows on a row that matches
+**or has a match anywhere in its subtree** (`matchOrAncestorSet` — every matched node plus all its
+arena ancestors), so a collapsed scope still signals "there's a hit inside".
+
+### Out of Scope (#482)
+
+- Highlighting the matched substring itself inside the row (explicit user decision — mark the row,
+  not the text).
+- A distinct "current match" indicator separate from the normal step highlight.
+- Filtering the tree to only matches, or a jump-list panel.
+- Any wire/core change — the feature reads only what the replay engine already emits.
+
 ## Wire-Format Codegen
 
 Every section above that describes an event enum's wire tags/`EncodeEventPayload`/`is_mutating()`
