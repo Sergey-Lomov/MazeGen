@@ -1762,11 +1762,12 @@ flickered the active floor across every floor the drag happened to pass over, no
 settled position. `StepSlider` gained an `onChangeEnd` callback (fires once, with the last
 delivered value, on `pointerup`/`keyup`/`blur` — i.e. drag settle) alongside its existing throttled
 `onChange` (still fires once per animation frame during the drag, unchanged). `DebugPanel.tsx`
-wires in-flight `onChange` ticks to `setDebugStep(v, false)` (`switchFloor: false` — skip the
-auto-switch entirely) and the settle `onChangeEnd` to `setDebugStep(v, true)`. `setDebugStep`'s
-second parameter, `switchFloor` (default `true`), is `StepSlider`-specific — every other trigger
-(autoplay, next/prev, row click) calls the single-argument form and gets the normal auto-switch
-behavior.
+wires both in-flight `onChange` ticks and the settle `onChangeEnd` to `setDebugStep(v, false)`
+(`switchFloor: false` — skip the auto-switch entirely). The step slider never switches the active
+floor, neither during the drag nor on release: applying the switch on release (GitHub issue #451)
+jumped the view away from the user's chosen floor the moment they let go. `setDebugStep`'s second
+parameter, `switchFloor` (default `true`), is `StepSlider`-specific — every other trigger (autoplay,
+next/prev, row click) calls the single-argument form and gets the normal auto-switch behavior.
 
 **User-facing on/off toggle**: `debugAutoSwitchFloor: boolean` (`GenerationState`, on by default —
 matching the feature's original always-on behavior) gates auto-switching for every trigger *except*

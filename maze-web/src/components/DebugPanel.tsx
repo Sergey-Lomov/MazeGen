@@ -192,12 +192,14 @@ export function DebugPanel() {
           value={debugStep}
           max={total - 1}
           style={styles.slider}
-          // GitHub issue #350: in-flight drag ticks skip the floor auto-switch (`switchFloor:
-          // false`) — otherwise scrubbing across many floors in quick succession flickers the
-          // active floor on every tick. `onChangeEnd` applies the real switch once, at the settled
-          // value, when the drag actually stops.
+          // GitHub issue #350 / #451: the step slider never auto-switches the active floor — not
+          // during the drag and not on release (`switchFloor: false` on every tick and on the
+          // settle). Scrubbing across floors used to flicker the active floor on every tick (#350),
+          // and applying the switch on release made the view jump away from the user's chosen floor
+          // the moment they let go (#451). Every other trigger (autoplay, next/prev, tree row
+          // click) still auto-switches via the single-argument `setDebugStep`.
           onChange={(v) => { setPlaying(false); setDebugStep(v, false); }}
-          onChangeEnd={(v) => setDebugStep(v, true)}
+          onChangeEnd={(v) => setDebugStep(v, false)}
         />
       </div>
 

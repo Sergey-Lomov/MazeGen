@@ -192,7 +192,7 @@ export function PostEditFeature() {
 
       {confirmReset && (
         <ConfirmModal
-          message={m["post_edit.confirm_reset"]()}
+          title={m["post_edit.reset_to_generation"]()}
           onConfirm={() => { resetPostEdit(); setConfirmReset(false); }}
           onCancel={() => setConfirmReset(false)}
         />

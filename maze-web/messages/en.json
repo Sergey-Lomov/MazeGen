@@ -1528,7 +1528,6 @@
   "post_edit.auto_confirm": "Auto-confirm",
   "post_edit.auto_confirm_hint": "may cause performance issues on large mazes",
   "post_edit.reset_to_generation": "Reset to generation",
-  "post_edit.confirm_reset": "Post-edit changes will be discarded. Continue?",
   "post_edit.confirm_regenerate": "Post-edit changes will be discarded on re-generation. Continue?",
   "post_edit.manage_split_nodes": "Manage split nodes: {x}, {y}",
   "post_edit.manage_split_nodes_tool": "Split nodes",

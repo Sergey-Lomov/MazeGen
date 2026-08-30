@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { DebugPanel } from "../components/DebugPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { parseTape, TAG_SCOPE, RECURSIVE_BACKTRACKER_EVENT_TAG, NO_NODE, type ParsedTape } from "../debug/eventTape";
@@ -272,5 +272,29 @@ describe("DebugPanel", () => {
 
     checkbox.click();
     expect(useMazeStore.getState().debugAutoSwitchFloor).toBe(false);
+  });
+
+  // --- Step slider never switches the active floor (GitHub issue #451) ---
+
+  it("dragging and releasing the step slider never changes the active floor, even with auto-switch on", () => {
+    // Every arena node on floor 1 (index 1) — a floor auto-switch, if it fired, would move the
+    // active floor from floor_0 to floor_1.
+    const arena = { ...threeStepArena(), nodes: nodes.map((n) => ({ ...n, level: 1 })) };
+    arena.allNodes = arena.nodes;
+    useMazeStore.setState({
+      debugArena: arena, debugStep: 0,
+      floors: [{ id: "floor_0", title: "Floor 1" }, { id: "floor_1", title: "Floor 2" }],
+      floorFields: {} as never,
+      activeFloorId: "floor_0",
+      debugAutoSwitchFloor: true,
+    });
+    render(<DebugPanel />);
+    const slider = screen.getByRole("slider") as HTMLInputElement;
+
+    fireEvent.change(slider, { target: { value: "2" } });
+    fireEvent.pointerUp(slider);
+
+    expect(useMazeStore.getState().debugStep).toBe(2);
+    expect(useMazeStore.getState().activeFloorId).toBe("floor_0");
   });
 });

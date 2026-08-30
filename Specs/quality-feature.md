@@ -450,6 +450,60 @@ useParamEditor(options: {
 - On `entityId` change: `useEffect` resets `values` from `storeValues` (no flush — caller is responsible for flushing first).
 - **Unmount does not flush** — the cleanup effect only clears the pending debounce timer. A caller that unmounts the editor (e.g. removing the check/rule) without calling `flushRef.current()` first silently drops the pending edit.
 
+## Numeric param inputs: NumberInput
+
+File: `maze-web/src/components/NumberInput.tsx`
+
+Every numeric control `ParamFields` renders — a `float`/`integer` param's plain field, both halves
+of an `interval` param, and an `add_split_config` param's node-count field (but **not** the
+`float` params rendered as percent sliders) — goes through this one component instead of a bare
+`<input type="number">`.
+
+```ts
+NumberInput(props: {
+  value: string                      // committed value, same string encoding as the rest of the param pipeline
+  onChange: (value: string) => void  // fired on every edit with the value to commit
+  min?: number
+  max?: number
+  integer?: boolean                  // block the decimal separator + round on blur
+  disabled?: boolean
+  style?: React.CSSProperties
+  onClick?: (e) => void
+  onBlurCommit?: (normalized: string) => void  // blur-time hook for a caller-specific cross-field adjustment
+})
+```
+
+Behavior:
+
+- **Local draft state.** The field renders its own `draft` string, decoupled from `value` while
+  focused so the user can clear it and type a new number without the incoming prop snapping it
+  back mid-edit. An incoming `value` change is mirrored into the field only while it is *not*
+  focused.
+- **Last-valid tracking (GitHub issue #452).** The component remembers the most recent value that
+  parsed as a finite number (seeded from the initial `value`, updated on every valid keystroke
+  and every valid incoming `value`). While the field holds an empty or otherwise unparseable
+  string (`""`, `"-"`, `"1e"`), `onChange` is still called every keystroke but with that **last
+  valid value**, never the raw unparseable string — so a check's numeric param never briefly
+  commits a value core would parse as its (often large) default, which would fire a false
+  analytics error.
+- **Blur normalization.** On blur: an empty/unparseable field is restored to the last valid value
+  (re-committing it only if the field was still showing something else); a parseable value is
+  clamped to `[min, max]` and, for an `integer` field, rounded — the normalized result is
+  committed and written back into the field.
+- **Decimal-separator guard (GitHub issue #387).** An `integer` field blocks `.`/`,` on both
+  keystroke and paste, so a fractional value is never even transiently present.
+- **`onBlurCommit`.** Called on blur with the fully normalized value, for a caller that needs a
+  further cross-field adjustment `NumberInput` can't know about. Used by `ParamFields` for an
+  `interval` param: after each half is normalized on its own, an inverted range (min > max)
+  collapses to a single point at the other endpoint. Deferred to blur (not `onChange`) so both
+  ends can be edited in sequence through a temporarily-inverted state.
+
+`ParamFields` no longer carries its own `blockDecimalPoint`/`blockDecimalPaste`/`handleIntegerBlur`
+helpers — that logic lives entirely in `NumberInput` now. The `interval` param's per-half
+`onChange` still assembles the `"lo,hi"` string, and its `onBlurCommit` handlers still own the
+min/max inversion clamp (the only interval-specific piece), but the emptied-half fallback is now
+`NumberInput`'s last-valid restore rather than a fall-back to the param's `min`/`max` bound.
+
 ## Conditional entity visibility (GitHub issue #349)
 
 `EntityVisibility` (`maze-web/src/wasm/types.ts`, mirroring the wasm-side enum in
