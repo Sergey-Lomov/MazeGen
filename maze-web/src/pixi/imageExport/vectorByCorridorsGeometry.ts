@@ -32,8 +32,11 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
   // Coordinates `TeleportRenderer` draws as a cross-floor floor-number badge (`drawFloorBadge`) —
   // keyed by coordinate exactly like `computeFloorBadges`, so a coord that is a badge on any edge is
   // a badge everywhere (matching `TeleportRenderer`), independent of which endpoint of which edge
-  // this loop happens to reach first. A badge is a plain circular gap ring, ignoring
-  // `teleportLineShape`/group overrides — its widen patch must match: always `circle`.
+  // this loop happens to reach first. A badge's own marker shape/size for the widen patch is
+  // `teleportFloorBadge.shape`/`.size` (GitHub issue #485 follow-up), not `teleportLineShape`/
+  // `teleportLineSize` or a group override — so when `markerWidenShape` is `"match_marker"` the
+  // patch copies the badge silhouette. `markerWidenShape` `"circle"`/`"square"` still overrides it
+  // exactly like an ordinary marker.
   const badgeKeys = new Set<string>();
   for (const e of teleportEdges) {
     if (e.fromFloor !== undefined) badgeKeys.add(`${e.from[0]},${e.from[1]}`);
@@ -41,6 +44,9 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
   }
 
   const radius = settings.teleportLineSize * TILE_SIZE;
+  // A badge's own radius follows `teleportFloorBadge.size`, not the edge marker's `teleportLineSize`
+  // — `TeleportRenderer` draws it that way (GitHub issue #485), so the widen patch must too.
+  const badgeRadius = settings.teleportFloorBadge.size * TILE_SIZE;
   const seen = new Set<string>();
   const markers: MarkerData[] = [];
   for (const e of teleportEdges) {
@@ -53,9 +59,10 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
       markers.push({
         pos,
         color: 0,
-        radius,
-        shape: isBadge ? "circle" : (override?.shape ?? settings.teleportLineShape),
-        cornerStyle: settings.teleportLineCornerStyle,
+        radius: isBadge ? badgeRadius : radius,
+        shape: isBadge ? settings.teleportFloorBadge.shape : (override?.shape ?? settings.teleportLineShape),
+        // `drawFloorBadge` always draws the badge shape rounded, so a `match_marker` patch rounds too.
+        cornerStyle: isBadge ? "round" : settings.teleportLineCornerStyle,
         borderWidth: settings.teleportEdgeBorderWidth,
         gapWidth: settings.teleportEdgeGapWidth,
       });

@@ -1,13 +1,48 @@
-import { Container, Graphics } from "pixi.js";
+import { BitmapText, Container, Graphics } from "pixi.js";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { getCellCenter, getCellVertices, nearestCellCoord, type Pos } from "../tessellationGeometry";
 import { navigateToFloor } from "./floorNavigation";
 import { drawDirectionArrow } from "./wallUtils";
+import { drawMarkerShape } from "./markerShapes";
+import type { MarkerShape } from "./types";
 import { TILE_SIZE } from "../constants";
 import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
 
 export const FLOOR_BADGE_STROKE_WIDTH = 3;
 export const CROWDED_BADGE_RADIUS_FACTOR = 0.75;
+
+/** One shared font size for every cross-floor teleport badge in the maze (GitHub issue #485
+ *  follow-up). `side = 2 * (r + borderWidth) - 2 * textPadding` is the badge's full outer diameter
+ *  (border ring included) less `textPadding` off each edge. The returned `fontSize` is the smaller
+ *  of two caps against `side`:
+ *   - **width cap** — `probeSize * side / widestGlyphRun`, the size at which the widest label's
+ *     rendered advance width equals `side`;
+ *   - **size cap** — `fontSize <= side` directly. This is *not* an exact glyph-height fit (a
+ *     BitmapText's ink height is roughly `0.7 * fontSize`, so the label sits a little inside the
+ *     `side` box vertically); it exists so `textPadding` shrinks the font monotonically from its
+ *     very first slider step even for a narrow one-glyph label, which the width cap alone would
+ *     leave pinned at the baseline until the padded box got tight.
+ *  The result is used verbatim for every badge regardless of its own label, so "I" and "VIII" draw
+ *  at one size. No lower bound; at `textPadding: 0` the widest label spans the whole badge, border
+ *  included. Mirrors `fitElevatorBadgeFontSize`'s own probe-the-widest approach. `0` when there are
+ *  no labels. */
+export function fitTeleportBadgeFontSize(labels: string[], r: number, textPadding: number, borderWidth = 0): number {
+  const side = Math.max(2 * (r + borderWidth) - 2 * textPadding, 0);
+  if (side === 0) return 0;
+  const probeSize = (r + borderWidth) * 2;
+  let widest = 0;
+  for (const label of labels) {
+    const probe = new BitmapText({ text: label, style: { fontFamily: msdfFontFamily("bold"), fontSize: probeSize } });
+    widest = Math.max(widest, probe.width);
+    probe.destroy();
+  }
+  if (widest === 0) return 0;
+  // Width bound: scale the probe size down until the widest glyph run fits `side`.
+  const byWidth = probeSize * (side / widest);
+  // Height bound: the glyph box height tracks the font size, so cap it at `side` directly —
+  // this is what makes small `textPadding` values bite even for a one-glyph label.
+  return Math.min(byWidth, side);
+}
 
 /// Angle (radians, world space) from `center` toward one of `cell`'s own vertices, cycling through
 /// them by `slot`/`slotCount`. When there are more badges than vertices, use an even circular
@@ -45,10 +80,37 @@ export function isCrossFloorBadgeCrowded(cell: [number, number], cfg: Tessellati
  *  `labelsContainer` hosts the digit `BitmapText` alone — PixiJS v8 deprecates `addChild` on a
  *  `Graphics` instance (`g`) and disallows it in a future major version (GitHub issue #432), so the
  *  label can no longer be a child of `g` itself; callers pass any actual `Container` sitting above
- *  `g` in z-order (a sibling layer, or the same container `g` was itself added to). */
-export function drawFloorBadge(g: Graphics, labelsContainer: Container, r: number, cx: number, cy: number, color: number, borderColor: number, floorColor: number, floorNumber: number): void {
-  g.circle(cx, cy, r).fill(color).stroke({ width: FLOOR_BADGE_STROKE_WIDTH, color: borderColor, alignment: 0 });
-  const label = makeCenteredLabel(`${floorNumber}`, msdfFontFamily("bold"), Math.max(r * 1.6, 12), floorColor);
+ *  `g` in z-order (a sibling layer, or the same container `g` was itself added to).
+ *
+ *  `opts` (GitHub issue #485) lets the cross-floor teleport badge draw a configured marker shape,
+ *  a Roman/letter label, an independent `textColor`, a `fontSize` shared across every teleport
+ *  badge in the maze (so all badges read at one size, fitted to the widest label present), and a
+ *  `borderWidth` taken from the teleport edge marker's own border rather than the fixed
+ *  `FLOOR_BADGE_STROKE_WIDTH`. Every other caller (`RegionOverlayRenderer`, the graph overlays'
+ *  `drawCrossFloorBadge`) omits `opts` and keeps the original circle + `floorColor` knockout digit
+ *  at the per-badge `r * 1.6` size and the fixed `FLOOR_BADGE_STROKE_WIDTH` border. */
+export function drawFloorBadge(
+  g: Graphics,
+  labelsContainer: Container,
+  r: number,
+  cx: number,
+  cy: number,
+  color: number,
+  borderColor: number,
+  floorColor: number,
+  floorNumber: number,
+  opts?: { shape?: MarkerShape; labelText?: string; textColor?: number; fontSize?: number; borderWidth?: number },
+): void {
+  drawMarkerShape(g, opts?.shape ?? "circle", cx, cy, r, true);
+  g.fill(color);
+  const borderWidth = opts?.borderWidth ?? FLOOR_BADGE_STROKE_WIDTH;
+  if (borderWidth > 0) g.stroke({ width: borderWidth, color: borderColor, alignment: 0 });
+  const label = makeCenteredLabel(
+    opts?.labelText ?? `${floorNumber}`,
+    msdfFontFamily("bold"),
+    opts?.fontSize ?? r * 1.6,
+    opts?.textColor ?? floorColor,
+  );
   label.x = cx;
   label.y = cy;
   labelsContainer.addChild(label);
@@ -183,13 +245,14 @@ export function drawCrossFloorStub(
 /** Adds an invisible hit-circle covering a whole badge drawn by `drawFloorBadge` at `(cx, cy)`,
  *  wired to `navigateToFloor` so clicking anywhere on the badge (not just its digit text) switches
  *  `FloorSwitcher` to `targetFloorIndex` (GitHub issue #368). `radius` is `drawFloorBadge`'s own
- *  fill radius; the hit area extends `FLOOR_BADGE_STROKE_WIDTH` further out to also cover the
- *  border ring, which `drawFloorBadge` strokes outward (`alignment: 0`) past that fill radius.
- *  Shared by every floor-badge call site (`TeleportRenderer`, `RegionOverlayRenderer`,
- *  `drawCrossFloorBadge` below) so the hit-area radius can never drift from the badge's own drawn
- *  extent. */
-export function attachFloorBadgeNavigation(container: Container, cx: number, cy: number, radius: number, targetFloorIndex: number): void {
-  const hit = new Graphics().circle(cx, cy, radius + FLOOR_BADGE_STROKE_WIDTH).fill({ color: 0, alpha: 0 });
+ *  fill radius; the hit area extends `borderWidth` (default `FLOOR_BADGE_STROKE_WIDTH`, GitHub
+ *  issue #485 follow-up lets `TeleportRenderer` pass the teleport edge marker's own border width)
+ *  further out to also cover the border ring, which `drawFloorBadge` strokes outward
+ *  (`alignment: 0`) past that fill radius. Shared by every floor-badge call site
+ *  (`TeleportRenderer`, `RegionOverlayRenderer`, `drawCrossFloorBadge` below) so the hit-area
+ *  radius can never drift from the badge's own drawn extent. */
+export function attachFloorBadgeNavigation(container: Container, cx: number, cy: number, radius: number, targetFloorIndex: number, borderWidth = FLOOR_BADGE_STROKE_WIDTH): void {
+  const hit = new Graphics().circle(cx, cy, radius + borderWidth).fill({ color: 0, alpha: 0 });
   hit.eventMode = "static";
   hit.cursor = "pointer";
   hit.on("pointertap", () => navigateToFloor(targetFloorIndex));

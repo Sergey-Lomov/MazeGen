@@ -19,12 +19,15 @@ vi.mock("pixi.js", () => {
     addChild(child: FakeGraphics) { this.children.push(child); return child; }
   }
   return { Graphics: FakeGraphics, Container: FakeContainer, Cache: { get: () => undefined }, BitmapText: class {
-    options: unknown;
+    options: { text: string; style?: { fontSize?: number } };
     anchor = { set: vi.fn() };
     pivot = { y: 0 };
     x = 0;
     y = 0;
-    constructor(options: unknown) { this.options = options; }
+    constructor(options: { text: string; style?: { fontSize?: number } }) { this.options = options; }
+    // Crude 0.6em/char width model so `fitTeleportBadgeFontSize`'s probe loop can measure.
+    get width() { return this.options.text.length * (this.options.style?.fontSize ?? 0) * 0.6; }
+    destroy() {}
   } };
 });
 
@@ -42,7 +45,7 @@ vi.mock("../pixi/renderers/floorNavigation", () => ({
   navigateToFloor: vi.fn(),
 }));
 
-const { drawCrossFloorStub, drawCrossFloorBadge, computeCrossFloorBadgePos, computeRegionBadgeRingPos, attachFloorBadgeNavigation, FLOOR_BADGE_STROKE_WIDTH } = await import(
+const { drawCrossFloorStub, drawCrossFloorBadge, computeCrossFloorBadgePos, computeRegionBadgeRingPos, attachFloorBadgeNavigation, fitTeleportBadgeFontSize, FLOOR_BADGE_STROKE_WIDTH } = await import(
   "../pixi/renderers/floorBadge"
 );
 const { navigateToFloor } = await import("../pixi/renderers/floorNavigation");
@@ -131,9 +134,9 @@ describe("drawCrossFloorBadge", () => {
     expect(container.children[2]).toBeInstanceOf(Graphics); // navigation hit area
   });
 
-  it("draws the digit in the bold MSDF atlas, sized to the badge radius (min 12) in the floor color", () => {
+  it("draws the digit in the bold MSDF atlas, sized to the badge radius (no lower bound) in the floor color", () => {
     const container = new Container() as unknown as FakeCont;
-    // radius 20 → fontSize max(20 * 1.6, 12) = 32; radius 5 → clamped to 12.
+    // radius 20 → fontSize 20 * 1.6 = 32; radius 5 → 8 (GitHub issue #485 removed the old min-12 clamp).
     drawCrossFloorBadge(container as never, { x: 0, y: 0 }, 0, 20, 0x111111, 0x222222, 0xabcdef);
     const style = (container.children[1] as { options: { style: { fontFamily: string; fontSize: number; fill: number } } }).options.style;
     expect(style.fontFamily).toBe("Roboto-Bold");
@@ -142,7 +145,54 @@ describe("drawCrossFloorBadge", () => {
 
     const small = new Container() as unknown as FakeCont;
     drawCrossFloorBadge(small as never, { x: 0, y: 0 }, 0, 5, 0x111111, 0x222222, 0xabcdef);
-    expect((small.children[1] as { options: { style: { fontSize: number } } }).options.style.fontSize).toBeCloseTo(12);
+    expect((small.children[1] as { options: { style: { fontSize: number } } }).options.style.fontSize).toBeCloseTo(8);
+  });
+});
+
+describe("fitTeleportBadgeFontSize", () => {
+  // GitHub issue #485 follow-up: `textPadding` must shrink the font from its very first step,
+  // regardless of how narrow the label or how small the badge — the old width-only bound let a
+  // one-glyph label ignore the leading part of the slider.
+  it("shrinks the font on every textPadding step, even for a narrow single-glyph label", () => {
+    const r = 8;
+    const at = (pad: number) => fitTeleportBadgeFontSize(["1"], r, pad, 0);
+    const p0 = at(0);
+    const p1 = at(1);
+    const p2 = at(2);
+    expect(p1).toBeLessThan(p0);
+    expect(p2).toBeLessThan(p1);
+    // Height bound is exactly the padded box side: 2*r - 2*pad.
+    expect(p1).toBeCloseTo(2 * r - 2 * 1);
+    expect(p2).toBeCloseTo(2 * r - 2 * 2);
+  });
+
+  it("shrinks the font for a wider label so it still fits, and never exceeds the padded box side", () => {
+    const r = 8;
+    const bw = 4;
+    const side = 2 * (r + bw); // textPadding 0
+    const narrow = fitTeleportBadgeFontSize(["1"], r, 0, bw);
+    const wide = fitTeleportBadgeFontSize(["VIII"], r, 0, bw);
+    expect(wide).toBeLessThan(narrow); // a 4-glyph label must draw smaller than a 1-glyph one
+    expect(wide).toBeLessThanOrEqual(side + 1e-9);
+    expect(narrow).toBeCloseTo(side); // narrow label is capped by the box side, not its own width
+  });
+
+  it("returns 0 for no labels and clamps a padding wider than the badge to 0", () => {
+    expect(fitTeleportBadgeFontSize([], 8, 0, 0)).toBe(0);
+    expect(fitTeleportBadgeFontSize(["1"], 4, 10, 0)).toBe(0);
+  });
+
+  // GitHub issue #485 — the default `textPadding` (3.4) must reproduce the pre-#485 hardcoded badge
+  // label size: `Math.max(r * 1.6, 12)` = 12 for a single-digit label at the default badge radius
+  // (`floorBadge.size` 0.16 * TILE_SIZE = 6.4) and the default border width (3).
+  it("with the shipped defaults, a single-digit label fits at exactly the pre-#485 size (12)", async () => {
+    const { DEFAULT_MAZE_RENDER_STYLE } = await import("../pixi/defaultMazeRenderStyle");
+    const badge = DEFAULT_MAZE_RENDER_STYLE.teleport.floorBadge;
+    const r = badge.size * 40; // TILE_SIZE
+    const bw = DEFAULT_MAZE_RENDER_STYLE.teleport.borderWidth;
+    // The mock BitmapText models a digit as 0.6 em wide, so for "1" the width bound is slack and
+    // the box-side cap (`2*(r+bw) - 2*textPadding`) is what lands the result on 12.
+    expect(fitTeleportBadgeFontSize(["1"], r, badge.textPadding, bw)).toBeCloseTo(12);
   });
 });
 

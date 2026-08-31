@@ -30,6 +30,7 @@ vi.mock("pixi.js", () => {
     poly(...args: unknown[]) { this.calls.push({ fn: "poly", args }); return this; }
     roundPoly(...args: unknown[]) { this.calls.push({ fn: "roundPoly", args }); return this; }
     moveTo(...args: unknown[]) { this.calls.push({ fn: "moveTo", args }); return this; }
+    arcTo(...args: unknown[]) { this.calls.push({ fn: "arcTo", args }); return this; }
     lineTo(...args: unknown[]) { this.calls.push({ fn: "lineTo", args }); return this; }
     closePath() { this.calls.push({ fn: "closePath", args: [] }); return this; }
     fill(...args: unknown[]) { this.calls.push({ fn: "fill", args }); return this; }
@@ -59,7 +60,15 @@ vi.mock("pixi.js", () => {
     x = 0;
     y = 0;
     text: string;
-    constructor(opts: { text: string }) { this.text = opts.text; }
+    style: { fontSize?: number; fill?: number };
+    // Crude width model so `fitTeleportBadgeFontSize`'s probe loop (GitHub issue #485 follow-up)
+    // has something to measure: 0.6em per character. Enough for tests to assert the shared font
+    // shrinks for a wider label and that every badge then uses that one size.
+    constructor(opts: { text: string; style?: { fontSize?: number; fill?: number } }) {
+      this.text = opts.text;
+      this.style = opts.style ?? {};
+    }
+    get width() { return this.text.length * (this.style.fontSize ?? 0) * 0.6; }
     destroy() {}
   }
   return { Container: FakeContainer, Graphics: FakeGraphics, BitmapText: FakeBitmapText, Cache: { get: () => undefined } };
@@ -86,6 +95,7 @@ function baseLineStyle(overrides: Partial<TeleportLineStyle> = {}): TeleportLine
     arrowSize: 10,
     connectorGapWidth: 0,
     floorColor: 0x444,
+    floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, textColor: 0x123456, textPadding: 0 },
     ...overrides,
   };
 }
@@ -449,6 +459,150 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }), floorNavigable: true });
     const overlay = (renderer as unknown as { overlayLayer: { children: unknown[] } }).overlayLayer;
     expect(overlay.children).toHaveLength(0);
+  });
+
+  // GitHub issue #485: the badge draws its own configurable `floorBadge` shape/label/size, not the
+  // edge marker's own `shape`/`style.size`.
+  it("badge label follows floorBadge.labelType (roman)", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 3 }];
+    renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", size: 0.2, textColor: 0x123456, textPadding: 0 } }) });
+    const overlay = (renderer as unknown as { overlayLayer: { children: { text: string }[] } }).overlayLayer;
+    // toFloor 3 -> display 4 -> "IV"
+    expect(overlay.children[0].text).toBe("IV");
+  });
+
+  it("badge radius follows floorBadge.size, independent of the edge marker's own style.size", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
+    renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0, size: 0.2, floorBadge: { shape: "circle", labelType: "arabic", size: 0.5, textColor: 0x123456, textPadding: 0 } }) });
+    const g = (renderer as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
+    // The badge's own fill circle at the badge point — radius is floorBadge.size * TILE_SIZE, not size * TILE_SIZE.
+    const badgeCircle = g.calls.find((c) => c.fn === "circle" && c.args[0] === 10 && c.args[1] === 10 && typeof c.args[2] === "number" && (c.args[2] as number) > 0.2 * 40);
+    expect(badgeCircle).toBeDefined();
+  });
+
+  it("badge label draws in floorBadge.textColor, not floorColor", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
+    renderer.render({
+      edges,
+      lineStyle: baseLineStyle({ edgeGapWidth: 0, floorColor: 0x444444, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, textColor: 0xabcdef, textPadding: 0 } }),
+    });
+    const overlay = (renderer as unknown as { overlayLayer: { children: { style: { fill?: number } }[] } }).overlayLayer;
+    expect(overlay.children[0].style.fill).toBe(0xabcdef);
+  });
+
+  // GitHub issue #485 follow-up item 5: every badge in the maze uses one shared font size, fitted
+  // to the widest label present — so a "I" badge and a "VIII" badge render at the same size.
+  it("all badges share one font size, fitted to the widest label", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [
+      { from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }, // display "1"
+      { from: [20, 20], to: [30, 30], oneWay: true, toFloor: 7 }, // display "8"
+    ];
+    renderer.render({ edges, lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
+    const overlay = (renderer as unknown as { overlayLayer: { children: { text: string; style: { fontSize?: number } }[] } }).overlayLayer;
+    const labels = overlay.children.filter((c) => c.text === "1" || c.text === "8");
+    expect(labels).toHaveLength(2);
+    expect(labels[0].style.fontSize).toBe(labels[1].style.fontSize);
+    expect(labels[0].style.fontSize).toBeGreaterThan(0);
+  });
+
+  it("floorCount fits the shared font to the widest label any floor could carry, not just visible badges", () => {
+    // Only one visible badge ("1"), but 12 floors — the font must be sized for "12" (arabic),
+    // so it stays constant when the user switches to a floor whose badge reads "12".
+    const many = new TeleportRenderer(new Container());
+    many.render({
+      edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
+      lineStyle: baseLineStyle({ edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, textColor: 0x123456, textPadding: 0 } }),
+      floorCount: 12,
+    });
+    const few = new TeleportRenderer(new Container());
+    few.render({
+      edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
+      lineStyle: baseLineStyle({ edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, textColor: 0x123456, textPadding: 0 } }),
+      floorCount: 3,
+    });
+    const fontOf = (r: InstanceType<typeof TeleportRenderer>) =>
+      (r as unknown as { overlayLayer: { children: { text: string; style: { fontSize?: number } }[] } }).overlayLayer.children[0].style.fontSize!;
+    // "12" is two chars vs. "3" one, so the 12-floor project's shared font is smaller.
+    expect(fontOf(many)).toBeLessThan(fontOf(few));
+  });
+
+  it("a wider label present shrinks the shared font below the single-badge baseline", () => {
+    const wide = new TeleportRenderer(new Container());
+    // Roman "VIII" (toFloor 7 -> display 8) is wide; textPadding 0 so the fit is flush.
+    wide.render({
+      edges: [
+        { from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 },
+        { from: [20, 20], to: [30, 30], oneWay: true, toFloor: 7 },
+      ],
+      lineStyle: baseLineStyle({ edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", size: 0.2, textColor: 0x123456, textPadding: 0 } }),
+    });
+    const narrow = new TeleportRenderer(new Container());
+    narrow.render({
+      edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
+      lineStyle: baseLineStyle({ edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", size: 0.2, textColor: 0x123456, textPadding: 0 } }),
+    });
+    const fontOf = (r: InstanceType<typeof TeleportRenderer>) =>
+      (r as unknown as { overlayLayer: { children: { text: string; style: { fontSize?: number } }[] } }).overlayLayer.children[0].style.fontSize!;
+    expect(fontOf(wide)).toBeLessThan(fontOf(narrow));
+  });
+
+  // GitHub issue #485 follow-up item 2: the badge border follows the edge marker's own
+  // `borderWidth`, not a fixed constant.
+  it("badge border width follows the edge marker's borderWidth", () => {
+    const thin = new TeleportRenderer(new Container());
+    thin.render({ edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }], lineStyle: baseLineStyle({ edgeGapWidth: 0, borderWidth: 1 }) });
+    const thick = new TeleportRenderer(new Container());
+    thick.render({ edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }], lineStyle: baseLineStyle({ edgeGapWidth: 0, borderWidth: 8 }) });
+    const strokeWidthsOf = (r: InstanceType<typeof TeleportRenderer>) => {
+      const g = (r as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
+      return g.calls.filter((c) => c.fn === "stroke").map((c) => (c.args[0] as { width: number }).width);
+    };
+    // Both the origin marker and the badge stroke at the edge marker's own borderWidth.
+    expect(strokeWidthsOf(thin).every((w) => w === 1)).toBe(true);
+    expect(strokeWidthsOf(thick).every((w) => w === 8)).toBe(true);
+    expect(strokeWidthsOf(thick).length).toBeGreaterThanOrEqual(1);
+  });
+
+  // GitHub issue #485 follow-up item 3: textPadding 0 fits the label to the whole badge including
+  // its border ring, so a wider border → larger shared font (bigger fit target).
+  it("textPadding 0 fits the label across the badge including its border", () => {
+    const thinBorder = new TeleportRenderer(new Container());
+    thinBorder.render({
+      edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
+      lineStyle: baseLineStyle({ edgeGapWidth: 0, borderWidth: 1, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, textColor: 0x123456, textPadding: 0 } }),
+    });
+    const thickBorder = new TeleportRenderer(new Container());
+    thickBorder.render({
+      edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
+      lineStyle: baseLineStyle({ edgeGapWidth: 0, borderWidth: 10, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, textColor: 0x123456, textPadding: 0 } }),
+    });
+    const fontOf = (r: InstanceType<typeof TeleportRenderer>) =>
+      (r as unknown as { overlayLayer: { children: { style: { fontSize?: number } }[] } }).overlayLayer.children[0].style.fontSize!;
+    expect(fontOf(thickBorder)).toBeGreaterThan(fontOf(thinBorder));
+  });
+
+  // GitHub issue #485: a non-circle `floorBadge.shape` must reach both the badge body
+  // (`drawGroupPoints` -> `drawFloorBadge`) and the gap ring (`drawGroupGaps`) via
+  // `drawMarkerShape(g, style.floorBadge.shape, ..., rounded=true)` — a rounded polygon draws
+  // through `moveTo`/`arcTo`/`closePath`, never `circle`.
+  it("draws a non-circle floorBadge.shape as a rounded polygon for both the body and the gap ring", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
+    renderer.render({
+      edges,
+      lineStyle: baseLineStyle({ edgeGapWidth: 4, floorBadge: { shape: "square", labelType: "arabic", size: 0.2, textColor: 0x123456, textPadding: 0 } }),
+    });
+    const g = (renderer as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
+    // No round badge/ring at the badge point — it's a square now.
+    expect(g.calls.some((c) => c.fn === "circle" && c.args[0] === 10 && c.args[1] === 10)).toBe(false);
+    // Rounded-polygon path (moveTo + arcTo per corner + closePath) ran for both the gap ring and
+    // the body — a 4-gon is 4 arcTo each, so >= 8 total, and >= 2 closePath.
+    expect(g.calls.filter((c) => c.fn === "arcTo").length).toBeGreaterThanOrEqual(8);
+    expect(g.calls.filter((c) => c.fn === "closePath").length).toBeGreaterThanOrEqual(2);
   });
 });
 

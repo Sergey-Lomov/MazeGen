@@ -72,6 +72,32 @@ describe("drawMarkerWidenPatches", () => {
     expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(0);
   });
 
+  it("shapeOverride 'square' forces every patch square regardless of the marker's own shape", () => {
+    const graphics = g();
+    const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "circle" }];
+    drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 0, "square", "sharp");
+    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(1);
+    expect(graphics.calls.filter((c) => c.fn === "circle")).toHaveLength(0);
+  });
+
+  // GitHub issue #485 follow-up: the cross-floor badge marker is not special-cased any more — its
+  // widen patch obeys `markerWidenShape` exactly like an ordinary marker.
+  it("shapeOverride 'circle' also flattens a badge-shaped (hexagon) marker to a circle", () => {
+    const graphics = g();
+    const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "hexagon", cornerStyle: "sharp" }];
+    drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 0, "circle");
+    expect(graphics.calls.filter((c) => c.fn === "circle")).toHaveLength(1);
+    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(0);
+  });
+
+  it("shapeOverride 'match_marker' copies a badge-shaped (hexagon) marker's own shape", () => {
+    const graphics = g();
+    const markers: MarkerData[] = [{ pos: [0, 0], color: 0x111, radius: 10, shape: "hexagon", cornerStyle: "sharp" }];
+    drawMarkerWidenPatches(graphics, markers, 0x000000, 4, 0, "match_marker");
+    expect(graphics.calls.filter((c) => c.fn === "poly")).toHaveLength(1);
+    expect(graphics.calls.filter((c) => c.fn === "circle")).toHaveLength(0);
+  });
+
   it("no markers -> no draw calls", () => {
     const graphics = g();
     drawMarkerWidenPatches(graphics, [], 0x000000, 4, 0);

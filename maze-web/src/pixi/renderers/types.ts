@@ -1,3 +1,5 @@
+import type { IndexLabelStyle } from "./indexLabel";
+
 export type Viewport = {
   x: number;
   y: number;
@@ -378,6 +380,14 @@ export type TeleportLineStyle = {
    *  (unfilled) marker needs its own floor-colored fill to occlude the line segment passing through
    *  its center; a filled marker already occludes it with `edgeColor`. */
   floorColor: number;
+  /** Cross-floor floor-number badge appearance (GitHub issue #485) — a badge point
+   *  (`TeleportEdge.toFloor`/`fromFloor`) draws with this `shape`/`labelType`/`size` instead of the
+   *  hardcoded circle + Arabic digit it used before. The badge fill/border colour still follows the
+   *  connector colour (`edgeColor`/`edgeBorderColor` / a group override), not settable here.
+   *  `textColor` colours the label independently of `floorColor`; `textPadding` (px) only feeds the
+   *  shared label-font fit — see `TeleportFloorBadgeSettings`. The badge's border width follows the
+   *  edge marker's own `borderWidth` above, not a fixed constant. */
+  floorBadge: { shape: MarkerShape; labelType: IndexLabelStyle; size: number; textColor: number; textPadding: number };
 };
 
 /** "Group customization" (GitHub issue #293 follow-up, replacing the old standalone `"grouped"`

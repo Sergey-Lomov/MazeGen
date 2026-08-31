@@ -511,6 +511,10 @@ export class VectorByWallsRenderer {
       // canvas (GitHub issue #478) — a read-only view like `GenerationRenderer`/`AnalyticsRenderer`,
       // so no tool-driven gating applies.
       floorNavigable: true,
+      // Fit the shared badge font to the widest label any floor could carry, not just this
+      // floor's visible badges (GitHub issue #485 follow-up) — so it stays constant across a
+      // floor switch.
+      floorCount: state.floors.length,
       cfg,
       waypoints: markerData.map((m) => m.pos),
       avoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit,

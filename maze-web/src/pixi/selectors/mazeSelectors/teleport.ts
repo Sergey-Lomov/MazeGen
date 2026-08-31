@@ -79,6 +79,16 @@ export type TeleportBadgeSpreadOptions = {
  *  excluded (they sit on cell edges, not centers). All inputs are the *unscoped* (all-floor) lists;
  *  `resolveNodeLevel` also unscoped. Callers pass every floor (not just the active one) so a badge
  *  viewed from either end floor resolves identically. */
+/** Whether the project has at least one *cross-floor* teleport — a `teleport` edge whose two
+ *  endpoints sit on different floors (`NodeDto.level ?? 0`). Drives the export panels' "Floor
+ *  badges" subsection visibility (GitHub issue #485); fed the *unscoped* project-wide node/edge
+ *  lists so the subsection doesn't flicker on a floor switch (same project-wide section-visibility
+ *  rule as GitHub issue #484). */
+export function hasCrossFloorTeleport(unscopedNodes: NodeDto[], unscopedEdges: EdgeDto[]): boolean {
+  const levelById = new Map(unscopedNodes.map((n) => [n.id, n.level ?? 0]));
+  return unscopedEdges.some((e) => e.kind === "teleport" && levelById.get(e.from) !== levelById.get(e.to));
+}
+
 export function buildTeleportBadgeBlockedCells(
   unscopedNodes: NodeDto[],
   unscopedEdges: EdgeDto[],

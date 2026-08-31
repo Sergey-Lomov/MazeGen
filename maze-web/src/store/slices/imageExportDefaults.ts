@@ -90,6 +90,7 @@ export const DEFAULT_TELEPORT_SETTINGS: TeleportSettingsFields = {
   teleportArrowPeriod: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowPeriod,
   teleportArrowSize: DEFAULT_MAZE_RENDER_STYLE.teleport.arrowSize,
   teleportConnectorGapWidth: DEFAULT_MAZE_RENDER_STYLE.teleport.connectorGapWidth,
+  teleportFloorBadge: { ...DEFAULT_MAZE_RENDER_STYLE.teleport.floorBadge },
   teleportGroupCustomization: false,
   teleportGroupOverrides: {},
 };

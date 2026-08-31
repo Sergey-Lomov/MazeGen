@@ -7,7 +7,7 @@ import { SectionHeader, SubsectionHeader } from "../SectionHeader";
 import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
-import { maxSplitNodeCount, selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
+import { maxSplitNodeCount, selectFloorScopedMaze, hasCrossFloorTeleport } from "../../pixi/selectors/mazeSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { computeVectorByWallsWarnings } from "../../pixi/selectors/exportWarnings";
@@ -179,6 +179,9 @@ export function VectorByWallsSettingsPanel() {
     return basicEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
   }, [rawEdges]);
   const hasTeleports = useMemo(() => rawEdges.some((e) => e.kind === "teleport"), [rawEdges]);
+  // The "Floor badges" subsection (GitHub issue #485) only makes sense with a cross-floor teleport
+  // to badge — shared helper, same check both export panels run.
+  const hasCrossFloorTeleports = useMemo(() => hasCrossFloorTeleport(rawNodes, rawEdges), [rawNodes, rawEdges]);
   // "Vertical connections" splits into three independent panel sections (GitHub issue #347
   // three-section follow-up), each hidden when the maze has none of that kind — same "hide when
   // there's nothing to configure anywhere" rule as Splits/One-ways/Teleports above. A
@@ -436,6 +439,7 @@ export function VectorByWallsSettingsPanel() {
               onGroupOverrideChange={setTeleportGroupOverride}
               teleportGroups={teleportGroups}
               teleportCollisionKeys={teleportCollisionKeys}
+              hasCrossFloorTeleports={hasCrossFloorTeleports}
               resetButtons={{
                 lineCornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "teleportLine", () => resetSharedStyleField("cornerStyle", "teleportLine")),
                 lineSize: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "teleportLine", () => resetSharedStyleField("markerSize", "teleportLine")),

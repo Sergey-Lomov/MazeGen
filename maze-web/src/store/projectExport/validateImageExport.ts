@@ -105,8 +105,29 @@ export function validateTeleportSettingsFields(obj: Record<string, unknown> | nu
     teleportArrowPeriod: optNumber(obj, "teleportArrowPeriod", d.teleportArrowPeriod),
     teleportArrowSize: optNumber(obj, "teleportArrowSize", d.teleportArrowSize),
     teleportConnectorGapWidth: optNumber(obj, "teleportConnectorGapWidth", d.teleportConnectorGapWidth),
+    teleportFloorBadge: validateTeleportFloorBadgeSettings(obj?.teleportFloorBadge, `${path}.teleportFloorBadge`, d.teleportFloorBadge),
     teleportGroupCustomization: optBool(obj, "teleportGroupCustomization", d.teleportGroupCustomization),
     teleportGroupOverrides: validateTeleportGroupOverrides(obj?.teleportGroupOverrides, `${path}.teleportGroupOverrides`),
+  };
+}
+
+/** `TeleportFloorBadgeSettings` validation (GitHub issue #485) — same lenient-recovery convention
+ * as `validateElevatorBadgeSettings`. `labelType` reuses the elevator-badge label-type validator
+ * (both are `IndexLabelStyle`). */
+export function validateTeleportFloorBadgeSettings(v: unknown, path: string, fallback: TeleportSettingsFields["teleportFloorBadge"]): TeleportSettingsFields["teleportFloorBadge"] {
+  if (v == null) return fallback;
+  let obj: Record<string, unknown> | null;
+  try {
+    obj = assertObject(v, path);
+  } catch {
+    return fallback;
+  }
+  return {
+    shape: optMarkerShape(obj, "shape", fallback.shape),
+    labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
+    size: optNumber(obj, "size", fallback.size),
+    textColor: optNumber(obj, "textColor", fallback.textColor),
+    textPadding: optNumber(obj, "textPadding", fallback.textPadding),
   };
 }
 

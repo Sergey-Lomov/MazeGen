@@ -271,6 +271,30 @@ export interface VerticalDecorativeFields {
   decorativeStairsAccentColor: number;
 }
 
+/** Cross-floor teleport floor-number badge appearance (GitHub issue #485) — a badge stands in for
+ *  a teleport endpoint that lands on another floor (`drawFloorBadge`, see `Specs/floors.md`'s
+ *  "Cross-floor teleport badges"). The badge's fill/border color always follows the connector
+ *  color (not separately settable); `shape`, `labelType`, `size`, `textColor` and `textPadding`
+ *  are configurable (GitHub issue #485 follow-up added the last two). */
+export interface TeleportFloorBadgeSettings {
+  shape: MarkerShape;
+  labelType: IndexLabelStyle;
+  /** Badge radius, as a fraction of the tile size (0-1) — same convention as
+   *  `teleportLineSize`/`MarkerSettings.size`. */
+  size: number;
+  /** Label color — independent of the floor color (GitHub issue #485 follow-up; before it, the
+   *  label always drew in `floorColor` as a knockout digit). */
+  textColor: number;
+  /** Inset (px, 0-5, quarter-px steps) between the label and the badge's *outer* edge (border
+   *  ring included), used only to fit the shared label font size (GitHub issue #485 follow-up +
+   *  item-3 follow-up). `0` sizes the widest label flush to the whole badge including its border;
+   *  larger values shrink it further in. Never enlarges — the font never exceeds the natural
+   *  `2 * (r + borderWidth)` baseline. The default is `3.4`, chosen so a single-digit label at the
+   *  default badge radius fits at `2 * (r + borderWidth) - 2 * 3.4 = 12` px — the exact size the
+   *  pre-#485 hardcoded badge used (`Math.max(r * 1.6, 12)`). */
+  textPadding: number;
+}
+
 export interface TeleportSettingsFields {
   teleportLineCornerStyle: TeleportCornerStyle;
   teleportLineShape: MarkerShape;
@@ -310,6 +334,10 @@ export interface TeleportSettingsFields {
    *  replacing a separate on/off toggle (GitHub issue #293 follow-up: "if it's not needed, just set
    *  it to zero"). */
   teleportConnectorGapWidth: number;
+  /** Cross-floor teleport floor-number badge appearance (GitHub issue #485) — see
+   *  `TeleportFloorBadgeSettings`. The settings subsection is hidden entirely when the project has
+   *  no cross-floor teleport. */
+  teleportFloorBadge: TeleportFloorBadgeSettings;
   /** Off by default — see this interface's own doc comment above. */
   teleportGroupCustomization: boolean;
   teleportGroupOverrides: Record<string, TeleportGroupOverride>;

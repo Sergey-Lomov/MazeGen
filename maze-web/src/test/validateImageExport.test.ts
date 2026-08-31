@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle } from "../store/projectExport/validateImageExport";
-import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS } from "../store/slices/imageExportDefaults";
+import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings } from "../store/projectExport/validateImageExport";
+import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS } from "../store/slices/imageExportDefaults";
 
 describe("validateVerticalSettingsFields", () => {
   it("preserves elevator simplification and defaults it on for older projects", () => {
@@ -163,5 +163,28 @@ describe("validateDecorativeLineStyle", () => {
   it("fills in individually-missing fields from the fallback instead of discarding the whole object", () => {
     const result = validateDecorativeLineStyle({ lineColor: 0xff0000 }, "path", fallback);
     expect(result).toEqual({ lineColor: 0xff0000, lineWidth: fallback.lineWidth, size: fallback.size });
+  });
+});
+
+// GitHub issue #485 — the cross-floor teleport floor-badge settings subsection.
+describe("validateTeleportFloorBadgeSettings", () => {
+  const fallback = DEFAULT_TELEPORT_SETTINGS.teleportFloorBadge;
+
+  it("reads a valid object's fields as-is", () => {
+    expect(validateTeleportFloorBadgeSettings({ shape: "hexagon", labelType: "roman", size: 0.3, textColor: 0xabcdef, textPadding: 4 }, "path", fallback))
+      .toEqual({ shape: "hexagon", labelType: "roman", size: 0.3, textColor: 0xabcdef, textPadding: 4 });
+  });
+
+  it("falls back to the default for a missing object or invalid field", () => {
+    expect(validateTeleportFloorBadgeSettings(undefined, "path", fallback)).toEqual(fallback);
+    expect(validateTeleportFloorBadgeSettings({ shape: "bogus", labelType: "bogus" }, "path", fallback))
+      .toEqual({ shape: fallback.shape, labelType: fallback.labelType, size: fallback.size, textColor: fallback.textColor, textPadding: fallback.textPadding });
+  });
+
+  it("a project file predating the field recovers to the default badge", () => {
+    const { teleportFloorBadge, ...preFieldObj } = DEFAULT_TELEPORT_SETTINGS;
+    void teleportFloorBadge;
+    expect(validateTeleportSettingsFields(preFieldObj, "path", DEFAULT_TELEPORT_SETTINGS).teleportFloorBadge)
+      .toEqual(DEFAULT_TELEPORT_SETTINGS.teleportFloorBadge);
   });
 });

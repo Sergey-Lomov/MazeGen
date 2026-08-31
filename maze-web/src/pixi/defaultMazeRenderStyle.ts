@@ -39,6 +39,12 @@ export const DEFAULT_MAZE_RENDER_STYLE: MazeRenderStyle = {
     connectorColor: canvas.teleport.default, connectorWidth: 3, connectorStyle: "orthogonal",
     arrowMode: "periodic", arrowPeriod: 5, arrowSize: 10, connectorGapWidth: 3,
     floorColor: canvas.floor.default,
+    // GitHub issue #485 — defaults reproduce the pre-#485 hardcoded look exactly: a circle at the
+    // edge marker's own default `size` (0.16), an Arabic digit in a floor-colored knockout, a
+    // 3px border (the shared `borderWidth` above). `textPadding: 3.4` makes the shared-font fit
+    // land on `2 * (r + borderWidth) - 2 * 3.4 = 12` px for a single-digit label at the default
+    // radius — the exact `Math.max(r * 1.6, 12)` value the old per-badge sizing produced.
+    floorBadge: { shape: "circle", labelType: "arabic", size: 0.16, textColor: canvas.floor.default, textPadding: 3.4 },
   },
   verticalConnections: {
     style: "abstract",

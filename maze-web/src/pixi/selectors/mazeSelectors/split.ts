@@ -41,11 +41,16 @@ export function buildSplitPointKeys(nodes: NodeDto[]): Set<string> {
 
 /** Largest node count at any one split point in `nodes` (0 if there's no split point at all) —
  *  used by `VectorByWallsSettingsPanel`'s Splits section (GitHub issue #294) to size its per-slot
- *  color list to what the current maze actually needs. */
+ *  color list to what the current maze actually needs. Nodes are grouped by `(level, x, y)`, not
+ *  `(x, y)` alone — the same cell on two different floors is two unrelated nodes, not a split
+ *  point (GitHub issue #294 follow-up: the panels feed the *unscoped* project-wide node list so
+ *  the section doesn't flicker on a floor switch, so the count must be level-aware to not mistake
+ *  a stack of one-node-per-floor cells for a split). Every renderer/warning caller passes an
+ *  already floor-scoped list, where every node shares one `level`, so this is a no-op for them. */
 export function maxSplitNodeCount(nodes: NodeDto[]): number {
   const counts = new Map<string, number>();
   for (const n of nodes) {
-    const key = `${n.x},${n.y}`;
+    const key = `${n.level ?? 0}:${n.x},${n.y}`;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   let max = 0;

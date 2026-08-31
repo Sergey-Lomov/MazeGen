@@ -16,7 +16,7 @@ import { SharedStyleSection, sharedStyleFieldReset } from "./SharedStyleSection"
 import { computeVectorByCorridorsWarnings } from "../../pixi/selectors/exportWarnings";
 import { resolveEffectiveEndpoints } from "../../pixi/imageExport/VectorByWallsRenderer";
 import { ExportWarningsSection } from "./ExportWarningsSection";
-import { maxSplitNodeCount, selectFloorScopedMaze } from "../../pixi/selectors/mazeSelectors";
+import { maxSplitNodeCount, selectFloorScopedMaze, hasCrossFloorTeleport } from "../../pixi/selectors/mazeSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
@@ -169,6 +169,9 @@ export function VectorByCorridorsSettingsPanel() {
     return basicEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
   }, [rawEdges]);
   const hasTeleports = useMemo(() => rawEdges.some((e) => e.kind === "teleport"), [rawEdges]);
+  // The "Floor badges" subsection (GitHub issue #485) only makes sense with a cross-floor teleport
+  // to badge — shared helper, same check both export panels run.
+  const hasCrossFloorTeleports = useMemo(() => hasCrossFloorTeleport(rawNodes, rawEdges), [rawNodes, rawEdges]);
   // "Vertical connections" splits into three independent panel sections, each hidden when the maze
   // has none of that kind on any floor — same rule as `VectorByWallsSettingsPanel`'s own (GitHub
   // issue #348, parity follow-up to #347's three-section split). Reads `rawEdges` (unscoped by
@@ -430,6 +433,7 @@ export function VectorByCorridorsSettingsPanel() {
               onGroupOverrideChange={setTeleportGroupOverride}
               teleportGroups={teleportGroups}
               teleportCollisionKeys={teleportCollisionKeys}
+              hasCrossFloorTeleports={hasCrossFloorTeleports}
               resetButtons={{
                 lineCornerStyle: sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "teleportLine", () => resetSharedStyleField("cornerStyle", "teleportLine")),
                 lineSize: sharedStyleFieldReset(settings.sharedStyle.overrides, "markerSize", "teleportLine", () => resetSharedStyleField("markerSize", "teleportLine")),

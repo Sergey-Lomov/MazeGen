@@ -133,12 +133,13 @@ const teleportDefaults: Pick<VectorByCorridorsSettings,
   "teleportLineCornerStyle" | "teleportLineShape" | "teleportLineSize" | "teleportEdgeColor" | "teleportEdgeBorderColor" |
   "teleportEdgeBorderWidth" | "teleportEdgeGapWidth" | "teleportConnectorColor" | "teleportConnectorWidth" | "teleportConnectorStyle" |
   "teleportAvoidFieldExit" | "teleportArrowMode" | "teleportArrowPeriod" | "teleportArrowSize" | "teleportConnectorGapWidth" |
-  "teleportGroupCustomization" | "teleportGroupOverrides"
+  "teleportFloorBadge" | "teleportGroupCustomization" | "teleportGroupOverrides"
 > = {
   teleportLineCornerStyle: "sharp", teleportLineShape: "diamond", teleportLineSize: 0.16,
   teleportEdgeColor: 0, teleportEdgeBorderColor: 0, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 3,
   teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal", teleportAvoidFieldExit: false,
   teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10, teleportConnectorGapWidth: 3,
+  teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, textColor: 0x123456, textPadding: 0 },
   teleportGroupCustomization: false, teleportGroupOverrides: {},
 };
 const oneWayDefaults: Pick<VectorByCorridorsSettings, "oneWayColor" | "oneWayCount" | "oneWayThickness" | "oneWayGap" | "oneWayWidth" | "oneWayLength" | "oneWayJoin"> = {
@@ -237,8 +238,12 @@ describe("buildTeleportWidenMarkers", () => {
     expect(buildTeleportWidenMarkers([], settingsA, [])).toEqual([]);
   });
 
-  it("forces a circle widen patch for a cross-floor badge endpoint, ignoring teleportLineShape", () => {
-    const settings: VectorByCorridorsSettings = { ...settingsA, teleportLineShape: "square" };
+  it("gives a badge widen marker teleportFloorBadge.shape, not teleportLineShape (GitHub issue #485)", () => {
+    const settings: VectorByCorridorsSettings = {
+      ...settingsA,
+      teleportLineShape: "square",
+      teleportFloorBadge: { ...settingsA.teleportFloorBadge, shape: "hexagon" },
+    };
     const markers = buildTeleportWidenMarkers(
       [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }],
       settings,
@@ -246,31 +251,54 @@ describe("buildTeleportWidenMarkers", () => {
     );
     const badge = markers.find((m) => m.pos[0] === 10 && m.pos[1] === 10);
     const real = markers.find((m) => m.pos[0] === 0 && m.pos[1] === 0);
-    expect(badge?.shape).toBe("circle");
+    // The badge marker carries the badge's own shape/corners; `markerWidenShape` still governs the
+    // actual patch shape in `drawMarkerWidenPatches` (copied only under `"match_marker"`).
+    expect(badge?.shape).toBe("hexagon");
+    expect(badge?.cornerStyle).toBe("round");
     expect(real?.shape).toBe("square");
   });
 
-  it("forces a circle widen patch for a fromFloor-tagged badge endpoint too", () => {
-    const settings: VectorByCorridorsSettings = { ...settingsA, teleportLineShape: "square" };
+  it("sizes a badge widen patch to teleportFloorBadge.size, not teleportLineSize (GitHub issue #485)", () => {
+    const settings: VectorByCorridorsSettings = {
+      ...settingsA,
+      teleportLineSize: 0.16,
+      teleportFloorBadge: { ...settingsA.teleportFloorBadge, size: 0.4 },
+    };
+    const [real, badge] = buildTeleportWidenMarkers(
+      [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }],
+      settings,
+      [],
+    );
+    expect(real.radius).toBe(0.16 * TILE_SIZE);
+    expect(badge.radius).toBe(0.4 * TILE_SIZE);
+  });
+
+  it("shapes a fromFloor-tagged badge endpoint patch as teleportFloorBadge.shape too", () => {
+    const settings: VectorByCorridorsSettings = {
+      ...settingsA,
+      teleportLineShape: "square",
+      teleportFloorBadge: { ...settingsA.teleportFloorBadge, shape: "diamond" },
+    };
     const [badge] = buildTeleportWidenMarkers(
       [{ from: [0, 0], to: [10, 10], oneWay: true, fromFloor: 1 }],
       settings,
       [],
     );
     expect(badge.pos).toEqual([0, 0]);
-    expect(badge.shape).toBe("circle");
+    expect(badge.shape).toBe("diamond");
   });
 
-  it("ignores a group override shape for a badge endpoint", () => {
+  it("ignores a group override shape for a badge endpoint (uses teleportFloorBadge.shape)", () => {
     const settings: VectorByCorridorsSettings = {
       ...settingsA,
       teleportGroupCustomization: true,
       teleportGroupOverrides: { "0-1": { shape: "square" } },
+      teleportFloorBadge: { ...settingsA.teleportFloorBadge, shape: "pentagon" },
     };
     const edges = [{ from: [0, 0] as [number, number], to: [10, 10] as [number, number], oneWay: true, fromNode: 0, toNode: 1, toFloor: 1 }];
     const [, badge] = buildTeleportWidenMarkers(edges, settings, buildTeleportGroups(edges));
     expect(badge.pos).toEqual([10, 10]);
-    expect(badge.shape).toBe("circle");
+    expect(badge.shape).toBe("pentagon");
   });
 });
 

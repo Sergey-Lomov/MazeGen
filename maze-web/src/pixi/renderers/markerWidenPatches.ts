@@ -18,9 +18,12 @@ import { drawMarkerShape } from "./markerShapes";
  *  `shapeOverride` (GitHub issue #313 follow-up, `VectorByCorridorsSettings.markerWidenShape`) fixes
  *  every patch to one shape (`"circle"`/`"square"`) regardless of that particular marker's own —
  *  omitted (or `"match_marker"`) keeps the original per-marker `marker.shape ?? "circle"` behavior.
- *  `squareCornerStyle` only matters when `shapeOverride` is `"square"` — the corridor's own `join`
- *  drives it (`"round"`->rounded corners, `"miter"`->sharp), not a fixed value, so a square patch
- *  reads consistently with the corridor stroke's own corners. */
+ *  This applies uniformly to every marker, cross-floor teleport badges included (GitHub issue #485
+ *  follow-up: the badge patch copies the badge shape only when `markerWidenShape` is
+ *  `"match_marker"`, and follows the fixed `"circle"`/`"square"` otherwise, exactly like an
+ *  ordinary marker). `squareCornerStyle` only matters when `shapeOverride` is `"square"` — the
+ *  corridor's own `join` drives it (`"round"`->rounded corners, `"miter"`->sharp), not a fixed
+ *  value, so a square patch reads consistently with the corridor stroke's own corners. */
 export function drawMarkerWidenPatches(
   g: Graphics,
   markers: MarkerData[],

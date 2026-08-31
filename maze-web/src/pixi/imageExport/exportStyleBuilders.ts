@@ -80,6 +80,7 @@ export function buildTeleportLineStyle(settings: TeleportSettingsFields, floorCo
     arrowSize: settings.teleportArrowSize,
     connectorGapWidth: settings.teleportConnectorGapWidth,
     floorColor,
+    floorBadge: settings.teleportFloorBadge,
   };
 }
 

@@ -205,6 +205,7 @@ export function TeleportSettingsSection({
   onGroupOverrideChange,
   teleportGroups,
   teleportCollisionKeys,
+  hasCrossFloorTeleports,
   resetButtons,
 }: {
   settings: TeleportSettingsFields;
@@ -213,6 +214,9 @@ export function TeleportSettingsSection({
   onGroupOverrideChange: (groupKey: string, patch: TeleportGroupOverride | null) => void;
   teleportGroups: TeleportGroup[];
   teleportCollisionKeys: Set<string>;
+  /** Whether the project has at least one cross-floor teleport (its two endpoints on different
+   *  floors) — the "Floor badges" subsection is hidden entirely otherwise (GitHub issue #485). */
+  hasCrossFloorTeleports: boolean;
   /** Per-field "Shared style" reset buttons (GitHub issue #322) — same opt-in convention as
    *  `MarkerSettingsGroup`'s own `resetButtons` prop. */
   resetButtons?: {
@@ -358,6 +362,53 @@ export function TeleportSettingsSection({
           />
         </div>
       </div>
+
+      {hasCrossFloorTeleports && (
+        <>
+          <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_floor_badges"]()}</div>
+          <div style={styles.subsection}>
+            <SelectRow
+              label={m["image_export.vector_by_walls.teleport_floor_badge_shape"]()}
+              value={settings.teleportFloorBadge.shape}
+              options={MARKER_SHAPE_OPTIONS.map((o) => ({ value: o.value, label: o.label() }))}
+              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, shape: v } })}
+            />
+            <SelectRow
+              label={m["image_export.vector_by_walls.teleport_floor_badge_label_type"]()}
+              value={settings.teleportFloorBadge.labelType}
+              options={[
+                { value: "arabic", label: m["image_export.vector_by_walls.elevator_badges_label_type_arabic"]() },
+                { value: "roman", label: m["image_export.vector_by_walls.elevator_badges_label_type_roman"]() },
+                { value: "letters", label: m["image_export.vector_by_walls.elevator_badges_label_type_letters"]() },
+              ]}
+              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, labelType: v } })}
+            />
+            <SliderRow
+              label={m["image_export.vector_by_walls.teleport_floor_badge_size"]()}
+              value={settings.teleportFloorBadge.size}
+              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, size: v } })}
+              min={0}
+              max={1}
+              step={0.01}
+              format={(v) => v.toFixed(2)}
+            />
+            <ColorRow
+              label={m["image_export.vector_by_walls.teleport_floor_badge_text_color"]()}
+              color={settings.teleportFloorBadge.textColor}
+              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, textColor: v } })}
+            />
+            <SliderRow
+              label={m["image_export.vector_by_walls.teleport_floor_badge_text_padding"]()}
+              value={settings.teleportFloorBadge.textPadding}
+              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, textPadding: v } })}
+              min={0}
+              max={5}
+              step={0.25}
+              format={(v) => v.toFixed(2)}
+            />
+          </div>
+        </>
+      )}
 
       <ToggleRow
         label={m["image_export.vector_by_walls.teleport_group_customization"]()}

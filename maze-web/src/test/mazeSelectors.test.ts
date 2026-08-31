@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, hasCrossFloorTeleport, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { getCellCenter, getCellVertices, nearestCellCoord } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
@@ -770,6 +770,41 @@ describe("maxSplitNodeCount", () => {
       n(5, 2, 0), // unsplit
     ];
     expect(maxSplitNodeCount(nodes)).toBe(3);
+  });
+
+  it("does not count the same cell on different floors as a split point (GitHub issue #294 follow-up)", () => {
+    const at = (id: number, x: number, y: number, level: number): NodeDto => ({ id, x, y, i: 0, level });
+    // (3,4) occupied on 5 floors, plus a genuine 2-node split on floor 0.
+    const nodes = [
+      at(0, 3, 4, 0), at(1, 3, 4, 1), at(2, 3, 4, 2), at(3, 3, 4, 3), at(4, 3, 4, 4),
+      at(5, 7, 7, 0), at(6, 7, 7, 0),
+    ];
+    expect(maxSplitNodeCount(nodes)).toBe(2);
+  });
+});
+
+describe("hasCrossFloorTeleport (GitHub issue #485)", () => {
+  const at = (id: number, level: number): NodeDto => ({ id, x: id, y: 0, i: 0, level });
+  const tp = (from: number, to: number): EdgeDto => ({ from, to, kind: "teleport" });
+
+  it("is false with no teleport at all", () => {
+    expect(hasCrossFloorTeleport([at(0, 0), at(1, 1)], [{ from: 0, to: 1, kind: "basic" }])).toBe(false);
+  });
+
+  it("is false for a teleport whose two endpoints are on the same floor", () => {
+    expect(hasCrossFloorTeleport([at(0, 1), at(1, 1)], [tp(0, 1)])).toBe(false);
+    // level undefined defaults to 0 on both ends — still same-floor.
+    expect(hasCrossFloorTeleport([{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }], [tp(0, 1)])).toBe(false);
+  });
+
+  it("is true once one teleport spans two floors", () => {
+    expect(hasCrossFloorTeleport([at(0, 0), at(1, 2)], [tp(0, 1)])).toBe(true);
+    // one same-floor teleport plus one cross-floor -> still true.
+    expect(hasCrossFloorTeleport([at(0, 0), at(1, 0), at(2, 0), at(3, 1)], [tp(0, 1), tp(2, 3)])).toBe(true);
+  });
+
+  it("ignores a non-teleport edge that happens to span floors", () => {
+    expect(hasCrossFloorTeleport([at(0, 0), at(1, 3)], [{ from: 0, to: 1, kind: "basic" }])).toBe(false);
   });
 });
 
