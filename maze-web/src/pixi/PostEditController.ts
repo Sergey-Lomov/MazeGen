@@ -207,8 +207,15 @@ export class PostEditController extends BaseController {
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeMap = this.getNodeMap(floorNodes);
-      this.renderer.updateCellHover(nodeMap.has(`${cell.x},${cell.y}`) ? [cell.x, cell.y] : null, state.postEditTool === "delete");
+      const inField = nodeMap.has(`${cell.x},${cell.y}`);
+      this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null, state.postEditTool === "delete");
       this.renderer.updateHover(null);
+      if (state.postEditTool === "delete") {
+        this.continueCellDrag(inField ? [cell.x, cell.y] : null, (p) => {
+          useMazeStore.getState().deletePostEditPoint(p);
+          this.dragDidApply = true;
+        });
+      }
       return;
     }
     const nodeMap = this.getNodeMap(floorNodes);
@@ -238,8 +245,13 @@ export class PostEditController extends BaseController {
       }
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
+      const inField = nodeMap.has(`${cell.x},${cell.y}`);
       this.renderer.updateHover(null);
-      this.renderer.updateCellHover(nodeMap.has(`${cell.x},${cell.y}`) ? [cell.x, cell.y] : null, true);
+      this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null, true);
+      this.continueCellDrag(inField ? [cell.x, cell.y] : null, (p) => {
+        useMazeStore.getState().resetPostEditPoint(p);
+        this.dragDidApply = true;
+      });
       return;
     }
     this.renderer.updateCellHover(null);
@@ -284,6 +296,8 @@ export class PostEditController extends BaseController {
       const key = `${cell.x},${cell.y}`;
       if (nodeMap.has(key)) {
         useMazeStore.getState().deletePostEditPoint([cell.x, cell.y]);
+        this.beginCellDrag([cell.x, cell.y]);
+        this.dragDidApply = true;
       }
       return;
     }
@@ -417,6 +431,8 @@ export class PostEditController extends BaseController {
       const key = `${cell.x},${cell.y}`;
       if (nodeMap.has(key)) {
         useMazeStore.getState().resetPostEditPoint([cell.x, cell.y]);
+        this.beginCellDrag([cell.x, cell.y]);
+        this.dragDidApply = true;
       }
       return;
     }

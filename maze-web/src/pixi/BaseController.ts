@@ -64,9 +64,37 @@ export abstract class BaseController {
     }
   }
 
+  /** Visited-set key for a cell drag. Prefixed so a cell key can never collide with a `FieldEdge`
+   * key sharing the same bookkeeping set (both drags run through `dragVisited`). */
+  private static cellDragKey(point: [number, number]): string {
+    return `cell:${point[0]},${point[1]}`;
+  }
+
+  /** Cell-target counterpart of `beginEdgeDrag` — used by tools that paint whole points rather
+   * than edges (post-edit / preset `reset`/`clear` cell branch, post-edit `delete`). Shares the
+   * same bookkeeping: a gesture is either an edge drag or a cell drag, never both, since the
+   * active tool is fixed for its duration. `point` is the visited-set seed, same role as
+   * `edgeKey` above — callers own the store action via `onNewCell`. */
+  protected beginCellDrag(point: [number, number]): void {
+    this.dragActive = true;
+    this.dragVisited = new Set([BaseController.cellDragKey(point)]);
+  }
+
+  protected continueCellDrag(
+    point: [number, number] | null,
+    onNewCell: (point: [number, number]) => void,
+  ): void {
+    if (!this.dragActive || point === null) return;
+    const key = BaseController.cellDragKey(point);
+    if (this.dragVisited.has(key)) return;
+    this.dragVisited.add(key);
+    onNewCell(point);
+  }
+
   /** Idempotent — safe to call even when no drag was active. Callers that need to react to
    * "a drag just ended" (e.g. scheduling an auto-confirm) must check `isDragActive` themselves
-   * before calling this, since this only clears bookkeeping and has no other side effect. */
+   * before calling this, since this only clears bookkeeping and has no other side effect.
+   * Covers both edge and cell drags (shared bookkeeping). */
   protected endEdgeDrag(): void {
     this.dragActive = false;
     this.dragVisited.clear();
