@@ -157,30 +157,37 @@ export function VectorByWallsSettingsPanel() {
     [nodes, edges, cfg, settings, start, finish, rawNodes],
   );
 
-  const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(nodes, edges, cfg, settings);
+  // Group customization lists every teleport connection group of the *whole project*, cross-floor
+  // pairs included (GitHub issue #484) — not just the active floor's — so switching floors never
+  // changes the set of customizable groups. Built per floor exactly the way each floor's own
+  // renderer builds it, then merged by key (see the hook's own doc comment), so an override set
+  // here always resolves against what that floor's renderer draws.
+  const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(
+    rawNodes, rawEdges, cfg, floors, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish,
+  );
 
-  // Splits section (GitHub issue #294) — the panel only ever shows as many color slots as the
-  // current maze actually needs (0 hides the section entirely, see below).
-  const maxSplit = useMemo(() => maxSplitNodeCount(nodes), [nodes]);
+  // Splits/One-ways/Teleports sections stay visible whenever their component exists on *any* floor
+  // of the project (GitHub issue #484) — checked against `rawNodes`/`rawEdges`, not the floor-scoped
+  // `nodes`/`edges` — so switching floors never makes a section appear or disappear (which flickered
+  // the panel). Same "hide only when there's genuinely nothing to configure anywhere" rule the
+  // "Vertical connections" sub-sections below already follow against `rawEdges`.
+  const maxSplit = useMemo(() => maxSplitNodeCount(rawNodes), [rawNodes]);
 
-  // One-ways/Teleports sections only make sense when the maze actually has that kind of edge —
-  // mirrors the Splits section's own "hide when there's nothing to configure" rule.
   const hasOneWays = useMemo(() => {
-    const basicEdges = edges.filter((e) => e.kind === "basic");
+    const basicEdges = rawEdges.filter((e) => e.kind === "basic");
     const forward = new Set(basicEdges.map((e) => `${e.from}->${e.to}`));
     return basicEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
-  }, [edges]);
-  const hasTeleports = useMemo(() => edges.some((e) => e.kind === "teleport"), [edges]);
+  }, [rawEdges]);
+  const hasTeleports = useMemo(() => rawEdges.some((e) => e.kind === "teleport"), [rawEdges]);
   // "Vertical connections" splits into three independent panel sections (GitHub issue #347
   // three-section follow-up), each hidden when the maze has none of that kind — same "hide when
-  // there's nothing to configure" rule as Splits/One-ways/Teleports above. A `VerticalPassage`
-  // edge is one-way when its reverse pair isn't also present, mirroring `hasOneWays`' own
-  // forward/reverse-pair check for `"basic"` edges. Unlike `hasOneWays`, this reads `rawEdges`
-  // (unscoped by floor), not the floor-scoped `edges` — a bidirectional passage's two directed
-  // halves (a->b, b->a) live on *different* floors by construction, so `selectFloorScopedMaze`
-  // (which keeps an edge only when its own `from` is on the active floor) never lets both halves
-  // of the same pair survive together for any single floor, making the reverse-pair check below
-  // always fail against floor-scoped data.
+  // there's nothing to configure anywhere" rule as Splits/One-ways/Teleports above. A
+  // `VerticalPassage` edge is one-way when its reverse pair isn't also present, mirroring
+  // `hasOneWays`' own forward/reverse-pair check for `"basic"` edges. Reads `rawEdges` (unscoped by
+  // floor) — a bidirectional passage's two directed halves (a->b, b->a) live on *different* floors
+  // by construction, so `selectFloorScopedMaze` (which keeps an edge only when its own `from` is on
+  // the active floor) never lets both halves of the same pair survive together for any single
+  // floor, making the reverse-pair check below always fail against floor-scoped data.
   const { hasTwoWayPassages, hasOneWayPassages, hasElevators } = useMemo(() => {
     const passageEdges = rawEdges.filter((e) => e.kind === "vertical_passage");
     const forward = new Set(passageEdges.map((e) => `${e.from}->${e.to}`));

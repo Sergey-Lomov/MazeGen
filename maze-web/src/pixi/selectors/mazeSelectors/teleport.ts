@@ -2,6 +2,7 @@ import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
 import type { TeleportEdge } from "../../renderers/types";
 import { getCellCenter, buildNodePositions, nearestCellCoord, getCellNeighborOffsets } from "../../tessellationGeometry";
+import { selectNodeLevelResolver } from "./state";
 
 /** Cross-floor resolution inputs for `buildTeleportEdges` (GitHub issue #337) — omitted by every
  *  non-floor-aware caller, which keeps the old behavior of silently dropping a teleport edge whose
@@ -129,6 +130,50 @@ export function buildTeleportBadgeBlockedCells(
     out.set(level, [...set].map((k) => k.split(",").map(Number) as [number, number]));
   }
   return out;
+}
+
+/** Assembles the `TeleportFloorContext` + `TeleportBadgeSpreadOptions` pair every floor-aware
+ *  `buildTeleportEdges` caller needs (GitHub issue #484 follow-up) — `GenerationRenderer`,
+ *  `AnalyticsRenderer`/`MazeOverlayRenderer`, `PostEditRenderer`, both vector export renderers, and
+ *  the export panels' `useTeleportGroupsAndCollisions` all built this by hand, six near-identical
+ *  copies that drifted apart in small ways (which `unscopedEdges` list, whether `fieldCells` is
+ *  passed). All inputs are the *unscoped* (all-floor) lists — `resolveNodeLevel` too. `activeFloorId`
+ *  is resolved to its `floors` index here (missing → `0`, same fallback every hand-rolled copy used).
+ *
+ *  `unscopedEdges` feeds the `floorContext`'s bidirectional-pair detection; `blockedCellsEdges`
+ *  (defaults to `unscopedEdges`) feeds `buildTeleportBadgeBlockedCells` separately — `PostEditRenderer`
+ *  is the one caller that differs, passing its draft edges to the former and `state.edges` ∪ draft to
+ *  the latter. `allowOutOfField`/`fieldCells` are the badge-relocation field constraint: editor
+ *  canvases pass `allowOutOfField: true` and no `fieldCells`; the vector export renderers pass
+ *  `!teleportAvoidFieldExit` and the field's own cells. */
+export function buildTeleportFloorInputs(opts: {
+  unscopedNodes: NodeDto[];
+  unscopedEdges: EdgeDto[];
+  floors: { id: string }[];
+  activeFloorId: string;
+  start: number | null;
+  finish: number | null;
+  blockedCellsEdges?: EdgeDto[];
+  allowOutOfField: boolean;
+  fieldCells?: [number, number][];
+}): { floorContext: TeleportFloorContext; spread: TeleportBadgeSpreadOptions } {
+  const resolveNodeLevel = selectNodeLevelResolver(opts.unscopedNodes);
+  const activeFloorIndex = Math.max(opts.floors.findIndex((f) => f.id === opts.activeFloorId), 0);
+  return {
+    floorContext: {
+      resolveNodeLevel,
+      unscopedNodeById: new Map(opts.unscopedNodes.map((n) => [n.id, n])),
+      unscopedEdges: opts.unscopedEdges,
+      activeFloorIndex,
+    },
+    spread: {
+      blockedCellsByFloor: buildTeleportBadgeBlockedCells(
+        opts.unscopedNodes, opts.blockedCellsEdges ?? opts.unscopedEdges, resolveNodeLevel, opts.start, opts.finish,
+      ),
+      allowOutOfField: opts.allowOutOfField,
+      ...(opts.fieldCells ? { fieldCells: opts.fieldCells } : {}),
+    },
+  };
 }
 
 export function buildTeleportEdges(

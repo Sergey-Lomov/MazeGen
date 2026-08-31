@@ -10,7 +10,7 @@ import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/
 import { DebugRefHighlightOverlay } from "./DebugRefHighlightOverlay";
 import { DebugValueHighlightOverlay } from "./DebugValueHighlightOverlay";
 import { KruskalDsuHighlightOverlay } from "./KruskalDsuHighlightOverlay";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildClosedCells, buildSplitPassages, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet } from "./selectors/mazeSelectors";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import type { DebugMazeView } from "../store/debugSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
@@ -255,17 +255,18 @@ export class GenerationRenderer {
         finish: view.finish,
         closedCells: buildClosedCells(view.nodes, view.edges, unscopedEdges),
         wallEdges: buildMazeWalls(view.nodes, view.edges, cfg),
-        teleportEdges: buildTeleportEdges(nodeById, view.edges, cfg, {
-          resolveNodeLevel,
-          unscopedNodeById,
-          unscopedEdges,
-          activeFloorIndex: Math.max(activeFloorIndex, 0),
-        }, {
-          blockedCellsByFloor: buildTeleportBadgeBlockedCells(
-            unscopedNodes, unscopedEdges, resolveNodeLevel, view.start, view.finish,
-          ),
-          allowOutOfField: true,
-        }),
+        teleportEdges: (() => {
+          const { floorContext, spread } = buildTeleportFloorInputs({
+            unscopedNodes,
+            unscopedEdges,
+            floors: state.floors,
+            activeFloorId: state.activeFloorId,
+            start: view.start,
+            finish: view.finish,
+            allowOutOfField: true,
+          });
+          return buildTeleportEdges(nodeById, view.edges, cfg, floorContext, spread);
+        })(),
         splitPassages,
         splitWallFaces,
         splitSpecialShapes,

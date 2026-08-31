@@ -159,20 +159,21 @@ export function VectorByCorridorsSettingsPanel() {
     [nodes, edges, cfg, settings, start, finish],
   );
 
-  // One-ways/Teleports sections only make sense when the maze actually has that kind of edge —
-  // mirrors `VectorByWallsSettingsPanel`'s own `hasOneWays`/`hasTeleports` "hide when there's
-  // nothing to configure" rule (GitHub issue #312).
+  // Splits/One-ways/Teleports sections stay visible whenever their component exists on *any* floor
+  // of the project (GitHub issue #484) — checked against `rawNodes`/`rawEdges`, not the floor-scoped
+  // `nodes`/`edges` — so switching floors never makes a section appear or disappear. Mirrors
+  // `VectorByWallsSettingsPanel`'s own rule.
   const hasOneWays = useMemo(() => {
-    const basicEdges = edges.filter((e) => e.kind === "basic");
+    const basicEdges = rawEdges.filter((e) => e.kind === "basic");
     const forward = new Set(basicEdges.map((e) => `${e.from}->${e.to}`));
     return basicEdges.some((e) => !forward.has(`${e.to}->${e.from}`));
-  }, [edges]);
-  const hasTeleports = useMemo(() => edges.some((e) => e.kind === "teleport"), [edges]);
+  }, [rawEdges]);
+  const hasTeleports = useMemo(() => rawEdges.some((e) => e.kind === "teleport"), [rawEdges]);
   // "Vertical connections" splits into three independent panel sections, each hidden when the maze
-  // has none of that kind — same rule as `VectorByWallsSettingsPanel`'s own (GitHub issue #348,
-  // parity follow-up to #347's three-section split). Reads `rawEdges` (unscoped by floor), not the
-  // floor-scoped `edges` — see that panel's own doc comment on why a bidirectional passage's two
-  // directed halves never survive floor-scoping together.
+  // has none of that kind on any floor — same rule as `VectorByWallsSettingsPanel`'s own (GitHub
+  // issue #348, parity follow-up to #347's three-section split). Reads `rawEdges` (unscoped by
+  // floor), not the floor-scoped `edges` — see that panel's own doc comment on why a bidirectional
+  // passage's two directed halves never survive floor-scoping together.
   const { hasTwoWayPassages, hasOneWayPassages, hasElevators } = useMemo(() => {
     const passageEdges = rawEdges.filter((e) => e.kind === "vertical_passage");
     const forward = new Set(passageEdges.map((e) => `${e.from}->${e.to}`));
@@ -183,11 +184,15 @@ export function VectorByCorridorsSettingsPanel() {
     return { hasTwoWayPassages, hasOneWayPassages, hasElevators };
   }, [rawEdges, settings.replaceTwoFloorElevatorsWithStairs]);
 
-  const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(nodes, edges, cfg, settings);
+  // Group customization lists every teleport connection group of the *whole project*, cross-floor
+  // pairs included (GitHub issue #484) — see `VectorByWallsSettingsPanel`'s own doc comment on this.
+  const { teleportGroups, teleportCollisionKeys } = useTeleportGroupsAndCollisions(
+    rawNodes, rawEdges, cfg, floors, settings, rawEffectiveEndpoints.start, rawEffectiveEndpoints.finish,
+  );
 
-  // Splits section (GitHub issue #314) — same "hide when there's nothing to configure" rule as
-  // `VectorByWallsSettingsPanel`'s own Splits section.
-  const maxSplit = useMemo(() => maxSplitNodeCount(nodes), [nodes]);
+  // Splits section (GitHub issue #314) — visible whenever a split point exists on any floor (GitHub
+  // issue #484), same rule as `VectorByWallsSettingsPanel`'s own Splits section.
+  const maxSplit = useMemo(() => maxSplitNodeCount(rawNodes), [rawNodes]);
 
   return (
     <div style={styles.root}>

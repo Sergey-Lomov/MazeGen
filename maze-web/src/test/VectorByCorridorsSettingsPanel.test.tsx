@@ -249,5 +249,66 @@ describe("VectorByCorridorsSettingsPanel", () => {
       fireEvent.change(sliders[sliders.length - 1], { target: { value: "0.5" } });
       expect(useMazeStore.getState().vectorByCorridorsSettings.teleportLineSize).toBe(0.5);
     });
+
+    it("stays visible when the only teleport is on another floor (GitHub issue #484)", () => {
+      useMazeStore.setState({
+        floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }],
+        activeFloorId: "f1",
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0, level: 0 },
+          { id: 1, x: 1, y: 0, i: 0, level: 1 }, { id: 2, x: 3, y: 3, i: 0, level: 1 },
+        ],
+        edges: [{ from: 1, to: 2, kind: "teleport" }, { from: 2, to: 1, kind: "teleport" }],
+      });
+      render(<VectorByCorridorsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.section_teleports"]())).toBeInTheDocument();
+    });
+
+    it("lists a teleport group whose pair lives entirely on another floor (GitHub issue #484)", () => {
+      useMazeStore.setState({
+        floors: [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }],
+        activeFloorId: "f1",
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0, level: 0 },
+          { id: 1, x: 1, y: 0, i: 0, level: 1 }, { id: 2, x: 3, y: 3, i: 0, level: 1 },
+        ],
+        edges: [{ from: 1, to: 2, kind: "teleport" }, { from: 2, to: 1, kind: "teleport" }],
+        vectorByCorridorsSectionsExpanded: { cells: true, waypoints: true, teleports: true },
+        vectorByCorridorsSettings: { ...useMazeStore.getState().vectorByCorridorsSettings, teleportGroupCustomization: true },
+      });
+      render(<VectorByCorridorsSettingsPanel />);
+      expect(screen.getAllByTitle(m["image_export.vector_by_walls.teleport_group_override_shape"]())).toHaveLength(1);
+    });
+  });
+
+  describe("Section visibility is project-wide, not per-floor (GitHub issue #484)", () => {
+    const twoFloors = [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }];
+
+    it("keeps the Splits section visible when the only split point is on another floor", () => {
+      useMazeStore.setState({
+        floors: twoFloors,
+        activeFloorId: "f1",
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0, level: 0 },
+          { id: 1, x: 5, y: 5, i: 0, level: 1 }, { id: 2, x: 5, y: 5, i: 0, level: 1 },
+        ],
+      });
+      render(<VectorByCorridorsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.section_splits"]())).toBeInTheDocument();
+    });
+
+    it("keeps the One-ways section visible when the only one-way edge is on another floor", () => {
+      useMazeStore.setState({
+        floors: twoFloors,
+        activeFloorId: "f1",
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0, level: 0 },
+          { id: 1, x: 1, y: 0, i: 0, level: 1 }, { id: 2, x: 2, y: 0, i: 0, level: 1 },
+        ],
+        edges: [{ from: 1, to: 2, kind: "basic" as const }],
+      });
+      render(<VectorByCorridorsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.section_one_ways"]())).toBeInTheDocument();
+    });
   });
 });

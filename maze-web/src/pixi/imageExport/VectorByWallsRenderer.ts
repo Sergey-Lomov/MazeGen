@@ -8,7 +8,7 @@ import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "../renderers/SplitJunctionRenderer";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels } from "../selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels } from "../selectors/mazeSelectors";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
 import { computeVectorByWallsWarnings } from "../selectors/exportWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
@@ -455,18 +455,19 @@ export class VectorByWallsRenderer {
         teleportAvoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit,
         closedCells: buildClosedCells(nodes, edges, state.edges),
         wallEdges: buildMazeWalls(nodes, edges, cfg),
-        teleportEdges: buildTeleportEdges(nodeById, edges, cfg, {
-          resolveNodeLevel,
-          unscopedNodeById: new Map(state.nodes.map((n) => [n.id, n])),
-          unscopedEdges: state.edges,
-          activeFloorIndex,
-        }, {
-          blockedCellsByFloor: buildTeleportBadgeBlockedCells(
-            state.nodes, state.edges, resolveNodeLevel, rawEndpoints.start, rawEndpoints.finish,
-          ),
-          allowOutOfField: !state.vectorByWallsSettings.teleportAvoidFieldExit,
-          fieldCells: state.nodes.map((n): [number, number] => [n.x, n.y]),
-        }),
+        teleportEdges: (() => {
+          const { floorContext, spread } = buildTeleportFloorInputs({
+            unscopedNodes: state.nodes,
+            unscopedEdges: state.edges,
+            floors: state.floors,
+            activeFloorId: state.activeFloorId,
+            start: rawEndpoints.start,
+            finish: rawEndpoints.finish,
+            allowOutOfField: !state.vectorByWallsSettings.teleportAvoidFieldExit,
+            fieldCells: state.nodes.map((n): [number, number] => [n.x, n.y]),
+          });
+          return buildTeleportEdges(nodeById, edges, cfg, floorContext, spread);
+        })(),
         splitPassages,
         splitWallFaces,
         splitSpecialShapes,

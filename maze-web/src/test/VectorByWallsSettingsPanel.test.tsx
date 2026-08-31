@@ -893,6 +893,70 @@ describe("VectorByWallsSettingsPanel", () => {
     });
   });
 
+  describe("Section visibility is project-wide, not per-floor (GitHub issue #484)", () => {
+    // A component sitting only on a non-active floor still keeps its section visible, so switching
+    // floors never adds or removes a section (which flickered the panel).
+    const twoFloors = [{ id: "f1", title: "Floor 1" }, { id: "f2", title: "Floor 2" }];
+
+    it("keeps the Splits section visible when the only split point is on another floor", () => {
+      useMazeStore.setState({
+        floors: twoFloors,
+        activeFloorId: "f1",
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0, level: 0 },
+          { id: 1, x: 5, y: 5, i: 0, level: 1 }, { id: 2, x: 5, y: 5, i: 0, level: 1 },
+        ],
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.section_splits"]())).toBeInTheDocument();
+    });
+
+    it("keeps the One-ways section visible when the only one-way edge is on another floor", () => {
+      useMazeStore.setState({
+        floors: twoFloors,
+        activeFloorId: "f1",
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0, level: 0 },
+          { id: 1, x: 1, y: 0, i: 0, level: 1 }, { id: 2, x: 2, y: 0, i: 0, level: 1 },
+        ],
+        edges: [{ from: 1, to: 2, kind: "basic" as const }],
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.section_one_ways"]())).toBeInTheDocument();
+    });
+
+    it("keeps the Teleports section visible when the only teleport is on another floor", () => {
+      useMazeStore.setState({
+        floors: twoFloors,
+        activeFloorId: "f1",
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0, level: 0 },
+          { id: 1, x: 1, y: 0, i: 0, level: 1 }, { id: 2, x: 3, y: 3, i: 0, level: 1 },
+        ],
+        edges: [{ from: 1, to: 2, kind: "teleport" as const }, { from: 2, to: 1, kind: "teleport" as const }],
+      });
+      render(<VectorByWallsSettingsPanel />);
+      expect(screen.getByText(m["image_export.vector_by_walls.section_teleports"]())).toBeInTheDocument();
+    });
+
+    it("lists a teleport group whose pair lives entirely on another floor", () => {
+      useMazeStore.setState({
+        floors: twoFloors,
+        activeFloorId: "f1",
+        nodes: [
+          { id: 0, x: 0, y: 0, i: 0, level: 0 },
+          { id: 1, x: 1, y: 0, i: 0, level: 1 }, { id: 2, x: 3, y: 3, i: 0, level: 1 },
+        ],
+        edges: [{ from: 1, to: 2, kind: "teleport" as const }, { from: 2, to: 1, kind: "teleport" as const }],
+        vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, teleports: true },
+        vectorByWallsSettings: { ...useMazeStore.getState().vectorByWallsSettings, teleportGroupCustomization: true },
+      });
+      render(<VectorByWallsSettingsPanel />);
+      // One `TeleportGroupRow` — its shape dropdown carries the "override shape" title.
+      expect(screen.getAllByTitle(m["image_export.vector_by_walls.teleport_group_override_shape"]())).toHaveLength(1);
+    });
+  });
+
   describe("Warnings section", () => {
     // A one-way teleport with border width 0 -- its exit endpoint (node 1) draws with a
     // floor-colored fill (see `resolvePointFillState`), so it's invisible with no border.
