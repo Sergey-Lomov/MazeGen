@@ -18,6 +18,7 @@ export {
 
 export {
   pickPostEditVerticalPassageEndpointAt,
+  findPostEditVerticalPassageForPair,
   cyclePostEditVerticalPassageDirection,
   removePostEditVerticalPassage,
   movePostEditVerticalPassageEndpoint,
