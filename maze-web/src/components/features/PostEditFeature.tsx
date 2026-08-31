@@ -2,11 +2,14 @@ import { useState, useEffect } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PostEditTool } from "../../store/mazeStore";
 import { Button } from "../Button";
-import { typography, muted, spacing } from "../../styles/theme";
+import { ToolIconButton } from "../ToolIconButton";
+import { ToolGlyph } from "./ToolGlyph";
+import type { ToolGlyphKey } from "./toolGlyphs";
+import { typography, muted, spacing, indent } from "../../styles/theme";
 import { ConfirmModal } from "../ConfirmModal";
 import { Switch } from "../Switch";
 import { IssuesBlock } from "../IssuesBlock";
-import { Stack, Inline, Grid } from "../Layout";
+import { Stack, Inline } from "../Layout";
 import { ManageSplitNodesDialog } from "./ManageSplitNodesDialog";
 import { PostEditElevatorFloorDialog } from "../dialogs/PostEditElevatorFloorDialog";
 import { PostEditVerticalDirectionDialog } from "../dialogs/PostEditVerticalDirectionDialog";
@@ -42,6 +45,43 @@ function getVerticalTools(): [PostEditTool, string][] {
     ["vertical_passage_one_way", m["preset.vertical_passage_one_way"]()],
     ["elevator", m["preset.elevator"]()],
   ];
+}
+
+/** Which offscreen glyph a post-edit tool draws — `reset` has different semantics from the preset
+ *  `reset` tool (revert post-edit changes vs. undecided-edge stub), so it maps to the synthetic
+ *  `post_edit_reset` key (`toolGlyphs.ts`); everything else is 1:1. */
+function glyphKeyFor(t: PostEditTool): ToolGlyphKey {
+  return t === "reset" ? "post_edit_reset" : t;
+}
+
+/** Destructive tools show a danger-hued selected border instead of the accent one. */
+const DANGER_TOOLS = new Set<PostEditTool>(["reset", "delete"]);
+
+/** A wrapping row of square pictogram buttons for the post-edit tools (GitHub issue #456). */
+function ToolIconRow({
+  tools,
+  activeTool,
+  onPick,
+}: {
+  tools: [PostEditTool, string][];
+  activeTool: PostEditTool;
+  onPick: (t: PostEditTool) => void;
+}) {
+  return (
+    <div style={styles.iconRow}>
+      {tools.map(([t, label]) => (
+        <ToolIconButton
+          key={t}
+          selected={activeTool === t}
+          danger={DANGER_TOOLS.has(t)}
+          title={label}
+          onClick={() => onPick(t)}
+        >
+          <ToolGlyph tool={glyphKeyFor(t)} />
+        </ToolIconButton>
+      ))}
+    </div>
+  );
 }
 
 export function PostEditFeature() {
@@ -87,56 +127,23 @@ export function PostEditFeature() {
   return (
     <Stack gap="groupGap">
       {postEditAnalytics && <IssuesBlock issues={postEditAnalytics.issues} />}
-      <span style={styles.sectionLabel}>{m["preset.edges_tools"]()}</span>
-      <Grid templateColumns="1fr 1fr" gap="itemGap">
-        {getEdgeTools().map(([t, label]) => (
-          <Button
-            key={t}
-            variant={tool === t ? "toggle-selected" : "toggle"}
-            onClick={() => setTool(t)}
-          >
-            {label}
-          </Button>
-        ))}
-      </Grid>
-      <span style={styles.sectionLabel}>{m["preset.vertex_tools"]()}</span>
-      <Stack gap="itemGap">
-        {getTeleportTools().map(([t, label]) => (
-          <Button
-            key={t}
-            variant={tool === t ? "toggle-selected" : "toggle"}
-            onClick={() => setTool(t)}
-          >
-            {label}
-          </Button>
-        ))}
-        <Grid templateColumns="1fr 1fr" gap="itemGap">
-          {getVertexTools().map(([t, label]) => (
-            <Button
-              key={t}
-              variant={tool === t ? "toggle-selected" : "toggle"}
-              onClick={() => setTool(t)}
-            >
-              {label}
-            </Button>
-          ))}
-        </Grid>
-        <Button
-          variant={tool === "manage_split_nodes" ? "toggle-selected" : "toggle"}
-          onClick={() => setTool("manage_split_nodes")}
-        >
-          {m["post_edit.manage_split_nodes_tool"]()}
-        </Button>
-        {floors.length > 1 && getVerticalTools().map(([t, label]) => (
-          <Button
-            key={t}
-            variant={tool === t ? "toggle-selected" : "toggle"}
-            onClick={() => setTool(t)}
-          >
-            {label}
-          </Button>
-        ))}
-      </Stack>
+
+      <span style={styles.sectionLabel}>{m["post_edit.tools"]()}</span>
+      <div style={styles.nestedContent}>
+        <ToolIconRow
+          tools={[
+            ...getEdgeTools(),
+            ...getVertexTools(),
+            ...getTeleportTools(),
+            ["manage_split_nodes", m["post_edit.manage_split_nodes_tool"]()],
+            ...(floors.length > 1 ? getVerticalTools() : []),
+            ["reset", m["post_edit.reset_tool"]()],
+            ["delete", m["post_edit.delete_tool"]()],
+          ]}
+          activeTool={tool}
+          onPick={setTool}
+        />
+      </div>
 
       {postEditElevatorPending && (
         <PostEditElevatorFloorDialog onClose={cancelPostEditElevatorPlacement} />
@@ -151,44 +158,32 @@ export function PostEditFeature() {
       )}
 
       <span style={styles.sectionLabel}>{m["post_edit.management"]()}</span>
-      <Stack gap="itemGap">
-        <Button
-          variant={tool === "reset" ? "toggle-danger-selected" : "toggle-danger"}
-          onClick={() => setTool("reset")}
-        >
-          {m["post_edit.reset"]()}
-        </Button>
+      <div style={styles.nestedContent}>
+        <Stack gap="itemGap">
+          <Button
+            variant="destructive"
+            layoutStyle={{ width: "100%" }}
+            onClick={() => setConfirmReset(true)}
+          >
+            {m["post_edit.reset_to_generation"]()}
+          </Button>
 
-        <Button
-          variant={tool === "delete" ? "toggle-danger-selected" : "toggle-danger"}
-          onClick={() => setTool("delete")}
-        >
-          {m["post_edit.delete"]()}
-        </Button>
+          <Button
+            variant="primary"
+            layoutStyle={{ width: "100%" }}
+            disabled={autoConfirm || !hasEdges}
+            onClick={() => void confirmPostEdit()}
+          >
+            {m["post_edit.confirm"]()}
+          </Button>
 
-        <Button
-          variant="destructive"
-          layoutStyle={{ width: "100%" }}
-          onClick={() => setConfirmReset(true)}
-        >
-          {m["post_edit.reset_to_generation"]()}
-        </Button>
-
-        <Button
-          variant="primary"
-          layoutStyle={{ width: "100%" }}
-          disabled={autoConfirm || !hasEdges}
-          onClick={() => void confirmPostEdit()}
-        >
-          {m["post_edit.confirm"]()}
-        </Button>
-
-        <Inline gap="groupGap" justify="space-between">
-          <span style={styles.autoConfirmLabel}>{m["post_edit.auto_confirm"]()}</span>
-          <Switch checked={autoConfirm} onChange={setAutoConfirm} />
-        </Inline>
-        <span style={styles.hint}>{m["post_edit.auto_confirm_hint"]()}</span>
-      </Stack>
+          <Inline gap="groupGap" justify="space-between">
+            <span style={styles.autoConfirmLabel}>{m["post_edit.auto_confirm"]()}</span>
+            <Switch checked={autoConfirm} onChange={setAutoConfirm} />
+          </Inline>
+          <span style={styles.hint}>{m["post_edit.auto_confirm_hint"]()}</span>
+        </Stack>
+      </div>
 
       {confirmReset && (
         <ConfirmModal
@@ -213,6 +208,15 @@ const styles: Record<string, React.CSSProperties> = {
   sectionLabel: {
     ...typography.body,
     marginTop: spacing.groupGap,
+  },
+  iconRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: spacing.itemGap,
+  },
+  // One indent level for a section's own content, relative to its `sectionLabel`.
+  nestedContent: {
+    paddingLeft: indent.tree,
   },
   autoConfirmLabel: {
     ...muted(typography.body),

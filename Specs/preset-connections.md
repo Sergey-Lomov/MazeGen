@@ -77,7 +77,7 @@ interface PresetTeleportEntry {
 | `teleport_one_way` | Two-click placement of a one-way teleport (`forward`) |
 | `teleport_two_way` | Two-click placement of a two-way teleport |
 
-Both are in the Vertex tools section, alongside `set_start`/`set_finish`. Selecting either teleport tool clears any in-progress placement (`presetTeleportPendingFrom` reset to `null`) — see `setPresetConnectionsTool`.
+Both live in the single Tools section (GitHub issue #456 — see "## Tools" below), alongside `set_start`/`set_finish`. Selecting either teleport tool clears any in-progress placement (`presetTeleportPendingFrom` reset to `null`) — see `setPresetConnectionsTool`.
 
 ### Shared vertex editing mode
 
@@ -128,13 +128,13 @@ A teleport is **invalid** if either endpoint is outside the current field (`comp
 
 ### Rendering (`TeleportRenderer`)
 
-Each teleport draws as a connecting line plus one marker square per endpoint:
+Each teleport draws as a connecting line plus one marker per endpoint, in the marker shape from `DEFAULT_MAZE_RENDER_STYLE.teleport` (`diamond` by default, not literally a square):
 - **Two-way**: both endpoints filled solid.
 - **One-way**: origin (`from`, or `to` if `direction: "backward"`) filled solid; destination outlined only.
 - **Half-filled marker**: when a cell is the landing point for markers from *different* teleport entries that disagree — i.e. at least one entry wants a filled square there and at least one wants an outline square there — that cell draws as a diagonally-split square instead of a plain filled/outline one. Computed by the pure `computeMixedCells(edges): Set<string>` (coordKey-encoded), unit-tested in `TeleportRenderer.test.ts` independently of the Pixi drawing code.
 The connecting line stops at each endpoint marker's border rather than running to its center: the clip distance along the line's direction is the square's Chebyshev border distance (`half / max(|ux|, |uy|)`) plus half the line's stroke width, compensating for the round line cap extending past its geometric endpoint. Computed by the pure `clipDistance(ux, uy, half, strokeWidth)`, unit-tested in `TeleportRenderer.test.ts`.
 
-Preview line/marker for an in-progress placement is drawn separately by `PresetConnectionsRenderer.updateTeleportPreview`, at 50% alpha; it clips to the origin marker's border the same way.
+Preview line/marker for an in-progress placement is drawn separately by `PresetConnectionsRenderer.updateTeleportPreview` via the shared `drawTeleportPreview` helper (`pixi/renderers/teleportPreviewGlyph.ts`, also used by `PostEditRenderer.updateTeleportPreview` — see `Specs/post-edit.md`), at 50% alpha. The preview marker uses the real `DEFAULT_MAZE_RENDER_STYLE.teleport` shape / size / corner style / border / gap ring (not a hardcoded square — that was the pre-#456 look in both renderers). The connector line clips to the marker's full outer footprint (`size*TILE_SIZE + borderWidth + edgeGapWidth`, the same radius `TeleportRenderer`'s own connector routing avoids), plus half the stroke width, via `clipDistance`. Unit-tested in `teleportPreviewGlyph.test.ts`.
 
 **Cross-floor teleports** (a placement started on one floor and completed after switching to another, `presetTeleportPendingFrom`'s own floor differing from the second click's active floor at completion time) render exactly like a generation-time cross-floor teleport (`mazeSelectors.ts`'s own `buildTeleportEdges`): the on-floor endpoint draws as a real, ordinary marker; the other (off-floor) endpoint draws as a **floor-number badge** at the grid-snapped midpoint between the two cells' centers, connected to the real marker by an ordinary connector line — not two independent, connector-less markers (an earlier, abandoned approach, see below).
 
@@ -326,26 +326,41 @@ The "Reset all" action is confirmed with a compact alert whose title is "Reset a
 
 ## Tools
 
-| Tool | Section | Action |
-|---|---|---|
-| `wall` | Edges | Sets edge to `wall` |
-| `passage` | Edges | Sets edge to `passage` |
-| `reset` | Edges | Clears the edge's user override, re-materializing it as the current default (`{ state: "undefined" }`/deleted if `defaultEdgeState` is `"undefined"`) |
-| `one_way` | Edges | Cycles one-way direction |
-| `set_start` | Vertex | Sets `presetStart` to clicked cell (when no vertex element is under the cursor). See "Shared vertex editing mode" above for drag/right-click, which apply to all vertex elements regardless of active vertex tool. |
-| `set_finish` | Vertex | Sets `presetFinish` to clicked cell (when no vertex element is under the cursor). See "Shared vertex editing mode" above for drag/right-click, which apply to all vertex elements regardless of active vertex tool. |
-| `teleport_one_way` | Vertex | Two-click placement of a one-way teleport — see "Preset teleports" |
-| `teleport_two_way` | Vertex | Two-click placement of a two-way teleport — see "Preset teleports" |
-| `vertical_passage_one_way` | Vertex | Two-click placement of a one-way vertical passage — see "Preset vertical passages and elevators" |
-| `vertical_passage_two_way` | Vertex | Two-click placement of a two-way vertical passage — see "Preset vertical passages and elevators" |
-| `elevator` | Vertex | Click a point, then pick reachable floors in a dialog — see "Preset vertical passages and elevators" |
-| `lock_in` | Generation | Locks node to block incoming edges |
-| `lock_out` | Generation | Locks node to block outgoing edges |
-| `full_lock` | Generation | Locks node both in and out (`"both"`) |
-| `gen_source` | Generation | Toggles `presetGenSource` on clicked cell (click same cell to clear) |
-| `manage_split_nodes` | Vertex | Left-click any in-field point to open "Manage split nodes" for it — see "Split nodes" above |
+All tools live in one **Tools** section of the feature card, rendered as a wrapping row of square icon-only buttons (`ToolIconButton` + `ToolGlyph`, GitHub issue #456 — see "## Tool icon buttons" below). There is no longer an Edges / Vertex / Generation grouping. Section content (this row and every other section's body) is indented one `indent.tree` level under its label.
+
+| Tool | Action |
+|---|---|
+| `wall` | Sets edge to `wall` |
+| `passage` | Sets edge to `passage` |
+| `reset` | Clears the edge's user override, re-materializing it as the current default (`{ state: "undefined" }`/deleted if `defaultEdgeState` is `"undefined"`) |
+| `one_way` | Cycles one-way direction |
+| `set_start` | Sets `presetStart` to clicked cell (when no vertex element is under the cursor). See "Shared vertex editing mode" above for drag/right-click, which apply to all vertex elements regardless of active vertex tool. |
+| `set_finish` | Sets `presetFinish` to clicked cell (when no vertex element is under the cursor). See "Shared vertex editing mode" above for drag/right-click, which apply to all vertex elements regardless of active vertex tool. |
+| `teleport_one_way` | Two-click placement of a one-way teleport — see "Preset teleports" |
+| `teleport_two_way` | Two-click placement of a two-way teleport — see "Preset teleports" |
+| `vertical_passage_one_way` | Two-click placement of a one-way vertical passage — see "Preset vertical passages and elevators" |
+| `vertical_passage_two_way` | Two-click placement of a two-way vertical passage — see "Preset vertical passages and elevators" |
+| `elevator` | Click a point, then pick reachable floors in a dialog — see "Preset vertical passages and elevators" |
+| `lock_in` | Locks node to block incoming edges |
+| `lock_out` | Locks node to block outgoing edges |
+| `full_lock` | Locks node both in and out (`"both"`) |
+| `gen_source` | Toggles `presetGenSource` on clicked cell (click same cell to clear) |
+| `manage_split_nodes` | Left-click any in-field point to open "Manage split nodes" for it — see "Split nodes" above |
+| `clear` | Removes any preset object in the clicked cell. Shown with a danger-hued selected border (`btn-tool-icon-selected-danger`) and a trash-can glyph; previously a text button in the Control section. |
+
+The vertical-passage/elevator tool rows are only present when the project has more than one floor.
+
+Hovered-cell highlight: `lock_in`/`lock_out`/`full_lock`/`gen_source` highlight the **cell** under the cursor, not an edge (`CELL_HOVER_TOOLS` in `PresetConnectionsController`, GitHub issue #456), same as `manage_split_nodes` and the vertex tools.
 
 Right-click on an edge clears its user override and re-materializes it as the current default (same as the `reset` tool — see "Entry source" above), for any tool that falls through to edge picking (i.e. not `set_start`/`set_finish`/`gen_source`/lock/teleport/`manage_split_nodes` tools, each of which gives right-click its own tool-specific meaning — see their rows above). Dispatched via `applyPresetConnectionsToolAt("reset", edge.key, edge.from, edge.to)` — `edge.from`/`edge.to` (plain cell coords from `pickEdgeAtPosition`) are what `applyTool` actually keys off via `presetEdgeKey`/`activeFloorLevel`; the passed `edge.key` is a floor-0-only geometric hint, ignored by `applyTool` on any floor above the first (GitHub issue #433 — the pre-fix code passed only that bare key, so RMB reset silently no-opped on floor 1+).
+
+## Tool icon buttons (GitHub issue #456)
+
+Both the preset and post-edit (see `Specs/post-edit.md`) tool pickers render as square icon-only buttons.
+
+- **`ToolIconButton`** (`components/ToolIconButton.tsx`) — a `<button>` sized to one tessellation cell (`TILE_SIZE + 4` square), its own button type (`btn-tool-icon` in `global.css`), not a toggle. Selection shows as an accent border + inset shadow, never a fill swap; the button face stays the canvas floor fill so the pictogram reads exactly as it does on the field. A `danger` prop (destructive tools — preset `clear`, post-edit `reset`/`delete`) swaps the accent border for the `base.error` hue (`btn-tool-icon-selected-danger`). `title` is the tool's own label (native tooltip), since the button carries no visible text.
+- **`ToolGlyph`** (`components/features/ToolGlyph.tsx`) — blits the offscreen-rendered pictogram bitmap for a tool into a `<canvas>`.
+- **`toolGlyphs.ts`** — renders every pictogram once, module-wide, through a single throwaway Pixi `Application` at device-pixel resolution (no `RenderTexture`/`extract` round-trip — that pixelated the result). Each glyph is drawn with the exact `DEFAULT_MAZE_RENDER_STYLE` primitives the canvas uses for that element (wall stroke, marker shape + gap ring, one-way indicator, lock icon, teleport diamond, gen-source cross, ...), so the icons track the render style. `GLYPHS` is a `Partial<Record<PresetConnectionTool | PostEditTool | "post_edit_reset", GlyphFn>>`; `toolGlyphs.test.ts` asserts every real tool resolves to an entry (post-edit `reset` maps to the synthetic `post_edit_reset` key — a counter-clockwise circular arrow, distinct from the preset `reset` grey undecided-edge stub). `getToolGlyphs()` caches the built bitmap map and drops a rejected build so a later call can retry.
 
 ## Node locking
 
@@ -397,13 +412,13 @@ Layers (bottom to top):
 
 **Cell cache** (`cachedCells`, `cachedCellSet`) is built once on open and rebuilt only when `tessellationConfig`, `fieldPoints`, or `fieldEditMode` changes. All redraw calls use the cache. `getCachedCells()` and `getCachedCellSet()` expose the cache to the controller.
 
-**`redrawInvalidHL`** is called separately when `highlightInvalidPresets` changes, without redrawing all other layers. Same for `redrawOrigin` and `redrawGenSource` on viewport scale changes.
+**`redrawInvalidHL`** is called separately when `highlightInvalidPresets` changes, without redrawing all other layers. Same for `redrawOrigin` and `redrawGenSource` when their own state (`showPresetOrigin` / `presetGenSource`) changes — they no longer depend on viewport scale.
 
 `PresetConnectionsRenderer` extends `BaseFieldRenderer` (shared with `PostEditRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton, the cell-cache lifecycle (`rebuildCellCache`, `getCachedCells`/`getCachedCellSet`), and `destroy`. `PresetConnectionsRenderer` implements `isCardOpen` (`openCard === "preset_connections"`), `getActiveConfig` (`tessellationConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `destroyChildren`, and `onStoreChange` — the latter holds all of this feature's point updates that don't need a full `redrawAll` (field-points rebuild, origin/genSource/invalidHL/isolatedHL toggles, teleport preview clear on tool change).
 
 ## Gen source marker
 
-`GenSourceRenderer` draws a blue cross (`0x3399ff`) at the `presetGenSource` cell. Same geometry as `OriginRenderer` (arm = `TILE_SIZE * 0.35 / vpScale`, line width = `max(3/vpScale, 2)`), with rounded line caps.
+`GenSourceRenderer` draws a blue cross (`GEN_SOURCE_COLOR = 0x3399ff`) at the `presetGenSource` cell. Identical geometry to `OriginRenderer` (only the color differs) — both call the shared `drawCrossMarker` (`pixi/renderers/crossMarker.ts`): grid-unit arm `CROSS_ARM = TILE_SIZE * 0.35`, line width `CROSS_WIDTH = 3`, rounded caps, fully opaque. Sizes are in grid units so the cross zooms with the field like any other drawn content — there is no `vpScale` compensation and no `ORIGIN_ALPHA` (both removed, GitHub issue #456 follow-up). The `gen_source` tool glyph mirrors this exact cross.
 
 ## Edge picking (`pickEdgeAtPosition`)
 

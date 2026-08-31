@@ -13,6 +13,9 @@ const DRAG_EDGE_TOOLS = new Set(["wall", "passage", "reset"]);
 const TELEPORT_TOOLS = new Set(["teleport_one_way", "teleport_two_way"]);
 const VERTICAL_PASSAGE_TOOLS = new Set(["vertical_passage_one_way", "vertical_passage_two_way"]);
 const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "teleport_two_way", "vertical_passage_one_way", "vertical_passage_two_way", "elevator"]);
+// Node-locking and generation-source tools target a whole cell/point, not an edge — they hover
+// the cell under the cursor (GitHub issue #456), same as `VERTEX_TOOLS` / `manage_split_nodes`.
+const CELL_HOVER_TOOLS = new Set(["lock_in", "lock_out", "full_lock", "gen_source"]);
 
 /** Teleports whose `from` sits on `level` — hit-testing/editing only ever targets the active
  * floor's own teleport endpoints (GitHub issue #340); a teleport landing on another floor is
@@ -117,7 +120,7 @@ export class PresetConnectionsController extends BaseController {
       this.renderer.updateTeleportPreview(null, 0, 0);
     }
 
-    if (state.presetConnectionsTool === "manage_split_nodes" || VERTEX_TOOLS.has(state.presetConnectionsTool)) {
+    if (state.presetConnectionsTool === "manage_split_nodes" || VERTEX_TOOLS.has(state.presetConnectionsTool) || CELL_HOVER_TOOLS.has(state.presetConnectionsTool)) {
       // Vertex tools (set start/finish, teleports) and manage_split_nodes all target a whole
       // point, not one of its faces — highlight the cell under the cursor, not an edge (mirrors
       // manage_split_nodes's original fix, GitHub issue #231; issue #326 extends this to every

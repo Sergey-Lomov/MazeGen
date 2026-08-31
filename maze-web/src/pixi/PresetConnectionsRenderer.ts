@@ -12,7 +12,8 @@ import { GenSourceRenderer } from "./renderers/GenSourceRenderer";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
-import { TeleportRenderer, clipDistance } from "./renderers/TeleportRenderer";
+import { TeleportRenderer } from "./renderers/TeleportRenderer";
+import { drawTeleportPreview } from "./renderers/teleportPreviewGlyph";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { buildPresetTeleportEdges, buildPresetVerticalMarkers, buildPresetTeleportBadgeBlockedCells } from "./presetConnectionsGeometry";
@@ -208,35 +209,16 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.cellHover.render({ cells: cell ? [cell] : [], color: danger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover, alpha: 0.35 }, this.cfg);
   }
 
-  /** Renders the pending teleport's origin (semi-transparent marker) and a line stretching to the
-   * cursor, so the two-click placement gesture reads as "one end is already fixed, aim the other". */
+  /** Renders the pending teleport's fixed endpoint marker + a connector line to the cursor, so the
+   * two-click placement gesture reads as "one end is already fixed, aim the other". Shared look with
+   * post-edit via `drawTeleportPreview`. */
   updateTeleportPreview(pendingFrom: [number, number] | null, cursorViewportX: number, cursorViewportY: number): void {
     this.teleportPreview.clear();
     if (!this.cfg || !pendingFrom) return;
 
     const proj = makeProjection(this.cfg);
     const { x: px, y: py } = proj.gridToScreen(pendingFrom[0], pendingFrom[1]);
-
-    const markerSize = 16;
-    const strokeWidth = 3;
-    const dx = cursorViewportX - px;
-    const dy = cursorViewportY - py;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len > 0) {
-      const ux = dx / len;
-      const uy = dy / len;
-      const clip = clipDistance(ux, uy, markerSize / 2, strokeWidth);
-      if (len > clip) {
-        this.teleportPreview
-          .moveTo(px + ux * clip, py + uy * clip)
-          .lineTo(cursorViewportX, cursorViewportY)
-          .stroke({ width: strokeWidth, color: canvas.teleport.default, alpha: 0.5, cap: "round" });
-      }
-    }
-
-    this.teleportPreview
-      .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
-      .fill({ color: canvas.teleport.default, alpha: 0.5 });
+    drawTeleportPreview(this.teleportPreview, px, py, cursorViewportX, cursorViewportY);
   }
 
   protected onStoreChange(state: MazeState, prev: MazeState): void {
@@ -412,12 +394,12 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
   private redrawOrigin(show: boolean): void {
     if (!this.cfg) return;
-    this.origin.render({ show, vpScale: this.viewport.scale }, this.cfg);
+    this.origin.render({ show }, this.cfg);
   }
 
   private redrawGenSource(source: [number, number] | null): void {
     if (!this.cfg) return;
-    this.genSource.render({ source, vpScale: this.viewport.scale }, this.cfg);
+    this.genSource.render({ source }, this.cfg);
   }
 
   private redrawIsolatedHL(state: MazeState): void {
@@ -541,8 +523,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.markers.render({ markers: [] });
     this.teleports.render({ edges: [], cfg });
     this.verticals.render({ markers: [], style: DEFAULT_VERTICAL_STYLE });
-    this.origin.render({ show: false, vpScale: this.viewport.scale }, cfg);
-    this.genSource.render({ source: null, vpScale: this.viewport.scale }, cfg);
+    this.origin.render({ show: false }, cfg);
+    this.genSource.render({ source: null }, cfg);
     this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, cfg);
     this.invalidHL.render({ highlights: [] });
     this.invalidTeleportHL.clear();
