@@ -206,19 +206,25 @@ Teleport-editing actions (`addPostEditTeleport`, `cyclePostEditTeleportDirection
 
 ## Tools
 
+All tools live in one **Tools** section of the feature card, rendered as a wrapping row of square icon-only buttons (`ToolIconButton` + `ToolGlyph`, GitHub issue #456 — see `Specs/preset-connections.md`'s "## Tool icon buttons" for the shared components). There is no separate Edges / Vertex / Management grouping any more; `reset` and `delete` moved into this row alongside the rest. Each button's pictogram is a live Pixi render of that element in `DEFAULT_MAZE_RENDER_STYLE`. `PostEditFeature`'s `glyphKeyFor` maps the `reset` tool to the synthetic `post_edit_reset` glyph (a counter-clockwise circular arrow, "rewind to the generated state" — distinct from the preset `reset` tool's grey undecided-edge stub); `delete` uses the trash-can glyph. Section content is indented one `indent.tree` level under its label.
+
+`DANGER_TOOLS = { reset, delete }` — these two show a `base.error`-hued selected border (`btn-tool-icon-selected-danger`) instead of the accent one. Their native tooltips: `reset` → "Reset to generated state" ("Сброс до генерации"), `delete` → "Delete an element" ("Удаление элемента").
+
+The **Management** section below the tool row keeps only the whole-graph actions: the "Reset to generated state" destructive button (`resetPostEdit`, confirmed), the "Confirm" button (manual `confirmPostEdit` when not auto-confirming), and the auto-confirm switch.
+
 | Tool | Action |
 |---|---|
 | `wall` | Removes both directions of edge pair from `postEditDraftEdges`. |
 | `passage` | Ensures both directions exist as `"basic"` in `postEditDraftEdges`. |
 | `one_way` | Toggles direction: if `fwd` exists → replace with `bwd`; otherwise → replace with `fwd`. Wall/passage not affected. |
-| `reset` | Unified Management-section tool (GitHub issue #327), hover-sensitive to both edges and cells — see "Reset Tool Detail" below. |
-| `delete` | Management-section tool (GitHub issue #386), cell-only — see "Delete Tool Detail" below. |
+| `reset` | Hover-sensitive to both edges and cells (GitHub issue #327) — see "Reset Tool Detail" below. |
+| `delete` | Cell-only (GitHub issue #386) — see "Delete Tool Detail" below. |
 | `set_start` | Click on empty node — sets `postEditDraftMeta.start`, calls `confirmPostEdit` if `autoConfirm`. |
 | `set_finish` | Click on empty node — sets `postEditDraftMeta.finish`, calls `confirmPostEdit` if `autoConfirm`. |
 | `teleport_one_way` | Two-click placement of a one-way (`"forward"`) teleport link. |
 | `teleport_two_way` | Two-click placement of a two-way teleport link. |
 
-`set_start` and `set_finish` together form the vertex tools section. While either is active, drag-to-move and right-click-to-delete apply uniformly to **both** the start and finish markers, regardless of which one is currently selected: right-click on the current start node clears it (`clearPostEditEndpoint`) even while `set_finish` is active, and press-and-drag from either marker's node moves it live to whichever node is under the cursor, even while the other tool is active. Only the plain-click "assign to this empty node" action stays tied to the active tool (`set_start` assigns start, `set_finish` assigns finish).
+`set_start` and `set_finish` are a shared vertex-editing pair. While either is active, drag-to-move and right-click-to-delete apply uniformly to **both** the start and finish markers, regardless of which one is currently selected: right-click on the current start node clears it (`clearPostEditEndpoint`) even while `set_finish` is active, and press-and-drag from either marker's node moves it live to whichever node is under the cursor, even while the other tool is active. Only the plain-click "assign to this empty node" action stays tied to the active tool (`set_start` assigns start, `set_finish` assigns finish).
 
 ### Teleport Tools Detail
 
@@ -245,8 +251,7 @@ Result: pure direction toggle. Conversion to/from wall and passage requires `wal
 
 ### `reset` Tool Detail (GitHub issue #327)
 
-The unified Reset tool lives in the Management section (not the edge tools group) and is
-hover-sensitive to both edges and cells, dispatched in `PostEditController` by
+The unified Reset tool is hover-sensitive to both edges and cells, dispatched in `PostEditController` by
 `pickEdgeAtPosition(..., true)` (the same near-edge dead-zone threshold `wall`/`passage`/`one_way`
 hover uses):
 
@@ -278,12 +283,12 @@ hover uses):
   `(x, y)` would be picked up as if it were a second split slot at that point on floor 0.
 - Right/middle click has no reset-tool meaning beyond the shared middle-click pan.
 
-**Danger styling:** the Reset button uses the `toggle-danger`/`toggle-danger-active` `buttonStyle` variants (red border/text, red fill when selected — `ui.text.error`) instead of the ordinary `toggle`/`toggle-active` accent styling, and its canvas hover highlight (edge or cell) renders in `canvas.fieldEditor.danger` (red) instead of `canvas.fieldEditor.hover` — `PostEditRenderer.updateHover`/`.updateCellHover` take an optional `danger` flag for this, set whenever `postEditTool === "reset"`. Both cues exist so a destructive tool reads as destructive before the user commits to a click.
+**Danger styling:** the Reset icon button uses the `btn-tool-icon-selected-danger` class (red border + inset shadow when selected, `base.error`) instead of the accent `btn-tool-icon-selected` — `reset` is in `PostEditFeature`'s `DANGER_TOOLS` set. Its canvas hover highlight (edge or cell) renders in `canvas.fieldEditor.danger` (red) instead of `canvas.fieldEditor.hover` — `PostEditRenderer.updateHover`/`.updateCellHover` take an optional `danger` flag for this, set whenever `postEditTool === "reset"`. Both cues exist so a destructive tool reads as destructive before the user commits to a click. (`delete` is styled the same way — also in `DANGER_TOOLS`.)
 
 ### `delete` Tool Detail (GitHub issue #386)
 
 Removes generation-placed *non-edge* content from a cell — the counterpart to `wall`/`reset` (which
-only ever touch `postEditDraftEdges`). Lives in the Management section, always cell-only (no
+only ever touch `postEditDraftEdges`). Always cell-only (no
 near-edge/edge-branch distinction — clicking anywhere near a cell targets the whole point, mirroring
 the vertex tools'/`manage_split_nodes`' own cell-hover branch rather than `reset`'s dual-mode
 dispatch).
@@ -355,11 +360,11 @@ Lives in `postEditContainer` — a synced layer in `MazeScene` (not a viewport c
 | 5 | `teleportContainer` | `TeleportRenderer` — teleport markers/line, built from `postEditDraftEdges` concatenated with `postEditDraftTeleports` (converted via `postEditTeleportsToDto`) |
 | 6 | `markersContainer` | `WaypointsRenderer` — start/finish from `postEditDraftMeta` |
 | 7 | `hoverContainer` | `EdgeHighlightRenderer` — hover highlight |
-| 8 | `teleportPreviewContainer` | `Graphics` — pending teleport placement preview (origin marker + line to cursor), mirrors `PresetConnectionsRenderer`'s teleport preview |
+| 8 | `teleportPreviewContainer` | `Graphics` — pending teleport placement preview (fixed-endpoint marker + connector line to cursor), drawn by the shared `drawTeleportPreview` (`pixi/renderers/teleportPreviewGlyph.ts`) — same helper `PresetConnectionsRenderer` uses |
 
 Cell cache (`cachedCells`, `cachedCellSet`) is built once on open and on `activeTessellationConfig` change. Used by `PostEditController` for edge picking.
 
-`updateTeleportPreview(pendingFrom, cursorViewportX, cursorViewportY)` takes `pendingFrom` already resolved to viewport coordinates (the controller resolves node id → screen via `nodeById` before calling in, since the renderer has no node lookup of its own) — unlike `PresetConnectionsRenderer`'s version, which takes a cell coordinate and projects it internally.
+`updateTeleportPreview(pendingFrom, cursorViewportX, cursorViewportY)` takes `pendingFrom` already resolved to viewport coordinates (the controller resolves node id → screen via `nodeById` before calling in, since the renderer has no node lookup of its own) — unlike `PresetConnectionsRenderer`'s version, which takes a cell coordinate and projects it internally. Both then delegate the actual drawing to the shared `drawTeleportPreview`: the preview marker uses the real `DEFAULT_MAZE_RENDER_STYLE.teleport` shape / size / corner style / border / gap ring at 50% alpha (not a hardcoded 16px square — that was the pre-#456 look), and the connector clips to the marker's full outer footprint (`size*TILE_SIZE + borderWidth + edgeGapWidth`). Unit-tested in `teleportPreviewGlyph.test.ts`.
 
 `PostEditRenderer` extends `BaseFieldRenderer` (shared with `PresetConnectionsRenderer`; see maze-web/CLAUDE.md's Feature-Renderer ownership rule — a shared base class, never a shared instance). `BaseFieldRenderer` owns the `useMazeStore.subscribe` skeleton (open/close detection, cell-cache lifecycle, `getCachedCells`/`getCachedCellSet`, `destroy`). `PostEditRenderer` implements `isCardOpen` (`openCard === "post_edit"`), `getActiveConfig` (`activeTessellationConfig`), `setRootVisible`, `redrawAll`, `clearAll`, `onStoreChange` (the draft-edges/teleports/nodes/meta comparison above, plus clearing the teleport preview when `postEditTool`/`postEditTeleportPendingFrom` changes and no placement is pending), and `destroyChildren`.
 

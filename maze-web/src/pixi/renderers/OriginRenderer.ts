@@ -1,9 +1,8 @@
 import { Container, Graphics } from "pixi.js";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { makeProjection } from "../tessellationProjection";
-import { TILE_SIZE } from "../constants";
-import { ORIGIN_ALPHA } from "../renderConstants";
 import { canvas } from "../colorTokens";
+import { CROSS_WIDTH, drawCrossMarker } from "./crossMarker";
 
 export class OriginRenderer {
   private readonly g: Graphics;
@@ -13,18 +12,16 @@ export class OriginRenderer {
     container.addChild(this.g);
   }
 
-  render(data: { show: boolean; vpScale: number }, cfg: TessellationConfig): void {
+  render(data: { show: boolean }, cfg: TessellationConfig): void {
     this.g.clear();
     if (!data.show) return;
 
     const proj = makeProjection(cfg);
     const { x: cx, y: cy } = proj.gridToScreen(0, 0);
-    const arm = TILE_SIZE * 0.35 / data.vpScale;
-    const w = Math.max(3 / data.vpScale, 2.5);
-
-    this.g.setStrokeStyle({ width: w, color: canvas.origin.default, alpha: ORIGIN_ALPHA, cap: "round" });
-    this.g.moveTo(cx - arm, cy).lineTo(cx + arm, cy).stroke();
-    this.g.moveTo(cx, cy - arm).lineTo(cx, cy + arm).stroke();
+    // Grid-unit sizes — the marker zooms with the field like any other drawn content. Fully opaque.
+    // Same geometry as the generation-source cross (`GenSourceRenderer`), different color.
+    this.g.setStrokeStyle({ width: CROSS_WIDTH, color: canvas.origin.default, cap: "round" });
+    drawCrossMarker(this.g, cx, cy);
   }
 
   destroy(): void {

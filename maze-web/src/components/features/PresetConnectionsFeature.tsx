@@ -6,7 +6,9 @@ import { computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
 import { presetEndpointLevelLabel, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
 import { Button } from "../Button";
-import { ui, typography, muted, spacing } from "../../styles/theme";
+import { ToolIconButton } from "../ToolIconButton";
+import { ToolGlyph } from "./ToolGlyph";
+import { ui, typography, muted, spacing, indent } from "../../styles/theme";
 import { darken } from "../../styles/palette";
 import { ConfirmModal } from "../ConfirmModal";
 import { SectionHeader } from "../SectionHeader";
@@ -58,8 +60,39 @@ function getGenerationTools(): [PresetConnectionTool, string][] {
     ["lock_in", m["preset.lock_in"]()],
     ["lock_out", m["preset.lock_out"]()],
     ["full_lock", m["preset.full_lock"]()],
-    ["gen_source", m["preset.gen_source"]()],
+    ["gen_source", m["preset.gen_source_tool"]()],
   ];
+}
+
+/** Destructive tools show a danger-hued selected border instead of the accent one (mirrors
+ *  `PostEditFeature`'s own `DANGER_TOOLS`). */
+const DANGER_TOOLS = new Set<PresetConnectionTool>(["clear"]);
+
+/** A wrapping row of square pictogram buttons for a tool group (GitHub issue #456). */
+function ToolIconRow({
+  tools,
+  activeTool,
+  onPick,
+}: {
+  tools: [PresetConnectionTool, string][];
+  activeTool: PresetConnectionTool;
+  onPick: (t: PresetConnectionTool) => void;
+}) {
+  return (
+    <div style={styles.iconRow}>
+      {tools.map(([t, label]) => (
+        <ToolIconButton
+          key={t}
+          selected={activeTool === t}
+          danger={DANGER_TOOLS.has(t)}
+          title={label}
+          onClick={() => onPick(t)}
+        >
+          <ToolGlyph tool={t} />
+        </ToolIconButton>
+      ))}
+    </div>
+  );
 }
 
 export function PresetConnectionsFeature() {
@@ -193,110 +226,66 @@ export function PresetConnectionsFeature() {
             onToggle={() => setPresetSectionExpanded("problems", !(presetSectionsExpanded["problems"] ?? true))}
           />
           {(presetSectionsExpanded["problems"] ?? true) && (
-            <Stack gap="itemGap">
-              {isolatedNodes.length > 0 && (
-                <WarningBubble
-                  message={isolatedNodes.length === 1
-                    ? m["preset.nodes_isolated"]({ count: isolatedNodes.length })
-                    : m["preset.nodes_isolated_plural"]({ count: isolatedNodes.length })}
-                  onMouseEnter={() => setHighlightIsolatedNodes(true)}
-                  onMouseLeave={() => setHighlightIsolatedNodes(false)}
-                />
-              )}
-              {orphanSplitCount > 0 && (
-                <WarningBubble
-                  message={orphanSplitCount === 1
-                    ? m["preset.split_orphan"]({ count: orphanSplitCount })
-                    : m["preset.split_orphan_plural"]({ count: orphanSplitCount })}
-                  onMouseEnter={() => setHighlightOrphanSplitNodes(true)}
-                  onMouseLeave={() => setHighlightOrphanSplitNodes(false)}
-                >
-                  <OrphanSplitFloorBadges orphanPoints={orphanPoints} />
-                </WarningBubble>
-              )}
-            </Stack>
+            <div style={styles.nestedContent}>
+              <Stack gap="itemGap">
+                {isolatedNodes.length > 0 && (
+                  <WarningBubble
+                    message={isolatedNodes.length === 1
+                      ? m["preset.nodes_isolated"]({ count: isolatedNodes.length })
+                      : m["preset.nodes_isolated_plural"]({ count: isolatedNodes.length })}
+                    onMouseEnter={() => setHighlightIsolatedNodes(true)}
+                    onMouseLeave={() => setHighlightIsolatedNodes(false)}
+                  />
+                )}
+                {orphanSplitCount > 0 && (
+                  <WarningBubble
+                    message={orphanSplitCount === 1
+                      ? m["preset.split_orphan"]({ count: orphanSplitCount })
+                      : m["preset.split_orphan_plural"]({ count: orphanSplitCount })}
+                    onMouseEnter={() => setHighlightOrphanSplitNodes(true)}
+                    onMouseLeave={() => setHighlightOrphanSplitNodes(false)}
+                  >
+                    <OrphanSplitFloorBadges orphanPoints={orphanPoints} />
+                  </WarningBubble>
+                )}
+              </Stack>
+            </div>
           )}
           <div style={styles.divider} />
         </>
       )}
 
-      <span style={styles.sectionLabel}>{m["preset.edges_tools"]()}</span>
-      <Grid templateColumns="1fr 1fr" gap="itemGap">
-        {getEdgeTools().map(([t, label]) => (
-          <Button
-            key={t}
-            variant={tool === t ? "toggle-selected" : "toggle"}
-            onClick={() => setTool(t)}
-          >
-            {label}
-          </Button>
-        ))}
-      </Grid>
+      <span style={styles.sectionLabel}>{m["preset.tools"]()}</span>
+      <div style={styles.nestedContent}>
+        <ToolIconRow
+          tools={[
+            ...getEdgeTools(),
+            ...getStartFinishTools(),
+            ...getVertexTools(),
+            ["manage_split_nodes", m["post_edit.manage_split_nodes_tool"]()],
+            ...(floors.length > 1 ? getVerticalTools() : []),
+            ...getGenerationTools(),
+            ["clear", m["preset.clear_tool"]()],
+          ]}
+          activeTool={tool}
+          onPick={setTool}
+        />
+      </div>
 
-      <span style={styles.sectionLabel}>{m["preset.vertex_tools"]()}</span>
-      <Stack gap="itemGap">
-        {getVertexTools().map(([t, label]) => (
-          <Button
-            key={t}
-            variant={tool === t ? "toggle-selected" : "toggle"}
-            onClick={() => setTool(t)}
-          >
-            {label}
-          </Button>
-        ))}
-        <Grid templateColumns="1fr 1fr" gap="itemGap">
-          {getStartFinishTools().map(([t, label]) => (
+      <span style={styles.sectionLabel}>{m["preset.default_edge"]()}</span>
+      <div style={styles.nestedContent}>
+        <Grid templateColumns="1fr 1fr 1fr" gap="itemGap">
+          {(["undefined", "wall", "passage"] as const).map((s) => (
             <Button
-              key={t}
-              variant={tool === t ? "toggle-selected" : "toggle"}
-              onClick={() => setTool(t)}
+              key={s}
+              variant={defaultEdgeState === s ? "toggle-selected" : "toggle"}
+              onClick={() => setDefaultEdgeState(s)}
             >
-              {label}
+              {m[`preset.default_${s}` as "preset.default_undefined" | "preset.default_wall" | "preset.default_passage"]()}
             </Button>
           ))}
         </Grid>
-        <Button
-          variant={tool === "manage_split_nodes" ? "toggle-selected" : "toggle"}
-          onClick={() => setTool("manage_split_nodes")}
-        >
-          {m["post_edit.manage_split_nodes_tool"]()}
-        </Button>
-        {floors.length > 1 && getVerticalTools().map(([t, label]) => (
-          <Button
-            key={t}
-            variant={tool === t ? "toggle-selected" : "toggle"}
-            onClick={() => setTool(t)}
-          >
-            {label}
-          </Button>
-        ))}
-      </Stack>
-
-      <span style={styles.sectionLabel}>{m["preset.generation_tools"]()}</span>
-      <Grid templateColumns="1fr 1fr" gap="itemGap">
-        {getGenerationTools().map(([t, label]) => (
-          <Button
-            key={t}
-            variant={tool === t ? "toggle-selected" : "toggle"}
-            onClick={() => setTool(t)}
-          >
-            {label}
-          </Button>
-        ))}
-      </Grid>
-
-      <span style={styles.sectionLabel}>{m["preset.default_edge"]()}</span>
-      <Grid templateColumns="1fr 1fr 1fr" gap="itemGap">
-        {(["undefined", "wall", "passage"] as const).map((s) => (
-          <Button
-            key={s}
-            variant={defaultEdgeState === s ? "toggle-selected" : "toggle"}
-            onClick={() => setDefaultEdgeState(s)}
-          >
-            {m[`preset.default_${s}` as "preset.default_undefined" | "preset.default_wall" | "preset.default_passage"]()}
-          </Button>
-        ))}
-      </Grid>
+      </div>
 
       {(presetGenSource || presetTeleportPendingFrom) && (
         <Stack gap="itemGap">
@@ -326,52 +315,48 @@ export function PresetConnectionsFeature() {
       )}
 
       <span style={styles.sectionLabel}>{m["preset.control"]()}</span>
-      <Stack gap="itemGap">
-        <Button
-          variant={tool === "clear" ? "toggle-danger-selected" : "toggle-danger"}
-          onClick={() => setTool("clear")}
-        >
-          {m["preset.clear_tool"]()}
-        </Button>
-        <Button
-          variant="destructive"
-          layoutStyle={{ width: "100%" }}
-          disabled={lockedNodes.size === 0}
-          onClick={clearLockedNodes}
-        >
-          {m["preset.reset_locks"]()}
-        </Button>
-        <Button
-          variant="destructive"
-          layoutStyle={{ width: "100%" }}
-          disabled={!hasInvalid}
-          onClick={() => clearInvalidPresetConnections()}
-          onMouseEnter={() => setHighlightInvalidPresets(true)}
-          onMouseLeave={() => setHighlightInvalidPresets(false)}
-        >
-          {m["preset.clear_invalid"]({ count: invalidCount })}
-        </Button>
-        <Button
-          variant="destructive"
-          layoutStyle={{ width: "100%" }}
-          onClick={() => setConfirmReset(true)}
-        >
-          {m["common.reset_all"]()}
-        </Button>
-        <div style={styles.autoLockRow}>
-          <div style={styles.autoLockLeft}>
-            <span style={styles.autoLockLabel}>{m["preset.auto_lock"]()}</span>
-            {autoLock && autoLockedNodes.size > 0 && (
-              <span style={styles.autoLockCount}>{autoLockedNodes.size}</span>
-            )}
+      <div style={styles.nestedContent}>
+        <Stack gap="itemGap">
+          <Button
+            variant="destructive"
+            layoutStyle={{ width: "100%" }}
+            disabled={lockedNodes.size === 0}
+            onClick={clearLockedNodes}
+          >
+            {m["preset.reset_locks"]()}
+          </Button>
+          <Button
+            variant="destructive"
+            layoutStyle={{ width: "100%" }}
+            disabled={!hasInvalid}
+            onClick={() => clearInvalidPresetConnections()}
+            onMouseEnter={() => setHighlightInvalidPresets(true)}
+            onMouseLeave={() => setHighlightInvalidPresets(false)}
+          >
+            {m["preset.clear_invalid"]({ count: invalidCount })}
+          </Button>
+          <Button
+            variant="destructive"
+            layoutStyle={{ width: "100%" }}
+            onClick={() => setConfirmReset(true)}
+          >
+            {m["common.reset_all"]()}
+          </Button>
+          <div style={styles.autoLockRow}>
+            <div style={styles.autoLockLeft}>
+              <span style={styles.autoLockLabel}>{m["preset.auto_lock"]()}</span>
+              {autoLock && autoLockedNodes.size > 0 && (
+                <span style={styles.autoLockCount}>{autoLockedNodes.size}</span>
+              )}
+            </div>
+            <Switch checked={autoLock} onChange={setAutoLock} />
           </div>
-          <Switch checked={autoLock} onChange={setAutoLock} />
-        </div>
-        <div style={styles.originRow}>
-          <span style={styles.originLabel}>{m["preset.show_origin"]()}</span>
-          <Switch checked={showPresetOrigin} onChange={setShowPresetOrigin} />
-        </div>
-      </Stack>
+          <div style={styles.originRow}>
+            <span style={styles.originLabel}>{m["preset.show_origin"]()}</span>
+            <Switch checked={showPresetOrigin} onChange={setShowPresetOrigin} />
+          </div>
+        </Stack>
+      </div>
       {confirmReset && (
         <ConfirmModal
           title={m["common.reset_all"]()}
@@ -406,6 +391,16 @@ const styles: Record<string, React.CSSProperties> = {
   sectionLabel: {
     ...typography.body,
     marginTop: spacing.groupGap,
+  },
+  iconRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: spacing.itemGap,
+  },
+  // One indent level for a section's own content, relative to its `sectionLabel` (mirrors
+  // analyticsStyles `nestedGroup`).
+  nestedContent: {
+    paddingLeft: indent.tree,
   },
   autoLockRow: {
     display: "flex",

@@ -111,7 +111,7 @@ export class FieldEditorOverlay {
   }
 
   private redrawOrigin(show: boolean, cfg: TessellationConfig): void {
-    this.origin.render({ show, vpScale: this.viewport.scale }, cfg);
+    this.origin.render({ show }, cfg);
   }
 
   destroy(): void {

@@ -5,7 +5,8 @@ import type { FieldEdge } from "./fieldEditUtils";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
 import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
-import { TeleportRenderer, clipDistance } from "./renderers/TeleportRenderer";
+import { TeleportRenderer } from "./renderers/TeleportRenderer";
+import { drawTeleportPreview } from "./renderers/teleportPreviewGlyph";
 import { GridRenderer } from "./renderers/GridRenderer";
 import { EdgeHighlightRenderer } from "./renderers/EdgeHighlightRenderer";
 import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer";
@@ -157,34 +158,15 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.cellHover.render({ cells: cell ? [cell] : [], color: danger ? canvas.fieldEditor.danger : canvas.fieldEditor.hover, alpha: 0.35 }, this.cfg);
   }
 
-  /** Renders the pending teleport's origin (semi-transparent marker) and a line stretching to the
-   * cursor, so the two-click placement gesture reads as "one end is already fixed, aim the other".
-   * `pendingFrom` is already in viewport coordinates (the caller resolves node → screen). */
+  /** Renders the pending teleport's fixed endpoint marker + a connector line to the cursor, so the
+   * two-click placement gesture reads as "one end is already fixed, aim the other". `pendingFrom` is
+   * already in viewport coordinates (the caller resolves node → screen). Shared look with the preset
+   * card via `drawTeleportPreview`. */
   updateTeleportPreview(pendingFrom: { x: number; y: number } | null, cursorViewportX: number, cursorViewportY: number): void {
     this.teleportPreview.clear();
     if (!pendingFrom) return;
 
-    const { x: px, y: py } = pendingFrom;
-    const markerSize = 16;
-    const strokeWidth = 3;
-    const dx = cursorViewportX - px;
-    const dy = cursorViewportY - py;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len > 0) {
-      const ux = dx / len;
-      const uy = dy / len;
-      const clip = clipDistance(ux, uy, markerSize / 2, strokeWidth);
-      if (len > clip) {
-        this.teleportPreview
-          .moveTo(px + ux * clip, py + uy * clip)
-          .lineTo(cursorViewportX, cursorViewportY)
-          .stroke({ width: strokeWidth, color: canvas.teleport.default, alpha: 0.5, cap: "round" });
-      }
-    }
-
-    this.teleportPreview
-      .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
-      .fill({ color: canvas.teleport.default, alpha: 0.5 });
+    drawTeleportPreview(this.teleportPreview, pendingFrom.x, pendingFrom.y, cursorViewportX, cursorViewportY);
   }
 
   protected onStoreChange(state: MazeState, prev: MazeState): void {
