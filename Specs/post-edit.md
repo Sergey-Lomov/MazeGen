@@ -276,6 +276,17 @@ hover uses):
   branch refuses it. See `resetPostEditPoint` (postEditUtils.ts) and its `PostEditPointReset`
   result type.
 
+  Drag-capable, same as the edge branch (GitHub issue #489): a press-drag paints a reset stroke
+  across every in-field cell the cursor enters, deduped per gesture. `BaseController`'s
+  `beginCellDrag(point)`/`continueCellDrag(point | null, cb)` (the cell-target counterpart of
+  `beginEdgeDrag`/`continueEdgeDrag`) drive it — they share the one `dragVisited` set and the
+  `endEdgeDrag`/`isDragActive` teardown with the edge drag, keyed through a private
+  `cell:x,y`-prefixed helper so a cell key can never collide with a `FieldEdge` key (a gesture is
+  only ever one or the other, since the active tool is fixed for its duration). The near-edge zone
+  still hands off to the edge branch mid-drag, so a stroke that grazes an edge resets that grain
+  instead of the point there. In auto-confirm mode each painted cell schedules a debounced
+  reconfirm on pointer-up, identical to the edge branch.
+
   Post-edit itself isn't multi-floor-aware (`Specs/floors.md`'s "Non-goals") even though generation
   can be (GitHub issue #337): both this cell-reset path and the whole-graph `resetPostEdit` filter
   `_generatedNodes`/`_generatedEdges` down to floor 0 before use, in the `postEditSlice.ts` store
@@ -294,7 +305,10 @@ the vertex tools'/`manage_split_nodes`' own cell-hover branch rather than `reset
 dispatch).
 
 A left click on any in-field cell calls `deletePostEditPoint(point)`, which removes, for **every**
-node currently at that point (original plus every declared split slot — not just the active one):
+node currently at that point (original plus every declared split slot — not just the active one).
+Drag-capable (GitHub issue #489): a press-drag paints a delete stroke across every in-field cell
+the cursor enters, deduped per gesture via `BaseController`'s `beginCellDrag`/`continueCellDrag`.
+Removed per point:
 
 - `postEditDraftMeta.start`/`.finish`, if either currently addresses one of the point's nodes (same
   effect as `clearPostEditEndpoint`, applied to both markers uniformly).
@@ -370,7 +384,7 @@ Cell cache (`cachedCells`, `cachedCellSet`) is built once on open and on `active
 
 ## Controller — PostEditController
 
-Extends `BaseController` (shared with `PresetConnectionsController`). `BaseController` owns pan logic (`tryStartPan`, `handlePanMove`, `toViewport`), edge-drag bookkeeping (`beginEdgeDrag`/`continueEdgeDrag`/`endEdgeDrag`/`isDragActive` — dedupe-only, the caller's `onNewEdge` callback owns the store action and any redraw), and marker-drag bookkeeping (`draggingMarker`, `armMarkerDrag`/`releaseMarkerDrag` — the latter called automatically from `onPointerUp`). `PostEditController` adds node-map caching, edge picking, tool dispatch, confirm debounce, and teleport pending-placement/drag/cancel state (`draggingTeleportEndpoint`, `teleportDragMoved`, an ESC key listener wired in the constructor and torn down in `destroy()` — mirrors `PresetConnectionsController`).
+Extends `BaseController` (shared with `PresetConnectionsController`). `BaseController` owns pan logic (`tryStartPan`, `handlePanMove`, `toViewport`), edge-drag bookkeeping (`beginEdgeDrag`/`continueEdgeDrag`/`endEdgeDrag`/`isDragActive` — dedupe-only, the caller's `onNewEdge` callback owns the store action and any redraw), cell-drag bookkeeping (`beginCellDrag`/`continueCellDrag` — GitHub issue #489, the whole-point counterpart for `reset`/`delete`/`clear`; shares the same visited set and `endEdgeDrag`/`isDragActive` as the edge drag, since a gesture is only ever one or the other), and marker-drag bookkeeping (`draggingMarker`, `armMarkerDrag`/`releaseMarkerDrag` — the latter called automatically from `onPointerUp`). `PostEditController` adds node-map caching, edge picking, tool dispatch, confirm debounce, and teleport pending-placement/drag/cancel state (`draggingTeleportEndpoint`, `teleportDragMoved`, an ESC key listener wired in the constructor and torn down in `destroy()` — mirrors `PresetConnectionsController`).
 
 Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", NodeId[]>` — every real node at a point, GitHub issue #221) is cached per `nodes` reference — rebuilt only when `state.nodes` changes.
 

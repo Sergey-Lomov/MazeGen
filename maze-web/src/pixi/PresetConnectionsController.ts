@@ -139,6 +139,8 @@ export class PresetConnectionsController extends BaseController {
       // clear). Split cells are excluded from the edge branch — a split point's own faces are
       // rendered by SplitJunctionRenderer, not the plain wall layer, so there is no single "this
       // edge" to point-hover there; the point branch (delete everything at the point) covers it.
+      // Both branches are drag-capable (GitHub issue #489) — edge via `beginEdgeDrag`, cell via
+      // `beginCellDrag` (BaseController, shared bookkeeping).
       const cfg = state.floorFields[state.activeFloorId].tessellationConfig;
       const edge = pickEdgeAtPosition(vpX, vpY, cfg, this.renderer.getCachedCells(), this.renderer.getCachedCellSet(), true);
       const level = activeFloorLevel(state);
@@ -166,6 +168,9 @@ export class PresetConnectionsController extends BaseController {
       const inField = this.renderer.getCachedCellSet().has(encodePoint(cell.x, cell.y));
       this.renderer.updateHover(null);
       this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null, true);
+      this.continueCellDrag(inField ? [cell.x, cell.y] : null, (p) => {
+        useMazeStore.getState().resetPresetPoint(p);
+      });
       return;
     }
     this.renderer.updateCellHover(null);
@@ -316,6 +321,7 @@ export class PresetConnectionsController extends BaseController {
       const key = encodePoint(cell.x, cell.y);
       if (this.renderer.getCachedCellSet().has(key)) {
         useMazeStore.getState().resetPresetPoint([cell.x, cell.y]);
+        this.beginCellDrag([cell.x, cell.y]);
       }
       return;
     }

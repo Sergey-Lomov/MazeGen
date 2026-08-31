@@ -12,6 +12,8 @@ class TestController extends BaseController {
 
   beginEdgeDrag(edgeKey: string): void { super.beginEdgeDrag(edgeKey); }
   continueEdgeDrag(edge: FieldEdge | null, onNewEdge: (edge: FieldEdge) => void): void { super.continueEdgeDrag(edge, onNewEdge); }
+  beginCellDrag(point: [number, number]): void { super.beginCellDrag(point); }
+  continueCellDrag(point: [number, number] | null, onNewCell: (point: [number, number]) => void): void { super.continueCellDrag(point, onNewCell); }
   endEdgeDrag(): void { super.endEdgeDrag(); }
   get isDragActive(): boolean { return super.isDragActive; }
 
@@ -96,6 +98,66 @@ describe("BaseController edge drag", () => {
     const seen: string[] = [];
     c.continueEdgeDrag(edge("b"), (e) => seen.push(e.key));
     expect(seen).toEqual([]); // "b" is the new session's starting edge, already seeded
+  });
+});
+
+describe("BaseController cell drag", () => {
+  it("beginCellDrag activates drag and seeds the visited set with the starting cell", () => {
+    const c = new TestController();
+    c.beginCellDrag([0, 0]);
+    expect(c.isDragActive).toBe(true);
+
+    const seen: [number, number][] = [];
+    c.continueCellDrag([0, 0], (p) => seen.push(p));
+    expect(seen).toEqual([]); // starting cell already visited
+  });
+
+  it("continueCellDrag applies each newly-entered cell once", () => {
+    const c = new TestController();
+    c.beginCellDrag([0, 0]);
+
+    const seen: [number, number][] = [];
+    c.continueCellDrag([1, 0], (p) => seen.push(p));
+    c.continueCellDrag([1, 0], (p) => seen.push(p)); // re-entering same cell — no-op
+    c.continueCellDrag([2, 0], (p) => seen.push(p));
+
+    expect(seen).toEqual([[1, 0], [2, 0]]);
+  });
+
+  it("continueCellDrag is a no-op when drag is not active", () => {
+    const c = new TestController();
+    const seen: [number, number][] = [];
+    c.continueCellDrag([1, 0], (p) => seen.push(p));
+    expect(seen).toEqual([]);
+  });
+
+  it("continueCellDrag is a no-op when cell is null (cursor left the field)", () => {
+    const c = new TestController();
+    c.beginCellDrag([0, 0]);
+    const seen: [number, number][] = [];
+    c.continueCellDrag(null, (p) => seen.push(p));
+    expect(seen).toEqual([]);
+  });
+
+  it("endEdgeDrag clears an active cell drag too (shared bookkeeping)", () => {
+    const c = new TestController();
+    c.beginCellDrag([0, 0]);
+    c.endEdgeDrag();
+    expect(c.isDragActive).toBe(false);
+
+    const seen: [number, number][] = [];
+    c.continueCellDrag([0, 0], (p) => seen.push(p));
+    expect(seen).toEqual([]);
+  });
+
+  it("a cell drag and an edge drag never share a visited-set key (namespaced)", () => {
+    const c = new TestController();
+    // Cell branch starts the gesture, then the cursor grazes an edge whose key happens to
+    // stringify like the cell's — the `cell:` prefix keeps them distinct so the edge still fires.
+    c.beginCellDrag([1, 0]);
+    const edgeSeen: string[] = [];
+    c.continueEdgeDrag(edge("1,0"), (e) => edgeSeen.push(e.key));
+    expect(edgeSeen).toEqual(["1,0"]);
   });
 });
 
