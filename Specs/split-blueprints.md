@@ -113,9 +113,68 @@ is simply absent from `faces[i]` (core already treats "no entry" as `Wall`). `we
   pattern" — clicking a thumbnail calls `blueprintToSplitPattern` and appends the result directly,
   no confirmation (adding a pattern is non-destructive, unlike overwriting a split point).
 
+## Semantic node names (`splitNodeNames.ts`, GitHub issue #487)
+
+For a hand-built split the generic "Node N" / "N{N}" numbering (`splitNodeLabel` /
+`splitNodeLabelShort`) is fine, but for a split point whose current face configuration matches a
+recognized special-split topology the node roles are meaningful and the numbers hide them.
+
+`splitNodeSemanticNames(nodes)` reuses `detectSplitSpecialShapeKind` (`splitFaceLayout.ts`) — the
+same recognition the canvas renderer and node-point positioning already use — then derives each
+node's role from `faceKindsByNode` alone (which face indices it owns), no tile geometry needed.
+Returns a `{ full, short }` name per node in row order (original node first, then each slot), or
+`null` for an unrecognized topology, any one-way connection, or a node with no recognized role.
+
+Named topologies (node order matches `buildSplitPassagesCore`'s own per-kind branch):
+
+| kind | nodes | names (in the order the function returns them) |
+|---|---|---|
+| `bridge` (degree 4) | 2 | node 0 through passage **"Corridor"**, node 1 crossing **"Bridge"** |
+| `diagonal` / divider (degree 4) | 2 | **"Corridor 1"** / **"Corridor 2"** (row order) |
+| `hex_bridge` | 2 | node 0 **"Corridor"**, node 1 **"Bridge"** |
+| `hex_diagonal` (two non-opposite pairs) | 2 | **"Corridor 1"** / **"Corridor 2"** (row order) |
+| `hex_diagonal_divider` (two three-face halves) | 2 | **"Fork 1"** / **"Fork 2"** (row order) |
+| `hex_triple_bridge` (three opposite pairs) | 3 | node 0 **"Corridor"**, node 1 **"Lower bridge"**, node 2 **"Upper bridge"** (row order) |
+| `hex_triple_corridor` (one opposite + two adjacent pairs) | 3 | the opposite-pair node (`facesByNode.findIndex(isOpposite)`) is **"Middle corridor"**; the two adjacent-pair nodes are **"Side corridor 1"** / **"Side corridor 2"**, ordered by their lowest owned face index. Returns `null` (not a partial result) if no opposite-pair node is found — a case `detectSplitSpecialShapeKind` already rules out, so this is a defensive guard only. |
+
+i18n keys: `split_node_name_corridor` / `_bridge` / `_corridor_n` / `_fork_n` / `_lower_bridge` /
+`_upper_bridge` / `_middle_corridor` / `_side_corridor_n` (each with a `_short` variant; `{n}` where
+numbered).
+
+Used in four places (all fall back to "Node N" when `splitNodeSemanticNames*` returns `null`):
+
+- **`ManageSplitNodesDialog` / `PresetSplitNodesDialog`** — `semanticNames` from each node's faces
+  (same `facesOf` that feeds `tileNodes`); dialog row title, and in compact `short` form the
+  link-bubble coordinate suffix — for this point's own nodes only, a partner endpoint on a different
+  point keeps its own label. Post-edit's `facesOf` resolves a face's neighbour via the *active* UI
+  slot (it shares the tile-diagram's own model), so on the rare partially-decided point where a
+  split neighbour's active slot isn't its real connecting node, the dialog's recognised topology can
+  differ from the picker/inspector's (which use the real-partner resolution below). A fully-decided
+  special split — the only kind that gets named — resolves identically both ways.
+- **`PostEditSplitTargetDialog` / `PresetSplitTargetDialog`** — the "which split node?" picker rows
+  (`.full`), computed from the same `faceKindsByNode` the special-shape preview already derives.
+- **`buildCellInspection` / `buildPresetCellInspection`** (status-bar cell inspector) — the per-node
+  block title (`"[Corridor: …]"` instead of `"[Node 1: …]"`). Needs the tessellation config (post-gen
+  path) / config + in-field cells + preset connections (preset path) threaded through
+  `resolveCellInspection`; omitting them keeps the plain "Node N" titling.
+
+The preset stage's per-node face-kind computation is shared as `presetSplitNodeFaceKinds`
+(`fieldEditUtils.ts`) — one node's kind on every face, resolving the neighbour's real connecting node
+per `resolvePresetPartnerAt` — used by `PresetSplitNodesDialog`'s tile diagram, the preset split-target
+dialog, and the preset cell inspector alike. The post-generation callers reuse
+`splitPointFaceKindsByNode` (`splitNodeGeometry.ts`).
+
 ## Testing
 
-`splitBlueprints.test.ts` covers the pure functions (`blueprintsForDegree`, `rotateBlueprint`,
+`splitNodeNames.test.ts` covers `splitNodeSemanticNames` directly — every named topology (degree-4
+bridge/diagonal-divider, and all five hex kinds, including `hex_triple_corridor`'s lowest-face side
+ordering), plus `null` for an unrecognized topology, a one-way connection (degree-4 and hex), and an
+unsupported tile degree. `cellInspection.test.ts` and `presetCellInspection.test.ts` cover the
+inspector titling (bridge → "Corridor"/"Bridge", `null`/absent cfg → "Node N"). The shared preset
+face-kind helper `presetSplitNodeFaceKinds` is covered directly in `fieldEditUtils.test.ts`
+(passage/wall per face, in-field face with no entry → `"undefined"`, one-way direction →
+`one_way_out`/`one_way_in`). `splitBlueprints.test.ts`
+covers the pure functions (`blueprintsForDegree`, `rotateBlueprint`,
 `fittingRotation`, `blueprintToSplitPattern`, `tileNodesForBlueprint`) directly. `postEditSlice.test.ts`
 and `presetConnectionsSlice.test.ts` cover `applySplitBlueprint`/`applyPresetSplitBlueprint`'s
 store-level behavior: full replace of stale slots/edges, the start/finish/gen-source guard, the

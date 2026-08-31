@@ -6,6 +6,7 @@ import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { splitPointFaceKindsByNode } from "../../pixi/splitNodeGeometry";
 import { detectSplitSpecialShapeKind } from "../../pixi/splitFaceLayout";
+import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { resolveEndpoint, buildSplitNodeResolver } from "../../pixi/postEditEndpoint";
 import { recordOnLevel } from "../../pixi/fieldEditUtils";
@@ -93,8 +94,9 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
     }
     const faceKindsByNode = splitPointFaceKindsByNode(pointNodes, byTile, directed, cfg);
     const special = detectSplitSpecialShapeKind(faceKindsByNode) !== null;
+    const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
 
-    return { pointNodes, floorNodes, edges, special };
+    return { pointNodes, floorNodes, edges, special, semanticNames };
   }, [point, allNodes, level, cfg, draftEdges, draftTeleports, splitPoints]);
 
   if (!prompt || !point) return null;
@@ -113,7 +115,7 @@ export function PostEditSplitTargetDialog({ onClose }: Props) {
               onClick={() => { pick(id); onClose(); }}
             >
               <span style={{ ...styles.dot, background: colorToCss(splitSlotColor(index, canvas.node.splitSlots)) }} />
-              {m["post_edit.split_node_label"]({ slotId: index + 1 })}
+              {preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 })}
             </Button>
           ))}
         </div>

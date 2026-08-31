@@ -2,6 +2,9 @@ import { useMazeStore } from "../store/mazeStore";
 import { selectDebugMazeView } from "../store/debugSelectors";
 import { buildCellInspection } from "./selectors/mazeSelectors";
 import { buildPresetCellInspection } from "./selectors/presetCellInspection";
+import { presetConnectionsOnLevel } from "./fieldEditUtils";
+import { buildActiveCells } from "./selectors/fieldSelectors";
+import { buildCellSet } from "./selectors/sharedSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FeatureId } from "../store/tessellationTypes";
 
@@ -47,16 +50,22 @@ export function resolveCellInspection(st: MazeState, x: number, y: number): stri
   const activeFloorIndex = Math.max(st.floors.findIndex((f) => f.id === st.activeFloorId), 0);
 
   if (st.openCard === "preset_connections") {
+    const field = st.floorFields[st.activeFloorId];
+    const cfg = field.tessellationConfig;
+    const level = activeFloorIndex === 0 ? undefined : activeFloorIndex;
+    const inFieldCells = buildCellSet(buildActiveCells(field.fieldPoints, field.fieldEditMode, cfg));
+    const presetConnections = presetConnectionsOnLevel(st.presetConnections, level);
     return buildPresetCellInspection(
       x, y, activeFloorIndex,
       st.presetSplitPoints, st.presetStart, st.presetFinish, st.presetGenSource,
       st.presetTeleports, st.presetVerticalPassages, st.presetElevators,
       st.lockedNodes, st.autoLockedNodes,
+      cfg, inFieldCells, presetConnections,
     );
   }
 
   if (!CARDS_WITH_MAZE.has(st.openCard)) return `x:${x}, y:${y}`;
   const source = resolveMazeSource(st);
   if (!source) return `x:${x}, y:${y}`;
-  return buildCellInspection(source.nodeById, source.edges, x, y, activeFloorIndex, source.start, source.finish);
+  return buildCellInspection(source.nodeById, source.edges, x, y, activeFloorIndex, source.start, source.finish, st.activeTessellationConfig);
 }

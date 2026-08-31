@@ -24,6 +24,7 @@ import {
   rotatePresetSplitPoint,
   resolvePresetPartnerAt,
   allNodesAt,
+  presetSplitNodeFaceKinds,
   presetConnectionsOnLevel,
   cellExistsAt,
   computeInvalidVerticalPassageIds,
@@ -252,6 +253,46 @@ describe("presetConnectionsOnLevel", () => {
     const result = onLevel.get(edgeKey([0, 0], [1, 0]));
     expect(result?.from.level).toBeUndefined();
     expect(result?.to.level).toBeUndefined();
+  });
+});
+
+describe("presetSplitNodeFaceKinds", () => {
+  // 3x3 square, point (1,1). Square offsets are [+x, +y, -x, -y] -> neighbors (2,1),(1,2),(0,1),(1,0).
+  const cfg = { type: "square" as const, width: 3, height: 3 };
+  const inFieldCells = new Set(["0,1", "1,0", "1,1", "1,2", "2,1"]);
+  const point: [number, number] = [1, 1];
+  const original = presetEndpoint(point);
+  const mk = (state: PresetConnectionEntry["state"]) =>
+    (a: ReturnType<typeof presetEndpoint>, b: ReturnType<typeof presetEndpoint>): [string, PresetConnectionEntry] =>
+      [presetEdgeKey(a, b), { from: a, to: b, state, source: "user" }];
+
+  it("maps passage / wall per face, and an in-field face with no entry to 'undefined'", () => {
+    const passage = mk("passage");
+    const wall = mk("wall");
+    const connections = new Map<string, PresetConnectionEntry>([
+      passage(original, presetEndpoint([2, 1])),
+      wall(original, presetEndpoint([1, 2])),
+      // (0,1) left with no entry -> "undefined"; (1,0) is out of `inFieldCells` -> "wall"
+    ]);
+    const inField = new Set(["0,1", "1,1", "1,2", "2,1"]);
+    const kinds = presetSplitNodeFaceKinds(
+      original, point, cfg, inField, connections, { "1,1": [] }, {}, undefined,
+    );
+    expect(kinds).toEqual(["passage", "wall", "undefined", "wall"]);
+  });
+
+  it("distinguishes one_way_out from one_way_in by the entry's stored direction", () => {
+    const connections = new Map<string, PresetConnectionEntry>([
+      mk("one_way_forward")(original, presetEndpoint([2, 1])),
+      mk("one_way_backward")(original, presetEndpoint([0, 1])),
+    ]);
+    const kinds = presetSplitNodeFaceKinds(
+      original, point, cfg, inFieldCells, connections, { "1,1": [] }, {}, undefined,
+    );
+    // presetEdgeKey canonicalizes (1,1) before (2,1)/(0,1), so `from` stays `original` in both:
+    // forward => out toward (2,1); backward => in from (0,1).
+    expect(kinds[0]).toBe("one_way_out");
+    expect(kinds[2]).toBe("one_way_in");
   });
 });
 

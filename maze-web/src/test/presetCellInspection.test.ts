@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { buildPresetCellInspection } from "../pixi/selectors/presetCellInspection";
-import { presetEndpoint } from "../pixi/presetEndpoint";
-import type { PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
+import { presetEndpoint, type PresetEndpoint } from "../pixi/presetEndpoint";
+import { presetEdgeKey, type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry } from "../pixi/fieldEditUtils";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { NodeLockKind } from "../wasm/types";
 
 function empty(x: number, y: number, floorLevel = 0) {
@@ -202,5 +203,53 @@ describe("buildPresetCellInspection", () => {
       3, 5, 2, {}, null, null, null, [], [], [], locked, new Set(),
     );
     expect(result).toBe("x:3, y:5 | Lock (out)");
+  });
+
+  // GitHub issue #487 — a preset split point whose face configuration matches a recognized
+  // special-split topology titles each block with the semantic node name instead of "Node N".
+  describe("semantic split-node names (GitHub issue #487)", () => {
+    const cfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    // Square neighbor offsets are [+x, +y, -x, -y]. Point (1,1): the original node owns the
+    // +x/-x opposite pair (the through "Corridor"), slot 0 owns the +y/-y pair (the "Bridge").
+    const inFieldCells = new Set(["0,1", "1,0", "1,1", "1,2", "2,1"]);
+    const presetSplitPoints = { "1,1": [0] };
+
+    const entry = (state: "passage" | "wall") => (a: PresetEndpoint, b: PresetEndpoint): [string, PresetConnectionEntry] => {
+      // presetEdgeKey canonicalizes from/to itself; the state is direction-agnostic here.
+      return [presetEdgeKey(a, b), { from: a, to: b, state, source: "user" }];
+    };
+    const passage = entry("passage");
+    const wall = entry("wall");
+    const original = presetEndpoint([1, 1]);
+    const slot0 = presetEndpoint([1, 1], 0);
+    // Each node needs an explicit `wall` on the faces it doesn't own — an absent entry reads as
+    // `"undefined"` (optional), which `detectSplitSpecialShapeKind` still counts as connected.
+    const presetConnections = new Map<string, PresetConnectionEntry>([
+      passage(original, presetEndpoint([2, 1])),
+      passage(original, presetEndpoint([0, 1])),
+      wall(original, presetEndpoint([1, 2])),
+      wall(original, presetEndpoint([1, 0])),
+      passage(slot0, presetEndpoint([1, 2])),
+      passage(slot0, presetEndpoint([1, 0])),
+      wall(slot0, presetEndpoint([2, 1])),
+      wall(slot0, presetEndpoint([0, 1])),
+    ]);
+
+    it("bridge split cell: blocks titled 'Corridor' / 'Bridge' when cfg recognizes the topology", () => {
+      const result = buildPresetCellInspection(
+        1, 1, 0, presetSplitPoints, presetEndpoint([1, 1]), null, null, [], [], [],
+        new Map(), new Set(),
+        cfg, inFieldCells, presetConnections,
+      );
+      expect(result).toBe("x:1, y:1 | [Corridor: Start] | [Bridge: empty]");
+    });
+
+    it("without cfg the same bridge cell still falls back to 'Node N'", () => {
+      const result = buildPresetCellInspection(
+        1, 1, 0, presetSplitPoints, presetEndpoint([1, 1]), null, null, [], [], [],
+        new Map(), new Set(),
+      );
+      expect(result).toBe("x:1, y:1 | [Node 1: Start] | [Node 2: empty]");
+    });
   });
 });

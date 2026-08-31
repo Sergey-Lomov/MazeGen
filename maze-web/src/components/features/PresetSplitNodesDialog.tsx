@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "../../pixi/presetEndpoint";
-import { presetEdgeKey, resolvePresetActiveEndpoint, resolvePresetPartnerAt } from "../../pixi/fieldEditUtils";
+import { presetEdgeKey, resolvePresetActiveEndpoint, presetSplitNodeFaceKinds } from "../../pixi/fieldEditUtils";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { getNeighborData } from "../../pixi/tessellationGeometry";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
@@ -9,8 +9,9 @@ import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { blueprintsForDegree } from "../../pixi/splitBlueprints";
+import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
 import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, splitNodeLabelShort, type SplitNodesRow, type LinkInfo, type SplitEdgeKind } from "./SplitNodesDialogView";
-import type { TileFace, TileFaceKind, TileFaceNode } from "./TileFaceEditor";
+import type { TileFace, TileFaceNode } from "./TileFaceEditor";
 import * as m from "~/paraglide/messages";
 
 function colorToCss(color: number): string {
@@ -65,11 +66,48 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     [fieldPoints, fieldEditMode, cfg],
   );
 
+  const originalEndpoint = presetEndpoint(point, undefined, level);
+
+  // Faces of one node (any row, not just the active one) — used both to build `tileNodes` (all of
+  // the point's nodes drawn on the tile diagram at once, GitHub issue #234) and to recognize a
+  // named special-split topology for `semanticNames` below. `presetSplitNodeFaceKinds` resolves the
+  // neighbor's real connecting node per face (GitHub issue #243), shared with the split-target
+  // dialog / status panel.
+  const facesOf = (endpoint: PresetEndpoint): TileFace[] => {
+    const { offsets } = getNeighborData(cfg, point[0], point[1]);
+    const kinds = presetSplitNodeFaceKinds(
+      endpoint, point, cfg, inFieldCells, presetConnections,
+      useMazeStore.getState().presetSplitPoints, useMazeStore.getState().presetActiveSplitNode, level,
+    );
+    return offsets.map(([dx, dy], i): TileFace => {
+      const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+      const boundary = !inFieldCells.has(`${neighbor[0]},${neighbor[1]}`);
+      return { kind: kinds[i], boundary };
+    });
+  };
+
+  // Node endpoints in row order (original node first, then each slot in slotId order) — the same
+  // order `rows` and `tileNodes` use.
+  const nodeEndpointsInOrder: PresetEndpoint[] = [
+    originalEndpoint,
+    ...slots.map((slotId) => presetEndpoint(point, slotId, level)),
+  ];
+  // Semantic per-node names when this point's current face configuration matches a recognized
+  // special-split topology (GitHub issue #487) — `null` otherwise, falling back to "Node N".
+  const semanticNames = useMemo(
+    () => splitNodeSemanticNames(nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ep) }))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slots, cfg, point, inFieldCells, presetConnections],
+  );
+  const semanticIndexOf = (ep: PresetEndpoint): number =>
+    nodeEndpointsInOrder.findIndex((e) => presetEndpointsEqual(e, ep));
+
   // A preset endpoint's label is its coordinates, plus a compact "(N{N})" suffix for every node of
   // a *split* point — the point's original node included (slot 0 is not a special node any more,
-  // GitHub issue #468). A plain endpoint on a non-split point has no suffix. There's no "real
-  // NodeId" to resolve (presets run before generation), so unlike post-edit's `describeEndpoint`,
-  // this never needs a `nodes` snapshot lookup.
+  // GitHub issue #468) — or the semantic tag when this point is a recognized special split (GitHub
+  // issue #487). A plain endpoint on a non-split point has no suffix. There's no "real NodeId" to
+  // resolve (presets run before generation), so unlike post-edit's `describeEndpoint`, this never
+  // needs a `nodes` snapshot lookup.
   const describeEndpoint = (ep: PresetEndpoint): string => {
     // `ep` may be a cross-floor partner (teleport/vertical passage), so key by its own level, not
     // the dialog's active floor.
@@ -77,7 +115,11 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     const epKey = epLevel === undefined ? `${ep.point[0]},${ep.point[1]}` : `${ep.point[0]},${ep.point[1]}@${epLevel}`;
     const isSplitPoint = (splitPoints[epKey]?.length ?? 0) > 0;
     if (ep.slotId === undefined && !isSplitPoint) return `${ep.point[0]},${ep.point[1]}`;
-    return `${ep.point[0]},${ep.point[1]} (${splitNodeLabelShort(ep.slotId)})`;
+    const sameLevel = (ep.level ?? level) === level;
+    const semantic = sameLevel && ep.point[0] === point[0] && ep.point[1] === point[1]
+      ? semanticNames?.[semanticIndexOf(ep)]?.short
+      : undefined;
+    return `${ep.point[0]},${ep.point[1]} (${semantic ?? splitNodeLabelShort(ep.slotId)})`;
   };
 
   // Groups an endpoint's connections/teleports/markers by partner, same collapsing rule as
@@ -143,17 +185,16 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
   // fixed-then-generated palette the canvas uses for resolved split nodes (GitHub issue #223).
   const colorAt = (rowIndex: number) => colorToCss(splitSlotColor(rowIndex, canvas.node.splitSlots));
 
-  const originalEndpoint = presetEndpoint(point, undefined, level);
   const rows: SplitNodesRow<PresetEndpoint>[] = [
     {
-      key: presetEndpointKey(originalEndpoint), endpoint: originalEndpoint, title: splitNodeLabel(undefined),
+      key: presetEndpointKey(originalEndpoint), endpoint: originalEndpoint, title: semanticNames?.[0]?.full ?? splitNodeLabel(undefined),
       color: colorAt(0), removable: false, active: isActive(originalEndpoint), ownLabel: describeEndpoint(originalEndpoint), links: links(originalEndpoint),
       isStart: isStart(originalEndpoint), isFinish: isFinish(originalEndpoint),
     },
     ...slots.map((slotId, i) => {
       const ep = presetEndpoint(point, slotId, level);
       return {
-        key: presetEndpointKey(ep), endpoint: ep, title: splitNodeLabel(slotId),
+        key: presetEndpointKey(ep), endpoint: ep, title: semanticNames?.[1 + i]?.full ?? splitNodeLabel(slotId),
         color: colorAt(1 + i), removable: true, active: isActive(ep), ownLabel: describeEndpoint(ep), links: links(ep),
         isStart: isStart(ep), isFinish: isFinish(ep),
       };
@@ -166,40 +207,6 @@ export function PresetSplitNodesDialog({ point, onClose }: Props) {
     () => blueprintsForDegree(getNeighborData(cfg, point[0], point[1]).offsets.length),
     [cfg, point],
   );
-
-  // Faces of one node (any row, not just the active one) — used to build `tileNodes` below, all
-  // of the point's nodes drawn on the tile diagram at once (GitHub issue #234).
-  const facesOf = (endpoint: PresetEndpoint): TileFace[] => {
-    const { offsets } = getNeighborData(cfg, point[0], point[1]);
-    return offsets.map(([dx, dy]) => {
-      const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
-      const boundary = !inFieldCells.has(`${neighbor[0]},${neighbor[1]}`);
-      if (boundary) return { kind: "wall" as TileFaceKind, boundary };
-
-      // The neighbor's real connecting node for this face — not just its active UI slot (GitHub
-      // issue #243 follow-up): a split neighbor may have its real decided connection on a node
-      // other than whichever one currently happens to be active in its own panel.
-      const neighborPartner = resolvePresetPartnerAt(
-        [endpoint], neighbor, presetConnections, useMazeStore.getState().presetSplitPoints, useMazeStore.getState().presetActiveSplitNode, level,
-      );
-      const entry = presetConnections.get(presetEdgeKey(endpoint, neighborPartner));
-      let kind: TileFaceKind = "undefined";
-      if (entry) {
-        if (entry.state === "wall") kind = "wall";
-        else if (entry.state === "passage") kind = "passage";
-        else if (entry.state === "undefined") kind = "undefined";
-        else if (entry.state === "one_way_forward" || entry.state === "one_way_backward") {
-          // entry.from/.to are the canonical-order endpoints (see presetEdgeKey) — the actual
-          // passage direction is entry.from -> entry.to for "one_way_forward", reversed for
-          // "one_way_backward" (Specs/preset-connections.md's "One-way direction").
-          const endpointIsFrom = presetEndpointsEqual(entry.from, endpoint);
-          const forward = entry.state === "one_way_forward";
-          kind = (endpointIsFrom === forward) ? "one_way_out" : "one_way_in";
-        }
-      }
-      return { kind, boundary: false };
-    });
-  };
 
   const tileNodes: TileFaceNode[] = useMemo(
     () => rows.map((row) => ({ color: row.color, faces: facesOf(row.endpoint) })),

@@ -10,6 +10,7 @@ import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { blueprintsForDegree } from "../../pixi/splitBlueprints";
+import { splitNodeSemanticNames } from "../../pixi/splitNodeNames";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { recordOnLevel } from "../../pixi/fieldEditUtils";
 import { SplitNodesDialogView, createRequiredLinksTracker, splitNodeLabel, splitNodeLabelShort, type SplitNodesRow, type LinkInfo, type SplitEdgeKind } from "./SplitNodesDialogView";
@@ -128,17 +129,56 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     return activeEntry ?? nodeEndpoint(ids[0]);
   };
 
+  // Faces of one node (any row, not just the active one) — used both to build `tileNodes` (all of
+  // the point's nodes drawn on the tile diagram at once, GitHub issue #234) and to recognize a
+  // named special-split topology for `semanticNames` below.
+  const facesOf = (endpoint: PostEditEndpoint): TileFace[] => {
+    const { offsets } = getNeighborData(cfg, point[0], point[1]);
+    return offsets.map(([dx, dy]) => {
+      const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+      const boundary = !inFieldCells.has(`${neighbor[0]},${neighbor[1]}`);
+      if (boundary) return { kind: "wall" as TileFaceKind, boundary };
+      if (!draftEdges) return { kind: "wall" as TileFaceKind, boundary };
+
+      const neighborActive = resolveActiveAt(neighbor);
+      if (!neighborActive) return { kind: "wall" as TileFaceKind, boundary: false };
+
+      const fwd = draftEdges[edgeKey(endpoint, neighborActive)];
+      const bwd = draftEdges[edgeKey(neighborActive, endpoint)];
+      let kind: TileFaceKind = "wall";
+      if (fwd?.kind === "basic" || bwd?.kind === "basic") kind = "passage";
+      else if (fwd?.kind === "one_way_forward" || fwd?.kind === "one_way_backward") kind = "one_way_out";
+      else if (bwd?.kind === "one_way_forward" || bwd?.kind === "one_way_backward") kind = "one_way_in";
+      else if (fwd?.kind === "wall" || bwd?.kind === "wall") kind = "wall";
+      return { kind, boundary: false };
+    });
+  };
+
+  // Node endpoints in row order (original node first, then each slot in slotId order) — the same
+  // order `rows` and `tileNodes` use.
+  const nodeEndpointsInOrder: PostEditEndpoint[] = [
+    ...(originalEndpoint ? [originalEndpoint] : []),
+    ...slots.map((slotId) => splitEndpoint(point, slotId, level)),
+  ];
+  // Semantic per-node names when this point's current face configuration matches a recognized
+  // special-split topology (GitHub issue #487) — `null` otherwise, falling back to "Node N".
+  const semanticNames = splitNodeSemanticNames(nodeEndpointsInOrder.map((ep) => ({ faces: facesOf(ep) })));
+  const semanticIndexOf = (ep: PostEditEndpoint): number =>
+    nodeEndpointsInOrder.findIndex((e) => endpointsMatch(e, ep));
+
   // Formats one side of a link bubble — used for both the card's own endpoint and its partner, so
   // every node always gets an "(N{N})" suffix on whichever side it appears on, not just the
-  // partner's. A `split` endpoint or this point's original node gets its compact node label; a
-  // plain `node` endpoint elsewhere on the maze (not this point's original node) has no label at
-  // all, just its coordinates.
+  // partner's. A `split` endpoint or this point's original node gets its compact node label
+  // (semantic tag when this point is a recognized special split, GitHub issue #487); a plain
+  // `node` endpoint elsewhere on the maze (not this point's original node) has no label at all,
+  // just its coordinates.
   const describeEndpoint = (ep: PostEditEndpoint): string => {
     if (originalEndpoint && endpointsMatch(ep, originalEndpoint)) {
-      return `${point[0]},${point[1]} (${splitNodeLabelShort(undefined)})`;
+      return `${point[0]},${point[1]} (${semanticNames?.[semanticIndexOf(ep)]?.short ?? splitNodeLabelShort(undefined)})`;
     }
     if (ep.kind === "split") {
-      return `${ep.point[0]},${ep.point[1]} (${splitNodeLabelShort(ep.slotId)})`;
+      const semantic = semanticNames?.[semanticIndexOf(ep)]?.short;
+      return `${ep.point[0]},${ep.point[1]} (${semantic ?? splitNodeLabelShort(ep.slotId)})`;
     }
     const n = nodeById.get(ep.id);
     return n ? `${n.x},${n.y}` : `#${ep.id}`;
@@ -183,15 +223,16 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
 
   const rows: SplitNodesRow<PostEditEndpoint>[] = [
     ...(originalEndpoint ? [{
-      key: endpointKey(originalEndpoint), endpoint: originalEndpoint, title: splitNodeLabel(undefined),
+      key: endpointKey(originalEndpoint), endpoint: originalEndpoint, title: semanticNames?.[0]?.full ?? splitNodeLabel(undefined),
       color: colorAt(0), removable: false, active: isActive(originalEndpoint), ownLabel: describeEndpoint(originalEndpoint), links: links(originalEndpoint),
       isStart: isStart(originalEndpoint), isFinish: isFinish(originalEndpoint),
     }] : []),
     ...slots.map((slotId, i) => {
       const ep = splitEndpoint(point, slotId, level);
+      const rowIndex = (originalEndpoint ? 1 : 0) + i;
       return {
-        key: endpointKey(ep), endpoint: ep, title: splitNodeLabel(slotId),
-        color: colorAt((originalEndpoint ? 1 : 0) + i), removable: true, active: isActive(ep), ownLabel: describeEndpoint(ep), links: links(ep),
+        key: endpointKey(ep), endpoint: ep, title: semanticNames?.[rowIndex]?.full ?? splitNodeLabel(slotId),
+        color: colorAt(rowIndex), removable: true, active: isActive(ep), ownLabel: describeEndpoint(ep), links: links(ep),
         isStart: isStart(ep), isFinish: isFinish(ep),
       };
     }),
@@ -203,30 +244,6 @@ export function ManageSplitNodesDialog({ point, onClose }: Props) {
     () => blueprintsForDegree(getNeighborData(cfg, point[0], point[1]).offsets.length),
     [cfg, point],
   );
-
-  // Faces of one node (any row, not just the active one) — used to build `tileNodes` below, all
-  // of the point's nodes drawn on the tile diagram at once (GitHub issue #234).
-  const facesOf = (endpoint: PostEditEndpoint): TileFace[] => {
-    const { offsets } = getNeighborData(cfg, point[0], point[1]);
-    return offsets.map(([dx, dy]) => {
-      const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
-      const boundary = !inFieldCells.has(`${neighbor[0]},${neighbor[1]}`);
-      if (boundary) return { kind: "wall" as TileFaceKind, boundary };
-      if (!draftEdges) return { kind: "wall" as TileFaceKind, boundary };
-
-      const neighborActive = resolveActiveAt(neighbor);
-      if (!neighborActive) return { kind: "wall" as TileFaceKind, boundary: false };
-
-      const fwd = draftEdges[edgeKey(endpoint, neighborActive)];
-      const bwd = draftEdges[edgeKey(neighborActive, endpoint)];
-      let kind: TileFaceKind = "wall";
-      if (fwd?.kind === "basic" || bwd?.kind === "basic") kind = "passage";
-      else if (fwd?.kind === "one_way_forward" || fwd?.kind === "one_way_backward") kind = "one_way_out";
-      else if (bwd?.kind === "one_way_forward" || bwd?.kind === "one_way_backward") kind = "one_way_in";
-      else if (fwd?.kind === "wall" || bwd?.kind === "wall") kind = "wall";
-      return { kind, boundary: false };
-    });
-  };
 
   const tileNodes: TileFaceNode[] = rows.map((row) => ({ color: row.color, faces: facesOf(row.endpoint) }));
 

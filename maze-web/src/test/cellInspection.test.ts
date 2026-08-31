@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildCellInspection } from "../pixi/selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
 const node = (id: number, x: number, y: number, extra: Partial<NodeDto> = {}): NodeDto =>
   ({ id, x, y, i: 0, level: 0, ...extra });
@@ -116,6 +117,38 @@ describe("buildCellInspection", () => {
     ]);
     const result = buildCellInspection(nodeById, [], 3, 5, 0, null, null);
     expect(result).toBe("x:3, y:5 | [Node 1: empty] | [Node 2: empty]");
+  });
+
+  // GitHub issue #487 — a split point whose faces match a recognized special-split topology
+  // (degree-4 "bridge") titles each block with the semantic node name instead of "Node N".
+  it("bridge split cell: blocks titled 'Corridor' / 'Bridge' when cfg recognizes the topology", () => {
+    const cfg: TessellationConfig = { type: "square", width: 3, height: 3 };
+    // Square neighbor offsets are [+x, +y, -x, -y]; the through node (i:0) owns the +x/-x pair,
+    // the crossing node (i:1) owns the +y/-y pair — each an opposite-face pair => "bridge".
+    const nodeById = new Map<number, NodeDto>([
+      [10, node(10, 1, 1, { i: 0 })],
+      [11, node(11, 1, 1, { i: 1 })],
+      [20, node(20, 2, 1)], [21, node(21, 0, 1)], // through neighbors
+      [30, node(30, 1, 2)], [31, node(31, 1, 0)], // crossing neighbors
+    ]);
+    const twoWay = (a: number, b: number): EdgeDto[] => [
+      { from: a, to: b, kind: "basic" }, { from: b, to: a, kind: "basic" },
+    ];
+    const edges: EdgeDto[] = [
+      ...twoWay(10, 20), ...twoWay(10, 21),
+      ...twoWay(11, 30), ...twoWay(11, 31),
+    ];
+    const result = buildCellInspection(nodeById, edges, 1, 1, 0, 10, null, cfg);
+    expect(result).toBe("x:1, y:1 | [Corridor: Start] | [Bridge: empty]");
+  });
+
+  it("without cfg the same bridge cell still falls back to 'Node N'", () => {
+    const nodeById = new Map<number, NodeDto>([
+      [10, node(10, 1, 1, { i: 0 })],
+      [11, node(11, 1, 1, { i: 1 })],
+    ]);
+    const result = buildCellInspection(nodeById, [], 1, 1, 0, null, null);
+    expect(result).toBe("x:1, y:1 | [Node 1: empty] | [Node 2: empty]");
   });
 
   it("nodes on a different floor at the same (x,y) are not treated as a split point", () => {

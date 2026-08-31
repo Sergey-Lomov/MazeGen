@@ -1,5 +1,8 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
 import { selectVerticalPassagePairSet } from "./vertical";
+import { splitPointFaceKindsByNode } from "../../splitNodeGeometry";
+import { splitNodeSemanticNamesFromKinds } from "../../splitNodeNames";
 
 function formatFloor(level: number): string {
   return `L${level + 1}`;
@@ -105,7 +108,10 @@ function buildNodeMarkerLines(
  *  order, matching `NodeDto.i`'s own per-point index convention — see `Specs/post-edit.md`'s
  *  "Node-list duplication fix" section) — with an empty node spelled out as `"[Node N: empty]"`.
  *  A node's own marker lines are joined with `"; "` inside its brackets so that separator never
- *  collides with the `" | "` used between blocks/nodes at the outer level. */
+ *  collides with the `" | "` used between blocks/nodes at the outer level. When the split point's
+ *  face configuration matches a recognized special-split topology (GitHub issue #487), the node
+ *  block is titled with the semantic node name (`"[Corridor: ...]"`) instead of `"[Node N: ...]"` —
+ *  `cfg` is needed for that face-topology recognition; pass `null` to skip it (always "Node N"). */
 export function buildCellInspection(
   nodeById: Map<number, NodeDto>,
   edges: EdgeDto[],
@@ -114,6 +120,7 @@ export function buildCellInspection(
   floorLevel: number,
   start: number | null,
   finish: number | null,
+  cfg: TessellationConfig | null = null,
 ): string {
   const coordLabel = `x:${x}, y:${y}`;
 
@@ -128,10 +135,25 @@ export function buildCellInspection(
     return lines.length === 0 ? coordLabel : [coordLabel, ...lines].join(" | ");
   }
 
-  const blocks = nodesHere.map((n) => {
+  // Semantic per-node names when this split point's face configuration matches a recognized
+  // special-split topology (bridge, GitHub issue #487) — `null` otherwise, "Node N" for every node.
+  let semanticNames: ReturnType<typeof splitNodeSemanticNamesFromKinds> = null;
+  if (cfg) {
+    const floorNodes = Array.from(nodeById.values()).filter((n) => (n.level ?? 0) === floorLevel);
+    const byTile = new Map<string, NodeDto[]>();
+    for (const n of floorNodes) {
+      const k = `${n.x}:${n.y}`;
+      const list = byTile.get(k);
+      if (list) list.push(n); else byTile.set(k, [n]);
+    }
+    const directed = new Set(edges.filter((e) => e.kind !== "teleport").map((e) => `${e.from}->${e.to}`));
+    semanticNames = splitNodeSemanticNamesFromKinds(splitPointFaceKindsByNode(nodesHere, byTile, directed, cfg));
+  }
+
+  const blocks = nodesHere.map((n, index) => {
     const lines = buildNodeMarkerLines(n, nodeById, edges, start, finish);
     const body = lines.length === 0 ? "empty" : lines.join("; ");
-    return `[Node ${n.i + 1}: ${body}]`;
+    return `[${semanticNames?.[index]?.full ?? `Node ${n.i + 1}`}: ${body}]`;
   });
   return [coordLabel, ...blocks].join(" | ");
 }

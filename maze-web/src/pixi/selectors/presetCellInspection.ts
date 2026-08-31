@@ -1,6 +1,11 @@
 import { presetEndpointsEqual, type PresetEndpoint } from "../presetEndpoint";
-import { allNodesAt, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry } from "../fieldEditUtils";
+import {
+  allNodesAt, presetSplitNodeFaceKinds,
+  type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry,
+} from "../fieldEditUtils";
+import { splitNodeSemanticNamesFromKinds } from "../splitNodeNames";
 import type { NodeLockKind } from "../../wasm/types";
+import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 
 function formatFloor(level: number): string {
   return `L${level + 1}`;
@@ -86,7 +91,12 @@ function pointKey(point: [number, number], level: number | undefined): string {
  *  a split point's declared nodes, via `allNodesAt`), the marker/teleport/vertical/elevator
  *  collections, and the merged lock maps. Format matches `buildCellInspection` exactly (same
  *  `" | "`/`"; "`/`[Node N: ...]"` conventions) — `N` is 1-based by ascending `slotId`, original
- *  node first (`allNodesAt`'s own order), the preset-stage analogue of `NodeDto.i + 1`. */
+ *  node first (`allNodesAt`'s own order), the preset-stage analogue of `NodeDto.i + 1`.
+ *
+ *  When a split point's face configuration matches a recognized special-split topology (bridge,
+ *  GitHub issue #487), the node block is titled with the semantic name (`"[Corridor: ...]"`)
+ *  instead of `"[Node N: ...]"` — that recognition needs `cfg`, `inFieldCells` and
+ *  `presetConnections`; omit them (all default `null`/empty) to always use "Node N". */
 export function buildPresetCellInspection(
   x: number,
   y: number,
@@ -100,6 +110,9 @@ export function buildPresetCellInspection(
   presetElevators: PresetElevatorEntry[],
   lockedNodes: Map<string, NodeLockKind>,
   autoLockedNodes: Set<string>,
+  cfg: TessellationConfig | null = null,
+  inFieldCells: Set<string> = new Set(),
+  presetConnections: Map<string, PresetConnectionEntry> = new Map(),
 ): string {
   const coordLabel = `x:${x}, y:${y}`;
   const level = floorLevel === 0 ? undefined : floorLevel;
@@ -119,6 +132,17 @@ export function buildPresetCellInspection(
 
   const lockKey = pointKey(point, level);
   const lockKind = lockedNodes.get(lockKey) ?? (autoLockedNodes.has(lockKey) ? "both" : undefined);
+
+  // Semantic per-node names when this split point's face configuration matches a recognized
+  // special-split topology (bridge, GitHub issue #487) — `null` otherwise, "Node N" for every node.
+  let semanticNames: ReturnType<typeof splitNodeSemanticNamesFromKinds> = null;
+  if (cfg) {
+    const faceKindsByNode = nodesHere.map((endpoint) => presetSplitNodeFaceKinds(
+      endpoint, point, cfg, inFieldCells, presetConnections, presetSplitPoints, {}, level,
+    ));
+    semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
+  }
+
   const blocks = nodesHere.map((endpoint, i) => {
     // Lock addresses only the point's original node (Specs/preset-connections.md's "Split nodes"
     // section: "locks always address the original node only") — reported solely on that node's
@@ -128,7 +152,7 @@ export function buildPresetCellInspection(
       presetTeleports, presetVerticalPassages, presetElevators, endpoint.slotId === undefined ? lockKind : undefined,
     );
     const body = lines.length === 0 ? "empty" : lines.join("; ");
-    return `[Node ${i + 1}: ${body}]`;
+    return `[${semanticNames?.[i]?.full ?? `Node ${i + 1}`}: ${body}]`;
   });
   return [coordLabel, ...blocks].join(" | ");
 }

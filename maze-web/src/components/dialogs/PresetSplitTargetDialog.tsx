@@ -4,9 +4,12 @@ import { Modal } from "../Modal";
 import { Button } from "../Button";
 import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
-import { presetConnectionsOnLevel, recordOnLevel } from "../../pixi/fieldEditUtils";
+import { presetConnectionsOnLevel, recordOnLevel, presetSplitNodeFaceKinds } from "../../pixi/fieldEditUtils";
 import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
+import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
 import { buildPresetSplitPassages } from "../../pixi/selectors/presetSelectors";
+import { presetEndpoint } from "../../pixi/presetEndpoint";
+import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
 import { activeFloorLevel } from "../../store/storeHelpers";
 import { PresetSplitPointPixiPreview } from "./PresetSplitPointPixiPreview";
 import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
@@ -43,15 +46,26 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
   const point = prompt?.point ?? null;
 
   const preview = useMemo(() => {
-    if (!point) return null;
+    if (!point || !prompt) return null;
     const cells = buildActiveCells(fieldPoints, fieldEditMode, cfg);
     const presetSplitPoints = recordOnLevel(rawSplitPoints, level);
     const presetConnections = presetConnectionsOnLevel(rawConnections, level);
     const { specialShapes } = buildPresetSplitPassages(presetSplitPoints, presetConnections, cfg, {}, cells);
     const pointKey = `${point[0]},${point[1]}`;
     const special = specialShapes.some((s) => s.pointKey === pointKey);
-    return { cells, presetSplitPoints, presetConnections, special };
-  }, [point, cfg, fieldPoints, fieldEditMode, rawSplitPoints, rawConnections, level]);
+
+    // Semantic per-node names when this point's face configuration matches a recognized
+    // special-split topology (GitHub issue #487) — offered here first, then one row per slot, so
+    // the node order matches the picker's own `options` below.
+    const inFieldCells = buildCellSet(cells);
+    const slotOrder: (number | undefined)[] = [undefined, ...prompt.slotIds];
+    const faceKindsByNode = slotOrder.map((slotId) => presetSplitNodeFaceKinds(
+      presetEndpoint(point, slotId, level), point, cfg, inFieldCells, presetConnections, presetSplitPoints, {}, level,
+    ));
+    const semanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
+
+    return { cells, presetSplitPoints, presetConnections, special, semanticNames };
+  }, [point, cfg, fieldPoints, fieldEditMode, rawSplitPoints, rawConnections, level, prompt]);
 
   if (!prompt || !point) return null;
   const [x, y] = point;
@@ -71,7 +85,7 @@ export function PresetSplitTargetDialog({ onClose }: Props) {
               onClick={() => { pick(slotId); onClose(); }}
             >
               <span style={{ ...styles.dot, background: colorToCss(splitSlotColor(index, canvas.node.splitSlots)) }} />
-              {m["post_edit.split_node_label"]({ slotId: index + 1 })}
+              {preview?.semanticNames?.[index]?.full ?? m["post_edit.split_node_label"]({ slotId: index + 1 })}
             </Button>
           ))}
         </div>

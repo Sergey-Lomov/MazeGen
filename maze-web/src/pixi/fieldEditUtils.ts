@@ -5,6 +5,7 @@ import { getCellNeighborOffsets, getNeighborData } from "./tessellationGeometry"
 import type { PresetConnectionState } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { presetEndpoint, presetEndpointsEqual, presetEndpointKey, type PresetEndpoint } from "./presetEndpoint";
+import type { SplitFaceKind } from "./splitFaceLayout";
 
 export type PresetConnectionClientState = PresetConnectionState | "undefined";
 
@@ -436,6 +437,42 @@ export function allNodesAt(point: [number, number], presetSplitPoints: Record<st
   const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
   const slots = presetSplitPoints[key] ?? [];
   return [presetEndpoint(point, undefined, level), ...slots.map((slotId) => presetEndpoint(point, slotId, level))];
+}
+
+/** One preset split node's kind on every one of its point's geometric faces (in `getNeighborData`
+ * offset order) — a face with no in-field neighbor is `"wall"`, an undecided in-field face is
+ * `"undefined"`. The neighbor's partner node is resolved per `resolvePresetPartnerAt` (its real
+ * connecting node, not just its active UI slot — GitHub issue #243). Shared by
+ * `PresetSplitNodesDialog`'s tile diagram and the `PresetSplitTargetDialog` / status-panel
+ * special-split recognition (GitHub issue #487), so all agree on what a point's topology is. */
+export function presetSplitNodeFaceKinds(
+  endpoint: PresetEndpoint,
+  point: [number, number],
+  cfg: TessellationConfig,
+  inFieldCells: Set<string>,
+  presetConnections: Map<string, PresetConnectionEntry>,
+  presetSplitPoints: Record<string, number[]>,
+  presetActiveSplitNode: Record<string, PresetEndpoint>,
+  level?: number,
+): SplitFaceKind[] {
+  const { offsets } = getNeighborData(cfg, point[0], point[1]);
+  return offsets.map(([dx, dy]): SplitFaceKind => {
+    const neighbor: [number, number] = [point[0] + dx, point[1] + dy];
+    if (!inFieldCells.has(`${neighbor[0]},${neighbor[1]}`)) return "wall";
+    const neighborPartner = resolvePresetPartnerAt(
+      [endpoint], neighbor, presetConnections, presetSplitPoints, presetActiveSplitNode, level,
+    );
+    const entry = presetConnections.get(presetEdgeKey(endpoint, neighborPartner));
+    if (!entry) return "undefined";
+    if (entry.state === "wall") return "wall";
+    if (entry.state === "passage") return "passage";
+    if (entry.state === "undefined") return "undefined";
+    // entry.from/.to are canonical-order (see presetEdgeKey) — actual direction is
+    // entry.from -> entry.to for "one_way_forward", reversed for "one_way_backward".
+    const endpointIsFrom = presetEndpointsEqual(entry.from, endpoint);
+    const forward = entry.state === "one_way_forward";
+    return endpointIsFrom === forward ? "one_way_out" : "one_way_in";
+  });
 }
 
 /** Orders two preset endpoints `[from, to]` by the same canonical rule `presetEdgeKey` uses for

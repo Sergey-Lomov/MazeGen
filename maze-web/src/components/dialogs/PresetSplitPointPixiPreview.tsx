@@ -114,11 +114,16 @@ export function PresetSplitPointPixiPreview({
         // Original node first, then each slot ascending — index drives the dot colour.
         const pointEndpoints = [presetEndpoint(point), ...slotIds.map((s) => presetEndpoint(point, s))];
         const g = new Graphics();
+        // Radius/stroke are in grid units, then scaled by `world.scale` — a hex cell spans more
+        // grid units than a square one, so a fixed grid-unit radius renders far smaller on hex.
+        // Divide by `scale` so the dot is a constant on-screen size across every tessellation.
+        const dotR = 7 / scale;
+        const dotStroke = 2 / scale;
         pointEndpoints.forEach((ep, i) => {
           const [px, py] = presetEndpointScreenPos(ep, cfg, nodePositions);
           // Same colour formula the picker rows use (`splitSlotColor`) so a dot matches its row.
           const color = splitSlotColor(i, canvas.node.splitSlots);
-          g.circle(px, py, 3).fill({ color }).stroke({ color: hexToNum(ui.bg.panelAlt), width: 1 });
+          g.circle(px, py, dotR).fill({ color }).stroke({ color: hexToNum(ui.bg.panelAlt), width: dotStroke });
         });
         markerLayer.addChild(g);
       }

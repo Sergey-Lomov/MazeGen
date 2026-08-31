@@ -118,12 +118,17 @@ export function SplitPointPixiPreview({ point, cfg, pointNodes, allNodes, allEdg
         const directedPairs = allEdges.filter((e) => e.kind !== "teleport").map((e) => ({ from: e.from, to: e.to }));
         const pos = buildNodePositions(allNodes, cfg, directedPairs);
         const g = new Graphics();
+        // Radius/stroke are in grid units, then scaled by `world.scale` — a hex cell spans more
+        // grid units than a square one, so a fixed grid-unit radius renders far smaller on hex.
+        // Divide by `scale` so the dot is a constant on-screen size across every tessellation.
+        const dotR = 7 / scale;
+        const dotStroke = 2 / scale;
         pointNodes.forEach((n, i) => {
           const p = pos.get(n.id) ?? center;
           // Same colour formula the picker rows use (`splitSlotColor`) so a dot matches its row —
           // fixed palette for the first slots, generated overflow colours beyond that.
           const color = splitSlotColor(i, canvas.node.splitSlots);
-          g.circle(p.x, p.y, 3).fill({ color }).stroke({ color: hexToNum(ui.bg.panelAlt), width: 1 });
+          g.circle(p.x, p.y, dotR).fill({ color }).stroke({ color: hexToNum(ui.bg.panelAlt), width: dotStroke });
         });
         markerLayer.addChild(g);
       }
