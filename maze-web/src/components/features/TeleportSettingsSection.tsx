@@ -10,7 +10,11 @@ import { ColorRow } from "../ColorRow";
 import { ColorSwatch } from "../ColorSwatch";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
-import { buildTeleportEdges } from "../../pixi/selectors/mazeSelectors";
+import {
+  buildTeleportEdges,
+  buildTeleportFloorInputs,
+  selectFloorScopedMaze,
+} from "../../pixi/selectors/mazeSelectors";
 import { buildTeleportGroups, type TeleportGroup } from "../../pixi/selectors/teleportGroups";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
@@ -23,19 +27,60 @@ import * as m from "~/paraglide/messages";
  *  sharing a color/shape are still distinguishable by which links connect to what) — factored out
  *  (GitHub issue #313 follow-up) after `VectorByCorridorsSettingsPanel` copy-pasted
  *  `VectorByWallsSettingsPanel`'s own version of this verbatim. Takes only the `TeleportSettingsFields`
- *  slice it actually reads, so either mode's full settings object satisfies it. */
+ *  slice it actually reads, so either mode's full settings object satisfies it.
+ *
+ *  Group list is **project-wide** (GitHub issue #484): built per floor exactly the way that floor's
+ *  own `VectorByWallsRenderer`/`VectorByCorridorsRenderer` builds it (`selectFloorScopedMaze` +
+ *  `buildTeleportEdges` with the same `floorContext`/badge-spread inputs the renderers pass), then
+ *  merged by `TeleportGroup.key`. Building per floor — rather than once over the unscoped
+ *  `nodes`/`edges` — is required for the keys to match the renderers': `buildNodePositions` groups
+ *  nodes by `(x, y)` alone with no floor component, and `buildTeleportGroups`' union-find merges by
+ *  rounded coordinate, so two unrelated teleports at the same cell on different floors would
+ *  otherwise collapse into one group whose `key` no per-floor renderer ever produces, and any
+ *  override set against it would silently never apply. A cross-floor pair is built once, on its
+ *  `from` node's floor (its far endpoint resolved via `floorContext`), so it appears exactly once
+ *  in the merged list. */
 export function useTeleportGroupsAndCollisions(
-  nodes: NodeDto[],
-  edges: EdgeDto[],
+  rawNodes: NodeDto[],
+  rawEdges: EdgeDto[],
   cfg: TessellationConfig,
+  floors: { id: string }[],
   settings: TeleportSettingsFields,
+  start: number | null,
+  finish: number | null,
 ): { teleportGroups: TeleportGroup[]; teleportCollisionKeys: Set<string> } {
   const teleportGroups = useMemo(() => {
     if (!settings.teleportGroupCustomization) return [];
-    const nodeById = new Map(nodes.map((n) => [n.id, n]));
-    const teleportEdges = buildTeleportEdges(nodeById, edges, cfg);
-    return buildTeleportGroups(teleportEdges);
-  }, [settings.teleportGroupCustomization, nodes, edges, cfg]);
+    const floorList = floors.length > 0 ? floors : [{ id: "" }];
+    // Same `{ floorContext, spread }` the vector renderers build (`buildTeleportFloorInputs`). Only
+    // `floorContext.activeFloorIndex` varies per floor below — `spread` (badge blocked-cells map,
+    // field cells) is floor-independent — so this is built once for the active floor and the index
+    // is swapped in the loop rather than re-deriving the whole thing per iteration.
+    const { floorContext, spread } = buildTeleportFloorInputs({
+      unscopedNodes: rawNodes,
+      unscopedEdges: rawEdges,
+      floors: floorList,
+      activeFloorId: floorList[0].id,
+      start,
+      finish,
+      allowOutOfField: !settings.teleportAvoidFieldExit,
+      fieldCells: rawNodes.map((n): [number, number] => [n.x, n.y]),
+    });
+    const byKey = new Map<string, TeleportGroup>();
+    floorList.forEach((floor, activeFloorIndex) => {
+      const scoped = selectFloorScopedMaze(rawNodes, rawEdges, floors, floor.id, start, finish);
+      const nodeById = new Map(scoped.nodes.map((n) => [n.id, n]));
+      const teleportEdges = buildTeleportEdges(
+        nodeById, scoped.edges, cfg,
+        { ...floorContext, activeFloorIndex },
+        spread,
+      );
+      for (const group of buildTeleportGroups(teleportEdges)) {
+        if (!byKey.has(group.key)) byKey.set(group.key, group);
+      }
+    });
+    return Array.from(byKey.values()).sort((a, b) => a.key.localeCompare(b.key));
+  }, [settings.teleportGroupCustomization, settings.teleportAvoidFieldExit, rawNodes, rawEdges, cfg, floors, start, finish]);
 
   const teleportCollisionKeys = useMemo(() => {
     if (settings.teleportConnectorStyle !== "none") return new Set<string>();

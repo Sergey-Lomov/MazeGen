@@ -1,14 +1,15 @@
-import { Graphics, Text, TextStyle } from "pixi.js";
+import { BitmapText, Graphics } from "pixi.js";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { base, hexToNumber } from "../styles/palette";
+import { MSDF_FONT_FAMILY } from "./renderers/msdfFont";
 import { BaseGraphRenderer, nodeColor, nodeRadius, buildPairedRenderEdges, buildCrossFloorMarkers } from "./BaseGraphRenderer";
 import type { RenderNode, NodeCellResolver } from "./BaseGraphRenderer";
 import { buildNodePositions } from "./tessellationGeometry";
 
-const LABEL_STYLE = new TextStyle({ fontSize: 9, fill: hexToNumber(base.textInverse) });
+const LABEL_STYLE = { fontFamily: MSDF_FONT_FAMILY, fontSize: 9, fill: hexToNumber(base.textInverse) };
 
 export interface MazeGraphData {
   nodes: NodeDto[];
@@ -39,7 +40,7 @@ export interface MazeGraphData {
 
 export class MazeGraphRenderer extends BaseGraphRenderer {
   private nodeViews: Map<number, Graphics> = new Map();
-  private nodeLabels: Map<number, Text> = new Map();
+  private nodeLabels: Map<number, BitmapText> = new Map();
   private lastData: MazeGraphData | null = null;
 
   render(data: MazeGraphData): void {
@@ -109,12 +110,12 @@ export class MazeGraphRenderer extends BaseGraphRenderer {
     }
   }
 
-  private makeLabel(node: NodeDto, showNodeIds: boolean, showCoords: boolean): Text | null {
+  private makeLabel(node: NodeDto, showNodeIds: boolean, showCoords: boolean): BitmapText | null {
     const parts: string[] = [];
     if (showNodeIds) parts.push(`${node.id}`);
     if (showCoords) parts.push(`(${node.x},${node.y})`);
     if (parts.length === 0) return null;
-    return new Text({ text: parts.join(" "), style: LABEL_STYLE });
+    return new BitmapText({ text: parts.join(" "), style: LABEL_STYLE });
   }
 
   private updateLabels(nodes: NodeDto[], showNodeIds: boolean, showCoords: boolean): void {

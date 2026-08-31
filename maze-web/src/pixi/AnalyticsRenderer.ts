@@ -10,7 +10,7 @@ import { RouteOverlay } from "./RouteOverlay";
 import { PureCyclesOverlay } from "./PureCyclesOverlay";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
-import { postEditEdgesToDto, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportEdges, buildTeleportBadgeBlockedCells, type TeleportFloorContext, type TeleportBadgeSpreadOptions } from "./selectors/mazeSelectors";
+import { postEditEdgesToDto, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportEdges, buildTeleportFloorInputs } from "./selectors/mazeSelectors";
 import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "./postEditEndpoint";
 import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
@@ -239,21 +239,19 @@ export class AnalyticsRenderer {
     // teleport-anchored cross-floor region badges (GitHub issue #345) — both must resolve the
     // exact same snapped-midpoint badge position for a cross-floor teleport, so both read it from
     // the same `buildTeleportEdges` call rather than each re-deriving it independently.
-    const teleportFloorContext: TeleportFloorContext = {
-      resolveNodeLevel,
-      unscopedNodeById,
+    // `unscopedEdges` is the draft edge set (`edges`) so cross-floor teleport pairs resolve against
+    // the draft; the badge blocked-cells map reads the *confirmed* `state.edges` — see #480.
+    const { floorContext: teleportFloorContext, spread: teleportBadgeSpread } = buildTeleportFloorInputs({
+      unscopedNodes: state.nodes,
       unscopedEdges: edges,
-      activeFloorIndex: resolvedActiveFloorIndex,
-    };
-    const nodeById = new Map(nodes.map((n) => [n.id, n]));
-
-    // Cross-floor teleport badge collision relocation (GitHub issue #480) — per-floor cells that
-    // already draw a center marker, so a relocated badge never lands on one. Editor canvas: badges
-    // are allowed off the field edge (`allowOutOfField: true`).
-    const teleportBadgeSpread: TeleportBadgeSpreadOptions = {
-      blockedCellsByFloor: buildTeleportBadgeBlockedCells(state.nodes, state.edges, resolveNodeLevel, state.start, state.finish),
+      floors: state.floors,
+      activeFloorId: state.activeFloorId,
+      start: state.start,
+      finish: state.finish,
+      blockedCellsEdges: state.edges,
       allowOutOfField: true,
-    };
+    });
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
     // Maze overlay (floor + walls + markers)
     const showMaze = analyticsOpen && showMazeOverlay && nodes.length > 0;

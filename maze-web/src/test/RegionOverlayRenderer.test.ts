@@ -36,22 +36,23 @@ vi.mock("pixi.js", () => {
     addChild(child: FakeGraphics) { this.children.push(child); return child; }
     destroy() {}
   }
-  class FakeText {
+  class FakeBitmapText {
     anchor = { set: vi.fn() };
+    pivot = { y: 0 };
     x = 0;
     y = 0;
     text: string;
     constructor(opts: { text: string }) { this.text = opts.text; }
     destroy() {}
   }
-  return { Container: FakeContainer, Graphics: FakeGraphics, Text: FakeText };
+  return { Container: FakeContainer, Graphics: FakeGraphics, BitmapText: FakeBitmapText, Cache: { get: () => undefined } };
 });
 
 const { RegionOverlayRenderer, buildRegionRingMarkers, buildRegionTeleportMarkers } = await import(
   "../pixi/renderers/RegionOverlayRenderer"
 );
 const { navigateToFloor } = await import("../pixi/renderers/floorNavigation");
-const { Container, Graphics: FakeGraphics, Text: FakeText } = await import("pixi.js");
+const { Container, Graphics: FakeGraphics, BitmapText: FakeText } = await import("pixi.js");
 import type { NodeDto } from "../wasm/generated/dto";
 import type { EdgeDto } from "../wasm/generated/dto";
 import type { TeleportEdge } from "../pixi/renderers/types";

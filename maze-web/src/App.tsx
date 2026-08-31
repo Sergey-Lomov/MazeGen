@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Application } from "pixi.js";
 import { MazeScene } from "./pixi/MazeScene";
+import { loadMsdfFont } from "./pixi/renderers/msdfFont";
 import { FeaturesPanel } from "./components/FeaturesPanel";
 import { QualityCanvas } from "./components/features/QualityCanvas";
 import { DebugPanel } from "./components/DebugPanel";
@@ -63,6 +64,10 @@ export function App() {
 
     app
       .init({ resizeTo: canvasRef.current, background: canvas.stage.background, antialias: true })
+      // The MSDF label fonts (GitHub issue #352, ~150 KB for both weights) are a one-time load,
+      // fetched in parallel with the WebGL context init above; browser HTTP caching makes every
+      // later page load free. Blocking `setReady` on it avoids a flash of missing labels.
+      .then(() => loadMsdfFont())
       .then(() => {
         if (cancelled) { app.destroy(); return; }
         canvasRef.current!.appendChild(app.canvas);
@@ -70,6 +75,11 @@ export function App() {
         setViewportScaleGetter(() => sceneRef.current?.getViewportScale() ?? 1);
         setPhysicalZoomApplier((scale) => sceneRef.current?.applyPrintPhysicalZoom(scale));
         setReady(true);
+      })
+      .catch((err) => {
+        // A failed WebGL init or MSDF-font fetch would otherwise leave the app stuck on the
+        // loading screen with a silent unhandled rejection — surface it to the console at least.
+        if (!cancelled) console.error("Canvas init failed", err);
       });
 
     return () => {

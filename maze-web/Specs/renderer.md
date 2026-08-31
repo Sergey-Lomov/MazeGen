@@ -83,11 +83,13 @@ Draws a split point's independent passages — wired into `PostEditRenderer` (it
 ### WaypointsRenderer
 Draws filled circles at given positions (start/finish markers). Positions are in screen coordinates (pre-computed by selector). A split-point marker's own position comes from `buildNodePositions`/`getSplitAwareNodePosition` (`tessellationGeometry.ts`/`mazeSelectors.ts`) — the generic hub-circle slot, or `specialSplitNodePoint`'s dedicated bridge/diagonal point when the point is recognized as one (GitHub issue #318, independent of this renderer's own `specialShapes` drawing toggle above) — see `Specs/post-edit.md`'s "Marker/teleport anchoring"/"Shape-aware node point" notes.
 
-## Graph Renderers (not used in GenerationRenderer — reserved for future analysis feature)
+## Graph Renderers
 
-`MazeGraphRenderer` and `NavGraphRenderer` in `MazeRenderer.ts` render directed graph overlays with nodes (circles) and edges (lines with arrowheads). Not currently mounted.
+`MazeGraphRenderer` (`MazeGraphRenderer.ts`, extends `BaseGraphRenderer`) and `NavGraphRenderer` render directed graph overlays with nodes (circles) and edges (lines with arrowheads). `MazeGraphRenderer` is owned by `AnalyticsRenderer` (the analysis feature); it is not part of `GenerationRenderer`'s layer stack.
 
 **Node colors:** `0x4a9eff` (normal), `0xff9f4a` (hover), `0xff4a4a` (selected), `0x44dd88` (start), `0xdd4466` (finish).
+
+**Node labels** (`showNodeIds`/`showCoords` debug toggles): drawn as MSDF `BitmapText` in the fixed regular weight (`MSDF_FONT_FAMILY`), positioned top-left of the node — not centered, so `makeCenteredLabel` is not used here (see "MSDF label font" below).
 
 **Edge rendering:** groups pairs by `min(from,to):max(from,to)`. Bidirectional = plain line. One-way = line + arrowhead at destination.
 
@@ -99,6 +101,19 @@ tip = endPt
 base = tip - unitDir * height
 left/right = base ± perp * side/2
 ```
+
+## MSDF label font (GitHub issue #352)
+
+Every canvas text label is drawn as a **multi-channel signed distance field** `BitmapText`, not pixi's plain `Text`. Plain `Text` rasterizes each instance at a fixed pixel size and blurs once the viewport zooms past it; an MSDF `BitmapText` stays crisp at any zoom because the GPU reconstructs the glyph edges from the distance field.
+
+**Baking.** pixi.js v8 has no runtime MSDF generator, so the atlases are baked offline by `tools/msdf/generate.mjs` (`npm run gen:msdf` from `maze-web/`) from `tools/msdf/Roboto-Regular.ttf` + `tools/msdf/Roboto-Bold.ttf` (Apache-2.0). Two weights — MSDF glyph shapes can't be synthesized bold at runtime, so the `fontWeight` label setting needs a real atlas per weight. Output is committed under `public/fonts/roboto-{regular,bold}-msdf.{fnt,png}` and **must** be `.fnt` (AngelCode XML): pixi's bitmap-font loader recognizes only `.fnt`/`.xml` by file extension; a `.json` atlas loads as a plain object and `BitmapText` silently falls back to a blurry runtime canvas font. Baked at `fontSize` 54 / `distanceRange` 8 into a 512×512 page. Charset: `A-Z`, `0-9`, `:`, `(`, `)`, `,`, space — extend `CHARSET` in the script and re-commit both weights when a new label needs a new glyph.
+
+**Runtime** (`pixi/renderers/msdfFont.ts`):
+- `loadMsdfFont()` — loads both `.fnt` atlases via `Assets.load`, idempotent, awaited once at app startup in `App.tsx` before `setReady` (so there's no flash of missing labels). The init chain has a `.catch` that logs a failed WebGL/font init rather than hanging silently on the loading screen.
+- `msdfFontFamily(weight)` — resolves a `LabelFontWeight` (`"regular"`/`"bold"`) to the atlas `face` name (`"Roboto-Regular"`/`"Roboto-Bold"`). `MSDF_FONT_FAMILY` is the regular-weight name, for call sites with a single fixed weight.
+- `makeCenteredLabel(text, fontFamily, fontSize, fill)` — builds a `BitmapText`, sets `anchor.set(0.5)`, and folds a vertical correction into `pivot.y` so the label is centered on its **glyph ink**, not the font line box (`anchor` alone centers the line box, leaving descender-less labels — digits, roman numerals, uppercase — sitting low). The correction is computed from the installed atlas's own metrics (`yOffset`, glyph height, `lineHeight`, `baseLineOffset`, `baseMeasurementFontSize`), matching pixi's own `getBitmapTextLayout` + `BitmapText.updateBounds` math — no hand-tuned constant. Returns `pivot.y = 0` if the font isn't installed or no glyph in `text` carries metrics.
+
+**Call sites.** `floorBadge.ts` (cross-floor badge digit, bold), `MarkerIndexRenderer` (marker-index plate label — plate width measured with a throwaway `BitmapText` probe, since MSDF advance widths differ from the system font `CanvasTextMetrics` would measure), `VerticalConnectionRenderer` (elevator floor-number badges — `fitElevatorBadgeFontSize` also probes with a `BitmapText`), `MazeGraphRenderer` (debug node labels, fixed regular). `TeleportRenderer` and `RegionOverlayRenderer` reach it indirectly through `drawFloorBadge`.
 
 ## Lifecycle
 

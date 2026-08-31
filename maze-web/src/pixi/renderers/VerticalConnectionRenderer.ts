@@ -1,4 +1,4 @@
-import { Container, Graphics, Text } from "pixi.js";
+import { BitmapText, Container, Graphics } from "pixi.js";
 import type { VerticalConnectionMarker, MarkerShape, TeleportCornerStyle, OneWayPattern, VerticalArrowStyle, ElevatorBadgeFontWeight } from "./types";
 import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
 import { drawMarkerShape } from "./markerShapes";
@@ -6,7 +6,7 @@ import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron } from "./wallUt
 import { TILE_SIZE } from "../constants";
 import { navigateToFloor } from "./floorNavigation";
 import { computeElevatorBadgePositions, formatElevatorBadgeLabel } from "./elevatorBadgeLayout";
-import { LABEL_FONT_WEIGHTS } from "./indexLabel";
+import { makeCenteredLabel, msdfFontFamily } from "./msdfFont";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
 
 /** Same field shape as `MarkerSettings` (`storeTypes.ts`) plus `gapColor`, by design — kept as its
@@ -346,20 +346,17 @@ function drawElevatorBadgeGap(container: Container, pos: { x: number; y: number 
  *  issue's own "fill color"/"text color" pair implies two independently visible colors, not a
  *  stencil cutout. No gap ring here — see `drawElevatorBadgeGap`. Click-to-switch-floor wiring is a
  *  separate hit-area pass in `drawElevatorBadges` (GitHub issue #478 follow-up), gated the same way
- *  the marker's own `interactive` flag is. */
-const ELEVATOR_BADGE_FONT_WEIGHTS = LABEL_FONT_WEIGHTS;
-
+ *  the marker's own `interactive` flag is.
+ *
+ *  The label is an MSDF `BitmapText` (GitHub issue #352) — stays crisp at any viewport zoom, unlike
+ *  the plain `Text` this used to draw. `fontWeight` picks the regular vs. bold baked atlas
+ *  (`msdfFontFamily`). */
 function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, label: string, fillColor: number, textColor: number, fontSize: number, fontWeight: ElevatorBadgeFontWeight): void {
   const g = new Graphics();
   drawMarkerShape(g, shape, pos.x, pos.y, radius, rounded);
   g.fill(fillColor);
   container.addChild(g);
-  const text = new Text({
-    text: label,
-    style: { fontSize, fill: textColor, fontWeight: ELEVATOR_BADGE_FONT_WEIGHTS[fontWeight], trim: true },
-    resolution: 4,
-  });
-  text.anchor.set(0.5);
+  const text = makeCenteredLabel(label, msdfFontFamily(fontWeight), fontSize, textColor);
   text.x = pos.x;
   text.y = pos.y;
   container.addChild(text);
@@ -372,12 +369,12 @@ function drawElevatorBadgeBody(container: Container, pos: { x: number; y: number
  *  reaching floor 8, e.g. `labelType: "roman"`'s `"VIII"`, since a shared badge size that changed
  *  per-elevator would look inconsistent across the maze). Starts at the baseline `radius * 1.4` and
  *  only ever scales *down* — every badge shares whatever the single worst-case label needs. */
-function fitElevatorBadgeFontSize(labels: string[], radius: number): number {
+function fitElevatorBadgeFontSize(labels: string[], radius: number, fontWeight: ElevatorBadgeFontWeight): number {
   const baseline = radius * 1.4;
   const targetWidth = radius * 1.6;
   let widest = 0;
   for (const label of labels) {
-    const probe = new Text({ text: label, style: { fontSize: baseline, fontWeight: "bold", trim: true } });
+    const probe = new BitmapText({ text: label, style: { fontFamily: msdfFontFamily(fontWeight), fontSize: baseline } });
     widest = Math.max(widest, probe.width);
     probe.destroy();
   }
@@ -531,7 +528,7 @@ export class VerticalConnectionRenderer {
     const allBadgeLabels = data.markers
       .filter((m) => m.kind === "elevator" && m.targetFloorIndices)
       .flatMap((m) => m.targetFloorIndices!.map((floorIndex) => formatElevatorBadgeLabel(floorIndex, data.style.elevatorBadges.labelType)));
-    const badgeFontSize = fitElevatorBadgeFontSize(allBadgeLabels, badgeRadius);
+    const badgeFontSize = fitElevatorBadgeFontSize(allBadgeLabels, badgeRadius, data.style.elevatorBadges.fontWeight);
 
     for (const marker of data.markers) {
       const group = groupByPos.get(`${marker.pos[0]},${marker.pos[1]}`)!;

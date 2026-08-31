@@ -50,18 +50,19 @@ vi.mock("pixi.js", () => {
     removeChildren() { const c = this.children; this.children = []; return c; }
     destroy: () => void = vi.fn();
   }
-  // `drawFloorBadge` (GitHub issue #337) constructs a real pixi `Text` for the floor-number label —
-  // a minimal stand-in recording `anchor`/`x`/`y` writes is enough for tests to assert positioning
-  // without a real canvas/font measurement.
-  class FakeText {
+  // `drawFloorBadge` (GitHub issue #337) constructs a pixi `BitmapText` (GitHub issue #352 — MSDF
+  // label font) for the floor-number label — a minimal stand-in recording `anchor`/`x`/`y` writes
+  // is enough for tests to assert positioning without a real canvas/font measurement.
+  class FakeBitmapText {
     anchor = { set: vi.fn() };
+    pivot = { y: 0 };
     x = 0;
     y = 0;
     text: string;
     constructor(opts: { text: string }) { this.text = opts.text; }
     destroy() {}
   }
-  return { Container: FakeContainer, Graphics: FakeGraphics, Text: FakeText };
+  return { Container: FakeContainer, Graphics: FakeGraphics, BitmapText: FakeBitmapText, Cache: { get: () => undefined } };
 });
 
 const { TeleportRenderer } = await import("../pixi/renderers/TeleportRenderer");

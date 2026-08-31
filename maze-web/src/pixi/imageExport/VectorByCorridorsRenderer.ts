@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
-import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, type CorridorSegment } from "../selectors/mazeSelectors";
+import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, type CorridorSegment } from "../selectors/mazeSelectors";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
 import { chainSegmentsAtSharedVertices } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
@@ -286,18 +286,19 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
         start: effStart, finish: effFinish, splitNodeColors, thickness: settings.thickness,
         teleportAvoidFieldExit: settings.teleportAvoidFieldExit,
         segments: buildCorridorSegments(nodes, edges, cfg),
-        teleportEdges: buildTeleportEdges(nodeById, edges, cfg, {
-          resolveNodeLevel,
-          unscopedNodeById: new Map(state.nodes.map((n) => [n.id, n])),
-          unscopedEdges: state.edges,
-          activeFloorIndex,
-        }, {
-          blockedCellsByFloor: buildTeleportBadgeBlockedCells(
-            state.nodes, state.edges, resolveNodeLevel, rawEndpoints.start, rawEndpoints.finish,
-          ),
-          allowOutOfField: !settings.teleportAvoidFieldExit,
-          fieldCells: state.nodes.map((n): [number, number] => [n.x, n.y]),
-        }),
+        teleportEdges: (() => {
+          const { floorContext, spread } = buildTeleportFloorInputs({
+            unscopedNodes: state.nodes,
+            unscopedEdges: state.edges,
+            floors: state.floors,
+            activeFloorId: state.activeFloorId,
+            start: rawEndpoints.start,
+            finish: rawEndpoints.finish,
+            allowOutOfField: !settings.teleportAvoidFieldExit,
+            fieldCells: state.nodes.map((n): [number, number] => [n.x, n.y]),
+          });
+          return buildTeleportEdges(nodeById, edges, cfg, floorContext, spread);
+        })(),
         splitPassages,
         splitSpecialShapes,
         replaceTwoFloorElevatorsWithStairs: settings.replaceTwoFloorElevatorsWithStairs,

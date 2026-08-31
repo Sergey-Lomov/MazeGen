@@ -44,7 +44,10 @@ vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildCorridorSegments: vi.fn(() => []),
   buildMazeMarkers: vi.fn(() => []),
   buildTeleportEdges: vi.fn(() => []),
-  buildTeleportBadgeBlockedCells: vi.fn(() => new Map()),
+  buildTeleportFloorInputs: vi.fn((opts: { unscopedEdges: unknown; allowOutOfField: boolean; fieldCells?: unknown }) => ({
+    floorContext: { resolveNodeLevel: () => undefined, unscopedNodeById: new Map(), unscopedEdges: opts.unscopedEdges, activeFloorIndex: 0 },
+    spread: { blockedCellsByFloor: new Map(), allowOutOfField: opts.allowOutOfField, ...(opts.fieldCells ? { fieldCells: opts.fieldCells } : {}) },
+  })),
   buildSplitPassages: vi.fn(() => ({ passages: [], wallFaces: [], specialShapes: [] })),
   maxSplitNodeCount: vi.fn(() => 0),
   buildVerticalConnectionMarkers: vi.fn(() => []),

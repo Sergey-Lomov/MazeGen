@@ -18,9 +18,10 @@ vi.mock("pixi.js", () => {
     children: FakeGraphics[] = [];
     addChild(child: FakeGraphics) { this.children.push(child); return child; }
   }
-  return { Graphics: FakeGraphics, Container: FakeContainer, Text: class {
+  return { Graphics: FakeGraphics, Container: FakeContainer, Cache: { get: () => undefined }, BitmapText: class {
     options: unknown;
     anchor = { set: vi.fn() };
+    pivot = { y: 0 };
     x = 0;
     y = 0;
     constructor(options: unknown) { this.options = options; }
@@ -125,9 +126,23 @@ describe("drawCrossFloorBadge", () => {
     drawCrossFloorBadge(container as never, { x: 20, y: 30 }, 1, 8, 0x111111, 0x222222, 0xffffff);
     expect(container.children).toHaveLength(3);
     expect(container.children[0]).toBeInstanceOf(Graphics); // badge body
-    expect(container.children[1]).not.toBeInstanceOf(Graphics); // floor-number Text
+    expect(container.children[1]).not.toBeInstanceOf(Graphics); // floor-number BitmapText
     expect((container.children[1] as { options: { text: string } }).options.text).toBe("2");
     expect(container.children[2]).toBeInstanceOf(Graphics); // navigation hit area
+  });
+
+  it("draws the digit in the bold MSDF atlas, sized to the badge radius (min 12) in the floor color", () => {
+    const container = new Container() as unknown as FakeCont;
+    // radius 20 → fontSize max(20 * 1.6, 12) = 32; radius 5 → clamped to 12.
+    drawCrossFloorBadge(container as never, { x: 0, y: 0 }, 0, 20, 0x111111, 0x222222, 0xabcdef);
+    const style = (container.children[1] as { options: { style: { fontFamily: string; fontSize: number; fill: number } } }).options.style;
+    expect(style.fontFamily).toBe("Roboto-Bold");
+    expect(style.fontSize).toBeCloseTo(32);
+    expect(style.fill).toBe(0xabcdef);
+
+    const small = new Container() as unknown as FakeCont;
+    drawCrossFloorBadge(small as never, { x: 0, y: 0 }, 0, 5, 0x111111, 0x222222, 0xabcdef);
+    expect((small.children[1] as { options: { style: { fontSize: number } } }).options.style.fontSize).toBeCloseTo(12);
   });
 });
 

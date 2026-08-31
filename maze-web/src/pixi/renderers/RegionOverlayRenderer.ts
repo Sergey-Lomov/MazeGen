@@ -174,7 +174,7 @@ export class RegionOverlayRenderer {
     const drawBadge = (pos: { x: number; y: number }, color: number, targetFloorIndex: number) => {
       const g = new Graphics();
       // `g` (the badge's opaque fill) must be added to the container *before* `drawFloorBadge` adds
-      // the digit `Text` to the same container — otherwise the fill is drawn on top and hides the
+      // the digit `BitmapText` to the same container — otherwise the fill is drawn on top and hides the
       // number (GitHub issue #461, same z-order fix #449 applied to `drawCrossFloorBadge`).
       this.badgesContainer.addChild(g);
       drawFloorBadge(g, this.badgesContainer, NODE_RADIUS, pos.x, pos.y, color, color, canvas.floor.default, targetFloorIndex + 1);

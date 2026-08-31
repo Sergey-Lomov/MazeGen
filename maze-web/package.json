@@ -11,7 +11,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "gen:msdf": "node tools/msdf/generate.mjs"
   },
   "dependencies": {
     "@inlang/paraglide-js": "^2.19.0",
@@ -32,6 +33,7 @@
     "@vitejs/plugin-react": "^4.3.0",
     "@vitest/coverage-v8": "^4.1.8",
     "jsdom": "^25.0.1",
+    "msdf-bmfont-xml": "^2.8.0",
     "typescript": "~5.7.0",
     "vite": "^6.0.0",
     "vite-plugin-top-level-await": "^1.4.0",
