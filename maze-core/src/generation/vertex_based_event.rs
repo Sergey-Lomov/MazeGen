@@ -280,6 +280,14 @@ pub enum VertexBasedEvent {
     /// `roll < cross_floor_teleport_balance`.
     #[wire(tag = 42)]
     CrossFloorTeleportRolled { roll: f64, balance: f64, other_floor_preferred: bool },
+    /// `reserve_prefer_same_floor` (GitHub issue #450) forced this reserve-bridge step to use a
+    /// geometric (same-floor) bridge for `src`: `src` was chosen from the reserve because it has a
+    /// visited same-floor neighbor, so `handle_empty_frontier`'s `vertical_chance` roll is still
+    /// taken (consumed for RNG parity) but its outcome is deliberately ignored — a geometric bridge
+    /// is taken even on a vertical hit. Only emitted on a multi-floor field with the toggle on and
+    /// a same-floor geometric neighbor actually present for `src`.
+    #[wire(tag = 45)]
+    ReserveBridgeForcedSameFloor { src: NodeId },
 }
 
 pub const VISITED: &str = "visited";

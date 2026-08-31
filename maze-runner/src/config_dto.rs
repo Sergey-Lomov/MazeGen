@@ -96,6 +96,7 @@ pub struct ElementsConfigDto {
     pub elevator_span_max: Option<usize>,
     pub elevator_branching: Option<f64>,
     pub allow_non_consecutive_elevator_floors: Option<bool>,
+    pub reserve_prefer_same_floor: Option<bool>,
 }
 
 /// Wire shape for `maze_core::generation::SplitFaceRequirement` (GitHub issue #222).

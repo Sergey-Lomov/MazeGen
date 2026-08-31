@@ -41,6 +41,13 @@ pub struct ElementsConfig {
     /// Whether an elevator's floor set may skip floors (non-contiguous) rather than only span a
     /// contiguous run.
     pub allow_non_consecutive_elevator_floors: bool,
+    /// `CustomVertexBased`-only (GitHub issue #450): when picking a node from the reserve after the
+    /// frontier empties, prefer candidates that have a visited neighbor on their *own* floor over
+    /// ones reachable only via a vertical neighbor. Biases growth toward locally connected regions
+    /// giving more horizontal connectivity and fewer vertical passages. No effect on a single-floor
+    /// field (every reserve candidate is same-floor) — see `vertex_based.rs`'s reserve scan.
+    /// Default `false`.
+    pub reserve_prefer_same_floor: bool,
 }
 
 impl Default for ElementsConfig {
@@ -59,6 +66,7 @@ impl Default for ElementsConfig {
             elevator_span_max: 2,
             elevator_branching: 0.5,
             allow_non_consecutive_elevator_floors: false,
+            reserve_prefer_same_floor: false,
         }
     }
 }

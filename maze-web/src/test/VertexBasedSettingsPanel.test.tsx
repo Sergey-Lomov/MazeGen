@@ -44,6 +44,30 @@ describe("VertexBasedSettingsPanel", () => {
     expect(setGenerationParam).toHaveBeenCalledWith("depth_first", 0.3);
   });
 
+  it("shows the reserve same-floor toggle in Growth only on a multi-floor field", () => {
+    render(<VertexBasedSettingsPanel onClose={vi.fn()} />);
+    expect(screen.queryByText(m["generation.reserve_prefer_same_floor_short"]())).not.toBeInTheDocument();
+
+    useMazeStore.setState({ floors: [{ id: 1, title: "Floor 1" }, { id: 2, title: "Floor 2" }] as never });
+    render(<VertexBasedSettingsPanel onClose={vi.fn()} />);
+    expect(screen.getAllByText(m["generation.reserve_prefer_same_floor_short"]()).length).toBeGreaterThan(0);
+  });
+
+  it("calls setElementsBoolParam when the reserve same-floor toggle changes", () => {
+    const setElementsBoolParam = vi.fn();
+    useMazeStore.setState({
+      floors: [{ id: 1, title: "Floor 1" }, { id: 2, title: "Floor 2" }] as never,
+      setElementsBoolParam,
+    });
+    render(<VertexBasedSettingsPanel onClose={vi.fn()} />);
+
+    const label = screen.getByText(m["generation.reserve_prefer_same_floor_short"]());
+    const toggle = label.closest("div")!.parentElement!.querySelector("input[type=checkbox]") as HTMLInputElement;
+    fireEvent.click(toggle);
+
+    expect(setElementsBoolParam).toHaveBeenCalledWith("reserve_prefer_same_floor", expect.any(Boolean));
+  });
+
   it("calls setElementsParam when the one-way slider changes", () => {
     const setElementsParam = vi.fn();
     useMazeStore.setState({ setElementsParam });

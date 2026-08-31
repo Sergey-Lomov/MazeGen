@@ -47,6 +47,7 @@ export const VERTEX_BASED_EVENT_TAG = {
   ELEVATOR_FLOOR_COUNT_CHOSEN: 40,
   ELEVATOR_ADDED: 41,
   CROSS_FLOOR_TELEPORT_ROLLED: 42,
+  RESERVE_BRIDGE_FORCED_SAME_FLOOR: 45,
 } as const;
 
 export type VertexBasedEvent =
@@ -93,7 +94,8 @@ export type VertexBasedEvent =
   | { kind: "ElevatorSlotsFailed"; src: bigint; fallbackAllowed: boolean }
   | { kind: "ElevatorFloorCountChosen"; src: bigint; floorCount: number }
   | { kind: "ElevatorAdded"; nodes: bigint[]; edgesAdded: number }
-  | { kind: "CrossFloorTeleportRolled"; roll: number; balance: number; otherFloorPreferred: boolean };
+  | { kind: "CrossFloorTeleportRolled"; roll: number; balance: number; otherFloorPreferred: boolean }
+  | { kind: "ReserveBridgeForcedSameFloor"; src: bigint };
 
 export function decodeVertexBasedEvent(tag: number, bytes: Uint8Array): VertexBasedEvent {
   switch (tag) {
@@ -392,6 +394,11 @@ export function decodeVertexBasedEvent(tag: number, bytes: Uint8Array): VertexBa
       const __f1 = readF64(bytes, 0 + 8);
       const __f2 = readBool(bytes, 0 + 8 + 8);
       return { kind: "CrossFloorTeleportRolled", roll: __f0, balance: __f1, otherFloorPreferred: __f2 };
+    }
+    case VERTEX_BASED_EVENT_TAG.RESERVE_BRIDGE_FORCED_SAME_FLOOR: {
+      expectLen(tag, bytes, 8);
+      const __f0 = readNodeId(bytes, 0);
+      return { kind: "ReserveBridgeForcedSameFloor", src: __f0 };
     }
     default:
       throw new Error(`VertexBasedEvent: unknown wire tag ${tag}`);

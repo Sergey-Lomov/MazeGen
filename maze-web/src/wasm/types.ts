@@ -223,6 +223,10 @@ export interface ElementsConfig {
   elevator_branching?: number;
   /** Allow an elevator to skip floors instead of only connecting a contiguous run. */
   allow_non_consecutive_elevator_floors?: boolean;
+  /** CustomVertexBased-only (GitHub issue #450): when picking from the reserve, prefer candidates
+   * with a visited neighbor on their own floor over vertical-only-reachable ones. Multi-floor only;
+   * no effect on a single-floor field. Default off. */
+  reserve_prefer_same_floor?: boolean;
 }
 
 /** Mirrors Rust's `SplitPatternFaceDto` in shape, but NOT in `face_index` ordering while held in

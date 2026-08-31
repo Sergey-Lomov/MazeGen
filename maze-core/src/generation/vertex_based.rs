@@ -206,7 +206,15 @@ fn handle_empty_frontier<T: Tessellation>(
     let src = {
         let mut search_scope = scope.as_deref_mut().map(|log| log.enter("reserve_search"));
         let mut kept: Vec<NodeId> = Vec::with_capacity(state.reserve.len());
-        let mut reachable: Vec<NodeId> = Vec::new();
+        // Split the reachable pool into candidates with a visited *same-floor* (geometric) neighbor
+        // and candidates reachable only via a vertical neighbor (GitHub issue #450). When
+        // `reserve_prefer_same_floor` is on and the field has more than one floor, the weighted pick
+        // is restricted to `same_floor_reachable` so growth stays locally connected before bridging
+        // vertically; `vertical_only_reachable` is only drawn from when the same-floor group is
+        // empty. On a single-floor field the split is a no-op (every reachable candidate is
+        // same-floor), so nothing changes and no roll is added.
+        let mut same_floor_reachable: Vec<NodeId> = Vec::new();
+        let mut vertical_only_reachable: Vec<NodeId> = Vec::new();
         for candidate in state.reserve.drain(..) {
             state.in_reserve.remove(&candidate);
             if state.visited.contains(&candidate) {
@@ -215,15 +223,17 @@ fn handle_empty_frontier<T: Tessellation>(
                 }
                 continue;
             }
-            let has_visited_neighbor = field.neighbors(candidate)
+            let has_same_floor_visited_neighbor = field.neighbors(candidate)
                 .into_iter()
-                .any(|n| state.visited.contains(&n) && can_connect(n, candidate, preset_state))
-                || (elements.vertical_chance > 0.0 && field.vertical_neighbors(candidate)
-                    .into_iter()
-                    .any(|n| state.visited.contains(&n) && can_connect(n, candidate, preset_state)
-                        && graph.edge_between(n, candidate).is_none() && graph.edge_between(candidate, n).is_none()));
-            if has_visited_neighbor {
-                reachable.push(candidate);
+                .any(|n| state.visited.contains(&n) && can_connect(n, candidate, preset_state));
+            let has_vertical_visited_neighbor = elements.vertical_chance > 0.0 && field.vertical_neighbors(candidate)
+                .into_iter()
+                .any(|n| state.visited.contains(&n) && can_connect(n, candidate, preset_state)
+                    && graph.edge_between(n, candidate).is_none() && graph.edge_between(candidate, n).is_none());
+            if has_same_floor_visited_neighbor {
+                same_floor_reachable.push(candidate);
+            } else if has_vertical_visited_neighbor {
+                vertical_only_reachable.push(candidate);
             } else {
                 if let Some(g) = search_scope.as_mut() {
                     g.emit(VertexBasedEvent::ReserveCandidateRejected { node: candidate, already_visited: false });
@@ -231,6 +241,18 @@ fn handle_empty_frontier<T: Tessellation>(
                 kept.push(candidate);
             }
         }
+        // Pick which group the weighted draw runs over. Preferring same-floor only kicks in on a
+        // multi-floor field with the toggle on; otherwise both groups are merged so behavior is
+        // identical to before (GitHub issue #450). Whichever group isn't drawn from is treated as
+        // a set of losers — pushed back into the reserve alongside the not-yet-reachable ones.
+        let prefer_same_floor = elements.reserve_prefer_same_floor && field.level_count() > 1;
+        let (mut reachable, mut deferred_reachable): (Vec<NodeId>, Vec<NodeId>) =
+            if prefer_same_floor && !same_floor_reachable.is_empty() {
+                (same_floor_reachable, vertical_only_reachable)
+            } else {
+                same_floor_reachable.extend(vertical_only_reachable);
+                (same_floor_reachable, Vec::new())
+            };
         // `ReserveCandidateChosen` is `mutating` (removes `node` from the debug `reserve` mirror)
         // and must fire for exactly the winner — emitting it for every reachable candidate found
         // during the scan would desync the mirror for every candidate that loses the weighted pick
@@ -242,12 +264,18 @@ fn handle_empty_frontier<T: Tessellation>(
             let winner = reachable.swap_remove(idx);
             if let Some(g) = search_scope.as_mut() {
                 g.emit(VertexBasedEvent::ReserveCandidateChosen { node: winner });
-                for &loser in &reachable {
+                for &loser in reachable.iter().chain(deferred_reachable.iter()) {
                     g.emit(VertexBasedEvent::ReserveCandidateRejected { node: loser, already_visited: false });
                 }
             }
-            Some(winner)
+            // The second field records whether the winner came from the same-floor group under an
+            // active same-floor preference — the bridge step below uses it to force a geometric
+            // bridge (GitHub issue #450). `prefer_same_floor` implies the pool drawn from *was*
+            // `same_floor_reachable` (the `else` branch merges both groups, so a merged draw can't
+            // guarantee a same-floor neighbor for `winner`).
+            Some((winner, prefer_same_floor))
         };
+        reachable.append(&mut deferred_reachable);
         // Everything not chosen goes back into the reserve: the rest of the reachable pool
         // (lost this round only because another candidate won the weighted pick) plus every
         // not-yet-reachable candidate.
@@ -263,7 +291,7 @@ fn handle_empty_frontier<T: Tessellation>(
         }
         result
     };
-    let Some(src) = src else {
+    let Some((src, force_same_floor_bridge)) = src else {
         // Reserve exhausted and no reachable candidate found — but unvisited nodes may still
         // exist in a disconnected region that no visited node's neighbor pool ever reached
         // (GitHub issue #417). Rather than ending generation, start a fresh growth component
@@ -291,9 +319,25 @@ fn handle_empty_frontier<T: Tessellation>(
             && graph.edge_between(n, src).is_none() && graph.edge_between(src, n).is_none())
         .collect();
 
+    // The `vertical_chance` roll is always taken here, even when a same-floor bridge is forced
+    // below (GitHub issue #450): the draw must stay in the RNG sequence so a run with
+    // `reserve_prefer_same_floor` on stays seed-comparable with one that has it off. Do NOT
+    // "optimize" this into a conditional roll — `vertical_roll` being unused on the forced path
+    // is deliberate, not dead code.
     let vertical_roll = state.rng.random::<f64>();
     let vertical_hit = vertical_roll < elements.vertical_chance;
-    let use_vertical = if vertical_hit {
+    // `force_same_floor_bridge` (same-floor preference picked `src` for its same-floor neighbor)
+    // wins over the roll outcome, but only when `src` actually has a geometric neighbor to bridge
+    // to — otherwise fall through to the ordinary vertical/geometric decision.
+    let forced_geometric = force_same_floor_bridge && !geometric_neighbors.is_empty();
+    if forced_geometric {
+        if let Some(log) = scope.as_deref_mut() {
+            log.emit(VertexBasedEvent::ReserveBridgeForcedSameFloor { src });
+        }
+    }
+    let use_vertical = if forced_geometric {
+        false
+    } else if vertical_hit {
         !vertical_neighbors.is_empty()
     } else {
         elements.vertical_chance > 0.0 && geometric_neighbors.is_empty() && !vertical_neighbors.is_empty()

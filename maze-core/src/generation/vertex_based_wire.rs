@@ -50,6 +50,7 @@ mod wire_tags {
     pub const ELEVATOR_FLOOR_COUNT_CHOSEN: u16 = 40;
     pub const ELEVATOR_ADDED: u16 = 41;
     pub const CROSS_FLOOR_TELEPORT_ROLLED: u16 = 42;
+    pub const RESERVE_BRIDGE_FORCED_SAME_FLOOR: u16 = 45;
 }
 
 impl EncodeEventPayload for VertexBasedEvent {
@@ -99,6 +100,7 @@ impl EncodeEventPayload for VertexBasedEvent {
             VertexBasedEvent::ElevatorFloorCountChosen { .. } => wire_tags::ELEVATOR_FLOOR_COUNT_CHOSEN,
             VertexBasedEvent::ElevatorAdded { .. } => wire_tags::ELEVATOR_ADDED,
             VertexBasedEvent::CrossFloorTeleportRolled { .. } => wire_tags::CROSS_FLOOR_TELEPORT_ROLLED,
+            VertexBasedEvent::ReserveBridgeForcedSameFloor { .. } => wire_tags::RESERVE_BRIDGE_FORCED_SAME_FLOOR,
         }
     }
 
@@ -315,6 +317,9 @@ impl EncodeEventPayload for VertexBasedEvent {
                 write_f64(out, *roll);
                 write_f64(out, *balance);
                 write_bool(out, *other_floor_preferred);
+            }
+            VertexBasedEvent::ReserveBridgeForcedSameFloor { src } => {
+                write_node_id(out, *src);
             }
         }
     }
@@ -698,6 +703,14 @@ mod golden_tests {
         let mut bytes = Vec::new();
         event.encode_payload(&mut bytes);
         assert_eq!(bytes, vec![0, 0, 0, 0, 0, 0, 248, 63, 0, 0, 0, 0, 0, 0, 248, 63, 1]);
+    }
+
+    #[test]
+    fn golden_round_trip_reserve_bridge_forced_same_floor() {
+        let event = VertexBasedEvent::ReserveBridgeForcedSameFloor { src: 7 };
+        let mut bytes = Vec::new();
+        event.encode_payload(&mut bytes);
+        assert_eq!(bytes, vec![7, 0, 0, 0, 0, 0, 0, 0]);
     }
 
 }

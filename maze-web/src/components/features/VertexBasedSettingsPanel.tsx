@@ -52,6 +52,9 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
           <SliderRow label={m["generation.branching"]()} value={vertexParams.branching ?? 0.5} onChange={(v) => setGenerationParam("branching", v)} />
           <SliderRow label={m["generation.directionality"]()} value={vertexParams.directionality ?? 0.0} onChange={(v) => setGenerationParam("directionality", v)} />
           <SliderRow label={m["generation.cyclicity"]()} value={vertexParams.cyclicity ?? 0.0} onChange={(v) => setGenerationParam("cyclicity", v)} />
+          {multiFloor && (
+            <ToggleRow label={m["generation.reserve_prefer_same_floor_short"]()} checked={elementsConfig.reserve_prefer_same_floor ?? false} onChange={(v) => setElementsBoolParam("reserve_prefer_same_floor", v)} />
+          )}
         </div>
       </div>
 
@@ -134,6 +137,7 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
             { label: m["generation.branching"](), description: m["generation.desc.branching"]() },
             { label: m["generation.directionality"](), description: m["generation.desc.directionality"]() },
             { label: m["generation.cyclicity"](), description: m["generation.desc.cyclicity"]() },
+            ...(multiFloor ? [{ label: m["generation.reserve_prefer_same_floor_short"](), description: m["generation.desc.reserve_prefer_same_floor"]() }] : []),
           ]}
           onClose={() => setOpenInfoCategory(null)}
         />

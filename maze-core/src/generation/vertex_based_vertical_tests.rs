@@ -707,3 +707,163 @@ fn handle_empty_frontier_reserve_bridge_skips_a_vertical_neighbor_already_edge_c
     assert_eq!(vertical_edge_count, 2, "the pre-existing bidirectional edge must be untouched — no extra VerticalPassage added on top of it");
 }
 
+// --- reserve_prefer_same_floor (GitHub issue #450) ---
+//
+// Reserve holds two reachable candidates: one with a visited *same-floor geometric* neighbor,
+// one reachable only via a visited *vertical* neighbor. With the toggle on (default), the
+// same-floor candidate must win regardless of `depth_first`/RNG; with it off, both share one
+// pool and the vertical-only candidate can win.
+
+/// Build a 2-floor, 3x1 field with `src` on floor 0 having a visited same-floor neighbor, and a
+/// second reserve candidate on floor 1 reachable only vertically. Returns
+/// `(field, graph, ids, same_floor_candidate, vertical_only_candidate, start)`.
+fn same_floor_reserve_setup() -> (
+    MultiLevelField<crate::space::SquareTessellation>, Graph, IdGenerator, NodeId, NodeId, NodeId,
+) {
+    let (field, graph, ids) = multi_floor_field(3, 1, 2);
+    let start = node_at(&field, 0, 0, 0);
+    let mid = node_at(&field, 0, 1, 0);
+    let same_floor_candidate = node_at(&field, 0, 2, 0);
+    let vertical_only_candidate = node_at(&field, 1, 1, 0); // vertical partner is `mid` (visited)
+    // `mid` is visited but has no edge — geometric neighbor of `same_floor_candidate`, vertical
+    // neighbor of `vertical_only_candidate`.
+    let _ = mid;
+    (field, graph, ids, same_floor_candidate, vertical_only_candidate, start)
+}
+
+fn run_reserve_pick(prefer_same_floor: bool, seed: u64) -> NodeId {
+    let (mut field, mut graph, mut ids, same_floor, vertical_only, start) = same_floor_reserve_setup();
+    let mid = node_at(&field, 0, 1, 0);
+    let mut state = state_with_visited(&graph, start, &[start, mid]);
+    state.rng = MazeRng::seed_from_u64(seed);
+    state.reserve = vec![same_floor, vertical_only];
+    state.in_reserve = [same_floor, vertical_only].into_iter().collect();
+    state.frontier.clear();
+    state.in_frontier.clear();
+
+    let params = default_params();
+    let elements = ElementsConfig { vertical_chance: 0.5, reserve_prefer_same_floor: prefer_same_floor, ..default_elements() };
+    let preset_state = empty_presets();
+    let mut start_reassignment = None;
+
+    let keep_going = handle_empty_frontier(
+        &mut graph, &mut field, &mut ids, &params, &elements, &no_split(), &preset_state,
+        &mut state, start, &mut start_reassignment, None, None,
+    );
+    assert!(keep_going);
+    // Exactly one of the two candidates was pulled in (marked visited + edge added).
+    let newly_visited: Vec<NodeId> = [same_floor, vertical_only].into_iter().filter(|n| state.visited.contains(n)).collect();
+    assert_eq!(newly_visited.len(), 1, "exactly one reserve candidate should be bridged in per call");
+    newly_visited[0]
+}
+
+#[test]
+fn reserve_prefer_same_floor_on_always_picks_the_same_floor_candidate() {
+    let (_f, _g, _i, same_floor, _v, _s) = same_floor_reserve_setup();
+    for seed in 0..16u64 {
+        assert_eq!(
+            run_reserve_pick(true, seed), same_floor,
+            "with reserve_prefer_same_floor on, the same-floor candidate must win for every seed (seed={seed})",
+        );
+    }
+}
+
+#[test]
+fn reserve_prefer_same_floor_off_can_pick_the_vertical_only_candidate() {
+    let (_f, _g, _i, _sf, vertical_only, _s) = same_floor_reserve_setup();
+    let picked_vertical = (0..64u64).any(|seed| run_reserve_pick(false, seed) == vertical_only);
+    assert!(
+        picked_vertical,
+        "with reserve_prefer_same_floor off, both candidates share one pool — the vertical-only one should win for at least some seed",
+    );
+}
+
+/// Bridge `src` (with both a visited same-floor geometric neighbor AND a visited vertical
+/// neighbor) in from the reserve, high `vertical_chance`. Returns `(bridge_edge_kinds,
+/// forced_event_fired)`.
+fn run_reserve_bridge_with_log(prefer_same_floor: bool, seed: u64) -> (Vec<EdgeKind>, bool) {
+    let (mut field, mut graph, mut ids) = multi_floor_field(3, 1, 2);
+    let start = node_at(&field, 0, 0, 0);
+    let mid = node_at(&field, 0, 1, 0);
+    let src = node_at(&field, 0, 2, 0);
+    let src_vertical_partner = node_at(&field, 1, 2, 0);
+
+    let mut state = state_with_visited(&graph, start, &[start, mid, src_vertical_partner]);
+    state.rng = MazeRng::seed_from_u64(seed);
+    state.reserve = vec![src];
+    state.in_reserve = [src].into_iter().collect();
+    state.frontier.clear();
+    state.in_frontier.clear();
+
+    let params = default_params();
+    let elements = ElementsConfig { vertical_chance: 0.9, reserve_prefer_same_floor: prefer_same_floor, ..default_elements() };
+    let preset_state = empty_presets();
+    let mut start_reassignment = None;
+
+    let mut log = crate::event_log::EventLog::<VertexBasedEvent>::new();
+    {
+        let mut scope = log.enter("root");
+        handle_empty_frontier(
+            &mut graph, &mut field, &mut ids, &params, &elements, &no_split(), &preset_state,
+            &mut state, start, &mut start_reassignment, Some(&mut scope), None,
+        );
+    }
+    let tape = log.finish();
+
+    let bridge_kinds: Vec<EdgeKind> = graph.edges()
+        .filter(|e| (e.from == src || e.to == src))
+        .map(|e| e.kind)
+        .collect();
+    let forced_fired = tape.iter().any(|e| matches!(e, VertexBasedEvent::ReserveBridgeForcedSameFloor { .. }));
+    (bridge_kinds, forced_fired)
+}
+
+#[test]
+fn reserve_prefer_same_floor_forces_a_geometric_bridge_and_narrates_it() {
+    // Even with vertical_chance 0.9 (so the roll almost always hits), a same-floor-preferred `src`
+    // must bridge geometrically (Basic edge, no VerticalPassage) and emit ReserveBridgeForcedSameFloor.
+    for seed in 0..16u64 {
+        let (kinds, fired) = run_reserve_bridge_with_log(true, seed);
+        assert!(fired, "ReserveBridgeForcedSameFloor must be emitted (seed={seed})");
+        assert!(
+            !kinds.contains(&EdgeKind::VerticalPassage) && !kinds.contains(&EdgeKind::Elevator),
+            "no vertical bridge edge when a same-floor bridge is forced (seed={seed}, kinds={kinds:?})",
+        );
+        assert!(kinds.contains(&EdgeKind::Basic), "a geometric Basic bridge edge must exist (seed={seed})");
+    }
+}
+
+#[test]
+fn reserve_bridge_without_preference_can_go_vertical_on_a_hit() {
+    // Toggle off: the same `src` can be bridged vertically when its own vertical_chance roll hits,
+    // and ReserveBridgeForcedSameFloor is never emitted.
+    let went_vertical = (0..64u64).any(|seed| {
+        let (kinds, fired) = run_reserve_bridge_with_log(false, seed);
+        assert!(!fired, "ReserveBridgeForcedSameFloor must never fire with the toggle off");
+        kinds.contains(&EdgeKind::VerticalPassage)
+    });
+    assert!(went_vertical, "with the toggle off, at least one seed should produce a vertical bridge");
+}
+
+#[test]
+fn reserve_prefer_same_floor_on_single_floor_is_a_noop() {
+    // Single floor: every reachable candidate is same-floor, so the toggle changes nothing and
+    // consumes no extra RNG — same generated maze with it on vs. off.
+    let build = |prefer: bool| {
+        let mut ids = IdGenerator::new();
+        let field = Field::new(square_rect(4, 4), &mut ids).unwrap();
+        let mf = MultiLevelField::new(vec![field]);
+        let mut graph = Graph::new();
+        for node in mf.all_node_ids() { graph.add_node(node); }
+        let mut field = mf;
+        let start = node_at(&field, 0, 0, 0);
+        let params = default_params();
+        let elements = ElementsConfig { reserve_prefer_same_floor: prefer, ..default_elements() };
+        generate_default_split(&mut graph, &mut field, &mut ids, 42, start, &params, &elements, &empty_presets(), None);
+        let mut edges: Vec<(NodeId, NodeId, EdgeKind)> = graph.edges().map(|e| (e.from, e.to, e.kind)).collect();
+        edges.sort();
+        edges
+    };
+    assert_eq!(build(true), build(false), "toggle must be a no-op on a single-floor field");
+}
+

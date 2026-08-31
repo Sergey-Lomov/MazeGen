@@ -308,6 +308,7 @@ fn build_elements_config(dto: &ElementsConfigDto) -> ElementsConfig {
     if let Some(v) = dto.elevator_span_max { e.elevator_span_max = v.max(1); }
     if let Some(v) = dto.elevator_branching { e.elevator_branching = v.clamp(0.0, 1.0); }
     if let Some(v) = dto.allow_non_consecutive_elevator_floors { e.allow_non_consecutive_elevator_floors = v; }
+    if let Some(v) = dto.reserve_prefer_same_floor { e.reserve_prefer_same_floor = v; }
     if e.elevator_span_max < e.elevator_span_min { e.elevator_span_max = e.elevator_span_min; }
     e
 }

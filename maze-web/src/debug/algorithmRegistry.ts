@@ -626,6 +626,8 @@ function narrationTokensForVertexBased(event: VertexBasedEvent): Token[] {
           ? m["debug.tree.cross_floor_teleport_rolled_other"]({ param: fmt(event.balance), roll: fmt(event.roll) })
           : m["debug.tree.cross_floor_teleport_rolled_same"]({ param: fmt(event.balance), roll: fmt(event.roll) }),
       }];
+    case "ReserveBridgeForcedSameFloor":
+      return [{ kind: "text", text: m["debug.tree.reserve_bridge_forced_same_floor"]() + " " }, { kind: "region", nodes: [event.src] }];
   }
 }
 
