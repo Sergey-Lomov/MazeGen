@@ -58,6 +58,20 @@ export function HoverInfoPanel({ scene }: HoverInfoPanelProps) {
   useMazeStore((s) => s.presetElevators);
   useMazeStore((s) => s.lockedNodes);
   useMazeStore((s) => s.autoLockedNodes);
+  // Post-edit draft state (GitHub issue #488) — the inspector reads the live draft for the
+  // `post_edit` card, so an uncommitted edit (auto-confirm off) or a start/finish move (never
+  // written back to `state.start`/`state.finish`) must re-render this panel.
+  useMazeStore((s) => s.postEditDraftEdges);
+  useMazeStore((s) => s.postEditDraftTeleports);
+  useMazeStore((s) => s.postEditDraftSplitPoints);
+  useMazeStore((s) => s.postEditDraftMeta);
+  // Confirmed post-edit start/finish snapshot — the Analytics / image-export inspectors resolve
+  // start/finish through it (GitHub issue #303's fallback), not the never-updated `state.start`.
+  useMazeStore((s) => s.postEditMeta);
+  useMazeStore((s) => s.postEditDraftVerticalPassages);
+  useMazeStore((s) => s.postEditDraftElevators);
+  useMazeStore((s) => s.postEditSuppressedElevatorPairs);
+  useMazeStore((s) => s.postEditSuppressedVerticalPassagePairs);
   const hoverText = hover ? resolveCellInspection(useMazeStore.getState(), hover.x, hover.y) : "";
 
   const resetZoom = () => scene?.resetZoomToOne();

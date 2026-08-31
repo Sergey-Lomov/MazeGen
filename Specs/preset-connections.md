@@ -562,6 +562,14 @@ The hover status bar shared by every maze-bearing card (`HoverInfoPanel`) also w
 
 Same output conventions as the post-generation inspector: bare `"x:N, y:N"` for an empty cell, `" | "`-joined marker lines for a plain node, `"[Node N: ...]"` blocks (`"; "`-joined lines inside) for a split point — `N` is 1-based, the point's original node first (`Node 1`) then declared slots by ascending `slotId` (`allNodesAt`'s own order, the preset-stage analogue of `NodeDto.i + 1`). The point's original node is not labelled specially — it is just `Node 1` (GitHub issue #468). When the point's face configuration matches a recognized special-split topology, the block title is the semantic node name (`"[Corridor: …]"`) instead of `"[Node N: …]"` (GitHub issue #487) — this needs the tessellation config, the in-field cell set and `presetConnections`, all threaded from `resolveCellInspection`; if any is omitted the plain `Node N` titling is kept.
 
+### Per-card maze source (`resolveMazeSource` / `buildPostEditMazeSource`)
+
+Each maze-bearing card's inspector reads the graph that card actually draws:
+
+- **Generation** — `_generatedNodes`/`_generatedEdges` (its own frozen snapshot), or the live debug-replay view while a debug session is stepping.
+- **Post-Edit** — the live *draft* graph rebuilt by `buildPostEditMazeSource` (the same unscoped derivation `PostEditRenderer.redrawAll` uses): draft basic/wall/teleport edges + draft vertical passages / elevators + generation-time vertical/elevator edges (minus `postEditSuppressed*Pairs`), with start/finish from `postEditDraftMeta` (falling back to the confirmed `state.start`/`state.finish` only when no draft meta exists yet). `state.nodes`/`state.edges` alone is just the last *confirmed* snapshot, and `state.start`/`state.finish` is never written back by post-edit — reading those directly made the status bar report generation-time markers for a cell the user had since edited (GitHub issue #488). Draft split slots added but not yet confirmed aren't in `state.nodes` and so don't resolve, same limitation the renderer has.
+- **Analytics / image export** — the confirmed `state.nodes`/`state.edges` (these cards show the confirmed graph, not the draft), but start/finish resolved through `postEditMeta` via `resolveConfirmedEndpoints` (`postEditMeta`'s endpoints once post-edit has confirmed at least once, else `state.start`/`state.finish`) — `confirmPostEdit` never writes `state.start`/`state.finish` back, and both cards' renderers already draw start/finish this way (GitHub issue #303).
+
 Marker lines shown per node (exact `PresetEndpoint` match via `presetEndpointsEqual`):
 - `Start` / `Finish` / `Gen source` — `presetStart`/`presetFinish`/`presetGenSource`
 - `Teleport <arrow> (target)` — from `presetTeleports`, direction arrow (`<->`/`->`/`<-`) same convention as post-generation; cross-floor target shows the floor label (`L{n}`), same-floor shows coordinates
