@@ -29,7 +29,9 @@ import {
   buildHoverEdgeHighlight,
   buildPresetSplitPassages,
   buildLinkHoverHighlight,
+  presetEndpointScreenPos,
 } from "./selectors/presetSelectors";
+import type { PresetEndpoint } from "./presetEndpoint";
 import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
@@ -186,7 +188,10 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       const level = activeFloorLevel(state);
       this.grid.render({ viewport: this.viewport }, this.cfg);
       this.redrawOrigin(state.showPresetOrigin);
-      this.redrawGenSource((state.presetGenSource && (state.presetGenSource.level ?? 0) === (level ?? 0)) ? state.presetGenSource.point : null);
+      this.redrawGenSource(
+        (state.presetGenSource && (state.presetGenSource.level ?? 0) === (level ?? 0)) ? state.presetGenSource : null,
+        level,
+      );
     }
   }
 
@@ -369,7 +374,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     });
 
     this.redrawOrigin(state.showPresetOrigin);
-    this.redrawGenSource(presetGenSource?.point ?? null);
+    this.redrawGenSource(presetGenSource, level, nodePositions);
     this.redrawIsolatedHL(state);
     this.redrawOrphanHL(state);
 
@@ -397,9 +402,31 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.origin.render({ show }, this.cfg);
   }
 
-  private redrawGenSource(source: [number, number] | null): void {
+  /** `nodePositions` resolves a source placed on a split-point node to that node's shape-aware
+   *  anchor (GitHub issue #494), the same map/​resolver every start/finish marker uses; pass the
+   *  shared map on a full redraw, omit it on a viewport-only redraw and one is built here (cheap —
+   *  same as every marker/edge selector). `endpoint` is already level-filtered by the caller. */
+  private redrawGenSource(
+    endpoint: PresetEndpoint | null,
+    level: number | undefined,
+    nodePositions?: Map<string, { x: number; y: number }>,
+  ): void {
     if (!this.cfg) return;
-    this.genSource.render({ source }, this.cfg);
+    if (!endpoint) {
+      this.genSource.render({ sourceScreen: null });
+      return;
+    }
+    const state = useMazeStore.getState();
+    const positions = nodePositions ?? buildPresetNodePositions(
+      this.cfg,
+      recordOnLevel(state.presetSplitPoints, level),
+      presetConnectionsOnLevel(state.presetConnections, level),
+    );
+    // `buildPresetNodePositions` keys split-point nodes without a `level` suffix, so match markers:
+    // resolve against a level-less copy of the endpoint (it's already known to be on this floor).
+    const anchor: PresetEndpoint = { point: endpoint.point, slotId: endpoint.slotId };
+    const [x, y] = presetEndpointScreenPos(anchor, this.cfg, positions);
+    this.genSource.render({ sourceScreen: { x, y } });
   }
 
   private redrawIsolatedHL(state: MazeState): void {
@@ -524,7 +551,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.teleports.render({ edges: [], cfg });
     this.verticals.render({ markers: [], style: DEFAULT_VERTICAL_STYLE });
     this.origin.render({ show: false }, cfg);
-    this.genSource.render({ source: null }, cfg);
+    this.genSource.render({ sourceScreen: null });
     this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, cfg);
     this.invalidHL.render({ highlights: [] });
     this.invalidTeleportHL.clear();

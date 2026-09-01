@@ -276,12 +276,35 @@ export class PresetConnectionsController extends BaseController {
     }
 
     if (tool === "gen_source") {
-      if (button !== 0) return;
+      if (button !== 0 && button !== 2) return;
       const proj = makeProjection(state.floorFields[state.activeFloorId].tessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
       const level = activeFloorLevel(store);
+
+      // Right-click clears the generation source when it sits on the clicked cell (any of a split
+      // point's nodes) — the clear path for a split point, where a left click always opens the node
+      // picker instead of toggling. Mirrors `set_start`/`set_finish`'s own right-click clear.
+      if (button === 2) {
+        const cur = store.presetGenSource;
+        if (cur && (cur.level ?? 0) === (level ?? 0) && cur.point[0] === coords[0] && cur.point[1] === coords[1]) {
+          store.setPresetGenSource(null);
+        }
+        return;
+      }
+
+      // On a declared split point the generation source must be attachable to a specific node, not
+      // silently pinned to the point's original one (GitHub issue #494) — defer to the same node
+      // picker every other vertex-tool placement uses (GitHub issue #474). Matches `set_start`:
+      // the picked node is assigned unconditionally (no toggle); clearing is right-click only.
+      const splitKey = level === undefined ? `${coords[0]},${coords[1]}` : `${coords[0]},${coords[1]}@${level}`;
+      const slotIds = store.presetSplitPoints[splitKey];
+      if (slotIds && slotIds.length > 0) {
+        store.requestPresetSplitTarget({ point: coords, level, slotIds: [...slotIds].sort((a, b) => a - b), action: { tool: "gen_source" } });
+        return;
+      }
+
       const cur = store.presetGenSource;
       if (cur && (cur.level ?? 0) === (level ?? 0) && cur.point[0] === coords[0] && cur.point[1] === coords[1]) {
         store.setPresetGenSource(null);

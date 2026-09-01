@@ -133,6 +133,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     presetGenSource: cell === null ? null : resolvePresetActiveEndpoint(cell, state.presetActiveSplitNode, activeFloorLevel(state)),
     debugStale: debugStaleOf(state),
   })),
+  setPresetGenSourceEndpoint: (endpoint) => set((state) => ({ presetGenSource: endpoint, debugStale: debugStaleOf(state) })),
 
   setDefaultEdgeState: (s) => set((state) => {
     const presetConnections = applyDefaultEdgeState(state, s);
@@ -526,6 +527,9 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
         break;
       case "set_finish":
         get().setPresetFinishEndpoint(endpoint);
+        break;
+      case "gen_source":
+        get().setPresetGenSourceEndpoint(endpoint);
         break;
       case "vertical_passage_one_way":
       case "vertical_passage_two_way":

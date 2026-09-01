@@ -767,7 +767,7 @@ describe("mazeStore preset connections", () => {
 
     beforeEach(() => {
       useMazeStore.setState({
-        presetStart: null, presetFinish: null,
+        presetStart: null, presetFinish: null, presetGenSource: null,
         presetTeleports: [], presetTeleportPendingFrom: null,
         presetVerticalPassages: [], presetVerticalPassagePending: null,
         presetElevators: [], presetElevatorPending: null,
@@ -790,6 +790,21 @@ describe("mazeStore preset connections", () => {
       openPrompt({ tool: "set_finish" });
       useMazeStore.getState().applyPresetSplitTargetPick(undefined);
       expect(presetEndpointsEqual(useMazeStore.getState().presetFinish!, presetEndpoint([0, 0]))).toBe(true);
+    });
+
+    it("gen_source dispatches setPresetGenSourceEndpoint to the picked slot and clears the prompt (GitHub issue #494)", () => {
+      openPrompt({ tool: "gen_source" });
+      useMazeStore.getState().applyPresetSplitTargetPick(0);
+      const s = useMazeStore.getState();
+      expect(s.presetSplitTargetPrompt).toBeNull();
+      expect(presetEndpointsEqual(s.presetGenSource!, presetEndpoint([0, 0], 0))).toBe(true);
+    });
+
+    it("gen_source pick overwrites an existing gen source (no toggle), matching set_start", () => {
+      useMazeStore.getState().setPresetGenSourceEndpoint(presetEndpoint([0, 0], 0));
+      openPrompt({ tool: "gen_source" });
+      useMazeStore.getState().applyPresetSplitTargetPick(undefined);
+      expect(presetEndpointsEqual(useMazeStore.getState().presetGenSource!, presetEndpoint([0, 0]))).toBe(true);
     });
 
     it("teleport first pick sets the pending origin, second pick completes the link", () => {
