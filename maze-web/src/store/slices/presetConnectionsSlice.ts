@@ -199,10 +199,35 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     if (cellExistsAt(resolveFieldAt, origin.point, originLevel + 1)) availableDirections.push("up");
     if (originLevel > 0 && cellExistsAt(resolveFieldAt, origin.point, originLevel - 1)) availableDirections.push("down");
     if (availableDirections.length === 0) return {};
-    if (availableDirections.length === 1) {
-      return commitPresetVerticalPassage(state, origin, tool, availableDirections[0]);
+
+    // A click anywhere in a cell must edit an existing vertical passage for that adjacent floor,
+    // not mint a second entry for the same pair. Two such entries are resolved as a bidirectional
+    // graph connection on generation, regardless of their individual directions (GitHub issues
+    // #385/#491). Keep the up/down pairs independent: a cell can have one passage to each floor.
+    const entryFor = (direction: "up" | "down") => {
+      const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
+      const to = presetEndpoint(origin.point, undefined, toLevel === 0 ? undefined : toLevel);
+      const pairKey = presetEdgeKey(origin, to);
+      return state.presetVerticalPassages.find((p) => presetEdgeKey(p.from, p.to) === pairKey);
+    };
+    const directionEntries = availableDirections.map((direction) => [direction, entryFor(direction)] as const);
+    const freeDirections = directionEntries.filter(([, entry]) => entry === undefined).map(([direction]) => direction);
+    if (freeDirections.length === 0) {
+      // If the cell identifies exactly one existing pair, mirror marker-click behavior. When both
+      // adjacent floors already have passages, a cell click cannot tell which one was intended.
+      if (directionEntries.length === 1 && directionEntries[0][1]) {
+        return {
+          presetVerticalPassages: cycleVerticalPassageDirection(state.presetVerticalPassages, directionEntries[0][1].id),
+          presetsDirty: true,
+          debugStale: debugStaleOf(state),
+        };
+      }
+      return {};
     }
-    return { presetVerticalPassagePending: { origin, tool, availableDirections } };
+    if (freeDirections.length === 1) {
+      return commitPresetVerticalPassage(state, origin, tool, freeDirections[0]);
+    }
+    return { presetVerticalPassagePending: { origin, tool, availableDirections: freeDirections } };
   }),
 
   choosePresetVerticalPassageDirection: (direction) => set((state) => {

@@ -649,6 +649,50 @@ describe("mazeStore preset connections", () => {
       expect(s.presetVerticalPassages[0].to).toEqual(presetEndpoint([0, 0]));
     });
 
+    it("re-clicking a cell with an existing one-way passage cycles it instead of adding a duplicate (GitHub issue #495)", () => {
+      setTwoFloors();
+      useMazeStore.setState({
+        presetVerticalPassages: [{ id: 7, from: presetEndpoint([0, 0]), to: presetEndpoint([0, 0], undefined, 1), direction: "forward" }],
+        _nextPresetVerticalPassageId: 8,
+      });
+      useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0]), "vertical_passage_one_way");
+      const s = useMazeStore.getState();
+      expect(s.presetVerticalPassages).toHaveLength(1);
+      expect(s.presetVerticalPassages[0]).toMatchObject({ id: 7, direction: "backward" });
+    });
+
+    it("filters an already occupied direction before committing a new adjacent-floor passage (GitHub issue #495)", () => {
+      setTwoFloors();
+      useMazeStore.setState({
+        floors: [...useMazeStore.getState().floors, { id: "floor_3", title: "Floor 3" }],
+        floorFields: { ...useMazeStore.getState().floorFields, floor_3: { ...useMazeStore.getState().floorFields[FLOOR_2_ID] } },
+        presetVerticalPassages: [{ id: 7, from: presetEndpoint([0, 0], undefined, 1), to: presetEndpoint([0, 0], undefined, 2), direction: "forward" }],
+        _nextPresetVerticalPassageId: 8,
+      });
+      useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0], undefined, 1), "vertical_passage_two_way");
+      const s = useMazeStore.getState();
+      expect(s.presetVerticalPassagePending).toBeNull();
+      expect(s.presetVerticalPassages).toHaveLength(2);
+      expect(s.presetVerticalPassages[1]).toMatchObject({ from: presetEndpoint([0, 0], undefined, 1), to: presetEndpoint([0, 0]), direction: "two_way" });
+    });
+
+    it("does not add a duplicate when both adjacent floors already have independent passages (GitHub issue #495)", () => {
+      setTwoFloors();
+      useMazeStore.setState({
+        floors: [...useMazeStore.getState().floors, { id: "floor_3", title: "Floor 3" }],
+        floorFields: { ...useMazeStore.getState().floorFields, floor_3: { ...useMazeStore.getState().floorFields[FLOOR_2_ID] } },
+        presetVerticalPassages: [
+          { id: 1, from: presetEndpoint([0, 0], undefined, 1), to: presetEndpoint([0, 0]), direction: "forward" },
+          { id: 2, from: presetEndpoint([0, 0], undefined, 1), to: presetEndpoint([0, 0], undefined, 2), direction: "forward" },
+        ],
+        _nextPresetVerticalPassageId: 3,
+      });
+      useMazeStore.getState().startPresetVerticalPassagePlacement(presetEndpoint([0, 0], undefined, 1), "vertical_passage_one_way");
+      const s = useMazeStore.getState();
+      expect(s.presetVerticalPassages).toHaveLength(2);
+      expect(s.presetVerticalPassagePending).toBeNull();
+    });
+
     it("cancelPresetVerticalPassagePlacement clears the pending dialog without creating a passage", () => {
       setTwoFloors();
       useMazeStore.setState({
