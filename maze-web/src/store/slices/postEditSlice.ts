@@ -5,6 +5,7 @@ import {
   applyPostEditEdgeTool,
   postEditTeleportsToDto, cyclePostEditTeleportDirection, removePostEditTeleport, movePostEditTeleportEndpoint,
   rotatePostEditSplitPoint, resetPostEditPoint as resetPostEditPointCore,
+  findPostEditVerticalPassageForPair,
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
   removePostEditElevator, postEditVerticalToDto, elevatorComponent, pruneRemovedSplitNodes,
 } from "../../pixi/postEditUtils";
@@ -798,37 +799,32 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     if (origin.kind !== "node") return;
     const originNode = state.nodes.find((n) => n.id === origin.id);
     if (!originNode) return;
-    // Clicking a node that already has a *generation-time* `vertical_passage` edge (no draft entry
-    // — `PostEditController`'s own hit-test only ever finds an existing *draft* entry, since
-    // `pickPostEditVerticalPassageEndpointAt` only searches `postEditDraftVerticalPassages`) mints
-    // a draft entry seeded from that edge's own direction, rather than placing a brand-new one on
-    // top of it — the same "edit instead of duplicate" fix `startPostEditElevatorPlacement` already
-    // has for generation-time elevators. Without this, the vertical-passage tool always went
-    // straight to the create path below even for an already-connected node, and the freshly placed
-    // entry's own edge (its direction picked by *this* tool click, `vertical_passage_one_way`'s
-    // forward-only or `vertical_passage_two_way`'s both) would coexist with the old generation-time
-    // edge once both got resent on the next confirm — a one-way "change direction" click reading as
-    // "now two-way" instead of a flip.
+    // `PostEditController`'s hit-test (`pickPostEditVerticalPassageEndpointAt`) only drags/cycles a
+    // draft passage when the click lands within an endpoint marker's own hit radius, and it only
+    // searches `postEditDraftVerticalPassages` — so every other click on a vertical-passage tool
+    // reaches here: a plain new placement, a click on a node with only a *generation-time* passage
+    // edge, and (GitHub issue #491) a click elsewhere in the same cell as an existing draft passage,
+    // which resolves to the same `origin` node the marker would.
+    //
+    // Two guards keep this from stacking a duplicate directed edge that would resolve as two-way on
+    // the next confirm regardless of either entry's own direction:
+    //  1. the seed branch just below — a generation-time edge with no draft entry yet seeds one from
+    //     its own direction instead of a fresh passage on top of it (same "edit, don't duplicate"
+    //     fix `startPostEditElevatorPlacement` has for generation-time elevators);
+    //  2. the direction-aware create path further down (`draftEntryFor`) — a direction already
+    //     covered by *any* draft entry (still pre-confirm, or its edge already echoed into
+    //     `state.edges` by an auto-confirm) is cycled/skipped rather than re-placed.
     const generatedPartnerIds = new Set<number>();
     for (const e of state.edges) {
       if (e.kind !== "vertical_passage") continue;
       if (e.from === origin.id) generatedPartnerIds.add(e.to);
       else if (e.to === origin.id) generatedPartnerIds.add(e.from);
     }
-    const isAlreadyDrafted = (partnerId: number) => state.postEditDraftVerticalPassages.some((p) =>
-      (p.from.kind === "node" && p.from.id === origin.id && p.to.kind === "node" && p.to.id === partnerId) ||
-      (p.to.kind === "node" && p.to.id === origin.id && p.from.kind === "node" && p.from.id === partnerId));
-    // A cell click (not on the endpoint marker itself) resolves to the same `origin` node as the
-    // marker does — `PostEditController`'s hit-test (`pickPostEditVerticalPassageEndpointAt`) only
-    // triggers a drag/cycle when the click lands within the marker's own hit radius, so a click
-    // elsewhere in the same cell still reaches this branch. Picks the first generation-time partner
-    // *not already drafted* — re-minting for a partner that already has a draft entry would produce
-    // a second entry for the same pair, which then coexists with the first on the next confirm and
-    // reads as two_way no matter what either entry's own direction says (GitHub issue #385); editing
-    // an already-drafted entry is the marker-click (cycle) path instead. Skipping only the drafted
-    // partners (not bailing out on "any draft entry touching origin") is what keeps this working for
-    // a point that legitimately holds two independent vertical passages — one up, one down.
-    const partnerId = [...generatedPartnerIds].find((id) => !isAlreadyDrafted(id));
+    // Seed branch (guard 1). Scoped to the specific *partner*, not "any draft touching origin": a
+    // point can hold two independent vertical passages (one up, one down), so a partner that already
+    // has a draft entry is skipped here and handled by guard 2 instead.
+    const partnerId = [...generatedPartnerIds].find((id) =>
+      findPostEditVerticalPassageForPair(state.postEditDraftVerticalPassages, origin.id, id) === undefined);
     if (partnerId !== undefined) {
       const forwardExists = state.edges.some((e) =>
         e.kind === "vertical_passage" && e.from === origin.id && e.to === partnerId);
@@ -861,11 +857,35 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
     if (cellExistsAt(resolveFieldAt, point, originLevel + 1)) availableDirections.push("up");
     if (originLevel > 0 && cellExistsAt(resolveFieldAt, point, originLevel - 1)) availableDirections.push("down");
     if (availableDirections.length === 0) return;
-    if (availableDirections.length === 1) {
-      commitPostEditVerticalPassage(get, set, origin, tool, availableDirections[0]);
+    // Direction-aware create path (guard 2, GitHub issue #491). This click could place a passage in
+    // each of `availableDirections`; for any direction already covered by a draft entry (still
+    // pre-confirm in `postEditDraftVerticalPassages`, or its edge already echoed into `state.edges`
+    // by an auto-confirm), adding a fresh one would mint a *second* entry for the same pair, which
+    // then reads as two-way on the next confirm regardless of either entry's own direction. Resolve
+    // the partner node per direction and reuse the seed branch's own node-id pair lookup.
+    const draftEntryFor = (direction: "up" | "down") => {
+      const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
+      const toNode = state.nodes.find((n) => n.x === originNode.x && n.y === originNode.y && (n.level ?? 0) === toLevel);
+      if (!toNode) return undefined;
+      return findPostEditVerticalPassageForPair(state.postEditDraftVerticalPassages, origin.id, toNode.id);
+    };
+    const directionEntries = availableDirections.map((d) => [d, draftEntryFor(d)] as const);
+    const freeDirections = directionEntries.filter(([, entry]) => entry === undefined).map(([d]) => d);
+    if (freeDirections.length === 0) {
+      // Every direction this click could place is already drafted. One direction → cycle that
+      // entry, mirroring the marker-click path (a one-way passage flips, a two-way stays). Two →
+      // the cell click can't disambiguate which passage to cycle, so it's a no-op rather than a
+      // guess or a duplicate; the user can still use the markers themselves.
+      if (directionEntries.length === 1 && directionEntries[0][1]) {
+        get().cyclePostEditVerticalPassageDirection(directionEntries[0][1].id);
+      }
       return;
     }
-    set({ postEditVerticalPassagePending: { origin, tool, availableDirections } });
+    if (freeDirections.length === 1) {
+      commitPostEditVerticalPassage(get, set, origin, tool, freeDirections[0]);
+      return;
+    }
+    set({ postEditVerticalPassagePending: { origin, tool, availableDirections: freeDirections } });
   },
 
   choosePostEditVerticalPassageDirection: (direction) => {

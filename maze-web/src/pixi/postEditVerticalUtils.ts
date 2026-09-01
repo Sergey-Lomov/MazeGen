@@ -47,6 +47,20 @@ export function pickPostEditVerticalPassageEndpointAt(
   return best;
 }
 
+/** The draft vertical-passage entry connecting nodes `aId` and `bId` (either order), or `undefined`.
+ *  Both `startPostEditVerticalPassagePlacement`'s generation-time seed guard (GitHub issue #385) and
+ *  its direction-aware create path (GitHub issue #491) need "is this pair already drafted?" keyed on
+ *  node ids — a vertical passage is never `split`-addressed, so a non-`node` endpoint never matches. */
+export function findPostEditVerticalPassageForPair(
+  passages: PostEditVerticalPassageEntry[],
+  aId: number,
+  bId: number,
+): PostEditVerticalPassageEntry | undefined {
+  return passages.find(p =>
+    p.from.kind === "node" && p.to.kind === "node" &&
+    ((p.from.id === aId && p.to.id === bId) || (p.from.id === bId && p.to.id === aId)));
+}
+
 /** Only meaningful for the `vertical_passage_one_way` tool — mirrors `cycleVerticalPassageDirection`. */
 export function cyclePostEditVerticalPassageDirection(
   passages: PostEditVerticalPassageEntry[],

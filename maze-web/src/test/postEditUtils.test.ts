@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildPostEditDraftEdgesFromGenerated, applyPostEditEdgeTool, extractPostEditTeleports, postEditTeleportsToDto,
   rotatePostEditSplitPoint, resetPostEditPoint, postEditVerticalToDto, postEditVerticalPassageDirectionToDto,
+  findPostEditVerticalPassageForPair,
   cyclePostEditVerticalPassageDirection, removePostEditVerticalPassage, movePostEditVerticalPassageEndpoint,
   removePostEditElevator, elevatorComponent, pruneRemovedSplitNodes,
 } from "../pixi/postEditUtils";
@@ -485,6 +486,35 @@ describe("postEditVerticalPassageDirectionToDto", () => {
   it("forward/backward pass through unchanged", () => {
     expect(postEditVerticalPassageDirectionToDto("forward")).toBe("forward");
     expect(postEditVerticalPassageDirectionToDto("backward")).toBe("backward");
+  });
+});
+
+// --- findPostEditVerticalPassageForPair ---
+
+describe("findPostEditVerticalPassageForPair", () => {
+  const passages = [
+    { id: 1, from: nodeEndpoint(0), to: nodeEndpoint(1), direction: "forward" as const },
+    { id: 2, from: nodeEndpoint(5), to: nodeEndpoint(0), direction: "two_way" as const },
+  ];
+
+  it("matches a pair in either argument order", () => {
+    expect(findPostEditVerticalPassageForPair(passages, 0, 1)?.id).toBe(1);
+    expect(findPostEditVerticalPassageForPair(passages, 1, 0)?.id).toBe(1);
+  });
+
+  it("matches regardless of which end of the entry each id sits on", () => {
+    expect(findPostEditVerticalPassageForPair(passages, 0, 5)?.id).toBe(2);
+  });
+
+  it("returns undefined when no entry connects the pair", () => {
+    expect(findPostEditVerticalPassageForPair(passages, 1, 5)).toBeUndefined();
+    expect(findPostEditVerticalPassageForPair(passages, 0, 9)).toBeUndefined();
+    expect(findPostEditVerticalPassageForPair([], 0, 1)).toBeUndefined();
+  });
+
+  it("never matches a split-addressed endpoint (vertical passages are node-addressed)", () => {
+    const withSplit = [{ id: 3, from: splitEndpoint([0, 0], 0), to: nodeEndpoint(1), direction: "forward" as const }];
+    expect(findPostEditVerticalPassageForPair(withSplit, 0, 1)).toBeUndefined();
   });
 });
 
