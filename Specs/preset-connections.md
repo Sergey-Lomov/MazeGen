@@ -564,6 +564,8 @@ Same output conventions as the post-generation inspector: bare `"x:N, y:N"` for 
 
 ### Per-card maze source (`resolveMazeSource` / `buildPostEditMazeSource`)
 
+All marker descriptors and generic split labels (`Start`, `Finish`, `Gen source`, `Teleport`, `Vertical passage`, `Elevator`, `Lock`, lock kinds, `empty`, and `Node N`) are rendered through Paraglide messages (`status.cell_*`) and follow the active locale. Coordinates, arrows, and `L1`-style floor identifiers remain structural notation.
+
 Each maze-bearing card's inspector reads the graph that card actually draws:
 
 - **Generation** — `_generatedNodes`/`_generatedEdges` (its own frozen snapshot), or the live debug-replay view while a debug session is stepping.

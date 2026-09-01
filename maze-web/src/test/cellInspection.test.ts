@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildCellInspection } from "../pixi/selectors/mazeSelectors";
+import { setLocale } from "~/paraglide/runtime";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 
@@ -160,5 +161,31 @@ describe("buildCellInspection", () => {
     const resultFloor1 = buildCellInspection(nodeById, [], 3, 5, 1, null, null);
     expect(resultFloor0).toBe("x:3, y:5");
     expect(resultFloor1).toBe("x:3, y:5");
+  });
+
+  it("localizes every generation status-bar content descriptor", () => {
+    setLocale("ru", { reload: false });
+    try {
+      const nodes = new Map<number, NodeDto>([
+        [1, node(1, 0, 0, { i: 0, level: 0 })],
+        [2, node(2, 1, 0, { i: 0, level: 0 })],
+        [3, node(3, 0, 0, { i: 0, level: 1 })],
+      ]);
+      const edges: EdgeDto[] = [
+        { from: 1, to: 2, kind: "teleport" },
+        { from: 1, to: 3, kind: "elevator" },
+      ];
+      const result = buildCellInspection(nodes, edges, 0, 0, 0, 1, 1);
+      expect(result).toBe("x:0, y:0 | Старт | Финиш | Телепорт -> (1,0) | Лифт (L2)");
+      expect(result).not.toMatch(/Start|Finish|Teleport|Vertical passage|Elevator|empty|Node/);
+
+      const verticalResult = buildCellInspection(
+        new Map([...nodes, [4, node(4, 0, 0, { i: 0, level: 2 })]]),
+        [{ from: 1, to: 4, kind: "vertical_passage" }], 0, 0, 0, null, null,
+      );
+      expect(verticalResult).toBe("x:0, y:0 | Вертикальный проход -> (L3)");
+    } finally {
+      setLocale("en", { reload: false });
+    }
   });
 });

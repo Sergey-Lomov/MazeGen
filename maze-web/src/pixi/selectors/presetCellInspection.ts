@@ -6,6 +6,15 @@ import {
 import { splitNodeSemanticNamesFromKinds } from "../splitNodeNames";
 import type { NodeLockKind } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
+import * as m from "~/paraglide/messages";
+
+function formatLockKind(kind: NodeLockKind): string {
+  switch (kind) {
+    case "in": return m["status.cell_lock_in"]();
+    case "out": return m["status.cell_lock_out"]();
+    case "both": return m["status.cell_lock_both"]();
+  }
+}
 
 function formatFloor(level: number): string {
   return `L${level + 1}`;
@@ -37,9 +46,9 @@ function buildPresetNodeMarkerLines(
   lockKind: NodeLockKind | undefined,
 ): string[] {
   const lines: string[] = [];
-  if (presetStart && presetEndpointsEqual(presetStart, endpoint)) lines.push("Start");
-  if (presetFinish && presetEndpointsEqual(presetFinish, endpoint)) lines.push("Finish");
-  if (presetGenSource && presetEndpointsEqual(presetGenSource, endpoint)) lines.push("Gen source");
+  if (presetStart && presetEndpointsEqual(presetStart, endpoint)) lines.push(m["status.cell_start"]());
+  if (presetFinish && presetEndpointsEqual(presetFinish, endpoint)) lines.push(m["status.cell_finish"]());
+  if (presetGenSource && presetEndpointsEqual(presetGenSource, endpoint)) lines.push(m["status.cell_gen_source"]());
 
   for (const t of presetTeleports) {
     const departingHere = presetEndpointsEqual(t.from, endpoint);
@@ -49,7 +58,7 @@ function buildPresetNodeMarkerLines(
     const target = formatTarget(other, activeFloorLevel);
     const isForward = departingHere === (t.direction !== "backward");
     const arrow = t.direction === "two_way" ? "<->" : isForward ? "->" : "<-";
-    lines.push(`Teleport ${arrow} ${target}`);
+    lines.push(m["status.cell_teleport"]({ arrow, target }));
   }
 
   for (const v of presetVerticalPassages) {
@@ -60,7 +69,7 @@ function buildPresetNodeMarkerLines(
     const target = `(${formatFloor(other.level ?? 0)})`;
     const isForward = departingHere === (v.direction !== "backward");
     const arrow = v.direction === "two_way" ? "<->" : isForward ? "->" : "<-";
-    lines.push(`Vertical passage ${arrow} ${target}`);
+    lines.push(m["status.cell_vertical_passage"]({ arrow, target }));
   }
 
   const elevatorTargetLevels: number[] = [];
@@ -73,10 +82,10 @@ function buildPresetNodeMarkerLines(
   }
   if (elevatorTargetLevels.length > 0) {
     const sorted = [...new Set(elevatorTargetLevels)].sort((a, b) => a - b);
-    lines.push(`Elevator (${sorted.map(formatFloor).join(", ")})`);
+    lines.push(m["status.cell_elevator"]({ targets: sorted.map(formatFloor).join(", ") }));
   }
 
-  if (lockKind) lines.push(`Lock (${lockKind})`);
+  if (lockKind) lines.push(m["status.cell_lock"]({ kind: formatLockKind(lockKind) }));
 
   return lines;
 }
@@ -151,8 +160,8 @@ export function buildPresetCellInspection(
       endpoint, floorLevel, presetStart, presetFinish, presetGenSource,
       presetTeleports, presetVerticalPassages, presetElevators, endpoint.slotId === undefined ? lockKind : undefined,
     );
-    const body = lines.length === 0 ? "empty" : lines.join("; ");
-    return `[${semanticNames?.[i]?.full ?? `Node ${i + 1}`}: ${body}]`;
+    const body = lines.length === 0 ? m["status.cell_empty"]() : lines.join("; ");
+    return `[${semanticNames?.[i]?.full ?? m["status.cell_node"]({ number: i + 1 })}: ${body}]`;
   });
   return [coordLabel, ...blocks].join(" | ");
 }

@@ -3,6 +3,7 @@ import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
 import { selectVerticalPassagePairSet } from "./vertical";
 import { splitPointFaceKindsByNode } from "../../splitNodeGeometry";
 import { splitNodeSemanticNamesFromKinds } from "../../splitNodeNames";
+import * as m from "~/paraglide/messages";
 
 function formatFloor(level: number): string {
   return `L${level + 1}`;
@@ -29,8 +30,8 @@ function buildNodeMarkerLines(
   finish: number | null,
 ): string[] {
   const lines: string[] = [];
-  if (start === node.id) lines.push("Start");
-  if (finish === node.id) lines.push("Finish");
+  if (start === node.id) lines.push(m["status.cell_start"]());
+  if (finish === node.id) lines.push(m["status.cell_finish"]());
 
   const activeFloorLevel = node.level ?? 0;
 
@@ -52,7 +53,7 @@ function buildNodeMarkerLines(
     const reverseExists = edges.some((r) => r.kind === "teleport" && r.from === e.to && r.to === e.from);
     const target = formatTarget(other, activeFloorLevel);
     const arrow = reverseExists ? "<->" : departingHere ? "->" : "<-";
-    lines.push(`Teleport ${arrow} ${target}`);
+    lines.push(m["status.cell_teleport"]({ arrow, target }));
   }
 
   // Vertical passages (one-way or two-way) and elevators (always two-way, fan out to several
@@ -82,11 +83,11 @@ function buildNodeMarkerLines(
     const reverseExists = verticalPairs.has(`${e.to}->${e.from}`);
     const target = `(${formatFloor(other.level ?? 0)})`;
     const arrow = reverseExists ? "<->" : departingHere ? "->" : "<-";
-    lines.push(`Vertical passage ${arrow} ${target}`);
+    lines.push(m["status.cell_vertical_passage"]({ arrow, target }));
   }
   if (elevatorTargetLevels.length > 0) {
     const sorted = [...new Set(elevatorTargetLevels)].sort((a, b) => a - b);
-    lines.push(`Elevator (${sorted.map(formatFloor).join(", ")})`);
+    lines.push(m["status.cell_elevator"]({ targets: sorted.map(formatFloor).join(", ") }));
   }
 
   return lines;
@@ -152,8 +153,8 @@ export function buildCellInspection(
 
   const blocks = nodesHere.map((n, index) => {
     const lines = buildNodeMarkerLines(n, nodeById, edges, start, finish);
-    const body = lines.length === 0 ? "empty" : lines.join("; ");
-    return `[${semanticNames?.[index]?.full ?? `Node ${n.i + 1}`}: ${body}]`;
+    const body = lines.length === 0 ? m["status.cell_empty"]() : lines.join("; ");
+    return `[${semanticNames?.[index]?.full ?? m["status.cell_node"]({ number: n.i + 1 })}: ${body}]`;
   });
   return [coordLabel, ...blocks].join(" | ");
 }

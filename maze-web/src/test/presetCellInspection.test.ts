@@ -4,6 +4,7 @@ import { presetEndpoint, type PresetEndpoint } from "../pixi/presetEndpoint";
 import { presetEdgeKey, type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry } from "../pixi/fieldEditUtils";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import type { NodeLockKind } from "../wasm/types";
+import { setLocale } from "~/paraglide/runtime";
 
 function empty(x: number, y: number, floorLevel = 0) {
   return buildPresetCellInspection(
@@ -203,6 +204,27 @@ describe("buildPresetCellInspection", () => {
       3, 5, 2, {}, null, null, null, [], [], [], locked, new Set(),
     );
     expect(result).toBe("x:3, y:5 | Lock (out)");
+  });
+
+  it("localizes preset status-bar descriptors, including lock, generation source, and empty nodes", () => {
+    setLocale("ru", { reload: false });
+    try {
+      const result = buildPresetCellInspection(
+        3, 5, 0, { "3,5": [0] }, null, null, presetEndpoint([3, 5]), [], [], [],
+        new Map([["3,5", "out"]]), new Set(),
+      );
+      expect(result).toBe("x:3, y:5 | [Узел 1: Источник; Блокировка (выход)] | [Узел 2: пусто]");
+      expect(result).not.toMatch(/Gen source|Lock|empty|Node|out/);
+
+      for (const [kind, label] of [["in", "вход"], ["out", "выход"], ["both", "оба"]] as const) {
+        const lockResult = buildPresetCellInspection(
+          3, 5, 0, {}, null, null, null, [], [], [], new Map([["3,5", kind]]), new Set(),
+        );
+        expect(lockResult).toBe(`x:3, y:5 | Блокировка (${label})`);
+      }
+    } finally {
+      setLocale("en", { reload: false });
+    }
   });
 
   // GitHub issue #487 — a preset split point whose face configuration matches a recognized
