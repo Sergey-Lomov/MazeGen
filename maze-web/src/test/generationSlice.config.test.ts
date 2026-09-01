@@ -76,6 +76,18 @@ describe("buildGenerateConfig — preset_start/preset_finish", () => {
   });
 });
 
+describe("buildGenerateConfig — preset_gen_source", () => {
+  it("omits preset_gen_source when it falls outside the field", () => {
+    vi.mocked(generateMaze).mockReturnValue(mockGenerateMazeResult);
+    useMazeStore.setState({
+      floorFields: { [TEST_FLOOR_ID]: baseFloorFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } }) },
+      presetGenSource: presetEndpoint([5, 5]),
+    });
+    useMazeStore.getState().generate();
+    expect(vi.mocked(generateMaze).mock.calls[0][1].preset_gen_source).toBeUndefined();
+  });
+});
+
 describe("mazeStore generation misc actions", () => {
 
   it("setRandomSeed toggles flag", () => {

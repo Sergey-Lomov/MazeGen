@@ -15,6 +15,8 @@ import {
   applyTool,
   computeInvalidTeleportIds,
   computeInvalidMarkers,
+  computeInvalidEndpoint,
+  computeInvalidLockedNodeKeys,
   cycleTeleportDirection,
   removeTeleport,
   moveTeleportEndpoint,
@@ -403,6 +405,21 @@ describe("computeInvalidMarkers", () => {
   it("null markers — valid", () => {
     const result = computeInvalidMarkers(null, null, resolveSquare);
     expect(result).toEqual({ start: false, finish: false });
+  });
+});
+
+describe("computeInvalidEndpoint", () => {
+  it("detects an endpoint outside the field", () => {
+    expect(computeInvalidEndpoint(presetEndpoint([50, 50]), resolveSquare)).toBe(true);
+    expect(computeInvalidEndpoint(presetEndpoint([0, 0]), resolveSquare)).toBe(false);
+    expect(computeInvalidEndpoint(null, resolveSquare)).toBe(false);
+  });
+});
+
+describe("computeInvalidLockedNodeKeys", () => {
+  it("detects locked nodes outside their floor", () => {
+    expect(computeInvalidLockedNodeKeys(new Map([["0,0", "both"], ["5,5", "in"]]), resolveSquare))
+      .toEqual(new Set(["5,5"]));
   });
 });
 

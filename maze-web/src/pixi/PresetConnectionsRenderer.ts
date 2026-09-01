@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../store/mazeStore";
-import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, presetConnectionsOnLevel, recordOnLevel, mapOnLevel, setOnLevel } from "./fieldEditUtils";
+import { computeInvalidKeysFromCells, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, presetConnectionsOnLevel, recordOnLevel, mapOnLevel, setOnLevel } from "./fieldEditUtils";
 import type { FieldEdge } from "./fieldEditUtils";
 import { makeProjection } from "./tessellationProjection";
 import { CellFillRenderer } from "./renderers/CellFillRenderer";
@@ -32,7 +32,6 @@ import {
   presetEndpointScreenPos,
 } from "./selectors/presetSelectors";
 import type { PresetEndpoint } from "./presetEndpoint";
-import { NODE_RADIUS } from "./renderConstants";
 import { canvas } from "./colorTokens";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { activeFloorLevel, resolveFieldAtOf } from "../store/storeHelpers";
@@ -55,11 +54,11 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly locksContainer: Container;
   private readonly markersContainer: Container;
   private readonly originContainer: Container;
+  private readonly invalidMarkerHLContainer: Container;
   private readonly genSourceContainer: Container;
   private readonly isolatedHLContainer: Container;
   private readonly orphanHLContainer: Container;
   private readonly invalidHLContainer: Container;
-  private readonly invalidTeleportHLContainer: Container;
   private readonly hoverContainer: Container;
   private readonly cellHoverContainer: Container;
   private readonly teleportPreviewContainer: Container;
@@ -81,11 +80,11 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
   private readonly locks: LockRenderer;
   private readonly markers: WaypointsRenderer;
   private readonly origin: OriginRenderer;
+  private readonly invalidMarkerHL: CellFillRenderer;
   private readonly genSource: GenSourceRenderer;
   private readonly isolatedHL: CellFillRenderer;
   private readonly orphanHL: CellFillRenderer;
   private readonly invalidHL: EdgeHighlightRenderer;
-  private readonly invalidTeleportHL: Graphics;
   private readonly hover: EdgeHighlightRenderer;
   private readonly cellHover: CellFillRenderer;
   private readonly teleportPreview: Graphics;
@@ -110,11 +109,11 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.locksContainer          = new Container();
     this.markersContainer        = new Container();
     this.originContainer         = new Container();
+    this.invalidMarkerHLContainer = new Container();
     this.genSourceContainer      = new Container();
     this.isolatedHLContainer     = new Container();
     this.orphanHLContainer       = new Container();
     this.invalidHLContainer      = new Container();
-    this.invalidTeleportHLContainer = new Container();
     this.hoverContainer          = new Container();
     this.cellHoverContainer      = new Container();
     this.teleportPreviewContainer = new Container();
@@ -131,11 +130,11 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.root.addChild(this.verticalContainer);
     this.root.addChild(this.markersContainer);
     this.root.addChild(this.originContainer);
+    this.root.addChild(this.invalidMarkerHLContainer);
     this.root.addChild(this.genSourceContainer);
     this.root.addChild(this.isolatedHLContainer);
     this.root.addChild(this.orphanHLContainer);
     this.root.addChild(this.invalidHLContainer);
-    this.root.addChild(this.invalidTeleportHLContainer);
     this.root.addChild(this.hoverContainer);
     this.root.addChild(this.cellHoverContainer);
     this.root.addChild(this.teleportPreviewContainer);
@@ -152,12 +151,11 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.locks          = new LockRenderer(this.locksContainer);
     this.markers        = new WaypointsRenderer(this.markersContainer);
     this.origin         = new OriginRenderer(this.originContainer);
+    this.invalidMarkerHL = new CellFillRenderer(this.invalidMarkerHLContainer);
     this.genSource      = new GenSourceRenderer(this.genSourceContainer);
     this.isolatedHL     = new CellFillRenderer(this.isolatedHLContainer);
     this.orphanHL       = new CellFillRenderer(this.orphanHLContainer);
     this.invalidHL      = new EdgeHighlightRenderer(this.invalidHLContainer);
-    this.invalidTeleportHL = new Graphics();
-    this.invalidTeleportHLContainer.addChild(this.invalidTeleportHL);
     this.hover          = new EdgeHighlightRenderer(this.hoverContainer);
     this.cellHover      = new CellFillRenderer(this.cellHoverContainer);
     this.teleportPreview = new Graphics();
@@ -306,7 +304,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.grid.render({ viewport: this.viewport }, cfg);
     this.floor.render({ cells, color: canvas.floor.default, alpha: 1 }, cfg);
 
-    const { undecided, preset, invalidPassages, invalidKeys } = buildPresetWallGroups(cells, presetConnections, cfg, presetSplitPoints);
+    const { undecided, preset, invalidPassages } = buildPresetWallGroups(cells, presetConnections, cfg, presetSplitPoints);
     this.invalidPassages.render({ edges: invalidPassages }, cfg);
     this.undecidedWalls.render({ edges: undecided }, cfg);
 
@@ -378,14 +376,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.redrawIsolatedHL(state);
     this.redrawOrphanHL(state);
 
-    if (state.highlightInvalidPresets) {
-      const edgeHighlights = buildInvalidEdgeHighlights(invalidKeys, presetConnections, cfg);
-      this.invalidHL.render({ highlights: edgeHighlights });
-      this.redrawInvalidTeleportHL(state);
-    } else {
-      this.invalidHL.render({ highlights: [] });
-      this.invalidTeleportHL.clear();
-    }
+    this.redrawInvalidHL(state);
 
     this.hover.render({ highlights: [] });
     this.redrawLinkHover(state);
@@ -462,7 +453,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     if (!this.cfg) return;
     if (!state.highlightInvalidPresets) {
       this.invalidHL.render({ highlights: [] });
-      this.invalidTeleportHL.clear();
+      this.invalidMarkerHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, this.cfg);
       return;
     }
     const presetConnections = presetConnectionsOnLevel(state.presetConnections, activeFloorLevel(state));
@@ -474,13 +465,11 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
 
   private redrawInvalidTeleportHL(state: MazeState): void {
     if (!this.cfg) return;
-    this.invalidTeleportHL.clear();
     if (!state.highlightInvalidPresets) return;
 
     const level = activeFloorLevel(state);
     const resolveFieldAt = resolveFieldAtOf(state);
-    const proj = makeProjection(this.cfg);
-    const markerSize = 20;
+    const invalidPointCells: [number, number][] = [];
 
     const presetTeleports = state.presetTeleports.filter((t) => (t.from.level ?? 0) === (level ?? 0) || (t.to.level ?? 0) === (level ?? 0));
     const invalidIds = computeInvalidTeleportIds(presetTeleports, resolveFieldAt);
@@ -491,10 +480,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       // all, so its own raw (x, y) would land on the wrong cell if highlighted unconditionally.
       for (const ep of [t.from, t.to]) {
         if ((ep.level ?? 0) !== (level ?? 0)) continue;
-        const { x: px, y: py } = proj.gridToScreen(ep.point[0], ep.point[1]);
-        this.invalidTeleportHL
-          .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
-          .stroke({ width: 4, color: canvas.preset.invalid, alpha: 0.9 });
+        invalidPointCells.push(ep.point);
       }
     }
 
@@ -506,10 +492,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     for (const p of presetVerticalPassages) {
       if (!invalidVerticalPassageIds.has(p.id)) continue;
       const own = (p.from.level ?? 0) === (level ?? 0) ? p.from : p.to;
-      const { x: px, y: py } = proj.gridToScreen(own.point[0], own.point[1]);
-      this.invalidTeleportHL
-        .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
-        .stroke({ width: 4, color: canvas.preset.invalid, alpha: 0.9 });
+      invalidPointCells.push(own.point);
     }
 
     const presetElevators = state.presetElevators.filter((e) => e.floors.some((f) => (f.level ?? 0) === (level ?? 0)));
@@ -518,23 +501,44 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
       if (!invalidElevatorIds.has(e.id)) continue;
       const ownEndpoint = e.floors.find((f) => (f.level ?? 0) === (level ?? 0));
       if (!ownEndpoint) continue;
-      const { x: px, y: py } = proj.gridToScreen(ownEndpoint.point[0], ownEndpoint.point[1]);
-      this.invalidTeleportHL
-        .roundRect(px - markerSize / 2, py - markerSize / 2, markerSize, markerSize, markerSize * 0.25)
-        .stroke({ width: 4, color: canvas.preset.invalid, alpha: 0.9 });
+      invalidPointCells.push(ownEndpoint.point);
     }
 
     const presetStart = (state.presetStart && (state.presetStart.level ?? 0) === (level ?? 0)) ? state.presetStart : null;
     const presetFinish = (state.presetFinish && (state.presetFinish.level ?? 0) === (level ?? 0)) ? state.presetFinish : null;
+    const presetGenSource = (state.presetGenSource && (state.presetGenSource.level ?? 0) === (level ?? 0)) ? state.presetGenSource : null;
     const invalidMarkers = computeInvalidMarkers(presetStart, presetFinish, resolveFieldAt);
-    const markerRadius = NODE_RADIUS * 1.5;
+    const invalidGenSource = computeInvalidEndpoint(presetGenSource, resolveFieldAt);
+    const invalidLockedKeys = computeInvalidLockedNodeKeys(state.lockedNodes, resolveFieldAt);
+    const invalidSplitKeys = computeInvalidSplitPoints(state.presetSplitPoints, resolveFieldAt);
+    const invalidLockedCells: [number, number][] = [];
+    for (const key of invalidLockedKeys) {
+      const [pointPart, levelPart] = key.split("@");
+      if (Number(levelPart ?? 0) !== (level ?? 0)) continue;
+      const [x, y] = pointPart.split(",").map(Number);
+      invalidLockedCells.push([x, y]);
+    }
+    const invalidSplitCells: [number, number][] = [];
+    for (const key of invalidSplitKeys) {
+      const [pointPart, levelPart] = key.split("@");
+      if (Number(levelPart ?? 0) !== (level ?? 0)) continue;
+      const [x, y] = pointPart.split(",").map(Number);
+      invalidSplitCells.push([x, y]);
+    }
     for (const [invalid, endpoint] of [[invalidMarkers.start, presetStart], [invalidMarkers.finish, presetFinish]] as const) {
       if (!invalid || !endpoint) continue;
-      const { x: px, y: py } = proj.gridToScreen(endpoint.point[0], endpoint.point[1]);
-      this.invalidTeleportHL
-        .circle(px, py, markerRadius + 3)
-        .stroke({ width: 6, color: canvas.preset.invalid, alpha: 0.9 });
+      invalidPointCells.push(endpoint.point);
     }
+    this.invalidMarkerHL.render({
+      cells: [
+        ...invalidPointCells,
+        ...(invalidGenSource && presetGenSource ? [presetGenSource.point] : []),
+        ...invalidLockedCells,
+        ...invalidSplitCells,
+      ],
+      color: canvas.preset.invalid,
+      alpha: ISOLATED_HL_ALPHA,
+    }, this.cfg);
   }
 
   protected clearAll(): void {
@@ -553,8 +557,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.origin.render({ show: false }, cfg);
     this.genSource.render({ sourceScreen: null });
     this.isolatedHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, cfg);
+    this.invalidMarkerHL.render({ cells: [], color: canvas.preset.invalid, alpha: ISOLATED_HL_ALPHA }, cfg);
     this.invalidHL.render({ highlights: [] });
-    this.invalidTeleportHL.clear();
     this.hover.render({ highlights: [] });
     this.cellHover.render({ cells: [], color: canvas.fieldEditor.hover, alpha: 0.35 }, cfg);
     this.linkHover.clear();
@@ -575,8 +579,8 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.origin.destroy();
     this.genSource.destroy();
     this.isolatedHL.destroy();
+    this.invalidMarkerHL.destroy();
     this.invalidHL.destroy();
-    this.invalidTeleportHL.destroy();
     this.hover.destroy();
     this.cellHover.destroy();
     this.linkHover.destroy();
@@ -592,11 +596,11 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.locksContainer.destroy();
     this.markersContainer.destroy();
     this.originContainer.destroy();
+    this.invalidMarkerHLContainer.destroy();
     this.genSourceContainer.destroy();
     this.isolatedHLContainer.destroy();
     this.orphanHLContainer.destroy();
     this.invalidHLContainer.destroy();
-    this.invalidTeleportHLContainer.destroy();
     this.hoverContainer.destroy();
     this.cellHoverContainer.destroy();
     this.teleportPreviewContainer.destroy();

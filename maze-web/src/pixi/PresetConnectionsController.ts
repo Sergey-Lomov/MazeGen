@@ -198,6 +198,7 @@ export class PresetConnectionsController extends BaseController {
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
       const level = activeFloorLevel(store);
+      const inField = this.renderer.getCachedCellSet().has(encodePoint(coords[0], coords[1]));
 
       // On a split point the active-node concept (`presetActiveSplitNode`) must not decide which
       // node a vertex-tool placement attaches to (GitHub issue #474). A left click there defers
@@ -205,6 +206,7 @@ export class PresetConnectionsController extends BaseController {
       // resolve through the active node and would otherwise silently drag/cycle/complete on it
       // without the dialog. Right click (remove) still falls through to the hit-tests.
       if (button === 0) {
+        if (!inField) return;
         const splitKey = level === undefined ? `${coords[0]},${coords[1]}` : `${coords[0]},${coords[1]}@${level}`;
         const slotIds = store.presetSplitPoints[splitKey];
         if (slotIds && slotIds.length > 0) {
@@ -282,6 +284,7 @@ export class PresetConnectionsController extends BaseController {
       const coords: [number, number] = [cell.x, cell.y];
       const store = useMazeStore.getState();
       const level = activeFloorLevel(store);
+      const inField = this.renderer.getCachedCellSet().has(encodePoint(coords[0], coords[1]));
 
       // Right-click clears the generation source when it sits on the clicked cell (any of a split
       // point's nodes) — the clear path for a split point, where a left click always opens the node
@@ -293,6 +296,7 @@ export class PresetConnectionsController extends BaseController {
         }
         return;
       }
+      if (!inField) return;
 
       // On a declared split point the generation source must be attachable to a specific node, not
       // silently pinned to the point's original one (GitHub issue #494) — defer to the same node
@@ -342,10 +346,10 @@ export class PresetConnectionsController extends BaseController {
       const proj = makeProjection(cfg);
       const cell = proj.screenToGrid(vpX, vpY);
       const key = encodePoint(cell.x, cell.y);
-      if (this.renderer.getCachedCellSet().has(key)) {
-        useMazeStore.getState().resetPresetPoint([cell.x, cell.y]);
-        this.beginCellDrag([cell.x, cell.y]);
-      }
+      // Invalid preset entities remain addressable by their projected coordinates, even when
+      // their point is outside the current field.
+      useMazeStore.getState().resetPresetPoint([cell.x, cell.y]);
+      if (this.renderer.getCachedCellSet().has(key)) this.beginCellDrag([cell.x, cell.y]);
       return;
     }
 
@@ -359,6 +363,7 @@ export class PresetConnectionsController extends BaseController {
       if (button === 2) {
         store.removeLockedNode(x, y);
       } else if (button === 0) {
+        if (!this.renderer.getCachedCellSet().has(encodePoint(x, y))) return;
         const kindMap: Record<string, NodeLockKind> = { lock_in: "in", lock_out: "out", full_lock: "both" };
         const kind = kindMap[tool];
         if (store.lockedNodes.get(key) === kind) {

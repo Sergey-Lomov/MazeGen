@@ -137,6 +137,20 @@ describe("mazeStore preset connections", () => {
     expect(s.presetFinish).toEqual(presetEndpoint([0, 0]));
   });
 
+  it("clearInvalidPresetConnections clears a generation source outside the field", () => {
+    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    useMazeStore.setState({ presetGenSource: presetEndpoint([5, 5]) });
+    useMazeStore.getState().clearInvalidPresetConnections();
+    expect(useMazeStore.getState().presetGenSource).toBeNull();
+  });
+
+  it("clearInvalidPresetConnections clears locks outside the field", () => {
+    setActiveFieldConfig({ tessellationConfig: { type: "square", width: 1, height: 1 } });
+    useMazeStore.setState({ lockedNodes: new Map([["5,5", "both"]]) });
+    useMazeStore.getState().clearInvalidPresetConnections();
+    expect(useMazeStore.getState().lockedNodes.size).toBe(0);
+  });
+
   it("resetPresetConnections clears all preset state", () => {
     useMazeStore.setState({
       presetConnections: new Map([["0,0-1,0", { from: presetEndpoint([0, 0]), to: presetEndpoint([1, 0]), state: "wall", source: "user" }]]),

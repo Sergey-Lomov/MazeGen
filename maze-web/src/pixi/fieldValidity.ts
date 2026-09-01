@@ -93,6 +93,31 @@ export function computeInvalidMarkers(
   };
 }
 
+/** Whether a single preset endpoint is outside its own floor's field. */
+export function computeInvalidEndpoint(
+  endpoint: PresetEndpoint | null,
+  resolveFieldAt: ResolveFieldAt,
+): boolean {
+  const getFieldSet = fieldSetCache(resolveFieldAt);
+  return endpoint != null && !pointInField(getFieldSet, endpoint.point, endpoint.level);
+}
+
+/** Keys of explicitly locked nodes outside their floor's field. */
+export function computeInvalidLockedNodeKeys(
+  lockedNodes: Map<string, unknown>,
+  resolveFieldAt: ResolveFieldAt,
+): Set<string> {
+  const getFieldSet = fieldSetCache(resolveFieldAt);
+  const invalid = new Set<string>();
+  for (const key of lockedNodes.keys()) {
+    const [pointPart, levelPart] = key.split("@");
+    const [x, y] = pointPart.split(",").map(Number);
+    const level = levelPart === undefined ? undefined : Number(levelPart);
+    if (!pointInField(getFieldSet, [x, y], level)) invalid.add(key);
+  }
+  return invalid;
+}
+
 export function computeInvalidTeleportIds(
   teleports: PresetTeleportEntry[],
   resolveFieldAt: ResolveFieldAt,
