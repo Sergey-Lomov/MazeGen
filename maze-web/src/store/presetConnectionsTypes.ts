@@ -100,6 +100,7 @@ export interface PresetConnectionsState {
         slotIds: number[];
         action:
           | { tool: "set_start" | "set_finish" }
+          | { tool: "gen_source" }
           | { tool: "vertical_passage_one_way" | "vertical_passage_two_way" }
           | { tool: "elevator" }
           | { tool: "teleport_one_way" | "teleport_two_way" };
@@ -131,6 +132,11 @@ export interface PresetConnectionsActions {
    * which node happens to be globally active for canvas clicks. */
   setPresetStartEndpoint: (endpoint: PresetEndpoint | null) => void;
   setPresetFinishEndpoint: (endpoint: PresetEndpoint | null) => void;
+  /** Same as `setPresetGenSource`, but takes a `PresetEndpoint` directly instead of resolving via
+   * `state.presetActiveSplitNode` — used by `applyPresetSplitTargetPick` (GitHub issue #494) to
+   * assign the generation source to a *specific* node of a split point picked in
+   * `PresetSplitTargetDialog`, independent of which node happens to be globally active. */
+  setPresetGenSourceEndpoint: (endpoint: PresetEndpoint | null) => void;
   setDefaultEdgeState: (s: "undefined" | "wall" | "passage") => void;
   setHighlightInvalidPresets: (highlight: boolean) => void;
   setHighlightIsolatedNodes: (highlight: boolean) => void;
