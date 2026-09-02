@@ -9,6 +9,11 @@
   "common.select": "Выбрать",
   "common.back": "Назад",
   "common.next": "Далее",
+  "common.apply": "Применить",
+
+  "color_picker.title": "Цвет",
+  "color_picker.hex_label": "Hex",
+  "color_picker.hex_invalid": "Введите 6-значный hex-цвет",
 
   "tessellation.title": "Тесселяция",
   "tessellation.square": "Квадрат",

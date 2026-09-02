@@ -22,6 +22,10 @@ interface Props {
    *  under the header, auto-reopened whenever the message set changes (GitHub issue #237). Purely
    *  informational, never blocks any action. */
   warnings?: string[];
+  /** Render as a full-cover overlay (`position: absolute; inset: 0`) inside `#side-panel-slot`
+   *  instead of a normal in-flow panel — used by `ColorPickerPanel` (GitHub issue #499) to sit on
+   *  top of whatever `SidePanel` content is already shown and reveal it again on close. */
+  overlay?: boolean;
   children: React.ReactNode;
 }
 
@@ -30,7 +34,7 @@ interface Props {
  *  the split-node management panels (post-edit, preset, pattern editor) so editing a node's
  *  connections reads as directly manipulating the canvas rather than a modal dialog floating over
  *  it — every click's effect on the maze is visible immediately behind the panel. */
-export function SidePanel({ title, subtitle, onClose, warnings, children }: Props) {
+export function SidePanel({ title, subtitle, onClose, warnings, overlay, children }: Props) {
   const [width, setWidth] = useState(MIN_PANEL_WIDTH);
   const resizing = useRef(false);
   const [warningsDismissed, setWarningsDismissed] = useState(false);
@@ -61,11 +65,18 @@ export function SidePanel({ title, subtitle, onClose, warnings, children }: Prop
   if (!slot) return null;
 
   return createPortal(
-    <div style={{ ...styles.panel, width, minWidth: MIN_PANEL_WIDTH }}>
-      <div
-        style={styles.resizeHandle}
-        onMouseDown={(e) => { e.preventDefault(); resizing.current = true; }}
-      />
+    <div
+      style={overlay
+        ? { ...styles.panel, ...styles.panelOverlay }
+        : { ...styles.panel, width, minWidth: MIN_PANEL_WIDTH }}
+    >
+      {/* Overlay mode stretches to fill the slot (`panelOverlay`), so there is no width to drag. */}
+      {!overlay && (
+        <div
+          style={styles.resizeHandle}
+          onMouseDown={(e) => { e.preventDefault(); resizing.current = true; }}
+        />
+      )}
       <div style={styles.header}>
         <div style={styles.headerText}>
           <span style={typography.title}>{title}</span>
@@ -103,6 +114,15 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     flexShrink: 0,
     position: "relative",
+  },
+  // Overlay mode: fully cover the slot's currently-shown panel rather than dock beside it. The
+  // slot (`App.tsx`) is `position: relative` so `inset: 0` resolves against it. `left: 0` as well
+  // as `right: 0` so a narrower overlay can't leave the covered panel peeking on its left edge;
+  // `width` is then only a lower bound the flex layout already satisfies.
+  panelOverlay: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 2,
   },
   resizeHandle: {
     position: "absolute",

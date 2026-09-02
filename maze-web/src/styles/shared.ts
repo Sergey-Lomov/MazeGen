@@ -30,6 +30,18 @@ export const sharedStyles = {
     padding: "2px 6px",
   } satisfies React.CSSProperties,
 
+  // Text input sized to `controlRowHeight` the same way `selectSm` is — for labeled param rows
+  // (`TextRow`) so a text field lines up with the select/color/toggle rows in the same list.
+  textFieldSm: {
+    ...typography.field,
+    lineHeight: "16px",
+    boxSizing: "border-box",
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
+    borderRadius: radius.sm,
+    padding: "2px 6px",
+  } satisfies React.CSSProperties,
+
   select: {
     ...typography.field,
     // Native <select> needs an explicit line-height — without it Chromium seats the label text
