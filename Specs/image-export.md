@@ -314,10 +314,74 @@ their passages draw nothing in this mode, same "own dedicated sub-issue" convent
 excludes them the same way `buildMazeWalls` excludes split points from its own wall reading
 (`splitPointKeys`).
 
-Corner/end joins are applied by chaining corridor segments into polylines wherever exactly two
-segments meet at a shared vertex (`chainSegmentsAtSharedVertices`, `WallRenderer.ts` — reused as-is,
-not duplicated, since the join-only-renders-within-one-stroked-path constraint is identical to
-`VectorByWallsRenderer`'s own wall join). `getRequiredExportMargin`/`getRequiredWallExportMargin`
+### Round join — one filled shape per tile (GitHub issue #493)
+
+With a **round** join the corridor network is drawn as **one filled shape per cell**, each shape
+built only from that cell's own passages, with real `line`/`arc` commands — no per-segment stroke,
+no polygon boolean union (`vectorByCorridorsContour.ts`, `buildCorridorContour`).
+
+**Ports.** The centre-to-centre segments (`buildCorridorSegments`) are grouped by cell centre; each
+segment end is one *port* of that cell — the middle of the shared border (`(v0+v1)/2`, or the split
+face midpoint `v1` for a split neighbour), plus the outward unit normal there. A port's drawn border
+is the segment `mid ± tangent · thickness/2` — `thickness` long, centred on the border middle.
+Adjacent cells produce mirror-image ports on the shared face (same midpoint, same length), so the
+two filled shapes meet edge-to-edge with no seam and no overlap. Ports are ordered CCW around the
+cell centre.
+
+**Per-tile shape** (`tileContour`), by port count:
+
+- **1 port — dead end**: a `thickness`-wide stub running from the shared border straight into the
+  tile to its centre, then a 180-degree semicircular cap of radius `thickness/2`. Four anchor
+  points — two on the border (shared with the neighbour tile), two where the straight walls hand off
+  to the cap.
+- **2 collinear ports — straight through**: a rectangle joining the two borders (four corners
+  ordered by angle around their centroid to guarantee a simple quad).
+- **2 ports at an angle — turn**: a pair of **concentric** circular arcs. `O` is where the two
+  border *lines* meet, `R` the distance from `O` to each border midpoint; the inner (concave) elbow
+  is an arc of radius `R − thickness/2`, the outer (convex) elbow a concentric arc of radius
+  `R + thickness/2`. The corridor therefore keeps a **constant `thickness` width right through the
+  bend, both elbows rounded** — the fix for issue #493 (the old renderer rounded only the outer
+  elbow, leaving the inner corner a sharp point). For a square tile with the port at the face
+  middle: `R` = half the tile step, `O` = the tile corner, inner radius `step/2 − thickness/2`.
+- **3+ ports — junction**: the outline is walked CCW — each port lays its `thickness`-wide border,
+  then the piece between it and the next port is one of:
+  - **concave armpit** (passages on both sides, CCW turn between the two arm axes < 180°): a single
+    arc of radius `R − thickness/2` centred at `O` (where the two border *lines* meet), `R` the
+    distance from `O` to each border midpoint — same as a turn tile's inner elbow, so the corridor
+    keeps a constant `thickness` through the bend. For a square `+` (step `s`, port at each face
+    middle): radius `s/2 − thickness/2`.
+  - **convex gap** (the wide dead sector between the two outermost arms — reflex turn, e.g. a hex
+    cell with passages on 3 adjacent faces): the *outer* elbow of the same turn construction — an
+    arc of radius `R + thickness/2` around `O` between the two borders' outer ends, the exact arc a
+    one-face-apart passage draws. By construction `R + thickness/2 ≈ |O − tile centre|`, so the arc
+    passes close by the centre without reaching it; the fill still reads as one smooth junction.
+    Drawing the *inner* arc here instead would invert and punch a hole in the tile.
+  - **straight-through** (collinear arms): a plain line across.
+
+  **No core disc.**
+
+  The **`roundJunctions`** setting (on by default, only shown while `join` is `round`) gates this
+  arc treatment for the 3+-port case *only*: when it is off, every between-passage piece of a
+  junction is instead a straight **mitre** corner (this arm's trailing side-wall extended to meet
+  the next arm's leading side-wall). Turns, dead ends and straight-through tiles stay rounded either
+  way — the setting is purely "smooth the junctions too, or leave them angular".
+
+All arc sweeps take the short way between their endpoints (`shortSweepCcw`), except the dead-end cap
+which sweeps the long way (around its own centre). Angle-based throughout, so it works unchanged on
+square / hex / triangle and any future tessellation — there is no radius parameter and no per-grid
+constant.
+
+**Tracing.** `traceCorridorContour` plays each tile path's `move` / `line` / `arc` onto the
+`Graphics` and `closePath()`s it; the caller fills once. The tiles never overlap, so a plain fill is
+seamless. `contourToPolyline` samples a path to a plain point list (arcs at ~0.2 rad) — for tests
+and export-margin measurement only, never for the render. `ContourPath.hole` is always `false` in
+this model (kept only so the trace/fill call site and tests need no signature change).
+
+Segments are still chained into polylines (`chainSegmentsAtSharedVertices`, `WallRenderer.ts` —
+reused as-is) but only the **miter** branch uses the chains now.
+
+A **miter** join keeps the straight
+`lineTo` polyline plus the square-cap/`computeMiterJunctionPatch` treatment below. `getRequiredExportMargin`/`getRequiredWallExportMargin`
 both resolve to `computeVectorByCorridorsExportMargin` (`exportMargins.ts`) — the widest of half the
 corridor stroke's own width, a start/finish marker's own footprint, the one-way chevron row's own
 width, a teleport marker/connector's own footprint, and (via `this.verticalContainer`'s own measured

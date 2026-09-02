@@ -14,6 +14,7 @@ import { computeVectorByCorridorsWarnings } from "../selectors/exportWarnings";
 import type { NodeDto, EdgeDto } from "../../wasm/types";
 import type { Viewport, TeleportEdge, SplitPassage, SplitSpecialShape, VerticalConnectionMarker } from "../renderers/types";
 import { buildTeleportWidenMarkers, buildVerticalWidenMarkers, computeDiagonalGapPatchGeometry, drawDiagonalConnectorRibbon, computeMiterJunctionPatch, selectInwardJunctionWedge, type JunctionRay } from "./vectorByCorridorsGeometry";
+import { buildCorridorContour, traceCorridorContour } from "./vectorByCorridorsContour";
 import type { VectorByCorridorsSettings } from "../../store/storeTypes";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import { TILE_SIZE } from "../constants";
@@ -349,36 +350,30 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       }
     }
 
-    // Round style still needs a per-end decision: an end touching a split must stay flush (`butt`),
-    // while every other end remains round. Pixi applies one cap to both path ends, so all paths are
-    // stroked with `butt` and a radius-sized disc restores each non-split end independently. At an
-    // ordinary shared junction those discs have the same center and safely coincide.
+    // Round style (GitHub issue #493 rework): the corridor network is drawn as one filled shape per
+    // tile (`buildCorridorContour`), each tile shaped only from its own passages. A turn tile is a
+    // pair of concentric arcs (constant `thickness` width right through the bend — both elbows
+    // rounded, the fix for #493); a straight-through tile a rectangle; a dead end a border plus a
+    // semicircle; a junction (3+ passages) joins each border to the next with an arc when
+    // `roundJunctions` is on (the default) or a straight mitre corner when it is off — turns and
+    // dead ends stay rounded regardless. Adjacent tiles draw mirror borders on the shared face, so
+    // the fills meet edge-to-edge with no seam. Angle-based → square / hex / triangle / any future
+    // tessellation, no per-grid constant.
     //
-    // Miter/square has no such luck — a `"square"` cap protrudes as a flat-edged rectangle aligned
-    // to *that line's own* direction, so two lines meeting at a non-perpendicular T-junction angle
-    // each protrude past the other's edge instead of reconciling into a clean corner. So for
-    // miter/square only: every path draws `butt` unconditionally first (never protrudes), then each
-    // of its own two non-split ends gets its own cap patched back in separately as a standalone
-    // filled shape (not by redrawing the path's last segment — that would put an ordinary cap back
-    // on *both* of that segment's ends whenever the path is only 2 points long, where the "last
-    // segment" and "whole path" are the same stroke). A genuine free end (nothing else meets it,
-    // `junctionEnds` has exactly one entry there) gets its own plain square cap, same as an ordinary
-    // stroke would draw; a T-junction where several chained paths' own ends meet (`junctionEnds`
-    // has 2+ entries) gets one shared miter-style patch instead — see `computeMiterJunctionPatch`'s
-    // own doc comment for why a per-path cap can't work there (GitHub issue #443 follow-up:
-    // patching every path's own end independently left visible gaps between them at
-    // non-perpendicular junction angles instead of a clean corner).
+    // Miter style keeps the straight-line stroke below: a `"square"` cap protrudes as a flat-edged
+    // rectangle aligned to *that line's own* direction, so two lines meeting at a non-perpendicular
+    // T-junction each protrude past the other instead of reconciling into a clean corner. So for
+    // miter only: every path draws `butt` unconditionally first (never protrudes), then each of its
+    // own two non-split ends gets its own cap patched back in separately. A genuine free end
+    // (`junctionEnds` has exactly one entry there) gets a plain square cap; a T-junction where
+    // several chained paths' own ends meet (`junctionEnds` has 2+ entries) gets one shared
+    // miter-style patch instead (GitHub issue #443 follow-up).
     this.corridors.clear();
     if (strokeOpts.cap === "round") {
-      for (const path of chainedCorridorPaths) {
-        this.corridors.moveTo(path[0].x, path[0].y);
-        for (let i = 1; i < path.length; i++) this.corridors.lineTo(path[i].x, path[i].y);
-        this.corridors.stroke({ ...strokeOpts, cap: "butt" });
-        for (const end of [path[0], path[path.length - 1]]) {
-          if (!touchesSplit(end)) {
-            this.corridors.circle(end.x, end.y, strokeOpts.width / 2).fill(strokeOpts.color);
-          }
-        }
+      const contour = buildCorridorContour(this.geometryCache.segments, strokeOpts.width, settings.roundJunctions);
+      if (contour.length > 0) {
+        traceCorridorContour(this.corridors, contour);
+        this.corridors.fill(strokeOpts.color);
       }
     } else {
       for (const path of chainedCorridorPaths) {

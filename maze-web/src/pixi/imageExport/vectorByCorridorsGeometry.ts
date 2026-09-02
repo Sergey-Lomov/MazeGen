@@ -88,6 +88,29 @@ export function buildVerticalWidenMarkers(markers: VerticalConnectionMarker[], s
   });
 }
 
+type Pt = { x: number; y: number };
+
+/** The centre-to-centre distance between two adjacent cells, read straight from the corridor
+ *  segments (GitHub issue #493) — `buildCorridorSegments` emits exactly one segment per single cell
+ *  step, so the shortest full-length segment *is* one grid step. Tessellation-agnostic: `TILE_SIZE`
+ *  for square, `TILE_SIZE * sqrt(3)` for hex, the triangle's own step, and so on — the corridor-turn
+ *  and junction-fillet radii clamp against this instead of a hard-coded `TILE_SIZE` that is correct
+ *  only for a square grid. Segments flagged `v1TouchesSplit` are skipped: they stop at a shared
+ *  face's midpoint (about half a step), not the neighbour cell's centre, so they would understate
+ *  the step. `fallback` (the square `TILE_SIZE`) is returned when no full segment survives. */
+export function corridorCellStep(
+  segments: { v0: Pt; v1: Pt; v1TouchesSplit?: boolean }[],
+  fallback: number,
+): number {
+  let min = Infinity;
+  for (const s of segments) {
+    if (s.v1TouchesSplit) continue;
+    const len = Math.hypot(s.v1.x - s.v0.x, s.v1.y - s.v0.y);
+    if (len > 1e-3 && len < min) min = len;
+  }
+  return Number.isFinite(min) ? min : fallback;
+}
+
 /** Each face's own perpendicular at `p`, oriented so its dot product with `other - p` is positive
  *  (GitHub issue #314 follow-up) — used both as `drawDiagonalConnectorRibbon`'s own outward `bowFrac`
  *  offset direction (called with `other` = the connector's opposite endpoint) and, called the same

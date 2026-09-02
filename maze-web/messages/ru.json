@@ -1622,6 +1622,7 @@
   "image_export.vector_by_corridors.section_cells": "Коридор",
   "image_export.vector_by_corridors.color": "Цвет",
   "image_export.vector_by_corridors.join": "Стиль",
+  "image_export.vector_by_corridors.round_junctions": "Скруглять развилки",
   "image_export.vector_by_corridors.thickness": "Ширина",
   "image_export.vector_by_corridors.marker_widen_padding": "Расширение",
   "image_export.vector_by_corridors.marker_widen_shape": "Форма расширения",

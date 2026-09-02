@@ -1611,6 +1611,7 @@
   "image_export.vector_by_corridors.section_cells": "Cells",
   "image_export.vector_by_corridors.color": "Corridor color",
   "image_export.vector_by_corridors.join": "Style",
+  "image_export.vector_by_corridors.round_junctions": "Round junctions",
   "image_export.vector_by_corridors.thickness": "Corridor width",
   "image_export.vector_by_corridors.marker_widen_padding": "Marker widen padding",
   "image_export.vector_by_corridors.marker_widen_shape": "Widen patch shape",

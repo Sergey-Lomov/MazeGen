@@ -602,6 +602,11 @@ export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWa
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
    *  `VectorByWallsSettings.wallJoin`/`wallCap`. */
   join: "round" | "miter";
+  /** Only meaningful while `join === "round"` (GitHub issue #493 follow-up). On by default: every
+   *  corner is smoothed, junctions (3+ passages) included — a junction's armpits and its wide dead
+   *  sector are drawn as arcs (see `buildCorridorContour`). Off: only corridors (turns) and dead
+   *  ends stay rounded; a junction's between-passage pieces are drawn as straight mitre corners. */
+  roundJunctions: boolean;
   /** Start/finish marker appearance (GitHub issue #311) — same `MarkerSettings` shape and
    *  "Waypoints" section convention `VectorByWallsSettings` uses, reusing its settings-panel
    *  sub-component rather than duplicating it. */
@@ -731,6 +736,7 @@ export interface ImageExportActions {
   setVectorByCorridorsColor: (color: number) => void;
   setVectorByCorridorsThickness: (v: number) => void;
   setVectorByCorridorsJoin: (join: "round" | "miter") => void;
+  setVectorByCorridorsRoundJunctions: (v: boolean) => void;
   setVectorByCorridorsStartMarkerShape: (shape: MarkerShape) => void;
   setVectorByCorridorsStartMarkerCornerStyle: (style: TeleportCornerStyle) => void;
   setVectorByCorridorsStartMarkerFillColor: (color: number) => void;

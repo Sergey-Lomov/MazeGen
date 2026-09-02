@@ -52,6 +52,7 @@ export function VectorByCorridorsSettingsPanel() {
   const setGridColor = useMazeStore((s) => s.setVectorByCorridorsGridColor);
   const setColor = useMazeStore((s) => s.setVectorByCorridorsColor);
   const setJoin = useMazeStore((s) => s.setVectorByCorridorsJoin);
+  const setRoundJunctions = useMazeStore((s) => s.setVectorByCorridorsRoundJunctions);
   const setThickness = useMazeStore((s) => s.setVectorByCorridorsThickness);
 
   const setStartMarkerShape = useMazeStore((s) => s.setVectorByCorridorsStartMarkerShape);
@@ -259,6 +260,13 @@ export function VectorByCorridorsSettingsPanel() {
             onChange={setJoin}
             resetButton={sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "join", () => resetSharedStyleField("cornerStyle", "join"))}
           />
+          {settings.join === "round" && (
+            <ToggleRow
+              label={m["image_export.vector_by_corridors.round_junctions"]()}
+              checked={settings.roundJunctions}
+              onChange={setRoundJunctions}
+            />
+          )}
           <SliderRow
             label={m["image_export.vector_by_corridors.thickness"]()}
             value={settings.thickness}
