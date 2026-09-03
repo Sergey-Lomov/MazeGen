@@ -467,6 +467,24 @@ describe("buildCorridorContour", () => {
   // shapes meeting edge-to-edge on shared borders (the per-tile rework). No path is ever a hole.
   const arcsOf = (paths: ContourPath[]): { c: { x: number; y: number }; r: number }[] =>
     paths.flatMap((p) => p.cmds).filter((c): c is Extract<typeof c, { kind: "arc" }> => c.kind === "arc");
+  const pointDistance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    Math.hypot(a.x - b.x, a.y - b.y);
+  const expectContinuousPath = (path: ContourPath) => {
+    let current: { x: number; y: number } | null = null;
+    for (const [index, cmd] of path.cmds.entries()) {
+      if (cmd.kind === "move") {
+        current = cmd.to;
+      } else if (cmd.kind === "line") {
+        current = cmd.to;
+      } else {
+        const start = { x: cmd.c.x + Math.cos(cmd.a0) * cmd.r, y: cmd.c.y + Math.sin(cmd.a0) * cmd.r };
+        const end = { x: cmd.c.x + Math.cos(cmd.a1) * cmd.r, y: cmd.c.y + Math.sin(cmd.a1) * cmd.r };
+        expect(current).not.toBeNull();
+        expect(pointDistance(current!, start), `disconnected arc at command ${index}`).toBeLessThan(1e-6);
+        current = end;
+      }
+    }
+  };
 
   it("draws a straight corridor tile by tile, no bulge past the walls", () => {
     // Three cells in a row (step 40), corridor width 20.
@@ -504,7 +522,7 @@ describe("buildCorridorContour", () => {
     const dir = { x: Math.cos(Math.PI / 6), y: Math.sin(Math.PI / 6) }; // 30deg stub axis
     const centre = { x: 0, y: 0 };
     const border = { x: dir.x * 30, y: dir.y * 30 };
-    for (const thickness of [7, 8, 8.5, 9, 10, 11, 13, 14, 17, 20, 23]) {
+    for (const thickness of [7, 8, 8.5, 9, 10, 11, 13, 14, 17, 20, 23, 40]) {
       const paths = buildCorridorContour([{ v0: centre, v1: border }], thickness);
       const cap = arcsOf(paths).find((a) => Math.abs(a.r - thickness / 2) < 0.01)!;
       // Cap centre is on the stub axis, at the tile centre.
@@ -575,23 +593,25 @@ describe("buildCorridorContour", () => {
     const paths = buildCorridorContour(segs, 12);
     expect(paths.length).toBe(4); // three dead ends + the junction tile
     expect(paths.some((p) => p.hole)).toBe(false);
-    // The junction is built section by section like a turn tile: between each non-collinear pair of
-    // consecutive ports a single inner arc of radius R - thickness/2, R = distance from the border
-    // lines' meeting point to each border midpoint. Here R = 20 (half the step), so r = 14. The two
-    // collinear ports (the T stem) bridge with a plain line -> exactly two arcs.
+    // The junction is built section by section: between each non-collinear pair of consecutive
+    // ports the corner between the two arms' extended side-walls is a tangent fillet, radius capped
+    // at min(R - h, ARMPIT_FILLET_K * 2h) so it does not balloon at thin widths (R - h = 14 here).
+    // The two collinear ports (the T stem) bridge with a plain line -> exactly two fillet arcs.
     const junction = paths.find((p) => arcsOf([p]).length === 2)!;
-    expect(arcsOf([junction]).every((a) => Math.abs(a.r - 14) < 0.01)).toBe(true);
+    expect(arcsOf([junction]).every((a) => a.r > 0 && a.r <= 14 + 0.01)).toBe(true);
     for (const p of allPts(paths)) {
       expect(Number.isFinite(p.x)).toBe(true);
       expect(Number.isFinite(p.y)).toBe(true);
     }
   });
 
-  it("hex junction on 3 adjacent faces rounds the dead sector with the turn outer arc (#493)", () => {
+  it("hex junction on 3 adjacent faces: through-corridor edges are concentric arcs about the dead sector O (#493)", () => {
     // Hex step 60, centre at origin, passages toward 3 consecutive faces (normals 0deg, 60deg,
-    // 120deg). The wide dead sector between the outermost two arms (a reflex turn) is drawn as the
-    // *outer* elbow of the same turn construction -- radius R + h around O -- not an inverted inner
-    // arc (which punches a hole in the tile).
+    // 120deg). The wide dead sector between the outermost two arms (a reflex turn) carries a
+    // corridor bending one-face-apart across it. Its OUTER edge is the dead sector's R + h arc about
+    // O (O = where the outer two border lines meet), and its INNER edge must be the *concentric*
+    // R - h arc about the same O -- not a straight line or a local fillet, which would pinch the
+    // fill. The in-between arm (normal 60deg) cuts a shallow notch out of that single inner arc.
     const c = { x: 0, y: 0 };
     const nb = (deg: number) => ({ x: 60 * Math.cos((deg * Math.PI) / 180), y: 60 * Math.sin((deg * Math.PI) / 180) });
     const h = 8;
@@ -600,15 +620,20 @@ describe("buildCorridorContour", () => {
       h * 2,
     );
     const junction = paths.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
+    expectContinuousPath(junction);
     const arcs = arcsOf([junction]);
-    // Two concave armpits (60deg corners, R_armpit = 17.32, so radius R_armpit - h = 9.32) between
-    // passages 0-1 and 1-2, plus one convex outer arc across the wide dead sector: its corner O is
-    // where the outer two border lines meet, R_gap = 51.96, radius R_gap + h = 59.96 -- swept the
-    // short way, the same arc a one-face-apart passage draws.
-    expect(arcs.length).toBe(3);
-    expect(arcs.filter((a) => Math.abs(a.r - 9.32) < 0.1).length).toBe(2);
-    const deadArc = arcs.find((a) => Math.abs(a.r - 59.96) < 0.1)!;
-    expect(deadArc).toBeTruthy();
+    // O = (30, 51.96), R = 52. Inner edge: two big arcs of radius R - h = 44 (one each side of the
+    // in-between arm's notch) about O; outer dead-sector edge: one big arc of radius R + h = 60
+    // about the same O -- all three concentric. Plus small fillet arcs (radius <= ARMPIT_FILLET_K *
+    // thickness = 0.9 * 16 = 14.4) at the concave corners where the big arcs meet the side-walls.
+    const O = { x: 30, y: 51.96 };
+    const big = arcs.filter((a) => Math.hypot(a.c.x - O.x, a.c.y - O.y) < 0.1);
+    expect(big.length).toBe(3);
+    expect(big.filter((a) => Math.abs(a.r - 44) < 0.1).length).toBe(2);
+    expect(big.some((a) => Math.abs(a.r - 60) < 0.1)).toBe(true);
+    const fillets = arcs.filter((a) => Math.hypot(a.c.x - O.x, a.c.y - O.y) >= 0.1);
+    expect(fillets.length).toBeGreaterThanOrEqual(2);
+    expect(fillets.every((a) => a.r > 0 && a.r <= 14.4 + 0.01)).toBe(true);
     const poly = contourToPolyline(junction);
     let area = 0;
     for (let i = 0; i < poly.length; i++) {
@@ -621,6 +646,25 @@ describe("buildCorridorContour", () => {
     for (const p of poly) {
       expect(Number.isFinite(p.x)).toBe(true);
       expect(Number.isFinite(p.y)).toBe(true);
+    }
+  });
+
+  it("keeps a thick hex T-junction continuous at every arc/line handoff", () => {
+    const c = { x: 0, y: 0 };
+    const nb = (deg: number) => ({ x: 60 * Math.cos((deg * Math.PI) / 180), y: 60 * Math.sin((deg * Math.PI) / 180) });
+    for (const h of [8, 12, 16, 20, 22]) {
+      const paths = buildCorridorContour(
+        [{ v0: c, v1: nb(0) }, { v0: c, v1: nb(60) }, { v0: c, v1: nb(120) }],
+        h * 2,
+      );
+      const junction = paths.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
+      if (h === 20) console.log(junction.cmds);
+      expectContinuousPath(junction);
+      if (h === 12) console.log(junction.cmds);
+      for (const p of contourToPolyline(junction)) {
+        expect(Number.isFinite(p.x)).toBe(true);
+        expect(Number.isFinite(p.y)).toBe(true);
+      }
     }
   });
 

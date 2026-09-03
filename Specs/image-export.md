@@ -345,11 +345,15 @@ cell centre.
   middle: `R` = half the tile step, `O` = the tile corner, inner radius `step/2 − thickness/2`.
 - **3+ ports — junction**: the outline is walked CCW — each port lays its `thickness`-wide border,
   then the piece between it and the next port is one of:
-  - **concave armpit** (passages on both sides, CCW turn between the two arm axes < 180°): a single
-    arc of radius `R − thickness/2` centred at `O` (where the two border *lines* meet), `R` the
-    distance from `O` to each border midpoint — same as a turn tile's inner elbow, so the corridor
-    keeps a constant `thickness` through the bend. For a square `+` (step `s`, port at each face
-    middle): radius `s/2 − thickness/2`.
+  - **concave armpit** (passages on both sides, CCW turn between the two arm axes < 180°): a
+    **tangent fillet**. Each arm's own side-wall is run *inward* from its inner border end; the two
+    extended walls meet at `W`; the corner is rounded with an arc that touches each wall, radius
+    `min(R − thickness/2, ARMPIT_FILLET_K · thickness, reach · tan(half-angle))` where `R` is the
+    distance from `O` (border lines' intersection) to each border midpoint, `ARMPIT_FILLET_K` = 0.9,
+    and `reach` is how far `W` sits from the nearer inner border end. Capping the radius against the
+    corridor width keeps a thin corridor at a wide junction about one corridor wide instead of
+    ballooning with the tessellation step; when no cap bites it is the turn-tile inner elbow
+    `R − thickness/2`.
   - **convex gap** (the wide dead sector between the two outermost arms — reflex turn, e.g. a hex
     cell with passages on 3 adjacent faces): the *outer* elbow of the same turn construction — an
     arc of radius `R + thickness/2` around `O` between the two borders' outer ends, the exact arc a
@@ -357,6 +361,18 @@ cell centre.
     passes close by the centre without reaching it; the fill still reads as one smooth junction.
     Drawing the *inner* arc here instead would invert and punch a hole in the tile.
   - **straight-through** (collinear arms): a plain line across.
+
+  **Special case — exactly one dead sector** (e.g. a hex cell with passages on 3 *adjacent* faces):
+  a corridor bends one-face-apart across the junction. Its outer edge is the dead sector's
+  `R + thickness/2` arc about `O`; its inner edge must be the **concentric** `R − thickness/2` arc
+  about the *same* `O`, running unbroken from one dead-sector arm to the other along the short side.
+  Any arm in between cuts a shallow notch out of that single inner arc (its two side-walls each
+  cross the circle once; between the crossings the arm's own `thickness`-wide border juts outward),
+  and each concave corner where the inner arc meets such a side-wall is rounded with a small tangent
+  fillet (radius `min(ARMPIT_FILLET_K · thickness, (R − thickness/2)/2)`). The whole junction
+  contour is emitted by a dedicated traversal that bypasses the per-piece loop above — building
+  those middle sections as stand-alone armpit fillets about their own local corner would leave a
+  straight inner edge against the curved outer one and pinch the fill (issue #493).
 
   **No core disc.**
 

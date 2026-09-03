@@ -195,13 +195,21 @@ function tileContour(tile: Tile, h: number, roundJunctions: boolean): PathCmd[] 
   return junctionContour(ports, h, roundJunctions);
 }
 
+/** Max concave-armpit fillet radius, as a multiple of the corridor width `2h`. The armpit corner is
+ *  a tangent fillet between the two arms' extended side-walls of radius `min(R - h, ARMPIT_FILLET_K
+ *  * 2h)`. The turn-tile inner elbow `R - h` grows with the tessellation step, ballooning a
+ *  thin-corridor junction; capping the radius against the corridor width keeps the fill about one
+ *  corridor wide regardless of the step. When the cap does not bite it is exactly the `R - h` turn
+ *  elbow. */
+const ARMPIT_FILLET_K = 0.9;
+
 /** A junction tile (3+ ports). Walk the outline CCW: each port contributes its `thickness`-wide
- *  border (`right` -> `left`), then between it and the next port one arc of the same turn-tile
- *  construction — centre `O` where the two border *lines* meet, `R` = distance from `O` to each
- *  border midpoint:
+ *  border (`right` -> `left`), then between it and the next port:
  *   - **concave armpit** (both arms have a passage, CCW turn between the two arm axes < 180 degrees):
- *     the turn's *inner* elbow — an arc of radius `R - h` between the two borders' inner ends,
- *     swept the short way. Constant `thickness` through the bend.
+ *     a tangent fillet of radius `min(R - h, ARMPIT_FILLET_K * 2h)` between the two arm side-walls —
+ *     `R` = distance from `O` (where the two border lines meet) to each border midpoint. Capping the
+ *     radius against the corridor width keeps the junction fill about one corridor wide regardless
+ *     of the tessellation step; when the cap does not bite it is exactly the turn-tile inner elbow.
  *   - **convex gap** (the wide dead sector between the two outermost arms, no passage there — a
  *     reflex turn): the turn's *outer* elbow — an arc of radius `R + h` between the two borders'
  *     outer ends, swept the short way (as `turnContour` sweeps its outer arc). Same arc a
@@ -211,9 +219,211 @@ function tileContour(tile: Tile, h: number, roundJunctions: boolean): PathCmd[] 
  *   - **straight-through** (collinear arms, no `O`): a plain line across.
  *
  *  No core disc. Ports are CCW around the centre. */
+/** A junction with exactly one reflex "dead sector" (e.g. a hex cell with passages on 3 adjacent
+ *  faces) has a corridor bending one-face-apart across it. That corridor's OUTER edge is the dead
+ *  sector's `R + h` arc about `O`; its INNER edge must be the concentric `R - h` arc about the same
+ *  `O`, running unbroken from one dead-sector arm to the other along the short side, with each
+ *  in-between arm cutting a notch out of that one arc where its two side-walls cross the circle.
+ *  Drawing those sections as stand-alone armpit fillets leaves a straight inner edge against the
+ *  curved outer one and pinches the fill. `ia`/`ib` are the dead sector's two arms, `ib === ia + 1`
+ *  (mod n); the short side runs `ib, ib+1, ..., ia`. Returns the whole closed contour, or null if
+ *  the junction has zero or several dead sectors (then the per-section loop handles it). */
+function bendJunctionContour(ports: Port[], h: number): PathCmd[] | null {
+  const n = ports.length;
+  let dead: { O: Pt; ia: number; ib: number } | null = null;
+  let deadCount = 0;
+  for (let i = 0; i < n; i++) {
+    const p = ports[i];
+    const next = ports[(i + 1) % n];
+    let turn = angleOf(mul(next.out, -1)) - angleOf(mul(p.out, -1));
+    while (turn <= 0) turn += Math.PI * 2;
+    if (turn <= Math.PI) continue;
+    deadCount++;
+    const O = lineIntersect(p.mid, leftN(p.out), next.mid, leftN(next.out));
+    if (O) dead = { O, ia: i, ib: (i + 1) % n };
+  }
+  if (deadCount !== 1 || !dead) return null;
+
+  const { O, ia, ib } = dead;
+  const R =
+    (len(sub(ports[ia].mid, O)) + len(sub(ports[ib].mid, O))) / 2;
+  const rIn = Math.max(0, R - h);
+  const rOut = R + h;
+  if (rIn < 1e-4) return null;
+
+  // Short-side arms in CCW order: ib, ib+1, ..., ia.
+  const shortLen = ((ia - ib + n) % n) + 1;
+  const arm: number[] = [];
+  for (let k = 0; k < shortLen; k++) arm.push((ib + k) % n);
+
+  // For each short-side arm, its two border ends and which one is inner (nearer `O`).
+  const info = arm.map((idx) => {
+    const port = ports[idx];
+    const e = portBorderEnds(port, h);
+    const inner = len(sub(e.left, O)) < len(sub(e.right, O)) ? e.left : e.right;
+    const outer = inner === e.left ? e.right : e.left;
+    return { port, e, inner, outer, into: norm(mul(port.out, -1)) };
+  });
+
+  const cmds: PathCmd[] = [];
+  const arcTo = (from: Pt, to: Pt, r: number) => {
+    const g0 = angleOf(sub(from, O));
+    const g1 = angleOf(sub(to, O));
+    cmds.push({ kind: "arc", c: O, r, a0: g0, a1: g1, ccw: shortSweepCcw(g0, g1) });
+  };
+
+  // Concave-fillet radius for the corners where the inner arc hands off to an arm's side-wall.
+  const rf = Math.min(ARMPIT_FILLET_K * 2 * h, h * 0.7);
+
+  /** Where the line through `wallP` along `wallU` crosses `C(O, rIn)`, taking the crossing closest
+   *  to `wallP` (the in-between arm's mouth sits inside the circle between the tile centre and the
+   *  through-corridor's inner arc, so its wall exits the circle just past the border end). Null if
+   *  the line misses. */
+  const wallCrossesArc = (wallP: Pt, wallU: Pt, near: Pt): Pt | null => {
+    const f = sub(wallP, O);
+    const b = dot(f, wallU);
+    const disc = b * b - (dot(f, f) - rIn * rIn);
+    if (disc < 0) return null;
+    const root = Math.sqrt(disc);
+    const pA = add(wallP, mul(wallU, -b - root));
+    const pB = add(wallP, mul(wallU, -b + root));
+    return len(sub(pA, near)) <= len(sub(pB, near)) ? pA : pB;
+  };
+
+  /** Small fillet tangent to the inner circle and a straight wall. The old implementation moved
+   *  the circle's tangent point along its tangent, which made it a chord point rather than a point
+   *  on C(O, rIn). Solve the two offset-line/circle intersections instead, then derive both actual
+   *  tangent points from the same fillet centre. */
+  const cornerFillet = (
+    corner: Pt,
+    wallDir: Pt,
+    rMax: number,
+    arcHint: Pt,
+    reverse: boolean,
+    wallEnd: Pt,
+  ): { cmd: PathCmd | null; arcT: Pt; wallT: Pt } => {
+    const d = norm(wallDir);
+    const nrm = leftN(d);
+    const wallReach = dot(sub(wallEnd, corner), d);
+    if (wallReach <= 1e-6) return { cmd: null, arcT: corner, wallT: corner };
+    const candidates: { fc: Pt; arcT: Pt; wallT: Pt; radius: number; score: number }[] = [];
+    // A thick corridor may not have room for the requested radius on the external side of the
+    // inner circle. Try smaller radii rather than falling back to a malformed fillet.
+    for (const radius of [rMax, rMax * 0.75, rMax * 0.5, rMax * 0.25]) {
+      for (const side of [-1, 1]) {
+        const offset = mul(nrm, side * radius);
+      const q = add(corner, offset);
+      const along = d;
+      const f = sub(q, O);
+      const b = dot(f, along);
+      const tangentDistance = rIn - radius;
+      const disc = b * b - (dot(f, f) - tangentDistance * tangentDistance);
+      if (disc < 0) continue;
+      const root = Math.sqrt(disc);
+      for (const t of [-b - root, -b + root]) {
+        const fc = add(q, mul(along, t));
+        const fo = sub(fc, O);
+        const foLen = len(fo);
+        if (foLen < 1e-6) continue;
+        const arcT = add(O, mul(fo, rIn / foLen));
+        const wallT = sub(fc, offset);
+        const wallDistance = dot(sub(wallT, corner), d);
+        if (wallDistance < -1e-6 || wallDistance > wallReach + 1e-6) continue;
+        const towardArc = norm(sub(arcT, corner));
+        if (dot(towardArc, norm(arcHint)) <= 0) continue;
+        const score =
+          wallDistance +
+          len(sub(arcT, corner)) -
+          10 * dot(towardArc, norm(arcHint));
+        candidates.push({ fc, arcT, wallT, radius, score });
+      }
+      }
+    }
+    const best = candidates.sort((a, b) => b.radius - a.radius || a.score - b.score)[0];
+    if (!best) return { cmd: null, arcT: corner, wallT: corner };
+    const aArc = angleOf(sub(best.arcT, best.fc));
+    const aWall = angleOf(sub(best.wallT, best.fc));
+    return {
+      cmd: {
+        kind: "arc",
+        c: best.fc,
+        r: best.radius,
+        a0: reverse ? aWall : aArc,
+        a1: reverse ? aArc : aWall,
+        ccw: shortSweepCcw(reverse ? aWall : aArc, reverse ? aArc : aWall),
+      },
+      arcT: best.arcT,
+      wallT: best.wallT,
+    };
+  };
+  // Walk the inner edge CCW: arm `ib`'s border to its inner end, then `R - h` arcs about `O` along
+  // the short side. An in-between arm's mouth (its shared grid face) sits inside `C(O, rIn)`, so its
+  // corridor runs from there toward the tile centre, crossing `C(O, rIn)` once on the way. The inner
+  // arc runs to where the arm's trailing side-wall crosses the circle -- rounded there -- then out
+  // along that wall to the border end, across the `thickness` mouth, back along the leading
+  // side-wall to its own crossing -- rounded again -- and the arc resumes. The dead sector's
+  // `R + h` arc closes the loop from arm `ia`'s outer end to arm `ib`'s.
+  const first = info[0];
+  cmds.push({ kind: "move", to: first.outer });
+  cmds.push({ kind: "line", to: first.inner });
+  let cursor = first.inner;
+
+  for (let k = 1; k < shortLen; k++) {
+    const b = info[k];
+    if (b.port === ports[ia]) {
+      arcTo(cursor, b.inner, rIn);
+      cmds.push({ kind: "line", to: b.outer });
+      break;
+    }
+    // In-between arm. Both side-walls run along `b.into` (border end -> tile centre); the mouth
+    // (`b.e.right` -> `b.e.left`) sits inside `C(O, rIn)`, so each wall crosses that circle once.
+    // `outward` = away from the tile centre along the wall.
+    const outward = mul(b.into, -1); // border end -> away from tile centre, along the wall
+    const bm = mid(b.e.right, b.e.left); // arm mouth midpoint
+    const cT = wallCrossesArc(b.e.right, b.into, bm); // trailing wall x inner arc, mouth-side crossing
+    const cL = wallCrossesArc(b.e.left, b.into, bm); // leading wall x inner arc, mouth-side crossing
+    // Leave room on both sides of the thick arm mouth. A fillet that consumes the whole available
+    // wall interval is technically continuous but folds the two sides over one another visually.
+    const r2 = Math.min(rf, rIn * 0.2, h * 0.35);
+    if (!cT || !cL) {
+      // There is no valid circle crossing to use as an arc endpoint. Keep the contour closed with
+      // the actual wall endpoints instead of asking `arcTo` to project a non-circle point.
+      cmds.push({ kind: "line", to: b.e.right });
+      cmds.push({ kind: "line", to: b.e.left });
+      cursor = b.e.left;
+      continue;
+    }
+    // Trailing corner `cT`: big arc arrives, then contour turns OUT along the trailing wall
+    // (`outward`). The arc's tangent away from the corner points back toward `cursor`.
+    const fT = cornerFillet(cT, outward, r2, sub(cursor, cT), false, b.e.right);
+    arcTo(cursor, fT.arcT, rIn);
+    if (fT.cmd) cmds.push(fT.cmd);
+    cmds.push({ kind: "line", to: b.e.right });
+    cmds.push({ kind: "line", to: b.e.left });
+    // Leading corner `cL`: contour arrives down the leading wall (travel dir `b.into`), then the big
+    // arc resumes toward `first.outer`. Wall direction away from corner = `b.into`; arc tangent away
+    // from corner points on toward the dead sector's outer end.
+    const fL = cornerFillet(cL, mul(b.into, -1), r2, sub(info[shortLen - 1].outer, cL), true, b.e.left);
+    cmds.push({ kind: "line", to: fL.wallT });
+    if (fL.cmd) cmds.push(fL.cmd);
+    cursor = fL.arcT;
+  }
+
+  arcTo(info[shortLen - 1].outer, first.outer, rOut);
+
+  const anchor = firstAnchor(cmds);
+  if (anchor) cmds.push({ kind: "line", to: anchor });
+  return cmds;
+}
+
 function junctionContour(ports: Port[], h: number, round: boolean): PathCmd[] {
   const n = ports.length;
   const cmds: PathCmd[] = [];
+
+  if (round) {
+    const bent = bendJunctionContour(ports, h);
+    if (bent) return bent;
+  }
 
   for (let i = 0; i < n; i++) {
     const p = ports[i];
@@ -277,14 +487,52 @@ function junctionContour(ports: Port[], h: number, round: boolean): PathCmd[] {
       continue;
     }
 
-    // Concave armpit: the inner elbow of a turn -- an arc of radius `R - h` around `O` between the
-    // two *inner* border ends, swept the short way. Constant `thickness` through the bend.
-    const rIn = Math.max(0, R - h);
-    const a0 = angleOf(sub(pInner, O));
-    const a1 = angleOf(sub(nInner, O));
-    cmds.push({ kind: "line", to: pInner });
-    cmds.push({ kind: "arc", c: O, r: rIn, a0, a1, ccw: shortSweepCcw(a0, a1) });
-    cmds.push({ kind: "line", to: nextEnds.right });
+    // Concave armpit. The turn-tile inner elbow `R - h` about `O` grows with the tessellation step,
+    // so a thin corridor at a wide junction gets a huge shallow arc that balloons the fill.
+    // Instead: run each arm's own side-wall *inward* from its
+    // inner border end (`pInner` along `into`, `nInner` along `nextInto`) and round the corner
+    // between the two extended walls with a tangent fillet of radius `min(R - h, ARMPIT_FILLET_K *
+    // 2h)`. `W` = where the two walls meet; the fillet touches each wall `rFillet / tan(half)` back
+    // from `W`, its centre on the in-pointing bisector at `rFillet / sin(half)`.
+    const wallA = norm(into);
+    const wallB = norm(nextInto);
+    const W = lineIntersect(pInner, wallA, nInner, wallB);
+    const rTurnIn = Math.max(0, R - h);
+    const half = Math.acos(Math.max(-1, Math.min(1, dot(wallA, wallB)))) / 2;
+    const sinHalf = Math.sin(half);
+    const tanHalf = Math.tan(half);
+    if (!W || sinHalf < 1e-4 || rTurnIn < 1e-4) {
+      // Parallel walls / collinear — straight bridge across the inner ends.
+      cmds.push({ kind: "line", to: pInner });
+      cmds.push({ kind: "line", to: nInner });
+      cmds.push({ kind: "line", to: nextEnds.right });
+    } else {
+      // How far `W` is from each inner border end, along that arm's wall.
+      const sA = dot(sub(W, pInner), wallA);
+      const sB = dot(sub(W, nInner), wallB);
+      // Fillet radius: capped against the corridor width, and shrunk so its tangent points
+      // (`rFillet / tan(half)` back from `W`) stay between the border ends and `W`.
+      const reach = Math.max(0, Math.min(sA, sB));
+      const rFillet = Math.min(rTurnIn, ARMPIT_FILLET_K * 2 * h, reach * tanHalf);
+      if (rFillet < 1e-4) {
+        cmds.push({ kind: "line", to: pInner });
+        cmds.push({ kind: "line", to: W });
+        cmds.push({ kind: "line", to: nInner });
+        cmds.push({ kind: "line", to: nextEnds.right });
+        continue;
+      }
+      const back = rFillet / tanHalf; // W -> tangent point, along each wall
+      const tanA = add(W, mul(wallA, -back));
+      const tanB = add(W, mul(wallB, -back));
+      const fc = add(W, mul(norm(add(mul(wallA, -1), mul(wallB, -1))), rFillet / sinHalf));
+      const a0 = angleOf(sub(tanA, fc));
+      const a1 = angleOf(sub(tanB, fc));
+      cmds.push({ kind: "line", to: pInner });
+      cmds.push({ kind: "line", to: tanA });
+      cmds.push({ kind: "arc", c: fc, r: rFillet, a0, a1, ccw: shortSweepCcw(a0, a1) });
+      cmds.push({ kind: "line", to: tanB });
+      cmds.push({ kind: "line", to: nextEnds.right });
+    }
   }
 
   const first = firstAnchor(cmds);
