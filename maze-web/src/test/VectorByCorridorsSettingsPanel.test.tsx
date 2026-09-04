@@ -147,6 +147,16 @@ describe("VectorByCorridorsSettingsPanel", () => {
     expect(useMazeStore.getState().vectorByCorridorsSettings.thickness).toBe(10);
   });
 
+  it("limits the split gap width slider to 10px", () => {
+    useMazeStore.setState({
+      nodes: [{ id: 1, x: 0, y: 0, i: 0 }, { id: 2, x: 0, y: 0, i: 1 }],
+      vectorByCorridorsSectionsExpanded: { splits: true },
+    });
+    render(<VectorByCorridorsSettingsPanel />);
+    const label = screen.getByText(m["image_export.vector_by_corridors.split_gap_width"]());
+    expect(label.parentElement?.querySelector('input[type="range"]')).toHaveAttribute("max", "10");
+  });
+
   it("the marker widen padding/shape controls live in the 'Cells' section, not Waypoints (GitHub issue #313 follow-up)", () => {
     render(<VectorByCorridorsSettingsPanel />);
     expect(screen.getByText(m["image_export.vector_by_corridors.marker_widen_padding"]())).toBeInTheDocument();

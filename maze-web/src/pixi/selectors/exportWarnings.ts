@@ -39,6 +39,9 @@ export type ExportWarningId =
    *  (`TILE_SIZE`) or across it (the corridor's own `thickness`). One warning total, covering every
    *  overflowing one-way passage. */
   | "one_way_arrows_overflow_corridor"
+  /** "Vector by corridors" only — a thick passage plus both sides of a split gap exceeds the
+   *  40px safe width used by split cells, so the rendered gap may be reduced. */
+  | "split_gap_may_shrink"
   /** PNG export canvas-fit warnings (not maze-content geometry) — built locally by
    *  `PngExportSettingsPanel` from `computeDigitalExportFit`/`computePrintExportFit`'s own result,
    *  not through `computeVectorByWallsWarnings`. Carry no `nodes`/`edges` (canvas-level, not
@@ -499,6 +502,15 @@ export function computeVectorByCorridorsWarnings(
     cfg,
     edges,
   );
+
+  if (settings.thickness + 2 * settings.splitGapWidth > 40) {
+    warnings.push({
+      id: "split_gap_may_shrink",
+      key: "split_gap_may_shrink",
+      nodes: [],
+      edges: [],
+    });
+  }
 
   const specialSplitPointKeys = new Set<string>();
   if (settings.splitSpecialShapes && maxSplitNodeCount(nodes) > 0) {

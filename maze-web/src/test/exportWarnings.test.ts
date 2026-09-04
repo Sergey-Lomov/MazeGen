@@ -482,6 +482,28 @@ describe("computeVectorByCorridorsWarnings", () => {
     });
   });
 
+  describe("split_gap_may_shrink", () => {
+    it("flags when corridor width plus both gap sides exceeds 40px", () => {
+      const settings = baseCorridorsSettings({ thickness: 35, splitGapWidth: 3 });
+      const warnings = computeVectorByCorridorsWarnings([], [], squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "split_gap_may_shrink")).toHaveLength(1);
+    });
+
+    it("does not flag exactly 40px", () => {
+      const settings = baseCorridorsSettings({ thickness: 34, splitGapWidth: 3 });
+      const warnings = computeVectorByCorridorsWarnings([], [], squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "split_gap_may_shrink")).toHaveLength(0);
+    });
+
+    it("does not attach maze entities to the settings warning", () => {
+      const settings = baseCorridorsSettings({ thickness: 35, splitGapWidth: 3 });
+      const warning = computeVectorByCorridorsWarnings([], [], squareCfg, settings, null, null)
+        .find((w) => w.id === "split_gap_may_shrink");
+      expect(warning?.nodes).toEqual([]);
+      expect(warning?.edges).toEqual([]);
+    });
+  });
+
   describe("one_way_arrows_overflow_corridor", () => {
     it("flags a one-way passage when the chevron row's length exceeds TILE_SIZE", () => {
       const nodes = [n(0, 0, 0), n(1, 1, 0)];

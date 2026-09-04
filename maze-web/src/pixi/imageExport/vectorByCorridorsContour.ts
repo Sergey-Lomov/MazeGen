@@ -45,6 +45,7 @@ type Port = { centre: Pt; mid: Pt; out: Pt };
 
 /** One tile: its centre and every port, in CCW order around the centre. */
 type Tile = { centre: Pt; ports: Port[] };
+export type CorridorJunctionStyle = "default" | "shallowThreeWay";
 
 /** Groups the centre-to-centre corridor segments into per-tile port lists. Every segment端 is a
  *  connection of the tile whose centre sits at that segment end. A split-touching far end (`v1TouchesSplit`)
@@ -142,20 +143,21 @@ export function buildCorridorContour(
   segments: Seg[],
   thickness: number,
   roundJunctions = true,
+  junctionStyle: CorridorJunctionStyle = "default",
 ): ContourPath[] {
   const h = fitHalfWidth(segments, thickness / 2);
   const tiles = buildTiles(segments);
   const paths: ContourPath[] = [];
 
   for (const tile of tiles) {
-    const cmds = tileContour(tile, h, roundJunctions);
+    const cmds = tileContour(tile, h, roundJunctions, junctionStyle);
     if (cmds.length >= 2) paths.push({ cmds, hole: false });
   }
   return paths;
 }
 
 /** Emits one closed path for a single tile. */
-function tileContour(tile: Tile, h: number, roundJunctions: boolean): PathCmd[] {
+function tileContour(tile: Tile, h: number, roundJunctions: boolean, junctionStyle: CorridorJunctionStyle): PathCmd[] {
   const { ports } = tile;
   const n = ports.length;
   if (n === 0) return [];
@@ -218,7 +220,8 @@ function tileContour(tile: Tile, h: number, roundJunctions: boolean): PathCmd[] 
     return turnContour(p0, p1, h);
   }
 
-  return junctionContour(ports, h, roundJunctions);
+  const filletScale = junctionStyle === "shallowThreeWay" && n === 3 ? 0.55 : 1;
+  return junctionContour(ports, h, roundJunctions, filletScale);
 }
 
 /** Max concave-armpit fillet radius, as a multiple of the corridor width `2h`. The armpit corner is
@@ -254,7 +257,7 @@ const ARMPIT_FILLET_K = 0.9;
  *  curved outer one and pinches the fill. `ia`/`ib` are the dead sector's two arms, `ib === ia + 1`
  *  (mod n); the short side runs `ib, ib+1, ..., ia`. Returns the whole closed contour, or null if
  *  the junction has zero or several dead sectors (then the per-section loop handles it). */
-function bendJunctionContour(ports: Port[], h: number): PathCmd[] | null {
+function bendJunctionContour(ports: Port[], h: number, filletScale: number): PathCmd[] | null {
   const n = ports.length;
   let dead: { O: Pt; ia: number; ib: number } | null = null;
   let deadCount = 0;
@@ -299,7 +302,7 @@ function bendJunctionContour(ports: Port[], h: number): PathCmd[] | null {
   };
 
   // Concave-fillet radius for the corners where the inner arc hands off to an arm's side-wall.
-  const rf = Math.min(ARMPIT_FILLET_K * 2 * h, h * 0.7);
+  const rf = Math.min(ARMPIT_FILLET_K * 2 * h, h * 0.7) * filletScale;
 
   /** Where the line through `wallP` along `wallU` crosses `C(O, rIn)`, taking the crossing closest
    *  to `wallP` (the in-between arm's mouth sits inside the circle between the tile centre and the
@@ -442,12 +445,12 @@ function bendJunctionContour(ports: Port[], h: number): PathCmd[] | null {
   return cmds;
 }
 
-function junctionContour(ports: Port[], h: number, round: boolean): PathCmd[] {
+function junctionContour(ports: Port[], h: number, round: boolean, filletScale = 1): PathCmd[] {
   const n = ports.length;
   const cmds: PathCmd[] = [];
 
   if (round) {
-    const bent = bendJunctionContour(ports, h);
+    const bent = bendJunctionContour(ports, h, filletScale);
     if (bent) return bent;
   }
 
@@ -539,7 +542,7 @@ function junctionContour(ports: Port[], h: number, round: boolean): PathCmd[] {
       // Fillet radius: capped against the corridor width, and shrunk so its tangent points
       // (`rFillet / tan(half)` back from `W`) stay between the border ends and `W`.
       const reach = Math.max(0, Math.min(sA, sB));
-      const rFillet = Math.min(rTurnIn, ARMPIT_FILLET_K * 2 * h, reach * tanHalf);
+      const rFillet = Math.min(rTurnIn, ARMPIT_FILLET_K * 2 * h, reach * tanHalf) * filletScale;
       if (rFillet < 1e-4) {
         cmds.push({ kind: "line", to: pInner });
         cmds.push({ kind: "line", to: W });

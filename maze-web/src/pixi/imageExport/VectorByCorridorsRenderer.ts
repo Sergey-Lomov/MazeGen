@@ -370,7 +370,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
     // miter-style patch instead (GitHub issue #443 follow-up).
     this.corridors.clear();
     if (strokeOpts.cap === "round") {
-      const contour = buildCorridorContour(this.geometryCache.segments, strokeOpts.width, settings.roundJunctions);
+      const contour = buildCorridorContour(this.geometryCache.segments, strokeOpts.width, settings.roundJunctions, "shallowThreeWay");
       if (contour.length > 0) {
         traceCorridorContour(this.corridors, contour);
         this.corridors.fill(strokeOpts.color);
@@ -666,6 +666,49 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           const junction = shape.dividerJunctions?.[nodeIndex];
           if (!junction) return;
           for (const segment of passage.wallSegments) {
+            if (settings.join === "round") {
+              const outerContourSegments = passage.wallSegments.map((other) => ({
+                v0: passage.center,
+                v1: other.center,
+                v1TouchesSplit: true,
+              }));
+              const orderedOuter = outerContourSegments
+                .map((other) => ({ other, angle: Math.atan2(other.v1.y - passage.center.y, other.v1.x - passage.center.x) }))
+                .sort((a, b) => a.angle - b.angle);
+              let outerTurn: typeof outerContourSegments = [];
+              if (orderedOuter.length >= 3) {
+                let widestGap = -1;
+                let widestIndex = 0;
+                for (let i = 0; i < orderedOuter.length; i++) {
+                  const next = i + 1 < orderedOuter.length ? orderedOuter[i + 1].angle : orderedOuter[0].angle + Math.PI * 2;
+                  const gap = next - orderedOuter[i].angle;
+                  if (gap > widestGap) {
+                    widestGap = gap;
+                    widestIndex = i;
+                  }
+                }
+                outerTurn = [
+                  orderedOuter[widestIndex].other,
+                  orderedOuter[(widestIndex + 1) % orderedOuter.length].other,
+                ];
+              }
+              // Match the established diagonal-ribbon treatment: draw a wider background pass
+              // first, then the colored arc on top. The underlay belongs to the outer arc only;
+              // the inner junction contour must remain untouched.
+              if (settings.splitGapWidth > 0 && outerTurn.length === 2) {
+                const gridInset = 0.5 / (this.viewport.scale || 1);
+                const gapWidth = Math.min(settings.thickness + 2 * settings.splitGapWidth, TILE_SIZE - 2 * gridInset);
+                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, gapWidth, true));
+                this.corridors.fill(settings.background);
+              }
+              traceCorridorContour(this.corridors, buildCorridorContour(outerContourSegments, settings.thickness, true, "shallowThreeWay"));
+              this.corridors.fill(settings.color);
+              if (outerTurn.length === 2) {
+                traceCorridorContour(this.corridors, buildCorridorContour(outerTurn, settings.thickness, true));
+                this.corridors.fill(settings.color);
+              }
+              break;
+            }
             drawConnectorLine(
               junction, segment.center, settings.color, segment.oneWayOut, settings.thickness, this.corridors,
               settings.join === "miter" ? "butt" : "round",
@@ -748,7 +791,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
           // to the through line's thickness) — a short patch left a sliver of the through line
           // poking out past the cross line's visible edge; running it almost the cross line's full
           // length instead keeps it flush.
-          const half = Math.min((len / 2) * 0.9, TILE_SIZE / 2 - gridInset);
+          const half = Math.max(0, len / 2 - gridInset);
           const gapWidth = Math.min(settings.thickness + 2 * settings.splitGapWidth, TILE_SIZE - 2 * gridInset);
           const gapFrom = { x: cx - ux * half, y: cy - uy * half };
           const gapTo = { x: cx + ux * half, y: cy + uy * half };
@@ -883,7 +926,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
             // 90% of the through line's own length, same reasoning as the bridge shape's own
             // cross-corridor patch above — a short patch left a sliver of the underlying ribbons
             // poking out past the through line's visible edge.
-            const half = Math.min((tlen / 2) * 0.9, TILE_SIZE / 2 - gridInset);
+            const half = Math.max(0, tlen / 2 - gridInset);
             const gapFrom = { x: cx - ux * half, y: cy - uy * half };
             const gapTo = { x: cx + ux * half, y: cy + uy * half };
             throughGapView

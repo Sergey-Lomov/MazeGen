@@ -721,6 +721,29 @@ describe("buildCorridorContour", () => {
     }
   });
 
+  it("shallowThreeWay only changes three-port junction fillets", () => {
+    const segs = [
+      { v0: { x: 0, y: 0 }, v1: { x: 40, y: 0 } },
+      { v0: { x: 40, y: 0 }, v1: { x: 80, y: 0 } },
+      { v0: { x: 40, y: 0 }, v1: { x: 40, y: 40 } },
+    ];
+    const normal = buildCorridorContour(segs, 12, true);
+    const shallow = buildCorridorContour(segs, 12, true, "shallowThreeWay");
+    const normalJunction = normal.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
+    const shallowJunction = shallow.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
+    expect(arcsOf([shallowJunction]).length).toBe(arcsOf([normalJunction]).length);
+    expect(shallowJunction).not.toEqual(normalJunction);
+
+    const fourWay = [
+      { v0: { x: 40, y: 40 }, v1: { x: 0, y: 40 } },
+      { v0: { x: 40, y: 40 }, v1: { x: 80, y: 40 } },
+      { v0: { x: 40, y: 40 }, v1: { x: 40, y: 0 } },
+      { v0: { x: 40, y: 40 }, v1: { x: 40, y: 80 } },
+    ];
+    expect(buildCorridorContour(fourWay, 20, true, "shallowThreeWay"))
+      .toEqual(buildCorridorContour(fourWay, 20, true));
+  });
+
   it("roundJunctions=false: a 4-way junction is a plain octagon-ish fill, no arcs (#493 follow-up)", () => {
     const c = { x: 40, y: 40 };
     const segs = [
@@ -1195,7 +1218,7 @@ describe("VectorByCorridorsRenderer", () => {
       });
       currentState = baseState({ vectorByCorridorsSettings: { ...settingsB, splitSpecialShapes: true } });
       const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-      const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
+      const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn>; quadraticCurveTo: ReturnType<typeof vi.fn> } }).corridors;
       expect(corridorsGraphics.stroke).toHaveBeenCalledTimes(6);
       expect(corridorsGraphics.moveTo.mock.calls.filter(([x, y]) => x === 7 && y === 5)).toHaveLength(3);
       expect(corridorsGraphics.moveTo.mock.calls.filter(([x, y]) => x === 3 && y === 5)).toHaveLength(3);
@@ -1206,7 +1229,7 @@ describe("VectorByCorridorsRenderer", () => {
       expect(corridorsGraphics.fill.mock.calls.filter(([color]) => color === settingsB.color)).toHaveLength(6);
     });
 
-    it("rounded hex diagonal divider converges at the same off-center junctions with round caps and no miter patches", () => {
+    it("rounded hex diagonal divider uses the rounded junction contour", () => {
       const segment = (x: number, y: number) => ({
         v0: { x, y }, v1: { x, y }, center: { x, y }, isUndefined: false,
         atFaceStart: false, atFaceEnd: false,
@@ -1224,12 +1247,11 @@ describe("VectorByCorridorsRenderer", () => {
       });
       currentState = baseState({ vectorByCorridorsSettings: { ...settingsA, splitSpecialShapes: true } });
       const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
-      const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
-      expect(corridorsGraphics.stroke).toHaveBeenCalledTimes(6);
-      expect(corridorsGraphics.moveTo.mock.calls.filter(([x, y]) => x === 7 && y === 5)).toHaveLength(3);
-      expect(corridorsGraphics.moveTo.mock.calls.filter(([x, y]) => x === 3 && y === 5)).toHaveLength(3);
-      expect(corridorsGraphics.stroke.mock.calls.every(([style]) => style.cap === "round")).toBe(true);
-      expect(corridorsGraphics.fill).not.toHaveBeenCalled();
+      const corridorsGraphics = (renderer as unknown as { corridors: { moveTo: ReturnType<typeof vi.fn>; stroke: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn>; arc: ReturnType<typeof vi.fn> } }).corridors;
+      expect(corridorsGraphics.stroke).not.toHaveBeenCalled();
+      expect(corridorsGraphics.arc).toHaveBeenCalled();
+      expect(corridorsGraphics.fill.mock.calls.filter(([color]) => color === settingsA.background)).toHaveLength(2);
+      expect(corridorsGraphics.fill.mock.calls.filter(([color]) => color === settingsA.color)).toHaveLength(4);
     });
 
     it("draws an undefined (tentative) share in a desaturated version of the node's color, not the plain color", () => {

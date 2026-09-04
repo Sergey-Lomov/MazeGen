@@ -22,6 +22,8 @@ import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
 import * as m from "~/paraglide/messages";
 
+const MAX_SPLIT_GAP_WIDTH = 10;
+
 /** "Vector by corridors" mode's own settings panel (GitHub issue #310) — a collapsible "Background"
  * section (GitHub issue #309) reusing `VectorByWallsSettingsPanel`'s own section, same field set
  * (background color, grid visibility, grid color) and same `i18n` message keys (no corridors-specific
@@ -731,7 +733,7 @@ export function VectorByCorridorsSettingsPanel() {
                 value={settings.splitGapWidth}
                 onChange={setSplitGapWidth}
                 min={0}
-                max={TILE_SIZE / 2}
+                max={MAX_SPLIT_GAP_WIDTH}
                 step={1}
                 format={(v) => String(v)}
                 disabled={!settings.splitSpecialShapes}
