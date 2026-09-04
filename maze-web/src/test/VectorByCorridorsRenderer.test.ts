@@ -658,12 +658,17 @@ describe("buildCorridorContour", () => {
         h * 2,
       );
       const junction = paths.reduce((a, b) => (b.cmds.length > a.cmds.length ? b : a));
-      if (h === 20) console.log(junction.cmds);
       expectContinuousPath(junction);
-      if (h === 12) console.log(junction.cmds);
       for (const p of contourToPolyline(junction)) {
         expect(Number.isFinite(p.x)).toBe(true);
         expect(Number.isFinite(p.y)).toBe(true);
+      }
+      if (h === 20) {
+        // The requested 40px mouth is wider than a regular hex face (apothem 30, face half-length
+        // 30*tan(30deg)); every tile must use the same clamped half-width, including dead ends.
+        const faceHalf = 30 * Math.tan(Math.PI / 6);
+        expect(arcsOf(paths).some((a) => Math.abs(a.r - faceHalf) < 0.01)).toBe(true);
+        expect(arcsOf(paths).some((a) => Math.abs(a.r - h) < 0.01)).toBe(false);
       }
     }
   });

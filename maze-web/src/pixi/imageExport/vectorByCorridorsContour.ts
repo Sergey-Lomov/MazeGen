@@ -92,6 +92,32 @@ function portBorderEnds(port: Port, h: number): { left: Pt; right: Pt } {
   return { left: add(port.mid, mul(t, h)), right: sub(port.mid, mul(t, h)) };
 }
 
+/** A port mouth must fit on the finite face of its cell. The limit is computed once for the whole
+ * segment set so both sides of a shared face use exactly the same effective width; deriving it per
+ * tile would leave a junction clamped while its one-port neighbour still used the requested width. */
+function fitHalfWidth(segments: Seg[], h: number): number {
+  const apothems = segments.map((s) => {
+    const distance = len(sub(s.v1, s.v0));
+    return s.v1TouchesSplit ? distance : distance / 2;
+  });
+  const apothem = Math.min(...apothems);
+  const angles = segments
+    .map((s) => {
+      const a = angleOf(sub(s.v1, s.v0));
+      return a < 0 ? a + Math.PI : a % Math.PI;
+    })
+    .sort((a, b) => a - b);
+  const uniqueAngles = angles.filter((a, i) => i === 0 || a - angles[i - 1] > 1e-5);
+  if (uniqueAngles.length < 2) return h;
+  let minGap = Math.PI * 2;
+  for (let i = 0; i < uniqueAngles.length; i++) {
+    const next = i + 1 < uniqueAngles.length ? uniqueAngles[i + 1] : uniqueAngles[0] + Math.PI;
+    minGap = Math.min(minGap, next - uniqueAngles[i]);
+  }
+  const faceHalf = apothem * Math.tan(minGap / 2);
+  return Number.isFinite(faceHalf) && faceHalf > 0 ? Math.min(h, faceHalf) : h;
+}
+
 /** Builds the corridor contour as one closed path per tile (the per-tile rework).
  *
  *  Each tile is drawn from its own connections only. On every border where the tile has a passage it
@@ -117,7 +143,7 @@ export function buildCorridorContour(
   thickness: number,
   roundJunctions = true,
 ): ContourPath[] {
-  const h = thickness / 2;
+  const h = fitHalfWidth(segments, thickness / 2);
   const tiles = buildTiles(segments);
   const paths: ContourPath[] = [];
 

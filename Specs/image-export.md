@@ -170,7 +170,9 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
 - **"Cells"** — corridor color, corners & ends (round/miter join, paired with a round/square cap —
   same convention as `VectorByWallsSettings.wallJoin`/`wallCap`) and thickness (1 to `TILE_SIZE` — a
   corridor's meaningful range scales with the cell size, unlike "Vector by walls"' fixed 1-20px
-  wall-thickness range). Defaults: `canvas.wall.default` color, round join, thickness `TILE_SIZE / 2`
+  wall-thickness range). At thick junctions, the contour builder applies one shared clamp to every
+  cell's port mouth, using the finite face length, keeping both sides of a shared face identical even
+  when the requested thickness is wider than a hex face. Defaults: `canvas.wall.default` color, round join, thickness `TILE_SIZE / 2`
   (half the slider's own max, rather than `VectorByWallsSettings.wallThickness`'s fixed default).
   Also hosts the marker widen-patch settings (GitHub issue #313 follow-up — moved here from
   "Waypoints" since the patch also widens the corridor under teleport markers, not just
