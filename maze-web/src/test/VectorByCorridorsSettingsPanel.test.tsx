@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { VectorByCorridorsSettingsPanel } from "../components/features/VectorByCorridorsSettingsPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
+import { pickColorForLabel } from "./colorTestHelpers";
 import { DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportSlice";
 import * as m from "~/paraglide/messages";
 
@@ -103,9 +104,7 @@ describe("VectorByCorridorsSettingsPanel", () => {
 
   it("changing the background color updates the store", () => {
     render(<VectorByCorridorsSettingsPanel />);
-    const inputs = document.querySelectorAll('input[type="color"]');
-    // Swatch order: background, grid, corridor color.
-    fireEvent.change(inputs[0], { target: { value: "#ff00aa" } });
+    pickColorForLabel(screen.getByText(m["image_export.vector_by_walls.background_color"]()), "#ff00aa");
     expect(useMazeStore.getState().vectorByCorridorsSettings.background).toBe(0xff00aa);
   });
 

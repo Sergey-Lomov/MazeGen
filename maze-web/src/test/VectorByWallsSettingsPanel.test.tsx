@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { VectorByWallsSettingsPanel } from "../components/features/VectorByWallsSettingsPanel";
 import { useMazeStore } from "../store/mazeStore";
 import { baseStoreState } from "./storeTestHelpers";
+import { pickColor, pickColorForLabel } from "./colorTestHelpers";
 import { DEFAULT_VECTOR_BY_WALLS_SHARED_STYLE, DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_MARKER_INDEX_SETTINGS } from "../store/slices/imageExportSlice";
 import * as m from "~/paraglide/messages";
 
@@ -175,16 +176,13 @@ describe("VectorByWallsSettingsPanel", () => {
 
   it("changing the floor color updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
-    const inputs = document.querySelectorAll('input[type="color"]');
-    // Swatch order: background, grid, floor, wall.
-    fireEvent.change(inputs[2], { target: { value: "#ff00aa" } });
+    pickColorForLabel(screen.getByText(m["image_export.vector_by_walls.floor_color"]()), "#ff00aa");
     expect(useMazeStore.getState().vectorByWallsSettings.floorColor).toBe(0xff00aa);
   });
 
   it("changing the wall color updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
-    const inputs = document.querySelectorAll('input[type="color"]');
-    fireEvent.change(inputs[3], { target: { value: "#00ff00" } });
+    pickColorForLabel(screen.getByText(m["image_export.vector_by_walls.wall_color"]()), "#00ff00");
     expect(useMazeStore.getState().vectorByWallsSettings.wallColor).toBe(0x00ff00);
   });
 
@@ -250,16 +248,14 @@ describe("VectorByWallsSettingsPanel", () => {
 
   it("changing the start marker fill color updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
-    const inputs = document.querySelectorAll('input[type="color"]');
-    // Swatch order: background, grid, floor, wall, start fill, start border, finish fill, finish border, one-way.
-    fireEvent.change(inputs[4], { target: { value: "#123456" } });
+    // Fill/Border color labels: [0] start marker, [1] finish marker.
+    pickColorForLabel(screen.getAllByText(m["image_export.vector_by_walls.marker_fill_color"]())[0], "#123456");
     expect(useMazeStore.getState().vectorByWallsSettings.startMarker.fillColor).toBe(0x123456);
   });
 
   it("changing the start marker border color updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
-    const inputs = document.querySelectorAll('input[type="color"]');
-    fireEvent.change(inputs[5], { target: { value: "#abcdef" } });
+    pickColorForLabel(screen.getAllByText(m["image_export.vector_by_walls.marker_border_color"]())[0], "#abcdef");
     expect(useMazeStore.getState().vectorByWallsSettings.startMarker.borderColor).toBe(0xabcdef);
   });
 
@@ -272,15 +268,13 @@ describe("VectorByWallsSettingsPanel", () => {
 
   it("changing the finish marker fill color updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
-    const inputs = document.querySelectorAll('input[type="color"]');
-    fireEvent.change(inputs[6], { target: { value: "#654321" } });
+    pickColorForLabel(screen.getAllByText(m["image_export.vector_by_walls.marker_fill_color"]())[1], "#654321");
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.fillColor).toBe(0x654321);
   });
 
   it("changing the finish marker border color updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
-    const inputs = document.querySelectorAll('input[type="color"]');
-    fireEvent.change(inputs[7], { target: { value: "#fedcba" } });
+    pickColorForLabel(screen.getAllByText(m["image_export.vector_by_walls.marker_border_color"]())[1], "#fedcba");
     expect(useMazeStore.getState().vectorByWallsSettings.finishMarker.borderColor).toBe(0xfedcba);
   });
 
@@ -355,9 +349,7 @@ describe("VectorByWallsSettingsPanel", () => {
 
   it("changing the one-way color updates the store", () => {
     render(<VectorByWallsSettingsPanel />);
-    const inputs = document.querySelectorAll('input[type="color"]');
-    // Last swatch: one-way color.
-    fireEvent.change(inputs[8], { target: { value: "#112233" } });
+    pickColorForLabel(screen.getByText(m["image_export.vector_by_walls.one_way_color"]()), "#112233");
     expect(useMazeStore.getState().vectorByWallsSettings.oneWayColor).toBe(0x112233);
   });
 
@@ -466,10 +458,11 @@ describe("VectorByWallsSettingsPanel", () => {
       });
       render(<VectorByWallsSettingsPanel />);
 
-      const inputs = document.querySelectorAll('input[type="color"]');
-      // Last two color inputs on the group row are fill color then border color.
-      const fillColorInput = inputs[inputs.length - 2];
-      fireEvent.change(fillColorInput, { target: { value: "#abcdef" } });
+      // The group row's fill-color swatch is wrapped in a `<span title=...>` (no visible label).
+      const fillWrap = document.querySelector(
+        `[title="${m["image_export.vector_by_walls.teleport_group_override_color"]()}"]`,
+      )!;
+      pickColor(fillWrap.querySelector('[role="button"]')!, "#abcdef");
       const groupKey = Object.keys(useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides)[0];
       expect(useMazeStore.getState().vectorByWallsSettings.teleportGroupOverrides[groupKey].fillColor).toBe(0xabcdef);
     });
@@ -733,9 +726,7 @@ describe("VectorByWallsSettingsPanel", () => {
         },
       });
       render(<VectorByWallsSettingsPanel />);
-      const accentInput = screen.getByText(m["image_export.vector_by_walls.one_way_accent_color"]())
-        .parentElement!.querySelector('input[type="color"]') as HTMLInputElement;
-      fireEvent.change(accentInput, { target: { value: "#112233" } });
+      pickColorForLabel(screen.getByText(m["image_export.vector_by_walls.one_way_accent_color"]()), "#112233");
       expect(useMazeStore.getState().vectorByWallsSettings.oneWayAccentColor).toBe(0x112233);
     });
 
@@ -824,8 +815,7 @@ describe("VectorByWallsSettingsPanel", () => {
         // "Fill color" text also matches `elevatorMarker`'s own row (`MarkerSettingsGroup`) — the
         // badges row is the one rendered second.
         const labels = screen.getAllByText(m["image_export.vector_by_walls.elevator_badges_fill_color"]());
-        const input = labels[labels.length - 1].parentElement!.querySelector('input[type="color"]') as HTMLInputElement;
-        fireEvent.change(input, { target: { value: "#112233" } });
+        pickColorForLabel(labels[labels.length - 1], "#112233");
         expect(useMazeStore.getState().vectorByWallsSettings.elevatorBadges.fillColor).toBe(0x112233);
       });
     });
@@ -875,8 +865,7 @@ describe("VectorByWallsSettingsPanel", () => {
         vectorByWallsSectionsExpanded: { ...useMazeStore.getState().vectorByWallsSectionsExpanded, splits: true },
       });
       render(<VectorByWallsSettingsPanel />);
-      const inputs = document.querySelectorAll('input[type="color"]');
-      fireEvent.change(inputs[inputs.length - 1], { target: { value: "#123456" } });
+      pickColorForLabel(screen.getByText(m["image_export.vector_by_walls.split_node_color"]({ index: "2" })), "#123456");
       expect(useMazeStore.getState().vectorByWallsSettings.splitNodeColors[1]).toBe(0x123456);
     });
 

@@ -118,13 +118,15 @@ A press that doesn't move to a different cell is resolved as a click on `pointer
 - count toward the combined invalid total shown in the UI (`invalidKeys.size + invalidTeleportIds.size + invalidMarkerCount`)
 - are excluded from `generate()` (`preset_start`/`preset_finish` omitted from the payload)
 - are cleared (set to `null`) by "Clear invalid" alongside invalid edge presets and teleports
-- get a dedicated highlight (circle outline matching the marker's own shape, `canvas.preset.invalid`) when `highlightInvalidPresets` is on, drawn on the same layer as invalid teleport endpoints
+- get a dedicated invalid-cell fill (`CellFillRenderer`, `canvas.preset.invalid`) when `highlightInvalidPresets` is on
 
 A teleport is **invalid** if either endpoint is outside the current field (`computeInvalidTeleportIds`, same field-resolution logic as `computeInvalidKeys`). Invalid teleports:
 - count toward the combined invalid total shown in the UI (`invalidKeys.size + invalidTeleportIds.size`)
 - are excluded from `generate()`
 - are removed by "Clear invalid" alongside invalid edge presets
-- get a dedicated highlight (rounded-square outline at each endpoint, `canvas.preset.invalid`) when `highlightInvalidPresets` is on, drawn separately from the edge highlight layer
+- get a dedicated invalid-cell fill at each visible endpoint (`CellFillRenderer`, `canvas.preset.invalid`) when `highlightInvalidPresets` is on; point invalidity is never represented by a square or circle outline
+
+`presetGenSource` and explicit `lockedNodes` use the same per-floor field-membership rule. They are included in the invalid total and removed by "Clear invalid" when outside the field. The canvas controller accepts new start, finish, generation-source, and lock placements only when the clicked cell belongs to the active floor's field; existing invalid values remain loadable so they can be highlighted or cleared.
 
 ### Rendering (`TeleportRenderer`)
 
@@ -197,7 +199,7 @@ Single click, not a two-click gesture like teleports (GitHub issue #357 follow-u
 3. **Both directions available** → `presetVerticalPassagePending: { origin, tool, availableDirections: ["up","down"] }` is set and `PresetVerticalDirectionDialog` opens — a small `Modal` with two plain buttons, "Up"/"Down", no separate Confirm/Cancel footer; picking one commits the entry via `choosePresetVerticalPassageDirection` and closes the dialog in the same click. ESC or closing the dialog calls `cancelPresetVerticalPassagePlacement()`, discarding the pending placement.
 4. **Neither direction available** (no floor above or below has a cell at that point) → no-op; the tools are hidden entirely below 2 floors, so this only guards a same-point edge case on a taller maze.
 
-Hit-testing, drag-to-move, right-click-to-delete, and click-to-cycle-direction on an *existing* endpoint (`pickVerticalPassageEndpointAt`) are unchanged — mirror the teleport tool's own mechanics, filtered to the active floor's own endpoints (`(ep.level ?? 0) === activeLevel`) before hit-testing. A plain click (no drag) on an existing endpoint still cycles `forward ↔ backward` the same way a teleport endpoint's own click-to-cycle works.
+Hit-testing, drag-to-move, right-click-to-delete, and click-to-cycle-direction on an *existing* endpoint (`pickVerticalPassageEndpointAt`) are unchanged — mirror the teleport tool's own mechanics, filtered to the active floor's own endpoints (`(ep.level ?? 0) === activeLevel`) before hit-testing. A plain click (no drag) on an existing endpoint still cycles `forward ↔ backward` the same way a teleport endpoint's own click-to-cycle works. A plain click anywhere else in a cell with an existing vertical passage also targets that same cell/floor pair: one available pair cycles `forward ↔ backward`, while two existing adjacent-floor pairs are left unchanged rather than duplicated (GitHub issue #495; same behavior as post-edit issues #385/#491).
 
 ### Elevator placement
 
@@ -404,7 +406,7 @@ Layers (bottom to top):
 10. **genSourceLayer** — blue cross marker at `presetGenSource` cell
 11. **isolatedHLLayer** — cell highlight for nodes locked both-in-and-out with no passage preset
 12. **invalidHLLayer** — thick highlight when `highlightInvalidPresets = true`
-13. **invalidTeleportHLLayer** — rounded-square outline at each endpoint of an invalid teleport, when `highlightInvalidPresets = true`
+13. **invalidPointHLLayer** — field-cell fill for invalid point entities (teleport/vertical/elevator endpoints, start/finish/gen-source, locks, and split points), when `highlightInvalidPresets = true`
 14. **hoverLayer** — highlighted edge under cursor
 15. **teleportPreviewLayer** — in-progress teleport placement preview (semi-transparent line + marker)
 

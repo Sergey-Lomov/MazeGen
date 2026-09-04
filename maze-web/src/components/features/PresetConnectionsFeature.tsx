@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { PresetConnectionTool } from "../../pixi/fieldEditUtils";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidSplitPoints, presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, presetConnectionsOnLevel, mapOnLevel, setOnLevel } from "../../pixi/fieldEditUtils";
 import { computeOrphanSplitPoints } from "../../pixi/selectors/presetSelectors";
 import { presetEndpointLevelLabel, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import { resolveFieldAtOf, activeFloorLevel } from "../../store/storeHelpers";
@@ -102,7 +102,6 @@ export function PresetConnectionsFeature() {
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
   const presetGenSource = useMazeStore((s) => s.presetGenSource);
-  const setPresetGenSource = useMazeStore((s) => s.setPresetGenSource);
   const clearInvalidPresetConnections = useMazeStore((s) => s.clearInvalidPresetConnections);
   const resetPresetConnections = useMazeStore((s) => s.resetPresetConnections);
   const setHighlightInvalidPresets = useMazeStore((s) => s.setHighlightInvalidPresets);
@@ -208,12 +207,20 @@ export function PresetConnectionsFeature() {
     () => computeInvalidMarkers(presetStart, presetFinish, resolveFieldAt),
     [presetStart, presetFinish, resolveFieldAt],
   );
+  const invalidGenSource = useMemo(
+    () => computeInvalidEndpoint(presetGenSource, resolveFieldAt),
+    [presetGenSource, resolveFieldAt],
+  );
+  const invalidLockedKeys = useMemo(
+    () => computeInvalidLockedNodeKeys(lockedNodes, resolveFieldAt),
+    [lockedNodes, resolveFieldAt],
+  );
   const invalidSplitKeys = useMemo(
     () => computeInvalidSplitPoints(presetSplitPoints, resolveFieldAt),
     [presetSplitPoints, resolveFieldAt],
   );
   const invalidMarkerCount = (invalidMarkers.start ? 1 : 0) + (invalidMarkers.finish ? 1 : 0);
-  const invalidCount = invalidKeys.size + invalidTeleportIds.size + invalidVerticalPassageIds.size + invalidElevatorIds.size + invalidMarkerCount + invalidSplitKeys.size;
+  const invalidCount = invalidKeys.size + invalidTeleportIds.size + invalidVerticalPassageIds.size + invalidElevatorIds.size + invalidMarkerCount + (invalidGenSource ? 1 : 0) + invalidSplitKeys.size + invalidLockedKeys.size;
   const hasInvalid = invalidCount > 0;
 
   return (
@@ -287,18 +294,11 @@ export function PresetConnectionsFeature() {
         </Grid>
       </div>
 
-      {(presetGenSource || presetTeleportPendingFrom) && (
+      {presetTeleportPendingFrom && (
         <Stack gap="itemGap">
-          {presetTeleportPendingFrom && (
-            <StatusTag onClear={() => setPresetTeleportPendingFrom(null)}>
-              {m["preset.teleport_pending"]()}: {presetEndpointLevelLabel(presetTeleportPendingFrom, floors.length > 1)}{presetTeleportPendingFrom.point[0]},{presetTeleportPendingFrom.point[1]}
-            </StatusTag>
-          )}
-          {presetGenSource && (
-            <StatusTag onClear={() => setPresetGenSource(null)}>
-              {m["preset.gen_source"]()}: {presetEndpointLevelLabel(presetGenSource, floors.length > 1)}{presetGenSource.point[0]},{presetGenSource.point[1]}
-            </StatusTag>
-          )}
+          <StatusTag onClear={() => setPresetTeleportPendingFrom(null)}>
+            {m["preset.teleport_pending"]()}: {presetEndpointLevelLabel(presetTeleportPendingFrom, floors.length > 1)}{presetTeleportPendingFrom.point[0]},{presetTeleportPendingFrom.point[1]}
+          </StatusTag>
         </Stack>
       )}
 

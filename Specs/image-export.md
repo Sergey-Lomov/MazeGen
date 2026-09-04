@@ -453,6 +453,10 @@ prop (a trailing control that shrinks the slider's own track, never the label) r
 `ColorRow` prop, since no dependent field's color is centralized — only shape-adjacent geometry
 (corner style, size, border width, gap width), not fill/border color, is shared.
 
+Every `ColorRow` / `ColorSwatch` in these panels opens the custom color picker
+(`Specs/color-picker.md`, GitHub issue #499) rather than the browser-native color popup; the
+`resetButton` wiring above is unchanged by that.
+
 The section's own two buttons: **"Synchronize"** clears every override across every group at once,
 re-applying all four shared values to every dependent field
 (`forceVectorByWallsSharedStyle`/`forceVectorByCorridorsSharedStyle`); **"Reset all settings"**

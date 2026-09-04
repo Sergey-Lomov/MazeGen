@@ -110,7 +110,7 @@ export function App() {
        * (post-edit, preset, pattern editor) render here regardless of where in the component tree
        * they're triggered from, so they always dock beside the canvas, never inside the left
        * features panel. */}
-      <div id={SIDE_PANEL_SLOT_ID} />
+      <div id={SIDE_PANEL_SLOT_ID} style={styles.sidePanelSlot} />
       {!ready && <div style={styles.loading}>{m["common.loading"]()}</div>}
     </div>
   );
@@ -128,6 +128,10 @@ const styles: Record<string, React.CSSProperties> = {
     overflowY: "auto",
   },
   canvasColumn: { flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" },
+  // `position: relative` so a `SidePanel` in overlay mode (`ColorPickerPanel`, GitHub issue #499)
+  // can cover the slot's currently-shown panel via `inset: 0`. Zero-size when empty (`display:
+  // contents` would drop the positioning context, so keep it a plain block).
+  sidePanelSlot: { position: "relative" },
   canvas: { flex: 1, overflow: "hidden" },
   loading: {
     position: "fixed",

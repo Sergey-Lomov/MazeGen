@@ -20,7 +20,7 @@ import { useMazeStore } from "../store/mazeStore";
 import type { TessellationKind, FeatureId, FloorState, PngExportSettings } from "../store/mazeStore";
 import { downloadProjectFile, parseAndValidate } from "../store/projectExport";
 import { buildExactGenerateCallPayload } from "../store/slices/generationSlice";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers } from "../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint } from "../pixi/fieldEditUtils";
 import { resolveFieldAtOf } from "../store/storeHelpers";
 import { selectAnalyticsIssues } from "../pixi/selectors/mazeSelectors";
 import { ui, spacing, inset } from "../styles/theme";
@@ -166,6 +166,7 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
   const presetConnections = useMazeStore((s) => s.presetConnections);
   const presetStart = useMazeStore((s) => s.presetStart);
   const presetFinish = useMazeStore((s) => s.presetFinish);
+  const presetGenSource = useMazeStore((s) => s.presetGenSource);
   const presetTeleports = useMazeStore((s) => s.presetTeleports);
   const presetVerticalPassages = useMazeStore((s) => s.presetVerticalPassages);
   const presetElevators = useMazeStore((s) => s.presetElevators);
@@ -287,7 +288,11 @@ export function FeaturesPanel({ onRefit, onExportPng }: {
     () => computeInvalidMarkers(presetStart, presetFinish, resolveFieldAt),
     [presetStart, presetFinish, resolveFieldAt],
   );
-  const presetInvalidMarkerCount = (presetInvalidMarkers.start ? 1 : 0) + (presetInvalidMarkers.finish ? 1 : 0);
+  const presetInvalidGenSource = useMemo(
+    () => computeInvalidEndpoint(presetGenSource, resolveFieldAt),
+    [presetGenSource, resolveFieldAt],
+  );
+  const presetInvalidMarkerCount = (presetInvalidMarkers.start ? 1 : 0) + (presetInvalidMarkers.finish ? 1 : 0) + (presetInvalidGenSource ? 1 : 0);
   const presetInvalidCount = presetInvalidKeys.size + presetInvalidTeleportIds.size + presetInvalidVerticalPassageIds.size + presetInvalidElevatorIds.size + presetInvalidMarkerCount;
   const fieldBlocking = fieldStatus === "unavailable" || fieldStatus === "critical";
   const markerCount = (presetStart ? 1 : 0) + (presetFinish ? 1 : 0);

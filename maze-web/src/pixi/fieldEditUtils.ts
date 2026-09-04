@@ -618,6 +618,6 @@ export function applyTool(
 
 export { pickEdgeAtPosition, isInEdgeVertexDeadZone } from "./edgeHitTesting";
 export {
-  cellExistsAt, computeInvalidKeys, computeInvalidKeysFromCells, computeInvalidMarkers,
+  cellExistsAt, computeInvalidKeys, computeInvalidKeysFromCells, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys,
   computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidSplitPoints,
 } from "./fieldValidity";

@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
-import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint, cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
+import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint, cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
 import { presetEndpoint, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../../pixi/presetEndpoint";
 import type { SplitRef } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
@@ -82,10 +82,14 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, resolveFieldAt);
     const presetStart = invalidMarkers.start ? null : state.presetStart;
     const presetFinish = invalidMarkers.finish ? null : state.presetFinish;
+    const presetGenSource = computeInvalidEndpoint(state.presetGenSource, resolveFieldAt) ? null : state.presetGenSource;
+    const invalidLockedKeys = computeInvalidLockedNodeKeys(state.lockedNodes, resolveFieldAt);
+    const lockedNodes = new Map(state.lockedNodes);
+    for (const key of invalidLockedKeys) lockedNodes.delete(key);
     const invalidSplitKeys = computeInvalidSplitPoints(state.presetSplitPoints, resolveFieldAt);
     const presetSplitPoints = { ...state.presetSplitPoints };
     for (const key of invalidSplitKeys) delete presetSplitPoints[key];
-    return withRecomputedAutoLock(state, { presetConnections, presetTeleports, presetVerticalPassages, presetElevators, presetStart, presetFinish, presetSplitPoints });
+    return withRecomputedAutoLock(state, { presetConnections, presetTeleports, presetVerticalPassages, presetElevators, presetStart, presetFinish, presetGenSource, lockedNodes, presetSplitPoints });
   }),
 
   resetPresetConnections: () => set((state) => ({
@@ -200,10 +204,35 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     if (cellExistsAt(resolveFieldAt, origin.point, originLevel + 1)) availableDirections.push("up");
     if (originLevel > 0 && cellExistsAt(resolveFieldAt, origin.point, originLevel - 1)) availableDirections.push("down");
     if (availableDirections.length === 0) return {};
-    if (availableDirections.length === 1) {
-      return commitPresetVerticalPassage(state, origin, tool, availableDirections[0]);
+
+    // A click anywhere in a cell must edit an existing vertical passage for that adjacent floor,
+    // not mint a second entry for the same pair. Two such entries are resolved as a bidirectional
+    // graph connection on generation, regardless of their individual directions (GitHub issues
+    // #385/#491). Keep the up/down pairs independent: a cell can have one passage to each floor.
+    const entryFor = (direction: "up" | "down") => {
+      const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
+      const to = presetEndpoint(origin.point, undefined, toLevel === 0 ? undefined : toLevel);
+      const pairKey = presetEdgeKey(origin, to);
+      return state.presetVerticalPassages.find((p) => presetEdgeKey(p.from, p.to) === pairKey);
+    };
+    const directionEntries = availableDirections.map((direction) => [direction, entryFor(direction)] as const);
+    const freeDirections = directionEntries.filter(([, entry]) => entry === undefined).map(([direction]) => direction);
+    if (freeDirections.length === 0) {
+      // If the cell identifies exactly one existing pair, mirror marker-click behavior. When both
+      // adjacent floors already have passages, a cell click cannot tell which one was intended.
+      if (directionEntries.length === 1 && directionEntries[0][1]) {
+        return {
+          presetVerticalPassages: cycleVerticalPassageDirection(state.presetVerticalPassages, directionEntries[0][1].id),
+          presetsDirty: true,
+          debugStale: debugStaleOf(state),
+        };
+      }
+      return {};
     }
-    return { presetVerticalPassagePending: { origin, tool, availableDirections } };
+    if (freeDirections.length === 1) {
+      return commitPresetVerticalPassage(state, origin, tool, freeDirections[0]);
+    }
+    return { presetVerticalPassagePending: { origin, tool, availableDirections: freeDirections } };
   }),
 
   choosePresetVerticalPassageDirection: (direction) => set((state) => {

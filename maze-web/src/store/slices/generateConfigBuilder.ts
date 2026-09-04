@@ -1,7 +1,7 @@
 import { generateMaze } from "../../wasm/mazeService";
 import type { GenerateConfig, WasmTessellationConfig, StrategyConfig } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
+import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidSplitPoints, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, presetTeleportEntryToState, presetVerticalPassageDirectionToDto } from "../../pixi/fieldEditUtils";
 import { presetEndpoint, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { postEditTeleportsToDto } from "../../pixi/postEditUtils";
@@ -198,6 +198,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
     return { point: presetEndpointToDto(presetEndpoint([x, y], undefined, level)), kind };
   });
   const invalidMarkers = computeInvalidMarkers(state.presetStart, state.presetFinish, resolveFieldAt);
+  const invalidGenSource = computeInvalidEndpoint(state.presetGenSource, resolveFieldAt);
   const invalidSplitKeys = computeInvalidSplitPoints(state.presetSplitPoints, resolveFieldAt);
   const split_points: [[number, number], number, number][] = Object.entries(state.presetSplitPoints)
     .filter(([key]) => !invalidSplitKeys.has(key))
@@ -227,7 +228,7 @@ export function buildGenerateConfig(state: MazeStore): GenerateConfig | null {
       patterns: splitPatternsToCore(state.splitPatterns, activeTessellation),
     },
     ...(state.presetStart && !invalidMarkers.start ? { preset_start: presetEndpointToDto(state.presetStart) } : {}),
-    ...(state.presetGenSource ? { preset_gen_source: presetEndpointToDto(state.presetGenSource) } : {}),
+    ...(state.presetGenSource && !invalidGenSource ? { preset_gen_source: presetEndpointToDto(state.presetGenSource) } : {}),
     ...(state.presetFinish && !invalidMarkers.finish ? { preset_finish: presetEndpointToDto(state.presetFinish) } : {}),
   };
 }
