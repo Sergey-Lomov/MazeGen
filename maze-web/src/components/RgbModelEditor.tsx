@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
 import type React from "react";
 import { sharedStyles } from "../styles/shared";
 import { typography, spacing } from "../styles/theme";
 import { colorToHex, colorToRgb, rgbToColor, type Rgb } from "./colorFormat";
 import { GradientSlider } from "./GradientSlider";
+import { useChannelInputs, parseChannelInput } from "./useChannelInputs";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -33,40 +33,18 @@ function channelGradient(rgb: Rgb, ch: Channel): string {
  *  preview and hex field in sync. */
 export function RgbModelEditor({ color, onChange }: Props) {
   const rgb = colorToRgb(color);
-  // Text buffer per channel so an in-progress / empty input isn't forced back to a number mid-edit.
-  const [buffers, setBuffers] = useState<Partial<Record<Channel, string>>>({});
-
-  // Drop stale input buffers when the color changes from *outside* this editor (the shared hex
-  // field, or another channel) — otherwise a numeric input keeps showing text that no longer
-  // matches its channel until it loses focus. A change this editor itself produced (tracked via
-  // `expectedColor`) is left alone so an in-progress edit isn't wiped.
-  const expectedColor = useRef(color);
-  useEffect(() => {
-    if (color !== expectedColor.current) {
-      expectedColor.current = color;
-      setBuffers({});
-    }
-  }, [color]);
+  const { buffers, markSelfEdit, setBuffer, clearBuffer } = useChannelInputs<Channel>(color);
 
   function commit(ch: Channel, value: number) {
     const next = rgbToColor({ ...rgb, [ch]: value });
-    expectedColor.current = next;
+    markSelfEdit(next);
     onChange(next);
   }
 
   function handleInput(ch: Channel, raw: string) {
-    setBuffers((b) => ({ ...b, [ch]: raw }));
-    if (raw.trim() === "") return;
-    const n = Number(raw);
-    if (Number.isFinite(n)) commit(ch, Math.max(0, Math.min(255, n)));
-  }
-
-  function clearBuffer(ch: Channel) {
-    setBuffers((b) => {
-      const next = { ...b };
-      delete next[ch];
-      return next;
-    });
+    setBuffer(ch, raw);
+    const value = parseChannelInput(raw, 255);
+    if (value !== null) commit(ch, value);
   }
 
   return (

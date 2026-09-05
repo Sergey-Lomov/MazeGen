@@ -5,14 +5,16 @@ import { TextFieldRow } from "./TextFieldRow";
 import { ui, radius, typography, spacing } from "../styles/theme";
 import { HEX_COLOR_RE, colorToHex, hexToColor } from "./colorFormat";
 import { RgbModelEditor } from "./RgbModelEditor";
+import { HslModelEditor } from "./HslModelEditor";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 
-/** Color models the picker can drive. Only `rgb` ships in #500; later sub-issues add their own. */
-type ColorModel = "rgb";
+/** Color models the picker can drive. `rgb` ships in #500, `hsl` in #501; later sub-issues add more. */
+type ColorModel = "rgb" | "hsl";
 
 const MODELS: { key: ColorModel; label: () => string }[] = [
   { key: "rgb", label: () => m["color_picker.model.rgb"]() },
+  { key: "hsl", label: () => m["color_picker.model.hsl"]() },
 ];
 
 interface Props {
@@ -77,6 +79,7 @@ export function ColorPickerPanel({ color, onApply, onClose }: Props) {
             ))}
           </div>
           {model === "rgb" && <RgbModelEditor color={working} onChange={setWorkingColor} />}
+          {model === "hsl" && <HslModelEditor color={working} onChange={setWorkingColor} />}
         </div>
         <div style={styles.footer}>
           <Button variant="secondary" layoutStyle={styles.footerBtn} onClick={onClose}>
