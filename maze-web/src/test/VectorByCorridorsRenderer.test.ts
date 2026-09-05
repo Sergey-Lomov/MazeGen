@@ -151,8 +151,8 @@ const splitDefaults: Pick<VectorByCorridorsSettings, "splitNodeColors" | "splitS
   splitNodeColors: [], splitSpecialShapes: true, splitGapWidth: 3, splitDiagonalBowAmount: 0.15,
 };
 const sharedStyle: VectorByCorridorsSettings["sharedStyle"] = { cornerStyle: "round", markerSize: 0.16, markerBorderWidth: 3, gapWidth: 3, overrides: {} };
-const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", roundJunctions: true, startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, sharedStyle };
-const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", roundJunctions: true, startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, sharedStyle };
+const settingsA: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x111111, thickness: 10, join: "round", renderStyle: "contour", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, sharedStyle };
+const settingsB: VectorByCorridorsSettings = { background: 0x000000, showGrid: true, gridColor: 0x333333, color: 0x222222, thickness: 20, join: "miter", renderStyle: "contour", startMarker, finishMarker, markerWidenPadding: 4, markerWidenShape: "match_marker", ...oneWayDefaults, ...teleportDefaults, ...DEFAULT_VERTICAL_SETTINGS, ...splitDefaults, markerIndex: DEFAULT_MARKER_INDEX_SETTINGS, sharedStyle };
 
 // Stable references reused across `baseState()` calls — the renderer's own geometry cache keys off
 // reference-equality of `nodes`/`edges`/`activeTessellationConfig` (same convention as
@@ -824,6 +824,87 @@ describe("VectorByCorridorsRenderer", () => {
     const corridors = (renderer as unknown as { corridors: { lineTo: ReturnType<typeof vi.fn>; arcTo: ReturnType<typeof vi.fn> } }).corridors;
     expect(corridors.lineTo).toHaveBeenCalledWith(b.x, b.y);
     expect(corridors.lineTo).toHaveBeenCalledWith(c.x, c.y);
+  });
+
+  // GitHub issue #510 — the "Line" rendering mode (`renderStyle: "legacy_line"`) restores the
+  // pre-#493 renderer as a fully independent path. These assert the legacy branch is actually wired
+  // (a regression that fell through to the contour path, or dropped the circle-cap patch, would
+  // otherwise pass CI — every other renderer test runs `"contour"`).
+  const legacyRound: VectorByCorridorsSettings = { ...settingsA, renderStyle: "legacy_line" }; // join: "round"
+  const legacyMiter: VectorByCorridorsSettings = { ...settingsB, renderStyle: "legacy_line" }; // join: "miter"
+
+  it("legacy_line round style strokes each chained path and patches every non-split free end with a filled circle", () => {
+    const a = { x: 0, y: 20 }, b = { x: 60, y: 20 }, c = { x: 60, y: 80 };
+    vi.mocked(buildCorridorSegments).mockReturnValueOnce([
+      { v0: a, v1: b, fromNode: 1, toNode: 2 },
+      { v0: b, v1: c, fromNode: 2, toNode: 3 },
+    ] as never);
+    vi.mocked(chainSegmentsAtSharedVertices).mockReturnValueOnce([[a, b, c]]);
+    currentState = baseState({ vectorByCorridorsSettings: legacyRound });
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    const corridors = (renderer as unknown as { corridors: {
+      stroke: ReturnType<typeof vi.fn>;
+      circle: ReturnType<typeof vi.fn>;
+      fill: ReturnType<typeof vi.fn>;
+    } }).corridors;
+    // A stroked polyline (not a contour fill) with a butt cap, plus a radius-sized disc at each end.
+    expect(corridors.stroke).toHaveBeenCalledWith(expect.objectContaining({ cap: "butt" }));
+    expect(corridors.circle).toHaveBeenCalledWith(a.x, a.y, legacyRound.thickness / 2);
+    expect(corridors.circle).toHaveBeenCalledWith(c.x, c.y, legacyRound.thickness / 2);
+    expect(corridors.fill).toHaveBeenCalledWith(legacyRound.color);
+  });
+
+  it("legacy_line round style skips the circle patch at a split-touching end (drawSplitPassages owns it)", () => {
+    const freeEnd = { x: 0, y: 20 }, splitEnd = { x: 40, y: 20 };
+    vi.mocked(buildCorridorSegments).mockReturnValueOnce([
+      { v0: freeEnd, v1: splitEnd, fromNode: 1, toNode: 2, v1TouchesSplit: true },
+    ] as never);
+    vi.mocked(chainSegmentsAtSharedVertices).mockReturnValueOnce([[freeEnd, splitEnd]]);
+    currentState = baseState({ vectorByCorridorsSettings: legacyRound });
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    const corridors = (renderer as unknown as { corridors: { circle: ReturnType<typeof vi.fn> } }).corridors;
+    expect(corridors.circle).toHaveBeenCalledWith(freeEnd.x, freeEnd.y, legacyRound.thickness / 2);
+    expect(corridors.circle).not.toHaveBeenCalledWith(splitEnd.x, splitEnd.y, expect.anything());
+  });
+
+  it("legacy_line miter style shares the contour mode's patched-cap stroke (butt stroke, no contour fill of the network)", () => {
+    const a = { x: 20, y: 20 }, b = { x: 40, y: 20 }, c = { x: 40, y: 40 };
+    vi.mocked(buildCorridorSegments).mockReturnValueOnce([
+      { v0: a, v1: b, fromNode: 1, toNode: 2 },
+      { v0: b, v1: c, fromNode: 2, toNode: 3 },
+    ] as never);
+    vi.mocked(chainSegmentsAtSharedVertices).mockReturnValueOnce([[a, b, c]]);
+    currentState = baseState({ vectorByCorridorsSettings: legacyMiter });
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    const corridors = (renderer as unknown as { corridors: {
+      stroke: ReturnType<typeof vi.fn>;
+      lineTo: ReturnType<typeof vi.fn>;
+    } }).corridors;
+    expect(corridors.stroke).toHaveBeenCalledWith(expect.objectContaining({ cap: "butt" }));
+    expect(corridors.lineTo).toHaveBeenCalledWith(b.x, b.y);
+    expect(corridors.lineTo).toHaveBeenCalledWith(c.x, c.y);
+  });
+
+  it("legacy_line draws split passages via the legacy path (plain straight connector to each face midpoint, no contour trace)", () => {
+    const center = { x: 30, y: 30 };
+    const faceMid = { x: 30, y: 0 };
+    vi.mocked(buildSplitPassages).mockReturnValueOnce({
+      passages: [{
+        pointKey: "p1", center, color: 0xabcdef,
+        wallSegments: [{ center: faceMid, v0: { x: 15, y: 0 }, v1: { x: 45, y: 0 }, oneWayOut: undefined, isUndefined: false }],
+        connectors: [],
+      }],
+      wallFaces: [], specialShapes: [],
+    } as never);
+    currentState = baseState({ vectorByCorridorsSettings: legacyRound });
+    const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
+    const corridors = (renderer as unknown as { corridors: {
+      moveTo: ReturnType<typeof vi.fn>;
+      lineTo: ReturnType<typeof vi.fn>;
+    } }).corridors;
+    // A straight line from the node centre to the face midpoint at half the corridor thickness.
+    expect(corridors.moveTo).toHaveBeenCalledWith(center.x, center.y);
+    expect(corridors.lineTo).toHaveBeenCalledWith(faceMid.x, faceMid.y);
   });
 
   it("getRequiredExportMargin returns zero margin when this maze has no nodes (nothing drawn)", () => {

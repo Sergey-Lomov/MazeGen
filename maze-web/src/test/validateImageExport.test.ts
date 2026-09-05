@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings } from "../store/projectExport/validateImageExport";
-import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS } from "../store/slices/imageExportDefaults";
+import { validateVerticalSettingsFields, validateVerticalDecorativeFields, validateDecorativeLineStyle, validateTeleportSettingsFields, validateTeleportFloorBadgeSettings, optRenderStyle, validateVectorByCorridorsSettings } from "../store/projectExport/validateImageExport";
+import { DEFAULT_VERTICAL_SETTINGS, DEFAULT_VERTICAL_DECORATIVE_SETTINGS, DEFAULT_TELEPORT_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS } from "../store/slices/imageExportDefaults";
 
 describe("validateVerticalSettingsFields", () => {
   it("preserves elevator simplification and defaults it on for older projects", () => {
@@ -186,5 +186,26 @@ describe("validateTeleportFloorBadgeSettings", () => {
     void teleportFloorBadge;
     expect(validateTeleportSettingsFields(preFieldObj, "path", DEFAULT_TELEPORT_SETTINGS).teleportFloorBadge)
       .toEqual(DEFAULT_TELEPORT_SETTINGS.teleportFloorBadge);
+  });
+});
+
+// GitHub issue #510 — the "Round junctions" boolean was replaced by a Contour/Line rendering-mode enum.
+describe("optRenderStyle (VectorByCorridorsSettings.renderStyle recovery)", () => {
+  it("reads a valid value as-is", () => {
+    expect(optRenderStyle({ renderStyle: "legacy_line" }, "renderStyle", "contour")).toBe("legacy_line");
+    expect(optRenderStyle({ renderStyle: "contour" }, "renderStyle", "legacy_line")).toBe("contour");
+  });
+
+  it("recovers a pre-#510 project (missing field, or carrying only the removed roundJunctions boolean) to the fallback", () => {
+    expect(optRenderStyle({}, "renderStyle", "contour")).toBe("contour");
+    expect(optRenderStyle({ roundJunctions: true }, "renderStyle", "contour")).toBe("contour");
+    expect(optRenderStyle({ renderStyle: "bogus" }, "renderStyle", "contour")).toBe("contour");
+  });
+
+  it("validateVectorByCorridorsSettings maps a legacy roundJunctions-only object onto renderStyle: 'contour'", () => {
+    const { renderStyle, ...legacyObj } = DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS as typeof DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS & { roundJunctions?: boolean };
+    void renderStyle;
+    const recovered = validateVectorByCorridorsSettings({ ...legacyObj, roundJunctions: true }, "path");
+    expect(recovered.renderStyle).toBe("contour");
   });
 });

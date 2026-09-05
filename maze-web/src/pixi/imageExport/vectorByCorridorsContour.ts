@@ -142,6 +142,10 @@ function fitHalfWidth(segments: Seg[], h: number): number {
 export function buildCorridorContour(
   segments: Seg[],
   thickness: number,
+  // `VectorByCorridorsRenderer` always passes `true` since GitHub issue #510 replaced the old
+  // `roundJunctions` setting with a Contour-vs-Line rendering-mode switch (angular junctions now
+  // mean picking Line mode, not this flag). Kept parameterized for `vectorByCorridorsContour.test.ts`,
+  // which drives the `false` branch directly.
   roundJunctions = true,
   junctionStyle: CorridorJunctionStyle = "default",
 ): ContourPath[] {

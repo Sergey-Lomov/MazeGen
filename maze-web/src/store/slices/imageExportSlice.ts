@@ -100,8 +100,8 @@ export const createImageExportSlice: StateCreator<MazeStore, [], [], ImageExport
         sharedStyle: { ...s.vectorByCorridorsSettings.sharedStyle, overrides: withOverride(s.vectorByCorridorsSettings.sharedStyle.overrides, "cornerStyle", "join") },
       },
     })),
-  setVectorByCorridorsRoundJunctions: (v) =>
-    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, roundJunctions: v } })),
+  setVectorByCorridorsRenderStyle: (v) =>
+    set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, renderStyle: v } })),
   setVectorByCorridorsStartMarkerShape: (shape) =>
     set((s) => ({ vectorByCorridorsSettings: { ...s.vectorByCorridorsSettings, startMarker: { ...s.vectorByCorridorsSettings.startMarker, shape } } })),
   setVectorByCorridorsStartMarkerCornerStyle: (style) =>

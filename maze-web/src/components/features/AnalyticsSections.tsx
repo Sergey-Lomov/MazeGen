@@ -5,6 +5,7 @@ import { titleKeyForTopology } from "../../pixi/splitPatternTitles";
 import { styles, messageFor } from "./analyticsStyles";
 import * as m from "~/paraglide/messages";
 import React from "react";
+import { InfoIconButton } from "../InfoIconButton";
 
 export function StatRow({ label, count, pct, valueText }: { label: string; count?: number; pct?: number | null; valueText?: string }) {
   return (
@@ -71,10 +72,7 @@ export function SubsectionTitle({ label, onOpenInfo }: { label: string; onOpenIn
   return (
     <div style={styles.subsectionHeaderRow}>
       <div style={sharedStyles.sectionHeader}>{label}</div>
-      {onOpenInfo && (
-        <span role="button" tabIndex={0} className="hoverable" style={styles.infoIcon} onClick={onOpenInfo}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onOpenInfo(); }}>ℹ</span>
-      )}
+      {onOpenInfo && <InfoIconButton onClick={onOpenInfo} />}
     </div>
   );
 }

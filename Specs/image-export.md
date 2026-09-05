@@ -82,7 +82,7 @@ Sections:
 
   **Not just special drawing — special node-point positioning too** (GitHub issue #318): a recognized special-shape node's marker/teleport-endpoint/debug-overlay point also moves off the generic evenly-spaced hub circle onto a shape-specific point (`specialSplitNodePoint`, `tessellationGeometry.ts`) — see `Specs/post-edit.md`'s "Marker/teleport anchoring" and "Shape-aware node point" notes for the exact per-shape geometry. Same detection (`detectSplitSpecialShapeKind`, shared via `splitFaceLayout.ts`), independent of this drawing toggle — positioning always applies once a shape is recognized, it isn't gated by `specialShapes`/`splitSpecialShapes`.
 
-  **"Vector by corridors" drawing of the same shapes** (`VectorByCorridorsRenderer.drawSplitPassages`) is independent of wall-mode geometry and uses the corridor's plain color/thickness. Plain corridor paths always use `butt` at split-touching ends and restore round/square caps only at non-split endpoints. Bridge and triple-bridge crossings retain background-colored gap patches when `splitGapWidth > 0`. Round style draws diagonal/triple-corridor connectors as outward-bowed ribbons and may frame them with the configured gap; miter style draws straight sharp ribbons with miter seam patches and suppresses diagonal/triple-corridor gaps. The `hex_diagonal_divider` pattern (`0-1-2` / `3-4-5`) uses rounded three-port contours; its outer arcs receive the same wider background gap pass as diagonal ribbons. Ordinary three-port junctions and this divider use a dedicated shallower fillet style, while other junction arities retain the default contour geometry. The split-gap slider range is 0-10px. The UI labels `splitDiagonalBowAmount` as **Bow** and disables it for miter style.
+  **"Vector by corridors" drawing of the same shapes** (`VectorByCorridorsRenderer.drawSplitPassages`) is independent of wall-mode geometry and uses the corridor's plain color/thickness. `drawSplitPassages` dispatches on `renderStyle` (GitHub issue #510): `"legacy_line"` → `drawSplitPassagesLegacy` (restored pre-#493 renderer), `"contour"` → `drawSplitPassagesContour` (everything the rest of this paragraph describes). Both call the shared `setupSplitPassageDraw` for the per-call boilerplate + plain-connector pass, then run their own independent special-shape block — see the "Rendering mode" section below. Plain corridor paths always use `butt` at split-touching ends and restore round/square caps only at non-split endpoints. Bridge and triple-bridge crossings retain background-colored gap patches when `splitGapWidth > 0`. Round style draws diagonal/triple-corridor connectors as outward-bowed ribbons and may frame them with the configured gap; miter style draws straight sharp ribbons with miter seam patches and suppresses diagonal/triple-corridor gaps. The `hex_diagonal_divider` pattern (`0-1-2` / `3-4-5`) uses rounded three-port contours; its outer arcs receive the same wider background gap pass as diagonal ribbons. Ordinary three-port junctions and this divider use a dedicated shallower fillet style, while other junction arities retain the default contour geometry. The split-gap slider range is 0-10px. The UI labels `splitDiagonalBowAmount` as **Bow** and disables it for miter style.
 
   **Miter join stubs at ordinary corridor T-junctions** (GitHub issue #443) — the plain corridor's own chained paths (`chainSegmentsAtSharedVertices`) each draw as their own independent `stroke()` call, so a Pixi `join` never forms between two chained paths that happen to meet at the same point where chaining itself declined to extend through it (a degree != 2 vertex — an ordinary 3+-corridor T-junction, not a split hub, which `drawSplitPassages` owns entirely and is untouched by this fix): separate `moveTo`/`stroke` calls at a shared vertex draw independent caps, not a join, so a `"miter"` setting's own `cap: "square"` visibly poked out at every such T-junction instead of mitering cleanly. Every chained path here draws `butt` unconditionally first (never protrudes), then each of its own two non-split ends is patched back in separately — a genuine free end (nothing else meets it there) gets a plain round/square cap same as an ordinary stroke would draw, but a T-junction where 2+ chained paths' own ends meet gets one shared **miter polygon** instead of each path patching its own end independently (an earlier attempt at the latter left visible gaps between the independent per-path patches at non-perpendicular junction angles — each path's own patch only ever follows *that* path's own direction, not its neighbors'). The polygon comes from `computeMiterJunctionPatch` (`vectorByCorridorsGeometry.ts`) — pure geometry, no `Graphics` dependency: given every ray converging on the junction (direction + own stroke width), it sorts them by angle and, for each pair of angularly-adjacent rays, intersects the two offset edges facing each other (each ray's own edge offset `width/2` perpendicular to its direction) — exactly the same construction a real stroke `join` computes for two adjacent segments of one path, generalized to N rays with no shared path to stroke them as one. A near-180° adjacent pair (mirrors Pixi's own `miterLimit`) falls back to the two edges' own endpoints instead of an arbitrarily far corner. On a fixed tessellation the same small set of ray-angle patterns repeats at every T-junction, so the function is pure/side-effect-free specifically to allow memoizing by a rounded-angle+width key, though the renderer itself doesn't cache yet. Diagonal ribbons use the sharp seam geometry described above; other split-shape connectors retain their own per-line cap behavior.
 
@@ -168,7 +168,10 @@ collapse convention as `VectorByWallsSettingsPanel`'s own sections — collapsed
 `VectorByCorridorsSettings` (`imageExportSlice.ts`):
 
 - **"Cells"** — corridor color, corners & ends (round/miter join, paired with a round/square cap —
-  same convention as `VectorByWallsSettings.wallJoin`/`wallCap`) and thickness (1 to `TILE_SIZE` — a
+  same convention as `VectorByWallsSettings.wallJoin`/`wallCap`), **Rendering mode** (a Contour/Line
+  `SelectRow` with an info icon opening a `CategoryInfoModal` — GitHub issue #510, replaced the old
+  `join === "round"`-gated "Round junctions" toggle; see the "Rendering mode" section below) and
+  thickness (1 to `TILE_SIZE` — a
   corridor's meaningful range scales with the cell size, unlike "Vector by walls"' fixed 1-20px
   wall-thickness range). At thick junctions, the contour builder applies one shared clamp to every
   cell's port mouth, using the finite face length, keeping both sides of a shared face identical even
@@ -316,7 +319,34 @@ their passages draw nothing in this mode, same "own dedicated sub-issue" convent
 excludes them the same way `buildMazeWalls` excludes split points from its own wall reading
 (`splitPointKeys`).
 
-### Round join — one filled shape per tile (GitHub issue #493)
+### Rendering mode — Contour vs Line (GitHub issues #493 / #510)
+
+The **Rendering mode** setting (`VectorByCorridorsSettings.renderStyle`, `"contour"` default /
+`"legacy_line"`, GitHub issue #510) picks between two corridor-drawing algorithms with independent
+special-shape drawing — the only code the two modes share is `setupSplitPassageDraw` (per-call
+clip-scratch reset, the `drawConnectorLine` helper, and the plain-connector pass — boilerplate with
+no special-shape geometry) and the geometry helpers in `vectorByCorridorsGeometry.ts` that already
+predate #493 — so a bug in one mode's contour/line geometry can never leak into the other.
+It replaced the old `join`-gated `roundJunctions` boolean. Both modes still honor the `join`
+(round/miter) setting; each applies its own round/miter behavior. An old project file predating the
+field — or carrying only the removed `roundJunctions` boolean — recovers to `"contour"`
+(`optRenderStyle`, `validateImageExport.ts`).
+
+- **Contour** (default, GitHub issue #493 rework) — more decorative: rounds every corner, junctions
+  included, but has shown stability issues. Described below.
+- **Line** (`"legacy_line"`) — the corridor renderer as it stood before the #493 contour rework
+  (`ac2e998~1`), restored verbatim (the
+  `renderStyle === "legacy_line"` branch + `drawSplitPassagesLegacy` — the
+  `strokeChainedPathsWithPatchedCaps` miter path predates #493 and was never touched by the contour
+  rework, so both modes share it). More
+  stable, but junctions/turns have sharp corners under `join: "miter"`. Under `join: "round"` it
+  draws each chained corridor path as a `butt`-capped stroke with a plain filled circle patched at
+  every genuine free end (a T-junction needs no patch — coincident round caps safely overlap);
+  split shapes render via `drawSplitPassagesLegacy` (through corridor as a plain straight line,
+  cross corridor on top with a background-colored gap; diagonal nodes as bowed ribbons) — never a
+  contour fill regardless of `join`.
+
+#### Contour mode — one filled shape per tile (GitHub issue #493)
 
 With a **round** join the corridor network is drawn as **one filled shape per cell**, each shape
 built only from that cell's own passages, with real `line`/`arc` commands — no per-segment stroke,
@@ -378,11 +408,10 @@ cell centre.
 
   **No core disc.**
 
-  The **`roundJunctions`** setting (on by default, only shown while `join` is `round`) gates this
-  arc treatment for the 3+-port case *only*: when it is off, every between-passage piece of a
-  junction is instead a straight **mitre** corner (this arm's trailing side-wall extended to meet
-  the next arm's leading side-wall). Turns, dead ends and straight-through tiles stay rounded either
-  way — the setting is purely "smooth the junctions too, or leave them angular".
+  In contour mode a 3+-port junction always gets this arc treatment (`buildCorridorContour`'s
+  `roundJunctions` param is passed `true` unconditionally now — the old user-facing toggle was
+  replaced by the Rendering mode switch, GitHub issue #510). To leave junctions angular, select the
+  **Line** rendering mode instead.
 
 All arc sweeps take the short way between their endpoints (`shortSweepCcw`), except the dead-end cap
 which sweeps the long way (around its own centre). Angle-based throughout, so it works unchanged on
@@ -396,7 +425,8 @@ and export-margin measurement only, never for the render. `ContourPath.hole` is 
 this model (kept only so the trace/fill call site and tests need no signature change).
 
 Segments are still chained into polylines (`chainSegmentsAtSharedVertices`, `WallRenderer.ts` —
-reused as-is) but only the **miter** branch uses the chains now.
+reused as-is) but only the **miter** branch (and the whole **Line** rendering mode) uses the chains
+now.
 
 A **miter** join keeps the straight
 `lineTo` polyline plus the square-cap/`computeMiterJunctionPatch` treatment below. `getRequiredExportMargin`/`getRequiredWallExportMargin`

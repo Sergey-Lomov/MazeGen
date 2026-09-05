@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import { SidePanel } from "../SidePanel";
 import { CategoryInfoModal } from "../CategoryInfoModal";
+import { InfoIconButton } from "../InfoIconButton";
 import { SplitSettingsDialog } from "../dialogs/SplitSettingsDialog";
 import { ToggleRow } from "../ToggleRow";
 import { ElevatorSpanRow } from "../ElevatorSpanRow";
@@ -43,8 +44,7 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
       <div style={styles.category}>
         <div style={styles.categoryHeader}>
           <span style={styles.categoryLabel}>{m["generation.category.growth"]()}</span>
-          <span role="button" tabIndex={0} className="hoverable" style={styles.infoIcon} onClick={() => setOpenInfoCategory("growth")}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setOpenInfoCategory("growth"); }}>ℹ</span>
+          <InfoIconButton onClick={() => setOpenInfoCategory("growth")} />
         </div>
         <div style={styles.categoryBody}>
           <SliderRow label={m["generation.depth_first"]()} value={vertexParams.depth_first ?? 0.9} onChange={(v) => setGenerationParam("depth_first", v)} />
@@ -59,8 +59,7 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
       <div style={styles.category}>
         <div style={styles.categoryHeader}>
           <span style={styles.categoryLabel}>{m["generation.category.one_way"]()}</span>
-          <span role="button" tabIndex={0} className="hoverable" style={styles.infoIcon} onClick={() => setOpenInfoCategory("one_way")}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setOpenInfoCategory("one_way"); }}>ℹ</span>
+          <InfoIconButton onClick={() => setOpenInfoCategory("one_way")} />
         </div>
         <div style={styles.categoryBody}>
           <SliderRow label={m["generation.one_way_chance_short"]()} value={elementsConfig.one_way_chance ?? 0.0} onChange={(v) => setElementsParam("one_way_chance", v)} />
@@ -71,8 +70,7 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
       <div style={styles.category}>
         <div style={styles.categoryHeader}>
           <span style={styles.categoryLabel}>{m["generation.category.teleport"]()}</span>
-          <span role="button" tabIndex={0} className="hoverable" style={styles.infoIcon} onClick={() => setOpenInfoCategory("teleport")}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setOpenInfoCategory("teleport"); }}>ℹ</span>
+          <InfoIconButton onClick={() => setOpenInfoCategory("teleport")} />
         </div>
         <div style={styles.categoryBody}>
           <SliderRow label={m["generation.teleport_chance_short"]()} value={elementsConfig.teleport_chance ?? 0.0} onChange={(v) => setElementsParam("teleport_chance", v)} />
@@ -87,8 +85,7 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
       <div style={styles.category}>
         <div style={styles.categoryHeader}>
           <span style={styles.categoryLabel}>{m["generation.category.split"]()}</span>
-          <span role="button" tabIndex={0} className="hoverable" style={styles.infoIcon} onClick={() => setOpenInfoCategory("split")}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setOpenInfoCategory("split"); }}>ℹ</span>
+          <InfoIconButton onClick={() => setOpenInfoCategory("split")} />
         </div>
         <div style={styles.categoryBody}>
           <SliderRow label={m["generation.split_chance_short"]()} value={elementsConfig.split_chance ?? 0.0} onChange={(v) => setElementsParam("split_chance", v)} />
@@ -106,8 +103,7 @@ export function VertexBasedSettingsPanel({ onClose }: Props) {
         <div style={styles.category}>
           <div style={styles.categoryHeader}>
             <span style={styles.categoryLabel}>{m["generation.category.vertical"]()}</span>
-            <span role="button" tabIndex={0} className="hoverable" style={styles.infoIcon} onClick={() => setOpenInfoCategory("vertical")}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setOpenInfoCategory("vertical"); }}>ℹ</span>
+            <InfoIconButton onClick={() => setOpenInfoCategory("vertical")} />
           </div>
           <div style={styles.categoryBody}>
             <SliderRow label={m["generation.vertical_chance_short"]()} value={elementsConfig.vertical_chance ?? 0.0} onChange={(v) => setElementsParam("vertical_chance", v)} />
@@ -210,13 +206,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   categoryLabel: {
     ...muted(typography.body),
-  },
-  infoIcon: {
-    ...muted(typography.icon),
-    lineHeight: 1,
-    flexShrink: 0,
-    cursor: "default",
-    borderRadius: radius.sm,
   },
   paramRow: {
     minHeight: controlRowHeight,
