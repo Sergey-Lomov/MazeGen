@@ -102,4 +102,89 @@ describe("ColorSwatch", () => {
     openPicker();
     expect(document.querySelector('input[type="color"]')).toBeNull();
   });
+
+  it("shows the RGB model with a selected switcher button and channel controls", () => {
+    render(<ColorSwatch color={0x336699} onChange={() => {}} />);
+    openPicker();
+    expect(screen.getByTestId("color-picker-rgb")).toBeTruthy();
+    const rgbBtn = screen.getByText("RGB") as HTMLButtonElement;
+    expect(rgbBtn.className).toContain("btn-toggle-selected");
+    const rSlider = screen.getByLabelText("R") as HTMLInputElement;
+    expect(rSlider.value).toBe("51");
+    expect((screen.getByLabelText("R value") as HTMLInputElement).value).toBe("51");
+  });
+
+  it("editing an RGB channel input updates preview and hex live, commits on Apply", () => {
+    const onChange = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={onChange} />);
+    openPicker();
+    fireEvent.change(screen.getByLabelText("R value"), { target: { value: "255" } });
+    expect(screen.getByTestId("color-picker-preview").style.background).toContain("rgb(255, 0, 0)");
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#ff0000");
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onChange).toHaveBeenCalledWith(0xff0000);
+  });
+
+  it("editing an RGB slider updates the working color", () => {
+    const onChange = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={onChange} />);
+    openPicker();
+    fireEvent.change(screen.getByLabelText("G"), { target: { value: "128" } });
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#008000");
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onChange).toHaveBeenCalledWith(0x008000);
+  });
+
+  it("typing a hex keeps the RGB channel controls in sync", () => {
+    render(<ColorSwatch color={0x000000} onChange={() => {}} />);
+    openPicker();
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#0a141e" } });
+    expect((screen.getByLabelText("R value") as HTMLInputElement).value).toBe("10");
+    expect((screen.getByLabelText("G value") as HTMLInputElement).value).toBe("20");
+    expect((screen.getByLabelText("B value") as HTMLInputElement).value).toBe("30");
+  });
+
+  it("clearing an RGB channel input leaves the working color untouched", () => {
+    const onChange = vi.fn();
+    render(<ColorSwatch color={0x102030} onChange={onChange} />);
+    openPicker();
+    fireEvent.change(screen.getByLabelText("R value"), { target: { value: "" } });
+    expect((screen.getByLabelText("R value") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#102030");
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onChange).toHaveBeenCalledWith(0x102030);
+  });
+
+  it("an out-of-range RGB channel input is clamped to 0-255", () => {
+    const onChange = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={onChange} />);
+    openPicker();
+    fireEvent.change(screen.getByLabelText("R value"), { target: { value: "999" } });
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#ff0000");
+    fireEvent.change(screen.getByLabelText("G value"), { target: { value: "-5" } });
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#ff0000");
+  });
+
+  it("blurring an empty RGB channel input restores the actual value", () => {
+    render(<ColorSwatch color={0x0a0a0a} onChange={() => {}} />);
+    openPicker();
+    const r = screen.getByLabelText("R value") as HTMLInputElement;
+    fireEvent.change(r, { target: { value: "" } });
+    expect(r.value).toBe("");
+    fireEvent.blur(r);
+    expect(r.value).toBe("10");
+  });
+
+  it("editing the hex field drops a stale (empty) RGB channel input buffer", () => {
+    render(<ColorSwatch color={0x0a0a0a} onChange={() => {}} />);
+    openPicker();
+    const r = screen.getByLabelText("R value") as HTMLInputElement;
+    // Clear the R input — the color stays put, the buffer holds "".
+    fireEvent.change(r, { target: { value: "" } });
+    expect(r.value).toBe("");
+    // A change from outside the RGB editor must re-sync the channel input, not leave it blank.
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#804020" } });
+    expect(r.value).toBe("128");
+  });
 });

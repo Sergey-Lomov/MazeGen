@@ -12,3 +12,24 @@ export function colorToHex(color: number): string {
 export function hexToColor(hex: string): number {
   return parseInt(hex.replace("#", ""), 16);
 }
+
+export interface Rgb {
+  r: number;
+  g: number;
+  b: number;
+}
+
+/** Unpack a 24-bit RGB number into its three 0-255 channels. */
+export function colorToRgb(color: number): Rgb {
+  return {
+    r: (color >> 16) & 0xff,
+    g: (color >> 8) & 0xff,
+    b: color & 0xff,
+  };
+}
+
+/** Pack three channels into a 24-bit RGB number; each channel is clamped to 0-255 and rounded. */
+export function rgbToColor({ r, g, b }: Rgb): number {
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  return (clamp(r) << 16) | (clamp(g) << 8) | clamp(b);
+}
