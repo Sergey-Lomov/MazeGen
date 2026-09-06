@@ -1,7 +1,16 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { useState } from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ColorSwatch } from "../components/ColorSwatch";
 import * as m from "~/paraglide/messages";
+
+// `ColorPickerPanel` throttles the live preview (#513) to one `onPreview` call per rAF — mock it to
+// run synchronously so tests don't need to await a real animation frame.
+beforeEach(() => {
+  vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { cb(0); return 0; });
+  vi.stubGlobal("cancelAnimationFrame", () => {});
+});
+afterEach(() => { vi.unstubAllGlobals(); });
 
 const hexLabel = () => m["color_picker.hex_label"]();
 const applyLabel = () => m["common.apply"]();
@@ -39,44 +48,84 @@ describe("ColorSwatch", () => {
     expect(screen.getByTestId("color-picker-preview")).toBeTruthy();
   });
 
-  it("Escape inside the picker closes it without committing", () => {
+  it("Escape inside the picker closes it and restores the original color via onPreview", () => {
     const onChange = vi.fn();
-    render(<ColorSwatch color={0x000000} onChange={onChange} />);
+    const onPreview = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={onChange} onPreview={onPreview} />);
     openPicker();
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
+    expect(onPreview).toHaveBeenLastCalledWith(0xabcdef);
     fireEvent.keyDown(screen.getByTestId("color-picker-preview"), { key: "Escape" });
     expect(screen.queryByTestId("color-picker-preview")).toBeNull();
-    expect(onChange).not.toHaveBeenCalled();
+    expect(onPreview).toHaveBeenLastCalledWith(0x000000); // restored
+    expect(onChange).not.toHaveBeenCalled(); // never committed
   });
 
-  it("typing a valid hex updates the preview live but does not call onChange until Apply", () => {
+  it("typing a valid hex previews live but commits via onChange only on Apply", () => {
     const onChange = vi.fn();
-    render(<ColorSwatch color={0x000000} onChange={onChange} />);
+    const onPreview = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={onChange} onPreview={onPreview} />);
     openPicker();
     const hex = screen.getByLabelText(hexLabel());
     fireEvent.change(hex, { target: { value: "#ff00aa" } });
     expect(screen.getByTestId("color-picker-preview").style.background).toContain("rgb(255, 0, 170)");
+    expect(onPreview).toHaveBeenLastCalledWith(0xff00aa);
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText(applyLabel()));
     expect(onChange).toHaveBeenCalledWith(0xff00aa);
   });
 
+  it("without onPreview, the working color streams to onChange live", () => {
+    const onChange = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={onChange} />);
+    openPicker();
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#ff00aa" } });
+    expect(onChange).toHaveBeenLastCalledWith(0xff00aa);
+    fireEvent.click(screen.getByText(cancelLabel()));
+    expect(onChange).toHaveBeenLastCalledWith(0x000000); // restored on cancel
+  });
+
+  it("without onPreview, Apply does not fire a second onChange for the already-streamed color", () => {
+    // The live stream is the commit; Apply must not re-fire onChange (a history-pushing setter
+    // would otherwise log the pick twice).
+    const onChange = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={onChange} />);
+    openPicker();
+    fireEvent.change(screen.getByLabelText("R value"), { target: { value: "255" } });
+    fireEvent.change(screen.getByLabelText("G value"), { target: { value: "128" } });
+    const callsBeforeApply = onChange.mock.calls.length;
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onChange.mock.calls.length).toBe(callsBeforeApply); // no extra commit
+    expect(onChange).toHaveBeenLastCalledWith(0xff8000); // last streamed value stands
+  });
+
+  it("without onPreview and no edits, Apply closes without ever calling onChange", () => {
+    const onChange = vi.fn();
+    render(<ColorSwatch color={0x334455} onChange={onChange} />);
+    openPicker();
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("color-picker-preview")).toBeNull();
+  });
+
   it("an invalid hex disables Apply and does not move the preview", () => {
     const onChange = vi.fn();
-    render(<ColorSwatch color={0x112233} onChange={onChange} />);
+    render(<ColorSwatch color={0x112233} onChange={onChange} onPreview={() => {}} />);
     openPicker();
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#zz" } });
     expect(screen.getByTestId("color-picker-preview").style.background).toContain("rgb(17, 34, 51)");
     expect((screen.getByText(applyLabel()) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("Cancel closes the picker without touching the swatch", () => {
+  it("Cancel closes the picker without committing and restores the original via onPreview", () => {
     const onChange = vi.fn();
-    render(<ColorSwatch color={0x000000} onChange={onChange} />);
+    const onPreview = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={onChange} onPreview={onPreview} />);
     openPicker();
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
     fireEvent.click(screen.getByText(cancelLabel()));
     expect(onChange).not.toHaveBeenCalled();
+    expect(onPreview).toHaveBeenLastCalledWith(0x000000);
     expect(screen.queryByTestId("color-picker-preview")).toBeNull();
   });
 
@@ -85,6 +134,56 @@ describe("ColorSwatch", () => {
     openPicker();
     fireEvent.click(screen.getByText(applyLabel()));
     expect(screen.queryByTestId("color-picker-preview")).toBeNull();
+  });
+
+  it("streams every working-color change to onPreview while open", () => {
+    const onPreview = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={() => {}} onPreview={onPreview} />);
+    openPicker();
+    fireEvent.change(screen.getByLabelText("R value"), { target: { value: "255" } });
+    fireEvent.change(screen.getByLabelText("G value"), { target: { value: "128" } });
+    expect(onPreview).toHaveBeenNthCalledWith(1, 0xff0000);
+    expect(onPreview).toHaveBeenNthCalledWith(2, 0xff8000);
+  });
+
+  it("Apply keeps the last previewed color (no restore) and commits it once", () => {
+    const onChange = vi.fn();
+    const onPreview = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={onChange} onPreview={onPreview} />);
+    openPicker();
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#ff00aa" } });
+    onPreview.mockClear();
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onPreview).not.toHaveBeenCalled(); // last preview left in place
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(0xff00aa);
+  });
+
+  it("Cancel restores the open-time color even when the color prop tracked the live preview", () => {
+    // Mirrors an image-export panel: onChange writes the store, the swatch's `color` prop then
+    // re-renders to each previewed value. Cancel must still land on the pre-open color.
+    function Harness() {
+      const [color, setColor] = useState(0x111111);
+      return <ColorSwatch color={color} onChange={setColor} />;
+    }
+    render(<Harness />);
+    openPicker();
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#00ff00" } });
+    fireEvent.click(screen.getByText(cancelLabel()));
+    fireEvent.click(screen.getByRole("button")); // reopen — swatch should be back to #111111
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#111111");
+  });
+
+  it("restore after many intermediate edits lands exactly on the original color", () => {
+    const onPreview = vi.fn();
+    render(<ColorSwatch color={0x123456} onChange={() => {}} onPreview={onPreview} />);
+    openPicker();
+    fireEvent.change(screen.getByLabelText("R value"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("G value"), { target: { value: "200" } });
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
+    fireEvent.click(screen.getByText(cancelLabel()));
+    expect(onPreview).toHaveBeenLastCalledWith(0x123456);
   });
 
   it("disabled swatch is not focusable and clicking/keydown do not open the picker", () => {
@@ -116,7 +215,7 @@ describe("ColorSwatch", () => {
 
   it("editing an RGB channel input updates preview and hex live, commits on Apply", () => {
     const onChange = vi.fn();
-    render(<ColorSwatch color={0x000000} onChange={onChange} />);
+    render(<ColorSwatch color={0x000000} onChange={onChange} onPreview={() => {}} />);
     openPicker();
     fireEvent.change(screen.getByLabelText("R value"), { target: { value: "255" } });
     expect(screen.getByTestId("color-picker-preview").style.background).toContain("rgb(255, 0, 0)");
@@ -128,7 +227,7 @@ describe("ColorSwatch", () => {
 
   it("editing an RGB slider updates the working color", () => {
     const onChange = vi.fn();
-    render(<ColorSwatch color={0x000000} onChange={onChange} />);
+    render(<ColorSwatch color={0x000000} onChange={onChange} onPreview={() => {}} />);
     openPicker();
     fireEvent.change(screen.getByLabelText("G"), { target: { value: "128" } });
     expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#008000");
@@ -147,7 +246,7 @@ describe("ColorSwatch", () => {
 
   it("clearing an RGB channel input leaves the working color untouched", () => {
     const onChange = vi.fn();
-    render(<ColorSwatch color={0x102030} onChange={onChange} />);
+    render(<ColorSwatch color={0x102030} onChange={onChange} onPreview={() => {}} />);
     openPicker();
     fireEvent.change(screen.getByLabelText("R value"), { target: { value: "" } });
     expect((screen.getByLabelText("R value") as HTMLInputElement).value).toBe("");
@@ -158,7 +257,7 @@ describe("ColorSwatch", () => {
 
   it("an out-of-range RGB channel input is clamped to 0-255", () => {
     const onChange = vi.fn();
-    render(<ColorSwatch color={0x000000} onChange={onChange} />);
+    render(<ColorSwatch color={0x000000} onChange={onChange} onPreview={() => {}} />);
     openPicker();
     fireEvent.change(screen.getByLabelText("R value"), { target: { value: "999" } });
     expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#ff0000");
@@ -214,7 +313,7 @@ describe("ColorSwatch", () => {
 
   it("editing an HSL channel input updates preview and hex live, commits on Apply", () => {
     const onChange = vi.fn();
-    render(<ColorSwatch color={0xff0000} onChange={onChange} />);
+    render(<ColorSwatch color={0xff0000} onChange={onChange} onPreview={() => {}} />);
     openPicker();
     selectHsl();
     fireEvent.change(screen.getByLabelText("H value"), { target: { value: "120" } });
@@ -245,7 +344,7 @@ describe("ColorSwatch", () => {
 
   it("clearing an HSL channel input leaves the working color untouched", () => {
     const onChange = vi.fn();
-    render(<ColorSwatch color={0x336699} onChange={onChange} />);
+    render(<ColorSwatch color={0x336699} onChange={onChange} onPreview={() => {}} />);
     openPicker();
     selectHsl();
     fireEvent.change(screen.getByLabelText("H value"), { target: { value: "" } });
@@ -325,6 +424,17 @@ describe("ColorSwatch", () => {
     expect(Number((screen.getByLabelText("L value") as HTMLInputElement).value)).toBe(l0);
   });
 
+  it("a keyboard nudge in the HSL area streams the new color to onPreview", () => {
+    const onPreview = vi.fn();
+    render(<ColorSwatch color={0x808080} onChange={() => {}} onPreview={onPreview} />);
+    openPicker();
+    selectHsl();
+    onPreview.mockClear();
+    fireEvent.keyDown(screen.getByTestId("color-picker-hsl-area"), { key: "ArrowUp" });
+    expect(onPreview).toHaveBeenCalledTimes(1);
+    expect(typeof onPreview.mock.calls[0][0]).toBe("number");
+  });
+
   it("a non-arrow key on the 2D area does nothing", () => {
     render(<ColorSwatch color={0x336699} onChange={() => {}} />);
     openPicker();
@@ -376,7 +486,7 @@ describe("ColorSwatch", () => {
 
   it("editing an OKLCH channel input updates preview and hex live, commits on Apply", () => {
     const onChange = vi.fn();
-    render(<ColorSwatch color={0xffffff} onChange={onChange} />);
+    render(<ColorSwatch color={0xffffff} onChange={onChange} onPreview={() => {}} />);
     openPicker();
     selectOklch();
     fireEvent.change(screen.getByLabelText("L value"), { target: { value: "0" } });
@@ -405,7 +515,7 @@ describe("ColorSwatch", () => {
 
   it("clearing an OKLCH channel input leaves the working color untouched", () => {
     const onChange = vi.fn();
-    render(<ColorSwatch color={0x336699} onChange={onChange} />);
+    render(<ColorSwatch color={0x336699} onChange={onChange} onPreview={() => {}} />);
     openPicker();
     selectOklch();
     fireEvent.change(screen.getByLabelText("C value"), { target: { value: "" } });
@@ -520,4 +630,51 @@ describe("ColorSwatch", () => {
   // for the same reason as HSL: jsdom's synthetic PointerEvent has no clientX/clientY or layout.
   // The 2D area's per-pixel canvas paint (`paintLcPlane`) also no-ops under jsdom (no 2d context);
   // covered by the keyboard-nudge tests above and by manual / visual checks.
+});
+
+// Live-preview rAF throttle (#513) — real (unstubbed) requestAnimationFrame, driven manually.
+describe("ColorSwatch live-preview throttle", () => {
+  let frames: FrameRequestCallback[];
+  beforeEach(() => {
+    frames = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { frames.push(cb); return frames.length; });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => { frames[id - 1] = () => {}; });
+  });
+  afterEach(() => { vi.unstubAllGlobals(); });
+  const flushFrame = () => { const q = frames; frames = []; q.forEach((cb) => cb(0)); };
+
+  it("coalesces several edits in one frame into a single onPreview call with the latest color", () => {
+    const onPreview = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={() => {}} onPreview={onPreview} />);
+    fireEvent.click(screen.getByRole("button"));
+    fireEvent.change(screen.getByLabelText("R value"), { target: { value: "255" } });
+    fireEvent.change(screen.getByLabelText("G value"), { target: { value: "128" } });
+    fireEvent.change(screen.getByLabelText("B value"), { target: { value: "64" } });
+    expect(onPreview).not.toHaveBeenCalled(); // still pending
+    flushFrame();
+    expect(onPreview).toHaveBeenCalledTimes(1);
+    expect(onPreview).toHaveBeenCalledWith(0xff8040);
+  });
+
+  it("Cancel flushes the restore synchronously without waiting for a frame", () => {
+    const onPreview = vi.fn();
+    render(<ColorSwatch color={0x111111} onChange={() => {}} onPreview={onPreview} />);
+    fireEvent.click(screen.getByRole("button"));
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#abcdef" } });
+    onPreview.mockClear();
+    fireEvent.click(screen.getByText(cancelLabel()));
+    expect(onPreview).toHaveBeenCalledWith(0x111111); // synchronous, no flushFrame needed
+  });
+
+  it("Apply flushes the final color synchronously (queued frame not lost to unmount)", () => {
+    const onChange = vi.fn();
+    const onPreview = vi.fn();
+    render(<ColorSwatch color={0x000000} onChange={onChange} onPreview={onPreview} />);
+    fireEvent.click(screen.getByRole("button"));
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#00ff00" } });
+    onPreview.mockClear();
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onPreview).toHaveBeenCalledWith(0x00ff00);
+    expect(onChange).toHaveBeenCalledWith(0x00ff00);
+  });
 });

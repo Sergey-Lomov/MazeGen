@@ -3,16 +3,17 @@
 Custom color-selection UI that replaces the browser-native `<input type="color">` for every color
 parameter in the editor. Tracked as epic (GitHub issue #498). This spec covers the **shell**
 (sub-issue #499), the **model switcher and RGB model** (sub-issue #500), the **HSL model**
-(sub-issue #501), and the **OKLCH model** (sub-issue #502), and is extended as later sub-issues
-land (more color models, palette tools, practicality checks, presets/history).
+(sub-issue #501), the **OKLCH model** (sub-issue #502), and **live canvas preview** (issue #513),
+and is extended as later sub-issues land (more color models, palette tools, practicality checks,
+presets/history).
 
 ## Components
 
 | Component | Role |
 |---|---|
-| `ColorSwatch` (`components/ColorSwatch.tsx`) | The visible color cell. A plain `div` (not a native input — that renders browser chrome that won't clip to `border-radius`). `role="button"`, keyboard-activatable (Enter / Space). Public props are exactly `color: number` (packed 24-bit RGB) + `onChange: (color: number) => void` + `disabled?`. Clicking / activating opens `ColorPickerPanel`; the swatch value only changes when the panel commits. |
+| `ColorSwatch` (`components/ColorSwatch.tsx`) | The visible color cell. A plain `div` (not a native input — that renders browser chrome that won't clip to `border-radius`). `role="button"`, keyboard-activatable (Enter / Space). Props: `color: number` (packed 24-bit RGB) + `onChange: (color: number) => void` + `disabled?` + optional `onPreview?: (color: number) => void` (#513 live canvas preview, defaults to `onChange`). Clicking / activating opens `ColorPickerPanel`. |
 | `ColorRow` (`components/ColorRow.tsx`) | Labeled row: `label` + `ColorSwatch` + optional trailing `resetButton` (the issue #322 per-field Shared-Style reset). Unchanged by #499. |
-| `ColorPickerPanel` (`components/ColorPickerPanel.tsx`) | The picker itself. Rendered only while open (`ColorSwatch` holds the `pickerOpen` flag). |
+| `ColorPickerPanel` (`components/ColorPickerPanel.tsx`) | The picker itself. Rendered only while open (`ColorSwatch` holds the `pickerOpen` flag). Streams the working color to `onPreview` live (#513), throttled to one call per animation frame; restores the open-time color (captured via `useRef`) through it on Cancel / close / Escape. |
 | `colorFormat.ts` (`components/colorFormat.ts`) | `colorToHex` / `hexToColor` / `HEX_COLOR_RE` — the number ↔ `#rrggbb` conversions shared by `ColorSwatch` and `ColorPickerPanel`. Also `colorToRgb` / `rgbToColor` — packed number ↔ `{ r, g, b }` (0-255, clamped + rounded on pack) for the RGB model. Also `colorToHsl` / `hslToColor` — packed number ↔ `{ h, s, l }` (h 0-360, s/l 0-100) for the HSL model; exact sRGB HSL ⇄ RGB, hue wraps mod 360, s/l clamp, achromatic colors report `h = 0`. Also `colorToOklch` / `oklchToColor` — packed number ↔ `{ l, c, h }` (l 0-100, c 0-`OKLCH_MAX_CHROMA` (0.4), h 0-360) for the OKLCH model (#502); conversion is OKLCH ↔ OKLab ↔ linear sRGB ↔ sRGB per CSS Color 4 / Bjorn Ottosson. `oklchToColor` is gamut-clamped (linear channels clamped to [0,1], then to sRGB 0-255), `l` clamps, `c` floors at 0, `h` wraps mod 360, achromatic colors report `h = 0`. `oklchInSrgb(oklch)` — whether the color is inside the sRGB gamut. `oklchMaxChroma(l, h)` — largest in-gamut chroma for an L/H pair (bisection), used to mark the C slider's out-of-gamut region. `oklchToSrgbSample(oklch)` — gamut-clamped sRGB bytes for one OKLCH triple, feeds the 2D area's per-pixel paint. |
 | `RgbModelEditor.tsx` (`components/RgbModelEditor.tsx`) | The RGB editing model (#500): three channel sliders (0-255) with per-channel gradient tracks + paired numeric inputs. Reads the working color, calls `onChange` with the new packed color on every edit. |
 | `HslModelEditor.tsx` (`components/HslModelEditor.tsx`) | The HSL editing model (#501): a 2D saturation/lightness area with a draggable crosshair, a vertical hue strip with a draggable marker, three `GradientSlider`s (H 0-360, S 0-100, L 0-100), and three numeric inputs. Reads the working color (HSL reconstructed from the stored RGB), calls `onChange` with the new packed color on every edit. Drag plumbing and area geometry are shared with `OklchModelEditor` via `usePickerDrag` / `pickerAreaStyles`. |
@@ -24,7 +25,9 @@ land (more color models, palette tools, practicality checks, presets/history).
 
 `ColorSwatch` / `ColorRow` do **not** know whether `onChange` writes a plain store value or a
 Shared-Style override patch — that stays entirely in the call site (issue #322 mechanism, the
-`resetButton` prop). The picker only reads `color` on open and calls `onChange` once on Apply.
+`resetButton` prop). The picker reads `color` on open, streams the working color to `onPreview`
+while open, and commits via `onChange` exactly once (on Apply with a distinct `onPreview`, or
+through the live stream when `onPreview` defaults to `onChange`) — see "Live canvas preview" (#513).
 
 ## Panel
 
@@ -47,6 +50,36 @@ Contents (top to bottom):
 
 Working color is local state seeded from the swatch's `color` on open; the picker is remounted on
 each open, so it always re-seeds.
+
+## Live canvas preview (#513)
+
+While the picker is open, every working-color change (hex field, any model editor, keyboard nudge in
+a 2D area / hue strip) is pushed to the canvas through `ColorPickerPanel`'s
+`onPreview?: (color: number) => void` prop, so the maze renders the color in context (geometry,
+neighbours, background) as the user drags. **Cancel**, the header close button, and **Escape** call
+`onPreview` once more with the color that was in effect when the picker opened — captured on mount
+(`useRef`), because the `color` prop itself tracks each previewed change when `onPreview` defaults to
+`onChange` (the call site's setter also writes the store). This restores the pre-open state exactly
+no matter how many intermediate edits were made.
+
+The stream is **throttled to one `onPreview` call per animation frame** (same rAF-coalescing pattern
+as `StepSlider`): a pointer drag on a model slider / 2D area fires far more often than once a frame,
+and a call site's handler may re-render a whole preview canvas per call. The latest color always
+wins. **Cancel and Apply flush any queued frame synchronously** before `onClose` / `onApply`, so a
+pending color is never lost to the unmount; a still-pending frame is also cancelled on unmount.
+
+**Commit timing depends on whether `onPreview` is a distinct channel:**
+
+- `ColorSwatch` is given a distinct `onPreview` — the single `onChange` commit fires on **Apply**
+  (`onApply` → `onChange(working)`). `onPreview` is a lighter render-only handler; a mid-drag
+  preview is never recorded as a real edit. Required for a call site whose `onChange` marks the
+  maze dirty or pushes a post-edit history entry.
+- `onPreview` is omitted — `ColorSwatch` defaults it to `onChange`, so the live stream *is* the
+  commit. **Apply then only closes** (it flushes the last queued frame, but does not re-fire
+  `onChange`, which would double a history-pushing setter's entry); with no edits `onChange` is
+  never called. **Cancel / Escape** restore via `onChange(originalColor)`. Right when `onChange`
+  only updates a render — all current call sites (the image-export settings panels) just write a
+  `settings.*` value.
 
 ## Model switcher and editing area (#500)
 
