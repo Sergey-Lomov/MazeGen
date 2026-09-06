@@ -311,3 +311,19 @@ pub fn vertical_passage_count_incoming_param(default: bool) -> ParamDescriptor {
     }
 }
 
+/// One "include this element type" bool param for the 2 cross-element proximity checks (GitHub
+/// issue #376) — there is no multi-select param kind, so the type set is 7 independent bools. A
+/// set with zero enabled types makes the check a silent no-op; one enabled type is a valid
+/// same-type scan.
+pub fn cross_element_include_param(id: &'static str, label: &'static str, default: bool, visibility: Option<EntityVisibility>) -> ParamDescriptor {
+    ParamDescriptor {
+        id,
+        label,
+        kind: ParamKindDto::Bool { default },
+        // `include_vertical_passage` / `include_elevator_stop` pass `MultiFloorOnly` — both element
+        // types only exist on a multi-floor maze, so the toggle is meaningless with 1 floor (same
+        // rationale as `geometric_floor_mode_param`). Every other `include_*` toggle passes `None`.
+        visibility,
+    }
+}
+

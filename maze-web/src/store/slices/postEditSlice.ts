@@ -10,6 +10,7 @@ import {
   removePostEditElevator, postEditVerticalToDto, elevatorComponent, pruneRemovedSplitNodes,
 } from "../../pixi/postEditUtils";
 import { cellExistsAt } from "../../pixi/fieldEditUtils";
+import { presetEndpointToDto } from "../../pixi/presetEndpoint";
 import {
   type PostEditEndpoint, nodeEndpoint, splitEndpoint, endpointsEqual, resolveEndpoint, buildSplitNodeResolver,
   edgeKey, resolvePostEditPartnerAt,
@@ -253,6 +254,12 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
           const level = levelPart === undefined ? 0 : Number(levelPart);
           return slots.map((slotId): [[number, number], number, number] => [[x, y], slotId, level]);
         }),
+      // GitHub issue #376 follow-up: a start/finish pinned by a preset marker can't be moved by
+      // repair, so a `start`/`finish` element of a flagged cross-element group must be flagged
+      // `preset_locked`. Sent unfiltered (same contract as `preset_connections` above — the Rust
+      // side silently skips a marker it can't resolve against the rebuilt field).
+      ...(state.presetStart ? { preset_start: presetEndpointToDto(state.presetStart) } : {}),
+      ...(state.presetFinish ? { preset_finish: presetEndpointToDto(state.presetFinish) } : {}),
     };
     try {
       const snapshot = computeAnalytics(config);

@@ -313,6 +313,9 @@ pub(crate) fn try_remove_edge(
         return false;
     }
     let Some(id) = graph.edge_between(from, to) else { return false; };
+    if preset_state.is_preset_edge_id(id) {
+        return false;
+    }
     graph.remove_edge(id);
     true
 }
@@ -324,13 +327,18 @@ pub(crate) fn try_remove_edge(
 /// parallel-edges note). Used by strategies that already hold the exact `EdgeId` to remove
 /// (e.g. `RemoveTeleportStrategy`, from `IssueData::InvalidTeleports`).
 ///
-/// `preset_edges` is keyed purely by `(from, to)` node pairs, with no `EdgeKind` — it only ever
-/// gets populated from preset Passage/OneWay connections, which always build `EdgeKind::Basic`
-/// edges (see `preset_state.rs`/`Specs/post-edit.md`). A `Teleport` edge can never itself be a
-/// preset connection, so checking `preset_edges` for a `Teleport` id would be a false-positive
-/// protection: a `Teleport` duplicating a preset `Basic` connection between the same pair would
-/// never be removable, since the pair's `(from, to)` is in `preset_edges` on the `Basic` edge's
-/// behalf. Only a `Basic` edge is ever subject to this protection.
+/// Preset protection is checked two ways here, because `preset_edges` and `preset_edge_ids` answer
+/// different questions:
+/// - `preset_edge_ids` (per-`EdgeId`, any kind): this exact edge was planted by a preset
+///   connection — a preset `Teleport` / `VerticalPassage` / `Elevator` as well as a preset
+///   `Basic`. A *different* edge on the same node pair (e.g. a user `Teleport` parallel to a
+///   preset `Basic` passage) is not in this set and stays removable.
+/// - `preset_edges` (per-pair, kind-agnostic) is also consulted for a `Basic` edge, so a `Basic`
+///   edge dynamically added by generation/repair onto a pair a preset already occupies is still
+///   protected — the preset builder records the pair even when the specific `Basic` edge id it
+///   plants differs from the one being removed here (idempotent `build_initial_edge` returns the
+///   existing id, but a later `add_edge` on the reverse direction would mint a new one).
+///
 /// Returns true if the edge was removed, false if it doesn't exist or is preset-protected.
 pub(crate) fn try_remove_edge_by_id(
     graph: &mut Graph,
@@ -338,6 +346,9 @@ pub(crate) fn try_remove_edge_by_id(
     preset_state: &PresetState,
 ) -> bool {
     let Some(edge) = graph.edge(id) else { return false; };
+    if preset_state.is_preset_edge_id(id) {
+        return false;
+    }
     if edge.kind == EdgeKind::Basic && !remove_edge_between_feasible(preset_state, edge.from, edge.to) {
         return false;
     }

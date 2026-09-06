@@ -60,6 +60,7 @@ pub(crate) fn cmd_add_bidirectional_teleport(a: NodeId, b: NodeId, preset_state:
 pub(crate) fn cmd_remove_edge(graph: &Graph, from: NodeId, to: NodeId, preset_state: &PresetState) -> Vec<MutationCommand> {
     if !remove_edge_between_feasible(preset_state, from, to) { return vec![]; }
     let Some(id) = graph.edge_between(from, to) else { return vec![]; };
+    if preset_state.is_preset_edge_id(id) { return vec![]; }
     if !graph.can_remove_edge(id) { return vec![]; }
     vec![MutationCommand::RemoveEdgeBetween { from, to }]
 }
@@ -67,6 +68,7 @@ pub(crate) fn cmd_remove_edge(graph: &Graph, from: NodeId, to: NodeId, preset_st
 #[allow(dead_code)]
 pub(crate) fn cmd_remove_edge_by_id(graph: &Graph, id: crate::ids::EdgeId, preset_state: &PresetState) -> Vec<MutationCommand> {
     if !graph.can_remove_edge(id) { return vec![]; }
+    if preset_state.is_preset_edge_id(id) { return vec![]; }
     let edge = graph.edge(id).expect("can_remove_edge just confirmed this id exists");
     if edge.kind == EdgeKind::Basic && !remove_edge_between_feasible(preset_state, edge.from, edge.to) {
         return vec![];

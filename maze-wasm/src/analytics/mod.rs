@@ -9,7 +9,7 @@ use serde::Serialize;
 use maze_core::{space::Tessellation, space::{SquarePoint, HexPoint, TriPoint}, Maze, graph::Graph};
 use crate::dto::{ComputeAnalyticsConfig, MazeSnapshot};
 use crate::generation_config::{self, GenerateConfig, TessellationType};
-use post_edit::{apply_split_points, build_graph_from_post_edit_edges, build_field_from_nodes, preset_edges_for_post_edit, resolve_preset_nodes_for_post_edit, restore_vertical_edges};
+use post_edit::{apply_split_points, build_graph_from_post_edit_edges, build_field_from_nodes, preset_edges_for_post_edit, resolve_preset_endpoint_for_post_edit, resolve_preset_nodes_for_post_edit, restore_vertical_edges};
 
 #[wasm_bindgen]
 pub fn compute_analytics(config: JsValue) -> Result<JsValue, JsValue> {
@@ -157,6 +157,13 @@ where
     let mut preset_state = maze_core::generation::PresetState::empty();
     preset_state.preset_edges = preset_edges_for_post_edit(&cfg.preset_connections, &existing_by_index, &split_map);
     preset_state.preset_declared_nodes = resolve_preset_nodes_for_post_edit(&cfg.preset_split_points, &existing_by_index, &split_map);
+    // A start/finish pinned by a preset marker can't be moved by repair — resolve the marker fresh
+    // against the rebuilt field so a `start`/`finish` element of a flagged cross-element group is
+    // flagged `preset_locked` on this post-edit path too (GitHub issue #376 follow-up).
+    preset_state.preset_start = cfg.preset_start.as_ref()
+        .and_then(|ep| resolve_preset_endpoint_for_post_edit(ep, &existing_by_index, &split_map));
+    preset_state.preset_finish = cfg.preset_finish.as_ref()
+        .and_then(|ep| resolve_preset_endpoint_for_post_edit(ep, &existing_by_index, &split_map));
     // `compute_analytics` is genuinely multi-level as of GitHub issue #359 — every floor's own
     // nodes/edges are surfaced, not just floor 0's.
     build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, &preset_state, point_to_xy,
@@ -203,6 +210,8 @@ mod tests {
                 rule_groups: vec![],
                 preset_connections: vec![],
                 preset_split_points: vec![],
+                preset_start: None,
+                preset_finish: None,
             }
         }
 

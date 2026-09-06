@@ -84,6 +84,33 @@ export function excessiveSccCountIssue(sourceCheck: string, presetLocked: boolea
   };
 }
 
+export function invalidCrossElementGroupIssue(
+  sourceCheck: string,
+  entries: { kind: string; edges?: [number, number][]; nodes?: number[]; preset_locked?: boolean }[],
+): IssueDto {
+  return {
+    kind: "invalid_cross_element_group",
+    payload: {
+      kind: "invalid_cross_element_group",
+      groups: {
+        [sourceCheck]: [
+          entries.map((e) => ({
+            kind: e.kind,
+            edges: e.edges ?? [],
+            nodes: e.nodes ?? [],
+            tile: null,
+            removable: true,
+            preset_locked: e.preset_locked ?? false,
+          })),
+        ],
+      },
+    },
+    source_checks: [sourceCheck],
+    source_check_types: { [sourceCheck]: sourceCheck },
+    details: {},
+  };
+}
+
 export function invalidSplitNodeGroupIssue(sourceCheck: string): IssueDto {
   // Wire-reuse: `invalid_split_node_group` resolves through the same `invalid_split_tile` payload
   // shape (narrow on `payload.kind`, not `issue.kind` -- see IssuePayload's doc comment).

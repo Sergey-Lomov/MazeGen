@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
-use crate::graph::EdgeKind;
 use crate::ids::{EdgeId, NodeId};
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
+use crate::quality_control::checks::one_way_core::one_way_edges_with_endpoints;
 use crate::quality_control::InvalidOneWayGroupIssue;
 
 pub const ONE_WAY_GROUP_SUPER_HUB_MAX_CONNECTIONS_DEFAULT: u32 = 3;
@@ -38,12 +38,9 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupSuperHubC
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
         let mut by_vertex: HashMap<NodeId, Vec<EdgeId>> = HashMap::new();
-        for edge in maze.graph.edges()
-            .filter(|e| e.kind == EdgeKind::Basic)
-            .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
-        {
-            by_vertex.entry(edge.from).or_default().push(edge.id);
-            by_vertex.entry(edge.to).or_default().push(edge.id);
+        for (id, from, to) in one_way_edges_with_endpoints(maze) {
+            by_vertex.entry(from).or_default().push(id);
+            by_vertex.entry(to).or_default().push(id);
         }
 
         let groups: Vec<(Vec<EdgeId>, u32)> = by_vertex.into_values()

@@ -126,6 +126,18 @@ function issueHighlightTarget(payload: IssuePayload): IssueHighlightTarget | nul
       // point at (same rationale as `ExcessiveSccCount` above; mirrors Analytics'
       // `areaDeficitCellNodes` in `IssuesBlock.tsx`, which resolves the floor separately).
       return null;
+    case "InvalidCrossElementGroup": {
+      // Reuses the "region" shape over each flagged element's problematic cells -- a cross-element
+      // group mixes edge elements (teleport/one-way/vertical passage/elevator) spanning multiple
+      // floors with point elements (split/start/finish), so a line-per-edge highlight would read
+      // as stray diagonals (same rationale as `InvalidElevator`/`InvalidVerticalPassage`). The
+      // payload has already been narrowed by the resolver to just the occurrence(s) actually
+      // within the proximity threshold (GitHub issue #376 follow-up), so a teleport near one end
+      // lights up that end only, not both.
+      const entries = [...payload.groups.values()].flat(2);
+      const nodes = entries.flatMap((entry) => [...entry.edges.flat(), ...entry.nodes, ...(entry.tile?.nodes ?? [])]);
+      return nodes.length > 0 ? { kind: "region", nodes } : null;
+    }
   }
 }
 

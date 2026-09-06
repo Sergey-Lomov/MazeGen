@@ -307,6 +307,16 @@ export const checkI18n: Record<string, { label: ParamLabelFn; description: Param
     description: m["check.elevator_stop_group_graph_proximity.description"] as MessageFn,
     cardLabel: m["check.elevator_stop_group_graph_proximity.label"] as MessageFn,
   },
+  cross_element_geometric_proximity: {
+    label: m["check.cross_element_geometric_proximity.short_label"] as MessageFn,
+    description: m["check.cross_element_geometric_proximity.description"] as MessageFn,
+    cardLabel: m["check.cross_element_geometric_proximity.label"] as MessageFn,
+  },
+  cross_element_graph_proximity: {
+    label: m["check.cross_element_graph_proximity.short_label"] as MessageFn,
+    description: m["check.cross_element_graph_proximity.description"] as MessageFn,
+    cardLabel: m["check.cross_element_graph_proximity.label"] as MessageFn,
+  },
   max_teleport_count: {
     label: (params) => params?.floor_scope === "per_floor"
       ? (m["check.max_teleport_count.label_per_floor"] as MessageFn)()

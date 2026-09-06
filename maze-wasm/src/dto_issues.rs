@@ -82,6 +82,26 @@ pub struct IssueMissingElevatorStopsPayloadDto {
     pub preset_locked: bool,
 }
 
+/// One logical element of a flagged cross-element proximity pair (GitHub issue #376) — mirrors
+/// `maze_core`'s `CrossElementPayloadEntry`. `kind` is `"teleport"` / `"one_way"` /
+/// `"vertical_passage"` / `"elevator_stop"` / `"split"` / `"start"` / `"finish"`; the geometry
+/// field that is populated depends on it (`edges` for the edge elements, `tile` for a split,
+/// `nodes` for start / finish, and just `nodes` (the stop cell, no `edges`) for `elevator_stop` —
+/// a stop's fan edges reach every other floor and must not be highlighted). `"elevator_stop"`
+/// flags one stop of an elevator, not the whole elevator. `removable` is `false` for start /
+/// finish. `preset_locked` is per-element — for a start / finish element it is `true` when a
+/// `preset_start` / `preset_finish` marker pins that node.
+#[derive(Debug, Serialize, Dto)]
+#[dto(rename_ts = "CrossElementPayloadEntry")]
+pub struct CrossElementPayloadEntryDto {
+    pub kind: String,
+    pub edges: Vec<[u32; 2]>,
+    pub nodes: Vec<u32>,
+    pub tile: Option<IssueSplitTilePayloadDto>,
+    pub removable: bool,
+    pub preset_locked: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum IssuePayloadDto {
@@ -187,6 +207,13 @@ pub enum IssuePayloadDto {
     /// instead — both leave candidate-floor selection to their own repair strategy.
     MissingElevatorStopCount {
         groups: HashMap<String, Vec<IssueMissingElevatorStopsPayloadDto>>,
+    },
+    /// Keyed by source check id — each inner `Vec<CrossElementPayloadEntry>` is one flagged
+    /// too-close pair (always two entries). Shared wire variant for
+    /// `cross_element_geometric_proximity`/`cross_element_graph_proximity` — see GitHub issue #376
+    /// and `maze_core`'s `IssuePayload::InvalidCrossElementGroup`.
+    InvalidCrossElementGroup {
+        groups: HashMap<String, Vec<Vec<CrossElementPayloadEntryDto>>>,
     },
 }
 

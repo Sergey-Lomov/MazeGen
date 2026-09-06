@@ -12,16 +12,18 @@ interface Props {
   onClose: () => void;
 }
 
-/** Fixed display order for issue kinds in `IssueSelectDialog`: groups kinds into sections
- * (Waypoints, One-ways, Teleports, Loops, Regions, Splits, Vertical Passages, Elevators), each
- * internally ordered add → validate → validate groups (Splits has extra validate-node/
- * validate-node-connection/validate-route steps between validate-tile and the group checks;
- * Elevators has an extra add-stops step right after add, before validation). `ItemSelectDialog`
- * groups by contiguous `section` runs, so every kind sharing a section must be listed together
- * here — a kind left out sorts after all of these and can split its section into two
- * non-contiguous runs, which renders as duplicate React keys. Kinds absent here sort after all
- * of these. */
+/** Fixed display order for issue kinds in `IssueSelectDialog`: General rules first (the
+ * cross-element multi-type proximity checks, GitHub issue #376), then kinds grouped into
+ * sections (Waypoints, One-ways, Teleports, Loops, Regions, Splits, Vertical Passages,
+ * Elevators), each internally ordered add → validate → validate groups (Splits has extra
+ * validate-node/validate-node-connection/validate-route steps between validate-tile and the
+ * group checks; Elevators has an extra add-stops step right after add, before validation).
+ * `ItemSelectDialog` groups by contiguous `section` runs, so every kind sharing a section must
+ * be listed together here — a kind left out sorts after all of these and can split its section
+ * into two non-contiguous runs, which renders as duplicate React keys. Kinds absent here sort
+ * after all of these. */
 const ISSUE_KIND_ORDER = [
+  "invalid_cross_element_group",
   "missing_endpoints", "unreachable_finish",
   "missing_one_ways", "invalid_one_way", "invalid_one_way_group",
   "missing_teleports", "invalid_teleport", "invalid_teleport_group",

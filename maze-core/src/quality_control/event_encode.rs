@@ -3,7 +3,7 @@ use crate::graph::EdgeKind;
 use crate::repair::command::{SplitNodeEdge, SplitNodeEdgeDirection};
 use crate::quality_control::issue::IssueKind;
 use crate::quality_control::issue_kinds::RepairLimitKind;
-use crate::quality_control::issue_payload::{IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload, IssueMissingElevatorStopsPayload};
+use crate::quality_control::issue_payload::{IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload, IssueMissingElevatorStopsPayload, CrossElementPayloadEntry};
 
 /// Binary wire-encoding helpers for `QcEvent`'s custom-codec fields (`qc_wire.rs`'s
 /// `use super::write_*` imports these) — split out of `event.rs` (GitHub issue #147's
@@ -108,6 +108,10 @@ pub(crate) fn write_issue_payload(out: &mut Vec<u8>, payload: &IssuePayload) {
         IssuePayload::MissingElevatorStopCount { groups } => {
             out.push(13);
             write_str_keyed_missing_elevator_stops(out, groups);
+        }
+        IssuePayload::InvalidCrossElementGroup { groups } => {
+            out.push(14);
+            write_str_keyed_cross_element_groups(out, groups);
         }
     }
 }
@@ -257,6 +261,40 @@ fn write_missing_elevator_stops_payload(out: &mut Vec<u8>, entry: &IssueMissingE
 
 fn write_str_keyed_missing_elevator_stops(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<IssueMissingElevatorStopsPayload>>) {
     write_str_keyed_lists(out, map, |out, entry| write_missing_elevator_stops_payload(out, entry));
+}
+
+/// Encodes one `CrossElementPayloadEntry` (GitHub issue #376) — the `kind` string, then the edge
+/// list (`write_edge_pairs`' shape), then a length-prefixed `nodes` `u32` list, then a presence
+/// byte for `tile` (0 absent / 1 followed by `write_split_tile_payload`), then trailing 1-byte
+/// `removable` and `preset_locked` flags (0/1).
+fn write_cross_element_entry(out: &mut Vec<u8>, entry: &CrossElementPayloadEntry) {
+    write_str(out, entry.kind);
+    write_edge_pairs(out, &entry.edges);
+    out.extend_from_slice(&(entry.nodes.len() as u32).to_le_bytes());
+    for &node in &entry.nodes {
+        out.extend_from_slice(&node.to_le_bytes());
+    }
+    match &entry.tile {
+        None => out.push(0),
+        Some(tile) => {
+            out.push(1);
+            write_split_tile_payload(out, tile);
+        }
+    }
+    out.push(entry.removable as u8);
+    out.push(entry.preset_locked as u8);
+}
+
+/// Encodes `IssuePayload::InvalidCrossElementGroup`'s `groups` field (GitHub issue #376) — one
+/// entry per flagged pair: a length-prefixed list of `CrossElementPayloadEntry`
+/// (`write_cross_element_entry`'s shape), always two.
+fn write_str_keyed_cross_element_groups(out: &mut Vec<u8>, map: &std::collections::HashMap<String, Vec<Vec<CrossElementPayloadEntry>>>) {
+    write_str_keyed_lists(out, map, |out, pair: &Vec<CrossElementPayloadEntry>| {
+        out.extend_from_slice(&(pair.len() as u32).to_le_bytes());
+        for entry in pair {
+            write_cross_element_entry(out, entry);
+        }
+    });
 }
 
 pub(crate) fn write_issue_kind(out: &mut Vec<u8>, kind: &IssueKind) {

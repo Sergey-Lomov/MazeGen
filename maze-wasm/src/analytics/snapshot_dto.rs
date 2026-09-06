@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use maze_core::{
-    quality_control::{IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload, IssueMissingElevatorStopsPayload},
+    quality_control::{IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload, IssueRoutePayload, IssueRegionPayload, IssueMissingElevatorStopsPayload, CrossElementPayloadEntry},
     generation::{SplitFaceRequirement, OneWayDirection},
 };
 use crate::dto::{
     IssueEdgeGroupPayloadDto, IssueSplitTilePayloadDto, IssueSplitGroupPayloadDto, IssueRouteEdgeDto, IssueRoutePayloadDto, IssueRegionPayloadDto,
-    SplitFaceRequirementDto, OneWayDirectionDto, IssueMissingElevatorStopsPayloadDto,
+    SplitFaceRequirementDto, OneWayDirectionDto, IssueMissingElevatorStopsPayloadDto, CrossElementPayloadEntryDto,
 };
 
 pub(super) fn edge_group_map_dto(map: HashMap<String, Vec<IssueEdgeGroupPayload>>) -> HashMap<String, Vec<IssueEdgeGroupPayloadDto>> {
@@ -50,6 +50,23 @@ pub(super) fn missing_elevator_stops_map_dto(map: HashMap<String, Vec<IssueMissi
             available: e.available,
             preset_locked: e.preset_locked,
         }).collect()))
+        .collect()
+}
+
+fn cross_element_entry_dto(entry: CrossElementPayloadEntry) -> CrossElementPayloadEntryDto {
+    CrossElementPayloadEntryDto {
+        kind: entry.kind.to_string(),
+        edges: entry.edges,
+        nodes: entry.nodes,
+        tile: entry.tile.map(split_tile_dto),
+        removable: entry.removable,
+        preset_locked: entry.preset_locked,
+    }
+}
+
+pub(super) fn cross_element_group_map_dto(map: HashMap<String, Vec<Vec<CrossElementPayloadEntry>>>) -> HashMap<String, Vec<Vec<CrossElementPayloadEntryDto>>> {
+    map.into_iter()
+        .map(|(k, v)| (k, v.into_iter().map(|pair| pair.into_iter().map(cross_element_entry_dto).collect()).collect()))
         .collect()
 }
 

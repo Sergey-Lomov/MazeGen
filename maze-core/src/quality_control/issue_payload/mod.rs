@@ -4,8 +4,9 @@ mod resolvers;
 mod tests;
 
 pub use types::{
-    IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload, IssueSplitGroupPayload,
-    IssueRouteEdge, IssueRoutePayload, IssueRegionPayload, IssueMissingElevatorStopsPayload,
+    CrossElementPayloadEntry, IssuePayload, IssueEdgeGroupPayload, IssueSplitTilePayload,
+    IssueSplitGroupPayload, IssueRouteEdge, IssueRoutePayload, IssueRegionPayload,
+    IssueMissingElevatorStopsPayload,
 };
 
 use std::collections::HashMap;
@@ -25,8 +26,9 @@ use resolvers::{
     resolve_invalid_elevator_stop_payload, resolve_elevator_stop_group_map,
     resolve_area_deficit_map,
     resolve_missing_elevator_stop_count_payload, resolve_missing_elevator_height_payload,
-    resolve_excessive_elevator_stop_gap_payload,
+    resolve_excessive_elevator_stop_gap_payload, resolve_cross_element_group_payload,
 };
+use super::issue_kinds::InvalidCrossElementGroupIssue;
 
 /// Resolves `issue`'s structural payload against `graph`/`scc` — extracted from
 /// `maze-wasm/src/analytics.rs`'s `build_analytics_snapshot` (GitHub issue #147) so the same
@@ -229,6 +231,12 @@ pub fn resolve_issue_payload<T: Tessellation>(issue: &dyn Issue, graph: &Graph, 
 
     if let Some(ExcessiveElevatorStopGapIssue { missing, invalid_sources, .. }) = issue.as_any().downcast_ref::<ExcessiveElevatorStopGapIssue>() {
         if let Some(payload) = resolve_excessive_elevator_stop_gap_payload(missing, invalid_sources, graph, preset_state) {
+            return payload;
+        }
+    }
+
+    if let Some(cross) = issue.as_any().downcast_ref::<InvalidCrossElementGroupIssue>() {
+        if let Some(payload) = resolve_cross_element_group_payload(cross.groups(), cross.invalid_sources(), &cross.close_nodes, graph, field, preset_state) {
             return payload;
         }
     }

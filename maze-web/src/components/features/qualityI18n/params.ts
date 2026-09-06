@@ -535,6 +535,34 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.allow_cross_floor.label"] as MessageFn,
     description: m["param.allow_cross_floor.description"] as MessageFn,
   },
+  include_teleport: {
+    label: m["param.include_teleport.label"] as MessageFn,
+    description: m["param.include_teleport.description"] as MessageFn,
+  },
+  include_one_way: {
+    label: m["param.include_one_way.label"] as MessageFn,
+    description: m["param.include_one_way.description"] as MessageFn,
+  },
+  include_vertical_passage: {
+    label: m["param.include_vertical_passage.label"] as MessageFn,
+    description: m["param.include_vertical_passage.description"] as MessageFn,
+  },
+  include_elevator_stop: {
+    label: m["param.include_elevator_stop.label"] as MessageFn,
+    description: m["param.include_elevator_stop.description"] as MessageFn,
+  },
+  include_split: {
+    label: m["param.include_split.label"] as MessageFn,
+    description: m["param.include_split.description"] as MessageFn,
+  },
+  include_start: {
+    label: m["param.include_start.label"] as MessageFn,
+    description: m["param.include_start.description"] as MessageFn,
+  },
+  include_finish: {
+    label: m["param.include_finish.label"] as MessageFn,
+    description: m["param.include_finish.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -773,6 +801,11 @@ const paramDescriptionOverrideI18n: Record<string, MessageFn> = {
   "priority.split_route_cut": m["param.priority.split_route_cut.description"] as MessageFn,
   "selection.remove_split": m["param.selection.remove_split.description"] as MessageFn,
   "max_connections.one_way_group_super_hub": m["param.max_connections.one_way_group_super_hub.description"] as MessageFn,
+  // The cross-element proximity checks (GitHub issue #376) have no comparison operator — `distance`
+  // is always the minimum allowed distance — but they share the `distance` param id with checks
+  // that do (`teleport_graph_distance` etc.), so the generic description can't be rewritten.
+  "distance.cross_element_geometric_proximity": m["param.distance.cross_element_proximity.description"] as MessageFn,
+  "distance.cross_element_graph_proximity": m["param.distance.cross_element_proximity.description"] as MessageFn,
 };
 
 export function resolveParamDescription(id: string, contextId?: string): string | undefined {

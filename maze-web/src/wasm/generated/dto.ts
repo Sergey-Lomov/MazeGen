@@ -195,6 +195,26 @@ export interface IssueMissingElevatorStopsPayload {
   preset_locked: boolean;
 }
 
+/**
+ * One logical element of a flagged cross-element proximity pair (GitHub issue #376) — mirrors
+ * `maze_core`'s `CrossElementPayloadEntry`. `kind` is `"teleport"` / `"one_way"` /
+ * `"vertical_passage"` / `"elevator_stop"` / `"split"` / `"start"` / `"finish"`; the geometry
+ * field that is populated depends on it (`edges` for the edge elements, `tile` for a split,
+ * `nodes` for start / finish, and just `nodes` (the stop cell, no `edges`) for `elevator_stop` —
+ * a stop's fan edges reach every other floor and must not be highlighted). `"elevator_stop"`
+ * flags one stop of an elevator, not the whole elevator. `removable` is `false` for start /
+ * finish. `preset_locked` is per-element — for a start / finish element it is `true` when a
+ * `preset_start` / `preset_finish` marker pins that node.
+ */
+export interface CrossElementPayloadEntry {
+  kind: string;
+  edges: [number, number][];
+  nodes: number[];
+  tile: IssueSplitTilePayload | null;
+  removable: boolean;
+  preset_locked: boolean;
+}
+
 export type IssuePayloadDto =
   | { kind: "none" }
   | {
@@ -248,6 +268,10 @@ export type IssuePayloadDto =
   | {
       kind: "missing_elevator_stop_count";
       groups: Record<string, IssueMissingElevatorStopsPayload[]>;
+    }
+  | {
+      kind: "invalid_cross_element_group";
+      groups: Record<string, CrossElementPayloadEntry[][]>;
     }
 ;
 
@@ -621,5 +645,15 @@ export interface ComputeAnalyticsConfig {
    * (GitHub issue #359, 0-based `level_fields` index) added alongside `split_points`'s own.
    */
   preset_split_points?: [[number, number], number, number][];
+  /**
+   * The project's `preset_start` marker, if the user pinned the start explicitly (GitHub issue
+   * #376 follow-up). Resolved fresh against the rebuilt field into `PresetState.preset_start` so
+   * a `start` element of a flagged cross-element group is flagged `preset_locked` on this
+   * post-edit path too. `#[serde(default)]` — a caller/fixture omitting it (or a project with a
+   * generator-chosen start) sends nothing and the start is treated as movable.
+   */
+  preset_start?: { point: [number, number]; slot?: number; level?: number };
+  /** The project's `preset_finish` marker — see `preset_start`. */
+  preset_finish?: { point: [number, number]; slot?: number; level?: number };
 }
 

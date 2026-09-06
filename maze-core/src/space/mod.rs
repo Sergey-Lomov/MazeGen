@@ -165,10 +165,7 @@ pub fn floor_aware_distance<T: Tessellation>(
     b: T::Point,
     include_height: bool,
 ) -> f64 {
-    let (ax, ay) = T::cartesian(a);
-    let (bx, by) = T::cartesian(b);
-    let dz = if include_height { b_level as f64 - a_level as f64 } else { 0.0 };
-    ((bx - ax).powi(2) + (by - ay).powi(2) + dz.powi(2)).sqrt()
+    floor_aware_xy_distance(a_level, T::cartesian(a), b_level, T::cartesian(b), include_height)
 }
 
 /// Euclidean distance between two edges' `Tessellation::edge_position`s, each on its own floor —
@@ -183,10 +180,24 @@ pub fn floor_aware_edge_distance<T: Tessellation>(
     b_to: T::Point,
     include_height: bool,
 ) -> f64 {
-    let (ax, ay) = T::edge_position(a_from, a_to);
-    let (bx, by) = T::edge_position(b_from, b_to);
+    floor_aware_xy_distance(a_level, T::edge_position(a_from, a_to), b_level, T::edge_position(b_from, b_to), include_height)
+}
+
+/// Shared core of `floor_aware_distance`/`floor_aware_edge_distance` — both ultimately compare two
+/// already-resolved cartesian `(x, y)` positions (a node's `cartesian`, or an edge's
+/// `edge_position`), so this is the one place the actual formula lives. Also used directly by
+/// `cross_element_geometric_proximity`'s occurrence scan (GitHub issue #376's one-way-distance
+/// follow-up), whose occurrences carry a pre-resolved cartesian position rather than a `T::Point`
+/// (a one-way's occurrence is its edge's midpoint, which is not any tile's own point).
+pub fn floor_aware_xy_distance(
+    a_level: usize,
+    a_xy: (f64, f64),
+    b_level: usize,
+    b_xy: (f64, f64),
+    include_height: bool,
+) -> f64 {
     let dz = if include_height { b_level as f64 - a_level as f64 } else { 0.0 };
-    ((bx - ax).powi(2) + (by - ay).powi(2) + dz.powi(2)).sqrt()
+    ((b_xy.0 - a_xy.0).powi(2) + (b_xy.1 - a_xy.1).powi(2) + dz.powi(2)).sqrt()
 }
 
 /// A tile's point resolves to one *or more* `NodeId`s (see GitHub issue #219, epic #218) — most

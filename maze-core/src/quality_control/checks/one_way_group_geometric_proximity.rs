@@ -1,9 +1,9 @@
 use rand::RngCore;
 use crate::Maze;
-use crate::graph::EdgeKind;
 use crate::graph::route_protection::is_edge_on_route;
 use crate::space::{Tessellation, floor_aware_edge_distance};
 use crate::quality_control::check::Check;
+use crate::quality_control::checks::one_way_core::one_way_edges_with_endpoints;
 use crate::quality_control::{GeometricFloorMode, InvalidOneWayGroupIssue};
 use super::proximity_scan_core::pairwise_geometric_scan;
 
@@ -44,14 +44,12 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGeometric
     fn check_type_id(&self) -> &'static str { "one_way_group_geometric_proximity" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let one_ways: Vec<_> = maze.graph.edges()
-            .filter(|e| e.kind == EdgeKind::Basic)
-            .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
-            .filter_map(|e| {
-                let level = maze.field.level_index_of(e.from)?;
-                let from = maze.field.point_of(e.from)?;
-                let to = maze.field.point_of(e.to)?;
-                Some((e.id, level, from, to))
+        let one_ways: Vec<_> = one_way_edges_with_endpoints(maze).into_iter()
+            .filter_map(|(id, e_from, e_to)| {
+                let level = maze.field.level_index_of(e_from)?;
+                let from = maze.field.point_of(e_from)?;
+                let to = maze.field.point_of(e_to)?;
+                Some((id, level, from, to))
             })
             .collect();
         if one_ways.len() < 2 {

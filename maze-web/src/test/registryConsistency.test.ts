@@ -23,6 +23,7 @@ const CHECK_IDS_WITH_WITH_DETAIL_CALLS = [
   "max_one_way_ratio", "min_teleport_count", "min_teleport_ratio",
   "max_teleport_count", "max_teleport_density",
   "split_distance_from_waypoint",
+  "cross_element_geometric_proximity", "cross_element_graph_proximity",
 ];
 
 // `src/wasm/pkg/` is gitignored build output produced by `wasm-rebuild.ps1` — absent on a

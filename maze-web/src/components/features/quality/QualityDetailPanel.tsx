@@ -171,6 +171,7 @@ export function QualityDetailPanel({ selection, vm, flushRef, onSelect }: Props)
     if (owner.kind === "check") {
       const check = vm.checks.find((c) => c.id === owner.checkId);
       param = check?.params.find((p) => p.id === paramId);
+      contextId = check?.id;
     } else if (owner.kind === "strategy") {
       const strategy = vm.strategySlots.find((s) => s.ruleId === owner.ruleId)?.strategy;
       param = strategy?.params.find((p) => p.id === paramId);

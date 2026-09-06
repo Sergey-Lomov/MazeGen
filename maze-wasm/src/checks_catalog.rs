@@ -17,9 +17,11 @@ use maze_core::{
     MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE,
     MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT, MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE,
     MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP, MIN_ELEVATOR_STOP_COUNT_DEFAULT, MIN_ELEVATOR_HEIGHT_DEFAULT, MAX_ELEVATOR_STOP_GAP_DEFAULT,
-    ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE, ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT},
+    ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE, ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
+    INVALID_CROSS_ELEMENT_GROUP, CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE, CROSS_ELEMENT_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
+    CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_TELEPORT, CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_ONE_WAY, CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_VERTICAL_PASSAGE, CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_ELEVATOR_STOP, CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_SPLIT, CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_START, CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_FINISH},
 };
-use crate::check_descriptor::{CheckDescriptor, EntityVisibility, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param, teleport_direction_param, teleport_floor_kind_param};
+use crate::check_descriptor::{CheckDescriptor, EntityVisibility, ParamDescriptor, ParamKindDto, region_class_filter_param, comparison_param, cycle_kind_param, geometric_floor_mode_param, floor_scope_param, vertical_passage_type_param, vertical_passage_same_type_only_param, vertical_passage_count_incoming_param, teleport_direction_param, teleport_floor_kind_param, cross_element_include_param};
 
 // Helper to turn IssueKind into a &'static str for JSON serialization.
 fn kind_str(k: IssueKind) -> &'static str {
@@ -1336,6 +1338,55 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             allow_multiple_instances: true,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
+        CheckDescriptor {
+            id: "cross_element_geometric_proximity",
+            label: "Cross-element geometric proximity",
+            description: "Fires if any two special maze elements from the selected set (teleports, one-ways, vertical passages, elevator stops, split tiles, start, finish) sit geometrically closer to each other than the required minimum distance. Same-type pairs count when that type is selected; a single selected type checks that type against itself. Two stops of the same elevator are never a pair. Does nothing when no type is selected.",
+            issue_kinds: vec![kind_str(INVALID_CROSS_ELEMENT_GROUP)],
+            params: vec![
+                cross_element_include_param("include_teleport", "Include teleports", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_TELEPORT, None),
+                cross_element_include_param("include_one_way", "Include one-ways", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_ONE_WAY, None),
+                cross_element_include_param("include_vertical_passage", "Include vertical passages", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_VERTICAL_PASSAGE, Some(EntityVisibility::MultiFloorOnly)),
+                cross_element_include_param("include_elevator_stop", "Include elevator stops", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_ELEVATOR_STOP, Some(EntityVisibility::MultiFloorOnly)),
+                cross_element_include_param("include_split", "Include split tiles", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_SPLIT, None),
+                cross_element_include_param("include_start", "Include start", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_START, None),
+                cross_element_include_param("include_finish", "Include finish", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_FINISH, None),
+                ParamDescriptor {
+                    id: "distance",
+                    label: "Distance threshold",
+                    kind: ParamKindDto::Float { default: CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, min: 0.0, max: 1_000_000.0 },
+                    visibility: None,
+                },
+                geometric_floor_mode_param(CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE),
+            ],
+            // Multiple instances with different type sets / thresholds are a legitimate
+            // simultaneous configuration -- same rationale as teleport_group_proximity.
+            allow_multiple_instances: true,
+            visibility: None,
+        },
+        CheckDescriptor {
+            id: "cross_element_graph_proximity",
+            label: "Cross-element graph proximity",
+            description: "Fires if any two special maze elements from the selected set sit topologically closer to each other (tile-hops on the shared nav graph) than the required minimum. Hops through teleport / vertical-passage / elevator edges do not count. Same-type pairs count; a single selected type checks that type against itself. Two stops of the same elevator are never a pair. Does nothing when no type is selected.",
+            issue_kinds: vec![kind_str(INVALID_CROSS_ELEMENT_GROUP)],
+            params: vec![
+                cross_element_include_param("include_teleport", "Include teleports", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_TELEPORT, None),
+                cross_element_include_param("include_one_way", "Include one-ways", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_ONE_WAY, None),
+                cross_element_include_param("include_vertical_passage", "Include vertical passages", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_VERTICAL_PASSAGE, Some(EntityVisibility::MultiFloorOnly)),
+                cross_element_include_param("include_elevator_stop", "Include elevator stops", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_ELEVATOR_STOP, Some(EntityVisibility::MultiFloorOnly)),
+                cross_element_include_param("include_split", "Include split tiles", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_SPLIT, None),
+                cross_element_include_param("include_start", "Include start", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_START, None),
+                cross_element_include_param("include_finish", "Include finish", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_FINISH, None),
+                ParamDescriptor {
+                    id: "distance",
+                    label: "Distance threshold",
+                    kind: ParamKindDto::Integer { default: CROSS_ELEMENT_GRAPH_PROXIMITY_DISTANCE_DEFAULT as i64, min: 0, max: 100_000 },
+                    visibility: None,
+                },
+            ],
+            allow_multiple_instances: true,
+            visibility: None,
+        },
     ]
 }
 
@@ -1370,6 +1421,7 @@ mod tests {
         assert_eq!(
             allowing_sorted,
             vec![
+                "cross_element_geometric_proximity", "cross_element_graph_proximity",
                 "elevator_span", "elevator_stop_count",
                 "elevator_stop_group_geometric_proximity", "elevator_stop_group_graph_proximity",
                 "max_teleport_count", "max_teleport_density",

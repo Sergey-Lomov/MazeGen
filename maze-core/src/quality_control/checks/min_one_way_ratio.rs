@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
-use crate::graph::EdgeKind;
 use crate::space::{LevelId, Tessellation};
 use crate::quality_control::check::Check;
+use crate::quality_control::checks::one_way_core::one_way_edge_ids;
 use crate::quality_control::{MissingOneWaysIssue, FloorScope, RepairArea};
 use crate::quality_control::floor_group::{floors_of_edge, floor_point_count};
 
@@ -34,12 +34,7 @@ impl<T: Tessellation> Check<T, MissingOneWaysIssue> for MinOneWayRatioCheck {
     fn check_type_id(&self) -> &'static str { "min_one_way_ratio" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<MissingOneWaysIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        // Same kind-filtered reverse lookup as MinOneWayCountCheck/OneWayWaypointDistanceCheck.
-        let one_ways: Vec<_> = maze.graph.edges()
-            .filter(|e| e.kind == EdgeKind::Basic)
-            .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
-            .map(|e| e.id)
-            .collect();
+        let one_ways = one_way_edge_ids(maze);
         let min_ratio = self.min_ratio;
 
         let missing: Vec<(RepairArea, u32)> = match self.floor_scope {
@@ -98,6 +93,7 @@ mod tests {
     use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
+    use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
 

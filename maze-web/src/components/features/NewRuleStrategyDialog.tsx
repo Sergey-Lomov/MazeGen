@@ -93,7 +93,7 @@ export function NewRuleStrategyDialog({ kind, onBack, onConfirm, onClose }: Prop
           {requiredNestedSlots.map((slot) => (
             <div key={slot.slot_id} style={styles.field}>
               <Inline gap="rowGap" justify="space-between">
-                <label style={styles.label}>{resolveNestedStrategyLabel(slot.kind)}</label>
+                <label style={styles.label}>{resolveNestedStrategyLabel(slot.kind, slot.slot_id)}</label>
               </Inline>
               {resolveNestedSlotDescription(slot.slot_id) && (
                 <div style={styles.fieldDescription}>{resolveNestedSlotDescription(slot.slot_id)}</div>

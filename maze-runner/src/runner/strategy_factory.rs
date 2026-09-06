@@ -21,6 +21,7 @@ use maze_core::{
         RemoveElevatorStopStrategy, ElevatorStopGroupSelectStrategy, AddElevatorStrategy,
         AddElevatorStopStrategy,
         AddElevatorStopCountStrategy, AddElevatorHeightStopStrategy, AddElevatorStopForGapStrategy,
+        CrossElementGroupSelectStrategy,
     },
     quality_control::{IssueRequirement, RuleParams, rule_param_applies_to},
 };
@@ -95,6 +96,7 @@ pub(crate) fn build_strategy_erased<T: Tessellation>(id: &str, params: &HashMap<
         "add_elevator_stop_count" => Box::new(AddElevatorStopCountStrategy),
         "add_elevator_height_stop" => Box::new(AddElevatorHeightStopStrategy),
         "add_elevator_stop_for_gap" => Box::new(AddElevatorStopForGapStrategy),
+        "cross_element_group_select" => Box::new(CrossElementGroupSelectStrategy { protect_route: rule_params.protect_route }),
         other => return Err(format!("unknown strategy: {other}")),
     })
 }

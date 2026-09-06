@@ -56,6 +56,7 @@ pub mod add_elevator_height_stop;
 pub mod add_elevator_stop_for_gap;
 pub mod vertical_passage_region_merge;
 pub mod elevator_region_merge;
+pub mod cross_element_group_select;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
@@ -102,6 +103,7 @@ pub use remove_split::{
     SELECTION_MERGE as REMOVE_SPLIT_SELECTION_MERGE,
 };
 pub use split_group_select::{SplitGroupSelectStrategy, SLOT_FIX_TARGET as SPLIT_GROUP_SELECT_SLOT_FIX_TARGET, SPLIT_PRIORITY_OPTIONS, PRIORITY_MOST_VOLUMINOUS, PRIORITY_LEAST_VOLUMINOUS, PRIORITY_MOST_CONNECTED, PRIORITY_LEAST_CONNECTED};
+pub use cross_element_group_select::{CrossElementGroupSelectStrategy, SLOT_TELEPORT_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_TELEPORT_FIX, SLOT_ONE_WAY_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_ONE_WAY_FIX, SLOT_VERTICAL_PASSAGE_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_VERTICAL_PASSAGE_FIX, SLOT_ELEVATOR_STOP_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_ELEVATOR_STOP_FIX, SLOT_SPLIT_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_SPLIT_FIX};
 pub use add_split::{AddSplitStrategy, PARAM_ALLOW_LOSE_CONNECTIONS as ADD_SPLIT_PARAM_ALLOW_LOSE_CONNECTIONS, PARAM_ALLOW_ADD_CONNECTIONS as ADD_SPLIT_PARAM_ALLOW_ADD_CONNECTIONS, PARAM_MAX_ATTEMPTS as ADD_SPLIT_PARAM_MAX_ATTEMPTS, MAX_ATTEMPTS_DEFAULT as ADD_SPLIT_MAX_ATTEMPTS_DEFAULT};
 pub use remove_split_node::{RemoveSplitNodeStrategy, PARAM_REDISTRIBUTE as REMOVE_SPLIT_NODE_PARAM_REDISTRIBUTE};
 pub use remove_split_node_connection::RemoveSplitNodeConnectionStrategy;

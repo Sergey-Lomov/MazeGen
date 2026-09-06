@@ -1,5 +1,6 @@
 use super::*;
 use rand::SeedableRng;
+use crate::graph::EdgeKind;
 use crate::ids::EdgeId;
 use crate::{Graph, IdGenerator};
 use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};

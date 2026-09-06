@@ -18,7 +18,7 @@ use crate::dto::{
     NodeStatsDto, SpatialEdgeStatsDto, ElementsStatsDto, VerticalStatsDto, RouteInfoDto, JunctionBucket, GraphStatsDto,
     SplitGroupDto, FloorScoped, MazeStatisticsDto,
 };
-use super::snapshot_dto::{edge_group_map_dto, split_group_map_dto, route_payload_map_dto, region_payload_map_dto, split_face_requirement_dto, missing_elevator_stops_map_dto};
+use super::snapshot_dto::{edge_group_map_dto, split_group_map_dto, route_payload_map_dto, region_payload_map_dto, split_face_requirement_dto, missing_elevator_stops_map_dto, cross_element_group_map_dto};
 
 /// Compute analytics snapshot from a fully-built maze (GraphInput).
 /// Independent of the generation pipeline — accepts any Maze<T> with a populated graph.
@@ -92,6 +92,7 @@ pub fn build_analytics_snapshot<T: Tessellation>(
             IssuePayload::InvalidElevatorStop { nodes } => IssuePayloadDto::InvalidElevatorStop { nodes: region_payload_map_dto(nodes) },
             IssuePayload::AreaDeficit { areas } => IssuePayloadDto::AreaDeficit { areas },
             IssuePayload::MissingElevatorStopCount { groups } => IssuePayloadDto::MissingElevatorStopCount { groups: missing_elevator_stops_map_dto(groups) },
+            IssuePayload::InvalidCrossElementGroup { groups } => IssuePayloadDto::InvalidCrossElementGroup { groups: cross_element_group_map_dto(groups) },
         };
         let source_checks = issue.source_checks().iter().map(|s| s.to_string()).collect();
         let mut details: HashMap<String, HashMap<String, String>> = issue.details().iter()

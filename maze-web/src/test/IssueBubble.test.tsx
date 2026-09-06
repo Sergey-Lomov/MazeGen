@@ -6,7 +6,7 @@ import type { IssueDto } from "../wasm/types";
 import {
   invalidLoopIssue, invalidTeleportIssue, invalidOneWayIssue, invalidVerticalPassageIssue,
   regionNeedsExpansionIssue, invalidElevatorStopIssue, invalidSplitTileIssue, invalidSplitNodeGroupIssue,
-  excessiveSccCountIssue,
+  excessiveSccCountIssue, invalidCrossElementGroupIssue,
 } from "./issuesBlockFixtures";
 
 // GitHub issue #195's review finding: IssuesBlock/IssueBubble had no test file at all -- the
@@ -189,6 +189,37 @@ describe("IssueBubble", () => {
     fireEvent.mouseEnter(bubble);
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[7, 8]]);
     fireEvent.mouseLeave(bubble);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
+  });
+
+  it("hovering an invalid_cross_element_group bubble with a teleport+split pair sets hoveredIssueRegionGroups to both members' cells; leaving clears it", () => {
+    const issue = invalidCrossElementGroupIssue("cross_element_geometric_proximity", [
+      { kind: "teleport", nodes: [1] },
+      { kind: "split", nodes: [7, 8] },
+    ]);
+    render(<IssueBubble issue={issue} sourceCheck="cross_element_geometric_proximity" />);
+
+    const bubble = screen.getByText("Elements too close");
+    fireEvent.mouseEnter(bubble);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[1, 7, 8]]);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
+    fireEvent.mouseLeave(bubble);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
+  });
+
+  it("hovering an invalid_cross_element_group bubble with a one-way member draws it as a wall (hoveredIssueLoopEdges) while the other member still draws as a region square, both set together", () => {
+    const issue = invalidCrossElementGroupIssue("cross_element_graph_proximity", [
+      { kind: "one_way", edges: [[3, 4]] },
+      { kind: "split", nodes: [7, 8] },
+    ]);
+    render(<IssueBubble issue={issue} sourceCheck="cross_element_graph_proximity" />);
+
+    const bubble = screen.getByText("Elements too close");
+    fireEvent.mouseEnter(bubble);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toEqual([{ from: 3, to: 4, asWall: true }]);
+    expect(useMazeStore.getState().hoveredIssueRegionGroups).toEqual([[7, 8]]);
+    fireEvent.mouseLeave(bubble);
+    expect(useMazeStore.getState().hoveredIssueLoopEdges).toBeNull();
     expect(useMazeStore.getState().hoveredIssueRegionGroups).toBeNull();
   });
 
