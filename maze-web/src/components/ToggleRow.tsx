@@ -2,6 +2,7 @@ import React from "react";
 import { typography, muted } from "../styles/theme";
 import { Switch } from "./Switch";
 import { Inline } from "./Layout";
+import { InfoIconButton } from "./InfoIconButton";
 
 /** Shared labeled toggle-switch row — lifted out of `AnalyticsFeature.tsx` (its original,
  *  previously-private home) so a second feature (the debug panel's per-debug-value toggles, GitHub
@@ -10,10 +11,7 @@ export function ToggleRow({ label, checked, onChange, disabled, info }: { label:
   return (
     <Inline gap="groupGap">
       <span style={{ ...styles.toggleLabel, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
-      {info && (
-        <span role="button" tabIndex={0} className="hoverable" style={styles.infoIcon} onClick={info}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") info(); }}>ℹ</span>
-      )}
+      {info && <InfoIconButton onClick={info} />}
       <Switch checked={checked && !disabled} onChange={disabled ? () => {} : onChange} />
     </Inline>
   );
@@ -21,5 +19,4 @@ export function ToggleRow({ label, checked, onChange, disabled, info }: { label:
 
 const styles: Record<string, React.CSSProperties> = {
   toggleLabel: { flex: 1, ...muted(typography.body) },
-  infoIcon: { ...muted(typography.icon), lineHeight: 1, flexShrink: 0, cursor: "default", borderRadius: 3 },
 };

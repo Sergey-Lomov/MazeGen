@@ -33,6 +33,14 @@ export function optJoin(obj: Record<string, unknown> | null, key: string, fallba
   return v === "round" || v === "miter" ? v : fallback;
 }
 
+/** GitHub issue #510 — recovery for `VectorByCorridorsSettings.renderStyle`. An old project file
+ *  predating this field (or carrying only the removed `roundJunctions` boolean) recovers to the
+ *  default `"contour"`. */
+export function optRenderStyle(obj: Record<string, unknown> | null, key: string, fallback: "contour" | "legacy_line"): "contour" | "legacy_line" {
+  const v = obj?.[key];
+  return v === "contour" || v === "legacy_line" ? v : fallback;
+}
+
 export function optOneWayPattern(obj: Record<string, unknown> | null, key: string, fallback: "triangle" | "chevron" | "arrow"): "triangle" | "chevron" | "arrow" {
   const v = obj?.[key];
   return v === "triangle" || v === "chevron" || v === "arrow" ? v : fallback;
@@ -508,6 +516,7 @@ export function validateVectorByCorridorsSettings(v: unknown, path: string): Vec
     color: optNumber(obj, "color", d.color),
     thickness: optNumber(obj, "thickness", d.thickness),
     join: optJoin(obj, "join", d.join),
+    renderStyle: optRenderStyle(obj, "renderStyle", d.renderStyle),
     startMarker: validateMarkerSettings(obj?.startMarker, `${path}.startMarker`, d.startMarker),
     finishMarker: validateMarkerSettings(obj?.finishMarker, `${path}.finishMarker`, d.finishMarker),
     markerWidenPadding: optNumber(obj, "markerWidenPadding", d.markerWidenPadding),

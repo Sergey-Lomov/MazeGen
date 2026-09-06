@@ -62,7 +62,6 @@ export const styles: Record<string, React.CSSProperties> = {
   nestedGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   floorSectionBody: { paddingBottom: 8 },
   subsectionHeaderRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
-  infoIcon: { ...muted(typography.icon), lineHeight: 1, flexShrink: 0, cursor: "default", borderRadius: 3 },
   toggleBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   legendRow: { display: "flex", alignItems: "center", gap: spacing.groupGap },
   legendSwatch: { width: 14, height: 14, borderRadius: 3, flexShrink: 0 },

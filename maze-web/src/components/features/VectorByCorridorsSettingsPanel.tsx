@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { VerticalArrowStyle } from "../../pixi/renderers/types";
 import { inset, spacing, typography, ui } from "../../styles/theme";
@@ -7,6 +7,7 @@ import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
 import { SliderRow } from "../SliderRow";
 import { ToggleRow } from "../ToggleRow";
+import { CategoryInfoModal } from "../CategoryInfoModal";
 import { SectionHeader, SubsectionHeader } from "../SectionHeader";
 import { MarkerSettingsGroup } from "./MarkerSettingsGroup";
 import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
@@ -21,6 +22,8 @@ import { splitSlotColor } from "../../pixi/colorUtils";
 import { canvas } from "../../pixi/colorTokens";
 import { TILE_SIZE } from "../../pixi/constants";
 import * as m from "~/paraglide/messages";
+
+const MAX_SPLIT_GAP_WIDTH = 10;
 
 /** "Vector by corridors" mode's own settings panel (GitHub issue #310) — a collapsible "Background"
  * section (GitHub issue #309) reusing `VectorByWallsSettingsPanel`'s own section, same field set
@@ -52,6 +55,8 @@ export function VectorByCorridorsSettingsPanel() {
   const setGridColor = useMazeStore((s) => s.setVectorByCorridorsGridColor);
   const setColor = useMazeStore((s) => s.setVectorByCorridorsColor);
   const setJoin = useMazeStore((s) => s.setVectorByCorridorsJoin);
+  const setRenderStyle = useMazeStore((s) => s.setVectorByCorridorsRenderStyle);
+  const [renderStyleInfoOpen, setRenderStyleInfoOpen] = useState(false);
   const setThickness = useMazeStore((s) => s.setVectorByCorridorsThickness);
 
   const setStartMarkerShape = useMazeStore((s) => s.setVectorByCorridorsStartMarkerShape);
@@ -258,6 +263,16 @@ export function VectorByCorridorsSettingsPanel() {
             ]}
             onChange={setJoin}
             resetButton={sharedStyleFieldReset(settings.sharedStyle.overrides, "cornerStyle", "join", () => resetSharedStyleField("cornerStyle", "join"))}
+          />
+          <SelectRow
+            label={m["image_export.vector_by_corridors.render_style"]()}
+            value={settings.renderStyle}
+            options={[
+              { value: "contour", label: m["image_export.vector_by_corridors.render_style_contour"]() },
+              { value: "legacy_line", label: m["image_export.vector_by_corridors.render_style_legacy_line"]() },
+            ]}
+            onChange={setRenderStyle}
+            info={() => setRenderStyleInfoOpen(true)}
           />
           <SliderRow
             label={m["image_export.vector_by_corridors.thickness"]()}
@@ -723,7 +738,7 @@ export function VectorByCorridorsSettingsPanel() {
                 value={settings.splitGapWidth}
                 onChange={setSplitGapWidth}
                 min={0}
-                max={TILE_SIZE / 2}
+                max={MAX_SPLIT_GAP_WIDTH}
                 step={1}
                 format={(v) => String(v)}
                 disabled={!settings.splitSpecialShapes}
@@ -764,6 +779,17 @@ export function VectorByCorridorsSettingsPanel() {
         expanded={isExpanded("warnings")}
         onToggle={() => toggleSection("warnings")}
       />
+
+      {renderStyleInfoOpen && (
+        <CategoryInfoModal
+          title={m["image_export.vector_by_corridors.render_style"]()}
+          params={[
+            { label: m["image_export.vector_by_corridors.render_style_legacy_line"](), description: m["image_export.vector_by_corridors.render_style_info_line"]() },
+            { label: m["image_export.vector_by_corridors.render_style_contour"](), description: m["image_export.vector_by_corridors.render_style_info_contour"]() },
+          ]}
+          onClose={() => setRenderStyleInfoOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -77,6 +77,57 @@ input[type="number"]::-webkit-inner-spin-button {
   cursor: not-allowed;
 }
 
+/* RGB color-picker channel slider (GitHub issue #500). 8px gradient track (radius 4px); thumb is a
+   18px disc — 10px coloured centre (the current working color, set inline as `--thumb-color`) + 2px
+   white ring + 2px panel-colored outer edge. No hover / focus / drag styling — the thumb looks the
+   same in every state; only disabled dims the whole control. The gradient itself is set inline. */
+.gradient-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+  padding: 0;
+}
+
+.gradient-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--thumb-color, #888);
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #1b1b1b;
+  cursor: pointer;
+}
+
+.gradient-slider::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--thumb-color, #888);
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #1b1b1b;
+  cursor: pointer;
+}
+
+.gradient-slider::-moz-range-track {
+  height: 8px;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.gradient-slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 * {
   scrollbar-color: #555 #181818;
   scrollbar-width: thin;

@@ -4,8 +4,21 @@ import { Button } from "./Button";
 import { TextFieldRow } from "./TextFieldRow";
 import { ui, radius, typography, spacing } from "../styles/theme";
 import { HEX_COLOR_RE, colorToHex, hexToColor } from "./colorFormat";
+import { RgbModelEditor } from "./RgbModelEditor";
+import { HslModelEditor } from "./HslModelEditor";
+import { OklchModelEditor } from "./OklchModelEditor";
 import * as m from "~/paraglide/messages";
 import type React from "react";
+
+/** Color models the picker can drive. `rgb` ships in #500, `hsl` in #501, `oklch` in #502; later
+ *  sub-issues add more. */
+type ColorModel = "rgb" | "hsl" | "oklch";
+
+const MODELS: { key: ColorModel; label: () => string }[] = [
+  { key: "rgb", label: () => m["color_picker.model.rgb"]() },
+  { key: "hsl", label: () => m["color_picker.model.hsl"]() },
+  { key: "oklch", label: () => m["color_picker.model.oklch"]() },
+];
 
 interface Props {
   /** Color the swatch currently holds, used to seed the working color on open. */
@@ -24,8 +37,15 @@ interface Props {
 export function ColorPickerPanel({ color, onApply, onClose }: Props) {
   const [working, setWorking] = useState(color);
   const [hexInput, setHexInput] = useState(() => colorToHex(color));
+  const [model, setModel] = useState<ColorModel>("rgb");
 
   const hexValid = HEX_COLOR_RE.test(hexInput);
+
+  /** Update the working color from a model editor and re-sync the shared hex field. */
+  function setWorkingColor(next: number) {
+    setWorking(next);
+    setHexInput(colorToHex(next));
+  }
 
   function handleHexChange(next: string) {
     setHexInput(next);
@@ -50,6 +70,20 @@ export function ColorPickerPanel({ color, onApply, onClose }: Props) {
             onChange={handleHexChange}
           />
           {!hexValid && <span style={styles.hexError}>{m["color_picker.hex_invalid"]()}</span>}
+          <div style={styles.modelSwitcher}>
+            {MODELS.map(({ key, label }) => (
+              <Button
+                key={key}
+                variant={model === key ? "toggle-selected" : "toggle"}
+                onClick={() => setModel(key)}
+              >
+                {label()}
+              </Button>
+            ))}
+          </div>
+          {model === "rgb" && <RgbModelEditor color={working} onChange={setWorkingColor} />}
+          {model === "hsl" && <HslModelEditor color={working} onChange={setWorkingColor} />}
+          {model === "oklch" && <OklchModelEditor color={working} onChange={setWorkingColor} />}
         </div>
         <div style={styles.footer}>
           <Button variant="secondary" layoutStyle={styles.footerBtn} onClick={onClose}>
@@ -82,6 +116,7 @@ const styles: Record<string, React.CSSProperties> = {
     boxSizing: "border-box",
   },
   hexError: { ...typography.caption, color: ui.text.error },
+  modelSwitcher: { display: "flex", gap: spacing.itemGap },
   footer: {
     display: "flex",
     gap: spacing.groupGap,

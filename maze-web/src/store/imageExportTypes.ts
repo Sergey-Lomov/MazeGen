@@ -602,6 +602,21 @@ export interface VectorByCorridorsSettings extends TeleportSettingsFields, OneWa
   /** Drives both the pixi stroke `join` and the derived `cap` together, same convention as
    *  `VectorByWallsSettings.wallJoin`/`wallCap`. */
   join: "round" | "miter";
+  /** Which corridor-drawing algorithm renders this mode's corridor network (GitHub issue #510),
+   *  independent of `join` (each style applies its own round/miter behavior). `"contour"` (the
+   *  default) draws each tile as one filled shape (`buildCorridorContour`/`vectorByCorridorsContour.ts`,
+   *  GitHub issue #493 rework) — more decorative (rounds every corner, junctions included), but has
+   *  shown stability issues. `"legacy_line"` restores the pre-#493 renderer — a stroked polyline per
+   *  chained corridor path with patched caps/miter wedges at junctions (the
+   *  `renderStyle === "legacy_line"` branch + `drawSplitPassagesLegacy` in
+   *  `VectorByCorridorsRenderer.ts`) — more stable, but junctions/turns
+   *  have sharp corners under `join: "miter"` (round corners are still smooth under `join: "round"`,
+   *  just via per-path circle-cap patches instead of a contour fill). The two corridor-drawing
+   *  algorithms and the two special-shape drawing blocks are fully independent — the only code they
+   *  share is `setupSplitPassageDraw` (per-call clip-scratch reset + `drawConnectorLine` helper +
+   *  the plain-connector pass, boilerplate with no special-shape geometry) — so a `"contour"`-only
+   *  bug can't leak into `"legacy_line"` mode. */
+  renderStyle: "contour" | "legacy_line";
   /** Start/finish marker appearance (GitHub issue #311) — same `MarkerSettings` shape and
    *  "Waypoints" section convention `VectorByWallsSettings` uses, reusing its settings-panel
    *  sub-component rather than duplicating it. */
@@ -731,6 +746,7 @@ export interface ImageExportActions {
   setVectorByCorridorsColor: (color: number) => void;
   setVectorByCorridorsThickness: (v: number) => void;
   setVectorByCorridorsJoin: (join: "round" | "miter") => void;
+  setVectorByCorridorsRenderStyle: (v: "contour" | "legacy_line") => void;
   setVectorByCorridorsStartMarkerShape: (shape: MarkerShape) => void;
   setVectorByCorridorsStartMarkerCornerStyle: (style: TeleportCornerStyle) => void;
   setVectorByCorridorsStartMarkerFillColor: (color: number) => void;

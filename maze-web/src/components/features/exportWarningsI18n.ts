@@ -15,6 +15,7 @@ const WARNING_MESSAGES: Partial<Record<ExportWarningId, () => string>> = {
   elevator_badges_overlap: m["image_export.vector_by_walls.warning_elevator_badges_overlap"],
   elevator_badges_too_many: m["image_export.vector_by_walls.warning_elevator_badges_too_many"],
   one_way_arrows_overflow_corridor: m["image_export.vector_by_corridors.warning_one_way_arrows_overflow"],
+  split_gap_may_shrink: m["image_export.vector_by_corridors.warning_split_gap_may_shrink"],
   elevator_indistinguishable: m["image_export.vector_by_walls.warning_elevator_indistinguishable"],
 };
 
@@ -28,6 +29,7 @@ const WARNING_DESCRIPTIONS: Partial<Record<ExportWarningId, () => string>> = {
   elevator_badges_overlap: m["image_export.vector_by_walls.warning_elevator_badges_overlap_description"],
   elevator_badges_too_many: m["image_export.vector_by_walls.warning_elevator_badges_too_many_description"],
   one_way_arrows_overflow_corridor: m["image_export.vector_by_corridors.warning_one_way_arrows_overflow_description"],
+  split_gap_may_shrink: m["image_export.vector_by_corridors.warning_split_gap_may_shrink_description"],
   elevator_indistinguishable: m["image_export.vector_by_walls.warning_elevator_indistinguishable_description"],
 };
 

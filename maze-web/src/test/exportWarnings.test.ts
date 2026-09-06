@@ -55,7 +55,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
 function baseCorridorsSettings(overrides: Partial<VectorByCorridorsSettings> = {}): VectorByCorridorsSettings {
   return {
     background: 0, showGrid: true, gridColor: 0,
-    color: 0, thickness: 4, join: "round",
+    color: 0, thickness: 4, join: "round", renderStyle: "contour",
     startMarker: defaultMarker, finishMarker: defaultMarker,
     markerWidenPadding: 0, markerWidenShape: "match_marker",
     oneWayColor: 0, oneWayCount: 1, oneWayThickness: 4, oneWayGap: 4, oneWayWidth: 1, oneWayLength: 1, oneWayJoin: "round",
@@ -479,6 +479,28 @@ describe("computeVectorByCorridorsWarnings", () => {
       const settings = baseCorridorsSettings({ splitSpecialShapes: true });
       const warnings = computeVectorByCorridorsWarnings(nodes, edges, squareCfg, settings, null, null);
       expect(warnings.filter((w) => w.id === "teleport_on_special_split")).toHaveLength(0);
+    });
+  });
+
+  describe("split_gap_may_shrink", () => {
+    it("flags when corridor width plus both gap sides exceeds 40px", () => {
+      const settings = baseCorridorsSettings({ thickness: 35, splitGapWidth: 3 });
+      const warnings = computeVectorByCorridorsWarnings([], [], squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "split_gap_may_shrink")).toHaveLength(1);
+    });
+
+    it("does not flag exactly 40px", () => {
+      const settings = baseCorridorsSettings({ thickness: 34, splitGapWidth: 3 });
+      const warnings = computeVectorByCorridorsWarnings([], [], squareCfg, settings, null, null);
+      expect(warnings.filter((w) => w.id === "split_gap_may_shrink")).toHaveLength(0);
+    });
+
+    it("does not attach maze entities to the settings warning", () => {
+      const settings = baseCorridorsSettings({ thickness: 35, splitGapWidth: 3 });
+      const warning = computeVectorByCorridorsWarnings([], [], squareCfg, settings, null, null)
+        .find((w) => w.id === "split_gap_may_shrink");
+      expect(warning?.nodes).toEqual([]);
+      expect(warning?.edges).toEqual([]);
     });
   });
 
