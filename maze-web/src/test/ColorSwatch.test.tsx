@@ -351,4 +351,173 @@ describe("ColorSwatch", () => {
   // jsdom's synthetic PointerEvent drops clientX/clientY and has no layout, so a `fireEvent`
   // drag can't reproduce a real cursor position. Covered by the keyboard-nudge tests above and
   // by manual / visual checks.
+
+  function selectOklch() {
+    fireEvent.click(screen.getByText("OKLCH"));
+  }
+
+  it("switching to the OKLCH model swaps in the OKLCH editor and marks its button selected", () => {
+    render(<ColorSwatch color={0x336699} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    expect(screen.queryByTestId("color-picker-rgb")).toBeNull();
+    expect(screen.getByTestId("color-picker-oklch")).toBeTruthy();
+    expect((screen.getByText("OKLCH") as HTMLButtonElement).className).toContain("btn-toggle-selected");
+  });
+
+  it("OKLCH controls reflect the working color, three channels L / C / H", () => {
+    render(<ColorSwatch color={0xffffff} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    expect((screen.getByLabelText("L value") as HTMLInputElement).value).toBe("100");
+    expect((screen.getByLabelText("C value") as HTMLInputElement).value).toBe("0.0000");
+    expect((screen.getByLabelText("H value") as HTMLInputElement).value).toBe("0");
+  });
+
+  it("editing an OKLCH channel input updates preview and hex live, commits on Apply", () => {
+    const onChange = vi.fn();
+    render(<ColorSwatch color={0xffffff} onChange={onChange} />);
+    openPicker();
+    selectOklch();
+    fireEvent.change(screen.getByLabelText("L value"), { target: { value: "0" } });
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#000000");
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onChange).toHaveBeenCalledWith(0x000000);
+  });
+
+  it("editing an OKLCH slider updates the working color", () => {
+    render(<ColorSwatch color={0xffffff} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    fireEvent.change(screen.getByLabelText("L"), { target: { value: "0" } });
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#000000");
+  });
+
+  it("typing a hex keeps the OKLCH controls in sync", () => {
+    render(<ColorSwatch color={0x000000} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#ffffff" } });
+    expect((screen.getByLabelText("L value") as HTMLInputElement).value).toBe("100");
+    expect((screen.getByLabelText("C value") as HTMLInputElement).value).toBe("0.0000");
+  });
+
+  it("clearing an OKLCH channel input leaves the working color untouched", () => {
+    const onChange = vi.fn();
+    render(<ColorSwatch color={0x336699} onChange={onChange} />);
+    openPicker();
+    selectOklch();
+    fireEvent.change(screen.getByLabelText("C value"), { target: { value: "" } });
+    expect((screen.getByLabelText("C value") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#336699");
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onChange).toHaveBeenCalledWith(0x336699);
+  });
+
+  it("blurring an OKLCH channel input drops its text buffer", () => {
+    render(<ColorSwatch color={0x336699} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    const input = screen.getByLabelText("C value") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "" } });
+    expect(input.value).toBe("");
+    fireEvent.blur(input);
+    // Buffer gone -> the field falls back to the current channel value.
+    expect(input.value).not.toBe("");
+  });
+
+  it("an out-of-range OKLCH channel input is clamped to its range", () => {
+    render(<ColorSwatch color={0xffffff} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    fireEvent.change(screen.getByLabelText("L value"), { target: { value: "999" } });
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#ffffff");
+    fireEvent.change(screen.getByLabelText("L value"), { target: { value: "-5" } });
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#000000");
+  });
+
+  it("moving the OKLCH C slider leaves L and H untouched", () => {
+    render(<ColorSwatch color={0x3a6ea5} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    const l0 = (screen.getByLabelText("L value") as HTMLInputElement).value;
+    const h0 = (screen.getByLabelText("H value") as HTMLInputElement).value;
+    fireEvent.change(screen.getByLabelText("C"), { target: { value: "0.05" } });
+    expect((screen.getByLabelText("L value") as HTMLInputElement).value).toBe(l0);
+    expect((screen.getByLabelText("H value") as HTMLInputElement).value).toBe(h0);
+  });
+
+  it("the gamut badge stays mounted and only swaps its text between in- and out-of-sRGB", () => {
+    render(<ColorSwatch color={0x00ff00} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    const badge = screen.getByTestId("color-picker-oklch-gamut-badge");
+    expect(badge.dataset.outOfGamut).toBe("false");
+    // Push chroma far past what green at this L can hold in sRGB.
+    fireEvent.change(screen.getByLabelText("C value"), { target: { value: "0.4" } });
+    expect(screen.getByTestId("color-picker-oklch-gamut-badge").dataset.outOfGamut).toBe("true");
+    fireEvent.change(screen.getByLabelText("C value"), { target: { value: "0" } });
+    expect(screen.getByTestId("color-picker-oklch-gamut-badge").dataset.outOfGamut).toBe("false");
+  });
+
+  it("switching RGB -> OKLCH -> RGB preserves the working color", () => {
+    render(<ColorSwatch color={0x7f3d1c} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    fireEvent.click(screen.getByText("RGB"));
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#7f3d1c");
+  });
+
+  it("the OKLCH model shows the 2D area and the hue strip", () => {
+    render(<ColorSwatch color={0x336699} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    expect(screen.getByTestId("color-picker-oklch-area")).toBeTruthy();
+    expect(screen.getByTestId("color-picker-oklch-hue")).toBeTruthy();
+  });
+
+  it("arrow keys on the OKLCH area nudge C and L (Shift = bigger step), clamped", () => {
+    render(<ColorSwatch color={0x808080} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    const area = screen.getByTestId("color-picker-oklch-area");
+    const l0 = Number((screen.getByLabelText("L value") as HTMLInputElement).value);
+    fireEvent.keyDown(area, { key: "ArrowUp" });
+    expect(Number((screen.getByLabelText("L value") as HTMLInputElement).value)).toBe(l0 + 1);
+    fireEvent.keyDown(area, { key: "ArrowDown" });
+    expect(Number((screen.getByLabelText("L value") as HTMLInputElement).value)).toBe(l0);
+    fireEvent.keyDown(area, { key: "ArrowRight" });
+    expect(Number((screen.getByLabelText("C value") as HTMLInputElement).value)).toBeGreaterThan(0);
+    fireEvent.keyDown(area, { key: "ArrowLeft", shiftKey: true });
+    expect((screen.getByLabelText("C value") as HTMLInputElement).value).toBe("0.0000"); // clamped, not negative
+  });
+
+  it("a non-arrow key on the OKLCH area does nothing", () => {
+    render(<ColorSwatch color={0x336699} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    const hex0 = (screen.getByLabelText(hexLabel()) as HTMLInputElement).value;
+    fireEvent.keyDown(screen.getByTestId("color-picker-oklch-area"), { key: "a" });
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe(hex0);
+  });
+
+  it("up / down on the OKLCH hue strip nudge H (Shift = bigger step), clamped to 0-360", () => {
+    render(<ColorSwatch color={0x00ff00} onChange={() => {}} />);
+    openPicker();
+    selectOklch();
+    const strip = screen.getByTestId("color-picker-oklch-hue");
+    const h0 = Number((screen.getByLabelText("H value") as HTMLInputElement).value);
+    fireEvent.keyDown(strip, { key: "ArrowUp" });
+    expect(Number((screen.getByLabelText("H value") as HTMLInputElement).value)).toBe(h0 - 1);
+    fireEvent.keyDown(strip, { key: "ArrowDown", shiftKey: true });
+    expect(Number((screen.getByLabelText("H value") as HTMLInputElement).value)).toBe(h0 + 9);
+    fireEvent.keyDown(strip, { key: "x" }); // ignored
+    expect(Number((screen.getByLabelText("H value") as HTMLInputElement).value)).toBe(h0 + 9);
+  });
+
+  // Pointer-drag on the OKLCH area / hue strip (`setFromArea` / `setFromHue`) isn't unit-tested
+  // for the same reason as HSL: jsdom's synthetic PointerEvent has no clientX/clientY or layout.
+  // The 2D area's per-pixel canvas paint (`paintLcPlane`) also no-ops under jsdom (no 2d context);
+  // covered by the keyboard-nudge tests above and by manual / visual checks.
 });

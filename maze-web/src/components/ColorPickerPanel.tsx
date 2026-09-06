@@ -6,15 +6,18 @@ import { ui, radius, typography, spacing } from "../styles/theme";
 import { HEX_COLOR_RE, colorToHex, hexToColor } from "./colorFormat";
 import { RgbModelEditor } from "./RgbModelEditor";
 import { HslModelEditor } from "./HslModelEditor";
+import { OklchModelEditor } from "./OklchModelEditor";
 import * as m from "~/paraglide/messages";
 import type React from "react";
 
-/** Color models the picker can drive. `rgb` ships in #500, `hsl` in #501; later sub-issues add more. */
-type ColorModel = "rgb" | "hsl";
+/** Color models the picker can drive. `rgb` ships in #500, `hsl` in #501, `oklch` in #502; later
+ *  sub-issues add more. */
+type ColorModel = "rgb" | "hsl" | "oklch";
 
 const MODELS: { key: ColorModel; label: () => string }[] = [
   { key: "rgb", label: () => m["color_picker.model.rgb"]() },
   { key: "hsl", label: () => m["color_picker.model.hsl"]() },
+  { key: "oklch", label: () => m["color_picker.model.oklch"]() },
 ];
 
 interface Props {
@@ -80,6 +83,7 @@ export function ColorPickerPanel({ color, onApply, onClose }: Props) {
           </div>
           {model === "rgb" && <RgbModelEditor color={working} onChange={setWorkingColor} />}
           {model === "hsl" && <HslModelEditor color={working} onChange={setWorkingColor} />}
+          {model === "oklch" && <OklchModelEditor color={working} onChange={setWorkingColor} />}
         </div>
         <div style={styles.footer}>
           <Button variant="secondary" layoutStyle={styles.footerBtn} onClick={onClose}>

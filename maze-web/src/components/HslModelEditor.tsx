@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type React from "react";
 import { sharedStyles } from "../styles/shared";
-import { typography, spacing, ui, radius } from "../styles/theme";
+import { typography, spacing } from "../styles/theme";
 import { colorToHex, colorToHsl, hslToColor, type Hsl } from "./colorFormat";
 import { GradientSlider } from "./GradientSlider";
 import { useChannelInputs, parseChannelInput } from "./useChannelInputs";
+import { usePickerDrag } from "./usePickerDrag";
+import { pickerAreaStyles } from "./pickerAreaStyles";
 import * as m from "~/paraglide/messages";
 
 interface Props {
@@ -92,19 +94,11 @@ export function HslModelEditor({ color, onChange }: Props) {
   }
 
   // --- 2D area (saturation X, lightness Y — Y inverted so lighter is at the top) ---
-  const areaRef = useRef<HTMLDivElement>(null);
-  const areaDragging = useRef(false);
-
-  const setFromArea = useCallback(
-    (clientX: number, clientY: number) => {
-      const el = areaRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const s = ((clientX - rect.left) / rect.width) * 100;
-      const l = (1 - (clientY - rect.top) / rect.height) * 100;
-      commit({ s: Math.max(0, Math.min(100, s)), l: Math.max(0, Math.min(100, l)) });
-    },
-    [commit],
+  const { ref: areaRef, onPointerDown: onAreaPointerDown } = usePickerDrag(
+    useCallback(
+      ({ x, y }) => commit({ s: x * 100, l: (1 - y) * 100 }),
+      [commit],
+    ),
   );
 
   // Arrow keys nudge S / L by 1 (10 with Shift); keeps the area usable without a pointer.
@@ -126,18 +120,8 @@ export function HslModelEditor({ color, onChange }: Props) {
   );
 
   // --- vertical hue strip ---
-  const hueRef = useRef<HTMLDivElement>(null);
-  const hueDragging = useRef(false);
-
-  const setFromHue = useCallback(
-    (clientY: number) => {
-      const el = hueRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const h = ((clientY - rect.top) / rect.height) * 360;
-      commit({ h: Math.max(0, Math.min(360, h)) });
-    },
-    [commit],
+  const { ref: hueRef, onPointerDown: onHuePointerDown } = usePickerDrag(
+    useCallback(({ y }) => commit({ h: y * 360 }), [commit]),
   );
 
   // Up / Down nudge hue by 1 (10 with Shift).
@@ -153,23 +137,6 @@ export function HslModelEditor({ color, onChange }: Props) {
     },
     [commit],
   );
-
-  useEffect(() => {
-    function onMove(e: PointerEvent) {
-      if (areaDragging.current) setFromArea(e.clientX, e.clientY);
-      if (hueDragging.current) setFromHue(e.clientY);
-    }
-    function onUp() {
-      areaDragging.current = false;
-      hueDragging.current = false;
-    }
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-  }, [setFromArea, setFromHue]);
 
   const hex = colorToHex(color);
   const hueOnlyHex = colorToHex(hslToColor({ h: hsl.h, s: 100, l: 50 }));
@@ -194,11 +161,7 @@ export function HslModelEditor({ color, onChange }: Props) {
           aria-valuetext={`S ${Math.round(hsl.s)}, L ${Math.round(hsl.l)}`}
           data-testid="color-picker-hsl-area"
           onKeyDown={onAreaKeyDown}
-          onPointerDown={(e) => {
-            areaDragging.current = true;
-            e.currentTarget.setPointerCapture?.(e.pointerId);
-            setFromArea(e.clientX, e.clientY);
-          }}
+          onPointerDown={onAreaPointerDown}
         >
           <div
             style={{
@@ -212,7 +175,7 @@ export function HslModelEditor({ color, onChange }: Props) {
         </div>
         <div
           ref={hueRef}
-          style={styles.hueStrip}
+          style={{ ...styles.hueStrip, background: HUE_STRIP_GRADIENT }}
           role="slider"
           tabIndex={0}
           aria-label={m["color_picker.hsl.hue_label"]()}
@@ -221,11 +184,7 @@ export function HslModelEditor({ color, onChange }: Props) {
           aria-valuemax={360}
           data-testid="color-picker-hsl-hue"
           onKeyDown={onHueKeyDown}
-          onPointerDown={(e) => {
-            hueDragging.current = true;
-            e.currentTarget.setPointerCapture?.(e.pointerId);
-            setFromHue(e.clientY);
-          }}
+          onPointerDown={onHuePointerDown}
         >
           <div
             style={{ ...styles.hueMarker, top: `${(hsl.h / 360) * 100}%` }}
@@ -263,55 +222,13 @@ export function HslModelEditor({ color, onChange }: Props) {
   );
 }
 
-const AREA_HEIGHT = 140;
+// Fixed full-spectrum sweep — the hue strip's track never depends on the working color.
+const HUE_STRIP_GRADIENT =
+  "linear-gradient(to bottom, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%)";
 
 const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: spacing.groupGap },
-  pickers: { display: "flex", gap: spacing.groupGap },
-  area: {
-    position: "relative",
-    flex: 1,
-    height: AREA_HEIGHT,
-    borderRadius: radius.sm,
-    border: `1px solid ${ui.border.default}`,
-    touchAction: "none",
-    cursor: "crosshair",
-  },
-  crosshair: {
-    position: "absolute",
-    width: 14,
-    height: 14,
-    borderRadius: "50%",
-    border: "2px solid #fff",
-    boxShadow: "0 0 0 2px #1b1b1b",
-    transform: "translate(-50%, -50%)",
-    pointerEvents: "none",
-    boxSizing: "border-box",
-  },
-  hueStrip: {
-    position: "relative",
-    width: 18,
-    height: AREA_HEIGHT,
-    flexShrink: 0,
-    borderRadius: radius.sm,
-    border: `1px solid ${ui.border.default}`,
-    touchAction: "none",
-    cursor: "pointer",
-    background:
-      "linear-gradient(to bottom, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%)",
-  },
-  hueMarker: {
-    position: "absolute",
-    left: -2,
-    right: -2,
-    height: 6,
-    borderRadius: 3,
-    border: "2px solid #fff",
-    boxShadow: "0 0 0 2px #1b1b1b",
-    transform: "translateY(-50%)",
-    pointerEvents: "none",
-    boxSizing: "border-box",
-  },
+  ...pickerAreaStyles,
   row: { display: "flex", alignItems: "center", gap: spacing.groupGap },
   label: { ...typography.body, width: 16, flexShrink: 0 },
   slider: { flex: 1 },

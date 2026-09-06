@@ -97,3 +97,133 @@ export function hslToColor({ h, s, l }: Hsl): number {
 
   return rgbToColor({ r: (rn + mm) * 255, g: (gn + mm) * 255, b: (bn + mm) * 255 });
 }
+
+export interface Oklch {
+  /** Perceived lightness, 0-100 (%). */
+  l: number;
+  /** Chroma, 0+. `OKLCH_MAX_CHROMA` is the picker's UI upper bound; sRGB colors sit under ~0.32. */
+  c: number;
+  /** Hue in degrees, 0-360. */
+  h: number;
+}
+
+/** Largest chroma the OKLCH slider / numeric inputs allow (issue #502). OKLCH can address colors
+ *  well outside sRGB, but past this the picker offers nothing useful (real sRGB colors sit under
+ *  ~0.32). Drives the C slider / input range, the 2D area's C axis, and the gamut-boundary search. */
+export const OKLCH_MAX_CHROMA = 0.4;
+
+// --- sRGB transfer function (CSS Color 4 / IEC 61966-2-1) ---
+
+function srgbToLinear(v: number): number {
+  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+}
+
+function linearToSrgb(v: number): number {
+  return v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+}
+
+// --- linear sRGB <-> OKLab (Bjorn Ottosson, https://bottosson.github.io/posts/oklab/) ---
+
+interface LinearRgb {
+  r: number;
+  g: number;
+  b: number;
+}
+
+function linearRgbToOklab({ r, g, b }: LinearRgb): { L: number; a: number; bb: number } {
+  const l_ = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m_ = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s_ = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return {
+    L: 0.2104542553 * l_ + 0.793617785 * m_ - 0.0040720468 * s_,
+    a: 1.9779984951 * l_ - 2.428592205 * m_ + 0.4505937099 * s_,
+    bb: 0.0259040371 * l_ + 0.7827717662 * m_ - 0.808675766 * s_,
+  };
+}
+
+function oklabToLinearRgb(L: number, a: number, bb: number): LinearRgb {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * bb;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * bb;
+  const s_ = L - 0.0894841775 * a - 1.291485548 * bb;
+  const l = l_ * l_ * l_;
+  const m = m_ * m_ * m_;
+  const s = s_ * s_ * s_;
+  return {
+    r: 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    g: -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    b: -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  };
+}
+
+const EPS = 1e-4;
+
+/** Convert an OKLCH triple to linear sRGB (channels may fall outside 0-1 when the color is out of
+ *  the sRGB gamut). */
+function oklchToLinearRgb({ l, c, h }: Oklch): LinearRgb {
+  const L = l / 100;
+  const hr = (h * Math.PI) / 180;
+  return oklabToLinearRgb(L, c * Math.cos(hr), c * Math.sin(hr));
+}
+
+/** True when the OKLCH color lies inside the sRGB gamut (every linear channel within [0, 1]). */
+export function oklchInSrgb(oklch: Oklch): boolean {
+  const { r, g, b } = oklchToLinearRgb(oklch);
+  return (
+    r >= -EPS && r <= 1 + EPS && g >= -EPS && g <= 1 + EPS && b >= -EPS && b <= 1 + EPS
+  );
+}
+
+/** Largest chroma that keeps `(l, h)` inside the sRGB gamut, found by bisection. Used to mark the
+ *  out-of-gamut region on the C slider track. Returns 0 for an achromatic `l` at the extremes. */
+export function oklchMaxChroma(l: number, h: number): number {
+  if (oklchInSrgb({ l, c: OKLCH_MAX_CHROMA, h })) return OKLCH_MAX_CHROMA;
+  let lo = 0;
+  let hi = OKLCH_MAX_CHROMA;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (oklchInSrgb({ l, c: mid, h })) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Gamut-clamped sRGB bytes for an OKLCH triple. Feeds the OKLCH 2D area's per-pixel paint — every
+ *  cell is just its clamped color; the out-of-gamut region is marked on the C slider track, not
+ *  in the area. */
+export function oklchToSrgbSample({ l, c, h }: Oklch): { r: number; g: number; b: number } {
+  const lin = oklchToLinearRgb({ l, c, h });
+  const to = (v: number) => Math.round(linearToSrgb(Math.max(0, Math.min(1, v))) * 255);
+  return { r: to(lin.r), g: to(lin.g), b: to(lin.b) };
+}
+
+/** Exact OKLCH from a packed 24-bit RGB number. Achromatic colors report `h = 0`. */
+export function colorToOklch(color: number): Oklch {
+  const { r, g, b } = colorToRgb(color);
+  const lin = {
+    r: srgbToLinear(r / 255),
+    g: srgbToLinear(g / 255),
+    b: srgbToLinear(b / 255),
+  };
+  const { L, a, bb } = linearRgbToOklab(lin);
+  const c = Math.sqrt(a * a + bb * bb);
+  let h = 0;
+  if (c > EPS) {
+    h = (Math.atan2(bb, a) * 180) / Math.PI;
+    if (h < 0) h += 360;
+  }
+  return { l: L * 100, c, h };
+}
+
+/** Pack an OKLCH triple into a 24-bit RGB number, gamut-clamped to sRGB. `l` clamps to 0-100, `c`
+ *  to 0+, `h` wraps mod 360; the resulting sRGB channels are clamped to 0-255 by `rgbToColor`. */
+export function oklchToColor({ l, c, h }: Oklch): number {
+  const ln = Math.max(0, Math.min(100, l));
+  const cn = Math.max(0, c);
+  const hn = ((h % 360) + 360) % 360;
+  const lin = oklchToLinearRgb({ l: ln, c: cn, h: hn });
+  return rgbToColor({
+    r: linearToSrgb(Math.max(0, Math.min(1, lin.r))) * 255,
+    g: linearToSrgb(Math.max(0, Math.min(1, lin.g))) * 255,
+    b: linearToSrgb(Math.max(0, Math.min(1, lin.b))) * 255,
+  });
+}
