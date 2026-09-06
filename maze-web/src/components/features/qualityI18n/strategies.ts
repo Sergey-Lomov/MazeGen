@@ -201,18 +201,36 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.elevator_region_merge.label"] as MessageFn,
     description: m["strategy.elevator_region_merge.description"] as MessageFn,
   },
+  cross_element_group_select: {
+    label: m["strategy.cross_element_group_select.label"] as MessageFn,
+    description: m["strategy.cross_element_group_select.description"] as MessageFn,
+  },
 };
 
 export function resolveStrategyLabel(id: string): string {
   return strategyI18n[id]?.label() ?? id;
 }
 
+// `cross_element_group_select` (GitHub issue #376) has one nested slot per element type, so the
+// generic "Removal strategy" label is ambiguous there — each slot gets a type-specific label
+// ("Teleport removal strategy", ...). Keyed by the slot's own `slot_id`, which is unique to this
+// strategy; the underlying per-type removal strategies keep their own global labels unchanged.
+const CROSS_ELEMENT_SLOT_LABELS: Record<string, MessageFn> = {
+  teleport_fix: m["quality.nested_strategy.cross_element.teleport_label"] as MessageFn,
+  one_way_fix: m["quality.nested_strategy.cross_element.one_way_label"] as MessageFn,
+  vertical_passage_fix: m["quality.nested_strategy.cross_element.vertical_passage_label"] as MessageFn,
+  elevator_stop_fix: m["quality.nested_strategy.cross_element.elevator_stop_label"] as MessageFn,
+  split_fix: m["quality.nested_strategy.cross_element.split_label"] as MessageFn,
+};
+
 /** Label for a nested-strategy slot, chosen by the slot's own issue `kind` -- "merge" for a
  * region-expansion slot (the nested strategy merges regions), "add-elevator" for
  * `AddElevatorStopStrategy`'s slot (GitHub issue #408 — deliberately not "removal", the nested
  * strategy there adds a new elevator, it doesn't remove anything), "removal" for every other kind
- * (the nested strategy removes the flagged element). */
-export function resolveNestedStrategyLabel(kind: string): string {
+ * (the nested strategy removes the flagged element). `slotId`, when it names one of
+ * `cross_element_group_select`'s per-type slots, wins over the generic label. */
+export function resolveNestedStrategyLabel(kind: string, slotId?: string): string {
+  if (slotId && CROSS_ELEMENT_SLOT_LABELS[slotId]) return CROSS_ELEMENT_SLOT_LABELS[slotId]();
   if (kind === "region_needs_expansion") return m["quality.nested_strategy.merge_label"]();
   if (kind === "missing_elevators") return m["quality.nested_strategy.add_elevator_label"]();
   return m["quality.nested_strategy.removal_label"]();

@@ -107,7 +107,7 @@ export function NestedStrategyPanel({ ruleId, path, slotDesc, entries, depth, se
     <div style={styles.entriesGap}>
       {entries.length === 0 && (
         <Inline gap="rowGap" justify="space-between" style={{ borderRadius: 3 }}>
-          <label style={styles.label}>{resolveNestedStrategyLabel(slotDesc.kind)}</label>
+          <label style={styles.label}>{resolveNestedStrategyLabel(slotDesc.kind, slotDesc.slotId)}</label>
           <span style={styles.placeholder}>{m["quality.nested_strategy.placeholder"]()}</span>
         </Inline>
       )}
@@ -284,7 +284,7 @@ function NestedStrategyEntryRow({ ruleId, path, slotDesc, node, showWeight, perc
           }}
         >
           <Inline gap="rowGap" justify="space-between" style={{ borderRadius: 3 }}>
-            <label style={styles.label}>{resolveNestedStrategyLabel(slotDesc.kind)}</label>
+            <label style={styles.label}>{resolveNestedStrategyLabel(slotDesc.kind, slotDesc.slotId)}</label>
             <span style={styles.strategyName}>
               {resolveStrategyLabel(node.strategy.id)}
             </span>

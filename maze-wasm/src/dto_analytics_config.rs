@@ -133,4 +133,16 @@ pub struct ComputeAnalyticsConfig {
     /// (GitHub issue #359, 0-based `level_fields` index) added alongside `split_points`'s own.
     #[serde(default)]
     pub preset_split_points: Vec<([i32; 2], u32, u32)>,
+    /// The project's `preset_start` marker, if the user pinned the start explicitly (GitHub issue
+    /// #376 follow-up). Resolved fresh against the rebuilt field into `PresetState.preset_start` so
+    /// a `start` element of a flagged cross-element group is flagged `preset_locked` on this
+    /// post-edit path too. `#[serde(default)]` — a caller/fixture omitting it (or a project with a
+    /// generator-chosen start) sends nothing and the start is treated as movable.
+    #[serde(default)]
+    #[dto(ts_type = "{ point: [number, number]; slot?: number; level?: number }")]
+    pub preset_start: Option<crate::generation_config::PresetEndpointDto>,
+    /// The project's `preset_finish` marker — see `preset_start`.
+    #[serde(default)]
+    #[dto(ts_type = "{ point: [number, number]; slot?: number; level?: number }")]
+    pub preset_finish: Option<crate::generation_config::PresetEndpointDto>,
 }

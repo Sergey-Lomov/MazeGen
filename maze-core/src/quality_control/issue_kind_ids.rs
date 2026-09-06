@@ -43,6 +43,7 @@ impl IssueKind {
             IssueKind::MissingElevatorStopCount => "missing_elevator_stop_count",
             IssueKind::MissingElevatorHeight => "missing_elevator_height",
             IssueKind::ExcessiveElevatorStopGap => "excessive_elevator_stop_gap",
+            IssueKind::InvalidCrossElementGroup => "invalid_cross_element_group",
         }
     }
 
@@ -85,6 +86,7 @@ impl IssueKind {
             "missing_elevator_stop_count" => Some(IssueKind::MissingElevatorStopCount),
             "missing_elevator_height" => Some(IssueKind::MissingElevatorHeight),
             "excessive_elevator_stop_gap" => Some(IssueKind::ExcessiveElevatorStopGap),
+            "invalid_cross_element_group" => Some(IssueKind::InvalidCrossElementGroup),
             _ => None,
         }
     }

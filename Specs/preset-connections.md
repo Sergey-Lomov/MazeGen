@@ -178,7 +178,7 @@ interface PresetElevatorEntry {
 }
 ```
 
-Semantically distinct from preset teleports: both endpoints of a planted vertical passage/elevator edge are added to `preset_connected`/`preset_edges` on the Rust side (a guaranteed structural connection), never to `preset_teleports` (optional extra-traversable shortcuts).
+Semantically distinct from preset teleports: both endpoints of a planted vertical passage/elevator edge are added to `preset_connected`/`preset_edges` on the Rust side (a guaranteed structural connection), never to `preset_teleports` (optional extra-traversable shortcuts). The planted edge's own `EdgeId` also goes into `PresetState.preset_edge_ids` — the per-edge, kind-agnostic set `try_remove_edge_by_id` consults so repair cannot remove a preset `Teleport` / `VerticalPassage` / `Elevator`, not only a preset `Basic` (GitHub issue #376 follow-up). `preset_edges` stays pair-keyed for the generation algorithms and `is_preset_locked_node`.
 
 ### Tools
 

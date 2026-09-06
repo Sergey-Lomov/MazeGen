@@ -140,7 +140,7 @@ pub(crate) fn apply_split_points<T: Tessellation>(
 /// Returns `None` for an unresolvable endpoint (unknown point/level, or a slot not present in
 /// either map), same "silently unresolved" contract `maze_core::generation::resolve_preset_endpoint`
 /// uses for the generation path.
-fn resolve_preset_endpoint_for_post_edit(
+pub(crate) fn resolve_preset_endpoint_for_post_edit(
     ep: &maze_runner::config::PresetEndpointDto,
     existing_by_index: &HashMap<([i32; 2], u32, u32), u64>,
     split_map: &HashMap<([i32; 2], u32, u32), u64>,

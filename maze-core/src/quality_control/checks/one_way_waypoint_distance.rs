@@ -1,10 +1,10 @@
 use rand::RngCore;
 use crate::Maze;
-use crate::graph::EdgeKind;
 use crate::graph::distance_map::min_optional_distance;
 use crate::graph::route_protection::is_edge_on_route;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
+use crate::quality_control::checks::one_way_core::one_way_edges_with_endpoints;
 use crate::quality_control::comparison::Comparison;
 use crate::quality_control::{InvalidOneWayIssue};
 
@@ -77,21 +77,14 @@ impl<T: Tessellation> Check<T, InvalidOneWayIssue> for OneWayWaypointDistanceChe
             best
         };
 
-        // Only flag single-direction Basic edges: a bidirectional passage (both directions
-        // present) is a regular two-way connection, not a one-way, even though each direction is
-        // itself an EdgeKind::Basic edge. Kind-filtered reverse lookup -- a parallel opposite-
-        // direction Teleport edge (legitimate per Graph::add_edge's kind-aware dedup) must not be
-        // mistaken for the Basic edge's own reverse.
-        let invalid: Vec<_> = maze.graph.edges()
-            .filter(|e| e.kind == EdgeKind::Basic)
-            .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
-            .filter(|e| {
-                let from_dist = waypoint_distance(e.from);
-                let to_dist = waypoint_distance(e.to);
+        let invalid: Vec<_> = one_way_edges_with_endpoints(maze).into_iter()
+            .filter(|&(_, from, to)| {
+                let from_dist = waypoint_distance(from);
+                let to_dist = waypoint_distance(to);
                 min_optional_distance(from_dist, to_dist).is_some_and(|d| self.comparison.compare(d as u32, self.distance))
             })
-            .filter(|e| !self.protect_route || !is_edge_on_route(maze, e.id))
-            .map(|e| e.id)
+            .filter(|&(id, ..)| !self.protect_route || !is_edge_on_route(maze, id))
+            .map(|(id, ..)| id)
             .collect();
 
         if invalid.is_empty() {
@@ -108,6 +101,7 @@ mod tests {
     use crate::quality_control::Issue;
     use super::*;
     use rand::SeedableRng;
+    use crate::graph::EdgeKind;
     use crate::{Graph, IdGenerator};
     use crate::space::{MultiLevelField, SquareTessellation, SquarePoint, square_rect};
     use crate::meta::MazeMeta;

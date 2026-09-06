@@ -1011,7 +1011,7 @@ A rule-level parameter (GitHub issue #253) is configured once on a `Rule` and sh
 
 **A migrated parameter is forbidden, not merely ignored, in its old per-check/per-strategy `params`.** `build_rule_for!` rejects a check instance whose own `params` still contains a key that `rule_param_applies_to` says that check consumes; `build_strategy_erased` does the same for a strategy's `StrategyConfig.params`. Both return a hard `Err` naming the offending key, rather than silently dropping it — a parameter can't be simultaneously "moved to rule level" and "still readable from its old location".
 
-`protect_route` (GitHub issue #78, migrated to rule-level by #253) was the first rule-level parameter, since joined by `vertical_passage_type` and `split_patterns` (below) — the mechanism itself is generic over any number of parameters, not specific to `protect_route`. `protect_route`'s `applies_to` list: checks `teleport_duplicates_connection`, `teleport_waypoint_distance`, `teleport_geometric_length`, `teleport_graph_distance`, `teleport_super_hub_avoidance`, `teleport_split_intersection`, `teleport_group_proximity`, `one_way_waypoint_distance`, `one_way_group_geometric_proximity`, `one_way_group_graph_proximity`; strategies `region_shrink_split`, `teleport_group_select`, `one_way_group_select`, `add_split` (see `repair.md` for the strategy side). Every one of these previously declared `protect_route` as its own struct field populated from a per-instance `params`/`StrategyParam` override — the field itself is unchanged, only where its value comes from.
+`protect_route` (GitHub issue #78, migrated to rule-level by #253) was the first rule-level parameter, since joined by `vertical_passage_type` and `split_patterns` (below) — the mechanism itself is generic over any number of parameters, not specific to `protect_route`. `protect_route`'s `applies_to` list: checks `teleport_duplicates_connection`, `teleport_waypoint_distance`, `teleport_geometric_length`, `teleport_graph_distance`, `teleport_super_hub_avoidance`, `teleport_split_intersection`, `teleport_group_proximity`, `one_way_waypoint_distance`, `one_way_group_geometric_proximity`, `one_way_group_graph_proximity`, `cross_element_geometric_proximity`, `cross_element_graph_proximity`; strategies `region_shrink_split`, `teleport_group_select`, `one_way_group_select`, `cross_element_group_select`, `add_split` (see `repair.md` for the strategy side). Every one of these previously declared `protect_route` as its own struct field populated from a per-instance `params`/`StrategyParam` override — the field itself is unchanged, only where its value comes from.
 
 `split_patterns` (GitHub issue #389, `RuleParamKind::PatternList`, default empty) unifies `SplitCountCheck.patterns`, `SplitDensityCheck.patterns`, and `AddSplitStrategy`'s own pattern topology, which previously duplicated the same `Vec<SplitPattern>` independently in three places — see "SplitCountCheck / SplitDensityCheck" above and `repair.md`'s `AddSplitStrategy` section. Unlike `protect_route`/`vertical_passage_type` (scalar kinds with a `const`-expressible default), `PatternList` always defaults to empty — a `Vec`-carrying enum variant can't be a `const`. Its `applies_to` list: checks `split_count`, `split_density`; strategy `add_split`.
 
@@ -1820,6 +1820,106 @@ See GitHub issue #409, part of epic #344. Both validate proximity between stops 
 
 Both fire `InvalidElevatorStopGroupIssue::new_from_check(instance_id, groups)` with `.with_detail(instance_id, "distance", distance.to_string())` chained on. Repaired by `ElevatorStopGroupSelectStrategy` (see `repair.md`), same as `ElevatorStopsSkipCheck`/`ElevatorStopsSpanCheck`.
 
+### CrossElementGeometricProximityCheck / CrossElementGraphProximityCheck
+
+```rust
+pub struct CrossElementGeometricProximityCheck {
+    pub instance_id: String,
+    pub distance: f64,
+    pub set: CrossElementSet,
+    pub floor_mode: GeometricFloorMode,
+}
+
+pub struct CrossElementGraphProximityCheck {
+    pub instance_id: String,
+    pub distance: u32,
+    pub set: CrossElementSet,
+}
+```
+
+See GitHub issue #376. The only checks comparing **different kinds** of special element (see the
+`INVALID_CROSS_ELEMENT_GROUP` note in the check table above for the full multi-type / identity /
+occurrence model). `CrossElementSet` is seven `bool` flags (`teleport`, `one_way`,
+`vertical_passage`, `elevator_stop`, `split`, `start`, `finish`), one per element type; `set.enabled_count() < 1`
+(no type selected) makes the check a silent no-op. A single selected type is a valid same-type scan
+(two distinct elements of that type), which subsumes the per-type `*_group_*_proximity` checks.
+`elevator_stop` flags an **individual stop** of an elevator, not the
+whole elevator — the repair removes just that stop.
+
+Both build the candidate list from `cross_element_occurrences(maze, set)` — one
+`CrossElementOccurrence` per physical end / floor stop, each carrying its own `point`,
+`level_index`, `nav_node`, and `xy`. The scan reuses `checks/proximity_scan_core.rs`
+(`pairwise_geometric_scan` / `pairwise_graph_proximity_scan`) with occurrences as candidates and
+`pair_excluded = own.element == other.element` (plus: a pair of two `ElevatorStop`s of the *same*
+elevator is excluded — those stops are connected by design, mirroring
+`ElevatorStopGroupGeometricProximityCheck`'s own same-elevator exclusion). Occurrence pairs found
+under the threshold are aggregated by the canonical unordered `(CrossElement, CrossElement)` key,
+keeping the minimum distance — one `groups` entry `(vec![a, b], 1)` per logical pair.
+
+**`CrossElementGeometricProximityCheck`** (`check_type_id() == "cross_element_geometric_proximity"`)
+— Euclidean distance between occurrence `xy` positions (`space::floor_aware_xy_distance`, the shared
+core `floor_aware_distance`/`floor_aware_edge_distance` both wrap), folded across floors per
+`floor_mode` (shared `GeometricFloorMode`, default `SameFloorOnly`). A multi-floor vertical passage
+contributes one occurrence per touched floor; each elevator stop is its own single-occurrence
+element at that stop's floor; a one-way's two occurrences both carry its edge's own `edge_position`
+as `xy` (see `CrossElementOccurrence`'s doc above). The minimum folded distance across occurrence
+pairs is taken.
+
+**`CrossElementGraphProximityCheck`** (`check_type_id() == "cross_element_graph_proximity"`) —
+tile-hop distance via the shared bounded nav-graph distance map, one `NavNodeId` per occurrence.
+
+Both fire `InvalidCrossElementGroupIssue::new_from_check(instance_id, groups, close_nodes)` with
+`.with_detail(instance_id, "distance", distance.to_string())` — the configured threshold, not the
+found distance. Repaired by `CrossElementGroupSelectStrategy` (see `repair.md`).
+
+**`protect_route` (rule-level, GitHub issue #376 follow-up, default `true`)** — both checks drop a
+pair whose *both* elements are route-protected before it is flagged, mirroring
+`OneWayGroupGeometricProximityCheck`'s own "exclude only when both sides are on the route" rule. An
+element is route-protected (`cross_element::cross_element_route_protected`) when it is `Start` /
+`Finish` (they *are* the route's endpoints) or it owns an edge lying on the current start->finish
+route (`graph::route_protection::is_edge_on_route` over `cross_element_edges`); a `Split` owns no
+edge and is not an endpoint, so it is never route-protected. A pair with one protected and one free
+element is still flagged — the repair strategy then spares the protected side and removes the free
+one (see `repair.md`). The per-element check is precomputed once over the distinct elements of the
+scan, so `pair_excluded` is a pair of set lookups rather than re-running the route test per pair.
+
+### CrossElementGroupKind / InvalidCrossElementGroupIssue
+
+```rust
+#[derive(Debug, Clone, PartialEq)]
+pub struct CrossElementGroupKind;
+
+impl InvalidGroupIssueKind for CrossElementGroupKind {
+    type Element = CrossElement;
+    const KIND: IssueKind = INVALID_CROSS_ELEMENT_GROUP;
+    // Placeholders — the multi-slot CrossElementGroupSelectStrategy resolves a nested strategy
+    // per element type itself and never calls the single-slot group_select_apply path that reads
+    // these (audit A fallback: reuse InvalidGroupIssue<K> rather than a parallel issue type).
+    const NESTED_KIND: IssueKind = INVALID_TELEPORT;
+    const NESTED_SLOT_ID: &'static str = "unused";
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct InvalidCrossElementGroupIssue {
+    inner: InvalidGroupIssue<CrossElementGroupKind>,
+    pub close_nodes: HashMap<Vec<CrossElement>, HashMap<CrossElement, Vec<NodeId>>>,
+}
+```
+
+Unlike every other `InvalidGroupIssueKind` (which are plain `type X = InvalidGroupIssue<K>`
+aliases), this one is a **wrapper struct**: it delegates `groups()` / `invalid_sources()` / `meta`
+/ `merge` to the wrapped `InvalidGroupIssue<CrossElementGroupKind>` and adds `close_nodes`: the
+per-element occurrence nodes actually within the proximity threshold (GitHub issue #376's
+follow-up; see the `INVALID_CROSS_ELEMENT_GROUP` section above). `merge` unions `close_nodes` per
+canonical group key. The repair strategy reads only `groups()` / `invalid_sources()`; `close_nodes`
+feeds only the payload resolver's highlight narrowing.
+
+`Element = CrossElement` (a logical multi-type identity), the only `InvalidGroupIssueKind` whose
+element is an enum over element kinds rather than a single `EdgeId` / `NodeId` / `SplitTileNodes`.
+`CrossElement` derives `Ord` / `Hash` purely for the canonical group key and the repair
+reverse-index — not business semantics. `INVALID_CROSS_ELEMENT_GROUP` has no matching
+single-element `INVALID_CROSS_ELEMENT` kind: it is only ever an aggregate pair condition.
+
 ## WASM Interface
 
 The WASM layer exposes check metadata and accepts check configuration from the frontend.
@@ -1906,9 +2006,32 @@ multi-node region, since stops in a group aren't necessarily spatially adjacent.
 (`maze-core/src/quality_control/issue_payload.rs`) from `InvalidElevatorStopIssue::invalid`/
 `InvalidElevatorStopGroupIssue::groups` and their respective `invalid_sources` maps.
 
+`IssuePayloadDto::InvalidCrossElementGroup.groups` (GitHub issue #376) is
+`HashMap<String, Vec<Vec<CrossElementPayloadEntry>>>` — keyed by source check instance id, one
+inner `Vec<CrossElementPayloadEntry>` per flagged pair (length 2), one `CrossElementPayloadEntry`
+per pair member. Each entry is a typed, pre-classified element: `kind` (`"teleport"` / `"one_way"`
+/ `"vertical_passage"` / `"elevator_stop"` / `"split"` / `"start"` / `"finish"`), `edges` (underlying
+graph edges, resolved live from the post-repair `Graph`; empty for `elevator_stop`), `nodes` (for
+`elevator_stop`, the flagged stop cell only), `tile` (split only),
+`removable` (`false` for `start` / `finish`), `preset_locked` (per element — for a `start` /
+`finish` element it is `true` when a `preset_start` / `preset_finish` marker pins that exact node,
+carried on `PresetState.preset_start` / `.preset_finish`; `false` for a generator-chosen
+waypoint). Built by
+`resolve_cross_element_group_payload` (`issue_payload/resolvers.rs`) from
+`InvalidCrossElementGroupIssue.groups()` / `invalid_sources()` / `close_nodes`, re-resolving every
+element's current graph state rather than trusting the `CrossElement`'s cached form. Each entry's
+geometry is narrowed to just the occurrence(s) `close_nodes` recorded as within the threshold
+(GitHub issue #376's follow-up): a two-ended teleport or vertical passage near the other element
+by one end reports only that end's node (both its ends run between the same node pair, so the
+narrowed entry drops the edge and carries the close node instead). The web renderer
+(`IssuesBlock.tsx`) and the debug-view highlight
+(`algorithmRegistry.ts` `issueHighlightTarget`) both highlight every member's (already narrowed)
+cells as region squares, one flat deduplicated group.
+
 On the binary QC event tape (`event_encode.rs`/`qcCustom.ts`, see `event_log.md`), `IssuePayload`
 variants are hand-written wire tags on both sides (`write_issue_payload` writes; `readIssuePayload`
-reads) rather than `Schema`-generated — `InvalidElevatorStop` is tag `11`. `codegen`'s
+reads) rather than `Schema`-generated — `InvalidElevatorStop` is tag `11`, `InvalidCrossElementGroup`
+is tag `14`. `codegen`'s
 `issue_payload_check` module (`codegen/src/issue_payload_check.rs`) text-scans both functions' tag
 literals and fails `--check`/plain runs on any mismatch, since a tag added to one side and
 forgotten on the other only surfaces as a runtime "unknown tag" crash otherwise.
@@ -2135,6 +2258,101 @@ Every `*_density`/`*_ratio` param below (density/ratio checks measured as "per 1
 | `elevator_span` | `invalid_elevator` | `span: Integer(default=10, min=0, max=100_000)`, `comparison: Enum(options=[lt,gt,le,ge,eq], default=lt)` | no |
 | `elevator_stop_group_geometric_proximity` | `invalid_elevator_stop_group` | `distance: Float(default=0.0, min=0.0, max=100_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` | no |
 | `elevator_stop_group_graph_proximity` | `invalid_elevator_stop_group` | `distance: Integer(default=0, min=0, max=100_000)` | no |
+| `cross_element_geometric_proximity` | `invalid_cross_element_group` | `include_teleport: Bool(default=true)`, `include_one_way: Bool(default=true)`, `include_vertical_passage: Bool(default=true)`, `include_elevator_stop: Bool(default=true)`, `include_split: Bool(default=true)`, `include_start: Bool(default=false)`, `include_finish: Bool(default=false)`, `distance: Float(default=1.0, min=0.0, max=1_000_000.0)`, `floor_mode: Enum(options=[ignore,as_coordinate,same_floor_only], default=same_floor_only)` (rule-level `protect_route`) | yes |
+| `cross_element_graph_proximity` | `invalid_cross_element_group` | `include_teleport: Bool(default=true)`, `include_one_way: Bool(default=true)`, `include_vertical_passage: Bool(default=true)`, `include_elevator_stop: Bool(default=true)`, `include_split: Bool(default=true)`, `include_start: Bool(default=false)`, `include_finish: Bool(default=false)`, `distance: Integer(default=1, min=0, max=100_000)` (rule-level `protect_route`) | yes |
+
+### `INVALID_CROSS_ELEMENT_GROUP` — multi-type element proximity (GitHub issue #376)
+
+`cross_element_geometric_proximity` / `cross_element_graph_proximity` are the only checks that
+compare **different kinds** of special element against each other. The user picks a set of
+element types via the seven `include_*` booleans plus one `distance` threshold; the check flags
+any pair of elements drawn from that set — **including a same-type pair** when that type is
+selected — that sit closer than the threshold. It is not "strictly cross-type": the semantics are
+a complete graph over the selected types.
+
+A single selected type is a valid configuration — it flags two distinct elements of that one type
+that sit too close (`pair_excluded` only ever removes an element paired *with itself*, never a
+whole type against itself). In that mode these two checks do exactly what the per-type
+`one_way_group_*_proximity` / `split_group_*_proximity` / `elevator_stop_group_*_proximity` checks
+do (modulo the occurrence-model metric note below), so a rule needing only one type does not have
+to reach for the per-type check.
+
+Element types: `teleport`, `one_way`, `vertical_passage`, `elevator_stop`, `split`, `start`,
+`finish`. The `include_vertical_passage` and `include_elevator_stop` toggles (like `floor_mode`)
+carry `MultiFloorOnly` visibility — both element types only exist on a multi-floor maze, so the
+web UI hides those two toggles with 1 floor. `elevator_stop` is a single stop of an elevator, not the whole elevator — a stop flagged
+too close to something is repaired by removing just that stop, leaving the rest of the elevator
+intact; two stops of the *same* elevator are never a pair (connected by design).
+`start` / `finish` are element types (so "start no closer than N from finish" is expressible), but
+repair can never remove them — a group whose every member is unremovable makes the repair strategy
+`Failed` and the issue survives (see `CrossElementGroupSelectStrategy` in `repair.md`).
+
+Zero selected types, or fewer than two elements on the field, makes the check a silent no-op — it
+is still built (so the UI shows it as a valid instance), it just produces no issues. This is
+deliberate: returning `None` from the factory would raise a "different issue kinds" error and
+break generation.
+
+`allow_multiple_instances: true` — distinct type-set / threshold combinations are a legitimate
+simultaneous configuration, same rationale as the other `*_proximity` checks.
+
+**Identity vs occurrence model.** A multi-location element (a teleport has two portal ends, a
+vertical passage touches two floors) cannot be reduced to a single `(point, level)`. The check
+separates:
+
+- `CrossElement` — the logical identity used for grouping, equality, the repair reverse-index, and
+  the payload key. One stable canonical id per element (`Teleport` = unordered node pair,
+  `ElevatorStop` = the stop's own node, `VerticalPassage` = canonical edge, `Split` = sorted tile
+  nodes). Each elevator stop is its own `ElevatorStop` element, not a shared "elevator" identity.
+- `CrossElementOccurrence` — one or more per element, one per physical end / floor stop, each with
+  its own `point`, `level_index`, `nav_node`, and `xy` (the Cartesian position the *geometric*
+  metric measures from). `xy` is `T::cartesian(point)` for every occurrence except a one-way's two
+  occurrences, which both carry the one-way edge's own `T::edge_position(from, to)` instead (GitHub
+  issue #376 follow-up) — a one-way renders on the tile border it crosses, not at either endpoint
+  node, so its geometric distance is measured the same way `one_way_group_geometric_proximity`
+  measures it, from the edge's own position rather than from either endpoint. Both of a one-way's
+  occurrences carrying the identical `xy` is harmless: `close_nodes`/group aggregation already
+  collapses duplicate close-pairs back to one group per logical element. `.node`/`.nav_node` stay
+  per-endpoint regardless — the *graph* (topological) metric has no use for an edge midpoint, so it
+  keeps measuring from each endpoint node as before.
+
+The scan runs over occurrences; a pair is excluded when both occurrences belong to the *same*
+`CrossElement`, or when both are `ElevatorStop`s of the same elevator (connected by design).
+Occurrence pairs are then aggregated by the canonical unordered
+`(CrossElement, CrossElement)` key, keeping the minimum distance found: exactly one issue group
+per logical pair, so a two-ended element close to another on both ends still yields one group.
+
+**Problematic-occurrence tracking (GitHub issue #376 follow-up).** Alongside `groups`, the issue
+carries `close_nodes`: `HashMap<canonical group key, HashMap<CrossElement, Vec<NodeId>>>`, per
+element of each flagged pair the specific occurrence nodes that actually fell within the
+threshold. The payload resolver uses it to narrow each `CrossElementPayloadEntry` to just those
+occurrences. A teleport or a vertical passage runs both its ends between the same node pair, so an
+edge-touches-close filter cannot tell the near end from the far one: a narrowed entry for those
+two drops the edge geometry and reports just the close occurrence node(s) as `nodes` (the renderer
+fills that cell as a region square). An `elevator_stop` entry reports only the flagged stop cell as
+`nodes` with an empty `edges` — the stop's fan edges reach the other floors and would light up
+cells there too, so they are used only to compute `preset_locked`, not the highlight. A split keeps only its close
+nodes. An element absent from `close_nodes` (or with an empty list; single-location elements such
+as a one-way, an elevator stop, a single-node split, start, finish) keeps its full highlight
+geometry. `close_nodes` is
+unioned per canonical key on `merge`, and both the JSON payload and the QC event tape carry the
+already-narrowed entries (no wire-shape change: the entry just holds fewer edges/nodes). The same
+narrowed geometry feeds the debug view's issue highlight (`algorithmRegistry.ts`
+`issueHighlightTarget`).
+
+Threshold comparison is strict `<`; `distance == 0` disables the check (the default), same as every
+other proximity check. `.with_detail(instance_id, "distance", …)` records the configured
+**threshold**, not the found distance, identical for every group of the instance.
+
+**Geometric metric divergence (audit G).** This check measures occurrence-to-occurrence via each
+occurrence's `xy` (see above), not edge-to-edge or point-to-point the way some same-type checks do.
+For a one-way/one-way pair the metric matches `one_way_group_geometric_proximity` exactly (both
+measure from the edge's own `edge_position`); for split/split and elevator-stop/elevator-stop it
+matches `split_group_geometric_proximity` / `elevator_stop_group_geometric_proximity` (point-to-point
+on the tile). For a **vertical passage**, an occurrence is its specific floor-end's own node
+position, which is *not* the scan-point convention `vertical_passage_group_geometric_proximity` uses
+— and that check also has three extra params (`passage_type`, `same_type_only`, `count_incoming`)
+this one does not. So single-type mode of the cross-element check is a drop-in equivalent of the
+one-way / split / elevator-stop per-type proximity checks, but **not** of the vertical-passage ones.
 
 Checks without params are auto-selected on `loadRegistry`. Checks with params are not auto-selected — the user must add them explicitly.
 

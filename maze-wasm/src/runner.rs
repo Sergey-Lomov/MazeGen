@@ -129,7 +129,7 @@ pub fn run_generate<T: Tessellation + 'static>(
     let mut debug_node_ledger = config.debug_events.then(maze_core::generation::DebugGenerationState::<T>::new);
 
     let mut preset_setup_log = config.debug_events.then(maze_core::event_log::EventLog::new);
-    let preset_state = build_preset_state(
+    let mut preset_state = build_preset_state(
         &mut graph, &mut field, &mut ids,
         &gen_config.preset_connections,
         &gen_config.preset_vertical_passages,
@@ -168,13 +168,21 @@ pub fn run_generate<T: Tessellation + 'static>(
     let (qc_engine, check_types) = build_qc_and_repair_with_types::<T>(config)
         .map_err(|e| JsValue::from_str(&e))?;
 
+    // The node each explicit `preset_start`/`preset_finish` marker resolves to, if any — the
+    // user's pinned choice, distinct from a generator-chosen endpoint. Recorded on `PresetState`
+    // so the issue-payload resolver can flag a pinned `start`/`finish` element `preset_locked`
+    // (GitHub issue #376 follow-up).
+    let pinned_start = config.preset_start.as_ref()
+        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
+    let pinned_finish = config.preset_finish.as_ref()
+        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
+    preset_state.preset_start = pinned_start;
+    preset_state.preset_finish = pinned_finish;
+
     // A split hit on the traversal-seed node reassigns `start_id` mid-run (GitHub issue #222) —
     // only honored when there's no explicit `preset_start` pinning a human's fixed choice.
-    let preset_start = config.preset_start.as_ref()
-        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)))
-        .or_else(|| start_reassignment.map(|r| r.reassigned_to));
-    let preset_finish = config.preset_finish.as_ref()
-        .and_then(|dto| preset_state.resolve_endpoint(&field, &point_from_xy, preset_endpoint_dto_to_core(dto)));
+    let preset_start = pinned_start.or_else(|| start_reassignment.map(|r| r.reassigned_to));
+    let preset_finish = pinned_finish;
 
     // QC/repair gets its own `EventLog<QcEvent>` when `debug_events` is on and there is at least
     // one other source to anchor against (generation, or the preset setup source) or

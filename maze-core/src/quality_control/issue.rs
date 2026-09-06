@@ -42,6 +42,7 @@ pub enum IssueKind {
     MissingElevatorStopCount,
     MissingElevatorHeight,
     ExcessiveElevatorStopGap,
+    InvalidCrossElementGroup,
 }
 
 pub const MISSING_ENDPOINTS: IssueKind = IssueKind::MissingEndpoints;
@@ -323,6 +324,14 @@ pub const MISSING_ELEVATOR_HEIGHT: IssueKind = IssueKind::MissingElevatorHeight;
 /// `ExcessiveElevatorStopGapIssue { missing }` — see that type's doc comment. Repaired by
 /// `AddElevatorStopForGapStrategy`.
 pub const EXCESSIVE_ELEVATOR_STOP_GAP: IssueKind = IssueKind::ExcessiveElevatorStopGap;
+/// Two special maze elements of a user-selected type set (teleport / one-way / vertical passage /
+/// elevator / split tile / start / finish) sit closer than a configured minimum distance — see
+/// GitHub issue #376. Produced by `CrossElementGeometricProximityCheck` /
+/// `CrossElementGraphProximityCheck`; carries `InvalidCrossElementGroupIssue` (the generic
+/// `InvalidGroupIssue` shape, one group per too-close logical pair). Repaired by
+/// `CrossElementGroupSelectStrategy`, which removes one element of the pair; a pair whose two
+/// elements are both unremovable (e.g. `[Start, Finish]`, or route-protected) is left in place.
+pub const INVALID_CROSS_ELEMENT_GROUP: IssueKind = IssueKind::InvalidCrossElementGroup;
 
 /// `as_str`/`from_str`/`Display` for `IssueKind` are generated (`codegen`'s `id_enum` module, see
 /// GitHub issue #361) into the sibling `issue_kind_ids.rs` from the variant list above — do not

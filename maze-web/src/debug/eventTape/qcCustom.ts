@@ -37,7 +37,8 @@ export type IssuePayload =
   | { kind: "InvalidElevator"; groups: Map<string, EdgeGroup[]> }
   | { kind: "InvalidElevatorStop"; nodes: Map<string, RegionGroup[]> }
   | { kind: "AreaDeficit"; areas: Map<string, (number | null)[]> }
-  | { kind: "MissingElevatorStopCount"; groups: Map<string, MissingElevatorStopsGroup[]> };
+  | { kind: "MissingElevatorStopCount"; groups: Map<string, MissingElevatorStopsGroup[]> }
+  | { kind: "InvalidCrossElementGroup"; groups: Map<string, CrossElementEntry[][]> };
 
 /** Mirrors `IssueEdgeGroupPayload` in `maze-core/src/quality_control/issue_payload.rs` — one
  *  flagged cycle/group's base-graph edges paired with whether every one of them is
@@ -323,6 +324,78 @@ function readStrKeyedAreaDeficits(bytes: Uint8Array, offset: number): { value: M
   return { value, next: pos };
 }
 
+/** Mirrors `CrossElementPayloadEntry` in `maze-core/src/quality_control/issue_payload/types.rs` —
+ *  one logical element of a flagged cross-element proximity pair (GitHub issue #376). `kind` is
+ *  `"teleport"` / `"one_way"` / `"vertical_passage"` / `"elevator_stop"` / `"split"` / `"start"` /
+ *  `"finish"`; only the geometry field matching `kind` is populated (`elevator_stop` populates just
+ *  `nodes` — the flagged stop cell; its fan edges reach every other floor so `edges` stays empty).
+ *  `removable` is `false` for start / finish. */
+export interface CrossElementEntry {
+  kind: string;
+  edges: [bigint, bigint][];
+  nodes: bigint[];
+  tile: SplitTile | null;
+  removable: boolean;
+  presetLocked: boolean;
+}
+
+/** Reads the `HashMap<String, Vec<Vec<CrossElementPayloadEntry>>>` wire shape
+ *  `write_str_keyed_cross_element_groups` produces (`IssuePayload::InvalidCrossElementGroup`'s
+ *  `groups`) — each entry is a length-prefixed list of pairs, each pair a length-prefixed list of
+ *  entries (`write_cross_element_entry`: `kind` string, edge-pair list, node list, an optional
+ *  tile behind a presence byte, then `removable` and `preset_locked` bytes). */
+function readStrKeyedCrossElementGroups(bytes: Uint8Array, offset: number): { value: Map<string, CrossElementEntry[][]>; next: number } {
+  const value = new Map<string, CrossElementEntry[][]>();
+  const entryCount = readU32(bytes, offset);
+  let pos = offset + 4;
+  for (let i = 0; i < entryCount; i++) {
+    const { value: key, next: afterKey } = readStr(bytes, pos);
+    pos = afterKey;
+    const pairCount = readU32(bytes, pos);
+    pos += 4;
+    const pairs: CrossElementEntry[][] = [];
+    for (let g = 0; g < pairCount; g++) {
+      const memberCount = readU32(bytes, pos);
+      pos += 4;
+      const members: CrossElementEntry[] = [];
+      for (let m = 0; m < memberCount; m++) {
+        const { value: kind, next: afterKind } = readStr(bytes, pos);
+        pos = afterKind;
+        const edgeCount = readU32(bytes, pos);
+        pos += 4;
+        const edges: [bigint, bigint][] = [];
+        for (let e = 0; e < edgeCount; e++) {
+          edges.push([BigInt(readU32(bytes, pos)), BigInt(readU32(bytes, pos + 4))]);
+          pos += 8;
+        }
+        const nodeCount = readU32(bytes, pos);
+        pos += 4;
+        const nodes: bigint[] = [];
+        for (let n = 0; n < nodeCount; n++) {
+          nodes.push(BigInt(readU32(bytes, pos)));
+          pos += 4;
+        }
+        let tile: SplitTile | null = null;
+        const hasTile = bytes[pos] !== 0;
+        pos += 1;
+        if (hasTile) {
+          const { value: t, next } = readSplitTile(bytes, pos);
+          tile = t;
+          pos = next;
+        }
+        const removable = bytes[pos] !== 0;
+        pos += 1;
+        const presetLocked = bytes[pos] !== 0;
+        pos += 1;
+        members.push({ kind, edges, nodes, tile, removable, presetLocked });
+      }
+      pairs.push(members);
+    }
+    value.set(key, pairs);
+  }
+  return { value, next: pos };
+}
+
 /** Reads the `HashMap<String, Vec<IssueMissingElevatorStopsPayload>>` wire shape
  *  `write_str_keyed_missing_elevator_stops` produces (`IssuePayload::MissingElevatorStopCount`'s
  *  `groups`) — each entry is its edge-pair list (`write_edge_pairs`'s shape), a 4-byte `missing`
@@ -420,6 +493,10 @@ export function readIssuePayload(bytes: Uint8Array, offset: number): { value: Is
   if (tag === 13) {
     const { value: groups, next } = readStrKeyedMissingElevatorStops(bytes, offset + 1);
     return { value: { kind: "MissingElevatorStopCount", groups }, next };
+  }
+  if (tag === 14) {
+    const { value: groups, next } = readStrKeyedCrossElementGroups(bytes, offset + 1);
+    return { value: { kind: "InvalidCrossElementGroup", groups }, next };
   }
   throw new Error(`IssuePayload: unknown tag ${tag}`);
 }

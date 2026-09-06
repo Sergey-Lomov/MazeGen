@@ -89,6 +89,10 @@ use maze_core::{
         MaxElevatorStopGapCheck, MAX_ELEVATOR_STOP_GAP_DEFAULT,
         ElevatorStopGroupGeometricProximityCheck, ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
         ElevatorStopGroupGraphProximityCheck, ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
+        CrossElementGeometricProximityCheck, CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT, CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE,
+        CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_TELEPORT, CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_ONE_WAY, CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_VERTICAL_PASSAGE, CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_ELEVATOR_STOP, CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_SPLIT, CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_START, CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_FINISH,
+        CrossElementGraphProximityCheck, CROSS_ELEMENT_GRAPH_PROXIMITY_DISTANCE_DEFAULT,
+        CrossElementSet, InvalidCrossElementGroupIssue,
     },
     RegionClass,
 };
@@ -1008,6 +1012,52 @@ pub(crate) fn build_invalid_elevator_stop_group_check<T: Tessellation>(instance:
                 .map(|v| v.max(0) as u32)
                 .unwrap_or(ELEVATOR_STOP_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT);
             Some(Box::new(ElevatorStopGroupGraphProximityCheck { instance_id, distance }))
+        }
+        _ => None,
+    }
+}
+
+/// Parses one `include_*` bool from a cross-element proximity check instance's params, falling
+/// back to `default` when the param is missing or unparseable — see GitHub issue #376.
+fn parse_cross_element_include(instance: &CheckInstanceConfig, id: &str, default: bool) -> bool {
+    instance.params.get(id).and_then(|v| v.parse::<bool>().ok()).unwrap_or(default)
+}
+
+fn cross_element_set_from_params(instance: &CheckInstanceConfig) -> CrossElementSet {
+    CrossElementSet {
+        teleport: parse_cross_element_include(instance, "include_teleport", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_TELEPORT),
+        one_way: parse_cross_element_include(instance, "include_one_way", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_ONE_WAY),
+        vertical_passage: parse_cross_element_include(instance, "include_vertical_passage", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_VERTICAL_PASSAGE),
+        elevator_stop: parse_cross_element_include(instance, "include_elevator_stop", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_ELEVATOR_STOP),
+        split: parse_cross_element_include(instance, "include_split", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_SPLIT),
+        start: parse_cross_element_include(instance, "include_start", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_START),
+        finish: parse_cross_element_include(instance, "include_finish", CROSS_ELEMENT_PROXIMITY_DEFAULT_INCLUDE_FINISH),
+    }
+}
+
+/// Builds a `cross_element_geometric_proximity` / `cross_element_graph_proximity` check from a
+/// browser config instance — see GitHub issue #376. A set with zero enabled types is not a config
+/// error: the check is still constructed (so `Some`, keeping the rule's issue kind consistent —
+/// audit K) and simply no-ops at `repair_check` time. One enabled type is a valid same-type scan.
+pub(crate) fn build_cross_element_group_check<T: Tessellation>(instance: &CheckInstanceConfig, instance_id: String, rule_params: &RuleParams) -> Option<Box<dyn maze_core::quality_control::Check<T, InvalidCrossElementGroupIssue>>> {
+    let set = cross_element_set_from_params(instance);
+    let protect_route = rule_params.protect_route;
+    match instance.type_id.as_str() {
+        "cross_element_geometric_proximity" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .map(|v| v.max(0.0))
+                .unwrap_or(CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DISTANCE_DEFAULT);
+            let floor_mode = parse_geometric_floor_mode(instance.params.get("floor_mode"), CROSS_ELEMENT_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE);
+            Some(Box::new(CrossElementGeometricProximityCheck { instance_id, distance, set, floor_mode, protect_route }))
+        }
+        "cross_element_graph_proximity" => {
+            let distance = instance.params.get("distance")
+                .and_then(|v| v.parse::<i64>().ok())
+                .map(|v| v.max(0) as u32)
+                .unwrap_or(CROSS_ELEMENT_GRAPH_PROXIMITY_DISTANCE_DEFAULT);
+            Some(Box::new(CrossElementGraphProximityCheck { instance_id, distance, set, protect_route }))
         }
         _ => None,
     }

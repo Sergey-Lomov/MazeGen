@@ -143,6 +143,10 @@ export const issueI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["issue.missing_elevator_stop_count.label"] as MessageFn,
     description: m["issue.missing_elevator_stop_count.description"] as MessageFn,
   },
+  invalid_cross_element_group: {
+    label: m["issue.invalid_cross_element_group.label"] as MessageFn,
+    description: m["issue.invalid_cross_element_group.description"] as MessageFn,
+  },
 };
 
 /** Section grouping for `IssueSelectDialog` only — distinct from `issueI18n`'s full labels,
@@ -182,6 +186,7 @@ export const issueSectionI18n: Record<string, MessageFn> = {
   missing_elevator_stop_count: m["issue_select.section.elevators"] as MessageFn,
   missing_elevator_height: m["issue_select.section.elevators"] as MessageFn,
   excessive_elevator_stop_gap: m["issue_select.section.elevators"] as MessageFn,
+  invalid_cross_element_group: m["issue_select.section.cross_element"] as MessageFn,
 };
 
 /** Short item labels for `IssueSelectDialog` only, indented under `issueSectionI18n`'s header —
@@ -221,6 +226,7 @@ export const issueShortLabelI18n: Record<string, MessageFn> = {
   missing_elevator_stop_count: m["issue_select.short_label.add_stops_to_elevator"] as MessageFn,
   missing_elevator_height: m["issue_select.short_label.expand_elevator"] as MessageFn,
   excessive_elevator_stop_gap: m["issue_select.short_label.close_gaps"] as MessageFn,
+  invalid_cross_element_group: m["issue_select.short_label.validate_element_groups"] as MessageFn,
 };
 
 export function resolveIssueLabel(kind: string): string {

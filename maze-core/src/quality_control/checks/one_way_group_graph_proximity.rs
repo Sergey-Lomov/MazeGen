@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use rand::RngCore;
 use crate::Maze;
-use crate::graph::EdgeKind;
 use crate::graph::distance_map::{compute_distance_map_filtered_bounded, min_optional_distance, DistanceDirection};
 use crate::graph::nav::{NavEdge, NavNodeId};
 use crate::graph::route_protection::is_edge_on_route;
 use crate::ids::EdgeId;
 use crate::space::Tessellation;
 use crate::quality_control::check::Check;
+use crate::quality_control::checks::one_way_core::one_way_edges_with_endpoints;
 use crate::quality_control::{InvalidOneWayGroupIssue};
 
 pub const ONE_WAY_GROUP_GRAPH_PROXIMITY_DISTANCE_DEFAULT: f64 = 0.0;
@@ -75,11 +75,7 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for OneWayGroupGraphProx
     fn check_type_id(&self) -> &'static str { "one_way_group_graph_proximity" }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        let one_ways: Vec<(EdgeId, crate::ids::NodeId, crate::ids::NodeId)> = maze.graph.edges()
-            .filter(|e| e.kind == EdgeKind::Basic)
-            .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
-            .map(|e| (e.id, e.from, e.to))
-            .collect();
+        let one_ways: Vec<(EdgeId, crate::ids::NodeId, crate::ids::NodeId)> = one_way_edges_with_endpoints(maze);
         if one_ways.len() < 2 {
             return;
         }

@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use rand::RngCore;
 use crate::Maze;
-use crate::graph::EdgeKind;
 use crate::ids::EdgeId;
 use crate::space::{LevelId, Tessellation};
 use crate::quality_control::check::Check;
+use crate::quality_control::checks::one_way_core::one_way_edge_ids;
 use crate::quality_control::{InvalidOneWayGroupIssue, FloorScope};
 use crate::quality_control::floor_group::floors_of_edge;
 
@@ -35,12 +35,7 @@ impl<T: Tessellation> Check<T, InvalidOneWayGroupIssue> for MaxOneWayCountCheck 
     fn is_batch_edge_group(&self) -> bool { true }
 
     fn repair_check(&self, maze: &Maze<T>, issues: &mut Vec<InvalidOneWayGroupIssue>, _rng: &mut dyn RngCore, _requirement: ()) {
-        // Same kind-filtered reverse lookup as MinOneWayCountCheck/OneWayWaypointDistanceCheck.
-        let one_ways: Vec<EdgeId> = maze.graph.edges()
-            .filter(|e| e.kind == EdgeKind::Basic)
-            .filter(|e| maze.graph.edge_between_kind(e.to, e.from, &EdgeKind::Basic).is_none())
-            .map(|e| e.id)
-            .collect();
+        let one_ways: Vec<EdgeId> = one_way_edge_ids(maze);
 
         // Under `PerFloor` the whole group is reported (and `to_remove` computed) against
         // whichever floor is over budget -- a one-way crossing floors counts toward, and can be

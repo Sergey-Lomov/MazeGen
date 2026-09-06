@@ -28,6 +28,7 @@ use maze_core::{
         MissingElevatorsIssue,
         AreaMissingElevatorStopsIssue,
         MissingElevatorStopCountIssue, MissingElevatorHeightIssue, ExcessiveElevatorStopGapIssue,
+        InvalidCrossElementGroupIssue,
     },
 };
 use super::check_factory::{
@@ -46,6 +47,7 @@ use super::check_factory::{
     build_area_missing_elevator_stops_check,
     build_missing_elevator_stop_count_check,
     build_missing_elevator_height_check, build_excessive_elevator_stop_gap_check,
+    build_cross_element_group_check,
 };
 use super::strategy_factory::{build_strategy_erased, downcast_strategy, build_nested};
 use super::rule_params::resolve_rule_params;
@@ -193,6 +195,7 @@ qc_kind_registry! {
     MissingElevatorStopCount => MissingElevatorStopCountIssue, build_missing_elevator_stop_count_check, ["min_elevator_stop_count"];
     MissingElevatorHeight => MissingElevatorHeightIssue, build_missing_elevator_height_check, ["min_elevator_height"];
     ExcessiveElevatorStopGap => ExcessiveElevatorStopGapIssue, build_excessive_elevator_stop_gap_check, ["max_elevator_stop_gap"];
+    InvalidCrossElementGroup => InvalidCrossElementGroupIssue, build_cross_element_group_check, ["cross_element_geometric_proximity", "cross_element_graph_proximity"];
 }
 
 #[cfg(test)]

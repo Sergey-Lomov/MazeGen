@@ -147,6 +147,29 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const areaDeficitEntries = sourceCheck != null && issue.payload.kind === "area_deficit"
     ? issue.payload.areas[sourceCheck] ?? null
     : null;
+  // `invalid_cross_element_group` (GitHub issue #376) -- one entry per flagged pair member, mixing
+  // edge elements (teleport/one-way/vertical passage/elevator) with point elements
+  // (split/start/finish). Most kinds highlight as region squares over each member's cells (same
+  // rationale as `verticalPassageCellNodes`/`elevatorCellNodes` -- a node shared by two members
+  // would otherwise double-fill/stroke), but `one_way` is split out below and highlighted as a
+  // wall like every other one-way highlight (`oneWayEdges`) instead -- a one-way is a single edge
+  // between two adjacent cells, and filling both cells as a region reads as "these two cells", not
+  // "this directed connection between them". The maze-core resolver has already narrowed each
+  // member to just the occurrence(s) within the proximity threshold (issue #376 follow-up point
+  // 4), so a teleport close to the other element by one end highlights that end only.
+  //
+  // Preset visibility (issue #376 follow-up point 5) is all-or-nothing PER PAIR, not per element:
+  // a pair is hidden only when every one of its members is preset_locked; a pair with at least one
+  // unlocked member shows ALL its members, including the preset-locked one. So the toggle filter
+  // is applied here at pair granularity, then the surviving pairs are flattened -- the per-element
+  // `visibleGroup` filter used by every other kind is deliberately NOT applied to these entries.
+  const crossElementEntries = sourceCheck != null && issue.payload.kind === "invalid_cross_element_group"
+    ? issue.payload.groups[sourceCheck]
+        ?.filter((pair) => showFullyPresetLockedIssues || pair.some((e) => !e.preset_locked))
+        .flat() ?? null
+    : null;
+  const crossElementOneWayEntries = crossElementEntries?.filter((e) => e.kind === "one_way") ?? null;
+  const crossElementRegionEntries = crossElementEntries?.filter((e) => e.kind !== "one_way") ?? null;
   const palette = notificationPalette(severity);
 
   // GitHub issue #245: this bubble's own source-check slice of the payload, reduced to just the
@@ -217,6 +240,16 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
   const missingStopCellNodes = missingStopGroups != null
     ? [Array.from(new Set(missingStopGroups.filter(visibleGroup).flatMap((g) => g.edges.flat())))]
     : null;
+  // No per-element `visibleGroup` filter here -- `crossElementEntries` above already dropped whole
+  // pairs whose every member is preset-locked, and a surviving pair shows all its members.
+  const crossElementCellNodes = crossElementRegionEntries != null && crossElementRegionEntries.length > 0
+    ? [Array.from(new Set(crossElementRegionEntries.flatMap((e) => [...e.edges.flat(), ...e.nodes, ...(e.tile?.nodes ?? [])])))]
+    : null;
+  // Same wall-edge rendering as `oneWayEdges` above -- see the doc comment on
+  // `crossElementOneWayEntries`.
+  const crossElementOneWayEdges = crossElementOneWayEntries != null && crossElementOneWayEntries.length > 0
+    ? asHighlightEdges(crossElementOneWayEntries.flatMap((e) => e.edges), true)
+    : null;
   // Renders every visible tile as its own region-highlight group (one fill+perimeter per distinct
   // tile, `RegionHighlightRenderer`'s per-point dedup) -- visibility is decided at whichever
   // granularity `TILE_GRANULARITY_CHECKS` selects (tile-level for max_split_count/max_split_density,
@@ -248,33 +281,26 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
         .map((level) => selectNodeIdsForLevel(mazeNodes, level))
     : null;
 
-  const handleMouseEnter = loopEdges != null
-    ? () => setHoveredIssueLoopEdges(loopEdges)
-    : teleportEdges != null
-    ? () => setHoveredIssueLoopEdges(teleportEdges)
-    : oneWayEdges != null
-    ? () => setHoveredIssueLoopEdges(oneWayEdges)
-    : splitRouteHighlightEdges != null
-    ? () => setHoveredIssueLoopEdges(splitRouteHighlightEdges)
-    : visibleRegionGroups != null
-    ? () => setHoveredIssueRegionGroups(visibleRegionGroups)
-    : splitTileNodes != null
-    ? () => setHoveredIssueRegionGroups(splitTileNodes)
-    : verticalPassageCellNodes != null
-    ? () => setHoveredIssueRegionGroups(verticalPassageCellNodes)
-    : elevatorCellNodes != null
-    ? () => setHoveredIssueRegionGroups(elevatorCellNodes)
-    : elevatorStopCellNodes != null
-    ? () => setHoveredIssueRegionGroups(elevatorStopCellNodes)
-    : areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0
-    ? () => setHoveredIssueRegionGroups(areaDeficitCellNodes)
-    : missingStopCellNodes != null
-    ? () => setHoveredIssueRegionGroups(missingStopCellNodes)
+  // Wall/line edges (`setHoveredIssueLoopEdges`) and region-square cells
+  // (`setHoveredIssueRegionGroups`) are independent overlay states -- normally a bubble only ever
+  // populates one of the two families, but `invalid_cross_element_group` can populate both at once
+  // (a one-way member drawn as a wall alongside other members drawn as region squares), so both are
+  // set together rather than picking just the first match.
+  const highlightEdges = loopEdges ?? teleportEdges ?? oneWayEdges ?? splitRouteHighlightEdges ?? crossElementOneWayEdges;
+  const highlightRegionGroups = visibleRegionGroups ?? splitTileNodes ?? verticalPassageCellNodes ?? elevatorCellNodes
+    ?? elevatorStopCellNodes ?? (areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0 ? areaDeficitCellNodes : null)
+    ?? missingStopCellNodes ?? crossElementCellNodes;
+  const handleMouseEnter = highlightEdges != null || highlightRegionGroups != null
+    ? () => {
+        if (highlightEdges != null) setHoveredIssueLoopEdges(highlightEdges);
+        if (highlightRegionGroups != null) setHoveredIssueRegionGroups(highlightRegionGroups);
+      }
     : undefined;
-  const handleMouseLeave = loopEdges != null || teleportEdges != null || oneWayEdges != null || splitRouteEdges != null
-    ? () => setHoveredIssueLoopEdges(null)
-    : visibleRegionGroups != null || splitTileNodes != null || verticalPassageCellNodes != null || elevatorCellNodes != null || elevatorStopCellNodes != null || (areaDeficitCellNodes != null && areaDeficitCellNodes.length > 0) || missingStopCellNodes != null
-    ? () => setHoveredIssueRegionGroups(null)
+  const handleMouseLeave = highlightEdges != null || highlightRegionGroups != null
+    ? () => {
+        if (highlightEdges != null) setHoveredIssueLoopEdges(null);
+        if (highlightRegionGroups != null) setHoveredIssueRegionGroups(null);
+      }
     : undefined;
 
   // GitHub issue #245 (extended to node/route-based split kinds): count of this bubble's own
@@ -304,7 +330,8 @@ export function IssueBubble({ issue, sourceCheck }: { issue: IssueDto; sourceChe
     ...(loopEdges ?? []),
     ...(teleportEdges ?? []),
     ...(oneWayEdges ?? []),
-  ].flatMap((e) => [e.from, e.to]).concat((splitRouteEdges?.flat() ?? []).flat(), (splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat(), (areaDeficitCellNodes ?? []).flat(), (missingStopCellNodes ?? []).flat());
+    ...(crossElementOneWayEdges ?? []),
+  ].flatMap((e) => [e.from, e.to]).concat((splitRouteEdges?.flat() ?? []).flat(), (splitTileNodes ?? []).flat(), (visibleRegionGroups ?? []).flat(), (verticalPassageCellNodes ?? []).flat(), (elevatorCellNodes ?? []).flat(), (elevatorStopCellNodes ?? []).flat(), (areaDeficitCellNodes ?? []).flat(), (missingStopCellNodes ?? []).flat(), (crossElementCellNodes ?? []).flat());
 
   return (
     <>

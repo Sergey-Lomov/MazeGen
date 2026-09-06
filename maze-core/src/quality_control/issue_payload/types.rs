@@ -191,6 +191,40 @@ pub enum IssuePayload {
     /// leave candidate-floor selection to their own repair strategy, so neither has anything to
     /// offer here. Mirrors `IssuePayloadDto::MissingElevatorStopCount`.
     MissingElevatorStopCount { groups: HashMap<String, Vec<IssueMissingElevatorStopsPayload>> },
+    /// Keyed by source check id — each inner `Vec<CrossElementPayloadEntry>` is one flagged
+    /// too-close pair (always two entries), one entry per logical element of the pair. Produced by
+    /// `CrossElementGeometricProximityCheck` / `CrossElementGraphProximityCheck` (GitHub issue
+    /// #376); the two checks share this one wire variant, told apart by `payload.kind` /
+    /// `source_checks` like every other reused variant here. `to_remove` (always 1) carries no
+    /// highlight meaning and is dropped. Mirrors `IssuePayloadDto::InvalidCrossElementGroup`.
+    InvalidCrossElementGroup { groups: HashMap<String, Vec<Vec<CrossElementPayloadEntry>>> },
+}
+
+/// One element of a flagged cross-element proximity group resolved for the wire boundary (GitHub
+/// issue #376). A group is one too-close unordered pair; each entry classifies one of its two
+/// logical elements (`kind`) and carries whatever highlight geometry that type has — `edges` for
+/// a teleport / one-way / vertical passage (base-graph `[from, to]` pairs, re-resolved against
+/// `graph` at payload time), `tile` for a split tile, `nodes` for a start / finish endpoint or an
+/// `elevator_stop` (a single-node list — just the flagged stop cell; `edges` stays empty, since a
+/// stop's fan edges reach every other floor and would light up cells there too). `removable` is
+/// `false` for `start` / `finish` (repair never
+/// deletes them — a pair of two unremovable elements survives repair) and `true` otherwise.
+/// `preset_locked` is per-element: every underlying edge preset-protected for an edge element,
+/// the whole tile preset-locked for a split, and for a `start` / `finish` endpoint `true` when a
+/// `preset_start` / `preset_finish` marker pins that exact node (repair can't move a pinned
+/// waypoint), `false` for a generator-chosen one.
+///
+/// `kind` is one of `"teleport" | "one_way" | "vertical_passage" | "elevator_stop" | "split" |
+/// "start" | "finish"`. `"elevator_stop"` flags a single stop of an elevator (not the whole
+/// elevator); the repair removes just that stop, leaving the rest of the elevator intact.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CrossElementPayloadEntry {
+    pub kind: &'static str,
+    pub edges: Vec<[u32; 2]>,
+    pub nodes: Vec<u32>,
+    pub tile: Option<IssueSplitTilePayload>,
+    pub removable: bool,
+    pub preset_locked: bool,
 }
 
 /// One flagged elevator's stop-deficit resolved for the wire boundary (GitHub issue #402) — pairs
