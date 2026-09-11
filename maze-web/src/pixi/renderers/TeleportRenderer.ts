@@ -306,7 +306,9 @@ export class TeleportRenderer {
   /** Draws every point of one group (its shape/fillColor/borderColor resolved from `override`, or
    *  `style`'s own base fields when absent) into `g` — a point flagged in `selectionFloorBadges`
    *  (GitHub issue #337, a cross-floor edge's midpoint) draws a floor-number badge instead, via
-   *  `drawFloorBadge`. */
+   *  `drawFloorBadge`. The badge's own fill/border also follow `override.borderColor` (the group's
+   *  secondary color) when set, instead of `style.floorBadge.fillColor`/`borderColor` (GitHub issue
+   *  #503 follow-up). */
   private drawGroupPoints(
     g: Graphics,
     overlay: Container,
@@ -326,7 +328,13 @@ export class TeleportRenderer {
     for (const [px, py] of group.points) {
       const floorNumber = this.selectionFloorBadges.get(coordKey(px, py));
       if (floorNumber !== undefined) {
-        drawFloorBadge(g, overlay, badgeR, px, py, color, borderColor, style.floorColor, floorNumber, {
+        // A group override's `borderColor` is the group's "secondary" color (it also drives the
+        // marker border and every connector touching the group, see above) — when group
+        // customization is on, the badge's fill and border both follow it instead of the ordinary
+        // `style.floorBadge.fillColor`/`borderColor` (GitHub issue #503 follow-up).
+        const badgeFill = override?.borderColor ?? style.floorBadge.fillColor;
+        const badgeBorder = override?.borderColor ?? style.floorBadge.borderColor;
+        drawFloorBadge(g, overlay, badgeR, px, py, badgeFill, badgeBorder, style.floorColor, floorNumber, {
           shape: style.floorBadge.shape,
           labelText: formatIndexLabel(floorNumber - 1, style.floorBadge.labelType),
           textColor: style.floorBadge.textColor,

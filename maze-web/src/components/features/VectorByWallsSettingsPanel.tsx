@@ -19,6 +19,8 @@ import { ElevatorBadgesSubsection } from "./ElevatorBadgesSubsection";
 import { MarkerIndexSection } from "./MarkerIndexSection";
 import { TeleportSettingsSection, useTeleportGroupsAndCollisions } from "./TeleportSettingsSection";
 import { SharedStyleSection, sharedStyleFieldReset } from "./SharedStyleSection";
+import { DEFAULT_VECTOR_BY_WALLS_SETTINGS as D } from "../../store/slices/imageExportDefaults";
+import { PC } from "../../pixi/selectors/projectColorsSelector";
 import * as m from "~/paraglide/messages";
 
 /** "Background", "Tiles", "Markers" and "One-ways" sections of the "Vector by walls" render mode's
@@ -216,6 +218,55 @@ export function VectorByWallsSettingsPanel() {
     setSectionExpanded(id, !isExpanded(id));
   };
 
+  // "Priority" project colors (GitHub issue #503) — sibling colors that matter for a given color
+  // decision, pinned to the top of the picker's "Project colors" section. `floorColor` is the
+  // near-universal neighbour here (everything except the outer walls sits on the floor); `background`
+  // is relevant only where the outer wall meets it, `wallColor` where a marker/indicator abuts a wall.
+  const floor = PC.tilesFloor.at(settings.floorColor);
+  const wall = PC.tilesWall.at(settings.wallColor);
+  const background = PC.bgFill.at(settings.background);
+  const onFloor = [floor, wall];
+
+  // Vertical-connection cross-references (GitHub issue #503): every vertical passage / elevator
+  // color row prioritizes the full set of the other two vertical kinds' colors, so recoloring one
+  // kind to match another is a one-click pick. `[fill, border/accent, arrow]` per kind, in that
+  // order. Self is dropped from a row's own list by `ColorRow`'s `fieldName` match.
+  const vTwoWay = [
+    PC.twoWayFill.at(settings.twoWayPassageMarker.fillColor),
+    PC.twoWayBorder.at(settings.twoWayPassageMarker.borderColor),
+    PC.twoWayArrow.at(settings.twoWayArrowColor),
+  ];
+  const vOneWay = [
+    PC.oneWayFill.at(settings.oneWayPassageMarker.fillColor),
+    PC.oneWayAccent.at(settings.oneWayAccentColor),
+    PC.oneWayArrow.at(settings.oneWayArrowColor),
+  ];
+  const vElevator = [
+    PC.elevatorFill.at(settings.elevatorMarker.fillColor),
+    PC.elevatorBorder.at(settings.elevatorMarker.borderColor),
+    PC.elevatorArrow.at(settings.elevatorArrowColor),
+  ];
+  const badges = [
+    PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor),
+    PC.elevatorBadgeText.at(settings.elevatorBadges.textColor),
+  ];
+  // Every teleport color row also prioritizes the floor-badge colors (GitHub issue #503) — a row's
+  // own entry is dropped by `ColorRow`'s `fieldName`.
+  const tpBadges = [
+    PC.teleportBadgeFill.at(settings.teleportFloorBadge.fillColor),
+    PC.teleportBadgeBorder.at(settings.teleportFloorBadge.borderColor),
+    PC.teleportBadgeText.at(settings.teleportFloorBadge.textColor),
+  ];
+  // Every vertical-connection / elevator color row ends with the floor color (the corridor-color
+  // analogue this mode has), then (for the rows that already carry it) the background — GitHub
+  // issue #503.
+  const vTail = [floor];
+  const vTailBg = [floor, background];
+  // Elevator floor-badge fill / text prioritize each other first (they sit one on the other), then
+  // every elevator color, then the floor and the background.
+  const badgeFillPriority = [PC.elevatorBadgeText.at(settings.elevatorBadges.textColor), ...vElevator, ...vTailBg];
+  const badgeTextPriority = [PC.elevatorBadgeFill.at(settings.elevatorBadges.fillColor), ...vElevator, ...vTailBg];
+
   return (
     <div style={styles.root}>
       <SectionHeader
@@ -247,13 +298,23 @@ export function VectorByWallsSettingsPanel() {
       />
       {isExpanded("background") && (
         <div style={styles.block}>
-          <ColorRow label={m["image_export.vector_by_walls.background_color"]()} color={settings.background} onChange={setBackground} />
+          <ColorRow
+            label={m["image_export.vector_by_walls.background_color"]()}
+            color={settings.background}
+            onChange={setBackground}
+            defaultColor={D.background}
+            fieldName={PC.bgFill.name()}
+            priorityColors={[PC.bgGrid.at(settings.gridColor), floor, wall]}
+          />
           <ToggleRow label={m["image_export.vector_by_walls.show_grid"]()} checked={settings.showGrid} onChange={setShowGrid} />
           <ColorRow
             label={m["image_export.vector_by_walls.grid_color"]()}
             color={settings.gridColor}
             onChange={setGridColor}
             disabled={!settings.showGrid}
+            defaultColor={D.gridColor}
+            fieldName={PC.bgGrid.name()}
+            priorityColors={[background, wall]}
           />
         </div>
       )}
@@ -267,14 +328,28 @@ export function VectorByWallsSettingsPanel() {
       />
       {isExpanded("tiles") && (
         <div style={styles.block}>
-          <ColorRow label={m["image_export.vector_by_walls.floor_color"]()} color={settings.floorColor} onChange={setFloorColor} />
+          <ColorRow
+            label={m["image_export.vector_by_walls.floor_color"]()}
+            color={settings.floorColor}
+            onChange={setFloorColor}
+            defaultColor={D.floorColor}
+            fieldName={PC.tilesFloor.name()}
+            priorityColors={[wall]}
+          />
           <ToggleRow
             label={m["image_export.vector_by_walls.random_wall_colors"]()}
             checked={settings.randomWallColorMode !== "off"}
             onChange={(enabled) => setRandomWallColorMode(enabled ? "per_pass" : "off")}
           />
           {settings.randomWallColorMode === "off" ? (
-            <ColorRow label={m["image_export.vector_by_walls.wall_color"]()} color={settings.wallColor} onChange={setWallColor} />
+            <ColorRow
+              label={m["image_export.vector_by_walls.wall_color"]()}
+              color={settings.wallColor}
+              onChange={setWallColor}
+              defaultColor={D.wallColor}
+              fieldName={PC.tilesWall.name()}
+              priorityColors={[floor, background]}
+            />
           ) : (
             <SelectRow
               label={m["image_export.vector_by_walls.random_wall_color_mode"]()}
@@ -315,11 +390,19 @@ export function VectorByWallsSettingsPanel() {
         expanded={isExpanded("markers")}
         onToggle={() => toggleSection("markers")}
       />
-      {isExpanded("markers") && (
+      {isExpanded("markers") && (() => {
+        const startFill = PC.startFill.at(settings.startMarker.fillColor);
+        const startBorder = PC.startBorder.at(settings.startMarker.borderColor);
+        const finishFill = PC.finishFill.at(settings.finishMarker.fillColor);
+        const finishBorder = PC.finishBorder.at(settings.finishMarker.borderColor);
+        return (
         <div style={styles.block}>
           <MarkerSettingsGroup
             title={m["image_export.vector_by_walls.markers_start"]()}
             settings={settings.startMarker}
+            priorityColors={{ fillColor: [startBorder, finishFill, finishBorder, floor], borderColor: [startFill, finishBorder, finishFill, floor] }}
+            defaultColors={{ fillColor: D.startMarker.fillColor, borderColor: D.startMarker.borderColor }}
+            fieldNames={{ fillColor: startFill.name, borderColor: startBorder.name }}
             onChange={(patch) => {
               if (patch.shape !== undefined) setStartMarkerShape(patch.shape);
               if (patch.cornerStyle !== undefined) setStartMarkerCornerStyle(patch.cornerStyle);
@@ -339,6 +422,9 @@ export function VectorByWallsSettingsPanel() {
           <MarkerSettingsGroup
             title={m["image_export.vector_by_walls.markers_finish"]()}
             settings={settings.finishMarker}
+            priorityColors={{ fillColor: [finishBorder, startFill, startBorder, floor], borderColor: [finishFill, startBorder, startFill, floor] }}
+            defaultColors={{ fillColor: D.finishMarker.fillColor, borderColor: D.finishMarker.borderColor }}
+            fieldNames={{ fillColor: finishFill.name, borderColor: finishBorder.name }}
             onChange={(patch) => {
               if (patch.shape !== undefined) setFinishMarkerShape(patch.shape);
               if (patch.cornerStyle !== undefined) setFinishMarkerCornerStyle(patch.cornerStyle);
@@ -356,7 +442,8 @@ export function VectorByWallsSettingsPanel() {
             }}
           />
         </div>
-      )}
+        );
+      })()}
 
       {hasOneWays && (
         <>
@@ -379,7 +466,14 @@ export function VectorByWallsSettingsPanel() {
                 ]}
                 onChange={setOneWayPattern}
               />
-              <ColorRow label={m["image_export.vector_by_walls.one_way_color"]()} color={settings.oneWayColor} onChange={setOneWayColor} />
+              <ColorRow
+                label={m["image_export.vector_by_walls.one_way_color"]()}
+                color={settings.oneWayColor}
+                onChange={setOneWayColor}
+                defaultColor={D.oneWayColor}
+                fieldName={PC.oneWaysMarker.name()}
+                priorityColors={[floor, wall]}
+              />
               <SliderRow
                 label={m["image_export.vector_by_walls.one_way_gap_width"]()}
                 value={settings.oneWayGapWidth}
@@ -447,6 +541,24 @@ export function VectorByWallsSettingsPanel() {
                 edgeGapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "teleportEdge", () => resetSharedStyleField("gapWidth", "teleportEdge")),
                 connectorGapWidth: sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "teleportConnector", () => resetSharedStyleField("gapWidth", "teleportConnector")),
               }}
+              edgeColorPriority={[PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor), PC.teleportConnector.at(settings.teleportConnectorColor), ...tpBadges, floor]}
+              edgeBorderColorPriority={[PC.teleportEdge.at(settings.teleportEdgeColor), PC.teleportConnector.at(settings.teleportConnectorColor), ...tpBadges, floor]}
+              connectorColorPriority={[PC.teleportEdge.at(settings.teleportEdgeColor), PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor), ...tpBadges, floor]}
+              floorBadgeFillColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportEdgeColor), PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor), PC.teleportConnector.at(settings.teleportConnectorColor), floor]}
+              floorBadgeBorderColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportEdgeColor), PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor), PC.teleportConnector.at(settings.teleportConnectorColor), floor]}
+              floorBadgeTextColorPriority={[...tpBadges, PC.teleportEdge.at(settings.teleportEdgeColor), PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor), PC.teleportConnector.at(settings.teleportConnectorColor), floor]}
+              edgeColorDefault={D.teleportEdgeColor}
+              edgeBorderColorDefault={D.teleportEdgeBorderColor}
+              connectorColorDefault={D.teleportConnectorColor}
+              floorBadgeFillColorDefault={D.teleportFloorBadge.fillColor}
+              floorBadgeBorderColorDefault={D.teleportFloorBadge.borderColor}
+              floorBadgeTextColorDefault={D.teleportFloorBadge.textColor}
+              edgeColorFieldName={PC.teleportEdge.name()}
+              edgeBorderColorFieldName={PC.teleportEdgeBorder.name()}
+              connectorColorFieldName={PC.teleportConnector.name()}
+              floorBadgeFillColorFieldName={PC.teleportBadgeFill.name()}
+              floorBadgeBorderColorFieldName={PC.teleportBadgeBorder.name()}
+              floorBadgeTextColorFieldName={PC.teleportBadgeText.name()}
             />
           )}
         </>
@@ -486,6 +598,9 @@ export function VectorByWallsSettingsPanel() {
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeStairsTwoWay}
                       onChange={(patch) => patchDecorativeLineStyle("decorativeStairsTwoWay", patch)}
+                      lineColorPriority={onFloor}
+                      lineColorDefault={D.decorativeStairsTwoWay.lineColor}
+                      lineColorFieldName={PC.decorLineTwoWay.name()}
                     />
                     <div style={styles.subGroupWrap}>
                       <div style={styles.subHeader}>{m["image_export.vector_by_walls.vertical_subsection_arrows"]()}</div>
@@ -494,6 +609,9 @@ export function VectorByWallsSettingsPanel() {
                           label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
                           color={settings.decorativeStairsArrowColor}
                           onChange={(decorativeStairsArrowColor) => patchVerticalSettings({ decorativeStairsArrowColor })}
+                          priorityColors={[PC.decorLineTwoWay.at(settings.decorativeStairsTwoWay.lineColor), floor]}
+                          defaultColor={D.decorativeStairsArrowColor}
+                          fieldName={PC.decorArrowTwoWay.name()}
                         />
                         <SliderRow
                           label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
@@ -519,11 +637,17 @@ export function VectorByWallsSettingsPanel() {
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeStairsOneWay}
                       onChange={(patch) => patchDecorativeLineStyle("decorativeStairsOneWay", patch)}
+                      lineColorPriority={onFloor}
+                      lineColorDefault={D.decorativeStairsOneWay.lineColor}
+                      lineColorFieldName={PC.decorLineOneWay.name()}
                     />
                     <ColorRow
                       label={m["image_export.vector_by_walls.one_way_accent_color"]()}
                       color={settings.decorativeStairsAccentColor}
                       onChange={(decorativeStairsAccentColor) => patchVerticalSettings({ decorativeStairsAccentColor })}
+                      priorityColors={[PC.decorLineOneWay.at(settings.decorativeStairsOneWay.lineColor), floor]}
+                      defaultColor={D.decorativeStairsAccentColor}
+                      fieldName={PC.oneWayAccent.name()}
                     />
                   </div>
                   )}
@@ -538,6 +662,9 @@ export function VectorByWallsSettingsPanel() {
                     <DecorativeLineStyleGroup
                       settings={settings.decorativeElevator}
                       onChange={(patch) => patchDecorativeLineStyle("decorativeElevator", patch)}
+                      lineColorPriority={onFloor}
+                      lineColorDefault={D.decorativeElevator.lineColor}
+                      lineColorFieldName={PC.decorLineElevator.name()}
                     />
                     <ElevatorBadgesSubsection
                       settings={settings.elevatorBadges}
@@ -545,6 +672,12 @@ export function VectorByWallsSettingsPanel() {
                       onChange={patchElevatorBadges}
                       onCornerStyleChange={setElevatorBadgesCornerStyle}
                       onResetCornerStyle={() => resetSharedStyleField("cornerStyle", "elevatorBadges")}
+                      fillColorPriority={badgeFillPriority}
+                      textColorPriority={badgeTextPriority}
+                      fillColorDefault={D.elevatorBadges.fillColor}
+                      textColorDefault={D.elevatorBadges.textColor}
+                      fillColorFieldName={PC.elevatorBadgeFill.name()}
+                      textColorFieldName={PC.elevatorBadgeText.name()}
                     />
                   </div>
                   )}
@@ -562,6 +695,15 @@ export function VectorByWallsSettingsPanel() {
                         <MarkerSettingsGroup
                           title=""
                           settings={settings.twoWayPassageMarker}
+                          priorityColors={{
+                            fillColor: [PC.twoWayBorder.at(settings.twoWayPassageMarker.borderColor), PC.twoWayArrow.at(settings.twoWayArrowColor), ...vOneWay, ...vElevator, ...vTail],
+                            borderColor: [PC.twoWayFill.at(settings.twoWayPassageMarker.fillColor), PC.twoWayArrow.at(settings.twoWayArrowColor), ...vOneWay, ...vElevator, ...vTail],
+                          }}
+                          defaultColors={{ fillColor: D.twoWayPassageMarker.fillColor, borderColor: D.twoWayPassageMarker.borderColor }}
+                          fieldNames={{
+                            fillColor: PC.twoWayFill.name(),
+                            borderColor: PC.twoWayBorder.name(),
+                          }}
                           onChange={(patch) => {
                             if (patch.shape !== undefined) setTwoWayPassageMarkerShape(patch.shape);
                             if (patch.cornerStyle !== undefined) setTwoWayPassageMarkerCornerStyle(patch.cornerStyle);
@@ -588,6 +730,9 @@ export function VectorByWallsSettingsPanel() {
                           label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
                           color={settings.twoWayArrowColor}
                           onChange={(twoWayArrowColor) => patchVerticalSettings({ twoWayArrowColor })}
+                          priorityColors={[PC.twoWayFill.at(settings.twoWayPassageMarker.fillColor), PC.twoWayBorder.at(settings.twoWayPassageMarker.borderColor), ...vOneWay, ...vElevator, ...vTailBg]}
+                          defaultColor={D.twoWayArrowColor}
+                          fieldName={PC.twoWayArrow.name()}
                         />
                         <SliderRow
                           label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
@@ -637,11 +782,17 @@ export function VectorByWallsSettingsPanel() {
                           label={m["image_export.vector_by_walls.one_way_accent_color"]()}
                           color={settings.oneWayAccentColor}
                           onChange={(oneWayAccentColor) => patchVerticalSettings({ oneWayAccentColor })}
+                          priorityColors={[PC.oneWayFill.at(settings.oneWayPassageMarker.fillColor), PC.oneWayArrow.at(settings.oneWayArrowColor), ...vTwoWay, ...vElevator, ...vTail]}
+                          defaultColor={D.oneWayAccentColor}
+                          fieldName={PC.oneWayAccent.name()}
                         />
                         <MarkerSettingsGroup
                           title=""
                           settings={settings.oneWayPassageMarker}
                           hideBorderColor
+                          priorityColors={{ fillColor: [PC.oneWayAccent.at(settings.oneWayAccentColor), PC.oneWayArrow.at(settings.oneWayArrowColor), ...vTwoWay, ...vElevator, ...vTail] }}
+                          defaultColors={{ fillColor: D.oneWayPassageMarker.fillColor }}
+                          fieldNames={{ fillColor: PC.oneWayFill.name() }}
                           onChange={(patch) => {
                             if (patch.shape !== undefined) setOneWayPassageMarkerShape(patch.shape);
                             if (patch.cornerStyle !== undefined) setOneWayPassageMarkerCornerStyle(patch.cornerStyle);
@@ -668,6 +819,9 @@ export function VectorByWallsSettingsPanel() {
                           label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
                           color={settings.oneWayArrowColor}
                           onChange={(oneWayArrowColor) => patchVerticalSettings({ oneWayArrowColor })}
+                          priorityColors={[PC.oneWayFill.at(settings.oneWayPassageMarker.fillColor), PC.oneWayAccent.at(settings.oneWayAccentColor), ...vTwoWay, ...vElevator, ...vTailBg]}
+                          defaultColor={D.oneWayArrowColor}
+                          fieldName={PC.oneWayArrow.name()}
                         />
                         <SliderRow
                           label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
@@ -716,6 +870,15 @@ export function VectorByWallsSettingsPanel() {
                         <MarkerSettingsGroup
                           title=""
                           settings={settings.elevatorMarker}
+                          priorityColors={{
+                            fillColor: [PC.elevatorBorder.at(settings.elevatorMarker.borderColor), PC.elevatorArrow.at(settings.elevatorArrowColor), ...badges, ...vTwoWay, ...vOneWay, ...vTail],
+                            borderColor: [PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorArrow.at(settings.elevatorArrowColor), ...badges, ...vTwoWay, ...vOneWay, ...vTail],
+                          }}
+                          defaultColors={{ fillColor: D.elevatorMarker.fillColor, borderColor: D.elevatorMarker.borderColor }}
+                          fieldNames={{
+                            fillColor: PC.elevatorFill.name(),
+                            borderColor: PC.elevatorBorder.name(),
+                          }}
                           onChange={(patch) => {
                             if (patch.shape !== undefined) setElevatorMarkerShape(patch.shape);
                             if (patch.cornerStyle !== undefined) setElevatorMarkerCornerStyle(patch.cornerStyle);
@@ -742,6 +905,9 @@ export function VectorByWallsSettingsPanel() {
                           label={m["image_export.vector_by_walls.vertical_arrow_color"]()}
                           color={settings.elevatorArrowColor}
                           onChange={(elevatorArrowColor) => patchVerticalSettings({ elevatorArrowColor })}
+                          priorityColors={[PC.elevatorFill.at(settings.elevatorMarker.fillColor), PC.elevatorBorder.at(settings.elevatorMarker.borderColor), ...badges, ...vTwoWay, ...vOneWay, ...vTailBg]}
+                          defaultColor={D.elevatorArrowColor}
+                          fieldName={PC.elevatorArrow.name()}
                         />
                         <SliderRow
                           label={m["image_export.vector_by_walls.vertical_arrow_size"]()}
@@ -781,6 +947,12 @@ export function VectorByWallsSettingsPanel() {
                       onChange={patchElevatorBadges}
                       onCornerStyleChange={setElevatorBadgesCornerStyle}
                       onResetCornerStyle={() => resetSharedStyleField("cornerStyle", "elevatorBadges")}
+                      fillColorPriority={badgeFillPriority}
+                      textColorPriority={badgeTextPriority}
+                      fillColorDefault={D.elevatorBadges.fillColor}
+                      textColorDefault={D.elevatorBadges.textColor}
+                      fillColorFieldName={PC.elevatorBadgeFill.name()}
+                      textColorFieldName={PC.elevatorBadgeText.name()}
                     />
                   </div>
                   )}
@@ -802,14 +974,26 @@ export function VectorByWallsSettingsPanel() {
           />
           {isExpanded("splits") && (
             <div style={styles.block}>
-              {Array.from({ length: maxSplit }, (_, i) => (
+              {Array.from({ length: maxSplit }, (_, i) => {
+                const slotColor = (j: number) => settings.splitNodeColors[j] ?? splitSlotColor(j, canvas.node.splitSlots);
+                return (
                 <ColorRow
                   key={i}
                   label={m["image_export.vector_by_walls.split_node_color"]({ index: String(i + 1) })}
-                  color={settings.splitNodeColors[i] ?? splitSlotColor(i, canvas.node.splitSlots)}
+                  color={slotColor(i)}
                   onChange={(color) => setSplitNodeColor(i, color)}
+                  fieldName={PC.splitNode(i).name()}
+                  defaultColor={D.splitNodeColors[i] ?? splitSlotColor(i, canvas.node.splitSlots)}
+                  priorityColors={[
+                    ...Array.from({ length: maxSplit }, (_, j) => j).filter((j) => j !== i).map((j) =>
+                      PC.splitNode(j).at(slotColor(j)),
+                    ),
+                    floor,
+                    wall,
+                  ]}
                 />
-              ))}
+                );
+              })}
               <ToggleRow
                 label={m["image_export.vector_by_walls.split_special_shapes"]()}
                 checked={settings.splitSpecialShapes}
@@ -832,6 +1016,15 @@ export function VectorByWallsSettingsPanel() {
           settings={settings.markerIndex}
           onChange={patchMarkerIndex}
           gapResetButton={sharedStyleFieldReset(settings.sharedStyle.overrides, "gapWidth", "markerIndex", () => resetSharedStyleField("gapWidth", "markerIndex"))}
+          fillColorPriority={[PC.markerIndexText.at(settings.markerIndex.textColor), PC.markerIndexBorder.at(settings.markerIndex.borderColor), floor, background]}
+          textColorPriority={[PC.markerIndexFill.at(settings.markerIndex.fillColor), PC.markerIndexBorder.at(settings.markerIndex.borderColor), floor, background]}
+          borderColorPriority={[PC.markerIndexFill.at(settings.markerIndex.fillColor), PC.markerIndexText.at(settings.markerIndex.textColor), floor]}
+          fillColorDefault={D.markerIndex.fillColor}
+          textColorDefault={D.markerIndex.textColor}
+          borderColorDefault={D.markerIndex.borderColor}
+          fillColorFieldName={PC.markerIndexFill.name()}
+          textColorFieldName={PC.markerIndexText.name()}
+          borderColorFieldName={PC.markerIndexBorder.name()}
         />
       )}
 

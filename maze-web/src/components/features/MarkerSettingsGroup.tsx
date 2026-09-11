@@ -1,6 +1,7 @@
 import type * as React from "react";
 import type { MarkerSettings } from "../../store/storeTypes";
 import type { MarkerShape } from "../../pixi/renderers/types";
+import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { spacing, typography } from "../../styles/theme";
 import { ColorRow } from "../ColorRow";
 import { SelectRow } from "../SelectRow";
@@ -28,10 +29,20 @@ export const MARKER_SHAPE_OPTIONS: { value: MarkerShape; label: () => string }[]
  *  show-border/show-gap toggle for either. Shared by `VectorByWallsSettingsPanel` and
  *  `VectorByCorridorsSettingsPanel` (GitHub issue #311) — both modes' waypoint settings mirror
  *  each other exactly, only the underlying store setters differ. */
-export function MarkerSettingsGroup({ title, settings, onChange, resetButtons, hideBorderColor }: {
+export function MarkerSettingsGroup({ title, settings, onChange, resetButtons, hideBorderColor, priorityColors, defaultColors, fieldNames }: {
   title: string;
   settings: MarkerSettings;
   onChange: (patch: Partial<MarkerSettings>) => void;
+  /** "Priority" project colors (GitHub issue #503) for this group's fill/border color rows —
+   *  forwarded to the picker's "Project colors" section. Omitted fields render with no priority. */
+  priorityColors?: { fillColor?: ProjectColorEntry[]; borderColor?: ProjectColorEntry[] };
+  /** Factory defaults (GitHub issue #503) for the fill/border color rows — the picker pins each as
+   *  the first "Default" row of its priority group. */
+  defaultColors?: { fillColor?: number; borderColor?: number };
+  /** Composite field names (GitHub issue #503) for the fill/border color rows — shown in the
+   *  picker header and used to drop the row itself from the "Project colors" list. Needed here
+   *  because two marker groups (start / finish) share the generic "Fill color" row label. */
+  fieldNames?: { fillColor?: string; borderColor?: string };
   /** Per-field "Shared style" reset buttons (GitHub issue #322) — omitted fields render with no
    *  trailing reset control, same as before that issue. Built by the caller (`SharedStyleSection`'s
    *  `sharedStyleFieldReset`) since this component stays agnostic of the shared-style mechanism. */
@@ -72,9 +83,9 @@ export function MarkerSettingsGroup({ title, settings, onChange, resetButtons, h
           format={(v) => v.toFixed(2)}
           resetButton={resetButtons?.size}
         />
-        <ColorRow label={m["image_export.vector_by_walls.marker_fill_color"]()} color={settings.fillColor} onChange={(fillColor) => onChange({ fillColor })} />
+        <ColorRow label={m["image_export.vector_by_walls.marker_fill_color"]()} color={settings.fillColor} onChange={(fillColor) => onChange({ fillColor })} priorityColors={priorityColors?.fillColor} defaultColor={defaultColors?.fillColor} fieldName={fieldNames?.fillColor} />
         {!hideBorderColor && (
-          <ColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} />
+          <ColorRow label={m["image_export.vector_by_walls.marker_border_color"]()} color={settings.borderColor} onChange={(borderColor) => onChange({ borderColor })} priorityColors={priorityColors?.borderColor} defaultColor={defaultColors?.borderColor} fieldName={fieldNames?.borderColor} />
         )}
         <SliderRow
           label={m["image_export.vector_by_walls.marker_border_width"]()}

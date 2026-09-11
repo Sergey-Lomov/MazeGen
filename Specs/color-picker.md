@@ -3,7 +3,8 @@
 Custom color-selection UI that replaces the browser-native `<input type="color">` for every color
 parameter in the editor. Tracked as epic (GitHub issue #498). This spec covers the **shell**
 (sub-issue #499), the **model switcher and RGB model** (sub-issue #500), the **HSL model**
-(sub-issue #501), the **OKLCH model** (sub-issue #502), and **live canvas preview** (issue #513),
+(sub-issue #501), the **OKLCH model** (sub-issue #502), **live canvas preview** (issue #513), and the
+**project-colors block** (sub-issue #503),
 and is extended as later sub-issues land (more color models, palette tools, practicality checks,
 presets/history).
 
@@ -12,7 +13,8 @@ presets/history).
 | Component | Role |
 |---|---|
 | `ColorSwatch` (`components/ColorSwatch.tsx`) | The visible color cell. A plain `div` (not a native input — that renders browser chrome that won't clip to `border-radius`). `role="button"`, keyboard-activatable (Enter / Space). Props: `color: number` (packed 24-bit RGB) + `onChange: (color: number) => void` + `disabled?` + optional `onPreview?: (color: number) => void` (#513 live canvas preview, defaults to `onChange`). Clicking / activating opens `ColorPickerPanel`. |
-| `ColorRow` (`components/ColorRow.tsx`) | Labeled row: `label` + `ColorSwatch` + optional trailing `resetButton` (the issue #322 per-field Shared-Style reset). Unchanged by #499. |
+| `ColorRow` (`components/ColorRow.tsx`) | Labeled row: `label` + `ColorSwatch` + optional trailing `resetButton` (the issue #322 per-field Shared-Style reset). Unchanged by #499. #503 adds an optional `priorityColors?: ProjectColorEntry[]` threaded straight through to `ColorSwatch` → `ColorPickerPanel` (the call site's own "these sibling colors matter for this decision" list). |
+| `projectColorsSelector.ts` (`pixi/selectors/projectColorsSelector.ts`) | #503. `ProjectColorEntry = { name: string; color: number }`. `selectActiveProfileColors(state): ProjectColorEntry[]` — every color field of the export profile the picker was opened from (`state.openRenderModeSettings`: `vector_by_walls` / `vector_by_corridors`, `[]` when null), including subsections and indexed / dynamic fields (split-node slots via `maxSplitNodeCount`, `teleportGroupOverrides` fill/border). Each row's `name` is `Section: Role` (colon-joined, `Section: Sub: Role`) — the word "color" is left out. Names come from the `PC` registry (`PC.<key>.name()` / `PC.<key>.at(color)`, `PC.splitNode(i)` for slots); call sites build matching `priorityColors` / `fieldName` from the same `PC` keys, never a hand-written string. One color used by N fields is N rows. |
 | `ColorPickerPanel` (`components/ColorPickerPanel.tsx`) | The picker itself. Rendered only while open (`ColorSwatch` holds the `pickerOpen` flag). Streams the working color to `onPreview` live (#513), throttled to one call per animation frame; restores the open-time color (captured via `useRef`) through it on Cancel / close / Escape. |
 | `colorFormat.ts` (`components/colorFormat.ts`) | `colorToHex` / `hexToColor` / `HEX_COLOR_RE` — the number ↔ `#rrggbb` conversions shared by `ColorSwatch` and `ColorPickerPanel`. Also `colorToRgb` / `rgbToColor` — packed number ↔ `{ r, g, b }` (0-255, clamped + rounded on pack) for the RGB model. Also `colorToHsl` / `hslToColor` — packed number ↔ `{ h, s, l }` (h 0-360, s/l 0-100) for the HSL model; exact sRGB HSL ⇄ RGB, hue wraps mod 360, s/l clamp, achromatic colors report `h = 0`. Also `colorToOklch` / `oklchToColor` — packed number ↔ `{ l, c, h }` (l 0-100, c 0-`OKLCH_MAX_CHROMA` (0.4), h 0-360) for the OKLCH model (#502); conversion is OKLCH ↔ OKLab ↔ linear sRGB ↔ sRGB per CSS Color 4 / Bjorn Ottosson. `oklchToColor` is gamut-clamped (linear channels clamped to [0,1], then to sRGB 0-255), `l` clamps, `c` floors at 0, `h` wraps mod 360, achromatic colors report `h = 0`. `oklchInSrgb(oklch)` — whether the color is inside the sRGB gamut. `oklchMaxChroma(l, h)` — largest in-gamut chroma for an L/H pair (bisection), used to mark the C slider's out-of-gamut region. `oklchToSrgbSample(oklch)` — gamut-clamped sRGB bytes for one OKLCH triple, feeds the 2D area's per-pixel paint. |
 | `RgbModelEditor.tsx` (`components/RgbModelEditor.tsx`) | The RGB editing model (#500): three channel sliders (0-255) with per-channel gradient tracks + paired numeric inputs. Reads the working color, calls `onChange` with the new packed color on every edit. |
@@ -173,6 +175,119 @@ channels after a clamp. On an outside `color` change (shared hex field, model sw
 commits call `markSelfEdit`. Conversion is OKLCH ↔ OKLab ↔ linear sRGB ↔ sRGB per the CSS
 Color 4 / Bjorn Ottosson definitions.
 
+## Project colors block (#503)
+
+The last section in `ColorPickerPanel`'s content, below the active model editor. A collapsible
+section (`SectionHeader`, same as the export panels), **collapsed by default**, titled
+"Project colors (N)" / "Цвета проекта (N)" where N is the total row count.
+
+Rows come from two sources, shown as two groups split by a divider:
+
+- **Top group** — an optional **"Default" row** followed by the call site's `priorityColors`.
+  - The "Default" row (label from `color_picker.project_colors_default`, generic — no field name)
+    is this field's factory default, threaded as `ColorRow` → `ColorSwatch` → `ColorPickerPanel`'s
+    `defaultColor?: number` (subsections pass `defaultColors` / `*Default` props). Read from
+    `DEFAULT_VECTOR_BY_WALLS_SETTINGS` / `DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS`. Always first,
+    always unique (its generic name never collides with a profile row's `Section: Role` name, so
+    it survives de-dup even when its color equals a profile row's). Omitted when the field has no
+    meaningful default (`defaultColor` unset).
+  - Then `priorityColors` (threaded as `priorityColors?: ProjectColorEntry[]`), in the given
+    order — the sibling colors that matter for *that* color decision (e.g. the other marker's
+    fill/border, the floor or corridor color). May be empty.
+- **Bottom group** — the color fields of the currently active export profile
+  (`selectActiveProfileColors`), i.e. the profile the picker was opened from.
+
+**Inactive fields are absent, not greyed.** `selectActiveProfileColors` computes a
+`SectionVisibility` (`sectionVisibility(state, settings)` in `projectColorsSelector.ts`) that
+mirrors the settings panels' `has*` predicates from the *unscoped* `state.nodes/edges/floors`
+(so a floor switch never changes the set). A field whose section is hidden in the settings panel
+is dropped entirely: grid color when `showGrid` off; `Ячейки: Стена` when
+`randomWallColorMode !== "off"`; one-way indicator color with no directional edge; every teleport
+color when no `teleport` edge; connector color when `teleportConnectorStyle === "none"`; the
+floor-badge fill/border/text colors when no cross-floor teleport; per-group teleport
+fill/border overrides when `teleportGroupCustomization` off; vertical-section colors per
+two-way/one-way/elevator presence; the whole marker-index section when the layer is off;
+`Индексы маркеров: рамка` when `borderColorFromMarker` is on.
+
+**Priority list is filtered to the active set too.** `ColorPickerPanel` drops any `priorityColors`
+entry whose `name` is not in the bottom group's active-name set — one filter covers all call
+sites, so a call site may pass a sibling color that turns out inactive without leaking it.
+
+**Progressive disclosure.** Initially only the top group shows, plus a `Показать все` /
+`Show all` secondary button (standard `Button` style, like Analytics' "Подробный отчёт"). Click
+reveals the divider + bottom group + a `Скрыть не связанные цвета` / `Hide unrelated colors`
+button at the end that collapses it again. Button absent when the bottom group is empty.
+
+**Entry names.** Every row name is `Section: Role` (or `Section: Sub-section: Role`) — the word
+"color" is left out, since every row is a color. Both sides are built from one registry in
+`projectColorsSelector.ts`:
+
+```ts
+export const PC = { bgFill, bgGrid, corridorFill, tilesFloor, tilesWall, startFill, startBorder,
+  teleportEdge, elevatorBadgeText, markerIndexFill, /* … ~40 keys … */ splitNode(i) };
+// each field:  PC.<key>.name(): string            -> localized "Section: Role"
+//              PC.<key>.at(color): ProjectColorEntry
+```
+
+Section/role labels are `color_picker.entry.section.*` / `color_picker.entry.role.*` messages
+(e.g. `Фон` / `Заливка`). The one section label that is *not* an `entry.section.*` key is
+`splits`, which reuses the settings panel's own `image_export.vector_by_walls.section_splits`
+("Разделения" / "Splits") so the color name can't drift from the panel heading.
+`selectActiveProfileColors` builds every
+bottom-group row via `PC`; each call site builds its `priorityColors` entries (`PC.<key>.at(v)`)
+and its `fieldName` (`PC.<key>.name()`) from the same registry, so a call site never hand-assembles
+a `Section: Role` string and the names always match — between-group de-dup works. The dynamic
+split-node slots are `PC.splitNode(i)` (0-based). A per-teleport-group override color is
+`PC.teleportGroup(index, role)` — the group's internal `key` (an unstable coordinate-pair string)
+isn't a human-facing name, so the row is named by the group's 1-based *display* order instead
+(`Телепорты: Группа 1 заливка` / `… рамка`) — the selector sorts `teleportGroupOverrides`' keys by
+the same `key.localeCompare` `buildTeleportGroups` uses for the settings panel's own group list, so
+a color's "Группа N" always matches the row numbered N there. GitHub issue #503 follow-up.
+
+De-duplication is **only between groups**: a bottom row whose exact `name` + `color` pair already
+appears in the top group is dropped. Never dedup by color value alone. Divider shown only when
+both groups are non-empty and the bottom group is expanded.
+
+Clicking (or Enter / Space on) any row sets the working color — `setWorking` + hex-input sync +
+`preview` — it does **not** commit (Apply still commits, per #499/#513). Rows are lightweight
+`role="button"` divs (`ProjectColorRow`), not nested `ColorSwatch` (which would open another
+picker); the `.project-color-row` class (`global.css`) gives them a pointer cursor, a hover
+background and a focus-visible outline, since inline styles can't express `:hover`.
+
+The panel's preview block is `flex-shrink: 0`, so expanding the list scrolls the panel content
+(the `content` div is `overflow-y: auto`) rather than compressing the preview.
+
+**Edited field awareness.** The panel knows the name of the field it was opened for
+(`fieldName?: string`, threaded `ColorRow` → `ColorSwatch` → `ColorPickerPanel`, defaulting to the
+row's `label`). It is used two ways:
+
+- **Header** — the picker title is the `fieldName` verbatim (e.g. "Фон: Заливка") when set, else
+  the plain `color_picker.title`.
+- **Self-row exclusion** — a project-color row that *is* the edited field is dropped from both
+  groups, so the field can't list its own current value. Match is exact `name === fieldName` **or**
+  a `` `: ${fieldName}` `` suffix. Every call site passes a `fieldName` built from `PC.<key>.name()`
+  (the same `Section: Role` string the selector produces), so the match is normally exact; the
+  suffix arm covers the rows whose `ColorRow` `label` differs from the list name. Self-exclusion
+  runs before the "Default" row is prepended and before between-group de-dup.
+
+If the active profile has no color fields (`openRenderModeSettings` null, or an empty list) and
+`priorityColors` is empty, the section is omitted.
+
+`ColorPickerPanel` selects the raw store inputs (`openRenderModeSettings`,
+`vectorByWallsSettings`, `vectorByCorridorsSettings`, `nodes`, `edges`, `floors`) individually and
+rebuilds the list in a `useMemo` — `selectActiveProfileColors` allocates fresh objects each call,
+so subscribing to it directly would break `useSyncExternalStore`'s identity check (infinite render
+loop).
+
+**Call sites** pass their own priority lists: `VectorByWallsSettingsPanel`,
+`VectorByCorridorsSettingsPanel`, and the shared subsection components
+(`TeleportSettingsSection`, `MarkerSettingsGroup`, `MarkerIndexSection`,
+`ElevatorBadgesSubsection`, `DecorativeLineStyleGroup`) — each takes typed priority props, factory
+defaults, and per-row `*FieldName` strings for its `ColorRow`s. The compact per-teleport-group
+override swatches (`ColorSwatch` in `TeleportGroupRow`) are not wired. Guiding rule for the lists: `floorColor` (walls mode) / `color` (corridors mode) is
+the near-universal neighbor; `background` only where geometry actually touches it (outer walls in
+walls mode; corridor stroke + one-ways in corridors mode); `wallColor` where a marker abuts a wall.
+
 ## Shared row primitive
 
 `TextFieldRow` (`components/TextFieldRow.tsx`) is a labeled single-line text input row, mirroring
@@ -184,5 +299,4 @@ free-text param.
 ## Not yet implemented (later #498 sub-issues)
 
 Further color models, palette generation,
-contrast / distinguishability / color-blindness checks, presets and history, awareness of colors
-already assigned elsewhere in the maze.
+contrast / distinguishability / color-blindness checks, presets and history.

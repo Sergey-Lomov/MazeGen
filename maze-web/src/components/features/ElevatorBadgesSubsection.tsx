@@ -1,5 +1,6 @@
 import type * as React from "react";
 import type { ElevatorBadgeSettings, VectorByWallsSharedStyleOverrides } from "../../store/storeTypes";
+import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { spacing, typography } from "../../styles/theme";
 import { ToggleRow } from "../ToggleRow";
 import { ColorRow } from "../ColorRow";
@@ -17,12 +18,22 @@ import * as m from "~/paraglide/messages";
  *  (GitHub issue #430 follow-up — same `elevatorBadges` group key as `elevatorMarker.cornerStyle`'s
  *  own `elevator` key), so it needs the override map + its own change handler instead of going
  *  through the plain `onChange` patch used by every other field here. */
-export function ElevatorBadgesSubsection({ settings, sharedStyleOverrides, onChange, onCornerStyleChange, onResetCornerStyle }: {
+export function ElevatorBadgesSubsection({ settings, sharedStyleOverrides, onChange, onCornerStyleChange, onResetCornerStyle, fillColorPriority, textColorPriority, fillColorDefault, textColorDefault, fillColorFieldName, textColorFieldName }: {
   settings: ElevatorBadgeSettings;
   sharedStyleOverrides: VectorByWallsSharedStyleOverrides;
   onChange: (patch: Partial<ElevatorBadgeSettings>) => void;
   onCornerStyleChange: (style: ElevatorBadgeSettings["cornerStyle"]) => void;
   onResetCornerStyle: () => void;
+  /** "Priority" project colors (GitHub issue #503) for the badge fill / text color rows. */
+  fillColorPriority?: ProjectColorEntry[];
+  textColorPriority?: ProjectColorEntry[];
+  /** Factory defaults (GitHub issue #503) — pinned as each row's first "Default" project color. */
+  fillColorDefault?: number;
+  textColorDefault?: number;
+  /** Composite field names (GitHub issue #503) — the rows carry the generic "Fill color" /
+   *  "Text color" labels, so an explicit name isolates the row in the "Project colors" list. */
+  fillColorFieldName?: string;
+  textColorFieldName?: string;
 }) {
   return (
     <div style={styles.wrap}>
@@ -128,11 +139,17 @@ export function ElevatorBadgesSubsection({ settings, sharedStyleOverrides, onCha
               label={m["image_export.vector_by_walls.elevator_badges_fill_color"]()}
               color={settings.fillColor}
               onChange={(fillColor) => onChange({ fillColor })}
+              priorityColors={fillColorPriority}
+              defaultColor={fillColorDefault}
+              fieldName={fillColorFieldName}
             />
             <ColorRow
               label={m["image_export.vector_by_walls.elevator_badges_text_color"]()}
               color={settings.textColor}
               onChange={(textColor) => onChange({ textColor })}
+              priorityColors={textColorPriority}
+              defaultColor={textColorDefault}
+              fieldName={textColorFieldName}
             />
           </>
         )}

@@ -44,7 +44,8 @@ export const DEFAULT_MAZE_RENDER_STYLE: MazeRenderStyle = {
     // 3px border (the shared `borderWidth` above). `textPadding: 3.4` makes the shared-font fit
     // land on `2 * (r + borderWidth) - 2 * 3.4 = 12` px for a single-digit label at the default
     // radius — the exact `Math.max(r * 1.6, 12)` value the old per-badge sizing produced.
-    floorBadge: { shape: "circle", labelType: "arabic", size: 0.16, textColor: canvas.floor.default, textPadding: 3.4 },
+    // `fillColor`/`borderColor` default to the connector color, matching the pre-#503 locked look.
+    floorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: canvas.teleport.default, borderColor: canvas.teleport.default, textColor: canvas.floor.default, textPadding: 3.4 },
   },
   verticalConnections: {
     style: "abstract",

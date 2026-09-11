@@ -134,6 +134,8 @@ export function validateTeleportFloorBadgeSettings(v: unknown, path: string, fal
     shape: optMarkerShape(obj, "shape", fallback.shape),
     labelType: optElevatorBadgeLabelType(obj, "labelType", fallback.labelType),
     size: optNumber(obj, "size", fallback.size),
+    fillColor: optNumber(obj, "fillColor", fallback.fillColor),
+    borderColor: optNumber(obj, "borderColor", fallback.borderColor),
     textColor: optNumber(obj, "textColor", fallback.textColor),
     textPadding: optNumber(obj, "textPadding", fallback.textPadding),
   };

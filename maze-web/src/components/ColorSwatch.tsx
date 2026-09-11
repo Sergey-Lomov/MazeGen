@@ -1,12 +1,22 @@
 import React, { useState } from "react";
 import { ui, controlRowHeight } from "../styles/theme";
 import { ColorPickerPanel } from "./ColorPickerPanel";
+import type { ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
 import { colorToHex } from "./colorFormat";
 
 interface Props {
   color: number;
   onChange: (color: number) => void;
   disabled?: boolean;
+  /** "Priority" project colors (GitHub issue #503) for this decision — forwarded to
+   *  `ColorPickerPanel`'s "Project colors" section as the pinned top group. */
+  priorityColors?: ProjectColorEntry[];
+  /** This field's factory default (GitHub issue #503) — forwarded to `ColorPickerPanel`, which
+   *  pins it as the first, always-unique row of the "Project colors" priority group. */
+  defaultColor?: number;
+  /** This field's own name (GitHub issue #503) — forwarded to `ColorPickerPanel` for its header
+   *  and to drop the field's own row from the "Project colors" list. */
+  fieldName?: string;
   /** Live-preview handler for the open picker (GitHub issue #513) — called with the working color
    *  on every change, and once with the original color on Cancel / Escape / close. Defaults to
    *  `onChange`, which is right when `onChange` only updates a render; a call site whose `onChange`
@@ -30,7 +40,7 @@ interface Props {
  *  (GitHub issue #322). Commit timing depends on `onPreview`: with a distinct `onPreview` channel
  *  the single `onChange` commit fires on Apply; with the default (`onPreview` = `onChange`) the
  *  live stream is the commit and Apply just closes. Cancel / Escape restore the open-time color. */
-export function ColorSwatch({ color, onChange, disabled, onPreview }: Props) {
+export function ColorSwatch({ color, onChange, disabled, onPreview, priorityColors, defaultColor, fieldName }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
@@ -53,6 +63,9 @@ export function ColorSwatch({ color, onChange, disabled, onPreview }: Props) {
           onApply={(next) => { if (onPreview) onChange(next); setPickerOpen(false); }}
           onClose={() => setPickerOpen(false)}
           onPreview={onPreview ?? onChange}
+          priorityColors={priorityColors}
+          defaultColor={defaultColor}
+          fieldName={fieldName}
         />
       )}
     </>

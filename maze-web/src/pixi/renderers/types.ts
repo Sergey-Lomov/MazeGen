@@ -382,12 +382,13 @@ export type TeleportLineStyle = {
   floorColor: number;
   /** Cross-floor floor-number badge appearance (GitHub issue #485) — a badge point
    *  (`TeleportEdge.toFloor`/`fromFloor`) draws with this `shape`/`labelType`/`size` instead of the
-   *  hardcoded circle + Arabic digit it used before. The badge fill/border colour still follows the
-   *  connector colour (`edgeColor`/`edgeBorderColor` / a group override), not settable here.
-   *  `textColor` colours the label independently of `floorColor`; `textPadding` (px) only feeds the
+   *  hardcoded circle + Arabic digit it used before. `fillColor`/`borderColor` are the badge body's
+   *  own colours (GitHub issue #503 follow-up — previously locked to the connector colour); a group
+   *  override does not affect them. `textColor` colours the label independently of `floorColor`;
+   *  `textPadding` (px) only feeds the
    *  shared label-font fit — see `TeleportFloorBadgeSettings`. The badge's border width follows the
    *  edge marker's own `borderWidth` above, not a fixed constant. */
-  floorBadge: { shape: MarkerShape; labelType: IndexLabelStyle; size: number; textColor: number; textPadding: number };
+  floorBadge: { shape: MarkerShape; labelType: IndexLabelStyle; size: number; fillColor: number; borderColor: number; textColor: number; textPadding: number };
 };
 
 /** "Group customization" (GitHub issue #293 follow-up, replacing the old standalone `"grouped"`
@@ -397,10 +398,12 @@ export type TeleportLineStyle = {
  *  `buildTeleportGroups`), each group's own key (sorted, joined edge keys of its members) indexing
  *  into `VectorByWallsSettings.teleportGroupOverrides` so the override survives group-list
  *  reordering across renders. `fillColor`/`shape` each fall back to the base `TeleportLineStyle`'s
- *  `edgeColor`/`shape` when unset; `borderColor` (fallback: `edgeBorderColor`) drives *both* the
- *  marker's own border and, if this group's points have a connector running through them, that
- *  connector's color too — one swatch, not two, since a mismatched border/connector color on the
- *  same group reads as a mistake rather than a deliberate choice. */
+ *  `edgeColor`/`shape` when unset; `borderColor` (fallback: `edgeBorderColor`) drives the marker's
+ *  own border, this group's connector color (if a connector runs through its points), and — since
+ *  the #503 follow-up — this group's own cross-floor badge fill *and* border alike, in place of the
+ *  base style's `floorBadge.fillColor`/`borderColor`. One swatch, not several, since a mismatched
+ *  border/connector/badge color on the same group reads as a mistake rather than a deliberate
+ *  choice. */
 export type TeleportGroupOverride = { fillColor?: number; borderColor?: number; shape?: MarkerShape };
 
 export type LockEntry = { x: number; y: number; type: "in" | "out" | "both" };
