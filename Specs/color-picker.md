@@ -3,8 +3,8 @@
 Custom color-selection UI that replaces the browser-native `<input type="color">` for every color
 parameter in the editor. Tracked as epic (GitHub issue #498). This spec covers the **shell**
 (sub-issue #499), the **model switcher and RGB model** (sub-issue #500), the **HSL model**
-(sub-issue #501), the **OKLCH model** (sub-issue #502), **live canvas preview** (issue #513), and the
-**project-colors block** (sub-issue #503),
+(sub-issue #501), the **OKLCH model** (sub-issue #502), **live canvas preview** (issue #513), the
+**project-colors block** (sub-issue #503), and the **color-harmony block** (sub-issue #504),
 and is extended as later sub-issues land (more color models, palette tools, practicality checks,
 presets/history).
 
@@ -287,6 +287,55 @@ defaults, and per-row `*FieldName` strings for its `ColorRow`s. The compact per-
 override swatches (`ColorSwatch` in `TeleportGroupRow`) are not wired. Guiding rule for the lists: `floorColor` (walls mode) / `color` (corridors mode) is
 the near-universal neighbor; `background` only where geometry actually touches it (outer walls in
 walls mode; corridor stroke + one-ways in corridors mode); `wallColor` where a marker abuts a wall.
+
+## Color-harmony block (#504)
+
+`HarmonySection` (`components/HarmonySection.tsx`) sits below the active model editor in
+`ColorPickerPanel`, separated from it by the same divider style as the project-colors groups. A
+collapsible section (`SectionHeader`, collapsed by default), titled "Harmony" / "Гармония".
+
+**Base color.** The section keeps its own base color, seeded from the color the panel opened with
+(`seedColor`) and otherwise independent of the working color — editing the type selector or any
+slider never touches it. A **"Rebuild from current color"** button (bottom of the section, same
+`Button variant="secondary"` full-width style as project-colors' "Show all") sets the base to the
+picker's current working color and rebuilds every swatch from it.
+
+**Type selector.** A `SelectRow` picks the harmony type, in this order: Complementary,
+Split-complementary, Triadic, Tetradic, Analogous, Monochromatic. All types derive swatches from
+the base color's OKLCH triple:
+
+- **Complementary / Split-complementary / Triadic / Tetradic** — fixed hue offsets from the base
+  (180°; 150°/210°; 120°/240°; 90°/180°/270°), lightness and chroma otherwise unchanged. Rendered
+  as a single row, base color first, `data-testid="color-picker-harmony-swatches"`.
+- **Analogous** — two independent rows, labeled "Hue +" / "Hue -", each with its own `count`
+  (1-10) and shared `spread` (1-60°) slider. Row *N* holds `count` swatches at
+  `spread, 2*spread, … count*spread` degrees off the base hue, on that row's side; the base itself
+  is not a swatch in either row. An auto-fit button (`Maximize2` icon, in the spread slider's
+  `resetButton` slot) sets `spread = min(60, 180 / count)` — the largest spread that still fits
+  `count` steps within 180° from the base, capped at the slider's own max so its displayed value
+  can never exceed what the thumb can show.
+- **Monochromatic** — same two-row shape as Analogous, but on the lightness axis: rows labeled
+  "L +" / "L -", each with its own `count` (1-10) and shared `step` (0-50) slider, hue and chroma
+  otherwise unchanged. Row *N* holds `count` swatches at `step, 2*step, … count*step` lightness
+  units off the base, clamped to the valid 0-100 range (lightness doesn't wrap the way hue does).
+  Has no auto-fit control — the user picks the step directly.
+
+**Gamut safety.** Rotating hue or shifting lightness can push the base's chroma out of the sRGB
+gamut at the new `(l, h)`; `oklchToColor`'s per-channel clamp would then shift the *hue* as a side
+effect instead of just desaturating. Every derived swatch instead goes through a gamut-safe helper
+that scales the base chroma down by the ratio of the sRGB gamut's chroma ceiling
+(`oklchMaxChroma`) at the swatch's `(l, h)` to the ceiling at the base's own `(l, h)` — fading
+chroma out gradually as a swatch approaches the gamut edge, rather than an abrupt cut right at the
+boundary, while always keeping hue exact.
+
+**Persistence.** The picked type and each type's own tuning (Analogous' count/spread, Monochromatic's
+count/step) are kept in a module-level object outside the component, so they survive the section
+remounting on every picker open/close — switching type and back restores that type's last-used
+values. Not backed by `localStorage`; lives only for the page's lifetime, shared across every
+field's picker (a single global "last used harmony setup", not per-field).
+
+Clicking any swatch sets the picker's working color only (same path as a project-color row) — it
+never commits and never rebuilds the row(s).
 
 ## Shared row primitive
 

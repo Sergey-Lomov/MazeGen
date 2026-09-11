@@ -8,6 +8,7 @@ import { HEX_COLOR_RE, colorToHex, hexToColor } from "./colorFormat";
 import { RgbModelEditor } from "./RgbModelEditor";
 import { HslModelEditor } from "./HslModelEditor";
 import { OklchModelEditor } from "./OklchModelEditor";
+import { HarmonySection } from "./HarmonySection";
 import { useMazeStore } from "../store/mazeStore";
 import { selectActiveProfileColors, type ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
 import type { MazeState } from "../store/storeTypes";
@@ -223,6 +224,8 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
           {model === "rgb" && <RgbModelEditor color={working} onChange={setWorkingColor} />}
           {model === "hsl" && <HslModelEditor color={working} onChange={setWorkingColor} />}
           {model === "oklch" && <OklchModelEditor color={working} onChange={setWorkingColor} />}
+          <div style={styles.projectColorsDivider} />
+          <HarmonySection seedColor={originalColor} workingColor={working} onPick={pickProjectColor} />
           {projectColorGroups.total > 0 && (
             <div style={styles.projectColors}>
               <SectionHeader

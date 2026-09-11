@@ -12,6 +12,8 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); });
 
+const hexToColorNum = (hex: string) => parseInt(hex.replace("#", ""), 16);
+
 const hexLabel = () => m["color_picker.hex_label"]();
 const applyLabel = () => m["common.apply"]();
 const cancelLabel = () => m["common.cancel"]();
@@ -630,6 +632,210 @@ describe("ColorSwatch", () => {
   // for the same reason as HSL: jsdom's synthetic PointerEvent has no clientX/clientY or layout.
   // The 2D area's per-pixel canvas paint (`paintLcPlane`) also no-ops under jsdom (no 2d context);
   // covered by the keyboard-nudge tests above and by manual / visual checks.
+  function expandHarmony() {
+    fireEvent.click(screen.getByText(m["color_picker.harmony"]()));
+  }
+
+  it("the Harmony section is collapsed by default and expands on click", () => {
+    render(<ColorSwatch color={0x336699} onChange={() => {}} />);
+    openPicker();
+    expect(screen.queryByTestId("color-picker-harmony-swatches")).toBeNull();
+    expandHarmony();
+    expect(screen.getByTestId("color-picker-harmony-swatches")).toBeTruthy();
+  });
+
+  it("Harmony defaults to Complementary: base + one derived swatch (hue +180)", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />); // pure red, H=0
+    openPicker();
+    expandHarmony();
+    const swatches = screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button");
+    expect(swatches.length).toBe(2);
+    expect((swatches[0] as HTMLButtonElement).style.background).toContain("rgb(255, 0, 0)");
+    // Complementary of pure red (H=0) is H=180 -> cyan-ish.
+    expect((swatches[1] as HTMLButtonElement).title).not.toBe("#ff0000");
+  });
+
+  it("clicking a Harmony swatch sets the working color but does not rebuild the row", () => {
+    const onChange = vi.fn();
+    render(<ColorSwatch color={0xff0000} onChange={onChange} onPreview={() => {}} />);
+    openPicker();
+    expandHarmony();
+    const swatches = screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button");
+    const derivedHex = (swatches[1] as HTMLButtonElement).title;
+    fireEvent.click(swatches[1]);
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe(derivedHex);
+    // Row unchanged — still base (red) + same derived swatch.
+    const after = screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button");
+    expect((after[0] as HTMLButtonElement).title).toBe("#ff0000");
+    expect((after[1] as HTMLButtonElement).title).toBe(derivedHex);
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onChange).toHaveBeenCalledWith(hexToColorNum(derivedHex));
+  });
+
+  it("editing sliders/hex does not rebuild the Harmony row", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    const before = Array.from(screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button"))
+      .map((b) => (b as HTMLButtonElement).title);
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#00ff00" } });
+    const after = Array.from(screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button"))
+      .map((b) => (b as HTMLButtonElement).title);
+    expect(after).toEqual(before);
+  });
+
+  it("'Rebuild from current color' rebuilds the row from the current working color", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#00ff00" } });
+    fireEvent.click(screen.getByText(m["color_picker.harmony.rebuild_from_current"]()));
+    const swatches = screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button");
+    expect((swatches[0] as HTMLButtonElement).title).toBe("#00ff00");
+  });
+
+  it("Analogous shows count/spread controls and renders two rows (HUE+/HUE-) of `count` swatches each, base excluded", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "analogous" },
+    });
+    expect(screen.getByText(m["color_picker.harmony.analogous_count"]())).toBeTruthy();
+    expect(screen.getByText(m["color_picker.harmony.analogous_spread"]())).toBeTruthy();
+    expect(screen.getByText(m["color_picker.harmony.hue_plus"]())).toBeTruthy();
+    expect(screen.getByText(m["color_picker.harmony.hue_minus"]())).toBeTruthy();
+    // default count = 6 -> 6 swatches per row, 12 total, none of them the base color.
+    const swatches = Array.from(
+      screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button"),
+    ) as HTMLButtonElement[];
+    expect(swatches.length).toBe(12);
+    expect(swatches.some((b) => b.title === "#ff0000")).toBe(false);
+  });
+
+  it("Triadic / Tetradic have fixed derived counts (no count/spread controls)", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "triadic" },
+    });
+    expect(screen.queryByText(m["color_picker.harmony.analogous_count"]())).toBeNull();
+    expect(screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button").length).toBe(3);
+
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "tetradic" },
+    });
+    expect(screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button").length).toBe(4);
+  });
+
+  it("Analogous auto-fit spread button sets spread = 180 / count", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "analogous" } });
+    const [countSlider, spreadSlider] = Array.from(
+      screen.getByTestId("color-picker-harmony-swatches").parentElement!.querySelectorAll('input[type="range"]'),
+    ) as HTMLInputElement[];
+    fireEvent.change(countSlider, { target: { value: "6" } });
+    fireEvent.click(screen.getByTitle(m["color_picker.harmony.analogous_auto_spread"]()));
+    expect(spreadSlider.value).toBe("30"); // 180 / 6
+  });
+
+  it("Analogous auto-fit spread caps at the spread slider's own max for a low count", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "analogous" } });
+    const [countSlider, spreadSlider] = Array.from(
+      screen.getByTestId("color-picker-harmony-swatches").parentElement!.querySelectorAll('input[type="range"]'),
+    ) as HTMLInputElement[];
+    // 180 / 1 = 180, which would exceed the spread slider's max=60 if uncapped.
+    fireEvent.change(countSlider, { target: { value: "1" } });
+    fireEvent.click(screen.getByTitle(m["color_picker.harmony.analogous_auto_spread"]()));
+    expect(spreadSlider.value).toBe("60");
+    expect(Number(spreadSlider.max)).toBe(60);
+  });
+
+  function analogousSliders() {
+    const harmonySwatches = screen.getByTestId("color-picker-harmony-swatches");
+    const body = harmonySwatches.parentElement as HTMLElement;
+    return Array.from(body.querySelectorAll('input[type="range"]')) as HTMLInputElement[];
+  }
+
+  it("harmony type and analogous count/spread persist across picker close/reopen", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "analogous" } });
+    const [countSlider, spreadSlider] = analogousSliders();
+    fireEvent.change(countSlider, { target: { value: "5" } });
+    fireEvent.change(spreadSlider, { target: { value: "45" } });
+    // Switch away then back — the picker's own settings must survive the type switch too.
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "triadic" } });
+    fireEvent.click(screen.getByText(cancelLabel()));
+
+    openPicker();
+    expandHarmony();
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("triadic");
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "analogous" } });
+    const [countAfter, spreadAfter] = analogousSliders();
+    expect(countAfter.value).toBe("5");
+    expect(spreadAfter.value).toBe("45");
+  });
+
+  it("Monochromatic shows count/step controls and renders two rows (L+/L-) of `count` swatches each, base excluded", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "monochromatic" } });
+    expect(screen.getByText(m["color_picker.harmony.monochromatic_count"]())).toBeTruthy();
+    expect(screen.getByText(m["color_picker.harmony.monochromatic_step"]())).toBeTruthy();
+    expect(screen.getByText(m["color_picker.harmony.lightness_plus"]())).toBeTruthy();
+    expect(screen.getByText(m["color_picker.harmony.lightness_minus"]())).toBeTruthy();
+    // default count = 3 -> 3 swatches per row, 6 total, none of them the base color.
+    const swatches = Array.from(
+      screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button"),
+    ) as HTMLButtonElement[];
+    expect(swatches.length).toBe(6);
+    expect(swatches.some((b) => b.title === "#ff0000")).toBe(false);
+  });
+
+  it("Monochromatic count/step persists across close/reopen independently of analogous", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "monochromatic" } });
+    const [monoCountSlider, monoStepSlider] = analogousSliders();
+    fireEvent.change(monoCountSlider, { target: { value: "6" } });
+    fireEvent.change(monoStepSlider, { target: { value: "20" } });
+    fireEvent.click(screen.getByText(cancelLabel()));
+
+    openPicker();
+    expandHarmony();
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("monochromatic");
+    const [monoCountAfter, monoStepAfter] = analogousSliders();
+    expect(monoCountAfter.value).toBe("6");
+    expect(monoStepAfter.value).toBe("20");
+    expect(screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button").length).toBe(12);
+  });
+
+  it("Monochromatic clamps lightness to the 0-100 range for extreme base colors", () => {
+    render(<ColorSwatch color={0xffffff} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "monochromatic" } });
+    const [monoCountSlider, monoStepSlider] = analogousSliders();
+    fireEvent.change(monoCountSlider, { target: { value: "10" } });
+    fireEvent.change(monoStepSlider, { target: { value: "50" } });
+    const swatches = Array.from(
+      screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button"),
+    ) as HTMLButtonElement[];
+    expect(swatches.length).toBe(20);
+    for (const swatch of swatches) {
+      expect(swatch.title).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
 });
 
 // Live-preview rAF throttle (#513) — real (unstubbed) requestAnimationFrame, driven manually.
