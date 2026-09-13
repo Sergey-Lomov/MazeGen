@@ -4,9 +4,9 @@ Custom color-selection UI that replaces the browser-native `<input type="color">
 parameter in the editor. Tracked as epic (GitHub issue #498). This spec covers the **shell**
 (sub-issue #499), the **model switcher and RGB model** (sub-issue #500), the **HSL model**
 (sub-issue #501), the **OKLCH model** (sub-issue #502), **live canvas preview** (issue #513), the
-**project-colors block** (sub-issue #503), and the **color-harmony block** (sub-issue #504),
-and is extended as later sub-issues land (more color models, palette tools, practicality checks,
-presets/history).
+**project-colors block** (sub-issue #503), and the **Tools block** (sub-issues #504 and #505,
+merged into one section — see "Tools block" below), and is extended as later sub-issues land
+(more color models, practicality checks, presets/history).
 
 ## Components
 
@@ -288,51 +288,71 @@ override swatches (`ColorSwatch` in `TeleportGroupRow`) are not wired. Guiding r
 the near-universal neighbor; `background` only where geometry actually touches it (outer walls in
 walls mode; corridor stroke + one-ways in corridors mode); `wallColor` where a marker abuts a wall.
 
-## Color-harmony block (#504)
+## Tools block (#504, #505)
 
-`HarmonySection` (`components/HarmonySection.tsx`) sits below the active model editor in
+`ToolsSection` (`components/ToolsSection.tsx`) sits below the active model editor in
 `ColorPickerPanel`, separated from it by the same divider style as the project-colors groups. A
-collapsible section (`SectionHeader`, collapsed by default), titled "Harmony" / "Гармония".
+collapsible section (`SectionHeader`, collapsed by default), titled "Tools" / "Инструменты".
+Originally two separate sections — "Harmony" (#504) and "Tonal ramp" (#505) — merged into one
+"Tools" section with a single type dropdown, then generalized (see "Type selector" below) so the
+old Analogous/Monochromatic/Tonal-ramp special cases collapse into two universal, scale-driven
+tools.
 
 **Base color.** The section keeps its own base color, seeded from the color the panel opened with
 (`seedColor`) and otherwise independent of the working color — editing the type selector or any
-slider never touches it. A **"Rebuild from current color"** button (bottom of the section, same
-`Button variant="secondary"` full-width style as project-colors' "Show all") sets the base to the
-picker's current working color and rebuilds every swatch from it.
+slider never touches it. **Expanding the section** re-seeds the base from the picker's *current*
+working color (not the stale open-time `seedColor`), so reopening a section that was left expanded
+from a prior tweak still starts from what's on screen. A **"Rebuild from current color"** button
+(bottom of the section, same `Button variant="secondary"` full-width style as project-colors' "Show
+all") does the same thing on demand, for any tool type — editing sliders / hex never rebuilds.
 
-**Type selector.** A `SelectRow` picks the harmony type, in this order: Complementary,
-Split-complementary, Triadic, Tetradic, Analogous, Monochromatic. All types derive swatches from
-the base color's OKLCH triple:
+**Type selector.** A `SelectRow` (label "Type" / "Тип") picks the tool type, in this order:
+Divergence, Range split, Complementary, Split-complementary, Triadic, Tetradic. Every type derives
+swatches from the base color's OKLCH triple (`colorToOklch`):
 
-- **Complementary / Split-complementary / Triadic / Tetradic** — fixed hue offsets from the base
-  (180°; 150°/210°; 120°/240°; 90°/180°/270°), lightness and chroma otherwise unchanged. Rendered
-  as a single row, base color first, `data-testid="color-picker-harmony-swatches"`.
-- **Analogous** — two independent rows, labeled "Hue +" / "Hue -", each with its own `count`
-  (1-10) and shared `spread` (1-60°) slider. Row *N* holds `count` swatches at
-  `spread, 2*spread, … count*spread` degrees off the base hue, on that row's side; the base itself
-  is not a swatch in either row. An auto-fit button (`Maximize2` icon, in the spread slider's
-  `resetButton` slot) sets `spread = min(60, 180 / count)` — the largest spread that still fits
-  `count` steps within 180° from the base, capped at the slider's own max so its displayed value
-  can never exceed what the thumb can show.
-- **Monochromatic** — same two-row shape as Analogous, but on the lightness axis: rows labeled
-  "L +" / "L -", each with its own `count` (1-10) and shared `step` (0-50) slider, hue and chroma
-  otherwise unchanged. Row *N* holds `count` swatches at `step, 2*step, … count*step` lightness
-  units off the base, clamped to the valid 0-100 range (lightness doesn't wrap the way hue does).
-  Has no auto-fit control — the user picks the step directly.
+- **Complementary / Split-complementary / Triadic / Tetradic** — the classic fixed-offset
+  color-wheel rules: fixed hue offsets from the base (180°; 150°/210°; 120°/240°; 90°/180°/270°),
+  lightness and chroma otherwise unchanged (`fixedOffsets`). Rendered as a single row, base color
+  first, `data-testid="color-picker-tools-swatches"`.
+- **Divergence** ("Divergence (OKLCH)" / "Расхождение (OKLCH)") — generalizes the old Analogous
+  (Hue) and Monochromatic (Lightness) tools, adding Chroma as a third case. A `SelectRow` picks the
+  **scale** (Hue / Lightness / Chroma — `color_picker.tools.scale.*`), the other two OKLCH channels
+  stay fixed at the base's own values. Two independent rows, labeled "+" / "-", each with its own
+  shared `count` (1-10) and `step` slider (range and format depend on the scale: degrees for Hue,
+  0-50 for Lightness, `0..OKLCH_MAX_CHROMA/2` to 3 decimals for Chroma). Row *N* holds `count`
+  swatches at `step, 2*step, … count*step` off the base on that row's side of the chosen scale
+  (`divergenceOffsets`); the base itself is not a swatch in either row. Hue only gets an auto-fit
+  button (`Maximize2` icon, in the step slider's `resetButton` slot) that sets
+  `step = min(60, 180 / count)` — the largest step that still fits `count` steps within 180° from
+  the base, capped at the slider's own max (`autoFitHueStep`); Lightness and Chroma have no natural
+  full-span target the way Hue's 180°-opposite point does, so they have no auto-fit control.
+- **Range split** ("Range split (OKLCH)" / "Разбиение диапазона (OKLCH)") — generalizes the old
+  Tonal ramp (Lightness only). A `SelectRow` picks the **scale**; a `count` slider (3-12, default 7)
+  and, for Lightness/Chroma, **min/max sliders** (each with a `RotateCcw`-icon reset-to-auto
+  button, `color_picker.tools.reset_auto`) set the split range — defaulting to an auto range per
+  scale (`RANGE_SPLIT_AUTO_MIN`/`MAX`: L 15-95, C 0-`OKLCH_MAX_CHROMA`). Hue has no min/max
+  sliders — its range is always the full 0-360° circle starting at the base hue (wrapping), so the
+  base's own hue is implicitly one endpoint. `count` swatches are spaced evenly across
+  `[min, max]` inclusive (`rangeSteps`) — the base's own value isn't necessarily one of them.
+  Rendered as a single row, `data-testid="color-picker-range-split-swatches"`.
 
 **Gamut safety.** Rotating hue or shifting lightness can push the base's chroma out of the sRGB
 gamut at the new `(l, h)`; `oklchToColor`'s per-channel clamp would then shift the *hue* as a side
-effect instead of just desaturating. Every derived swatch instead goes through a gamut-safe helper
-that scales the base chroma down by the ratio of the sRGB gamut's chroma ceiling
-(`oklchMaxChroma`) at the swatch's `(l, h)` to the ceiling at the base's own `(l, h)` — fading
-chroma out gradually as a swatch approaches the gamut edge, rather than an abrupt cut right at the
-boundary, while always keeping hue exact.
+effect instead of just desaturating. Every Hue/Lightness-scale swatch instead goes through a
+gamut-safe helper (`gamutSafeSwatch`) that scales the base chroma down by the ratio of the sRGB
+gamut's chroma ceiling (`oklchMaxChroma`) at the swatch's `(l, h)` to the ceiling at the base's own
+`(l, h)` — fading chroma out gradually as a swatch approaches the gamut edge, rather than an abrupt
+cut right at the boundary, while always keeping hue exact. A Chroma-scale swatch bypasses this
+ratio scaling (it *is* the chroma being swept) and is instead clamped directly to
+`[0, oklchMaxChroma(baseL, baseH)]` so an explicit chroma value isn't silently rescaled
+(`swatchAt`).
 
-**Persistence.** The picked type and each type's own tuning (Analogous' count/spread, Monochromatic's
-count/step) are kept in a module-level object outside the component, so they survive the section
-remounting on every picker open/close — switching type and back restores that type's last-used
-values. Not backed by `localStorage`; lives only for the page's lifetime, shared across every
-field's picker (a single global "last used harmony setup", not per-field).
+**Persistence.** The picked type and each type's own tuning (Divergence's per-scale count/step,
+Range split's per-scale count/min/max) are kept in a module-level object outside the component, so
+they survive the section remounting on every picker open/close — switching type (or scale) and
+back restores that combination's last-used values. Not backed by `localStorage`; lives only for
+the page's lifetime, shared across every field's picker (a single global "last used tool setup",
+not per-field).
 
 Clicking any swatch sets the picker's working color only (same path as a project-color row) — it
 never commits and never rebuilds the row(s).

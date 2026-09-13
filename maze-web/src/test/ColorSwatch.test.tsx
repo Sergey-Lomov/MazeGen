@@ -14,6 +14,10 @@ afterEach(() => { vi.unstubAllGlobals(); });
 
 const hexToColorNum = (hex: string) => parseInt(hex.replace("#", ""), 16);
 
+// Mirrors `RANGE_SPLIT_AUTO_MIN.l` / `RANGE_SPLIT_AUTO_MAX.l` in `ToolsSection.tsx`.
+const RANGE_SPLIT_AUTO_MIN_L = 15;
+const RANGE_SPLIT_AUTO_MAX_L = 95;
+
 const hexLabel = () => m["color_picker.hex_label"]();
 const applyLabel = () => m["common.apply"]();
 const cancelLabel = () => m["common.cancel"]();
@@ -633,22 +637,33 @@ describe("ColorSwatch", () => {
   // The 2D area's per-pixel canvas paint (`paintLcPlane`) also no-ops under jsdom (no 2d context);
   // covered by the keyboard-nudge tests above and by manual / visual checks.
   function expandHarmony() {
-    fireEvent.click(screen.getByText(m["color_picker.harmony"]()));
+    fireEvent.click(screen.getByText(m["color_picker.tools"]()));
   }
 
   it("the Harmony section is collapsed by default and expands on click", () => {
     render(<ColorSwatch color={0x336699} onChange={() => {}} />);
     openPicker();
-    expect(screen.queryByTestId("color-picker-harmony-swatches")).toBeNull();
+    expect(screen.queryByTestId("color-picker-tools-swatches")).toBeNull();
     expandHarmony();
-    expect(screen.getByTestId("color-picker-harmony-swatches")).toBeTruthy();
+    expect(screen.getByTestId("color-picker-tools-swatches")).toBeTruthy();
+  });
+
+  it("expanding the Tools section rebuilds the base from the current working color", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />); // pure red, H=0
+    openPicker();
+    // Change the working color before expanding — the section has never been opened yet, so it
+    // hasn't seeded a stale base from the original color.
+    fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#00ff00" } });
+    expandHarmony();
+    const swatches = screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button");
+    expect((swatches[0] as HTMLButtonElement).title).toBe("#00ff00");
   });
 
   it("Harmony defaults to Complementary: base + one derived swatch (hue +180)", () => {
     render(<ColorSwatch color={0xff0000} onChange={() => {}} />); // pure red, H=0
     openPicker();
     expandHarmony();
-    const swatches = screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button");
+    const swatches = screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button");
     expect(swatches.length).toBe(2);
     expect((swatches[0] as HTMLButtonElement).style.background).toContain("rgb(255, 0, 0)");
     // Complementary of pure red (H=0) is H=180 -> cyan-ish.
@@ -660,12 +675,12 @@ describe("ColorSwatch", () => {
     render(<ColorSwatch color={0xff0000} onChange={onChange} onPreview={() => {}} />);
     openPicker();
     expandHarmony();
-    const swatches = screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button");
+    const swatches = screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button");
     const derivedHex = (swatches[1] as HTMLButtonElement).title;
     fireEvent.click(swatches[1]);
     expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe(derivedHex);
     // Row unchanged — still base (red) + same derived swatch.
-    const after = screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button");
+    const after = screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button");
     expect((after[0] as HTMLButtonElement).title).toBe("#ff0000");
     expect((after[1] as HTMLButtonElement).title).toBe(derivedHex);
     fireEvent.click(screen.getByText(applyLabel()));
@@ -676,10 +691,10 @@ describe("ColorSwatch", () => {
     render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
     openPicker();
     expandHarmony();
-    const before = Array.from(screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button"))
+    const before = Array.from(screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button"))
       .map((b) => (b as HTMLButtonElement).title);
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#00ff00" } });
-    const after = Array.from(screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button"))
+    const after = Array.from(screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button"))
       .map((b) => (b as HTMLButtonElement).title);
     expect(after).toEqual(before);
   });
@@ -689,152 +704,286 @@ describe("ColorSwatch", () => {
     openPicker();
     expandHarmony();
     fireEvent.change(screen.getByLabelText(hexLabel()), { target: { value: "#00ff00" } });
-    fireEvent.click(screen.getByText(m["color_picker.harmony.rebuild_from_current"]()));
-    const swatches = screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button");
+    fireEvent.click(screen.getByText(m["color_picker.tools.rebuild_from_current"]()));
+    const swatches = screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button");
     expect((swatches[0] as HTMLButtonElement).title).toBe("#00ff00");
   });
 
-  it("Analogous shows count/spread controls and renders two rows (HUE+/HUE-) of `count` swatches each, base excluded", () => {
+  function typeSelect() {
+    return screen.getAllByRole("combobox")[0] as HTMLSelectElement;
+  }
+  function scaleSelect() {
+    return screen.getAllByRole("combobox")[1] as HTMLSelectElement;
+  }
+
+  it("Divergence (Hue scale) shows count/step controls and renders two rows (+/-) of `count` swatches each, base excluded", () => {
     render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
     openPicker();
     expandHarmony();
-    fireEvent.change(screen.getByRole("combobox"), {
-      target: { value: "analogous" },
+    fireEvent.change(typeSelect(), {
+      target: { value: "divergence" },
     });
-    expect(screen.getByText(m["color_picker.harmony.analogous_count"]())).toBeTruthy();
-    expect(screen.getByText(m["color_picker.harmony.analogous_spread"]())).toBeTruthy();
-    expect(screen.getByText(m["color_picker.harmony.hue_plus"]())).toBeTruthy();
-    expect(screen.getByText(m["color_picker.harmony.hue_minus"]())).toBeTruthy();
-    // default count = 6 -> 6 swatches per row, 12 total, none of them the base color.
+    expect(screen.getByText(m["color_picker.tools.count"]())).toBeTruthy();
+    expect(screen.getByText(m["color_picker.tools.step"]())).toBeTruthy();
+    expect(screen.getByText(m["color_picker.tools.plus"]())).toBeTruthy();
+    expect(screen.getByText(m["color_picker.tools.minus"]())).toBeTruthy();
+    // default count = 4 -> 4 swatches per row, 8 total, none of them the base color.
     const swatches = Array.from(
-      screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button"),
+      screen.getByTestId("color-picker-divergence-swatches").querySelectorAll("button"),
     ) as HTMLButtonElement[];
-    expect(swatches.length).toBe(12);
+    expect(swatches.length).toBe(8);
     expect(swatches.some((b) => b.title === "#ff0000")).toBe(false);
   });
 
-  it("Triadic / Tetradic have fixed derived counts (no count/spread controls)", () => {
+  it("Triadic / Tetradic have fixed derived counts (no count/step controls)", () => {
     render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
     openPicker();
     expandHarmony();
-    fireEvent.change(screen.getByRole("combobox"), {
+    fireEvent.change(typeSelect(), {
       target: { value: "triadic" },
     });
-    expect(screen.queryByText(m["color_picker.harmony.analogous_count"]())).toBeNull();
-    expect(screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button").length).toBe(3);
+    expect(screen.queryByText(m["color_picker.tools.count"]())).toBeNull();
+    expect(screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button").length).toBe(3);
 
-    fireEvent.change(screen.getByRole("combobox"), {
+    fireEvent.change(typeSelect(), {
       target: { value: "tetradic" },
     });
-    expect(screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button").length).toBe(4);
+    expect(screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button").length).toBe(4);
   });
 
-  it("Analogous auto-fit spread button sets spread = 180 / count", () => {
+  it("Divergence auto-fit step button sets step = 180 / count for the Hue scale", () => {
     render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
     openPicker();
     expandHarmony();
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "analogous" } });
-    const [countSlider, spreadSlider] = Array.from(
-      screen.getByTestId("color-picker-harmony-swatches").parentElement!.querySelectorAll('input[type="range"]'),
+    fireEvent.change(typeSelect(), { target: { value: "divergence" } });
+    const [countSlider, stepSlider] = Array.from(
+      screen.getByTestId("color-picker-divergence-swatches").parentElement!.querySelectorAll('input[type="range"]'),
     ) as HTMLInputElement[];
     fireEvent.change(countSlider, { target: { value: "6" } });
-    fireEvent.click(screen.getByTitle(m["color_picker.harmony.analogous_auto_spread"]()));
-    expect(spreadSlider.value).toBe("30"); // 180 / 6
+    fireEvent.click(screen.getByTitle(m["color_picker.tools.auto_step"]()));
+    expect(stepSlider.value).toBe("30"); // 180 / 6
   });
 
-  it("Analogous auto-fit spread caps at the spread slider's own max for a low count", () => {
+  it("Divergence auto-fit step caps at the step slider's own max for a low count", () => {
     render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
     openPicker();
     expandHarmony();
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "analogous" } });
-    const [countSlider, spreadSlider] = Array.from(
-      screen.getByTestId("color-picker-harmony-swatches").parentElement!.querySelectorAll('input[type="range"]'),
+    fireEvent.change(typeSelect(), { target: { value: "divergence" } });
+    const [countSlider, stepSlider] = Array.from(
+      screen.getByTestId("color-picker-divergence-swatches").parentElement!.querySelectorAll('input[type="range"]'),
     ) as HTMLInputElement[];
-    // 180 / 1 = 180, which would exceed the spread slider's max=60 if uncapped.
+    // 180 / 1 = 180, which would exceed the step slider's max=60 (Hue scale) if uncapped.
     fireEvent.change(countSlider, { target: { value: "1" } });
-    fireEvent.click(screen.getByTitle(m["color_picker.harmony.analogous_auto_spread"]()));
-    expect(spreadSlider.value).toBe("60");
-    expect(Number(spreadSlider.max)).toBe(60);
+    fireEvent.click(screen.getByTitle(m["color_picker.tools.auto_step"]()));
+    expect(stepSlider.value).toBe("60");
+    expect(Number(stepSlider.max)).toBe(60);
   });
 
-  function analogousSliders() {
-    const harmonySwatches = screen.getByTestId("color-picker-harmony-swatches");
+  function divergenceSliders() {
+    const harmonySwatches = screen.getByTestId("color-picker-divergence-swatches");
     const body = harmonySwatches.parentElement as HTMLElement;
     return Array.from(body.querySelectorAll('input[type="range"]')) as HTMLInputElement[];
   }
 
-  it("harmony type and analogous count/spread persist across picker close/reopen", () => {
+  it("Divergence (Lightness scale) shows two rows (+/-) of `count` swatches each, base excluded", () => {
     render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
     openPicker();
     expandHarmony();
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "analogous" } });
-    const [countSlider, spreadSlider] = analogousSliders();
+    fireEvent.change(typeSelect(), { target: { value: "divergence" } });
+    fireEvent.change(scaleSelect(), { target: { value: "l" } });
+    const [countSlider] = divergenceSliders();
+    fireEvent.change(countSlider, { target: { value: "4" } });
+    // 4 -> 4 swatches per row, 8 total, none of them the base color.
+    const swatches = Array.from(
+      screen.getByTestId("color-picker-divergence-swatches").querySelectorAll("button"),
+    ) as HTMLButtonElement[];
+    expect(swatches.length).toBe(8);
+    expect(swatches.some((b) => b.title === "#ff0000")).toBe(false);
+  });
+
+  it("tool type and Divergence count/step persist across picker close/reopen", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(typeSelect(), { target: { value: "divergence" } });
+    const [countSlider, stepSlider] = divergenceSliders();
     fireEvent.change(countSlider, { target: { value: "5" } });
-    fireEvent.change(spreadSlider, { target: { value: "45" } });
+    fireEvent.change(stepSlider, { target: { value: "45" } });
     // Switch away then back — the picker's own settings must survive the type switch too.
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "triadic" } });
+    fireEvent.change(typeSelect(), { target: { value: "triadic" } });
     fireEvent.click(screen.getByText(cancelLabel()));
 
     openPicker();
     expandHarmony();
     expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("triadic");
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "analogous" } });
-    const [countAfter, spreadAfter] = analogousSliders();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "divergence" } });
+    const [countAfter, stepAfter] = divergenceSliders();
     expect(countAfter.value).toBe("5");
-    expect(spreadAfter.value).toBe("45");
+    expect(stepAfter.value).toBe("45");
   });
 
-  it("Monochromatic shows count/step controls and renders two rows (L+/L-) of `count` swatches each, base excluded", () => {
+  it("Divergence Lightness count/step persists across close/reopen independently of Hue", () => {
     render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
     openPicker();
     expandHarmony();
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "monochromatic" } });
-    expect(screen.getByText(m["color_picker.harmony.monochromatic_count"]())).toBeTruthy();
-    expect(screen.getByText(m["color_picker.harmony.monochromatic_step"]())).toBeTruthy();
-    expect(screen.getByText(m["color_picker.harmony.lightness_plus"]())).toBeTruthy();
-    expect(screen.getByText(m["color_picker.harmony.lightness_minus"]())).toBeTruthy();
-    // default count = 3 -> 3 swatches per row, 6 total, none of them the base color.
-    const swatches = Array.from(
-      screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button"),
-    ) as HTMLButtonElement[];
-    expect(swatches.length).toBe(6);
-    expect(swatches.some((b) => b.title === "#ff0000")).toBe(false);
-  });
-
-  it("Monochromatic count/step persists across close/reopen independently of analogous", () => {
-    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
-    openPicker();
-    expandHarmony();
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "monochromatic" } });
-    const [monoCountSlider, monoStepSlider] = analogousSliders();
-    fireEvent.change(monoCountSlider, { target: { value: "6" } });
-    fireEvent.change(monoStepSlider, { target: { value: "20" } });
+    fireEvent.change(typeSelect(), { target: { value: "divergence" } });
+    fireEvent.change(scaleSelect(), { target: { value: "l" } });
+    const [countSlider, stepSlider] = divergenceSliders();
+    fireEvent.change(countSlider, { target: { value: "6" } });
+    fireEvent.change(stepSlider, { target: { value: "20" } });
     fireEvent.click(screen.getByText(cancelLabel()));
 
     openPicker();
     expandHarmony();
-    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("monochromatic");
-    const [monoCountAfter, monoStepAfter] = analogousSliders();
-    expect(monoCountAfter.value).toBe("6");
-    expect(monoStepAfter.value).toBe("20");
-    expect(screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button").length).toBe(12);
+    fireEvent.change(typeSelect(), { target: { value: "divergence" } });
+    expect(scaleSelect().value).toBe("l");
+    const [countAfter, stepAfter] = divergenceSliders();
+    expect(countAfter.value).toBe("6");
+    expect(stepAfter.value).toBe("20");
+    expect(screen.getByTestId("color-picker-divergence-swatches").querySelectorAll("button").length).toBe(12);
   });
 
-  it("Monochromatic clamps lightness to the 0-100 range for extreme base colors", () => {
+  it("Divergence (Lightness scale) clamps to the 0-100 range for extreme base colors", () => {
     render(<ColorSwatch color={0xffffff} onChange={() => {}} />);
     openPicker();
     expandHarmony();
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "monochromatic" } });
-    const [monoCountSlider, monoStepSlider] = analogousSliders();
-    fireEvent.change(monoCountSlider, { target: { value: "10" } });
-    fireEvent.change(monoStepSlider, { target: { value: "50" } });
+    fireEvent.change(typeSelect(), { target: { value: "divergence" } });
+    fireEvent.change(scaleSelect(), { target: { value: "l" } });
+    const [countSlider, stepSlider] = divergenceSliders();
+    fireEvent.change(countSlider, { target: { value: "10" } });
+    fireEvent.change(stepSlider, { target: { value: "50" } });
     const swatches = Array.from(
-      screen.getByTestId("color-picker-harmony-swatches").querySelectorAll("button"),
+      screen.getByTestId("color-picker-divergence-swatches").querySelectorAll("button"),
     ) as HTMLButtonElement[];
     expect(swatches.length).toBe(20);
     for (const swatch of swatches) {
       expect(swatch.title).toMatch(/^#[0-9a-f]{6}$/);
     }
+  });
+
+  it("Range split (Lightness scale) renders one row of `count` swatches evenly spaced from min to max", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(typeSelect(), { target: { value: "range_split" } });
+    fireEvent.change(scaleSelect(), { target: { value: "l" } });
+    const swatches = Array.from(
+      screen.getByTestId("color-picker-range-split-swatches").querySelectorAll("button"),
+    ) as HTMLButtonElement[];
+    expect(swatches.length).toBe(7); // default step count
+  });
+
+  it("Range split (Hue scale) hides min/max sliders — full 360° circle from the base hue", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(typeSelect(), { target: { value: "range_split" } });
+    fireEvent.change(scaleSelect(), { target: { value: "h" } });
+    expect(screen.queryByText(m["color_picker.tools.range_min"]())).toBeNull();
+    expect(screen.queryByText(m["color_picker.tools.range_max"]())).toBeNull();
+  });
+
+  it("Split-complementary derives two swatches at hue +150/+210", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />); // pure red, H=0
+    openPicker();
+    expandHarmony();
+    fireEvent.change(typeSelect(), { target: { value: "split_complementary" } });
+    const swatches = screen.getByTestId("color-picker-tools-swatches").querySelectorAll("button");
+    expect(swatches.length).toBe(3); // base + two derived
+    expect((swatches[0] as HTMLButtonElement).title).toBe("#ff0000");
+    expect((swatches[1] as HTMLButtonElement).title).not.toBe("#ff0000");
+    expect((swatches[2] as HTMLButtonElement).title).not.toBe("#ff0000");
+    expect((swatches[1] as HTMLButtonElement).title).not.toBe((swatches[2] as HTMLButtonElement).title);
+  });
+
+  it("clicking a Divergence swatch sets the working color", () => {
+    const onChange = vi.fn();
+    render(<ColorSwatch color={0xff0000} onChange={onChange} onPreview={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(typeSelect(), { target: { value: "divergence" } });
+    const swatch = screen.getByTestId("color-picker-divergence-swatches").querySelector("button") as HTMLButtonElement;
+    const hex = swatch.title;
+    fireEvent.click(swatch);
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe(hex);
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onChange).toHaveBeenCalledWith(hexToColorNum(hex));
+  });
+
+  it("clicking a Range split swatch sets the working color", () => {
+    const onChange = vi.fn();
+    render(<ColorSwatch color={0xff0000} onChange={onChange} onPreview={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(typeSelect(), { target: { value: "range_split" } });
+    const swatch = screen.getByTestId("color-picker-range-split-swatches").querySelector("button") as HTMLButtonElement;
+    const hex = swatch.title;
+    fireEvent.click(swatch);
+    expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe(hex);
+    fireEvent.click(screen.getByText(applyLabel()));
+    expect(onChange).toHaveBeenCalledWith(hexToColorNum(hex));
+  });
+
+  it("Divergence (Chroma scale) sweeps chroma up/down, clamped into gamut", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />); // pure red, near max chroma
+    openPicker();
+    expandHarmony();
+    fireEvent.change(typeSelect(), { target: { value: "divergence" } });
+    fireEvent.change(scaleSelect(), { target: { value: "c" } });
+    const swatches = Array.from(
+      screen.getByTestId("color-picker-divergence-swatches").querySelectorAll("button"),
+    ) as HTMLButtonElement[];
+    expect(swatches.length).toBeGreaterThan(0);
+    for (const swatch of swatches) {
+      expect(swatch.title).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
+
+  it("Range split (Chroma scale) shows min/max sliders and evenly spaces chroma", () => {
+    render(<ColorSwatch color={0x336699} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(typeSelect(), { target: { value: "range_split" } });
+    fireEvent.change(scaleSelect(), { target: { value: "c" } });
+    expect(screen.getByText(m["color_picker.tools.range_min"]())).toBeTruthy();
+    expect(screen.getByText(m["color_picker.tools.range_max"]())).toBeTruthy();
+    const swatches = screen.getByTestId("color-picker-range-split-swatches").querySelectorAll("button");
+    expect(swatches.length).toBe(7); // default step count
+  });
+
+  function rangeSplitSliders() {
+    const rangeSwatches = screen.getByTestId("color-picker-range-split-swatches");
+    const body = rangeSwatches.parentElement as HTMLElement;
+    return Array.from(body.querySelectorAll('input[type="range"]')) as HTMLInputElement[];
+  }
+
+  it("Range split count slider changes the number of swatches", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(typeSelect(), { target: { value: "range_split" } });
+    const [countSlider] = rangeSplitSliders();
+    fireEvent.change(countSlider, { target: { value: "5" } });
+    const swatches = screen.getByTestId("color-picker-range-split-swatches").querySelectorAll("button");
+    expect(swatches.length).toBe(5);
+  });
+
+  it("Range split min/max sliders narrow the range, and reset buttons restore the auto range", () => {
+    render(<ColorSwatch color={0xff0000} onChange={() => {}} />);
+    openPicker();
+    expandHarmony();
+    fireEvent.change(typeSelect(), { target: { value: "range_split" } });
+    fireEvent.change(scaleSelect(), { target: { value: "l" } });
+    const [, minSlider, maxSlider] = rangeSplitSliders();
+    fireEvent.change(minSlider, { target: { value: "30" } });
+    fireEvent.change(maxSlider, { target: { value: "60" } });
+    expect(minSlider.value).toBe("30");
+    expect(maxSlider.value).toBe("60");
+    const resetButtons = screen.getAllByTitle(m["color_picker.tools.reset_auto"]());
+    fireEvent.click(resetButtons[0]);
+    fireEvent.click(resetButtons[1]);
+    expect(minSlider.value).toBe(String(RANGE_SPLIT_AUTO_MIN_L));
+    expect(maxSlider.value).toBe(String(RANGE_SPLIT_AUTO_MAX_L));
   });
 });
 
