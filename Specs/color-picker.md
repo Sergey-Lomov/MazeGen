@@ -4,9 +4,10 @@ Custom color-selection UI that replaces the browser-native `<input type="color">
 parameter in the editor. Tracked as epic (GitHub issue #498). This spec covers the **shell**
 (sub-issue #499), the **model switcher and RGB model** (sub-issue #500), the **HSL model**
 (sub-issue #501), the **OKLCH model** (sub-issue #502), **live canvas preview** (issue #513), the
-**project-colors block** (sub-issue #503), and the **Tools block** (sub-issues #504 and #505,
-merged into one section — see "Tools block" below), and is extended as later sub-issues land
-(more color models, practicality checks, presets/history).
+**project-colors block** (sub-issue #503), the **Tools block** (sub-issues #504 and #505,
+merged into one section — see "Tools block" below), and the **recently-used-colors block**
+(sub-issue #506), and is extended as later sub-issues land (more color models, practicality
+checks, presets).
 
 ## Components
 
@@ -288,6 +289,30 @@ override swatches (`ColorSwatch` in `TeleportGroupRow`) are not wired. Guiding r
 the near-universal neighbor; `background` only where geometry actually touches it (outer walls in
 walls mode; corridor stroke + one-ways in corridors mode); `wallColor` where a marker abuts a wall.
 
+## Recently used colors (#506)
+
+Below the active model editor, above the Tools block, separated from the model editor by the same
+divider style as the other sections. **Not collapsible** — a single row of swatches, titled
+"Recently used" / "Недавно использованные" (`color_picker.recent_colors`). Omitted entirely when
+the list is empty (no localStorage entry yet, or storage unavailable).
+
+The list holds the last `MAX_RECENT_COLORS` (12) colors committed via **Apply**, from *any*
+swatch across the app, most-recent-first, de-duplicated (re-applying an already-listed color moves
+it to the front instead of adding a second entry). Managed by
+`components/recentColorsStore.ts`: `pushRecentColor(color)` (called from `apply()` in
+`ColorPickerPanel`, after the queued preview frame is flushed but before `onApply`) and
+`loadRecentColors()`, both wrapped in try/catch — a read/write failure (storage unavailable, quota,
+corrupt JSON) degrades to an empty list rather than throwing. Same imperative-store +
+`useSyncExternalStore` pattern as `pixi/imageExport/screenCalibration.ts`, so a color applied in
+one picker session shows up immediately in a picker still open in the same tab; not synced across
+browser tabs.
+
+Stored in `localStorage` under `colorPicker.recentColors`, **global to the app, not per project**
+— it's a session convenience, not project data, so the project file is untouched.
+
+Clicking a swatch sets the picker's working color only (same path as a project-color row or a
+Tools swatch) — it does not commit; Apply still commits as in #499.
+
 ## Tools block (#504, #505)
 
 `ToolsSection` (`components/ToolsSection.tsx`) sits below the active model editor in
@@ -368,4 +393,4 @@ free-text param.
 ## Not yet implemented (later #498 sub-issues)
 
 Further color models, palette generation,
-contrast / distinguishability / color-blindness checks, presets and history.
+contrast / distinguishability / color-blindness checks, presets.

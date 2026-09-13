@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { SidePanel } from "./SidePanel";
 import { Button } from "./Button";
 import { TextFieldRow } from "./TextFieldRow";
 import { SectionHeader } from "./SectionHeader";
-import { ui, radius, typography, spacing } from "../styles/theme";
+import { ui, radius, typography, spacing, font } from "../styles/theme";
 import { HEX_COLOR_RE, colorToHex, hexToColor } from "./colorFormat";
 import { RgbModelEditor } from "./RgbModelEditor";
 import { HslModelEditor } from "./HslModelEditor";
 import { OklchModelEditor } from "./OklchModelEditor";
 import { ToolsSection } from "./ToolsSection";
+import { pushRecentColor, subscribe, getSnapshot, getServerSnapshot } from "./recentColorsStore";
 import { useMazeStore } from "../store/mazeStore";
 import { selectActiveProfileColors, type ProjectColorEntry } from "../pixi/selectors/projectColorsSelector";
 import type { MazeState } from "../store/storeTypes";
@@ -112,6 +113,10 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
    *  so it can't be used to restore on Cancel. */
   const originalColor = useRef(color).current;
 
+  // "Recently used" colors (GitHub issue #506) — reactive so a color applied earlier in the same
+  // session shows up immediately without reopening the picker.
+  const recentColors = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+
   const hexValid = HEX_COLOR_RE.test(hexInput);
 
   // The live preview (#513) can fire once per pointer-move tick while a model slider / 2D area is
@@ -162,9 +167,11 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
   }
 
   /** Commit on Apply: deliver any still-queued preview frame synchronously (unmount would drop it),
-   *  then hand the final color to the call site. No queued frame → nothing to flush. */
+   *  then hand the final color to the call site. No queued frame → nothing to flush. Records the
+   *  committed color into the "Recently used" list (GitHub issue #506). */
   function apply() {
     flushPreview();
+    pushRecentColor(working);
     onApply(working);
   }
 
@@ -224,6 +231,26 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
           {model === "rgb" && <RgbModelEditor color={working} onChange={setWorkingColor} />}
           {model === "hsl" && <HslModelEditor color={working} onChange={setWorkingColor} />}
           {model === "oklch" && <OklchModelEditor color={working} onChange={setWorkingColor} />}
+          {recentColors.length > 0 && (
+            <>
+              <div style={styles.projectColorsDivider} />
+              <div style={styles.recentColors}>
+                <span style={styles.recentColorsLabel}>{m["color_picker.recent_colors"]()}</span>
+                <div style={styles.swatchRow} data-testid="color-picker-recent-colors">
+                  {recentColors.map((color, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="hoverable"
+                      title={colorToHex(color)}
+                      style={{ ...styles.recentSwatch, background: colorToHex(color) }}
+                      onClick={() => pickProjectColor(color)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
           <div style={styles.projectColorsDivider} />
           <ToolsSection seedColor={originalColor} workingColor={working} onPick={pickProjectColor} />
           {projectColorGroups.total > 0 && (
@@ -320,6 +347,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   hexError: { ...typography.caption, color: ui.text.error },
   modelSwitcher: { display: "flex", gap: spacing.itemGap },
+  recentColors: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  recentColorsLabel: { fontSize: font.lg, color: ui.text.primary },
+  swatchRow: { display: "flex", gap: spacing.itemGap, flexWrap: "wrap" },
+  recentSwatch: {
+    width: 32, height: 28, flexShrink: 0, borderRadius: 3, padding: 0,
+    border: `2px solid ${ui.border.strong}`, boxSizing: "border-box",
+  },
   projectColors: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   projectColorsBody: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: spacing.sectionGap },
   projectColorsDivider: { borderTop: `1px solid ${ui.border.default}`, margin: `${spacing.itemGap}px 0` },
