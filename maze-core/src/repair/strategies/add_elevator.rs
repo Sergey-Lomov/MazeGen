@@ -5,51 +5,35 @@ use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::quality_control::{MissingElevatorsIssue, RepairArea};
 use crate::generation::PresetState;
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
+use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::remaining_deficits::RemainingDeficits;
-use super::dead_end_priority::{apply_src_mode, PARAM_SRC_MODE, SRC_MODE_RANDOM, SRC_MODE_OPTIONS};
+use super::dead_end_priority::apply_src_mode;
+use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
 
 pub const PARAM_STOP_COUNT: &str = "stop_count";
 pub const PARAM_SKIP: &str = "skip";
 pub const PARAM_LENGTH: &str = "length_interval";
-pub const PARAM_ATTEMPTS_LIMIT: &str = "attempts_limit";
-pub const PARAM_RESERVE_PERCENT: &str = "reserve_percent";
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_STOP_COUNT,
-        label: "Stop count",
-        kind: StrategyParamKind::Interval { default_min: 2.0, default_max: 10.0, min: 2.0, max: 1000.0 },
-    },
-    StrategyParam {
-        id: PARAM_SKIP,
-        label: "Skip",
-        kind: StrategyParamKind::Interval { default_min: 0.0, default_max: 10.0, min: 0.0, max: 1000.0 },
-    },
-    StrategyParam {
-        id: PARAM_LENGTH,
-        label: "Length interval",
-        kind: StrategyParamKind::Interval { default_min: 3.0, default_max: 10.0, min: 1.0, max: 1000.0 },
-    },
-    StrategyParam {
-        id: PARAM_SRC_MODE,
-        label: "Position selection",
-        kind: StrategyParamKind::Enum { options: SRC_MODE_OPTIONS, default: SRC_MODE_RANDOM },
-    },
-    StrategyParam {
-        id: PARAM_ATTEMPTS_LIMIT,
-        label: "Attempts limit",
-        kind: StrategyParamKind::Float { default: 20.0, min: 1.0, max: 1000.0 },
-    },
-    StrategyParam {
-        id: PARAM_RESERVE_PERCENT,
-        label: "Reserve percent",
-        kind: StrategyParamKind::Float { default: 0.0, min: 0.0, max: 500.0 },
-    },
-];
+const STOP_COUNT_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_STOP_COUNT,
+    label: "Stop count",
+    kind: StrategyParamKind::Interval { default_min: 2.0, default_max: 10.0, min: 2.0, max: 1000.0 },
+};
+const SKIP_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_SKIP,
+    label: "Skip",
+    kind: StrategyParamKind::Interval { default_min: 0.0, default_max: 10.0, min: 0.0, max: 1000.0 },
+};
+const LENGTH_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_LENGTH,
+    label: "Length interval",
+    kind: StrategyParamKind::Interval { default_min: 3.0, default_max: 10.0, min: 1.0, max: 1000.0 },
+};
+
+static PARAMS: [StrategyParam; 6] = crate::add_strategy_params!(STOP_COUNT_PARAM, SKIP_PARAM, LENGTH_PARAM);
 
 /// Handles `MISSING_ELEVATORS` (GitHub issue #401, epic #344) by building brand-new elevators, one
 /// per deficit slot, each wired as a fully-connected two-way stop fan — same convention every other
@@ -84,7 +68,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorsIssue> for AddElevatorSt
     fn strategy_id(&self) -> &'static str { "add_elevator" }
 
     fn params(&self) -> &'static [StrategyParam] {
-        PARAMS
+        &PARAMS
+    }
+
+    fn nested_suppressed_params(&self) -> &'static [&'static str] {
+        standard_add_params::NESTED_SUPPRESSED_ADD_PARAMS
     }
 
     fn apply(
@@ -109,12 +97,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorsIssue> for AddElevatorSt
         let (length_min, length_max) = params.get(PARAM_LENGTH).and_then(|v| v.as_interval()).unwrap_or((3.0, 10.0));
         let length_min = length_min.max(1.0).round() as usize;
         let length_max = length_max.max(length_min as f64).round() as usize;
-        let src_mode = match params.get(PARAM_SRC_MODE) {
-            Some(StrategyParamValue::Enum(s)) => s.as_str(),
-            _ => SRC_MODE_RANDOM,
-        };
-        let attempts_limit = params.get(PARAM_ATTEMPTS_LIMIT).and_then(|v| v.as_float()).map(|f| f.round().max(1.0) as usize).unwrap_or(20);
-        let reserve_percent = params.get(PARAM_RESERVE_PERCENT).and_then(|v| v.as_float()).unwrap_or(0.0);
+        let src_mode = src_mode(params);
+        let attempts_limit = attempts_limit(params);
 
         let levels: Vec<_> = maze.field.levels_ordered().collect();
         if levels.len() < 2 {
@@ -131,8 +115,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorsIssue> for AddElevatorSt
             if missing == 0 {
                 continue;
             }
-            let target = (missing as f64 * (1.0 + reserve_percent / 100.0)).ceil() as u32;
-            let target = target.max(1);
+            let target = reserve_target(params, missing);
 
             // `RepairArea::Level(level)` means the built elevator must actually stop on `level` —
             // resolved once per area since `levels` (hence the index) never changes mid-`apply`.

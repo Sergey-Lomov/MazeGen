@@ -5,33 +5,23 @@ use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::quality_control::{MissingLoopsIssue, RepairArea};
 use crate::generation::PresetState;
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
+use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
-use super::dead_end_priority::{PARAM_SRC_MODE, SRC_MODE_RANDOM, SRC_MODE_OPTIONS, apply_src_mode};
+use super::dead_end_priority::apply_src_mode;
+use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
 use super::remaining_deficits::RemainingDeficits;
 
-pub const PARAM_RESERVE_PERCENT: &str = "reserve_percent";
 pub const PARAM_ONE_WAY_CHANCE: &str = "loop_one_way_chance";
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_RESERVE_PERCENT,
-        label: "Reserve percent",
-        kind: StrategyParamKind::Float { default: 50.0, min: 0.0, max: 500.0 },
-    },
-    StrategyParam {
-        id: PARAM_ONE_WAY_CHANCE,
-        label: "Loop one-way chance",
-        kind: StrategyParamKind::Float { default: 0.0, min: 0.0, max: 100.0 },
-    },
-    StrategyParam {
-        id: PARAM_SRC_MODE,
-        label: "Source selection mode",
-        kind: StrategyParamKind::Enum { options: SRC_MODE_OPTIONS, default: SRC_MODE_RANDOM },
-    },
-];
+const ONE_WAY_CHANCE_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_ONE_WAY_CHANCE,
+    label: "Loop one-way chance",
+    kind: StrategyParamKind::Float { default: 0.0, min: 0.0, max: 100.0 },
+};
+
+static PARAMS: [StrategyParam; 4] = crate::add_strategy_params!(ONE_WAY_CHANCE_PARAM);
 
 /// Handles `MISSING_LOOPS` — opposite approach from `InvalidLoopRandomStrategy`/
 /// `InvalidLoopScoredStrategy`, which cut edges from existing bad loops. This strategy instead
@@ -68,7 +58,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
     fn strategy_id(&self) -> &'static str { "missing_loops_random" }
 
     fn params(&self) -> &'static [StrategyParam] {
-        PARAMS
+        &PARAMS
+    }
+
+    fn nested_suppressed_params(&self) -> &'static [&'static str] {
+        standard_add_params::NESTED_SUPPRESSED_ADD_PARAMS
     }
 
     fn apply(
@@ -84,12 +78,9 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        let reserve_percent = params.get(PARAM_RESERVE_PERCENT).and_then(|v| v.as_float()).unwrap_or(50.0);
         let one_way_chance = params.get(PARAM_ONE_WAY_CHANCE).and_then(|v| v.as_float()).unwrap_or(0.0) / 100.0;
-        let src_mode = match params.get(PARAM_SRC_MODE) {
-            Some(StrategyParamValue::Enum(v)) => v.as_str(),
-            _ => SRC_MODE_RANDOM,
-        };
+        let src_mode = src_mode(params);
+        let max_failed_attempts = attempts_limit(params);
 
         // Pairs proposed as a bidirectional-edge command so far this call — stands in for what
         // an earlier real mutation would have made observable via `edge_between` under the old
@@ -105,8 +96,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
             if missing == 0 {
                 continue;
             }
-            let target = (missing as f64 * (1.0 + reserve_percent / 100.0)).ceil() as u32;
-            let target = target.max(1);
+            let target = reserve_target(params, missing);
 
             let candidates: Vec<NodeId> = maze.field.all_node_ids()
                 .filter(|&n| match area {
@@ -116,8 +106,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
                 .collect();
             let mut pool: Vec<NodeId> = apply_src_mode(maze, candidates, src_mode, rng);
             let mut added: u32 = 0;
+            // A popped `src` that yields no new edge counts against the budget; a successful one
+            // does not (`attempts_limit`, GitHub issue #486).
+            let mut failed_attempts: usize = 0;
 
-            while added < target && !pool.is_empty() {
+            while added < target && !pool.is_empty() && failed_attempts < max_failed_attempts {
                 // Pop from the end, not a random index — `apply_src_mode` orders the pool so
                 // dead-end candidates sit at this end when `dead_end_priority` is active (GitHub
                 // issue #278's exhaustion-fallback fix); a random-index pick would destroy that
@@ -127,6 +120,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
                 // same call either way — popping it (success or failure) is correct, not just
                 // convenient.
                 let src = pool.pop().expect("pool.is_empty() already checked by the while condition");
+                let added_before = added;
 
                 let mut neighbors = maze.field.neighbors(src);
 
@@ -165,6 +159,9 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
                     added += 1;
                     deficits.consume(&[area, RepairArea::WholeMaze]);
                     break;
+                }
+                if added == added_before {
+                    failed_attempts += 1;
                 }
             }
             total_added += added;
@@ -227,8 +224,9 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(42);
         let result = apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        // 2 missing * (1 + 50%) = 3 connections, each bidirectional => 6 edges.
-        assert_eq!(maze.graph.edges().count(), 6);
+        // 2 missing * (1 + 0%) = 2 connections, each bidirectional => 4 edges (reserve_percent
+        // default unified to 0 in issue #486).
+        assert_eq!(maze.graph.edges().count(), 4);
         for edge in maze.graph.edges() {
             assert!(maze.graph.edge_between(edge.to, edge.from).is_some(), "every added edge must have its reverse");
         }
@@ -355,7 +353,7 @@ mod tests {
         let mut maze = maze_grid(4);
         let issue = missing_issue(2);
         let mut overrides = HashMap::new();
-        overrides.insert("reserve_percent".to_string(), "0".to_string());
+        overrides.insert("reserve_percent".to_string(), "50".to_string());
         let params = build_params(
             <MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&MissingLoopsRandomStrategy),
             Some(&overrides),
@@ -363,8 +361,8 @@ mod tests {
         let mut rng = MazeRng::seed_from_u64(42);
         let result = apply_and_commit(&MissingLoopsRandomStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
-        // 2 missing * (1 + 0%) = 2 connections => 4 directed edges, vs 6 with the 50% default.
-        assert_eq!(maze.graph.edges().count(), 4);
+        // 2 missing * (1 + 50%) = 3 connections => 6 directed edges, vs 4 with the unified 0 default.
+        assert_eq!(maze.graph.edges().count(), 6);
     }
 
     #[test]
@@ -372,7 +370,6 @@ mod tests {
         let mut maze = maze_grid(4);
         let issue = missing_issue(2);
         let mut overrides = HashMap::new();
-        overrides.insert("reserve_percent".to_string(), "0".to_string());
         overrides.insert("loop_one_way_chance".to_string(), "100".to_string());
         let params = build_params(
             <MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&MissingLoopsRandomStrategy),
@@ -394,6 +391,7 @@ mod tests {
         let issue = missing_issue(2);
         let mut overrides = HashMap::new();
         overrides.insert("loop_one_way_chance".to_string(), "0".to_string());
+        overrides.insert("reserve_percent".to_string(), "50".to_string());
         let params = build_params(
             <MissingLoopsRandomStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&MissingLoopsRandomStrategy),
             Some(&overrides),

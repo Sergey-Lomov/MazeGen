@@ -95,10 +95,6 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.reserve_percent.label"] as MessageFn,
     description: m["param.reserve_percent.description"] as MessageFn,
   },
-  vertical_reserve_percent: {
-    label: m["param.vertical_reserve_percent.label"] as MessageFn,
-    description: m["param.vertical_reserve_percent.description"] as MessageFn,
-  },
   src_mode: {
     label: m["param.src_mode.label"] as MessageFn,
     description: m["param.src_mode.description"] as MessageFn,
@@ -338,10 +334,6 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
   allow_add_connections: {
     label: m["param.allow_add_connections.label"] as MessageFn,
     description: m["param.allow_add_connections.description"] as MessageFn,
-  },
-  max_attempts: {
-    label: m["param.max_attempts.label"] as MessageFn,
-    description: m["param.max_attempts.description"] as MessageFn,
   },
   split_config: {
     label: m["param.split_config.label"] as MessageFn,

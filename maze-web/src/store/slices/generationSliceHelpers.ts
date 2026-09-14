@@ -61,10 +61,17 @@ export function buildDefaultNestedStrategies(strategyId: string, availableStrate
     .map((slot): NestedStrategyState | undefined => {
       const candidate = availableStrategies.find((s) => s.handles === slot.kind);
       if (!candidate) return undefined;
+      // A nested strategy's dispatcher-owned params (`nested_suppressed_params`, GitHub issue
+      // #486) are resolved and injected by the parent dispatcher at apply() time — don't seed
+      // them into the stored config, where they'd be dead keys the UI also hides.
+      const suppressed = new Set(candidate.nested_suppressed_params ?? []);
+      const params = Object.fromEntries(
+        Object.entries(defaultParamsFor(candidate)).filter(([id]) => !suppressed.has(id))
+      );
       return {
         slotId: slot.slot_id,
         strategyId: candidate.id,
-        params: defaultParamsFor(candidate),
+        params,
         nested: buildDefaultNestedStrategies(candidate.id, availableStrategies, depth + 1),
       };
     })

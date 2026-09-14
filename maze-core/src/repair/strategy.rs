@@ -95,6 +95,21 @@ pub trait RepairStrategy<T: Tessellation, I: IssueRequirement> {
         &[]
     }
 
+    /// Param ids that are hidden and inert when this strategy runs *nested under a dispatcher*
+    /// (`dispatch_priority` / `dispatch_weighted`), because the dispatcher owns them — see GitHub
+    /// issue #486. For an element-adding strategy this is `["reserve_percent", "attempts_limit"]`
+    /// (via `standard_add_params::NESTED_SUPPRESSED_ADD_PARAMS`): the dispatcher computes the target
+    /// count and attempt budget once and feeds them down, so a per-nested-strategy value would only
+    /// cause conflicting behavior. `src_mode` is never suppressed — it drives geometry inside one
+    /// strategy, which a dispatcher has no say over. Default: none.
+    ///
+    /// The web UI hides these rows on a nested node; the dispatchers strip any stale override from
+    /// `param_overrides` before building the nested `StrategyParams`. At the top level (a strategy
+    /// invoked directly by a rule, not under a dispatcher) every param stays visible and active.
+    fn nested_suppressed_params(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     /// What subset of `I` this strategy needs its producing `Check` to compute — see GitHub
     /// issue #105. Resolved once by `Rule::new` (not per fixpoint iteration) and threaded into
     /// every `Check::repair_check` call in that rule. Default `I::Requirement::default()` —
@@ -164,6 +179,7 @@ pub trait ErasedRepairStrategy<T: Tessellation> {
     fn strategy_id(&self) -> &'static str;
     fn handles(&self) -> IssueKind;
     fn params(&self) -> &'static [StrategyParam];
+    fn nested_suppressed_params(&self) -> &'static [&'static str];
     fn is_experimental(&self) -> bool;
     fn expected_nested(&self) -> &'static [NestedSlot];
     /// Erased form of `RepairStrategy::requirement` — see GitHub issue #105. Returns
@@ -205,6 +221,9 @@ macro_rules! impl_erased_repair_strategy {
             }
             fn params(&self) -> &'static [$crate::repair::StrategyParam] {
                 <Self as $crate::repair::RepairStrategy<T, $IssueTy>>::params(self)
+            }
+            fn nested_suppressed_params(&self) -> &'static [&'static str] {
+                <Self as $crate::repair::RepairStrategy<T, $IssueTy>>::nested_suppressed_params(self)
             }
             fn is_experimental(&self) -> bool {
                 <Self as $crate::repair::RepairStrategy<T, $IssueTy>>::is_experimental(self)

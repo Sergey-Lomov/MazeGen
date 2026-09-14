@@ -3,11 +3,15 @@ use crate::Maze;
 use crate::space::Tessellation;
 use crate::quality_control::{MissingLoopsIssue, Issue, MISSING_LOOPS};
 use crate::generation::PresetState;
-use crate::repair::params::{StrategyParam, StrategyParams};
+use std::collections::HashMap;
+use crate::repair::params::{StrategyParam, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::MutationCommand;
 use crate::repair::nested_dispatch::dispatch_priority;
+use crate::repair::strategies::standard_add_params::{
+    RESERVE_PERCENT_PARAM, ATTEMPTS_LIMIT_PARAM, PARAM_RESERVE_PERCENT, PARAM_ATTEMPTS_LIMIT,
+};
 
 /// Slot id for the nested missing-loops strategies this strategy dispatches across — see
 /// `Specs/repair.md`'s nested-strategy pattern. Its own constant, deliberately not
@@ -20,6 +24,10 @@ pub const SLOT_LOOP_SEED_TARGET: &str = "loop_seed_target";
 static NESTED_SLOTS: &[NestedSlot] = &[
     NestedSlot { slot_id: SLOT_LOOP_SEED_TARGET, kind: MISSING_LOOPS, min: 1, max: None, dispatch_kind: NestedDispatchKind::Priority },
 ];
+
+/// Only the shared standard add block — this dispatcher has no strategy-specific knob of its own.
+/// `src_mode` is deliberately excluded: it belongs to each nested strategy, not the dispatcher.
+static PARAMS: [StrategyParam; 2] = [RESERVE_PERCENT_PARAM, ATTEMPTS_LIMIT_PARAM];
 
 /// Handles `MISSING_LOOPS` — see GitHub issue #259, the priority-fallback dispatch mechanism
 /// applied to the `MissingLoopsRandomStrategy`/`MissingLoopsSplitStrategy` pair. Picks *which*
@@ -35,14 +43,19 @@ static NESTED_SLOTS: &[NestedSlot] = &[
 /// `apply()` call. The chosen nested strategy is responsible for honoring every `RepairArea` entry
 /// itself (see `MissingLoopsRandomStrategy`).
 ///
-/// No configurable parameters of its own.
+/// **Owns the standard add parameters for its nested strategies** (GitHub issue #486). Rather
+/// than each nested loop-seeding strategy carrying its own `reserve_percent` / `attempts_limit`,
+/// this dispatcher declares them once and injects the resolved values down into every candidate
+/// via `dispatch_priority`'s `inherited_overrides` — the nested strategies list both ids in
+/// `nested_suppressed_params()`, so the web UI hides them on a nested node and any stale nested
+/// override is stripped. `src_mode` stays per-nested (it drives geometry inside one strategy).
 pub struct PriorityMissingLoopsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for PriorityMissingLoopsStrategy {
     fn strategy_id(&self) -> &'static str { "priority_missing_loops" }
 
     fn params(&self) -> &'static [StrategyParam] {
-        &[]
+        &PARAMS
     }
 
     fn expected_nested(&self) -> &'static [NestedSlot] {
@@ -54,7 +67,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for PriorityMissingLo
         issue: &MissingLoopsIssue,
         maze: &Maze<T>,
         rng: &mut dyn RngCore,
-        _params: &StrategyParams,
+        params: &StrategyParams,
         preset_state: &PresetState,
         nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
@@ -71,7 +84,18 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for PriorityMissingLo
             return (RepairResult::Failed, vec![]);
         }
 
-        dispatch_priority(issue as &dyn Issue, maze, rng, preset_state, &candidates)
+        // Resolve the dispatcher-owned add params once and pass them down verbatim as string
+        // overrides — each nested strategy re-reads them (per-area, for `reserve_percent`) exactly
+        // as if a caller had set them directly. `src_mode` is not injected; it stays per-nested.
+        let mut inherited: HashMap<String, String> = HashMap::new();
+        if let Some(StrategyParamValue::Float(v)) = params.get(PARAM_RESERVE_PERCENT) {
+            inherited.insert(PARAM_RESERVE_PERCENT.to_string(), v.to_string());
+        }
+        if let Some(StrategyParamValue::Float(v)) = params.get(PARAM_ATTEMPTS_LIMIT) {
+            inherited.insert(PARAM_ATTEMPTS_LIMIT.to_string(), v.to_string());
+        }
+
+        dispatch_priority(issue as &dyn Issue, maze, rng, preset_state, &candidates, &inherited)
     }
 }
 
@@ -174,6 +198,48 @@ mod tests {
         let result = apply_and_commit(&PriorityMissingLoopsStrategy, &issue, &mut maze, &mut rng, &no_params(), &preset_state, &nested);
         assert!(matches!(result, RepairResult::Failed), "both candidates must fail on a fixture with no feasible connection and no split tiles");
         assert_eq!(maze.graph.edges().count(), 0);
+    }
+
+    fn params_with(overrides: &HashMap<String, String>) -> StrategyParams {
+        build_params(
+            <PriorityMissingLoopsStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&PriorityMissingLoopsStrategy),
+            Some(overrides),
+        )
+    }
+
+    #[test]
+    fn dispatcher_reserve_percent_reaches_the_nested_strategy() {
+        // 2 missing, reserve 50% -> nested must build ceil(2 * 1.5) = 3 bidirectional passages
+        // = 6 directed edges. Without the injection the nested strategy would see its own default
+        // (0%) and add only 4.
+        let mut maze = maze_grid(4);
+        let issue = missing_issue(2);
+        let mut overrides = HashMap::new();
+        overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "50".to_string());
+        let mut rng = MazeRng::seed_from_u64(42);
+        let nested = vec![nested_with(Box::new(MissingLoopsRandomStrategy))];
+        let result = apply_and_commit(&PriorityMissingLoopsStrategy, &issue, &mut maze, &mut rng, &params_with(&overrides), &PresetState::empty(), &nested);
+        assert!(matches!(result, RepairResult::Fixed { .. }));
+        assert_eq!(maze.graph.edges().count(), 6, "dispatcher-owned reserve_percent must govern the nested build target");
+    }
+
+    #[test]
+    fn a_stale_nested_reserve_override_is_overridden_by_the_dispatcher_value() {
+        // The nested candidate still carries reserve_percent=200 in its own param_overrides
+        // (a leftover the web UI no longer shows). The dispatcher's 0% must win, not the stale 200%.
+        let mut maze = maze_grid(4);
+        let issue = missing_issue(2);
+        let mut rng = MazeRng::seed_from_u64(42);
+        let stale = HashMap::from([(PARAM_RESERVE_PERCENT.to_string(), "200".to_string())]);
+        let nested = vec![NestedStrategyConfig {
+            slot: &NESTED_SLOTS[0],
+            strategy: Box::new(MissingLoopsRandomStrategy),
+            param_overrides: stale,
+            nested: vec![],
+        }];
+        let result = apply_and_commit(&PriorityMissingLoopsStrategy, &issue, &mut maze, &mut rng, &no_params(), &PresetState::empty(), &nested);
+        assert!(matches!(result, RepairResult::Fixed { .. }));
+        assert_eq!(maze.graph.edges().count(), 4, "stale nested reserve_percent must be stripped; dispatcher default 0% wins");
     }
 
     #[test]

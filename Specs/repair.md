@@ -59,6 +59,24 @@ pub type StrategyParams = HashMap<&'static str, StrategyParamValue>;
 - Priority: accepted only if the raw string is one of `PriorityLevel`'s 5 `as_str()` values (`"required"`, `"preferred"`, `"indifferent"`, `"discouraged"`, `"forbidden"`); otherwise → default.
 - Keys in `overrides` that don't match any descriptor are ignored.
 
+#### Standard parameters for element-adding strategies (GitHub issue #486)
+
+`maze-core/src/repair/strategies/standard_add_params.rs`. Every strategy that **adds** maze elements to close a deficit (`MissingLoopsRandomStrategy`, `MissingLoopsVerticalStrategy`, `MissingLoopsSplitStrategy`, `MissingTeleportsStrategy`, `MissingOneWaysFromWallStrategy`, `MissingOneWaysFromPassageStrategy`, `AddSplitStrategy`, `AddVerticalPassageStrategy`, `AddElevatorStrategy`, `AddElevatorStopStrategy`, ...) shares the same three knobs, with **unified ids and defaults** — before this the ids (`reserve_percent` vs `vertical_reserve_percent`) and defaults (`0.0` vs `50.0`, `attempts_limit` `3` vs `20` vs `50`) had silently diverged. Old project configs referencing the pre-unification ids/values are **intentionally not migrated**.
+
+| id | type | default | range | meaning |
+|----|------|---------|-------|---------|
+| `reserve_percent` | Float | `0.0` | `[0, 500]` | Target count is `ceil(missing * (1 + reserve_percent / 100))`, floored at 1 when `missing > 0` — a buffer against candidates that turn out blocked or already-connected. Default builds exactly the reported deficit. |
+| `src_mode` | Enum | `random` | `random`, `dead_end_priority` — see `dead_end_priority` below. Orders the source-node pool the strategy grows new elements out from. |
+| `attempts_limit` | Float (rounded to `usize`, min `1`) | `25` | Running total of failed source attempts tolerated across one `apply()` call before giving up (whatever was added so far stands). Not a consecutive streak. |
+
+Built via the `add_strategy_params!` macro: `add_strategy_params!(specific...)` appends `[reserve_percent, src_mode, attempts_limit]`; `add_strategy_params!(no_src_mode: specific...)` appends `[reserve_percent, attempts_limit]` — the `no_src_mode` form is for strategies whose source pool is not a node pool (elevator pools), where dead-end priority has no meaning. **Ordering contract**: the strategy's own specific params come first, the shared set last (keeps the web UI's strategy-specific controls on top, the standard block at the bottom). The array length is written explicitly by the caller (a mismatch is a compile error).
+
+Helpers: `reserve_target(params, missing) -> u32`, `reserve_scaled_missing(params, &[(RepairArea, u32)])`, `attempts_limit(params) -> usize`, `src_mode(params) -> &str`, `inherited_overrides(params) -> HashMap<String, String>`.
+
+**Nested suppression.** When an add strategy runs *nested under a dispatcher* (`dispatch_priority` / `dispatch_weighted`), `reserve_percent` and `attempts_limit` are owned by the **dispatcher**, not the nested strategy: the dispatcher computes the target count and attempt budget once (from its own params) and feeds them down, so a per-nested value would only conflict. Such strategies return `NESTED_SUPPRESSED_ADD_PARAMS` (`["reserve_percent", "attempts_limit"]`) from `RepairStrategy::nested_suppressed_params()`; the web UI hides those rows on a nested node (`StrategyDescriptor.nested_suppressed_params`, filtered in `useQualityViewModel`'s `buildNested`), and `nested_dispatch::nested_params` strips any stale override from the nested config's `param_overrides` before injecting the dispatcher's resolved value. `src_mode` is **never** suppressed — it drives geometry inside one strategy, which a dispatcher has no say over. At the top level (a strategy invoked directly by a rule) every param stays visible and active. The only current dispatcher with add-strategy nested candidates is `PriorityMissingLoopsStrategy`.
+
+**Excluded** — per-entry exact-count elevator strategies (`AddElevatorStopCountStrategy`, `AddElevatorHeightStopStrategy`, `AddElevatorStopForGapStrategy`): each services an issue carrying an exact required count per entry, with no `RepairArea` deficit and no source pool to order, so none of the three standard params apply.
+
 #### PriorityLevel (shared, not a strategy)
 
 How strongly a repair strategy should prefer one of two candidate groups ("preferred" vs.
@@ -115,6 +133,10 @@ pub trait RepairStrategy<T: Tessellation, I: IssueRequirement> {
     /// Nested-strategy slots this strategy accepts, if any — see "Nested strategies" below.
     /// Default: none.
     fn expected_nested(&self) -> &'static [NestedSlot] { &[] }
+    /// Param ids that are hidden and inert when this strategy runs *nested under a dispatcher*,
+    /// because the dispatcher owns them — see "Standard parameters for element-adding strategies"
+    /// (GitHub issue #486). Default: none.
+    fn nested_suppressed_params(&self) -> &'static [&'static str] { &[] }
     fn apply(
         &self,
         issue: &I,
@@ -140,6 +162,7 @@ pub trait ErasedRepairStrategy<T: Tessellation> {
     fn params(&self) -> &'static [StrategyParam];
     fn is_experimental(&self) -> bool;
     fn expected_nested(&self) -> &'static [NestedSlot];
+    fn nested_suppressed_params(&self) -> &'static [&'static str];
     /// Erased form of `RepairStrategy::requirement` — returns `Box<dyn Any>` wrapping the
     /// strategy's own `I::Requirement`. The only caller, `maze-runner`'s `downcast_strategy`,
     /// already knows the concrete `I` (generic over it) and downcasts this back via
@@ -329,6 +352,7 @@ pub fn dispatch_weighted<T: Tessellation>(
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
     candidates: &[WeightedCandidate<T>],
+    inherited_overrides: &HashMap<String, String>,
 ) -> (RepairResult, Vec<MutationCommand>);
 ```
 
@@ -344,9 +368,7 @@ whose own `I` may differ from the caller's.
 - **Weight contract**: every weight must be finite and `> 0.0` — the caller's responsibility,
   `debug_assert!`-checked defensively on entry, never silently substituted. Empty `candidates`
   returns `Failed` immediately without touching `rng`.
-- **Who builds `StrategyParams`**: `dispatch_weighted` itself, via `build_params(strategy.params(),
-  Some(&config.param_overrides))` for whichever candidate it is about to try — callers pass raw
-  `NestedStrategyConfig`s, never pre-built `StrategyParams`.
+- **Who builds `StrategyParams`**: `dispatch_weighted` itself, via `nested_dispatch::nested_params(config, inherited_overrides)` for whichever candidate it is about to try — callers pass raw `NestedStrategyConfig`s, never pre-built `StrategyParams`. `nested_params` is plain `build_params(strategy.params(), Some(&config.param_overrides))` for a candidate with no `nested_suppressed_params()`; for one that has some (an element-adding strategy — see "Standard parameters for element-adding strategies" above), each suppressed id is stripped from a clone of `param_overrides` and replaced with the matching entry from `inherited_overrides` if present, so the dispatcher's own `reserve_percent`/`attempts_limit` win over any stale per-nested value. A caller with nothing to inherit down passes `&HashMap::new()`.
 - **Selection**: without replacement, weighted-random over the remaining pool (cumulative-weight
   pick via `rng`), repeated until a `Fixed` result or the pool is exhausted.
 - **No rollback bookkeeping needed** (GitHub issue #118's immutable-snapshot contract): every
@@ -391,6 +413,7 @@ pub fn dispatch_priority<T: Tessellation>(
     rng: &mut dyn RngCore,
     preset_state: &PresetState,
     candidates: &[&NestedStrategyConfig<T>],
+    inherited_overrides: &HashMap<String, String>,
 ) -> (RepairResult, Vec<MutationCommand>);
 ```
 
@@ -407,8 +430,10 @@ a `Priority`-kind slot (`NestedStrategyPanel`) mutate exactly that stored order.
   each candidate's own `apply()` — a candidate strategy may itself be randomized — just never
   consulted by the dispatch loop to choose an order.
 - **Who builds `StrategyParams`**: same as `dispatch_weighted` — `dispatch_priority` itself, via
-  `build_params(strategy.params(), Some(&config.param_overrides))` for whichever candidate it is
-  about to try.
+  `nested_dispatch::nested_params(config, inherited_overrides)` for whichever candidate it is about
+  to try (see `dispatch_weighted` above for how `nested_params` folds `inherited_overrides` into a
+  candidate's suppressed params). `PriorityMissingLoopsStrategy` passes its own resolved
+  `reserve_percent`/`attempts_limit` here; a caller with nothing to inherit passes `&HashMap::new()`.
 - **No rollback bookkeeping needed**, **recursion**, and **only `Fixed`/`Failed`** — all three
   points from `dispatch_weighted`'s doc comment apply here unchanged; see there for the rationale.
 - Empty `candidates` returns `Failed` immediately without touching `rng`, same as
@@ -856,9 +881,8 @@ Handles `MISSING_LOOPS` — opposite approach from `InvalidLoopRandomStrategy`/`
 
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
-| `reserve_percent` | Float | `50.0` | `[0, 500]` | Target connection count is `ceil(missing * (1 + reserve_percent / 100))`, not the strict `missing` value — a buffer against candidates that turn out blocked or already-connected. |
 | `loop_one_way_chance` | Float | `0.0` | `[0, 100]` | Chance a seeded connection is added as a single one-way edge (random direction) instead of a full bidirectional passage — see GitHub issue #217's follow-up. |
-| `src_mode` | Enum | `random` | `random`, `dead_end_priority` — see `dead_end_priority` above. |
+| `reserve_percent`, `src_mode`, `attempts_limit` | — | — | Standard element-adding params — see "Standard parameters for element-adding strategies" above. `reserve_percent` default is now `0.0` (was `50.0`, unified in GitHub issue #486). |
 
 Named `loop_one_way_chance`, not `one_way_chance` — a `StrategyParam::id` is looked up by web i18n as a flat key with no strategy-scoping, and `MissingTeleportsStrategy` already registers its own `one_way_chance` param with a teleport-specific label; a shared id would resolve to whichever strategy's label the web layer happened to look up.
 
@@ -876,12 +900,11 @@ Handles `MISSING_LOOPS` via a `VerticalPassage` edge instead of an ordinary geom
 
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
-| `vertical_reserve_percent` | Float | `0.0` | `[0, 500]` | Target connection count is `ceil(missing * (1 + vertical_reserve_percent / 100))`. Defaults to `0.0`, unlike `MissingLoopsRandomStrategy`'s `50.0` — a vertical connection is a scarcer, more disruptive resource, so callers opt into over-provisioning explicitly rather than getting it by default. |
 | `vertical_loop_one_way_chance` | Float | `0.0` | `[0, 100]` | Chance a seeded vertical connection is added as a single one-way edge instead of a full bidirectional passage. Rendered as a percent slider (`PERCENT_SLIDER_PARAM_IDS`). |
 | `vertical_direction_balance` | Float | `0.5` | `[0, 1]` | Probability `resolve_vertical_target` picks up rather than down when both are available — see below. Rendered as a percent slider (`PERCENT_FRACTION_SLIDER_PARAM_IDS`). |
-| `src_mode` | Enum | `random` | `random`, `dead_end_priority` — see `dead_end_priority` above. |
+| `reserve_percent`, `src_mode`, `attempts_limit` | — | — | Standard element-adding params — see "Standard parameters for element-adding strategies" above. GitHub issue #486 replaced this strategy's own `vertical_reserve_percent` (default `0.0`) with the unified `reserve_percent` (also default `0.0`). |
 
-Named with a `vertical_` prefix (distinct from `MissingLoopsRandomStrategy`'s own `reserve_percent`/`loop_one_way_chance` and `AddVerticalPassageStrategy`'s `direction_balance`) for the same flat-key web-i18n reason `loop_one_way_chance` itself is named distinctly — see `MissingLoopsRandomStrategy` above.
+The two strategy-specific params keep a `vertical_` prefix (distinct from `AddVerticalPassageStrategy`'s `direction_balance`) for the same flat-key web-i18n reason `loop_one_way_chance` itself is named distinctly — see `MissingLoopsRandomStrategy` above.
 
 Builds the candidate pool the same way `MissingLoopsRandomStrategy` does (`apply_src_mode` over `maze.field.all_node_ids()`, scoped to the issue's `RepairArea`), pops a `src` node via `Vec::pop`, and resolves its vertical target via `resolve_vertical_target(maze, src, rng, &DirectionConstraint::Either, vertical_direction_balance)` — always `Either`, since this strategy has no rule-level `passage_type` to honor (unlike `AddVerticalPassageStrategy`, it services `MISSING_LOOPS`, not `MISSING_VERTICAL_PASSAGES`). Unlike `AddVerticalPassageStrategy`, a `src` whose target resolution fails, or whose resolved pair turns out already connected/blocked, is not retried in the other direction — the `src` is simply dropped and the next one popped, matching `AddVerticalPassageStrategy`'s own single-candidate-per-src contract. The one-way/bidirectional choice and RNG sample-consumption order otherwise mirror `MissingLoopsRandomStrategy`'s own contract exactly (chance roll below `vertical_loop_one_way_chance` → direction coin flip → `AddDirectedVerticalPassage` gated by `directed_edge_feasible`; otherwise `AddBidirectionalVerticalPassage` gated by `bidirectional_edge_feasible`).
 
@@ -1306,8 +1329,7 @@ Handles `MISSING_TELEPORTS` (see GitHub issue #211/#212) by adding the whole com
 | `desired_length` | Interval | `0..1000` | Tile-hop distance band (plain BFS over the raw `Graph`, **not** the `NavGraph`) an exit should fall within, measured from entry. |
 | `allow_out_of_interval` | Bool | `true` | If neither the desired-interval set nor the unreachable set yields a candidate, allow falling back to a reachable exit outside the interval instead of failing this entry. |
 | `one_way_chance` | Float (0–100) | `50.0` | Chance the reverse edge is *not* added, leaving the teleport one-directional. |
-| `attempts_limit` | Float (rounded to `usize`, min `1`) | `3.0` | How many entry candidates to try, per teleport slot, before giving up on that one slot and moving to the next (whatever was added so far still stands). |
-| `reserve_percent` | Float | `50.0` | Mirrors `MissingLoopsRandomStrategy`'s own param — target count is `ceil(missing * (1 + reserve_percent/100))`, not the strict `missing` value. |
+| `reserve_percent`, `attempts_limit` | — | — | Standard element-adding params — see "Standard parameters for element-adding strategies" above. This strategy takes the `no_src_mode` form (`entry_pick` is already its source-ordering knob). GitHub issue #486 unified the defaults: `reserve_percent` `0.0` (was `50.0`), `attempts_limit` `25` (was `3`). `attempts_limit` here is the per-teleport-slot entry-candidate retry cap. |
 | `cross_floor_mode` | Enum (`forbidden`, `natural`, `manual`) | `natural` | Cross-floor policy for the exit pick (GitHub issue #381) — `forbidden` restricts every candidate set to entry's own floor; `natural` ignores floor entirely; `manual` applies `cross_floor_balance`'s own-floor/other-floor roll within whichever zone is picked. |
 | `cross_floor_balance` | Float (0.0–1.0) | `0.5` | Under `cross_floor_mode: manual` only — chance of preferring an other-floor exit over a same-floor one; `0.0`/`1.0` are hard preferences (same-floor-only / other-floor-only), no fallback to the opposite group even if it's the only one populated. |
 
@@ -1589,7 +1611,7 @@ pub(crate) fn plan_pattern_split<T: Tessellation>(
 
 ### RemainingDeficits (shared, not a strategy)
 
-A live, mutable working copy of a deficit issue's `missing: Vec<(RepairArea, u32)>`, shared by every strategy that services a `min_*`/`split_count`/`split_density`-style deficit issue: `MissingLoopsRandomStrategy`, `MissingLoopsSplitStrategy`, `MissingOneWaysFromWallStrategy`, `MissingOneWaysFromPassageStrategy`, `MissingTeleportsStrategy`, `AddSplitStrategy` (all listed below).
+A live, mutable working copy of a deficit issue's `missing: Vec<(RepairArea, u32)>`, shared by every strategy that services a `min_*`/`split_count`/`split_density`-style deficit issue: `MissingLoopsRandomStrategy`, `MissingLoopsVerticalStrategy`, `MissingLoopsSplitStrategy`, `MissingOneWaysFromWallStrategy`, `MissingOneWaysFromPassageStrategy`, `MissingTeleportsStrategy`, `AddSplitStrategy`, `AddVerticalPassageStrategy`, `AddElevatorStrategy`, `AddElevatorStopStrategy`. All of these also share the unified standard element-adding params — see "Standard parameters for element-adding strategies" above.
 
 **Why this exists** (GitHub issue #369 double-repair follow-up): a `FloorScope::PerFloor` check and a `FloorScope::WholeMaze` check on the *same* rule both contribute entries to one issue's `missing` (e.g. "3 per floor" + "12 whole-maze" on a 3-floor maze) — the whole-maze entry isn't independent of the per-floor entries, it's the *same* underlying requirement measured a different way, so satisfying a per-floor entry must count against the whole-maze entry too. Without this, a strategy that just loops `issue.missing` and adds the full amount for every entry independently massively over-delivers (21 instead of 12 in the example above).
 
@@ -1611,7 +1633,7 @@ impl RemainingDeficits {
 
 ### AddSplitStrategy
 
-Handles `MISSING_SPLIT_TILES` — see GitHub issue #247, split-QC epic #246. Mints new split tiles at randomly chosen eligible points (`generation::split_is_eligible` — not locked, point not already multi-node) until `issue.missing` is satisfied or `max_attempts` **failed** attempts have been spent (successful attempts don't count against the budget). Every node at the chosen point — slot-0 included — is replaced in one atomic step, via `MutationCommand::ReplacePointNodes` (see above); slot-0 is not special-cased (epic #246's "slot-0 is not special" rule).
+Handles `MISSING_SPLIT_TILES` — see GitHub issue #247, split-QC epic #246. Mints new split tiles at randomly chosen eligible points (`generation::split_is_eligible` — not locked, point not already multi-node) until `issue.missing` is satisfied or `attempts_limit` **failed** attempts have been spent (successful attempts don't count against the budget). Every node at the chosen point — slot-0 included — is replaced in one atomic step, via `MutationCommand::ReplacePointNodes` (see above); slot-0 is not special-cased (epic #246's "slot-0 is not special" rule).
 
 ```rust
 pub struct AddSplitStrategy {
@@ -1634,7 +1656,7 @@ pub struct AddSplitStrategy {
 |----|------|---------|-------------|
 | `allow_lose_connections` | Bool | `true` | Whether a candidate may drop an existing connection no sibling's face claims (pattern mode only). |
 | `allow_add_connections` | Bool | `true` | Whether a candidate may add a connection no sibling previously had (pattern mode only). |
-| `max_attempts` | Float | `50` | Failed-attempt budget for the whole `apply()` call (successful attempts don't count). |
+| `reserve_percent`, `src_mode`, `attempts_limit` | — | — | Standard element-adding params — see "Standard parameters for element-adding strategies" above. GitHub issue #486 replaced this strategy's bespoke `max_attempts` (default `50`) with `attempts_limit` (default `25`) and added `reserve_percent` (default `0.0`) / `src_mode`. |
 
 `protect_route` (rule-level since GitHub issue #253, see `quality_control.md`'s "Rule-level parameters" — not a `StrategyParam` of this strategy's own, unlike the table above): when enabled (default), excludes every node on the maze's current start->finish route (`graph::route_protection::is_node_on_route`) from the candidate pool — never places a split on a route-critical point.
 
@@ -1673,10 +1695,8 @@ Construction-time `config` field, an ordinary `generation::SplitGenerationConfig
 
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
-| `reserve_percent` | Float | `50.0` | `[0, 500]` | Mirrors `MissingLoopsRandomStrategy`'s own param — target bridge count is `ceil(missing * (1 + reserve_percent/100))`. |
 | `protect_route` | Bool | `true` | — | Excludes every node on the maze's current start->finish route from the candidate pool — same gate `AddSplitStrategy` applies. |
-| `max_attempts` | Float | `50` | `[1, 10000]` | Failed-attempt budget for the whole `apply()` call. |
-| `src_mode` | Enum | `random` | `random`, `dead_end_priority` — see `dead_end_priority` above. |
+| `reserve_percent`, `src_mode`, `attempts_limit` | — | — | Standard element-adding params — see "Standard parameters for element-adding strategies" above. GitHub issue #486 unified the defaults (`reserve_percent` `0.0`, was `50.0`; `attempts_limit` `25`, was this strategy's own `max_attempts` default `50`) and replaced the bespoke `max_attempts` id with `attempts_limit`. |
 
 No `allow_lose_connections`/`allow_add_connections` params, unlike `AddSplitStrategy` — always calls `split_core::plan_pattern_split` with both forced `true`: the whole point of the split is a *new* connection to `dst` (`allow_add: false` would make every candidate fail outright, since the bridge is by definition not a pre-existing connection), and a bridge tile freely redistributing `at`'s other existing connections to fit the chosen pattern/rotation — dropping whichever don't fit, adding whichever new ones do — is exactly the behavior wanted here, not a configurable choice.
 
@@ -1684,7 +1704,7 @@ No `allow_lose_connections`/`allow_add_connections` params, unlike `AddSplitStra
 
 **Building the split tile**: `src` is replaced by a split tile (`MutationCommand::ReplacePointNodes`) built via `split_core::plan_unconstrained_split`/`plan_pattern_split` (pattern chosen via `pick_weighted_pattern` when `config.patterns` is non-empty), with `required: Some(RequiredConnection { neighbor: dst, direction: Passage })` and `excluded: &split_points`. One hard constraint on top of `split_core`'s own required-connection contract: whichever new node ends up carrying the bridge to `dst` must have at least one more edge of its own (a through-node, not a dead end) — drawn from `src`'s other existing connections if any land there, otherwise a brand-new edge to any other free geometric neighbor of `src`.
 
-Returns `Failed` if zero split tiles were added by the time `max_attempts` failed attempts are spent or the pool runs dry (including when no split-eligible candidate exists at all); otherwise `Fixed { score: None }` with every proposed command, even if fewer than `target` were actually added.
+Returns `Failed` if zero split tiles were added by the time `attempts_limit` failed attempts are spent or the pool runs dry (including when no split-eligible candidate exists at all); otherwise `Fixed { score: None }` with every proposed command, even if fewer than `target` were actually added.
 
 ### PriorityMissingLoopsStrategy
 
@@ -1699,7 +1719,7 @@ batch of independently-addressable items — it carries a single scalar `missing
 the whole maze, not a per-item list — so there is nothing to split per-item here: the incoming
 issue is passed through to `dispatch_priority` **unchanged**, one dispatch per `apply()` call.
 
-No configurable parameters of its own.
+**Parameters**: `reserve_percent` (`0.0`) and `attempts_limit` (`25`) — the dispatcher-owned half of the standard element-adding set (GitHub issue #486). This strategy has no source pool of its own, so it does not carry `src_mode`. It resolves these two once and feeds them down to whichever nested strategy runs, as `inherited_overrides` to `dispatch_priority`: the nested strategy's own `reserve_percent`/`attempts_limit` are suppressed (`nested_suppressed_params`), so a stale per-nested override is stripped and the dispatcher's value used instead — see "Standard parameters for element-adding strategies" above.
 
 **Nested slot**: exactly one, `slot_id = "loop_seed_target"` (its own constant, deliberately not a
 reuse of any `*GroupSelectStrategy`'s `"fix_target"` — that string already means "exactly one
@@ -1716,15 +1736,17 @@ priority-ordered candidates"), `kind = MISSING_LOOPS`, `min = 1`, `max = None`,
 
 ### AddVerticalPassageStrategy
 
-Handles `MISSING_VERTICAL_PASSAGES` — see GitHub issue #343. For each missing slot (`issue.missing: Vec<(RepairArea, u32)>`, mandatory — the producing check already computed it, same "no other channel" contract every deficit strategy shares), picks a random node whose adjacent floor (up or down, chosen at random when both exist — a boundary floor has only one direction available) resolves a target node at the same `(x, y)` point (`vertical_target::resolve_vertical_target` — shared module, see below, mirrors `generation::vertex_based`'s own floor-adjacency resolution), then adds a `VerticalPassage` edge between them. Deliberately much simpler than `MissingTeleportsStrategy` — no entry-pick/desired-length/attempts-limit/reserve-percent machinery — since a vertical passage's target is already fully determined by adjacency, unlike a teleport's free choice of any node pair.
+Handles `MISSING_VERTICAL_PASSAGES` — see GitHub issue #343. For each missing slot (`issue.missing: Vec<(RepairArea, u32)>`, mandatory — the producing check already computed it, same "no other channel" contract every deficit strategy shares), picks a random node whose adjacent floor (up or down, per `direction_balance` when both exist — a boundary floor has only one direction available) resolves a target node at the same `(x, y)` point (`vertical_target::resolve_vertical_target` — shared module, see below, mirrors `generation::vertex_based`'s own floor-adjacency resolution), then adds a `VerticalPassage` edge between them. Simpler than `MissingTeleportsStrategy` — no entry-pick/desired-length machinery — since a vertical passage's target is already fully determined by adjacency, unlike a teleport's free choice of any node pair.
 
 **Parameters:**
 
 | id | type | default | range | description |
 |----|------|---------|-------|-------------|
-| `one_way_balance` | Float | `0.5` | `[0, 1]` | Chance the newly added passage is one-way (direction already rolled by the target resolution) rather than two-way. Rendered in the UI as a percent slider (`PERCENT_FRACTION_SLIDER_PARAM_IDS`). |
+| `one_way_balance` | Float | `0.5` | `[0, 1]` | Chance the newly added passage is one-way (direction already rolled by the target resolution) rather than two-way. Rendered in the UI as a percent slider (`PERCENT_FRACTION_SLIDER_PARAM_IDS`). Ignored when the rule-level `passage_type` fully determines directionality (`TwoWay`/`OneWayDown`/`OneWayUp`). |
+| `direction_balance` | Float | `0.5` | `[0, 1]` | When both an up-floor and a down-floor target exist for the chosen `src`, chance of picking up rather than down. Ignored when `passage_type` fixes the direction. |
+| `reserve_percent`, `src_mode`, `attempts_limit` | — | — | Standard element-adding params — see "Standard parameters for element-adding strategies" above (GitHub issue #486 added these three to this strategy). |
 
-For each deficient area (in `issue.missing` order), builds a candidate pool from every node in that area (`RepairArea::WholeMaze` = every field node, `RepairArea::Level(level)` = only that floor's own nodes) and repeatedly pops a random `src` from the pool, resolves its vertical target via `vertical_target::resolve_vertical_target`, and — unless both directions between the pair already exist — rolls `one_way_balance` to decide `AddDirectedVerticalPassage` (single direction, gated by `directed_edge_feasible`) vs. `AddBidirectionalVerticalPassage`. A `src` whose target can't be resolved (no adjacent floor, or no node at the same point on it) is simply skipped, not retried. Each successfully added edge retires that unit of deficit from **every** `RepairArea` it touches (`WholeMaze` and, if resolvable, `src`'s own `Level`) via the shared `RemainingDeficits` bookkeeping (see below) — the same live-deficit-sharing mechanism `MissingLoopsRandomStrategy`/`MissingOneWaysFromWallStrategy`/`AddSplitStrategy` use, so stacking a `WholeMaze`-scoped and a `PerFloor`-scoped instance of these checks in one rule never double-delivers.
+For each deficient area (in `issue.missing` order), builds a candidate pool from every node in that area (`RepairArea::WholeMaze` = every field node, `RepairArea::Level(level)` = only that floor's own nodes), orders it by `apply_src_mode(src_mode)` (see `dead_end_priority` above), and pops a `src` via `Vec::pop` until the area's deficit closes, the pool runs dry, or `attempts_limit` failed source attempts accumulate. For each `src` it resolves the vertical target via `vertical_target::resolve_vertical_target`, and — unless both directions between the pair already exist — rolls `one_way_balance` to decide `AddDirectedVerticalPassage` (single direction, gated by `directed_edge_feasible`) vs. `AddBidirectionalVerticalPassage`. A `src` whose target can't be resolved (no adjacent floor, or no node at the same point on it) is simply skipped, not retried. Each successfully added edge retires that unit of deficit from **every** `RepairArea` it touches (`WholeMaze` and, if resolvable, `src`'s own `Level`) via the shared `RemainingDeficits` bookkeeping (see below) — the same live-deficit-sharing mechanism `MissingLoopsRandomStrategy`/`MissingOneWaysFromWallStrategy`/`AddSplitStrategy` use, so stacking a `WholeMaze`-scoped and a `PerFloor`-scoped instance of these checks in one rule never double-delivers.
 
 Returns `Failed` if nothing was added across every area (e.g. a single-level field, where no node has any vertical target at all); otherwise `Fixed { score: None }` with every proposed command, even if the pool ran dry before every area's own deficit was fully closed.
 
@@ -1821,9 +1843,7 @@ Handles `MISSING_ELEVATORS` — see GitHub issue #401, part of epic #344. Builds
 | `stop_count` | Interval | `2..10` (min `2`) | How many stops the new elevator gets. |
 | `skip` | Interval | `0..10` (min `0`) | Floors *skipped* between two consecutive stops — `0` means adjacent floors, no skip. The floor-index step between consecutive stops is always `skip + 1`. |
 | `length_interval` | Interval | `3..10` (min `1`) | Number of floors the elevator spans, counted **inclusively** (e.g. floors 1..3 is `length = 3`). The geometric index span used internally is `length - 1`. |
-| `src_mode` (`PARAM_SRC_MODE`, shared with `dead_end_priority`) | Enum | `random` | Orders candidate starting points — `dead_end_priority` grows elevators out from the maze's least-connected cells first. |
-| `attempts_limit` | Float | `20` | Per-slot retry cap (new random start point + length/base-position/stop-count roll each attempt) before giving up on that slot. |
-| `reserve_percent` | Float | `0` | Extra elevators to build beyond the raw deficit per area: `target = ceil(missing * (1 + reserve_percent / 100))`. |
+| `reserve_percent`, `src_mode`, `attempts_limit` | — | — | Standard element-adding params — see "Standard parameters for element-adding strategies" above. GitHub issue #486 unified `attempts_limit`'s default from this strategy's own `20` to `25`; `reserve_percent` default stays `0.0`. `attempts_limit` here is the per-slot retry cap (new random start point + length/base-position/stop-count roll each attempt) before giving up on that slot. |
 
 For each deficit slot, `try_build_elevator` shuffles every candidate `length` in `length_min..=length_max` into random order, and for each length shuffles every candidate base floor-index position into random order — the first length/base-position pair for which a stop count is analytically reachable (computed from `span`/`skip`, not guessed) is used, rather than a single blind random roll of span/stop-count/base position together that could fail even when a valid combination exists. Once a length/base/stop-count triple is fixed, `distribute_stops` places the stops in between: each of the `stop_count - 1` floor-index steps is drawn independently at random from `skip_min + 1..=skip_max + 1` (narrowed to whatever the remaining steps can still cover, so a greedy draw never strands the walk short of the span's far endpoint), via backtracking — up to `MAX_BACKTRACK_RETRIES` (`50`) retries per step before backing up and re-rolling the previous one — rather than an even/uniform gap split, so consecutive stops get genuinely varied spacing. A candidate stop set is accepted only if every planned stop's point is free of an existing edge to every other planned stop and `preset_state`-feasible (`stops_feasible`); otherwise the whole attempt is discarded, never patched up.
 
@@ -1852,6 +1872,24 @@ Multiple `missing` entries for the same elevator (e.g. several `min_elevator_hei
 Handles `EXCESSIVE_ELEVATOR_STOP_GAP` — see GitHub issue #402, part of epic #344. `MaxElevatorStopGapCheck` flags a consecutive stop pair (adjacent after sorting by floor index) whose gap — the number of floors *skipped* between them, `hi_index - lo_index - 1` — exceeds a configured maximum, reporting only the elevator and the gap's own bottom/top floor. For each entry, this strategy picks a random floor strictly between `lo` and `hi` that's `stop_feasible` and adds it as a stop, wired to every one of the elevator's *current* stops (existing ones and any already added earlier in the same `apply` call).
 
 No params of its own. The elevator named by an entry is re-resolved against the live `maze` via `elevator_utils::find_elevator_by_stop`; an entry whose elevator no longer exists, or whose `lo`/`hi` floor no longer resolves to a node on the elevator's point, is skipped. **Partial success counts as success** — one entry failing to place a stop doesn't fail the whole strategy, only a complete failure across every entry does.
+
+### AddElevatorStopStrategy
+
+Handles `AREA_MISSING_ELEVATOR_STOPS` (GitHub issue #408, epic #344) by either building a brand-new elevator (delegating to a nested `MISSING_ELEVATORS` strategy, typically `AddElevatorStrategy`, via slot `add_elevator_strategy`) or adding one more stop to an elevator that already exists. Distinct from `AddElevatorStrategy` itself: that strategy only ever adds whole new elevators; this one primarily grows existing ones, only falling through to "add new" when growing fails (or the `existing_reuse_balance` roll picks that branch first).
+
+**Parameters:**
+
+| id | type | default | description |
+|----|------|---------|-------------|
+| `existing_reuse_balance` | Float | `0.5` | Chance to try the "reuse existing" branch first each unit of deficit; the other branch is tried as a fallback on failure. |
+| `allow_span_extension` | Bool | `true` | Off: the "reuse existing" branch only fills a floor strictly inside an elevator's own stop span (a gap), never extends the span by one floor. |
+| `reserve_percent`, `attempts_limit` | — | — | Standard element-adding params (`no_src_mode` form — the source pool here is elevators, not nodes, so `src_mode` doesn't apply) — see "Standard parameters for element-adding strategies" above. |
+
+Per `(RepairArea, count)` pair — processed via `RemainingDeficits`, same floors-before-whole-maze ordering every sibling deficit strategy uses, with `reserve_percent` scaling every reported deficit before the loop starts — `attempts_limit` is a **per-area** retry budget: reset to `0` at the start of each area's own loop, not shared across the whole `apply()` call, so one area that never succeeds can't starve the budget of every area that comes after it in `RemainingDeficits`'s ordering. Each iteration rolls `existing_reuse_balance` to pick "add new" vs. "reuse existing" first, falling back to the other branch on failure; if both branches fail, the iteration retries (fresh coin flip, fresh candidates) rather than abandoning the area, consuming one unit of `attempts_limit` per failed iteration — the area is only given up on once its own budget is exhausted. A pair that makes zero progress after its budget runs out is simply left unfixed, not the source of a `Failed` result — mirrors `AddElevatorStrategy`'s "infeasible slots don't abort the whole repair" posture: the whole `apply()` call only reports `Failed` if literally nothing was added across every pair.
+
+**Add-new branch**: delegates to the nested `add_elevator_strategy` slot with a synthetic single-elevator `MissingElevatorsIssue`. The dispatcher-owned `reserve_percent`/`attempts_limit` are resolved once from this strategy's own params (`standard_add_params::inherited_overrides`) and injected into the nested call every time via `nested_params` — the nested strategy declares them in `nested_suppressed_params()`, so a stale per-nested override is stripped in favor of this strategy's value. Which floors the nested strategy actually picked is read back from its returned `AddBidirectionalElevator` commands (the only way to learn this, since the nested call's `RepairResult` carries no floor detail) — every floor touched by at least one such command has its own deficit (and the whole-maze deficit) decremented by one stop, per the issue's own accounting rule.
+
+**Reuse-existing branch**: candidate elevators are every current elevator (`WholeMaze` scope) or every elevator whose stop span could gain a stop landing on the target floor (`Level` scope, gated by `allow_span_extension`), picked uniformly at random; `WholeMaze` scope then adds a stop on a random floor the picked elevator doesn't already stop at, `Level` scope adds a stop on the pair's own floor. Both branches see elevators built earlier in the same `apply()` call (queued `commands`, not yet in `maze` — an immutable pre-mutation snapshot per the `MutationCommand` contract), via a planned-elevator overlay, so the reuse branch can grow an elevator it itself just built instead of only ever adding new ones.
 
 ## Pipeline
 

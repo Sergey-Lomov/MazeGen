@@ -10,22 +10,26 @@ use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::remaining_deficits::RemainingDeficits;
 use super::vertical_target::{DirectionConstraint, resolve_vertical_target};
+use super::dead_end_priority::apply_src_mode;
+use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
 
 pub const PARAM_ONE_WAY_BALANCE: &str = "one_way_balance";
 pub const PARAM_DIRECTION_BALANCE: &str = "direction_balance";
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_ONE_WAY_BALANCE,
-        label: "One-way passage balance",
-        kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
-    },
-    StrategyParam {
-        id: PARAM_DIRECTION_BALANCE,
-        label: "Direction balance",
-        kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
-    },
-];
+const ONE_WAY_BALANCE_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_ONE_WAY_BALANCE,
+    label: "One-way passage balance",
+    kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
+};
+
+const DIRECTION_BALANCE_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_DIRECTION_BALANCE,
+    label: "Direction balance",
+    kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
+};
+
+// Node-based source pool (a random field node whose adjacent floor resolves a target) -> gets src_mode.
+static PARAMS: [StrategyParam; 5] = crate::add_strategy_params!(ONE_WAY_BALANCE_PARAM, DIRECTION_BALANCE_PARAM);
 
 /// Handles `MISSING_VERTICAL_PASSAGES` — see GitHub issue #343 and its follow-up. For each missing
 /// slot, picks a random node whose adjacent floor (up or down, whichever exists — chosen per
@@ -49,7 +53,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue> for AddVer
     fn strategy_id(&self) -> &'static str { "add_vertical_passage" }
 
     fn params(&self) -> &'static [StrategyParam] {
-        PARAMS
+        &PARAMS
+    }
+
+    fn nested_suppressed_params(&self) -> &'static [&'static str] {
+        standard_add_params::NESTED_SUPPRESSED_ADD_PARAMS
     }
 
     fn apply(
@@ -67,6 +75,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue> for AddVer
 
         let one_way_balance = params.get(PARAM_ONE_WAY_BALANCE).and_then(|v| v.as_float()).unwrap_or(0.5);
         let direction_balance = params.get(PARAM_DIRECTION_BALANCE).and_then(|v| v.as_float()).unwrap_or(0.5);
+        let src_mode = src_mode(params);
+        let max_failed_attempts = attempts_limit(params);
 
         let (forced_one_way, constraint) = match self.passage_type {
             VerticalPassageType::Any => (None, DirectionConstraint::Either),
@@ -82,33 +92,41 @@ impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue> for AddVer
         let mut deficits = RemainingDeficits::new(&issue.missing);
         let areas: Vec<RepairArea> = deficits.areas().collect();
         for area in areas {
-            let target = deficits.live(area);
-            if target == 0 {
+            let missing = deficits.live(area);
+            if missing == 0 {
                 continue;
             }
+            let target = reserve_target(params, missing);
 
-            let mut pool: Vec<NodeId> = maze.field.all_node_ids()
+            let eligible: Vec<NodeId> = maze.field.all_node_ids()
                 .filter(|&n| match area {
                     RepairArea::WholeMaze => true,
                     RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
                 })
                 .collect();
+            let mut pool: Vec<NodeId> = apply_src_mode(maze, eligible, src_mode, rng);
             let mut added: u32 = 0;
+            // A popped `src` that adds nothing counts against the budget (running total).
+            let mut failed_attempts: usize = 0;
 
-            while added < target && !pool.is_empty() {
-                let pick = rng.random_range(0..pool.len());
-                let src = pool.swap_remove(pick);
+            while added < target && !pool.is_empty() && failed_attempts < max_failed_attempts {
+                // Pop from the end, not a random index — `apply_src_mode` orders the pool so
+                // dead-end candidates sit here when `dead_end_priority` is active.
+                let src = pool.pop().expect("pool.is_empty() already checked by the while condition");
 
                 let Some((from, to)) = resolve_vertical_target(maze, src, rng, &constraint, direction_balance) else {
+                    failed_attempts += 1;
                     continue;
                 };
                 if maze.graph.edge_between(from, to).is_some() || maze.graph.edge_between(to, from).is_some() {
+                    failed_attempts += 1;
                     continue;
                 }
 
                 let one_way = forced_one_way.unwrap_or_else(|| rng.random_bool(one_way_balance.clamp(0.0, 1.0)));
                 if one_way {
                     if !crate::generation::directed_edge_feasible(preset_state, from, to) {
+                        failed_attempts += 1;
                         continue;
                     }
                     commands.push(MutationCommand::AddDirectedVerticalPassage { from, to });
@@ -243,6 +261,33 @@ mod tests {
         let result = apply_and_commit(&any_strategy(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.graph.edges().count(), 1, "one_way_balance=1 must add only one direction");
+    }
+
+    #[test]
+    fn reserve_percent_override_increases_the_passage_count() {
+        let mut maze = two_level_maze(4);
+        let issue = missing_issue(2);
+        let params = params_with(&[("reserve_percent", "100"), ("one_way_balance", "0")]);
+        let mut rng = MazeRng::seed_from_u64(42);
+        let result = apply_and_commit(&any_strategy(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        // 2 * (1 + 100%) = 4 bidirectional passages => 8 directed edges, vs 4 with the 0 default.
+        assert_eq!(maze.graph.edges().count(), 8);
+    }
+
+    #[test]
+    fn src_mode_dead_end_priority_is_accepted_and_still_adds_passages() {
+        // `dead_end_priority` for a vertical-passage src pool is valid but hard to isolate — the
+        // passage endpoints are at src's own x-y point across floors, so a dead-end src whose
+        // vertical neighbor is already connected contributes nothing. This just asserts the mode
+        // parses and doesn't regress the happy path.
+        let mut maze = two_level_maze(4);
+        let issue = missing_issue(2);
+        let params = params_with(&[("src_mode", "dead_end_priority")]);
+        let mut rng = MazeRng::seed_from_u64(5);
+        let result = apply_and_commit(&any_strategy(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert!(maze.graph.edges().count() > 0);
     }
 
     #[test]

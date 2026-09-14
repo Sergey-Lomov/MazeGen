@@ -4,12 +4,15 @@ use crate::space::Tessellation;
 use crate::quality_control::MissingOneWaysIssue;
 use crate::quality_control::RepairArea;
 use crate::generation::PresetState;
-use crate::repair::params::StrategyParams;
+use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::missing_one_ways_shared::{pick_random_pairs, canonical_pair, ProposedPairs};
 use super::remaining_deficits::RemainingDeficits;
+use super::standard_add_params::{reserve_target, attempts_limit, src_mode};
+
+static PARAMS: [StrategyParam; 3] = crate::add_strategy_params!();
 
 /// Handles `MISSING_ONE_WAYS` — one of the two registered strategies (see
 /// `MissingOneWaysFromPassageStrategy` for the other) — see GitHub issue #201. Picks random pairs
@@ -21,18 +24,29 @@ pub struct MissingOneWaysFromWallStrategy;
 impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysFromWallStrategy {
     fn strategy_id(&self) -> &'static str { "missing_one_ways_from_wall" }
 
+    fn params(&self) -> &'static [StrategyParam] {
+        &PARAMS
+    }
+
+    fn nested_suppressed_params(&self) -> &'static [&'static str] {
+        super::standard_add_params::NESTED_SUPPRESSED_ADD_PARAMS
+    }
+
     fn apply(
         &self,
         issue: &MissingOneWaysIssue,
         maze: &Maze<T>,
         rng: &mut dyn RngCore,
-        _params: &StrategyParams,
+        params: &StrategyParams,
         preset_state: &PresetState,
         _nested: &[NestedStrategyConfig<T>],
     ) -> (RepairResult, Vec<MutationCommand>) {
         if issue.missing.is_empty() {
             return (RepairResult::Fixed { score: None }, vec![]);
         }
+
+        let src_mode = src_mode(params);
+        let max_failed_attempts = attempts_limit(params);
 
         let mut proposed: ProposedPairs = ProposedPairs::default();
         let mut commands = Vec::new();
@@ -41,15 +55,18 @@ impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysF
         let mut deficits = RemainingDeficits::new(&issue.missing);
         let areas: Vec<RepairArea> = deficits.areas().collect();
         for area in areas {
-            let target = deficits.live(area);
-            if target == 0 {
+            let missing = deficits.live(area);
+            if missing == 0 {
                 continue;
             }
+            let target = reserve_target(params, missing);
             let found = pick_random_pairs(
                 maze,
                 rng,
                 target,
                 area,
+                src_mode,
+                max_failed_attempts,
                 |src, dst, rng| {
                     if proposed.contains(&canonical_pair(src, dst)) {
                         return false;
@@ -97,7 +114,7 @@ mod tests {
     use crate::IdGenerator;
     use crate::space::{SquareTessellation, square_rect, MultiLevelField};
     use crate::quality_control::RepairArea;
-    use crate::repair::strategies::test_utils::apply_and_commit_default;
+    use crate::repair::strategies::test_utils::{apply_and_commit, apply_and_commit_default};
 
     fn missing_issue(missing: u32) -> MissingOneWaysIssue {
         let entries = if missing == 0 { vec![] } else { vec![(RepairArea::WholeMaze, missing)] };
@@ -244,6 +261,54 @@ mod tests {
         let result = apply_and_commit_default(&MissingOneWaysFromWallStrategy, &issue, &mut maze, &mut rng, &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.graph.edges().count(), 3, "3 edges total, not 6");
+    }
+
+    #[test]
+    fn reserve_percent_override_increases_the_target() {
+        use std::collections::HashMap;
+        use crate::repair::params::build_params;
+        let mut maze = maze_grid(4);
+        let issue = missing_issue(2);
+        let overrides = HashMap::from([("reserve_percent".to_string(), "100".to_string())]);
+        let params = build_params(
+            <MissingOneWaysFromWallStrategy as RepairStrategy<SquareTessellation, MissingOneWaysIssue>>::params(&MissingOneWaysFromWallStrategy),
+            Some(&overrides),
+        );
+        let mut rng = MazeRng::seed_from_u64(42);
+        let result = apply_and_commit(&MissingOneWaysFromWallStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        // 2 * (1 + 100%) = 4 one-way edges, vs 2 with the unified 0 default.
+        assert_eq!(maze.graph.edges().count(), 4);
+    }
+
+    #[test]
+    fn src_mode_dead_end_priority_prefers_dead_end_sources() {
+        use std::collections::HashMap;
+        use crate::repair::params::build_params;
+        use crate::space::SquarePoint;
+        // 4x4 grid, one existing bidirectional passage: its two endpoints are the only dead ends.
+        let mut maze = maze_grid(4);
+        let n = |x: i32, y: i32| maze.field.node_at(maze.field.single_level_id(), SquarePoint { x, y }).unwrap();
+        let (d0, d1) = (n(0, 0), n(1, 0));
+        maze.graph.add_bidirectional_edge(d0, d1, EdgeKind::Basic);
+        let dead_ends = [d0, d1];
+
+        let issue = missing_issue(1);
+        let overrides = HashMap::from([("src_mode".to_string(), "dead_end_priority".to_string())]);
+        let params = build_params(
+            <MissingOneWaysFromWallStrategy as RepairStrategy<SquareTessellation, MissingOneWaysIssue>>::params(&MissingOneWaysFromWallStrategy),
+            Some(&overrides),
+        );
+        let mut rng = MazeRng::seed_from_u64(5);
+        let result = apply_and_commit(&MissingOneWaysFromWallStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        let new_edges: Vec<_> = maze.graph.edges()
+            .filter(|e| !(dead_ends.contains(&e.from) && dead_ends.contains(&e.to)))
+            .collect();
+        assert!(!new_edges.is_empty());
+        for e in &new_edges {
+            assert!(dead_ends.contains(&e.from) || dead_ends.contains(&e.to), "new one-way must grow from a dead end");
+        }
     }
 
     #[test]

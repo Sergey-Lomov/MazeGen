@@ -45,4 +45,44 @@ describe("useQualityViewModel", () => {
     rerender();
     expect(result.current.checks.find((c) => c.localId === 0)?.disabled).toBe(true);
   });
+
+  // GitHub issue #486: a nested strategy hides its dispatcher-owned params
+  // (`nested_suppressed_params`) in its own rendered `params`, but keeps them on
+  // `strategy.params` (which the select dialog reads for defaults).
+  it("drops nested_suppressed_params from a nested strategy's rendered params only", () => {
+    useMazeStore.setState({
+      availableStrategies: [
+        {
+          id: "priority_missing_loops", handles: "missing_loops",
+          params: [{ id: "reserve_percent", label: "Reserve percent", kind: { type: "float", default: 0, min: 0, max: 500 } }],
+          experimental: false,
+          nested_slots: [{ slot_id: "seed", kind: "missing_loops", min: 1, max: 5, dispatch_kind: "priority" }],
+          nested_suppressed_params: [],
+        },
+        {
+          id: "missing_one_ways_from_wall", handles: "missing_loops",
+          params: [
+            { id: "reserve_percent", label: "Reserve percent", kind: { type: "float", default: 0, min: 0, max: 500 } },
+            { id: "src_mode", label: "Source mode", kind: { type: "enum", options: ["random", "dead_end_priority"], default: "random" } },
+            { id: "attempts_limit", label: "Attempts limit", kind: { type: "float", default: 25, min: 1, max: 10000 } },
+          ],
+          experimental: false, nested_slots: [],
+          nested_suppressed_params: ["reserve_percent", "attempts_limit"],
+        },
+      ],
+      rules: [{
+        id: "g1", name: "Rule 1", kind: "missing_loops",
+        checks: [{ localId: 0, typeId: "c1", params: {}, disabled: false }],
+        nextLocalCheckId: 1, strategyId: "priority_missing_loops", disabled: false, ruleDisabled: false, params: {},
+        nestedStrategies: [{ slotId: "seed", strategyId: "missing_one_ways_from_wall", params: {}, nested: [] }],
+        collapsed: false,
+      }],
+      availableChecks: [{ id: "c1", label: "C1", description: "", issue_kinds: ["missing_loops"], params: [], allow_multiple_instances: false }],
+      stages: [{ id: "stage_1", name: "Stage 1", ruleIds: ["g1"], disabled: false, collapsed: false }],
+    });
+    const { result } = renderHook(() => useQualityViewModel());
+    const nested = result.current.strategySlots[0].nestedStrategies[0];
+    expect(nested.params.map((p) => p.id)).toEqual(["src_mode"]);
+    expect(nested.strategy.params.map((p) => p.id)).toEqual(["reserve_percent", "src_mode", "attempts_limit"]);
+  });
 });

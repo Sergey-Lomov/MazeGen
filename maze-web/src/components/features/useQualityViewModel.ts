@@ -153,10 +153,17 @@ export function useQualityViewModel(): QualityViewModel {
         .map((n): NestedStrategyVM | undefined => {
           const d = strategyById.get(n.strategyId);
           if (!d) return undefined;
+          // GitHub issue #486: params the dispatcher owns (`reserve_percent`/`attempts_limit`)
+          // are hidden on a nested node — the parent strategy resolves them once and feeds them
+          // down, so a per-nested value would only conflict. `strategy.params` (used by the
+          // select dialog for defaults etc.) keeps the full list; only this rendered `params`
+          // descriptor is filtered.
+          const suppressed = new Set(d.nested_suppressed_params ?? []);
+          const nestedParams = d.params.filter((p) => !suppressed.has(p.id));
           return {
             slotId: n.slotId,
             strategy: buildStrategyVM(d),
-            params: localizeParams(d.params, d.id),
+            params: localizeParams(nestedParams, d.id),
             nested: buildNested(n.nested, depth + 1),
           };
         })

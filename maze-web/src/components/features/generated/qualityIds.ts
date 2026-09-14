@@ -225,7 +225,6 @@ export const PARAM_IDS = [
   "locality",
   "loop_one_way_chance",
   "max",
-  "max_attempts",
   "max_compactness",
   "max_connections",
   "max_density",
@@ -312,7 +311,6 @@ export const PARAM_IDS = [
   "vertical_loop_one_way_chance",
   "vertical_passage_priority",
   "vertical_passage_weight",
-  "vertical_reserve_percent",
   "waypoint",
 ] as const;
 
