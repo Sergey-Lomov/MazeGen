@@ -391,7 +391,7 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
   it("a toFloor-tagged point draws no ordinary marker circle there — only the badge's own circle/text", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0 }) });
     const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[]; children: unknown[] } }).view;
     const overlay = (renderer as unknown as { overlayLayer: { children: unknown[] } }).overlayLayer;
 
@@ -413,7 +413,7 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
   it("badge display number is toFloor + 1 (1-based, matching FloorSwitcher's own convention)", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 2 }];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0 }) });
     const overlay = (renderer as unknown as { overlayLayer: { children: { text: string }[] } }).overlayLayer;
     expect(overlay.children).toHaveLength(1);
     expect(overlay.children[0].text).toBe("3");
@@ -425,7 +425,7 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
 
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0 }), floorNavigable: true });
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0 }), floorNavigable: true });
     const overlay = (renderer as unknown as {
       overlayLayer: { children: { listeners?: Record<string, (() => void)[]> }[] };
     }).overlayLayer;
@@ -447,16 +447,30 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
   it("without floorNavigable, no hit-circle is added even for a toFloor-tagged point", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0 }) });
     const overlay = (renderer as unknown as { overlayLayer: { children: { on?: (event: string, cb: () => void) => void }[] } }).overlayLayer;
     const hit = overlay.children.find((c) => typeof c.on === "function");
     expect(hit).toBeUndefined();
   });
 
+  // GitHub issue #519: a floor badge stands in for the connector's off-floor endpoint, so it must
+  // follow the connector's own visibility rule — no badge when the connector display is off.
+  it("connectorStyle: \"none\" draws no badge even for a toFloor-tagged point", () => {
+    const renderer = new TeleportRenderer(new Container());
+    const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "none", edgeGapWidth: 0 }), floorNavigable: true });
+    const overlay = (renderer as unknown as { overlayLayer: { children: unknown[] } }).overlayLayer;
+    expect(overlay.children).toHaveLength(0);
+    // Not just "no badge" — the badge point draws nothing at all, not even a fallback ordinary
+    // marker: it's a synthetic midpoint, not a real teleport node (GitHub issue #519).
+    const g = (renderer as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
+    expect(g.calls.some((c) => c.fn === "circle" && c.args[0] === 10 && c.args[1] === 10)).toBe(false);
+  });
+
   it("a same-floor (toFloor undefined) point draws no badge at all", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: false }];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0 }), floorNavigable: true });
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0 }), floorNavigable: true });
     const overlay = (renderer as unknown as { overlayLayer: { children: unknown[] } }).overlayLayer;
     expect(overlay.children).toHaveLength(0);
   });
@@ -466,7 +480,7 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
   it("badge label follows floorBadge.labelType (roman)", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 3 }];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }) });
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }) });
     const overlay = (renderer as unknown as { overlayLayer: { children: { text: string }[] } }).overlayLayer;
     // toFloor 3 -> display 4 -> "IV"
     expect(overlay.children[0].text).toBe("IV");
@@ -475,7 +489,7 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
   it("badge radius follows floorBadge.size, independent of the edge marker's own style.size", () => {
     const renderer = new TeleportRenderer(new Container());
     const edges: TeleportEdge[] = [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0, size: 0.2, floorBadge: { shape: "circle", labelType: "arabic", size: 0.5, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }) });
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, size: 0.2, floorBadge: { shape: "circle", labelType: "arabic", size: 0.5, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }) });
     const g = (renderer as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
     // The badge's own fill circle at the badge point — radius is floorBadge.size * TILE_SIZE, not size * TILE_SIZE.
     const badgeCircle = g.calls.find((c) => c.fn === "circle" && c.args[0] === 10 && c.args[1] === 10 && typeof c.args[2] === "number" && (c.args[2] as number) > 0.2 * 40);
@@ -488,7 +502,7 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     renderer.render({
       edges,
       waypoints: [],
-      lineStyle: baseLineStyle({ edgeGapWidth: 0, floorColor: 0x444444, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0xabcdef, textPadding: 0 } }),
+      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorColor: 0x444444, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0xabcdef, textPadding: 0 } }),
     });
     const overlay = (renderer as unknown as { overlayLayer: { children: { style: { fill?: number } }[] } }).overlayLayer;
     expect(overlay.children[0].style.fill).toBe(0xabcdef);
@@ -502,7 +516,7 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
       { from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }, // display "1"
       { from: [20, 20], to: [30, 30], oneWay: true, toFloor: 7 }, // display "8"
     ];
-    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0 }) });
+    renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0 }) });
     const overlay = (renderer as unknown as { overlayLayer: { children: { text: string; style: { fontSize?: number } }[] } }).overlayLayer;
     const labels = overlay.children.filter((c) => c.text === "1" || c.text === "8");
     expect(labels).toHaveLength(2);
@@ -517,14 +531,14 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     many.render({
       edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
       waypoints: [],
-      lineStyle: baseLineStyle({ edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
+      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
       floorCount: 12,
     });
     const few = new TeleportRenderer(new Container());
     few.render({
       edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
       waypoints: [],
-      lineStyle: baseLineStyle({ edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
+      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
       floorCount: 3,
     });
     const fontOf = (r: InstanceType<typeof TeleportRenderer>) =>
@@ -542,13 +556,13 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
         { from: [20, 20], to: [30, 30], oneWay: true, toFloor: 7 },
       ],
       waypoints: [],
-      lineStyle: baseLineStyle({ edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
+      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
     });
     const narrow = new TeleportRenderer(new Container());
     narrow.render({
       edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
       waypoints: [],
-      lineStyle: baseLineStyle({ edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
+      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, floorBadge: { shape: "circle", labelType: "roman", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
     });
     const fontOf = (r: InstanceType<typeof TeleportRenderer>) =>
       (r as unknown as { overlayLayer: { children: { text: string; style: { fontSize?: number } }[] } }).overlayLayer.children[0].style.fontSize!;
@@ -559,12 +573,15 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
   // `borderWidth`, not a fixed constant.
   it("badge border width follows the edge marker's borderWidth", () => {
     const thin = new TeleportRenderer(new Container());
-    thin.render({ edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }], waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0, borderWidth: 1 }) });
+    thin.render({ edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }], waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 1 }) });
     const thick = new TeleportRenderer(new Container());
-    thick.render({ edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }], waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 0, borderWidth: 8 }) });
+    thick.render({ edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }], waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 8 }) });
+    // `connectorStyle: "straight"` (needed so the cross-floor badge draws at all, GitHub issue
+    // #519) also strokes the connector line itself at `connectorWidth` (3) — excluded here since
+    // this test only cares about the marker/badge border strokes.
     const strokeWidthsOf = (r: InstanceType<typeof TeleportRenderer>) => {
       const g = (r as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
-      return g.calls.filter((c) => c.fn === "stroke").map((c) => (c.args[0] as { width: number }).width);
+      return g.calls.filter((c) => c.fn === "stroke").map((c) => (c.args[0] as { width: number }).width).filter((w) => w !== 3);
     };
     // Both the origin marker and the badge stroke at the edge marker's own borderWidth.
     expect(strokeWidthsOf(thin).every((w) => w === 1)).toBe(true);
@@ -579,13 +596,13 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     thinBorder.render({
       edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
       waypoints: [],
-      lineStyle: baseLineStyle({ edgeGapWidth: 0, borderWidth: 1, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
+      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 1, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
     });
     const thickBorder = new TeleportRenderer(new Container());
     thickBorder.render({
       edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 0 }],
       waypoints: [],
-      lineStyle: baseLineStyle({ edgeGapWidth: 0, borderWidth: 10, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
+      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 10, floorBadge: { shape: "circle", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
     });
     const fontOf = (r: InstanceType<typeof TeleportRenderer>) =>
       (r as unknown as { overlayLayer: { children: { style: { fontSize?: number } }[] } }).overlayLayer.children[0].style.fontSize!;
@@ -602,7 +619,7 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     renderer.render({
       edges,
       waypoints: [],
-      lineStyle: baseLineStyle({ edgeGapWidth: 4, floorBadge: { shape: "square", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
+      lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 4, floorBadge: { shape: "square", labelType: "arabic", size: 0.2, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 } }),
     });
     const g = (renderer as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
     // No round badge/ring at the badge point — it's a square now.
