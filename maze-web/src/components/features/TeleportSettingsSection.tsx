@@ -3,6 +3,7 @@ import { AlertTriangle, RotateCcw } from "lucide-react";
 import { useMazeStore } from "../../store/mazeStore";
 import type { MarkerShape, TeleportGroupOverride, TeleportConnectorStyle, TeleportArrowMode } from "../../pixi/renderers/types";
 import type { TeleportSettingsFields } from "../../store/storeTypes";
+import { PC, type ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { spacing, ui, typography } from "../../styles/theme";
 import { sharedStyles } from "../../styles/shared";
 import { ToggleRow } from "../ToggleRow";
@@ -110,7 +111,11 @@ export function useTeleportGroupsAndCollisions(
  *  instead of a visible label, since the row has no room for both. Shared by both render modes'
  *  Teleports sections (GitHub issue #313) — `selectedTeleportGroupKey` is a single, mode-agnostic
  *  store field since only one mode's renderer/panel is ever live at a time
- *  (`createModeRenderer`). */
+ *  (`createModeRenderer`).
+ *
+ *  **Priority colors (GitHub issue #503 follow-up)** — each swatch's own project-color list is
+ *  ordered: this group's own *other* color first, then every other group's fill+border colors (in
+ *  group order), then the section's common teleport colors (edge/border/connector/badges) last. */
 function TeleportGroupRow({
   group,
   index,
@@ -119,6 +124,8 @@ function TeleportGroupRow({
   defaultBorderColor,
   hasCollision,
   onChange,
+  otherGroupColors,
+  commonColors,
 }: {
   group: TeleportGroup;
   index: number;
@@ -127,6 +134,12 @@ function TeleportGroupRow({
   defaultBorderColor: number;
   hasCollision: boolean;
   onChange: (patch: TeleportGroupOverride | null) => void;
+  /** Every *other* group's own override colors (fill + border alike), in group order (GitHub issue
+   *  #503 follow-up) — listed after this group's own other-role color, before the common teleport
+   *  colors. */
+  otherGroupColors: ProjectColorEntry[];
+  /** The section's common teleport colors (edge/border/connector/badges) — always last. */
+  commonColors: ProjectColorEntry[];
 }) {
   const selectedKey = useMazeStore((s) => s.selectedTeleportGroupKey);
   const setSelected = useMazeStore((s) => s.setSelectedTeleportGroupKey);
@@ -172,10 +185,20 @@ function TeleportGroupRow({
         ))}
       </select>
       <span title={m["image_export.vector_by_walls.teleport_group_override_color"]()} onClick={(e) => e.stopPropagation()}>
-        <ColorSwatch color={override?.fillColor ?? defaultFillColor} onChange={(fillColor) => onChange({ ...override, fillColor })} />
+        <ColorSwatch
+          color={override?.fillColor ?? defaultFillColor}
+          onChange={(fillColor) => onChange({ ...override, fillColor })}
+          priorityColors={[PC.teleportGroup(index, "border").at(override?.borderColor ?? defaultBorderColor), ...otherGroupColors, ...commonColors]}
+          fieldName={PC.teleportGroup(index, "fill").name()}
+        />
       </span>
-      <span title={m["image_export.vector_by_walls.teleport_group_override_border_color"]()} onClick={(e) => e.stopPropagation()}>
-        <ColorSwatch color={override?.borderColor ?? defaultBorderColor} onChange={(borderColor) => onChange({ ...override, borderColor })} />
+      <span title={m["image_export.vector_by_walls.teleport_group_override_secondary_color"]()} onClick={(e) => e.stopPropagation()}>
+        <ColorSwatch
+          color={override?.borderColor ?? defaultBorderColor}
+          onChange={(borderColor) => onChange({ ...override, borderColor })}
+          priorityColors={[PC.teleportGroup(index, "fill").at(override?.fillColor ?? defaultFillColor), ...otherGroupColors, ...commonColors]}
+          fieldName={PC.teleportGroup(index, "border").name()}
+        />
       </span>
       <button
         type="button"
@@ -207,6 +230,24 @@ export function TeleportSettingsSection({
   teleportCollisionKeys,
   hasCrossFloorTeleports,
   resetButtons,
+  edgeColorPriority,
+  edgeBorderColorPriority,
+  connectorColorPriority,
+  floorBadgeFillColorPriority,
+  floorBadgeBorderColorPriority,
+  floorBadgeTextColorPriority,
+  edgeColorDefault,
+  edgeBorderColorDefault,
+  connectorColorDefault,
+  floorBadgeFillColorDefault,
+  floorBadgeBorderColorDefault,
+  floorBadgeTextColorDefault,
+  edgeColorFieldName,
+  edgeBorderColorFieldName,
+  connectorColorFieldName,
+  floorBadgeFillColorFieldName,
+  floorBadgeBorderColorFieldName,
+  floorBadgeTextColorFieldName,
 }: {
   settings: TeleportSettingsFields;
   onChange: (patch: Partial<TeleportSettingsFields>) => void;
@@ -226,8 +267,47 @@ export function TeleportSettingsSection({
     edgeGapWidth?: React.ReactNode;
     connectorGapWidth?: React.ReactNode;
   };
+  /** "Priority" project colors (GitHub issue #503) for the Teleports section's color rows. */
+  edgeColorPriority?: ProjectColorEntry[];
+  edgeBorderColorPriority?: ProjectColorEntry[];
+  connectorColorPriority?: ProjectColorEntry[];
+  floorBadgeFillColorPriority?: ProjectColorEntry[];
+  floorBadgeBorderColorPriority?: ProjectColorEntry[];
+  floorBadgeTextColorPriority?: ProjectColorEntry[];
+  /** Factory defaults (GitHub issue #503) — pinned as each row's first "Default" project color. */
+  edgeColorDefault?: number;
+  edgeBorderColorDefault?: number;
+  connectorColorDefault?: number;
+  floorBadgeFillColorDefault?: number;
+  floorBadgeBorderColorDefault?: number;
+  floorBadgeTextColorDefault?: number;
+  /** "Project colors" list names (GitHub issue #503) for the four color rows — shown in the picker
+   *  header and used to drop the row itself from the list. Built by the caller from the shared
+   *  `PC` registry so they match `selectActiveProfileColors`. */
+  edgeColorFieldName?: string;
+  edgeBorderColorFieldName?: string;
+  connectorColorFieldName?: string;
+  floorBadgeFillColorFieldName?: string;
+  floorBadgeBorderColorFieldName?: string;
+  floorBadgeTextColorFieldName?: string;
 }) {
   const setSelectedTeleportGroupKey = useMazeStore((s) => s.setSelectedTeleportGroupKey);
+
+  // The common teleport colors every group-override swatch lists below its own group's colors
+  // (GitHub issue #503 follow-up) — edge/border, connector (when drawn), and the floor badges
+  // (when the maze has a cross-floor teleport to badge).
+  const commonTeleportColors: ProjectColorEntry[] = [
+    PC.teleportEdge.at(settings.teleportEdgeColor),
+    PC.teleportEdgeBorder.at(settings.teleportEdgeBorderColor),
+    ...(settings.teleportConnectorStyle !== "none" ? [PC.teleportConnector.at(settings.teleportConnectorColor)] : []),
+    ...(hasCrossFloorTeleports
+      ? [
+          PC.teleportBadgeFill.at(settings.teleportFloorBadge.fillColor),
+          PC.teleportBadgeBorder.at(settings.teleportFloorBadge.borderColor),
+          PC.teleportBadgeText.at(settings.teleportFloorBadge.textColor),
+        ]
+      : []),
+  ];
 
   return (
     <div style={styles.block}>
@@ -259,8 +339,8 @@ export function TeleportSettingsSection({
           format={(v) => v.toFixed(2)}
           resetButton={resetButtons?.lineSize}
         />
-        <ColorRow label={m["image_export.vector_by_walls.teleport_edge_color"]()} color={settings.teleportEdgeColor} onChange={(v) => onChange({ teleportEdgeColor: v })} />
-        <ColorRow label={m["image_export.vector_by_walls.teleport_edge_border_color"]()} color={settings.teleportEdgeBorderColor} onChange={(v) => onChange({ teleportEdgeBorderColor: v })} />
+        <ColorRow label={m["image_export.vector_by_walls.teleport_edge_color"]()} color={settings.teleportEdgeColor} onChange={(v) => onChange({ teleportEdgeColor: v })} priorityColors={edgeColorPriority} defaultColor={edgeColorDefault} fieldName={edgeColorFieldName} />
+        <ColorRow label={m["image_export.vector_by_walls.teleport_edge_border_color"]()} color={settings.teleportEdgeBorderColor} onChange={(v) => onChange({ teleportEdgeBorderColor: v })} priorityColors={edgeBorderColorPriority} defaultColor={edgeBorderColorDefault} fieldName={edgeBorderColorFieldName} />
         <SliderRow
           label={m["image_export.vector_by_walls.teleport_border_width"]()}
           value={settings.teleportEdgeBorderWidth}
@@ -303,9 +383,10 @@ export function TeleportSettingsSection({
           />
         )}
 
+        {settings.teleportConnectorStyle !== "none" && (<>
         <div style={styles.subsectionLabel}>{m["image_export.vector_by_walls.teleport_subsection_connector_body"]()}</div>
         <div style={styles.subsectionNested}>
-          <ColorRow label={m["image_export.vector_by_walls.teleport_connector_color"]()} color={settings.teleportConnectorColor} onChange={(v) => onChange({ teleportConnectorColor: v })} />
+          <ColorRow label={m["image_export.vector_by_walls.teleport_connector_color"]()} color={settings.teleportConnectorColor} onChange={(v) => onChange({ teleportConnectorColor: v })} priorityColors={connectorColorPriority} defaultColor={connectorColorDefault} fieldName={connectorColorFieldName} />
           <SliderRow
             label={m["image_export.vector_by_walls.teleport_connector_width"]()}
             value={settings.teleportConnectorWidth}
@@ -361,6 +442,7 @@ export function TeleportSettingsSection({
             disabled={settings.teleportArrowMode === "none"}
           />
         </div>
+        </>)}
       </div>
 
       {hasCrossFloorTeleports && (
@@ -393,9 +475,28 @@ export function TeleportSettingsSection({
               format={(v) => v.toFixed(2)}
             />
             <ColorRow
+              label={m["image_export.vector_by_walls.teleport_floor_badge_fill_color"]()}
+              color={settings.teleportFloorBadge.fillColor}
+              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, fillColor: v } })}
+              priorityColors={floorBadgeFillColorPriority}
+              defaultColor={floorBadgeFillColorDefault}
+              fieldName={floorBadgeFillColorFieldName}
+            />
+            <ColorRow
+              label={m["image_export.vector_by_walls.teleport_floor_badge_border_color"]()}
+              color={settings.teleportFloorBadge.borderColor}
+              onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, borderColor: v } })}
+              priorityColors={floorBadgeBorderColorPriority}
+              defaultColor={floorBadgeBorderColorDefault}
+              fieldName={floorBadgeBorderColorFieldName}
+            />
+            <ColorRow
               label={m["image_export.vector_by_walls.teleport_floor_badge_text_color"]()}
               color={settings.teleportFloorBadge.textColor}
               onChange={(v) => onChange({ teleportFloorBadge: { ...settings.teleportFloorBadge, textColor: v } })}
+              priorityColors={floorBadgeTextColorPriority}
+              defaultColor={floorBadgeTextColorDefault}
+              fieldName={floorBadgeTextColorFieldName}
             />
             <SliderRow
               label={m["image_export.vector_by_walls.teleport_floor_badge_text_padding"]()}
@@ -418,22 +519,36 @@ export function TeleportSettingsSection({
           onChange({ teleportGroupCustomization: checked });
         }}
       />
-      {settings.teleportGroupCustomization && teleportGroups.length > 0 && (
-        <div style={styles.groupList}>
-          {teleportGroups.map((group, i) => (
-            <TeleportGroupRow
-              key={group.key}
-              group={group}
-              index={i}
-              override={groupOverrides[group.key]}
-              defaultFillColor={settings.teleportEdgeColor}
-              defaultBorderColor={settings.teleportEdgeBorderColor}
-              hasCollision={teleportCollisionKeys.has(group.key)}
-              onChange={(patch) => onGroupOverrideChange(group.key, patch)}
-            />
-          ))}
-        </div>
-      )}
+      {settings.teleportGroupCustomization && teleportGroups.length > 0 && (() => {
+        // Every group's own fill+border colors, computed once (GitHub issue #503 follow-up) — each
+        // row's own "other groups" priority list below is a slice of this shared array rather than
+        // a fresh `PC.teleportGroup(...).at(...)` pass per row.
+        const allGroupColors: ProjectColorEntry[][] = teleportGroups.map((g, gi) => {
+          const o = groupOverrides[g.key];
+          return [
+            PC.teleportGroup(gi, "fill").at(o?.fillColor ?? settings.teleportEdgeColor),
+            PC.teleportGroup(gi, "border").at(o?.borderColor ?? settings.teleportEdgeBorderColor),
+          ];
+        });
+        return (
+          <div style={styles.groupList}>
+            {teleportGroups.map((group, i) => (
+              <TeleportGroupRow
+                key={group.key}
+                group={group}
+                index={i}
+                override={groupOverrides[group.key]}
+                defaultFillColor={settings.teleportEdgeColor}
+                defaultBorderColor={settings.teleportEdgeBorderColor}
+                hasCollision={teleportCollisionKeys.has(group.key)}
+                onChange={(patch) => onGroupOverrideChange(group.key, patch)}
+                otherGroupColors={allGroupColors.filter((_, gi) => gi !== i).flat()}
+                commonColors={commonTeleportColors}
+              />
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }

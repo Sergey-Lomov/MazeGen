@@ -77,9 +77,30 @@ pub fn apply_commands<T: Tessellation>(
         // `RemoveTeleportWithReverse` (see those two `QcEvent` variants' own doc comments) — both
         // return every `EdgeId` actually removed (one or two), so `len() > 1` means the reverse
         // leg was genuinely there and got removed too, not just assumed from the command shape.
+        // Both endpoints of any Add* command must still be field-live at apply time — a command
+        // proposed against an earlier snapshot can reference a node an earlier command in this
+        // same batch already removed (e.g. `remove_split_node`'s redistribute mode: node A's
+        // redistributed edge targets node B as its *neighbor*, not just as a redistribution
+        // target, and B can carry its own `RemoveNode` earlier in the same batch — GitHub issue
+        // reported as "WASM snapshot: edge.from/to N not in nodes"). `try_add_*`'s own feasibility
+        // checks only consult `PresetState` (blocked/locked), never field liveness, so without this
+        // guard such a command would plant a dangling edge to a node no longer in `Field`.
+        let endpoints_live = match &cmd {
+            MutationCommand::AddDirectedEdge { from, to }
+            | MutationCommand::AddDirectedTeleport { from, to }
+            | MutationCommand::AddDirectedVerticalPassage { from, to } =>
+                maze.field.point_of(*from).is_some() && maze.field.point_of(*to).is_some(),
+            MutationCommand::AddBidirectionalEdge { a, b }
+            | MutationCommand::AddBidirectionalTeleport { a, b }
+            | MutationCommand::AddBidirectionalVerticalPassage { a, b }
+            | MutationCommand::AddBidirectionalElevator { a, b } =>
+                maze.field.point_of(*a).is_some() && maze.field.point_of(*b).is_some(),
+            _ => true,
+        };
+
         let mut reverse_removed = false;
         let mut replaced_nodes: Option<Vec<NodeId>> = None;
-        let ok = match cmd {
+        let ok = if !endpoints_live { false } else { match cmd {
             MutationCommand::AddDirectedEdge { from, to } =>
                 crate::generation::try_add_directed_edge(&mut maze.graph, from, to, preset_state),
             MutationCommand::AddBidirectionalEdge { a, b } =>
@@ -149,7 +170,7 @@ pub fn apply_commands<T: Tessellation>(
                 replaced_nodes = new_nodes;
                 ok
             }
-        };
+        }};
         if ok { applied += 1; }
         if let Some(log) = event_log.as_mut() {
             if let Some(event) = qc_event_for_command(&cmd, ok, edge_endpoints, reverse_removed, old_point_nodes, replaced_nodes) {

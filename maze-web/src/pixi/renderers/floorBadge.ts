@@ -86,7 +86,9 @@ export function isCrossFloorBadgeCrowded(cell: [number, number], cfg: Tessellati
  *  a Roman/letter label, an independent `textColor`, a `fontSize` shared across every teleport
  *  badge in the maze (so all badges read at one size, fitted to the widest label present), and a
  *  `borderWidth` taken from the teleport edge marker's own border rather than the fixed
- *  `FLOOR_BADGE_STROKE_WIDTH`. Every other caller (`RegionOverlayRenderer`, the graph overlays'
+ *  `FLOOR_BADGE_STROKE_WIDTH`. The teleport call site also passes the badge's own `color`/
+ *  `borderColor` (GitHub issue #503 follow-up — independent of the connector color).
+ *  Every other caller (`RegionOverlayRenderer`, the graph overlays'
  *  `drawCrossFloorBadge`) omits `opts` and keeps the original circle + `floorColor` knockout digit
  *  at the per-badge `r * 1.6` size and the fixed `FLOOR_BADGE_STROKE_WIDTH` border. */
 export function drawFloorBadge(

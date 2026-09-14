@@ -258,6 +258,57 @@ fn elevator_fan_endpoints_are_never_absorbed_as_corridor_nodes() {
     assert!(edges.iter().all(|e| e.is_elevator && e.path.len() == 2), "every hop must be a single-hop elevator edge");
 }
 
+// GitHub issue #517: a VerticalPassage endpoint must never be absorbed as a corridor node even
+// when its degree happens to satisfy the 2-in/2-out symmetric shape — node 2 has bidirectional
+// vertical passages to two other-floor nodes (1 and 3), which by coincidence still matches
+// `is_corridor_node`'s 2-symmetric-pairs shape (same coincidence `elevator_fan_endpoints_are_
+// never_absorbed_as_corridor_nodes` covers for Elevator). Without the exemption, node 2 gets
+// compressed into node 1's outgoing nav-edge as an interior path node, losing its own NavNodeId
+// — a marker/badge/QC check keying off node 2's own position then resolves to node 3 (the
+// corridor's far end) instead of node 2 itself.
+#[test]
+fn vertical_passage_endpoints_are_never_absorbed_as_corridor_nodes() {
+    let mut g = Graph::new();
+    for id in [1u64, 2, 3] { g.add_node(id); }
+    g.add_edge(1, 2, EdgeKind::VerticalPassage);
+    g.add_edge(2, 1, EdgeKind::VerticalPassage);
+    g.add_edge(2, 3, EdgeKind::VerticalPassage);
+    g.add_edge(3, 2, EdgeKind::VerticalPassage);
+
+    let nav = build_nav_graph(&g);
+    assert!(nav.nav_node_for(2).is_some(), "node 2 must stay its own NavNode, not compress into an interior path node between 1 and 3");
+}
+
+// `non_corridor_endpoints` (nav/build.rs) computes the Teleport/Elevator/VerticalPassage
+// exemption set with a single combined filter — this test exercises all three kinds together in
+// one graph so a future refactor that silently drops one kind's `matches!` arm (e.g. reverting to
+// three separate per-kind calls and forgetting one) fails a test instead of only showing up as a
+// misplaced marker in some unrelated multi-floor maze.
+#[test]
+fn teleport_elevator_and_vertical_passage_endpoints_all_stay_own_nav_nodes_in_the_same_graph() {
+    let mut g = Graph::new();
+    for id in [1u64, 2, 3, 4, 5, 6, 7, 8, 9] { g.add_node(id); }
+    // Node 2: one Basic pair + one Teleport edge = 2-symmetric shape by coincidence.
+    add_bidir(&mut g, 1, 2);
+    g.add_edge(2, 9, EdgeKind::Teleport);
+    g.add_edge(9, 2, EdgeKind::Teleport);
+    // Node 5: 3-floor Elevator fan = 2-symmetric shape by coincidence.
+    g.add_edge(4, 5, EdgeKind::Elevator);
+    g.add_edge(5, 4, EdgeKind::Elevator);
+    g.add_edge(5, 6, EdgeKind::Elevator);
+    g.add_edge(6, 5, EdgeKind::Elevator);
+    // Node 8: two VerticalPassage links = 2-symmetric shape by coincidence.
+    g.add_edge(7, 8, EdgeKind::VerticalPassage);
+    g.add_edge(8, 7, EdgeKind::VerticalPassage);
+    g.add_edge(8, 9, EdgeKind::VerticalPassage);
+    g.add_edge(9, 8, EdgeKind::VerticalPassage);
+
+    let nav = build_nav_graph(&g);
+    assert!(nav.nav_node_for(2).is_some(), "the teleport endpoint must stay its own NavNode");
+    assert!(nav.nav_node_for(5).is_some(), "the elevator fan endpoint must stay its own NavNode");
+    assert!(nav.nav_node_for(8).is_some(), "the vertical passage endpoint must stay its own NavNode");
+}
+
 // outgoing_edges/incoming_edges/edge_by_idx must return the correct edges for a junction
 // with multiple distinct corridors.
 #[test]

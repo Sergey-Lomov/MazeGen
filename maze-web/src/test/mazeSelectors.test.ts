@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, hasCrossFloorTeleport, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
+import { postEditEdgesToDto, buildClosedCells, buildTeleportEdges, buildTeleportBadgeBlockedCells, buildMazeWalls, buildCorridorSegments, buildSplitPassages, buildMazeMarkers, buildLinkHoverHighlight, getSplitAwareNodePosition, maxSplitNodeCount, hasCrossFloorTeleport, selectFloorRemovalLosesFieldData, selectFloorChangeLosesGenerationData, selectFloorScopedMaze, selectNodeLevelResolver, buildOneWayWallIndicatorPositions, buildOneWayCorridorIndicatorPositions, buildSplitJunctionPositions, buildTeleportAvoidanceWaypoints, type MarkerStyle, type TeleportBadgeSpreadOptions } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { getCellCenter, getCellVertices, nearestCellCoord } from "../pixi/tessellationGeometry";
 import { splitSlotColor } from "../pixi/colorUtils";
@@ -7,6 +7,7 @@ import { canvas } from "../pixi/colorTokens";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/mazeStore";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
+import type { VerticalConnectionMarker } from "../pixi/renderers/types";
 
 vi.mock("pixi.js", () => ({
   Container: vi.fn(() => ({ addChild: vi.fn(), destroy: vi.fn() })),
@@ -232,6 +233,30 @@ describe("buildMazeWalls", () => {
   });
 });
 
+// --- buildOneWayWallIndicatorPositions (GitHub issue #518) ---
+
+describe("buildOneWayWallIndicatorPositions", () => {
+  it("a one-way wall edge's indicator lands on its shared face's own midpoint", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const walls = buildMazeWalls(nodes, [e(0, 1)], squareCfg);
+    const oneWayWall = walls.find(w => w.oneWayDir);
+    expect(oneWayWall).toBeDefined();
+    const positions = buildOneWayWallIndicatorPositions(walls, squareCfg);
+    expect(positions).toHaveLength(1);
+    // The shared face between (0,0) and (1,0) runs vertically at their boundary — its own midpoint,
+    // not either cell's center.
+    const cx = (getCellCenter(0, 0, squareCfg).x + getCellCenter(1, 0, squareCfg).x) / 2;
+    expect(positions[0][0]).toBeCloseTo(cx);
+  });
+
+  it("a bidirectional wall edge contributes no indicator position", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const walls = buildMazeWalls(nodes, [e(0, 1), e(1, 0)], squareCfg);
+    expect(walls.every(w => !w.oneWayDir)).toBe(true);
+    expect(buildOneWayWallIndicatorPositions(walls, squareCfg)).toEqual([]);
+  });
+});
+
 // --- buildCorridorSegments ---
 
 describe("buildCorridorSegments", () => {
@@ -314,6 +339,27 @@ describe("buildCorridorSegments", () => {
     const nodes = [n(0, 0, 0), n(1, 1, 0)];
     const segments = buildCorridorSegments(nodes, [e(0, 1), e(1, 0)], squareCfg);
     expect(segments).toHaveLength(1);
+  });
+});
+
+// --- buildOneWayCorridorIndicatorPositions (GitHub issue #518) ---
+
+describe("buildOneWayCorridorIndicatorPositions", () => {
+  it("a one-way corridor segment's indicator lands on the segment's own midpoint", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const segments = buildCorridorSegments(nodes, [e(0, 1)], squareCfg);
+    const positions = buildOneWayCorridorIndicatorPositions(segments);
+    expect(positions).toHaveLength(1);
+    expect(positions[0]).toEqual([
+      (segments[0].v0.x + segments[0].v1.x) / 2,
+      (segments[0].v0.y + segments[0].v1.y) / 2,
+    ]);
+  });
+
+  it("a bidirectional corridor segment contributes no indicator position", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const segments = buildCorridorSegments(nodes, [e(0, 1), e(1, 0)], squareCfg);
+    expect(buildOneWayCorridorIndicatorPositions(segments)).toEqual([]);
   });
 });
 
@@ -612,6 +658,26 @@ describe("buildSplitPassages", () => {
     const mismatched = [n(0, 0, 0), n(1, 1, 0), n(2, -1, 0), n(3, 0, 0), n(4, 0, 1)];
     const mismatchedEdges: EdgeDto[] = [e(0, 1), e(1, 0), e(0, 2), e(2, 0), e(3, 4), e(4, 3)];
     expect(buildSplitPassages(mismatched, mismatchedEdges, squareCfg).specialShapes).toEqual([]);
+  });
+});
+
+// --- buildSplitJunctionPositions (GitHub issue #518) ---
+
+describe("buildSplitJunctionPositions", () => {
+  it("a split point with 2 connected nodes still emits only one position, deduped by pointKey", () => {
+    // Point (0,0) split into node 0 (-> node 1 east) and node 2 (-> node 3 north) — 2 passages,
+    // both sharing pointKey "0,0".
+    const nodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0), n(3, 0, 1)];
+    const edges: EdgeDto[] = [e(0, 1), e(1, 0), e(2, 3), e(3, 2)];
+    const { passages } = buildSplitPassages(nodes, edges, squareCfg);
+    expect(passages).toHaveLength(2);
+    expect(passages[0].pointKey).toBe(passages[1].pointKey);
+    expect(buildSplitJunctionPositions(passages)).toHaveLength(1);
+    expect(buildSplitJunctionPositions(passages)[0]).toEqual([passages[0].center.x, passages[0].center.y]);
+  });
+
+  it("no split passages — no positions", () => {
+    expect(buildSplitJunctionPositions([])).toEqual([]);
   });
 });
 
@@ -1140,6 +1206,42 @@ describe("buildTeleportEdges", () => {
     );
     const badge = result.find((r) => r.toFloor !== undefined)!;
     expect(nearestCellCoord(badge.to[0], badge.to[1], squareCfg)).toEqual([0, 0]);
+  });
+});
+
+// --- buildTeleportAvoidanceWaypoints (GitHub issue #518) ---
+
+describe("buildTeleportAvoidanceWaypoints", () => {
+  it("with no sources given, returns an empty array", () => {
+    expect(buildTeleportAvoidanceWaypoints({})).toEqual([]);
+  });
+
+  it("combines every given source's own positions into one flat array", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const wallEdges = buildMazeWalls(nodes, [e(0, 1)], squareCfg);
+    const splitNodes = [n(0, 0, 0), n(1, 1, 0), n(2, 0, 0), n(3, 0, 1)];
+    const splitEdges: EdgeDto[] = [e(0, 1), e(1, 0), e(2, 3), e(3, 2)];
+    const { passages } = buildSplitPassages(splitNodes, splitEdges, squareCfg);
+
+    const waypoints = buildTeleportAvoidanceWaypoints({
+      markers: [{ pos: [1, 2] }],
+      verticalMarkers: [{ pos: [3, 4] } as unknown as VerticalConnectionMarker],
+      oneWayWallEdges: wallEdges,
+      cfg: squareCfg,
+      splitPassages: passages,
+    });
+
+    expect(waypoints).toContainEqual([1, 2]);
+    expect(waypoints).toContainEqual([3, 4]);
+    expect(waypoints).toEqual(expect.arrayContaining(buildOneWayWallIndicatorPositions(wallEdges, squareCfg)));
+    expect(waypoints).toEqual(expect.arrayContaining(buildSplitJunctionPositions(passages)));
+    expect(waypoints).toHaveLength(4);
+  });
+
+  it("omits oneWayWallEdges' contribution when cfg isn't given alongside it", () => {
+    const nodes = [n(0, 0, 0), n(1, 1, 0)];
+    const wallEdges = buildMazeWalls(nodes, [e(0, 1)], squareCfg);
+    expect(buildTeleportAvoidanceWaypoints({ oneWayWallEdges: wallEdges })).toEqual([]);
   });
 });
 

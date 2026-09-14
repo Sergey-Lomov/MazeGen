@@ -1,5 +1,6 @@
 import type * as React from "react";
 import type { DecorativeLineStyle } from "../../store/storeTypes";
+import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { spacing } from "../../styles/theme";
 import { ColorRow } from "../ColorRow";
 import { SliderRow } from "../SliderRow";
@@ -10,13 +11,20 @@ import * as m from "~/paraglide/messages";
  *  `MarkerSettingsGroup`'s fill/border/gap/shape fields (a stroke-only stairs/elevator icon has none
  *  of those). Shared by all three "decorative" sub-sections (`decorativeStairsTwoWay`/
  *  `decorativeStairsOneWay`/`decorativeElevator`) in `VectorByWallsSettingsPanel`. */
-export function DecorativeLineStyleGroup({ settings, onChange }: {
+export function DecorativeLineStyleGroup({ settings, onChange, lineColorPriority, lineColorDefault, lineColorFieldName }: {
   settings: DecorativeLineStyle;
   onChange: (patch: Partial<DecorativeLineStyle>) => void;
+  /** "Priority" project colors (GitHub issue #503) for the line-color row. */
+  lineColorPriority?: ProjectColorEntry[];
+  /** Factory default (GitHub issue #503) — pinned as the line-color row's first "Default" color. */
+  lineColorDefault?: number;
+  /** Composite field name (GitHub issue #503) — the row's "Line color" label repeats across the
+   *  three decorative sub-groups, so an explicit name isolates the right list row. */
+  lineColorFieldName?: string;
 }) {
   return (
     <div style={styles.wrap}>
-      <ColorRow label={m["image_export.vector_by_walls.decorative_line_color"]()} color={settings.lineColor} onChange={(lineColor) => onChange({ lineColor })} />
+      <ColorRow label={m["image_export.vector_by_walls.decorative_line_color"]()} color={settings.lineColor} onChange={(lineColor) => onChange({ lineColor })} priorityColors={lineColorPriority} defaultColor={lineColorDefault} fieldName={lineColorFieldName} />
       <SliderRow
         label={m["image_export.vector_by_walls.decorative_line_width"]()}
         value={settings.lineWidth}

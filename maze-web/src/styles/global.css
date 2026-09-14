@@ -128,6 +128,21 @@ input[type="number"]::-webkit-inner-spin-button {
   opacity: 0.4;
 }
 
+/* "Project colors" section rows in the color picker (GitHub issue #503) — clickable, so they take
+   a pointer cursor and a hover highlight (inline styles can't express :hover). */
+.project-color-row {
+  cursor: pointer;
+}
+
+.project-color-row:hover {
+  background: #2f2f2f;
+}
+
+.project-color-row:focus-visible {
+  outline: 2px solid #6a6a6a;
+  outline-offset: -2px;
+}
+
 * {
   scrollbar-color: #555 #181818;
   scrollbar-width: thin;

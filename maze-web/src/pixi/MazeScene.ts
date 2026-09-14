@@ -1,4 +1,4 @@
-import { Application, Container } from "pixi.js";
+import { Application, Container, Rectangle } from "pixi.js";
 import { GenerationRenderer } from "./GenerationRenderer";
 import { TessellationRenderer } from "./TessellationRenderer";
 import { AnalyticsRenderer } from "./AnalyticsRenderer";
@@ -386,6 +386,72 @@ export class MazeScene {
 
   getViewportScale(): number {
     return this.viewport.scale.x;
+  }
+
+  /** The live on-screen Pixi canvas element (GitHub issue #507's eyedropper) — used only to
+   *  resolve its screen rect. Its own WebGL buffer isn't `preserveDrawingBuffer`, so pixels are
+   *  always read back through `extract.pixels()` (`sampleColorAt` / `sampleRegionAt`), never via
+   *  a raw `drawImage` of the element. */
+  get canvas(): HTMLCanvasElement {
+    return this.app.canvas;
+  }
+
+  /** Converts client (viewport) coordinates to the canvas's own physical-pixel space (canvas rect
+   *  + device pixel ratio, same conversion `SceneInteraction`'s wheel handler applies). Returns
+   *  `null` for a point outside the canvas. */
+  private clientToCanvasPx(clientX: number, clientY: number): { px: number; py: number } | null {
+    const rect = this.app.canvas.getBoundingClientRect();
+    if (clientX < rect.left || clientX >= rect.right || clientY < rect.top || clientY >= rect.bottom) return null;
+    return {
+      px: Math.floor((clientX - rect.left) * (this.app.canvas.width / rect.width)),
+      py: Math.floor((clientY - rect.top) * (this.app.canvas.height / rect.height)),
+    };
+  }
+
+  /** Reads the rendered color at the given client (viewport) coordinates via
+   *  `renderer.extract.pixels()` (GitHub issue #507's eyedropper) — samples the actual on-screen
+   *  stage, not the maze model, so it picks up backgrounds, grid, and anything else drawn.
+   *  Returns `null` for a point outside the canvas. Packed 24-bit RGB. */
+  sampleColorAt(clientX: number, clientY: number): number | null {
+    const canvasPx = this.clientToCanvasPx(clientX, clientY);
+    if (!canvasPx) return null;
+    const resolution = this.app.renderer.resolution;
+    const unit = Math.max(1, 1 / resolution);
+    const { pixels, width, height } = this.app.renderer.extract.pixels({
+      target: this.app.stage,
+      frame: new Rectangle(canvasPx.px / resolution, canvasPx.py / resolution, unit, unit),
+    });
+    if (width === 0 || height === 0) return null;
+    return (pixels[0] << 16) | (pixels[1] << 8) | pixels[2];
+  }
+
+  /** Reads a square of raw RGBA pixels (canvas physical pixels) around the given client
+   *  coordinates, for the eyedropper's magnified loupe (GitHub issue #507) — the loupe can't
+   *  `drawImage` the live canvas directly (see `canvas` getter), so it reads the same way
+   *  `sampleColorAt` does and paints the region itself. `radiusPx` is how many whole pixels to
+   *  include on each side of the sampled pixel, so the region is always `2*radiusPx + 1` pixels
+   *  wide/tall — an odd count with the sampled pixel exactly centered (an even-width region has no
+   *  single center pixel, so a crosshair drawn at its middle would sit on the boundary between two
+   *  pixels instead of inside one). Returns `null` for a point outside the canvas; the region is
+   *  clamped to the canvas bounds, so it can come back smaller near an edge (off-center there, but
+   *  edge pixels are rarely picked). */
+  sampleRegionAt(clientX: number, clientY: number, radiusPx: number): { pixels: Uint8ClampedArray; width: number; height: number; centerX: number; centerY: number } | null {
+    const canvasPx = this.clientToCanvasPx(clientX, clientY);
+    if (!canvasPx) return null;
+    const resolution = this.app.renderer.resolution;
+    const left = Math.max(0, canvasPx.px - radiusPx);
+    const top = Math.max(0, canvasPx.py - radiusPx);
+    const right = Math.min(this.app.canvas.width, canvasPx.px + radiusPx + 1);
+    const bottom = Math.min(this.app.canvas.height, canvasPx.py + radiusPx + 1);
+    const w = right - left;
+    const h = bottom - top;
+    if (w <= 0 || h <= 0) return null;
+    const { pixels, width, height } = this.app.renderer.extract.pixels({
+      target: this.app.stage,
+      frame: new Rectangle(left / resolution, top / resolution, w / resolution, h / resolution),
+    });
+    if (width === 0 || height === 0) return null;
+    return { pixels, width, height, centerX: canvasPx.px - left, centerY: canvasPx.py - top };
   }
 
   /** Physical 1:1 request from the print settings panel (GitHub issue #476) — a pure viewport

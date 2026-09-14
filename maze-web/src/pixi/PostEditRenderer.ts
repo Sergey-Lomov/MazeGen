@@ -13,7 +13,7 @@ import { NodeEdgeHighlightRenderer } from "./renderers/NodeEdgeHighlightRenderer
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { IssueHighlightOverlay } from "./IssueHighlightOverlay";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, postEditEdgesToDto, buildClosedCells, buildSplitPassages, buildLinkHoverHighlight, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildTeleportAvoidanceWaypoints } from "./selectors/mazeSelectors";
 import { postEditTeleportsToDto, postEditVerticalToDto, pruneRemovedSplitNodes } from "./postEditUtils";
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
@@ -384,7 +384,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
       allowOutOfField: true,
     });
     const teleportEdges = buildTeleportEdges(nodeById, activeEdges, cfg, teleportFloorContext, teleportBadgeSpread);
-    this.teleports.render({ edges: teleportEdges, cfg, floorNavigable: state.postEditTool !== "reset" });
+    const markerData = buildMazeMarkers(nodeById, start, finish, cfg, undefined, undefined, activeEdges);
 
     // Vertical passages/elevators — generation-time ones are read from the confirmed
     // `state.nodes`/`state.edges` graph directly, not from `activeEdges` (post-edit's own draft
@@ -420,6 +420,19 @@ export class PostEditRenderer extends BaseFieldRenderer {
       nodeById, floorScopedVerticalEdges, cfg, resolveNodeLevel, Math.max(activeFloorIndex, 0),
       selectVerticalPassagePairSet(allVerticalEdges), allVerticalEdges,
     );
+
+    // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
+    // #300), same as the image-export renderers — regressed on this canvas (GitHub issue #516).
+    // Also avoid vertical passage/elevator markers and one-way wall indicators (GitHub issue #518).
+    const teleportWaypoints = buildTeleportAvoidanceWaypoints({
+      markers: markerData,
+      verticalMarkers: verticalConnectionMarkers,
+      oneWayWallEdges: wallEdges,
+      cfg,
+      splitPassages,
+    });
+    this.teleports.render({ edges: teleportEdges, cfg, floorNavigable: state.postEditTool !== "reset", waypoints: teleportWaypoints });
+
     // Click-to-switch-floor (GitHub issue #341 follow-up): withheld while the reset tool is
     // active (its own click means "delete this connection", not "navigate") and, for a one-way
     // passage marker specifically (`filled === false`), while the one-way passage tool is active
@@ -432,7 +445,6 @@ export class PostEditRenderer extends BaseFieldRenderer {
         !(marker.filled === false && state.postEditTool === "vertical_passage_one_way"),
     });
 
-    const markerData = buildMazeMarkers(nodeById, start, finish, cfg, undefined, undefined, activeEdges);
     this.markers.render({ markers: markerData });
 
     this.hover.render({ highlights: [] });
@@ -449,7 +461,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.closedCells.render({ cells: [], color: canvas.wall.default, alpha: 1 }, cfg);
     this.walls.render({ edges: [] }, cfg);
     this.splitJunctions.render({ passages: [], wallFaces: [] });
-    this.teleports.render({ edges: [], cfg });
+    this.teleports.render({ edges: [], cfg, waypoints: [] });
     this.verticalConnections.render({ markers: [], style: DEFAULT_VERTICAL_STYLE });
     this.markers.render({ markers: [] });
     this.hover.render({ highlights: [] });

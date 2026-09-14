@@ -1,7 +1,7 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
 import type { WallEdge, PassageKind } from "../../renderers/types";
-import { getCellCenter, getNeighborData } from "../../tessellationGeometry";
+import { getCellCenter, getNeighborData, getSharedEdgeSegment } from "../../tessellationGeometry";
 import { buildCellSet } from "../sharedSelectors";
 import { buildSplitPointKeys } from "./split";
 
@@ -144,5 +144,25 @@ export function buildMazeWalls(
     }
   }
 
+  return result;
+}
+
+/** World positions of every one-way wall indicator (`WallRenderer`'s chevron/arrow/triangle,
+ *  centered on `WallEdge.oneWayDir`'s own segment midpoint — GitHub issue #518) — for the teleport
+ *  connector router's own avoidance set, so an orthogonal connector doesn't visibly cut through a
+ *  one-way indicator the same way it used to cut through start/finish before GitHub issue #300/#516.
+ *  Mirrors `WallRenderer`'s private `getEdgeSegment`'s own logic (`getSharedEdgeSegment`) rather than
+ *  duplicating it, so the position matches exactly where the indicator is actually drawn. */
+export function buildOneWayWallIndicatorPositions(
+  edges: WallEdge[],
+  cfg: TessellationConfig,
+): [number, number][] {
+  const result: [number, number][] = [];
+  for (const edge of edges) {
+    if (!edge.oneWayDir) continue;
+    const seg = getSharedEdgeSegment(edge.a, edge.b, cfg);
+    if (!seg) continue;
+    result.push([(seg.v0.x + seg.v1.x) / 2, (seg.v0.y + seg.v1.y) / 2]);
+  }
   return result;
 }

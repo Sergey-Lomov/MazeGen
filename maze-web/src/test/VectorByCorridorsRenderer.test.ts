@@ -52,6 +52,7 @@ vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildSplitPassages: vi.fn(() => ({ passages: [], wallFaces: [], specialShapes: [] })),
   maxSplitNodeCount: vi.fn(() => 0),
   buildVerticalConnectionMarkers: vi.fn(() => []),
+  buildTeleportAvoidanceWaypoints: vi.fn((sources: { markers?: { pos: [number, number] }[] }) => (sources.markers ?? []).map((m) => m.pos)),
   selectNodeLevelResolver: vi.fn(() => () => undefined),
   selectVerticalPassagePairSet: vi.fn(() => new Set()),
   selectFloorScopedMaze: vi.fn((nodes: unknown[], edges: unknown[], _floors: unknown, _activeFloorId: unknown, start: number | null = null, finish: number | null = null) => ({
@@ -141,7 +142,7 @@ const teleportDefaults: Pick<VectorByCorridorsSettings,
   teleportEdgeColor: 0, teleportEdgeBorderColor: 0, teleportEdgeBorderWidth: 3, teleportEdgeGapWidth: 3,
   teleportConnectorColor: 0, teleportConnectorWidth: 3, teleportConnectorStyle: "orthogonal", teleportAvoidFieldExit: false,
   teleportArrowMode: "periodic", teleportArrowPeriod: 5, teleportArrowSize: 10, teleportConnectorGapWidth: 3,
-  teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, textColor: 0x123456, textPadding: 0 },
+  teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 },
   teleportGroupCustomization: false, teleportGroupOverrides: {},
 };
 const oneWayDefaults: Pick<VectorByCorridorsSettings, "oneWayColor" | "oneWayCount" | "oneWayThickness" | "oneWayGap" | "oneWayWidth" | "oneWayLength" | "oneWayJoin"> = {

@@ -602,3 +602,18 @@ export function buildSplitPassages(
 
   return buildSplitPassagesCore(nodes, directedPairs, cfg, specialNodeIds, activeId, "wall", new Set(), nodeColors, corridorConnectorWidth);
 }
+
+/** World positions of every split junction's own tile center (`SplitPassage.center`, one per
+ *  distinct `pointKey` — GitHub issue #518) — for the teleport connector router's own avoidance set,
+ *  so an orthogonal connector doesn't visibly cut through a split junction's hub the same way it
+ *  used to cut through start/finish before GitHub issue #300/#516. */
+export function buildSplitJunctionPositions(passages: SplitPassage[]): [number, number][] {
+  const seen = new Set<string>();
+  const result: [number, number][] = [];
+  for (const p of passages) {
+    if (seen.has(p.pointKey)) continue;
+    seen.add(p.pointKey);
+    result.push([p.center.x, p.center.y]);
+  }
+  return result;
+}

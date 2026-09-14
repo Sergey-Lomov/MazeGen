@@ -17,6 +17,7 @@ import { drawTeleportPreview } from "./renderers/teleportPreviewGlyph";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
 import { VerticalConnectionRenderer, DEFAULT_VERTICAL_STYLE } from "./renderers/VerticalConnectionRenderer";
 import { buildPresetTeleportEdges, buildPresetVerticalMarkers, buildPresetTeleportBadgeBlockedCells } from "./presetConnectionsGeometry";
+import { buildTeleportAvoidanceWaypoints } from "./selectors/mazeSelectors";
 import {
   buildPresetWallGroups,
   buildPresetMarkers,
@@ -354,17 +355,27 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
         allowOutOfField: true,
       };
     }
+    const presetVerticalMarkers = buildPresetVerticalMarkers(presetVerticalPassages, presetElevators, cfg, level, nodePositions);
+    // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
+    // #300), same as the image-export renderers — regressed on this canvas (GitHub issue #516).
+    // Also avoid vertical passage/elevator markers (GitHub issue #518) — preset connections have no
+    // one-way wall indicator concept, unlike a generated maze's own walls.
     this.teleports.render({
       edges: buildPresetTeleportEdges(presetTeleports, cfg, level, nodePositions, teleportSpread),
       cfg,
       floorNavigable: state.presetConnectionsTool !== "clear",
+      waypoints: buildTeleportAvoidanceWaypoints({
+        markers: markerData,
+        verticalMarkers: presetVerticalMarkers,
+        splitPassages,
+      }),
     });
     // Click-to-switch-floor (GitHub issue #341 follow-up): withheld while the clear tool is
     // active (its own click means "delete this connection", not "navigate") and, for a one-way
     // passage marker specifically (`filled === false`), while the one-way passage tool is active
     // too (that tool's own click on the marker cycles its direction instead).
     this.verticals.render({
-      markers: buildPresetVerticalMarkers(presetVerticalPassages, presetElevators, cfg, level, nodePositions),
+      markers: presetVerticalMarkers,
       style: DEFAULT_VERTICAL_STYLE,
       interactive: (marker) =>
         state.presetConnectionsTool !== "clear" &&
@@ -552,7 +563,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.splitJunctions.render({ passages: [], wallFaces: [] });
     this.locks.render({ locks: [] }, cfg);
     this.markers.render({ markers: [] });
-    this.teleports.render({ edges: [], cfg });
+    this.teleports.render({ edges: [], cfg, waypoints: [] });
     this.verticals.render({ markers: [], style: DEFAULT_VERTICAL_STYLE });
     this.origin.render({ show: false }, cfg);
     this.genSource.render({ sourceScreen: null });

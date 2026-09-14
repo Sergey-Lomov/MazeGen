@@ -46,6 +46,7 @@ vi.mock("../pixi/selectors/mazeSelectors", () => ({
   buildSplitPassages: vi.fn(() => ({ passages: [], wallFaces: [], specialShapes: [] })),
   maxSplitNodeCount: vi.fn(() => 0),
   buildVerticalConnectionMarkers: vi.fn(() => []),
+  buildTeleportAvoidanceWaypoints: vi.fn(() => []),
   selectNodeLevelResolver: vi.fn(() => () => undefined),
   selectVerticalPassagePairSet: vi.fn(() => new Set()),
   selectFloorScopedMaze: vi.fn((nodes: unknown[], edges: unknown[], _floors: unknown, _activeFloorId: unknown, start: number | null = null, finish: number | null = null) => ({
@@ -193,7 +194,7 @@ function baseSettings(overrides: Partial<VectorByWallsSettings> = {}): VectorByW
     teleportArrowPeriod: 5,
     teleportArrowSize: 6,
     teleportConnectorGapWidth: 0,
-    teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, textColor: 0x123456, textPadding: 0 },
+    teleportFloorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 },
     teleportGroupCustomization: false,
     teleportGroupOverrides: {},
     verticalStyle: "abstract",
@@ -320,7 +321,7 @@ describe("buildTeleportLineStyle", () => {
       shape: "star", cornerStyle: "round", size: 0.4, edgeColor: 0x111, edgeBorderColor: 0x112, borderWidth: 5, edgeGapWidth: 6,
       connectorColor: 0x222, connectorWidth: 7, connectorStyle: "orthogonal",
       arrowMode: "periodic", arrowPeriod: 8, arrowSize: 11, connectorGapWidth: 9, floorColor: 0x999,
-      floorBadge: { shape: "circle", labelType: "arabic", size: 0.16, textColor: 0x123456, textPadding: 0 },
+      floorBadge: { shape: "circle", labelType: "arabic", size: 0.16, fillColor: 0x123456, borderColor: 0x123456, textColor: 0x123456, textPadding: 0 },
     });
   });
 });

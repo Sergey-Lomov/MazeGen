@@ -1,5 +1,6 @@
 import type * as React from "react";
 import type { MarkerIndexSettings } from "../../store/storeTypes";
+import type { ProjectColorEntry } from "../../pixi/selectors/projectColorsSelector";
 import { spacing, typography } from "../../styles/theme";
 import { ToggleRow } from "../ToggleRow";
 import { ColorRow } from "../ColorRow";
@@ -16,11 +17,25 @@ import * as m from "~/paraglide/messages";
  *  is nested one indent deep: a "Coverage" sub-group of per-connection-kind toggles, then a
  *  "Settings" sub-group with the plate's appearance. All geometric fields are fractions of
  *  `TILE_SIZE` except `borderWidth` / `gap` (whole pixels). */
-export function MarkerIndexSection({ settings, onChange, gapResetButton }: {
+export function MarkerIndexSection({ settings, onChange, gapResetButton, fillColorPriority, textColorPriority, borderColorPriority, fillColorDefault, textColorDefault, borderColorDefault, fillColorFieldName, textColorFieldName, borderColorFieldName }: {
   settings: MarkerIndexSettings;
   onChange: (patch: Partial<MarkerIndexSettings>) => void;
   /** "Shared style" `gapWidth`-group per-field reset for `gap` (the one shared-linked field). */
   gapResetButton?: React.ReactNode;
+  /** "Priority" project colors (GitHub issue #503) for the plate fill / text / border color rows. */
+  fillColorPriority?: ProjectColorEntry[];
+  textColorPriority?: ProjectColorEntry[];
+  borderColorPriority?: ProjectColorEntry[];
+  /** Factory defaults (GitHub issue #503) — pinned as each row's first "Default" project color. */
+  fillColorDefault?: number;
+  textColorDefault?: number;
+  borderColorDefault?: number;
+  /** "Project colors" list names (GitHub issue #503) for the plate fill / text / border color rows —
+   *  shown in the picker header and used to drop the row itself from the list. Built by the caller
+   *  from the shared `PC` registry so they match `selectActiveProfileColors`. */
+  fillColorFieldName?: string;
+  textColorFieldName?: string;
+  borderColorFieldName?: string;
 }) {
   const cov = settings.coverage;
   const setCoverage = (patch: Partial<MarkerIndexSettings["coverage"]>) =>
@@ -130,11 +145,17 @@ export function MarkerIndexSection({ settings, onChange, gapResetButton }: {
                 label={m["image_export.vector_by_walls.marker_index_fill_color"]()}
                 color={settings.fillColor}
                 onChange={(fillColor) => onChange({ fillColor })}
+                priorityColors={fillColorPriority}
+                defaultColor={fillColorDefault}
+                fieldName={fillColorFieldName}
               />
               <ColorRow
                 label={m["image_export.vector_by_walls.marker_index_text_color"]()}
                 color={settings.textColor}
                 onChange={(textColor) => onChange({ textColor })}
+                priorityColors={textColorPriority}
+                defaultColor={textColorDefault}
+                fieldName={textColorFieldName}
               />
               <ToggleRow
                 label={m["image_export.vector_by_walls.marker_index_border_color_from_marker"]()}
@@ -146,6 +167,9 @@ export function MarkerIndexSection({ settings, onChange, gapResetButton }: {
                 color={settings.borderColor}
                 onChange={(borderColor) => onChange({ borderColor })}
                 disabled={settings.borderColorFromMarker}
+                priorityColors={borderColorPriority}
+                defaultColor={borderColorDefault}
+                fieldName={borderColorFieldName}
               />
             </div>
           </div>

@@ -4,7 +4,7 @@ import { WallRenderer } from "./renderers/WallRenderer";
 import { WaypointsRenderer } from "./renderers/WaypointsRenderer";
 import { TeleportRenderer } from "./renderers/TeleportRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "./renderers/SplitJunctionRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, type TeleportFloorContext, type TeleportBadgeSpreadOptions } from "./selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildClosedCells, buildSplitPassages, buildTeleportAvoidanceWaypoints, type TeleportFloorContext, type TeleportBadgeSpreadOptions } from "./selectors/mazeSelectors";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { canvas } from "./colorTokens";
@@ -87,9 +87,19 @@ export class MazeOverlayRenderer {
 
     const nodeById = new Map(nodes.map(n => [n.id, n]));
     const teleportEdges = buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext, teleportBadgeSpread);
-    this.teleports.render({ edges: teleportEdges, cfg, floorNavigable: teleportFloorNavigable ?? false });
-
     const markerData = buildMazeMarkers(nodeById, start, finish, cfg, undefined, undefined, edges);
+    // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
+    // #300), same as the image-export renderers — regressed on this live canvas (GitHub issue #516).
+    // Also avoid one-way wall indicators (GitHub issue #518) — this overlay has no vertical
+    // passage/elevator marker concept of its own.
+    const teleportWaypoints = buildTeleportAvoidanceWaypoints({
+      markers: markerData,
+      oneWayWallEdges: wallEdges,
+      cfg,
+      splitPassages,
+    });
+    this.teleports.render({ edges: teleportEdges, cfg, floorNavigable: teleportFloorNavigable ?? false, waypoints: teleportWaypoints });
+
     this.markers.render({ markers: markerData });
   }
 

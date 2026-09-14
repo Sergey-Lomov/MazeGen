@@ -273,15 +273,20 @@ export interface VerticalDecorativeFields {
 
 /** Cross-floor teleport floor-number badge appearance (GitHub issue #485) — a badge stands in for
  *  a teleport endpoint that lands on another floor (`drawFloorBadge`, see `Specs/floors.md`'s
- *  "Cross-floor teleport badges"). The badge's fill/border color always follows the connector
- *  color (not separately settable); `shape`, `labelType`, `size`, `textColor` and `textPadding`
- *  are configurable (GitHub issue #485 follow-up added the last two). */
+ *  "Cross-floor teleport badges"). `shape`, `labelType`, `size`, `fillColor`, `borderColor`,
+ *  `textColor` and `textPadding` are all configurable (GitHub issue #503 follow-up made the
+ *  fill/border independent — they previously always followed the connector color). */
 export interface TeleportFloorBadgeSettings {
   shape: MarkerShape;
   labelType: IndexLabelStyle;
   /** Badge radius, as a fraction of the tile size (0-1) — same convention as
    *  `teleportLineSize`/`MarkerSettings.size`. */
   size: number;
+  /** Badge body fill (GitHub issue #503 follow-up) — independent of the connector color. */
+  fillColor: number;
+  /** Badge border ring (GitHub issue #503 follow-up). Border width follows the teleport edge
+   *  marker's own `teleportEdgeBorderWidth`, same as before. */
+  borderColor: number;
   /** Label color — independent of the floor color (GitHub issue #485 follow-up; before it, the
    *  label always drew in `floorColor` as a knockout digit). */
   textColor: number;
