@@ -178,7 +178,8 @@ Color 4 / Bjorn Ottosson definitions.
 
 ## Project colors block (#503)
 
-The last section in `ColorPickerPanel`'s content, below the active model editor. A collapsible
+The last section in `ColorPickerPanel`'s content, below the active model editor, recently-used
+colors, and Tools block. A collapsible
 section (`SectionHeader`, same as the export panels), **collapsed by default**, titled
 "Project colors (N)" / "Цвета проекта (N)" where N is the total row count.
 
@@ -315,8 +316,9 @@ Tools swatch) — it does not commit; Apply still commits as in #499.
 
 ## Tools block (#504, #505)
 
-`ToolsSection` (`components/ToolsSection.tsx`) sits below the active model editor in
-`ColorPickerPanel`, separated from it by the same divider style as the project-colors groups. A
+`ToolsSection` (`components/ToolsSection.tsx`) sits below the active model editor and the
+recently-used-colors row (above the Project colors section) in `ColorPickerPanel`, separated from
+what's above by the same divider style as the project-colors groups. A
 collapsible section (`SectionHeader`, collapsed by default), titled "Tools" / "Инструменты".
 Originally two separate sections — "Harmony" (#504) and "Tonal ramp" (#505) — merged into one
 "Tools" section with a single type dropdown, then generalized (see "Type selector" below) so the
