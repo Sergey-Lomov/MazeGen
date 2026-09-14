@@ -53,6 +53,64 @@ fn add_bidirectional_teleport_applies_both_directions() {
     assert!(maze.graph.edges().filter(|e| e.kind == EdgeKind::Teleport).count() == 2);
 }
 
+/// Regression: a batch proposing `AddDirectedTeleport`/`AddBidirectionalTeleport` to a node that
+/// an earlier command in the *same* batch already removed (`remove_split_node`'s redistribute
+/// mode can do exactly this — a removed node's edge gets redistributed onto a sibling, but the
+/// edge's *other* endpoint can itself be a different node flagged for removal in the same batch)
+/// must be declined, not plant a dangling edge referencing a node no longer in `Field` — this was
+/// surfacing downstream as "WASM snapshot: edge.from/to N not in nodes".
+#[test]
+fn add_directed_teleport_to_a_node_removed_earlier_in_the_batch_is_declined() {
+    let (mut maze, nodes) = maze_n(1);
+    let point = *maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().next().as_ref().unwrap();
+    let extra = maze.field.add_node_at(maze.field.single_level_id(), point, &mut maze.ids);
+    maze.graph.add_node(extra);
+
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![
+        MutationCommand::RemoveNode { node: extra },
+        MutationCommand::AddDirectedTeleport { from: nodes[0], to: extra },
+    ], None, None);
+    assert_eq!(outcome, ApplyOutcome { proposed: 2, applied: 1 }, "only the RemoveNode should apply");
+    assert!(maze.graph.edge_between(nodes[0], extra).is_none(), "must never wire a teleport to a node the batch already removed");
+}
+
+#[test]
+fn add_bidirectional_teleport_to_a_node_removed_earlier_in_the_batch_is_declined() {
+    let (mut maze, nodes) = maze_n(1);
+    let point = *maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().next().as_ref().unwrap();
+    let extra = maze.field.add_node_at(maze.field.single_level_id(), point, &mut maze.ids);
+    maze.graph.add_node(extra);
+
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![
+        MutationCommand::RemoveNode { node: extra },
+        MutationCommand::AddBidirectionalTeleport { a: nodes[0], b: extra },
+    ], None, None);
+    assert_eq!(outcome, ApplyOutcome { proposed: 2, applied: 1 }, "only the RemoveNode should apply");
+    assert!(maze.graph.edge_between(nodes[0], extra).is_none());
+    assert!(maze.graph.edge_between(extra, nodes[0]).is_none());
+}
+
+/// Same `endpoints_live` guard as the two Teleport regression tests above, for the remaining
+/// Add* kinds that share the exact same check (`AddDirectedEdge`/`AddBidirectionalVerticalPassage`/
+/// `AddBidirectionalElevator`) -- proves the guard isn't accidentally Teleport-specific.
+#[test]
+fn other_add_kinds_targeting_a_node_removed_earlier_in_the_batch_are_declined() {
+    let (mut maze, nodes) = maze_n(1);
+    let point = *maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().next().as_ref().unwrap();
+    let extra = maze.field.add_node_at(maze.field.single_level_id(), point, &mut maze.ids);
+    maze.graph.add_node(extra);
+
+    let outcome = apply_commands(&mut maze, &PresetState::empty(), vec![
+        MutationCommand::RemoveNode { node: extra },
+        MutationCommand::AddDirectedEdge { from: nodes[0], to: extra },
+        MutationCommand::AddBidirectionalVerticalPassage { a: nodes[0], b: extra },
+        MutationCommand::AddBidirectionalElevator { a: nodes[0], b: extra },
+    ], None, None);
+    assert_eq!(outcome, ApplyOutcome { proposed: 4, applied: 1 }, "only the RemoveNode should apply");
+    assert!(maze.graph.edge_between(nodes[0], extra).is_none());
+    assert!(maze.graph.edge_between(extra, nodes[0]).is_none());
+}
+
 #[test]
 fn remove_edge_by_id_applies() {
     let (mut maze, nodes) = maze_n(2);
