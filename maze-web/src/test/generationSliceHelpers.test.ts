@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { defaultParamsFor } from "../store/slices/generationSliceHelpers";
-import type { CheckDescriptor } from "../wasm/types";
+import { defaultParamsFor, buildDefaultNestedStrategies } from "../store/slices/generationSliceHelpers";
+import type { CheckDescriptor, StrategyDescriptor } from "../wasm/types";
 
 describe("defaultParamsFor", () => {
   it("returns an empty object for a descriptor with no params", () => {
@@ -50,5 +50,55 @@ describe("defaultParamsFor", () => {
       { id: "r", label: "R", kind: { type: "interval", default_min: 0, default_max: 5, min: 0, max: 5 } },
     ];
     expect(defaultParamsFor({ params })).toEqual({ f: "1", b: "false", r: "0,5" });
+  });
+});
+
+describe("buildDefaultNestedStrategies", () => {
+  // GitHub issue #486: dispatcher-owned params must not be seeded into a nested strategy's
+  // stored default config -- the dispatcher resolves and injects them at apply() time, and the
+  // UI hides them on the nested node, so a seeded value would be a dead, invisible key.
+  it("omits nested_suppressed_params from the seeded default params of an auto-filled nested strategy", () => {
+    const dispatcher: StrategyDescriptor = {
+      id: "priority_missing_loops", handles: "missing_loops_dispatch",
+      params: [], experimental: false,
+      nested_slots: [{ slot_id: "loop_seed_target", kind: "missing_loops", min: 1, max: null, dispatch_kind: "priority" }],
+      nested_suppressed_params: [],
+    };
+    const nestedCandidate: StrategyDescriptor = {
+      id: "missing_loops_random", handles: "missing_loops",
+      params: [
+        { id: "loop_one_way_chance", label: "One-way chance", kind: { type: "float", default: 0, min: 0, max: 100 } },
+        { id: "reserve_percent", label: "Reserve percent", kind: { type: "float", default: 0, min: 0, max: 500 } },
+        { id: "src_mode", label: "Source mode", kind: { type: "enum", options: ["random", "dead_end_priority"], default: "random" } },
+        { id: "attempts_limit", label: "Attempts limit", kind: { type: "float", default: 25, min: 1, max: 10000 } },
+      ],
+      experimental: false, nested_slots: [],
+      nested_suppressed_params: ["reserve_percent", "attempts_limit"],
+    };
+
+    const nested = buildDefaultNestedStrategies("priority_missing_loops", [dispatcher, nestedCandidate]);
+
+    expect(nested).toHaveLength(1);
+    expect(nested[0].params).toEqual({ loop_one_way_chance: "0", src_mode: "random" });
+    expect(nested[0].params).not.toHaveProperty("reserve_percent");
+    expect(nested[0].params).not.toHaveProperty("attempts_limit");
+  });
+
+  it("seeds every default param when the candidate suppresses none", () => {
+    const dispatcher: StrategyDescriptor = {
+      id: "d", handles: "kind_a_dispatch", params: [], experimental: false,
+      nested_slots: [{ slot_id: "s", kind: "kind_a", min: 1, max: null, dispatch_kind: "priority" }],
+      nested_suppressed_params: [],
+    };
+    const candidate: StrategyDescriptor = {
+      id: "c", handles: "kind_a",
+      params: [{ id: "p", label: "P", kind: { type: "float", default: 5, min: 0, max: 10 } }],
+      experimental: false, nested_slots: [],
+      nested_suppressed_params: [],
+    };
+
+    const nested = buildDefaultNestedStrategies("d", [dispatcher, candidate]);
+
+    expect(nested[0].params).toEqual({ p: "5" });
   });
 });

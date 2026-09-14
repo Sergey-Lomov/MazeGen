@@ -108,6 +108,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for PriorityR
             let single_region_issue = RegionNeedsExpansionIssue::synthetic(vec![region_idx]);
             let (result, commands) = dispatch_priority(
                 &single_region_issue as &dyn Issue, maze, rng, preset_state, &candidates,
+                &std::collections::HashMap::new(),
             );
 
             if matches!(result, RepairResult::Fixed { .. }) {

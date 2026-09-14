@@ -142,6 +142,12 @@ export interface StrategyDescriptor {
   /** Nested-strategy slots this strategy accepts, if any — empty for every strategy without
    * nested slots (the overwhelming majority). */
   nested_slots: NestedSlotDescriptor[];
+  /** Param ids the UI must hide when this strategy runs *nested under a dispatcher* — the
+   * dispatcher owns them (`reserve_percent`/`attempts_limit`, GitHub issue #486). Empty for
+   * strategies without dispatcher-owned params. At the top level every param stays visible.
+   * Always emitted by wasm; optional here only so test fixtures need not spell it out — treat
+   * `undefined` as `[]`. */
+  nested_suppressed_params?: string[];
   /** `undefined` means always offered — see `EntityVisibility`. */
   visibility?: EntityVisibility;
 }

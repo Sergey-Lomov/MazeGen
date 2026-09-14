@@ -156,6 +156,7 @@ impl<T: Tessellation> RepairStrategy<T, RegionNeedsExpansionIssue> for WeightedR
             let single_region_issue = RegionNeedsExpansionIssue::synthetic(vec![region_idx]);
             let (result, commands) = dispatch_weighted(
                 &single_region_issue as &dyn Issue, maze, rng, preset_state, &candidates,
+                &std::collections::HashMap::new(),
             );
 
             if matches!(result, RepairResult::Fixed { .. }) {

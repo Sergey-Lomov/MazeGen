@@ -11,36 +11,19 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::{MutationCommand, SplitNodeEdgeDirection};
 use super::split_core::{RequiredConnection, pick_weighted_pattern, plan_unconstrained_split, plan_pattern_split};
-use super::dead_end_priority::{PARAM_SRC_MODE, SRC_MODE_RANDOM, SRC_MODE_OPTIONS, apply_src_mode};
+use super::dead_end_priority::apply_src_mode;
+use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
 use super::remaining_deficits::RemainingDeficits;
 
-pub const PARAM_RESERVE_PERCENT: &str = "reserve_percent";
 pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
-pub const PARAM_MAX_ATTEMPTS: &str = "max_attempts";
-pub const MAX_ATTEMPTS_DEFAULT: u32 = 50;
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_RESERVE_PERCENT,
-        label: "Reserve percent",
-        kind: StrategyParamKind::Float { default: 50.0, min: 0.0, max: 500.0 },
-    },
-    StrategyParam {
-        id: PARAM_PROTECT_ROUTE,
-        label: "Protect route",
-        kind: StrategyParamKind::Bool { default: true },
-    },
-    StrategyParam {
-        id: PARAM_MAX_ATTEMPTS,
-        label: "Max failed attempts",
-        kind: StrategyParamKind::Float { default: MAX_ATTEMPTS_DEFAULT as f64, min: 1.0, max: 10_000.0 },
-    },
-    StrategyParam {
-        id: PARAM_SRC_MODE,
-        label: "Source selection mode",
-        kind: StrategyParamKind::Enum { options: SRC_MODE_OPTIONS, default: SRC_MODE_RANDOM },
-    },
-];
+const PROTECT_ROUTE_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_PROTECT_ROUTE,
+    label: "Protect route",
+    kind: StrategyParamKind::Bool { default: true },
+};
+
+static PARAMS: [StrategyParam; 4] = crate::add_strategy_params!(PROTECT_ROUTE_PARAM);
 
 /// Handles `MISSING_LOOPS` — see GitHub issue #254, part of epic #246. Alternative to
 /// `MissingLoopsRandomStrategy`'s plain new-edge seeding: instead of connecting a random
@@ -89,7 +72,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsSplit
     fn strategy_id(&self) -> &'static str { "missing_loops_split" }
 
     fn params(&self) -> &'static [StrategyParam] {
-        PARAMS
+        &PARAMS
+    }
+
+    fn nested_suppressed_params(&self) -> &'static [&'static str] {
+        standard_add_params::NESTED_SUPPRESSED_ADD_PARAMS
     }
 
     fn apply(
@@ -105,19 +92,12 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsSplit
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        let reserve_percent = params.get(PARAM_RESERVE_PERCENT).and_then(|v| v.as_float()).unwrap_or(50.0);
         let protect_route = match params.get(PARAM_PROTECT_ROUTE) {
             Some(StrategyParamValue::Bool(v)) => *v,
             _ => true,
         };
-        let max_attempts = params.get(PARAM_MAX_ATTEMPTS).and_then(|v| v.as_float())
-            .map(|v| v.max(1.0) as u32)
-            .unwrap_or(MAX_ATTEMPTS_DEFAULT);
-
-        let src_mode = match params.get(PARAM_SRC_MODE) {
-            Some(StrategyParamValue::Enum(v)) => v.as_str(),
-            _ => SRC_MODE_RANDOM,
-        };
+        let max_attempts = attempts_limit(params) as u32;
+        let src_mode = src_mode(params);
 
         let mut attempted_pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
         let mut commands = Vec::new();
@@ -131,8 +111,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsSplit
             if missing == 0 {
                 continue;
             }
-            let target = ((missing as f64) * (1.0 + reserve_percent / 100.0)).ceil() as u32;
-            let target = target.max(1);
+            let target = reserve_target(params, missing);
 
             let eligible: Vec<NodeId> = maze.field.all_node_ids()
                 .filter(|&node| crate::generation::split_is_eligible(&maze.field, preset_state, node))
@@ -285,7 +264,7 @@ mod tests {
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(3);
         let mut overrides = std::collections::HashMap::new();
-        overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
+        overrides.insert(crate::repair::strategies::standard_add_params::PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
         let params = build_params(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&strategy_unconstrained()), Some(&overrides));
         let nodes_before = maze.field.node_count();
         let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
@@ -301,7 +280,7 @@ mod tests {
         let issue = missing_issue(1);
         let mut rng = MazeRng::seed_from_u64(11);
         let mut overrides = std::collections::HashMap::new();
-        overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
+        overrides.insert(crate::repair::strategies::standard_add_params::PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
         let params = build_params(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&strategy_unconstrained()), Some(&overrides));
         apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
 
@@ -327,7 +306,7 @@ mod tests {
         let issue = missing_issue(4);
         let mut rng = MazeRng::seed_from_u64(17);
         let mut overrides = std::collections::HashMap::new();
-        overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
+        overrides.insert(crate::repair::strategies::standard_add_params::PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
         let params = build_params(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&strategy_unconstrained()), Some(&overrides));
         let nodes_before = maze.field.node_count();
 
@@ -354,7 +333,7 @@ mod tests {
 
         let issue = missing_issue(1);
         let mut overrides = std::collections::HashMap::new();
-        overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
+        overrides.insert(crate::repair::strategies::standard_add_params::PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
         overrides.insert("src_mode".to_string(), "dead_end_priority".to_string());
         let params = build_params(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&strategy_unconstrained()), Some(&overrides));
         let mut rng = MazeRng::seed_from_u64(2);
@@ -389,7 +368,7 @@ mod tests {
         let mut maze = maze_grid(4);
         let issue = missing_issue(1);
         let mut overrides = std::collections::HashMap::new();
-        overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
+        overrides.insert(crate::repair::strategies::standard_add_params::PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
         let params = build_params(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&strategy), Some(&overrides));
         let mut rng = MazeRng::seed_from_u64(5);
         let nodes_before = maze.field.node_count();
@@ -426,7 +405,7 @@ mod tests {
 
         let issue = MissingLoopsIssue::new_from_check("min_loops_count", vec![(RepairArea::Level(level_b), 1)]);
         let mut overrides = std::collections::HashMap::new();
-        overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
+        overrides.insert(crate::repair::strategies::standard_add_params::PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
         let params = build_params(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&strategy_unconstrained()), Some(&overrides));
         let mut rng = MazeRng::seed_from_u64(11);
         let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
@@ -465,7 +444,7 @@ mod tests {
             (RepairArea::WholeMaze, 3),
         ]);
         let mut overrides = std::collections::HashMap::new();
-        overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
+        overrides.insert(crate::repair::strategies::standard_add_params::PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
         let params = build_params(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&strategy_unconstrained()), Some(&overrides));
         let mut rng = MazeRng::seed_from_u64(11);
         let result = apply_and_commit(&strategy_unconstrained(), &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
@@ -477,7 +456,7 @@ mod tests {
     fn apply_is_deterministic_for_fixed_seed() {
         let issue = missing_issue(1);
         let mut overrides = std::collections::HashMap::new();
-        overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
+        overrides.insert(crate::repair::strategies::standard_add_params::PARAM_RESERVE_PERCENT.to_string(), "0".to_string());
         let params = build_params(<MissingLoopsSplitStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&strategy_unconstrained()), Some(&overrides));
 
         let mut maze_a = maze_grid(4);

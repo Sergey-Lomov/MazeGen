@@ -4,6 +4,7 @@ use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::quality_control::RepairArea;
+use super::dead_end_priority::apply_src_mode;
 
 /// Shared random-candidate-pair search for `MissingOneWaysFromPassageStrategy`/
 /// `MissingOneWaysFromWallStrategy` — see GitHub issue #201. Both strategies need the same "pick a
@@ -19,25 +20,39 @@ use crate::quality_control::RepairArea;
 /// parameter, the other for its own direction pick) can't coexist. Returns `true` if the pair was
 /// accepted and committed (counted toward `target`), `false` to keep searching (e.g. the pair
 /// doesn't qualify, or was already proposed earlier this call). Stops once `target` pairs have
-/// been accepted or the pool is exhausted; returns the number actually accepted.
+/// been accepted, the pool is exhausted, or `max_failed_attempts` `src` nodes have yielded
+/// nothing (`attempts_limit`, GitHub issue #486 — a running total across the call, same as
+/// `MissingLoopsRandomStrategy`, not a consecutive streak); returns the number actually accepted.
+///
+/// `src_mode` (GitHub issue #486) orders the candidate pool via `apply_src_mode` — the pool is
+/// consumed from the back (`Vec::pop`), so `dead_end_priority` tries dead-end `src` nodes first
+/// while every other candidate stays behind them (never dropped).
 pub(super) fn pick_random_pairs<T: Tessellation>(
     maze: &Maze<T>,
     rng: &mut dyn RngCore,
     target: u32,
     area: RepairArea,
+    src_mode: &str,
+    max_failed_attempts: usize,
     mut try_pair: impl FnMut(NodeId, NodeId, &mut dyn RngCore) -> bool,
 ) -> u32 {
-    let mut pool: Vec<NodeId> = maze.field.all_node_ids()
+    let eligible: Vec<NodeId> = maze.field.all_node_ids()
         .filter(|&n| match area {
             RepairArea::WholeMaze => true,
             RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
         })
         .collect();
+    let mut pool: Vec<NodeId> = apply_src_mode(maze, eligible, src_mode, rng);
     let mut found: u32 = 0;
+    // A popped `src` that connects nothing counts against the budget (running total, not a streak).
+    let mut failed_attempts: usize = 0;
 
-    while found < target && !pool.is_empty() {
-        let pick = rng.random_range(0..pool.len());
-        let src = pool[pick];
+    while found < target && !pool.is_empty() && failed_attempts < max_failed_attempts {
+        // Pop from the end, not a random index — `apply_src_mode` orders the pool so dead-end
+        // candidates sit at this end when `dead_end_priority` is active; a random-index pick would
+        // destroy that ordering. Every neighbor of `src` is offered below regardless of outcome,
+        // so `src` is never worth revisiting this call either way.
+        let src = pool.pop().expect("pool.is_empty() already checked by the while condition");
 
         let mut neighbors = maze.field.neighbors(src);
         let mut connected = false;
@@ -55,7 +70,7 @@ pub(super) fn pick_random_pairs<T: Tessellation>(
         }
 
         if !connected {
-            pool.swap_remove(pick);
+            failed_attempts += 1;
         }
     }
 
@@ -110,7 +125,7 @@ mod tests {
         // instead of retrying the rest, n1 would be evicted empty-handed too, and the whole pool
         // would exhaust with `found` stuck at 0.
         let mut n1_first_candidate: Option<NodeId> = None;
-        let found = pick_random_pairs(&maze, &mut rng, 1, RepairArea::WholeMaze, |src, dst, _rng| {
+        let found = pick_random_pairs(&maze, &mut rng, 1, RepairArea::WholeMaze, super::super::dead_end_priority::SRC_MODE_RANDOM, usize::MAX, |src, dst, _rng| {
             if src != n1 {
                 return false;
             }

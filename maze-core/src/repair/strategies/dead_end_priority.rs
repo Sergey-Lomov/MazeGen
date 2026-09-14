@@ -4,6 +4,7 @@ use rand::seq::SliceRandom;
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
+use crate::repair::params::{StrategyParam, StrategyParamKind};
 
 pub const PARAM_SRC_MODE: &str = "src_mode";
 
@@ -11,6 +12,15 @@ pub const SRC_MODE_RANDOM: &str = "random";
 pub const SRC_MODE_DEAD_END_PRIORITY: &str = "dead_end_priority";
 
 pub static SRC_MODE_OPTIONS: &[&str] = &[SRC_MODE_RANDOM, SRC_MODE_DEAD_END_PRIORITY];
+
+/// Ready-made descriptor for the shared `src_mode` param — appended (by `add_strategy_params!`) to
+/// every element-adding strategy whose source pool is a node list. See [`apply_src_mode`] and
+/// GitHub issue #486.
+pub const SRC_MODE_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_SRC_MODE,
+    label: "Source selection mode",
+    kind: StrategyParamKind::Enum { options: SRC_MODE_OPTIONS, default: SRC_MODE_RANDOM },
+};
 
 /// Shared by `MissingLoopsRandomStrategy` and `MissingLoopsSplitStrategy` (GitHub issue #254
 /// follow-up, fixed for the exhaustion bug by GitHub issue #278's audit) — both pick a `src` node

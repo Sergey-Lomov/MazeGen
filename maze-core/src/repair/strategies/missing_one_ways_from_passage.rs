@@ -11,17 +11,18 @@ use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::missing_one_ways_shared::{pick_random_pairs, canonical_pair, ProposedPairs};
 use super::remaining_deficits::RemainingDeficits;
+use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
 use crate::quality_control::RepairArea;
 
 pub const PARAM_PROTECT_ROUTE: &str = "protect_route";
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_PROTECT_ROUTE,
-        label: "Protect start-finish route",
-        kind: StrategyParamKind::Bool { default: true },
-    },
-];
+const PROTECT_ROUTE_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_PROTECT_ROUTE,
+    label: "Protect start-finish route",
+    kind: StrategyParamKind::Bool { default: true },
+};
+
+static PARAMS: [StrategyParam; 4] = crate::add_strategy_params!(PROTECT_ROUTE_PARAM);
 
 /// Handles `MISSING_ONE_WAYS` — one of the two registered strategies (see
 /// `MissingOneWaysFromWallStrategy` for the other) — see GitHub issue #201. Picks random existing
@@ -40,7 +41,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysF
     fn strategy_id(&self) -> &'static str { "missing_one_ways_from_passage" }
 
     fn params(&self) -> &'static [StrategyParam] {
-        PARAMS
+        &PARAMS
+    }
+
+    fn nested_suppressed_params(&self) -> &'static [&'static str] {
+        standard_add_params::NESTED_SUPPRESSED_ADD_PARAMS
     }
 
     fn apply(
@@ -60,6 +65,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysF
             Some(StrategyParamValue::Bool(b)) => *b,
             _ => true,
         };
+        let src_mode = src_mode(params);
+        let max_failed_attempts = attempts_limit(params);
 
         let mut proposed: ProposedPairs = ProposedPairs::default();
         let mut commands = Vec::new();
@@ -68,15 +75,18 @@ impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysF
         let mut deficits = RemainingDeficits::new(&issue.missing);
         let areas: Vec<RepairArea> = deficits.areas().collect();
         for area in areas {
-            let target = deficits.live(area);
-            if target == 0 {
+            let missing = deficits.live(area);
+            if missing == 0 {
                 continue;
             }
+            let target = reserve_target(params, missing);
             let found = pick_random_pairs(
                 maze,
                 rng,
                 target,
                 area,
+                src_mode,
+                max_failed_attempts,
                 |src, dst, rng| {
                     if proposed.contains(&canonical_pair(src, dst)) {
                         return false;
@@ -425,6 +435,25 @@ mod tests {
         let result = apply_and_commit_default(&MissingOneWaysFromPassageStrategy, &issue, &mut maze, &mut rng, &PresetState::empty());
         assert!(matches!(result, RepairResult::Fixed { score: None }));
         assert_eq!(maze.graph.edges().count(), edges_before - 3, "3 passages downgraded total, not 6");
+    }
+
+    #[test]
+    fn reserve_percent_override_increases_the_number_of_downgrades() {
+        use std::collections::HashMap;
+        use crate::repair::params::build_params;
+        let mut maze = maze_grid(4);
+        let edges_before = maze.graph.edges().count();
+        let issue = missing_issue(2);
+        let overrides = HashMap::from([(standard_add_params::PARAM_RESERVE_PERCENT.to_string(), "100".to_string())]);
+        let params = build_params(
+            <MissingOneWaysFromPassageStrategy as RepairStrategy<SquareTessellation, MissingOneWaysIssue>>::params(&MissingOneWaysFromPassageStrategy),
+            Some(&overrides),
+        );
+        let mut rng = MazeRng::seed_from_u64(42);
+        let result = apply_and_commit(&MissingOneWaysFromPassageStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        // 2 * (1 + 100%) = 4 passages downgraded, vs 2 with the unified 0 default.
+        assert_eq!(maze.graph.edges().count(), edges_before - 4);
     }
 
     #[test]

@@ -6,6 +6,7 @@ mod cycle_cut_set;
 mod region_merge_core;
 pub(crate) mod split_core;
 pub mod dead_end_priority;
+pub mod standard_add_params;
 pub mod invalid_loop_random;
 pub mod invalid_loop_scored;
 pub mod invalid_loop_group_select;
@@ -65,8 +66,9 @@ pub use invalid_loop_random::InvalidLoopRandomStrategy;
 pub use invalid_loop_scored::InvalidLoopScoredStrategy;
 pub use invalid_loop_group_select::{InvalidLoopGroupSelectStrategy, PARAM_SELECTION_MODE, SELECTION_RANDOM, SELECTION_SHORTEST, SELECTION_LONGEST, SLOT_CUT_TARGET as INVALID_LOOP_GROUP_SELECT_SLOT_CUT_TARGET};
 pub use missing_loops_random::MissingLoopsRandomStrategy;
-pub use missing_loops_split::{MissingLoopsSplitStrategy, PARAM_RESERVE_PERCENT as MISSING_LOOPS_SPLIT_PARAM_RESERVE_PERCENT, PARAM_PROTECT_ROUTE as MISSING_LOOPS_SPLIT_PARAM_PROTECT_ROUTE, PARAM_MAX_ATTEMPTS as MISSING_LOOPS_SPLIT_PARAM_MAX_ATTEMPTS};
-pub use dead_end_priority::{PARAM_SRC_MODE, SRC_MODE_RANDOM, SRC_MODE_DEAD_END_PRIORITY, SRC_MODE_OPTIONS};
+pub use missing_loops_split::{MissingLoopsSplitStrategy, PARAM_PROTECT_ROUTE as MISSING_LOOPS_SPLIT_PARAM_PROTECT_ROUTE};
+pub use dead_end_priority::{PARAM_SRC_MODE, SRC_MODE_RANDOM, SRC_MODE_DEAD_END_PRIORITY, SRC_MODE_OPTIONS, SRC_MODE_PARAM};
+pub use standard_add_params::{PARAM_RESERVE_PERCENT, PARAM_ATTEMPTS_LIMIT, RESERVE_PERCENT_PARAM, ATTEMPTS_LIMIT_PARAM, NESTED_SUPPRESSED_ADD_PARAMS};
 pub use expand_region_passage::ExpandRegionPassageStrategy;
 pub use teleport_region_merge::TeleportRegionMergeStrategy;
 pub use region_shrink_split::RegionShrinkSplitStrategy;
@@ -104,7 +106,7 @@ pub use remove_split::{
 };
 pub use split_group_select::{SplitGroupSelectStrategy, SLOT_FIX_TARGET as SPLIT_GROUP_SELECT_SLOT_FIX_TARGET, SPLIT_PRIORITY_OPTIONS, PRIORITY_MOST_VOLUMINOUS, PRIORITY_LEAST_VOLUMINOUS, PRIORITY_MOST_CONNECTED, PRIORITY_LEAST_CONNECTED};
 pub use cross_element_group_select::{CrossElementGroupSelectStrategy, SLOT_TELEPORT_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_TELEPORT_FIX, SLOT_ONE_WAY_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_ONE_WAY_FIX, SLOT_VERTICAL_PASSAGE_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_VERTICAL_PASSAGE_FIX, SLOT_ELEVATOR_STOP_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_ELEVATOR_STOP_FIX, SLOT_SPLIT_FIX as CROSS_ELEMENT_GROUP_SELECT_SLOT_SPLIT_FIX};
-pub use add_split::{AddSplitStrategy, PARAM_ALLOW_LOSE_CONNECTIONS as ADD_SPLIT_PARAM_ALLOW_LOSE_CONNECTIONS, PARAM_ALLOW_ADD_CONNECTIONS as ADD_SPLIT_PARAM_ALLOW_ADD_CONNECTIONS, PARAM_MAX_ATTEMPTS as ADD_SPLIT_PARAM_MAX_ATTEMPTS, MAX_ATTEMPTS_DEFAULT as ADD_SPLIT_MAX_ATTEMPTS_DEFAULT};
+pub use add_split::{AddSplitStrategy, PARAM_ALLOW_LOSE_CONNECTIONS as ADD_SPLIT_PARAM_ALLOW_LOSE_CONNECTIONS, PARAM_ALLOW_ADD_CONNECTIONS as ADD_SPLIT_PARAM_ALLOW_ADD_CONNECTIONS};
 pub use remove_split_node::{RemoveSplitNodeStrategy, PARAM_REDISTRIBUTE as REMOVE_SPLIT_NODE_PARAM_REDISTRIBUTE};
 pub use remove_split_node_connection::RemoveSplitNodeConnectionStrategy;
 pub use split_node_connection_group_select::{
@@ -135,7 +137,7 @@ pub use split_route_cut::{
 pub use add_vertical_passage::{AddVerticalPassageStrategy, PARAM_ONE_WAY_BALANCE as ADD_VERTICAL_PASSAGE_PARAM_ONE_WAY_BALANCE};
 pub use remove_vertical_passage::RemoveVerticalPassageStrategy;
 pub use vertical_passage_group_select::{VerticalPassageGroupSelectStrategy, SLOT_FIX_TARGET as VERTICAL_PASSAGE_GROUP_SELECT_SLOT_FIX_TARGET};
-pub use missing_loops_vertical::{MissingLoopsVerticalStrategy, PARAM_RESERVE_PERCENT as MISSING_LOOPS_VERTICAL_PARAM_RESERVE_PERCENT, PARAM_ONE_WAY_CHANCE as MISSING_LOOPS_VERTICAL_PARAM_ONE_WAY_CHANCE, PARAM_DIRECTION_BALANCE as MISSING_LOOPS_VERTICAL_PARAM_DIRECTION_BALANCE};
+pub use missing_loops_vertical::{MissingLoopsVerticalStrategy, PARAM_ONE_WAY_CHANCE as MISSING_LOOPS_VERTICAL_PARAM_ONE_WAY_CHANCE, PARAM_DIRECTION_BALANCE as MISSING_LOOPS_VERTICAL_PARAM_DIRECTION_BALANCE};
 pub use remove_elevator::RemoveElevatorStrategy;
 pub use replace_elevator_with_passages::{ReplaceElevatorWithPassagesStrategy, PARAM_ADJACENT_FLOORS_ONLY as REPLACE_ELEVATOR_WITH_PASSAGES_PARAM_ADJACENT_FLOORS_ONLY};
 pub use elevator_group_select::{ElevatorGroupSelectStrategy, SLOT_FIX_TARGET as ELEVATOR_GROUP_SELECT_SLOT_FIX_TARGET};

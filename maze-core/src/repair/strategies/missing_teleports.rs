@@ -10,6 +10,7 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::farthest_reachable::farthest_from;
+use super::standard_add_params::{self, reserve_target, attempts_limit};
 use super::remaining_deficits::RemainingDeficits;
 
 pub const PARAM_ENTRY_PICK: &str = "entry_pick";
@@ -17,8 +18,6 @@ pub const PARAM_UNREACHABLE_PRIORITY: &str = "unreachable_priority";
 pub const PARAM_DESIRED_LENGTH: &str = "desired_length";
 pub const PARAM_ALLOW_OUT_OF_INTERVAL: &str = "allow_out_of_interval";
 pub const PARAM_ONE_WAY_CHANCE: &str = "one_way_chance";
-pub const PARAM_ATTEMPTS_LIMIT: &str = "attempts_limit";
-pub const PARAM_RESERVE_PERCENT: &str = "reserve_percent";
 pub const PARAM_CROSS_FLOOR_MODE: &str = "cross_floor_mode";
 pub const PARAM_CROSS_FLOOR_BALANCE: &str = "cross_floor_balance";
 
@@ -34,53 +33,55 @@ pub const CROSS_FLOOR_MANUAL: &str = "manual";
 
 static CROSS_FLOOR_MODE_OPTIONS: &[&str] = &[CROSS_FLOOR_FORBIDDEN, CROSS_FLOOR_NATURAL, CROSS_FLOOR_MANUAL];
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_ENTRY_PICK,
-        label: "Entry pick",
-        kind: StrategyParamKind::Enum { options: ENTRY_OPTIONS, default: ENTRY_RANDOM },
-    },
-    StrategyParam {
-        id: PARAM_UNREACHABLE_PRIORITY,
-        label: "Unreachable area priority",
-        kind: StrategyParamKind::Priority { default: PriorityLevel::Indifferent },
-    },
-    StrategyParam {
-        id: PARAM_DESIRED_LENGTH,
-        label: "Desired graph length",
-        kind: StrategyParamKind::Interval { default_min: 0.0, default_max: 1000.0, min: 0.0, max: 100_000.0 },
-    },
-    StrategyParam {
-        id: PARAM_ALLOW_OUT_OF_INTERVAL,
-        label: "Allow out-of-interval teleport",
-        kind: StrategyParamKind::Bool { default: true },
-    },
-    StrategyParam {
-        id: PARAM_ONE_WAY_CHANCE,
-        label: "One-way teleport chance",
-        kind: StrategyParamKind::Float { default: 50.0, min: 0.0, max: 100.0 },
-    },
-    StrategyParam {
-        id: PARAM_ATTEMPTS_LIMIT,
-        label: "Attempts limit",
-        kind: StrategyParamKind::Float { default: 3.0, min: 1.0, max: 1000.0 },
-    },
-    StrategyParam {
-        id: PARAM_RESERVE_PERCENT,
-        label: "Reserve percent",
-        kind: StrategyParamKind::Float { default: 0.0, min: 0.0, max: 500.0 },
-    },
-    StrategyParam {
-        id: PARAM_CROSS_FLOOR_MODE,
-        label: "Cross-floor mode",
-        kind: StrategyParamKind::Enum { options: CROSS_FLOOR_MODE_OPTIONS, default: CROSS_FLOOR_NATURAL },
-    },
-    StrategyParam {
-        id: PARAM_CROSS_FLOOR_BALANCE,
-        label: "Cross-floor balance",
-        kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
-    },
-];
+const ENTRY_PICK_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_ENTRY_PICK,
+    label: "Entry pick",
+    kind: StrategyParamKind::Enum { options: ENTRY_OPTIONS, default: ENTRY_RANDOM },
+};
+const UNREACHABLE_PRIORITY_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_UNREACHABLE_PRIORITY,
+    label: "Unreachable area priority",
+    kind: StrategyParamKind::Priority { default: PriorityLevel::Indifferent },
+};
+const DESIRED_LENGTH_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_DESIRED_LENGTH,
+    label: "Desired graph length",
+    kind: StrategyParamKind::Interval { default_min: 0.0, default_max: 1000.0, min: 0.0, max: 100_000.0 },
+};
+const ALLOW_OUT_OF_INTERVAL_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_ALLOW_OUT_OF_INTERVAL,
+    label: "Allow out-of-interval teleport",
+    kind: StrategyParamKind::Bool { default: true },
+};
+const ONE_WAY_CHANCE_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_ONE_WAY_CHANCE,
+    label: "One-way teleport chance",
+    kind: StrategyParamKind::Float { default: 50.0, min: 0.0, max: 100.0 },
+};
+const CROSS_FLOOR_MODE_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_CROSS_FLOOR_MODE,
+    label: "Cross-floor mode",
+    kind: StrategyParamKind::Enum { options: CROSS_FLOOR_MODE_OPTIONS, default: CROSS_FLOOR_NATURAL },
+};
+const CROSS_FLOOR_BALANCE_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_CROSS_FLOOR_BALANCE,
+    label: "Cross-floor balance",
+    kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
+};
+
+// `no_src_mode`: the entry pool is node-based, but this strategy already has `entry_pick` as its
+// source-ordering knob — a second `src_mode` on top would be redundant. `reserve_percent` and
+// `attempts_limit` are the shared standard block (GitHub issue #486); `attempts_limit`'s default
+// unified from the old `3` to `25`.
+static PARAMS: [StrategyParam; 9] = crate::add_strategy_params!(no_src_mode:
+    ENTRY_PICK_PARAM,
+    UNREACHABLE_PRIORITY_PARAM,
+    DESIRED_LENGTH_PARAM,
+    ALLOW_OUT_OF_INTERVAL_PARAM,
+    ONE_WAY_CHANCE_PARAM,
+    CROSS_FLOOR_MODE_PARAM,
+    CROSS_FLOOR_BALANCE_PARAM,
+);
 
 /// Handles `MISSING_TELEPORTS` (see GitHub issue #211/#212) by adding the whole computed target
 /// count of teleport edges in a single `apply()` call — mirrors `MissingLoopsRandomStrategy`'s
@@ -122,7 +123,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
     fn strategy_id(&self) -> &'static str { "missing_teleports" }
 
     fn params(&self) -> &'static [StrategyParam] {
-        PARAMS
+        &PARAMS
+    }
+
+    fn nested_suppressed_params(&self) -> &'static [&'static str] {
+        standard_add_params::NESTED_SUPPRESSED_ADD_PARAMS
     }
 
     fn apply(
@@ -148,8 +153,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
         let desired_max = desired_max.max(0.0) as usize;
         let allow_out_of_interval = matches!(params.get(PARAM_ALLOW_OUT_OF_INTERVAL), Some(StrategyParamValue::Bool(b)) if *b);
         let one_way_chance = params.get(PARAM_ONE_WAY_CHANCE).and_then(|v| v.as_float()).unwrap_or(50.0);
-        let attempts_limit = params.get(PARAM_ATTEMPTS_LIMIT).and_then(|v| v.as_float()).map(|f| f.round().max(1.0) as usize).unwrap_or(3);
-        let reserve_percent = params.get(PARAM_RESERVE_PERCENT).and_then(|v| v.as_float()).unwrap_or(0.0);
+        let attempts_limit = attempts_limit(params);
         let cross_floor_mode = match params.get(PARAM_CROSS_FLOOR_MODE) {
             Some(StrategyParamValue::Enum(s)) => s.as_str(),
             _ => CROSS_FLOOR_NATURAL,
@@ -167,8 +171,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
             if missing == 0 {
                 continue;
             }
-            let target = (missing as f64 * (1.0 + reserve_percent / 100.0)).ceil() as u32;
-            let target = target.max(1);
+            let target = reserve_target(params, missing);
 
             // Only the entry side is restricted to the reported area — a teleport's exit is free
             // to land on any floor (GitHub issue #369's floor-scope follow-up): teleports
@@ -260,9 +263,20 @@ crate::impl_erased_repair_strategy!(MissingTeleportsStrategy, MissingTeleportsIs
 /// `entry_pick: farthest_from_random`'s own step: hop from a uniformly-picked node to the
 /// farthest node forward-reachable from it, via the corridor-compressed `NavGraph` — same
 /// helper `FarthestEndpointsStrategy` uses (GitHub issue #212's shared-helper request).
+///
+/// `from` is usually a corridor-interior node (the candidate pool is every maze node, and those
+/// vastly outnumber junction/dead-end nodes), which `NavGraph::nav_node_for` cannot resolve —
+/// falling back to `from` itself there would silently skip the farthest-search for the common
+/// case. Instead, resolve via `corridor_index` to the nav node the corridor leads into. This is
+/// coarse (it's the corridor's destination nav node, not `from`'s own position), but it keeps the
+/// search on the nav graph instead of degenerating into a no-op. Note: a true farthest point can
+/// still land mid-corridor when loops are present — `farthest_from` only ever considers nav
+/// nodes, so that deeper limitation remains unaddressed here.
 fn farthest_from_via_nav<T: Tessellation>(maze: &Maze<T>, from: NodeId) -> NodeId {
     let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
-    let Some(nav_id) = nav.nav_node_for(from) else { return from };
+    let Some(nav_id) = nav.nav_node_for(from).or_else(|| nav.corridor_index.get(&from).copied()) else {
+        return from;
+    };
     farthest_from(&nav, nav_id)
 }
 

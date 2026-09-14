@@ -1,4 +1,4 @@
-use rand::{Rng, RngCore};
+use rand::RngCore;
 use crate::Maze;
 use crate::ids::NodeId;
 use crate::space::Tessellation;
@@ -10,30 +10,25 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::split_core::{pick_weighted_pattern, plan_unconstrained_split as core_plan_unconstrained_split, plan_pattern_split as core_plan_pattern_split};
+use super::dead_end_priority::apply_src_mode;
+use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
 use super::remaining_deficits::RemainingDeficits;
 
 pub const PARAM_ALLOW_LOSE_CONNECTIONS: &str = "allow_lose_connections";
 pub const PARAM_ALLOW_ADD_CONNECTIONS: &str = "allow_add_connections";
-pub const PARAM_MAX_ATTEMPTS: &str = "max_attempts";
-pub const MAX_ATTEMPTS_DEFAULT: u32 = 50;
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_ALLOW_LOSE_CONNECTIONS,
-        label: "Allow losing connections",
-        kind: StrategyParamKind::Bool { default: true },
-    },
-    StrategyParam {
-        id: PARAM_ALLOW_ADD_CONNECTIONS,
-        label: "Allow adding connections",
-        kind: StrategyParamKind::Bool { default: true },
-    },
-    StrategyParam {
-        id: PARAM_MAX_ATTEMPTS,
-        label: "Max failed attempts",
-        kind: StrategyParamKind::Float { default: MAX_ATTEMPTS_DEFAULT as f64, min: 1.0, max: 10_000.0 },
-    },
-];
+const ALLOW_LOSE_CONNECTIONS_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_ALLOW_LOSE_CONNECTIONS,
+    label: "Allow losing connections",
+    kind: StrategyParamKind::Bool { default: true },
+};
+const ALLOW_ADD_CONNECTIONS_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_ALLOW_ADD_CONNECTIONS,
+    label: "Allow adding connections",
+    kind: StrategyParamKind::Bool { default: true },
+};
+
+static PARAMS: [StrategyParam; 5] = crate::add_strategy_params!(ALLOW_LOSE_CONNECTIONS_PARAM, ALLOW_ADD_CONNECTIONS_PARAM);
 
 /// Handles `MISSING_SPLIT_TILES` — see GitHub issue #247, epic #246. Mints new split tiles at
 /// randomly chosen eligible points (`generation::split_is_eligible` — not locked, point not
@@ -116,7 +111,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
     fn strategy_id(&self) -> &'static str { "add_split" }
 
     fn params(&self) -> &'static [StrategyParam] {
-        PARAMS
+        &PARAMS
+    }
+
+    fn nested_suppressed_params(&self) -> &'static [&'static str] {
+        standard_add_params::NESTED_SUPPRESSED_ADD_PARAMS
     }
 
     fn apply(
@@ -134,9 +133,8 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
 
         let allow_lose = matches!(params.get(PARAM_ALLOW_LOSE_CONNECTIONS), Some(StrategyParamValue::Bool(v)) if *v);
         let allow_add = matches!(params.get(PARAM_ALLOW_ADD_CONNECTIONS), Some(StrategyParamValue::Bool(v)) if *v);
-        let max_attempts = params.get(PARAM_MAX_ATTEMPTS).and_then(|v| v.as_float())
-            .map(|v| v.max(1.0) as u32)
-            .unwrap_or(MAX_ATTEMPTS_DEFAULT);
+        let max_attempts = attempts_limit(params) as u32;
+        let src_mode = src_mode(params);
         let protect_route = self.protect_route;
         let resolved_patterns = self.resolved_patterns();
 
@@ -155,10 +153,12 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
             if missing == 0 {
                 continue;
             }
+            let target = reserve_target(params, missing);
+
             // A split tile belongs to exactly one floor (GitHub issue #369's floor-scope
             // follow-up), so restricting by area is a plain point-set filter — no cross-floor
             // double-counting concern like a teleport's exit side.
-            let mut pool: Vec<NodeId> = maze.field.all_node_ids()
+            let eligible: Vec<NodeId> = maze.field.all_node_ids()
                 .filter(|&node| crate::generation::split_is_eligible(&maze.field, preset_state, node))
                 .filter(|&node| !protect_route || !is_node_on_route(maze, node))
                 .filter(|&node| match area {
@@ -166,13 +166,15 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
                     RepairArea::Level(level) => maze.field.level_of(node) == Some(level),
                 })
                 .collect();
+            // `src_mode` orders the candidate pool for `pop`-from-end consumption — dead ends last
+            // (poppable first) under `dead_end_priority` (GitHub issue #486).
+            let mut pool: Vec<NodeId> = apply_src_mode(maze, eligible, src_mode, rng);
 
             let mut added = 0u32;
             let mut failed_attempts = 0u32;
 
-            while added < missing && failed_attempts < max_attempts && !pool.is_empty() {
-                let pick_idx = rng.random_range(0..pool.len());
-                let at = pool[pick_idx];
+            while added < target && failed_attempts < max_attempts && !pool.is_empty() {
+                let at = *pool.last().expect("pool.is_empty() already checked by the while condition");
 
                 let outcome = if resolved_patterns.is_empty() {
                     let node_count = self.max_split_nodes.max(2) as usize;
@@ -191,11 +193,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
                         // Eligibility is per-point — once `at` has a command pending, it must not
                         // be picked again this call (the point would no longer be
                         // `split_is_eligible` after this command actually applies).
-                        pool.swap_remove(pick_idx);
+                        pool.pop();
                     }
                     None => {
                         failed_attempts += 1;
-                        pool.swap_remove(pick_idx);
+                        pool.pop();
                     }
                 }
             }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::repair::params::build_params;
 use std::collections::HashMap;
 use rand::SeedableRng;
 use crate::random::MazeRng;
@@ -101,6 +102,51 @@ fn add_new_branch_delegates_to_the_nested_strategy() {
     let groups = elevator_groups(&maze);
     assert_eq!(groups.len(), 1, "add-new branch must have built a brand-new elevator via the nested strategy");
     let _ = levels;
+}
+
+#[test]
+fn add_new_branch_injects_its_own_reserve_percent_into_the_nested_strategy() {
+    // GitHub issue #486: AddElevatorStopStrategy suppresses reserve_percent/attempts_limit on its
+    // nested add-elevator slot and resolves them itself (`standard_add_params::inherited_overrides`
+    // -> `nested_dispatch::nested_params`), so its own `reserve_percent` must reach the nested
+    // `AddElevatorStrategy` call -- not the nested strategy's own default (0).
+    //
+    // `try_add_new` always synthesizes a single-unit `missing: 1` issue per call; with
+    // reserve_percent=100 on the *parent*, the nested strategy's own reserve_target computes
+    // ceil(1 * 2.0) = 2, so a single add-new call must build 2 brand-new elevators, not 1.
+    let (mut maze, _levels) = multi_floor_maze(10, 5);
+    let params = params_with(&[("existing_reuse_balance", "0"), ("reserve_percent", "100")]);
+    let issue = missing_issue(vec![(RepairArea::WholeMaze, 1)]);
+    let mut rng = MazeRng::seed_from_u64(5);
+    let nested = add_elevator_nested();
+    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &nested);
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+    let groups = elevator_groups(&maze);
+    assert_eq!(groups.len(), 2, "the parent's reserve_percent=100 must reach the nested strategy, doubling the single synthetic deficit unit to 2 elevators");
+}
+
+#[test]
+fn a_stale_nested_reserve_percent_override_is_overridden_by_the_parent_value() {
+    // Same mechanism as `priority_missing_loops`'s own stale-override regression test: a leftover
+    // `reserve_percent` override on the nested config (no longer settable via the UI, since this
+    // id is suppressed on a nested node) must not win over the parent's resolved value.
+    let (mut maze, _levels) = multi_floor_maze(10, 5);
+    // Parent's own reserve_percent stays at the unified default (0) -> nested must build exactly
+    // 1 elevator, not 2, even though its own param_overrides still claims reserve_percent=100.
+    let params = params_with(&[("existing_reuse_balance", "0")]);
+    let issue = missing_issue(vec![(RepairArea::WholeMaze, 1)]);
+    let mut rng = MazeRng::seed_from_u64(5);
+    let stale = HashMap::from([("reserve_percent".to_string(), "100".to_string())]);
+    let nested = vec![NestedStrategyConfig {
+        slot: &NESTED_SLOTS[0],
+        strategy: Box::new(AddElevatorStrategy),
+        param_overrides: stale,
+        nested: vec![],
+    }];
+    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &nested);
+    assert!(matches!(result, RepairResult::Fixed { score: None }));
+    let groups = elevator_groups(&maze);
+    assert_eq!(groups.len(), 1, "stale nested reserve_percent must be stripped; parent's default 0% wins");
 }
 
 #[test]
@@ -393,6 +439,46 @@ fn reuse_branch_grows_both_preset_elevators_across_every_interior_floor() {
     for g in &groups {
         assert_eq!(stop_floors(g, &maze).len(), 8, "each preset elevator must end up stopping on every floor");
     }
+}
+
+#[test]
+fn attempts_limit_is_a_per_area_budget_not_shared_across_areas() {
+    // GitHub issue #486 regression: `attempts_limit` failed attempts used to be a running total
+    // across the whole `apply()` call (a single `failed_attempts` declared before the `for area`
+    // loop) -- an unfillable area at the front of `issue.missing` could exhaust the budget before
+    // a perfectly fillable area later in the list ever got a chance. `failed_attempts` must reset
+    // for every area.
+    //
+    // Preset elevator spans floors 1 and 5 (indices) of a 6-floor maze -- floor 3 is a genuine
+    // interior gap (always fillable), floor 0 is strictly outside the span (an extension,
+    // forbidden). `RemainingDeficits` processes areas in `LevelId` order (floors created in index
+    // order), so floor 0 -- the unfillable one -- is processed *first*, before floor 3: exactly the
+    // ordering that would starve a shared (not per-area) attempts budget. With span extension
+    // forbidden and no nested add-new strategy configured, every attempt on floor 0 fails
+    // deterministically (mirrors `allow_span_extension_false_forbids_extending_the_span_outward`).
+    // With attempts_limit=1, floor 0's single guaranteed failure must not consume a budget that
+    // floor 3's fillable deficit also needs.
+    let (mut maze, levels) = multi_floor_maze(6, 3);
+    let stops: Vec<_> = [levels[1], levels[5]].iter().map(|&l| maze.field.node_at(l, SquarePoint { x: 0, y: 0 }).unwrap()).collect();
+    maze.graph.add_edge(stops[0], stops[1], EdgeKind::Elevator);
+    maze.graph.add_edge(stops[1], stops[0], EdgeKind::Elevator);
+
+    let params = params_with(&[
+        ("existing_reuse_balance", "1"),
+        ("allow_span_extension", "false"),
+        ("attempts_limit", "1"),
+    ]);
+    let issue = missing_issue(vec![
+        (RepairArea::Level(levels[0]), 1),
+        (RepairArea::Level(levels[3]), 1),
+    ]);
+    let mut rng = MazeRng::seed_from_u64(4);
+    let result = apply_and_commit(&AddElevatorStopStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Fixed { score: None }), "floor 3's fillable deficit must not be starved by floor 0's exhausted budget");
+    let groups = elevator_groups(&maze);
+    let floors = stop_floors(&groups[0], &maze);
+    assert!(floors.contains(&3), "floor 3 (a genuine interior gap) must have gained a stop");
+    assert!(!floors.contains(&0), "floor 0 (an out-of-span extension) must never gain a stop with allow_span_extension=false");
 }
 
 #[test]

@@ -5,56 +5,50 @@ use crate::ids::NodeId;
 use crate::space::Tessellation;
 use crate::quality_control::{MissingLoopsIssue, RepairArea};
 use crate::generation::PresetState;
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
+use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
-use super::dead_end_priority::{PARAM_SRC_MODE, SRC_MODE_RANDOM, SRC_MODE_OPTIONS, apply_src_mode};
+use super::dead_end_priority::apply_src_mode;
+use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
 use super::remaining_deficits::RemainingDeficits;
 use super::vertical_target::{DirectionConstraint, resolve_vertical_target};
 
-pub const PARAM_RESERVE_PERCENT: &str = "vertical_reserve_percent";
 pub const PARAM_ONE_WAY_CHANCE: &str = "vertical_loop_one_way_chance";
 pub const PARAM_DIRECTION_BALANCE: &str = "vertical_direction_balance";
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_RESERVE_PERCENT,
-        label: "Reserve percent",
-        kind: StrategyParamKind::Float { default: 0.0, min: 0.0, max: 500.0 },
-    },
-    StrategyParam {
-        id: PARAM_ONE_WAY_CHANCE,
-        label: "Loop one-way chance",
-        kind: StrategyParamKind::Float { default: 0.0, min: 0.0, max: 100.0 },
-    },
-    StrategyParam {
-        id: PARAM_DIRECTION_BALANCE,
-        label: "Direction balance",
-        kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
-    },
-    StrategyParam {
-        id: PARAM_SRC_MODE,
-        label: "Source selection mode",
-        kind: StrategyParamKind::Enum { options: SRC_MODE_OPTIONS, default: SRC_MODE_RANDOM },
-    },
-];
+const ONE_WAY_CHANCE_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_ONE_WAY_CHANCE,
+    label: "Loop one-way chance",
+    kind: StrategyParamKind::Float { default: 0.0, min: 0.0, max: 100.0 },
+};
+const DIRECTION_BALANCE_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_DIRECTION_BALANCE,
+    label: "Direction balance",
+    kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
+};
+
+static PARAMS: [StrategyParam; 5] = crate::add_strategy_params!(ONE_WAY_CHANCE_PARAM, DIRECTION_BALANCE_PARAM);
 
 /// Handles `MISSING_LOOPS` via a `VerticalPassage` edge instead of an ordinary geometric/teleport
 /// one — see GitHub issue #393. Mirrors `MissingLoopsRandomStrategy`'s own random-seed approach
 /// (same params, same meaning) except the candidate pair is resolved through
 /// `vertical_target::resolve_vertical_target` (shared with `AddVerticalPassageStrategy`), so the
 /// second endpoint is always the same point on an adjacent floor rather than a same-floor
-/// neighbor. `PARAM_RESERVE_PERCENT` defaults to `0.0` here (vs `50.0` for the ordinary
-/// loop-seeding strategy) since vertical connections are a scarcer, more disruptive resource --
-/// callers opt into over-provisioning explicitly rather than getting it by default.
+/// neighbor. `reserve_percent`/`src_mode`/`attempts_limit` are the shared standard add-strategy
+/// params (GitHub issue #486) with the unified defaults (`reserve_percent` 0.0, `attempts_limit`
+/// 25).
 pub struct MissingLoopsVerticalStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsVerticalStrategy {
     fn strategy_id(&self) -> &'static str { "missing_loops_vertical" }
 
     fn params(&self) -> &'static [StrategyParam] {
-        PARAMS
+        &PARAMS
+    }
+
+    fn nested_suppressed_params(&self) -> &'static [&'static str] {
+        standard_add_params::NESTED_SUPPRESSED_ADD_PARAMS
     }
 
     fn apply(
@@ -70,13 +64,10 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsVerti
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        let reserve_percent = params.get(PARAM_RESERVE_PERCENT).and_then(|v| v.as_float()).unwrap_or(0.0);
         let one_way_chance = params.get(PARAM_ONE_WAY_CHANCE).and_then(|v| v.as_float()).unwrap_or(0.0) / 100.0;
         let direction_balance = params.get(PARAM_DIRECTION_BALANCE).and_then(|v| v.as_float()).unwrap_or(0.5);
-        let src_mode = match params.get(PARAM_SRC_MODE) {
-            Some(StrategyParamValue::Enum(v)) => v.as_str(),
-            _ => SRC_MODE_RANDOM,
-        };
+        let src_mode = src_mode(params);
+        let max_failed_attempts = attempts_limit(params);
 
         let mut proposed_pairs: HashSet<(NodeId, NodeId)> = HashSet::new();
         let mut commands = Vec::new();
@@ -89,8 +80,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsVerti
             if missing == 0 {
                 continue;
             }
-            let target = (missing as f64 * (1.0 + reserve_percent / 100.0)).ceil() as u32;
-            let target = target.max(1);
+            let target = reserve_target(params, missing);
 
             let candidates: Vec<NodeId> = maze.field.all_node_ids()
                 .filter(|&n| match area {
@@ -100,11 +90,13 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsVerti
                 .collect();
             let mut pool: Vec<NodeId> = apply_src_mode(maze, candidates, src_mode, rng);
             let mut added: u32 = 0;
+            let mut failed_attempts: usize = 0;
 
-            while added < target && !pool.is_empty() {
+            while added < target && !pool.is_empty() && failed_attempts < max_failed_attempts {
                 let src = pool.pop().expect("pool.is_empty() already checked by the while condition");
 
                 let Some((from, to)) = resolve_vertical_target(maze, src, rng, &DirectionConstraint::Either, direction_balance) else {
+                    failed_attempts += 1;
                     continue;
                 };
 
@@ -113,6 +105,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsVerti
                     || proposed_pairs.contains(&(from, to))
                     || proposed_pairs.contains(&(to, from));
                 if already_connected {
+                    failed_attempts += 1;
                     continue;
                 }
 
@@ -120,11 +113,13 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsVerti
                     let forward = rng.random::<bool>();
                     let (edge_from, edge_to) = if forward { (from, to) } else { (to, from) };
                     if !crate::generation::directed_edge_feasible(preset_state, edge_from, edge_to) {
+                        failed_attempts += 1;
                         continue;
                     }
                     commands.push(MutationCommand::AddDirectedVerticalPassage { from: edge_from, to: edge_to });
                 } else {
                     if !crate::generation::bidirectional_edge_feasible(preset_state, from, to) {
+                        failed_attempts += 1;
                         continue;
                     }
                     commands.push(MutationCommand::AddBidirectionalVerticalPassage { a: from, b: to });
@@ -239,7 +234,7 @@ mod tests {
         let mut maze = two_level_maze(4);
         let issue = missing_issue(2);
         let mut overrides = HashMap::new();
-        overrides.insert(PARAM_RESERVE_PERCENT.to_string(), "50".to_string());
+        overrides.insert(crate::repair::strategies::standard_add_params::PARAM_RESERVE_PERCENT.to_string(), "50".to_string());
         let params = build_params(
             <MissingLoopsVerticalStrategy as RepairStrategy<SquareTessellation, MissingLoopsIssue>>::params(&MissingLoopsVerticalStrategy),
             Some(&overrides),

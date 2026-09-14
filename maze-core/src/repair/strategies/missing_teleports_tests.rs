@@ -357,6 +357,52 @@
     }
 
     #[test]
+    fn entry_pick_farthest_from_random_resolves_a_corridor_interior_candidate() {
+        // 1x5 *bidirectional* corridor: every node has in-degree 2 / out-degree 2, so nodes 1..=3
+        // are corridor-interior nav nodes (see `is_corridor_node`) -- only nodes 0 and 4 (the dead
+        // ends) are nav nodes proper. The candidate pool is every maze node, so most picks land on
+        // a corridor-interior node, which `NavGraph::nav_node_for` cannot resolve directly. Before
+        // the `corridor_index` fallback, `farthest_from_via_nav` returned such a candidate
+        // unchanged instead of hopping to a dead end -- this pins the fix.
+        let mut ids = IdGenerator::new();
+        let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        for i in 0..4 {
+            g.build_initial_bidirectional_edge(nodes[i], nodes[i + 1], EdgeKind::Basic);
+        }
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        let mut overrides = HashMap::new();
+        overrides.insert("entry_pick".to_string(), "farthest_from_random".to_string());
+        overrides.insert("reserve_percent".to_string(), "0".to_string());
+        // attempts_limit=1 so the very first random pick decides the outcome -- no retry can mask
+        // a wrong resolution by eventually landing on a dead end by chance.
+        overrides.insert("attempts_limit".to_string(), "1".to_string());
+        let params = build_params(
+            <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, MissingTeleportsIssue>>::params(&MissingTeleportsStrategy),
+            Some(&overrides),
+        );
+
+        let issue = missing_issue(1);
+        // Seed chosen so the pool's first random pick lands on a corridor-interior node
+        // (verified by sweeping seeds against the pre-fix code, where this seed was the first to
+        // fail -- i.e. to resolve entry to something other than a dead end).
+        let mut rng = MazeRng::seed_from_u64(0);
+        let result = apply_and_commit(&MissingTeleportsStrategy, &issue, &mut maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+
+        let teleport = maze.graph.edges().find(|e| e.kind == EdgeKind::Teleport).expect("one teleport must have been added");
+        assert!(
+            teleport.from == nodes[0] || teleport.from == nodes[4],
+            "farthest_from_random must resolve entry to a dead end (node 0 or 4) even when the random candidate is a corridor-interior node, got {:?}",
+            teleport.from,
+        );
+    }
+
+    #[test]
     fn allow_out_of_interval_falls_back_to_an_out_of_range_exit_when_nothing_else_qualifies() {
         // 1x5 corridor, desired_length pinned to an interval no node can ever satisfy (min=max=99
         // on a graph whose farthest possible tile-hop distance is 4) and unreachable_priority=forbidden

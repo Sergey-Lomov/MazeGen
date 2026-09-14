@@ -7,27 +7,34 @@ use crate::space::{LevelId, Tessellation};
 use crate::quality_control::{AreaMissingElevatorStopsIssue, RepairArea, MISSING_ELEVATORS, MissingElevatorsIssue};
 use crate::quality_control::checks::elevator_core::{elevator_groups, stop_floors, Elevator};
 use crate::generation::{PresetState, bidirectional_edge_feasible};
-use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams, build_params};
+use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedSlot, NestedStrategyConfig, NestedDispatchKind};
 use crate::repair::command::MutationCommand;
+use crate::repair::nested_dispatch::nested_params;
 use super::remaining_deficits::RemainingDeficits;
+use super::standard_add_params::{self, attempts_limit};
 
 pub const PARAM_EXISTING_REUSE_BALANCE: &str = "existing_reuse_balance";
 pub const PARAM_ALLOW_SPAN_EXTENSION: &str = "allow_span_extension";
 
-static PARAMS: &[StrategyParam] = &[
-    StrategyParam {
-        id: PARAM_EXISTING_REUSE_BALANCE,
-        label: "Existing-reuse balance",
-        kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
-    },
-    StrategyParam {
-        id: PARAM_ALLOW_SPAN_EXTENSION,
-        label: "Allow span extension",
-        kind: StrategyParamKind::Bool { default: true },
-    },
-];
+const EXISTING_REUSE_BALANCE_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_EXISTING_REUSE_BALANCE,
+    label: "Existing-reuse balance",
+    kind: StrategyParamKind::Float { default: 0.5, min: 0.0, max: 1.0 },
+};
+
+const ALLOW_SPAN_EXTENSION_PARAM: StrategyParam = StrategyParam {
+    id: PARAM_ALLOW_SPAN_EXTENSION,
+    label: "Allow span extension",
+    kind: StrategyParamKind::Bool { default: true },
+};
+
+// Elevator-pool source, not a node pool -> `no_src_mode`: dead-end priority has no meaning here.
+static PARAMS: [StrategyParam; 4] = crate::add_strategy_params!(no_src_mode:
+    EXISTING_REUSE_BALANCE_PARAM,
+    ALLOW_SPAN_EXTENSION_PARAM,
+);
 
 /// Slot id for the nested strategy this strategy delegates the "add a brand-new elevator" branch
 /// to — see `Specs/repair.md`'s nested-strategy pattern. Public: part of this strategy's
@@ -76,7 +83,11 @@ impl<T: Tessellation> RepairStrategy<T, AreaMissingElevatorStopsIssue> for AddEl
     fn strategy_id(&self) -> &'static str { "add_elevator_stop" }
 
     fn params(&self) -> &'static [StrategyParam] {
-        PARAMS
+        &PARAMS
+    }
+
+    fn nested_suppressed_params(&self) -> &'static [&'static str] {
+        standard_add_params::NESTED_SUPPRESSED_ADD_PARAMS
     }
 
     fn expected_nested(&self) -> &'static [NestedSlot] {
@@ -98,20 +109,34 @@ impl<T: Tessellation> RepairStrategy<T, AreaMissingElevatorStopsIssue> for AddEl
 
         let existing_reuse_balance = params.get(PARAM_EXISTING_REUSE_BALANCE).and_then(|v| v.as_float()).unwrap_or(0.5);
         let allow_span_extension = matches!(params.get(PARAM_ALLOW_SPAN_EXTENSION), Some(StrategyParamValue::Bool(true)) | None);
+        let max_failed_attempts = attempts_limit(params);
+
+        // Standard add params owned for the nested add-elevator strategy (GitHub issue #486): it
+        // suppresses `reserve_percent`/`attempts_limit`, so this strategy resolves them once and
+        // injects them into every nested call via `nested_params`.
+        let inherited_overrides = standard_add_params::inherited_overrides(params);
 
         let add_target = nested.iter().find(|n| n.slot.slot_id == SLOT_ADD_ELEVATOR_STRATEGY);
 
         let mut commands = Vec::new();
         let mut total_added: u32 = 0;
 
-        let mut deficits = RemainingDeficits::new(&issue.missing);
+        // `reserve_percent` scales every reported deficit up front so the reuse/add loop keeps
+        // going past the bare deficit when asked to over-provision (GitHub issue #486).
+        let scaled_missing = standard_add_params::reserve_scaled_missing(params, &issue.missing);
+        let mut deficits = RemainingDeficits::new(&scaled_missing);
         let areas: Vec<RepairArea> = deficits.areas().collect();
         for area in areas {
+            // `attempts_limit` is a per-area budget (mirrors `AddVerticalPassageStrategy`'s own
+            // per-area `failed_attempts`, GitHub issue #486) — reset for every area, not shared
+            // across the whole `apply()` call, so one hard area doesn't starve the attempt budget
+            // of every area that comes after it.
+            let mut failed_attempts: usize = 0;
             // Re-read `deficits.live(area)` fresh every iteration (not a `target` captured once
             // before the loop) — the add-new branch can deliver a whole elevator's worth of stops
             // (several floors) from a single call, so one iteration can satisfy several units of
             // deficit at once; a stale pre-captured target would keep looping and over-build.
-            while deficits.live(area) > 0 {
+            while deficits.live(area) > 0 && failed_attempts < max_failed_attempts {
                 let reuse_first = rng.random_range(0.0..1.0) < existing_reuse_balance;
                 // Elevators built earlier in this same `apply()` call only exist as queued
                 // `commands` -- `maze` itself is an immutable pre-mutation snapshot (the
@@ -123,18 +148,22 @@ impl<T: Tessellation> RepairStrategy<T, AreaMissingElevatorStopsIssue> for AddEl
                 let (mut ok, mut cmds) = if reuse_first {
                     try_reuse_existing(maze, &planned, area, allow_span_extension, preset_state, rng)
                 } else {
-                    try_add_new(maze, add_target, params, preset_state, rng, area)
+                    try_add_new(maze, add_target, &inherited_overrides, preset_state, rng, area)
                 };
                 if !ok {
                     (ok, cmds) = if reuse_first {
-                        try_add_new(maze, add_target, params, preset_state, rng, area)
+                        try_add_new(maze, add_target, &inherited_overrides, preset_state, rng, area)
                     } else {
                         try_reuse_existing(maze, &planned, area, allow_span_extension, preset_state, rng)
                     };
                 }
 
                 if !ok {
-                    break;
+                    // Retry (a fresh reuse-first coin flip, fresh candidates) rather than bailing
+                    // on the area outright — `attempts_limit` (GitHub issue #486) is the budget
+                    // that now governs when to give up, not "the very first failure".
+                    failed_attempts += 1;
+                    continue;
                 }
 
                 // One `consume` call per stop actually added (not one per branch call) — the
@@ -204,7 +233,7 @@ fn touched_floors<T: Tessellation>(maze: &Maze<T>, prior_cmds: &[MutationCommand
 fn try_add_new<T: Tessellation>(
     maze: &Maze<T>,
     add_target: Option<&NestedStrategyConfig<T>>,
-    _params: &StrategyParams,
+    inherited_overrides: &std::collections::HashMap<String, String>,
     preset_state: &PresetState,
     rng: &mut dyn RngCore,
     area: RepairArea,
@@ -213,7 +242,7 @@ fn try_add_new<T: Tessellation>(
         return (false, vec![]);
     };
     let synthetic = MissingElevatorsIssue::new_from_check("add_elevator_stop", vec![(area, 1)]);
-    let nested_params = build_params(add_target.strategy.params(), Some(&add_target.param_overrides));
+    let nested_params = nested_params(add_target, inherited_overrides);
     let (result, cmds) = add_target.strategy.apply(&synthetic as &dyn crate::quality_control::Issue, maze, rng, &nested_params, preset_state, &add_target.nested);
     (matches!(result, RepairResult::Fixed { .. }) && !cmds.is_empty(), cmds)
 }
