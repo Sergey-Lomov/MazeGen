@@ -6,6 +6,7 @@ mod cycle_cut_set;
 mod region_merge_core;
 pub(crate) mod split_core;
 pub mod dead_end_priority;
+pub mod pool;
 pub mod standard_add_params;
 pub mod invalid_loop_random;
 pub mod invalid_loop_scored;

@@ -10,7 +10,7 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::split_core::{pick_weighted_pattern, plan_unconstrained_split as core_plan_unconstrained_split, plan_pattern_split as core_plan_pattern_split};
-use super::dead_end_priority::apply_src_mode;
+use super::pool::Pool;
 use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
 use super::remaining_deficits::RemainingDeficits;
 
@@ -168,13 +168,13 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
                 .collect();
             // `src_mode` orders the candidate pool for `pop`-from-end consumption — dead ends last
             // (poppable first) under `dead_end_priority` (GitHub issue #486).
-            let mut pool: Vec<NodeId> = apply_src_mode(maze, eligible, src_mode, rng);
+            let mut pool = Pool::new(eligible, src_mode, maze, rng);
 
             let mut added = 0u32;
             let mut failed_attempts = 0u32;
 
-            while added < target && failed_attempts < max_attempts && !pool.is_empty() {
-                let at = *pool.last().expect("pool.is_empty() already checked by the while condition");
+            while added < target && failed_attempts < max_attempts {
+                let Some(at) = pool.take() else { break };
 
                 let outcome = if resolved_patterns.is_empty() {
                     let node_count = self.max_split_nodes.max(2) as usize;
@@ -190,14 +190,9 @@ impl<T: Tessellation> RepairStrategy<T, MissingSplitTilesIssue> for AddSplitStra
                         commands.push(MutationCommand::ReplacePointNodes { at, nodes });
                         added += 1;
                         deficits.consume(&[area, RepairArea::WholeMaze]);
-                        // Eligibility is per-point — once `at` has a command pending, it must not
-                        // be picked again this call (the point would no longer be
-                        // `split_is_eligible` after this command actually applies).
-                        pool.pop();
                     }
                     None => {
                         failed_attempts += 1;
-                        pool.pop();
                     }
                 }
             }
