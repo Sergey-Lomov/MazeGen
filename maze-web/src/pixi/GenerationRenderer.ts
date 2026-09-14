@@ -287,10 +287,12 @@ export class GenerationRenderer {
       wallFaces: this.geometryCache.splitWallFaces,
       specialShapes: this.geometryCache.splitSpecialShapes,
     });
-    this.teleports.render({ edges: this.geometryCache.teleportEdges, cfg, floorNavigable: true });
+    const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg, undefined, undefined, view.edges);
+    // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
+    // #300), same as the image-export renderers — regressed on this live canvas (GitHub issue #516).
+    this.teleports.render({ edges: this.geometryCache.teleportEdges, cfg, floorNavigable: true, waypoints: markerData.map((m) => m.pos) });
     this.verticalConnections.render({ markers: this.geometryCache.verticalConnectionMarkers, style: DEFAULT_VERTICAL_STYLE, interactive: true });
 
-    const markerData = buildMazeMarkers(nodeById, view.start, view.finish, cfg, undefined, undefined, view.edges);
     this.markers.render({ markers: markerData });
 
     // Debug-tree ref highlighting (GitHub issue #130) — only meaningful while the debug panel is

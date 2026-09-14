@@ -87,9 +87,11 @@ export class MazeOverlayRenderer {
 
     const nodeById = new Map(nodes.map(n => [n.id, n]));
     const teleportEdges = buildTeleportEdges(nodeById, edges, cfg, teleportFloorContext, teleportBadgeSpread);
-    this.teleports.render({ edges: teleportEdges, cfg, floorNavigable: teleportFloorNavigable ?? false });
-
     const markerData = buildMazeMarkers(nodeById, start, finish, cfg, undefined, undefined, edges);
+    // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
+    // #300), same as the image-export renderers — regressed on this live canvas (GitHub issue #516).
+    this.teleports.render({ edges: teleportEdges, cfg, floorNavigable: teleportFloorNavigable ?? false, waypoints: markerData.map((m) => m.pos) });
+
     this.markers.render({ markers: markerData });
   }
 

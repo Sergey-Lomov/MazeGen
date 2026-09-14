@@ -103,8 +103,10 @@ export class TeleportRenderer {
     cfg?: TessellationConfig;
     /** World positions of the start/finish markers (GitHub issue #300) — an `"orthogonal"`
      *  connector always avoids cutting through these, same weight as another connector's own
-     *  endpoint. Omitted by callers without waypoint markers in hand (no penalty applied). */
-    waypoints?: [number, number][];
+     *  endpoint. Required (not optional) so a caller can't silently forget it the way
+     *  `GenerationRenderer`/`MazeOverlayRenderer`/`PostEditRenderer`/`PresetConnectionsRenderer` all
+     *  independently did (GitHub issue #516) — pass `[]` where there's truly nothing to avoid. */
+    waypoints: [number, number][];
     /** "Avoid field exit" toggle (GitHub issue #300) — when on, an `"orthogonal"` connector strongly
      *  prefers any candidate that stays within the maze field's own cell footprint (`fieldCells`)
      *  over one that steps outside it. */
@@ -138,7 +140,7 @@ export class TeleportRenderer {
       data.groupOverrides ?? {},
       data.interactive ?? false,
       data.cfg,
-      data.waypoints ?? [],
+      data.waypoints,
       data.avoidFieldExit ?? false,
       data.fieldCells ?? [],
       data.floorNavigable ?? false,

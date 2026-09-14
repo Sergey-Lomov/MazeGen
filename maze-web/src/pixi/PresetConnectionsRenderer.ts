@@ -354,10 +354,13 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
         allowOutOfField: true,
       };
     }
+    // Keep orthogonal teleport connectors from cutting through start/finish markers (GitHub issue
+    // #300), same as the image-export renderers — regressed on this canvas (GitHub issue #516).
     this.teleports.render({
       edges: buildPresetTeleportEdges(presetTeleports, cfg, level, nodePositions, teleportSpread),
       cfg,
       floorNavigable: state.presetConnectionsTool !== "clear",
+      waypoints: markerData.map((m) => m.pos),
     });
     // Click-to-switch-floor (GitHub issue #341 follow-up): withheld while the clear tool is
     // active (its own click means "delete this connection", not "navigate") and, for a one-way
@@ -552,7 +555,7 @@ export class PresetConnectionsRenderer extends BaseFieldRenderer {
     this.splitJunctions.render({ passages: [], wallFaces: [] });
     this.locks.render({ locks: [] }, cfg);
     this.markers.render({ markers: [] });
-    this.teleports.render({ edges: [], cfg });
+    this.teleports.render({ edges: [], cfg, waypoints: [] });
     this.verticals.render({ markers: [], style: DEFAULT_VERTICAL_STYLE });
     this.origin.render({ show: false }, cfg);
     this.genSource.render({ sourceScreen: null });
