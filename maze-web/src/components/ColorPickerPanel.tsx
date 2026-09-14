@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Pipette } from "lucide-react";
 import { SidePanel } from "./SidePanel";
 import { Button } from "./Button";
 import { TextFieldRow } from "./TextFieldRow";
 import { SectionHeader } from "./SectionHeader";
-import { ui, radius, typography, spacing, font } from "../styles/theme";
+import { ColorEyedropperOverlay } from "./ColorEyedropperOverlay";
+import { ui, radius, typography, spacing, font, controlRowHeight } from "../styles/theme";
 import { HEX_COLOR_RE, colorToHex, hexToColor } from "./colorFormat";
 import { RgbModelEditor } from "./RgbModelEditor";
 import { HslModelEditor } from "./HslModelEditor";
@@ -71,6 +73,9 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
   const [model, setModel] = useState<ColorModel>("rgb");
   const [projectColorsExpanded, setProjectColorsExpanded] = useState(false);
   const [showAllProjectColors, setShowAllProjectColors] = useState(false);
+  // Canvas eyedropper (GitHub issue #507) — sampling mode is purely local UI state; the actual
+  // pixel read goes through `colorSampleBridge.ts` (the panel has no scene access of its own).
+  const [sampling, setSampling] = useState(false);
 
   // Every color field of the export profile whose settings panel is open beside the canvas
   // (GitHub issue #503). Selected as its raw inputs and rebuilt via `useMemo` — `selectActiveProfileColors`
@@ -190,6 +195,15 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
     preview(next);
   }
 
+  /** A pixel picked via the canvas eyedropper (GitHub issue #507) — same path as a project-color
+   *  row or Tools swatch: sets the working color, does not commit. */
+  function pickSampledColor(next: number) {
+    setSampling(false);
+    setWorking(next);
+    setHexInput(colorToHex(next));
+    preview(next);
+  }
+
   function handleHexChange(next: string) {
     setHexInput(next);
     if (HEX_COLOR_RE.test(next)) {
@@ -215,6 +229,20 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
             value={hexInput}
             invalid={!hexValid}
             onChange={handleHexChange}
+            resetButton={
+              <button
+                type="button"
+                className="hoverable"
+                title={m["color_picker.eyedropper"]()}
+                aria-label={m["color_picker.eyedropper"]()}
+                aria-pressed={sampling}
+                style={{ ...styles.eyedropperBtn, ...(sampling ? styles.eyedropperBtnActive : {}) }}
+                onClick={() => setSampling((v) => !v)}
+                data-testid="color-picker-eyedropper"
+              >
+                <Pipette size={14} />
+              </button>
+            }
           />
           {!hexValid && <span style={styles.hexError}>{m["color_picker.hex_invalid"]()}</span>}
           <div style={styles.modelSwitcher}>
@@ -296,6 +324,7 @@ export function ColorPickerPanel({ color, onApply, onClose, onPreview, priorityC
           </Button>
         </div>
       </div>
+      {sampling && <ColorEyedropperOverlay onPick={pickSampledColor} onCancel={() => setSampling(false)} />}
     </SidePanel>
   );
 }
@@ -346,6 +375,26 @@ const styles: Record<string, React.CSSProperties> = {
     boxSizing: "border-box",
   },
   hexError: { ...typography.caption, color: ui.text.error },
+  eyedropperBtn: {
+    ...typography.icon,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: controlRowHeight,
+    height: controlRowHeight,
+    flexShrink: 0,
+    background: ui.bg.input,
+    border: `1px solid ${ui.border.strong}`,
+    borderRadius: radius.sm,
+    color: ui.text.tertiary,
+    cursor: "default",
+    boxSizing: "border-box",
+  },
+  eyedropperBtnActive: {
+    background: ui.state.selected,
+    color: ui.text.primary,
+    border: `1px solid ${ui.state.selected}`,
+  },
   modelSwitcher: { display: "flex", gap: spacing.itemGap },
   recentColors: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   recentColorsLabel: { fontSize: font.lg, color: ui.text.primary },

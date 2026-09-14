@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useState } from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ColorSwatch } from "../components/ColorSwatch";
+import { setColorSampler } from "../pixi/colorSampleBridge";
+import { colorAtCenter } from "../components/ColorEyedropperOverlay";
 import * as m from "~/paraglide/messages";
 
 // `ColorPickerPanel` throttles the live preview (#513) to one `onPreview` call per rAF — mock it to
@@ -984,6 +986,75 @@ describe("ColorSwatch", () => {
     fireEvent.click(resetButtons[1]);
     expect(minSlider.value).toBe(String(RANGE_SPLIT_AUTO_MIN_L));
     expect(maxSlider.value).toBe(String(RANGE_SPLIT_AUTO_MAX_L));
+  });
+
+  describe("canvas eyedropper (#507)", () => {
+    function fakeCanvas(rect: Partial<DOMRect>) {
+      const canvas = document.createElement("canvas");
+      canvas.getBoundingClientRect = () => ({
+        left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, x: 0, y: 0, toJSON() {}, ...rect,
+      });
+      return canvas;
+    }
+
+    afterEach(() => { setColorSampler(null); });
+
+    it("colorAtCenter reads the pixel at the region's center index, not its geometric middle", () => {
+      // 3x2 region, centerX/centerY marks the actually-sampled pixel (e.g. clamped near an edge).
+      const pixels = new Uint8ClampedArray([
+        10, 10, 10, 255, 20, 20, 20, 255, 30, 30, 30, 255,
+        40, 40, 40, 255, 50, 50, 50, 255, 60, 60, 60, 255,
+      ]);
+      expect(colorAtCenter({ pixels, width: 3, height: 2, centerX: 2, centerY: 1 })).toBe(0x3c3c3c);
+      expect(colorAtCenter({ pixels, width: 3, height: 2, centerX: 0, centerY: 0 })).toBe(0x0a0a0a);
+    });
+
+    it("clicking the eyedropper button enters sampling mode and clicking the canvas picks a color", () => {
+      const canvas = fakeCanvas({});
+      setColorSampler({ canvas, sampleAt: () => 0x00ff00, sampleRegion: () => null });
+      render(<ColorSwatch color={0x000000} onChange={() => {}} />);
+      openPicker();
+      fireEvent.click(screen.getByTestId("color-picker-eyedropper"));
+      fireEvent.click(window, { clientX: 50, clientY: 50 });
+      expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#00ff00");
+      // Sampling mode exits after a pick — the overlay's capture layer is gone.
+      expect(document.querySelector('[data-testid="color-picker-eyedropper"]')).toBeTruthy();
+    });
+
+    it("Escape while sampling cancels with no change", () => {
+      const canvas = fakeCanvas({});
+      setColorSampler({ canvas, sampleAt: () => 0x00ff00, sampleRegion: () => null });
+      render(<ColorSwatch color={0x123456} onChange={() => {}} />);
+      openPicker();
+      fireEvent.click(screen.getByTestId("color-picker-eyedropper"));
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#123456");
+    });
+
+    it("clicking outside the canvas cancels sampling with no change", () => {
+      const canvas = fakeCanvas({});
+      setColorSampler({ canvas, sampleAt: (x) => (x < 100 ? 0x00ff00 : null), sampleRegion: () => null });
+      render(<ColorSwatch color={0x123456} onChange={() => {}} />);
+      openPicker();
+      fireEvent.click(screen.getByTestId("color-picker-eyedropper"));
+      fireEvent.click(window, { clientX: 500, clientY: 50 });
+      expect((screen.getByLabelText(hexLabel()) as HTMLInputElement).value).toBe("#123456");
+    });
+
+    it("a sampled color previews live but does not commit until Apply", () => {
+      const canvas = fakeCanvas({});
+      setColorSampler({ canvas, sampleAt: () => 0xabcdef, sampleRegion: () => null });
+      const onChange = vi.fn();
+      const onPreview = vi.fn();
+      render(<ColorSwatch color={0x000000} onChange={onChange} onPreview={onPreview} />);
+      openPicker();
+      fireEvent.click(screen.getByTestId("color-picker-eyedropper"));
+      fireEvent.click(window, { clientX: 10, clientY: 10 });
+      expect(onPreview).toHaveBeenLastCalledWith(0xabcdef);
+      expect(onChange).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByText(applyLabel()));
+      expect(onChange).toHaveBeenCalledWith(0xabcdef);
+    });
   });
 });
 

@@ -13,6 +13,7 @@
   "color_picker.title": "Color",
   "color_picker.hex_label": "Hex",
   "color_picker.hex_invalid": "Enter a 6-digit hex color",
+  "color_picker.eyedropper": "Pick color from canvas",
   "color_picker.recent_colors": "Recently used",
   "color_picker.model.rgb": "RGB",
   "color_picker.model.hsl": "HSL",

@@ -6,8 +6,8 @@ parameter in the editor. Tracked as epic (GitHub issue #498). This spec covers t
 (sub-issue #501), the **OKLCH model** (sub-issue #502), **live canvas preview** (issue #513), the
 **project-colors block** (sub-issue #503), the **Tools block** (sub-issues #504 and #505,
 merged into one section — see "Tools block" below), and the **recently-used-colors block**
-(sub-issue #506), and is extended as later sub-issues land (more color models, practicality
-checks, presets).
+(sub-issue #506), the **canvas eyedropper** (sub-issue #507), and is extended as later sub-issues
+land (more color models, practicality checks, presets).
 
 ## Components
 
@@ -381,6 +381,46 @@ not per-field).
 
 Clicking any swatch sets the picker's working color only (same path as a project-color row) — it
 never commits and never rebuilds the row(s).
+
+## Canvas eyedropper (#507)
+
+A `Pipette`-icon button sits in the hex field's `resetButton` slot (`ColorPickerPanel`), toggling
+**sampling mode** — local `sampling` React state, no store involvement. While active:
+
+- `ColorEyedropperOverlay` portals a full-viewport capture `div` (`z-index` above everything) to
+  `document.body` — above the whole app, not just the side-panel slot, since the canvas sits
+  outside it.
+- The cursor becomes a crosshair over the Pixi canvas (plain cursor elsewhere).
+- A loupe follows the pointer: a small `<canvas>` paints a magnified region read via the same
+  bridge's `sampleRegion` (`extract.pixels()` on a small odd-sized square centered on the sampled
+  pixel, scaled up nearest-neighbor onto the loupe canvas at `LOUPE_ZOOM = 12`), plus a crosshair
+  mark and the sampled pixel's hex — both derived from that same `sampleRegion` read (via
+  `colorAtCenter`, exported from `ColorEyedropperOverlay.tsx`), not a second `sampleAt` call, so
+  each pointer move costs one `extract.pixels()` GPU readback, not two. The live Pixi canvas
+  element itself is never `drawImage`'d directly — it isn't `preserveDrawingBuffer`, so its buffer
+  reads back blank/black outside the render tick.
+- Clicking inside the canvas reads the color and sets the picker's working color (same path as a
+  project-color row or Tools swatch — does not commit; Apply still commits). Escape or a click
+  outside the canvas cancels with no change. The picker panel stays open throughout either way.
+
+**`colorSampleBridge.ts`** — same tiny imperative-bridge shape as `viewportScaleBridge.ts`: the
+picker has no scene access of its own (reached through `ColorRow` → `ColorSwatch` →
+`ColorPickerPanel` with no props for it), so `App.tsx` registers a `ColorSampler` (`{ canvas,
+sampleAt, sampleRegion }`) once `MazeScene` is ready, and tears it down on unmount.
+`sampleAt(clientX, clientY)` and `sampleRegion(clientX, clientY, radiusPx)` both convert client
+coordinates into the canvas's own pixel space (canvas rect + device pixel ratio) and call
+`MazeScene.sampleColorAt` / `sampleRegionAt`, which read via the renderer's
+`extract.pixels({ target: app.stage, frame })` — the actual on-screen stage, not the maze model, so
+they pick up backgrounds, grid, and everything else drawn. `sampleColorAt` reads a 1×1 region and
+packs it to 24-bit RGB; `sampleRegionAt` reads a `2*radiusPx + 1` square of raw RGBA (clamped to
+the canvas bounds near an edge) for the loupe to paint — an odd side length so the sampled pixel
+(the same one `sampleColorAt` would return) sits at a single, unambiguous index in the region, not
+on a boundary between two pixels (which an even-width region has no single center pixel for). The
+returned `PixelRegion` carries that index as `centerX`/`centerY` (equal to `radiusPx` unless the
+region was clamped near a canvas edge, in which case it shifts with the clamp) — the loupe reads
+the sampled color straight out of the region at that index instead of issuing a second
+`extract.pixels()` call. Both `sampleAt`/`sampleRegion` return `null` for a point outside the
+canvas.
 
 ## Shared row primitive
 

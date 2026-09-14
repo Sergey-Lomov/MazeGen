@@ -14,6 +14,7 @@ import { ui, typography, disabled, inset } from "./styles/theme";
 import { canvas } from "./pixi/colorTokens";
 import { useLocale } from "./i18n/useLocale";
 import { setViewportScaleGetter, setPhysicalZoomApplier } from "./pixi/viewportScaleBridge";
+import { setColorSampler } from "./pixi/colorSampleBridge";
 import * as m from "~/paraglide/messages";
 
 const PANEL_WIDTH = 260;
@@ -74,6 +75,11 @@ export function App() {
         sceneRef.current = new MazeScene(app);
         setViewportScaleGetter(() => sceneRef.current?.getViewportScale() ?? 1);
         setPhysicalZoomApplier((scale) => sceneRef.current?.applyPrintPhysicalZoom(scale));
+        setColorSampler({
+          canvas: app.canvas,
+          sampleAt: (clientX, clientY) => sceneRef.current?.sampleColorAt(clientX, clientY) ?? null,
+          sampleRegion: (clientX, clientY, radiusPx) => sceneRef.current?.sampleRegionAt(clientX, clientY, radiusPx) ?? null,
+        });
         setReady(true);
       })
       .catch((err) => {
@@ -86,6 +92,7 @@ export function App() {
       cancelled = true;
       setViewportScaleGetter(null);
       setPhysicalZoomApplier(null);
+      setColorSampler(null);
       sceneRef.current?.destroy();
       sceneRef.current = null;
     };
