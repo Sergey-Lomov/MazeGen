@@ -1,8 +1,11 @@
 import type { NodeDto, EdgeDto } from "../../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../../fieldConfig";
-import type { TeleportEdge } from "../../renderers/types";
+import type { TeleportEdge, WallEdge, VerticalConnectionMarker, SplitPassage } from "../../renderers/types";
 import { getCellCenter, buildNodePositions, nearestCellCoord, getCellNeighborOffsets } from "../../tessellationGeometry";
 import { selectNodeLevelResolver } from "./state";
+import { buildOneWayWallIndicatorPositions } from "./walls";
+import { buildOneWayCorridorIndicatorPositions, type CorridorSegment } from "./corridors";
+import { buildSplitJunctionPositions } from "./split";
 
 /** Cross-floor resolution inputs for `buildTeleportEdges` (GitHub issue #337) — omitted by every
  *  non-floor-aware caller, which keeps the old behavior of silently dropping a teleport edge whose
@@ -184,6 +187,36 @@ export function buildTeleportFloorInputs(opts: {
       ...(opts.fieldCells ? { fieldCells: opts.fieldCells } : {}),
     },
   };
+}
+
+/** Assembles a `TeleportRenderer.render`'s `waypoints` array from whatever avoidance sources a
+ *  caller has in hand (GitHub issue #518) — start/finish (and other center) markers, vertical
+ *  passage/elevator markers, one-way indicator centers (wall chevron/arrow/triangle *or* corridor
+ *  chevron row — a caller passes at most one of the two, since a single canvas never draws both
+ *  readings), and split junction hub centers. Every source is optional: a caller with no marker of
+ *  a given kind (e.g. preset connections has no one-way wall indicator concept) simply omits it.
+ *  Mirrors `buildTeleportFloorInputs`'s own reasoning for extracting a shared builder — six
+ *  near-identical hand-rolled copies is exactly how GitHub issue #516 (dropped waypoints) happened
+ *  once already. */
+export function buildTeleportAvoidanceWaypoints(sources: {
+  markers?: { pos: [number, number] }[];
+  verticalMarkers?: VerticalConnectionMarker[];
+  oneWayWallEdges?: WallEdge[];
+  cfg?: TessellationConfig;
+  oneWayCorridorSegments?: CorridorSegment[];
+  splitPassages?: SplitPassage[];
+}): [number, number][] {
+  const result: [number, number][] = [];
+  if (sources.markers) for (const m of sources.markers) result.push(m.pos);
+  if (sources.verticalMarkers) for (const m of sources.verticalMarkers) result.push(m.pos);
+  if (sources.oneWayWallEdges && sources.cfg) {
+    result.push(...buildOneWayWallIndicatorPositions(sources.oneWayWallEdges, sources.cfg));
+  }
+  if (sources.oneWayCorridorSegments) {
+    result.push(...buildOneWayCorridorIndicatorPositions(sources.oneWayCorridorSegments));
+  }
+  if (sources.splitPassages) result.push(...buildSplitJunctionPositions(sources.splitPassages));
+  return result;
 }
 
 export function buildTeleportEdges(

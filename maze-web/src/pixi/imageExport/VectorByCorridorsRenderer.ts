@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import { useMazeStore } from "../../store/mazeStore";
-import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, type CorridorSegment } from "../selectors/mazeSelectors";
+import { buildCorridorSegments, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, selectVerticalPassagePairSet, buildVerticalConnectionMarkers, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints, type CorridorSegment } from "../selectors/mazeSelectors";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
 import { chainSegmentsAtSharedVertices } from "../renderers/WallRenderer";
 import { WaypointsRenderer } from "../renderers/WaypointsRenderer";
@@ -486,6 +486,13 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
 
     // Same `TeleportRenderer` "Vector by walls" uses (GitHub issue #313) — teleports aren't tied to
     // the corridor-vs-wall visual model, so the settings and rendering transfer as-is.
+    // Also avoid vertical passage/elevator markers and one-way corridor chevrons (GitHub issue #518).
+    const teleportWaypoints = buildTeleportAvoidanceWaypoints({
+      markers: markerData,
+      verticalMarkers: this.geometryCache.verticalConnectionMarkers,
+      oneWayCorridorSegments: this.geometryCache.segments,
+      splitPassages: this.geometryCache.splitPassages,
+    });
     this.teleports.render({
       edges: this.geometryCache.teleportEdges,
       // `floorColor` occludes an outline (exit-only) teleport point's own line pass-through and
@@ -504,7 +511,7 @@ export class VectorByCorridorsRenderer implements ModeRenderer {
       // follow-up) — constant across a floor switch.
       floorCount: state.floors.length,
       cfg,
-      waypoints: markerData.map((m) => m.pos),
+      waypoints: teleportWaypoints,
       avoidFieldExit: settings.teleportAvoidFieldExit,
       fieldCells: nodes.map((n): [number, number] => [n.x, n.y]),
     });

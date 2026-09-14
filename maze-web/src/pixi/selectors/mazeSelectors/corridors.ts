@@ -117,3 +117,16 @@ export function buildCorridorSegments(
 
   return result;
 }
+
+/** World positions of every one-way corridor chevron row's own center (`VectorByCorridorsRenderer`'s
+ *  chevron-row indicator, centered on `CorridorSegment.oneWayDir`'s own segment midpoint — GitHub
+ *  issue #518) — for the teleport connector router's own avoidance set, mirroring
+ *  `buildOneWayWallIndicatorPositions`'s equivalent for "Vector by walls"' plain wall indicator. */
+export function buildOneWayCorridorIndicatorPositions(segments: CorridorSegment[]): [number, number][] {
+  const result: [number, number][] = [];
+  for (const seg of segments) {
+    if (!seg.oneWayDir) continue;
+    result.push([(seg.v0.x + seg.v1.x) / 2, (seg.v0.y + seg.v1.y) / 2]);
+  }
+  return result;
+}

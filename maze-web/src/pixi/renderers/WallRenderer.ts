@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import type { WallEdge, WallStyleOverride, OneWayStyleOverride, RandomWallColorMode } from "./types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import { getCellVertices, getNeighborData } from "../tessellationGeometry";
+import { getSharedEdgeSegment } from "../tessellationGeometry";
 import { drawOneWayTriangle, drawOneWayChevron, drawOneWayArrow, computeSquareCapPatch } from "./wallUtils";
 import { WALL_THICKNESS } from "../renderConstants";
 import { canvas } from "../colorTokens";
@@ -312,25 +312,7 @@ export class WallRenderer {
     edge: WallEdge,
     cfg: TessellationConfig,
   ): { v0: { x: number; y: number }; v1: { x: number; y: number } } | null {
-    const [ax, ay] = edge.a;
-    const [bx, by] = edge.b;
-    const less = ax < bx || (ax === bx && ay < by);
-    const [fx, fy] = less ? [ax, ay] : [bx, by];
-    const [tx, ty] = less ? [bx, by] : [ax, ay];
-
-    const verts = getCellVertices(fx, fy, cfg);
-    if (!verts) return null;
-
-    const { offsets, edgeVerts } = getNeighborData(cfg, fx, fy);
-    const dx = tx - fx;
-    const dy = ty - fy;
-    for (let i = 0; i < offsets.length; i++) {
-      if (offsets[i][0] === dx && offsets[i][1] === dy) {
-        const [vi, vj] = edgeVerts[i];
-        return { v0: verts[vi], v1: verts[vj] };
-      }
-    }
-    return null;
+    return getSharedEdgeSegment(edge.a, edge.b, cfg);
   }
 
   destroy(): void {

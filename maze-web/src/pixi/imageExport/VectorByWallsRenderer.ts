@@ -8,7 +8,7 @@ import { GridRenderer } from "../renderers/GridRenderer";
 import { SplitJunctionRenderer, collectSplitWallPaths } from "../renderers/SplitJunctionRenderer";
 import { RegionHighlightRenderer } from "../renderers/RegionHighlightRenderer";
 import { VerticalConnectionRenderer } from "../renderers/VerticalConnectionRenderer";
-import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels } from "../selectors/mazeSelectors";
+import { buildMazeWalls, buildMazeMarkers, buildTeleportEdges, buildTeleportFloorInputs, buildClosedCells, buildSplitPassages, maxSplitNodeCount, selectFloorScopedMaze, selectNodeLevelResolver, buildVerticalConnectionMarkers, selectVerticalPassagePairSet, buildMarkerIndexLabels, buildTeleportAvoidanceWaypoints } from "../selectors/mazeSelectors";
 import { MarkerIndexRenderer } from "../renderers/MarkerIndexRenderer";
 import { computeVectorByWallsWarnings } from "../selectors/exportWarnings";
 import type { ExportWarning } from "../selectors/exportWarnings";
@@ -501,6 +501,14 @@ export class VectorByWallsRenderer {
       buildMarkerStyle(finishMarker, floorColor),
       edges,
     );
+    // Also avoid vertical passage/elevator markers and one-way wall indicators (GitHub issue #518).
+    const teleportWaypoints = buildTeleportAvoidanceWaypoints({
+      markers: markerData,
+      verticalMarkers: this.geometryCache.verticalConnectionMarkers,
+      oneWayWallEdges: this.geometryCache.wallEdges,
+      cfg,
+      splitPassages: this.geometryCache.splitPassages,
+    });
     this.teleports.render({
       edges: this.geometryCache.teleportEdges,
       lineStyle: buildTeleportLineStyle(state.vectorByWallsSettings, state.vectorByWallsSettings.floorColor),
@@ -516,7 +524,7 @@ export class VectorByWallsRenderer {
       // floor switch.
       floorCount: state.floors.length,
       cfg,
-      waypoints: markerData.map((m) => m.pos),
+      waypoints: teleportWaypoints,
       avoidFieldExit: state.vectorByWallsSettings.teleportAvoidFieldExit,
       fieldCells: cells,
     });
