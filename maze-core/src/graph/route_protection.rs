@@ -62,7 +62,7 @@ pub fn is_teleport_route_protected<T: Tessellation>(maze: &Maze<T>, edge_id: Edg
 ///
 /// Used by a strategy that must downgrade a route-critical passage to a one-way without severing
 /// the route — the removed direction must be the *other* one, never the route's own direction
-/// (`MissingOneWaysFromPassageStrategy`, GitHub issue #201's follow-up).
+/// (`AddOneWayFromPassageStrategy`, GitHub issue #201's follow-up).
 pub fn route_direction<T: Tessellation>(maze: &Maze<T>, a: NodeId, b: NodeId) -> Option<(NodeId, NodeId)> {
     let route = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta)?;
     route.path.windows(2).find_map(|w| {

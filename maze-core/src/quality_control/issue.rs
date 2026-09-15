@@ -21,6 +21,7 @@ pub enum IssueKind {
     InvalidOneWay,
     InvalidOneWayGroup,
     MissingOneWays,
+    MissingOneWay,
     MissingTeleports,
     MissingTeleport,
     InvalidSplitTile,
@@ -140,6 +141,14 @@ pub const INVALID_ONE_WAY_GROUP: IssueKind = IssueKind::InvalidOneWayGroup;
 /// missing-count condition rather than a specific-edge one. Carries `MissingOneWaysIssue {
 /// missing }` — see that type's doc comment.
 pub const MISSING_ONE_WAYS: IssueKind = IssueKind::MissingOneWays;
+/// Synthetic delegation-only request to add exactly one one-way passage edge growing from a given
+/// `src` node, restricted to a caller-supplied set of candidate `dst` neighbors — never produced
+/// by a Check, never published to the QC pool. Exists only as the nested slot target for
+/// `AddOneWayFromPassageBatchStrategy`/`AddOneWayFromWallBatchStrategy` (GitHub issue #524, part
+/// of epic #520), mirroring `MISSING_TELEPORT`'s Check-less-delegation role. Carries
+/// `MissingOneWayIssue { src, allowed_dsts }` — see that type's doc comment. Repaired by
+/// `AddOneWayFromPassageStrategy`/`AddOneWayFromWallStrategy`.
+pub const MISSING_ONE_WAY: IssueKind = IssueKind::MissingOneWay;
 /// The maze has fewer teleport edges (`EdgeKind::Teleport`) than some check requires (currently
 /// `MinTeleportCountCheck`/`MinTeleportRatioCheck`) — see GitHub issue #211. Mirrors
 /// `MISSING_ONE_WAYS`'s role for one-ways: a missing-count condition rather than a specific-edge

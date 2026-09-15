@@ -97,13 +97,21 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.one_way_group_select.label"] as MessageFn,
     description: m["strategy.one_way_group_select.description"] as MessageFn,
   },
-  missing_one_ways_from_passage: {
-    label: m["strategy.missing_one_ways_from_passage.label"] as MessageFn,
-    description: m["strategy.missing_one_ways_from_passage.description"] as MessageFn,
+  add_one_way_from_wall: {
+    label: m["strategy.add_one_way_from_wall.label"] as MessageFn,
+    description: m["strategy.add_one_way_from_wall.description"] as MessageFn,
   },
-  missing_one_ways_from_wall: {
-    label: m["strategy.missing_one_ways_from_wall.label"] as MessageFn,
-    description: m["strategy.missing_one_ways_from_wall.description"] as MessageFn,
+  add_one_way_from_wall_batch: {
+    label: m["strategy.add_one_way_from_wall_batch.label"] as MessageFn,
+    description: m["strategy.add_one_way_from_wall_batch.description"] as MessageFn,
+  },
+  add_one_way_from_passage: {
+    label: m["strategy.add_one_way_from_passage.label"] as MessageFn,
+    description: m["strategy.add_one_way_from_passage.description"] as MessageFn,
+  },
+  add_one_way_from_passage_batch: {
+    label: m["strategy.add_one_way_from_passage_batch.label"] as MessageFn,
+    description: m["strategy.add_one_way_from_passage_batch.description"] as MessageFn,
   },
   add_teleport: {
     label: m["strategy.add_teleport.label"] as MessageFn,

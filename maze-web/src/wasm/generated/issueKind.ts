@@ -17,6 +17,7 @@ export type IssueKindId =
   | "invalid_one_way"
   | "invalid_one_way_group"
   | "missing_one_ways"
+  | "missing_one_way"
   | "missing_teleports"
   | "missing_teleport"
   | "invalid_split_tile"
@@ -58,6 +59,7 @@ export const ISSUE_KIND_VALUES: readonly IssueKindId[] = [
   "invalid_one_way",
   "invalid_one_way_group",
   "missing_one_ways",
+  "missing_one_way",
   "missing_teleports",
   "missing_teleport",
   "invalid_split_tile",

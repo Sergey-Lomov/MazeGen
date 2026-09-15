@@ -1015,7 +1015,7 @@ A rule-level parameter (GitHub issue #253) is configured once on a `Rule` and sh
 
 `split_patterns` (GitHub issue #389, `RuleParamKind::PatternList`, default empty) unifies `SplitCountCheck.patterns`, `SplitDensityCheck.patterns`, and `AddSplitStrategy`'s own pattern topology, which previously duplicated the same `Vec<SplitPattern>` independently in three places — see "SplitCountCheck / SplitDensityCheck" above and `repair.md`'s `AddSplitStrategy` section. Unlike `protect_route`/`vertical_passage_type` (scalar kinds with a `const`-expressible default), `PatternList` always defaults to empty — a `Vec`-carrying enum variant can't be a `const`. Its `applies_to` list: checks `split_count`, `split_density`; strategy `add_split`.
 
-Two checks keep an independent, **not** rule-level `protect_route` of their own, out of #253's scope: `MissingOneWaysFromPassageStrategy` (`MISSING_ONE_WAYS`, see `repair.md`) and `SplitNodeConnectionGroupSelectStrategy` (`INVALID_SPLIT_NODE_CONNECTION_GROUP`, see `repair.md`) — each is the sole `protect_route`-carrying member of its own issue kind, so there was no cross-instance duplication to eliminate.
+Two checks keep an independent, **not** rule-level `protect_route` of their own, out of #253's scope: `AddOneWayFromPassageStrategy` (`MISSING_ONE_WAY`, see `repair.md`) and `SplitNodeConnectionGroupSelectStrategy` (`INVALID_SPLIT_NODE_CONNECTION_GROUP`, see `repair.md`) — each is the sole `protect_route`-carrying member of its own issue kind, so there was no cross-instance duplication to eliminate.
 
 **Web UI**: `maze-wasm`'s `available_rule_params()` exposes the catalog (id/kind/default/`applies_to`) as `RuleParamDescriptorDto`. `RuleParamsSection` (`maze-web`) renders one rule-level params panel per rule card, filtered via `relevantRuleParams` (`storeHelpers.ts`) to only the descriptors whose `applies_to` names one of that rule's own active check `type_id`s or its strategy `id` — a rule with no `protect_route`-consuming member (e.g. `min_region_count`) shows no panel at all. `generateConfigBuilder`'s `ruleToConfig` applies the identical relevance filter when building the wire `QcRuleConfig.params`, so a rule never sends a rule-level param key its own members don't consume.
 
@@ -1169,7 +1169,7 @@ Unlike `MaxOneWayCountCheck`/`MaxOneWayRatioCheck` (which report every one-way e
 
 `MissingOneWaysIssue::merge` takes the larger of the two sides' `missing` values — `min_one_way_count`/`min_one_way_ratio` are independent checks that can both be active in the same rule and legitimately disagree on how many one-ways are missing; a repair strategy must fix at least the largest reported deficit.
 
-`MissingOneWaysFromPassageStrategy`/`MissingOneWaysFromWallStrategy` (see `repair.md`) are the two registered `RepairStrategy` options for `MISSING_ONE_WAYS` — a rule picks one.
+`AddOneWayFromPassageBatchStrategy`/`AddOneWayFromWallBatchStrategy` (see `repair.md`) are the two registered `RepairStrategy` options for `MISSING_ONE_WAYS` — a rule picks one.
 
 ### MaxOneWayCountCheck / MaxOneWayRatioCheck
 

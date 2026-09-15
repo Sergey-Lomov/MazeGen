@@ -2,8 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, MISSING_TELEPORT, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, MISSING_VERTICAL_PASSAGES, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, MISSING_ELEVATORS, AREA_MISSING_ELEVATOR_STOPS, MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP, INVALID_CROSS_ELEMENT_GROUP},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, VerticalPassageRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, AddTeleportStrategy, AddTeleportBatchStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy, MissingLoopsVerticalStrategy, RemoveElevatorStrategy, ReplaceElevatorWithPassagesStrategy, ElevatorGroupSelectStrategy, RemoveElevatorStopStrategy, ElevatorStopGroupSelectStrategy, AddElevatorStrategy, AddElevatorStopStrategy, AddElevatorStopCountStrategy, AddElevatorHeightStopStrategy, AddElevatorStopForGapStrategy, ElevatorRegionMergeStrategy, CrossElementGroupSelectStrategy},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_ONE_WAY, MISSING_TELEPORTS, MISSING_TELEPORT, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, MISSING_VERTICAL_PASSAGES, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, MISSING_ELEVATORS, AREA_MISSING_ELEVATOR_STOPS, MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP, INVALID_CROSS_ELEMENT_GROUP},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, VerticalPassageRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, AddOneWayFromWallStrategy, AddOneWayFromWallBatchStrategy, AddOneWayFromPassageStrategy, AddOneWayFromPassageBatchStrategy, AddTeleportStrategy, AddTeleportBatchStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy, MissingLoopsVerticalStrategy, RemoveElevatorStrategy, ReplaceElevatorWithPassagesStrategy, ElevatorGroupSelectStrategy, RemoveElevatorStopStrategy, ElevatorStopGroupSelectStrategy, AddElevatorStrategy, AddElevatorStopStrategy, AddElevatorStopCountStrategy, AddElevatorHeightStopStrategy, AddElevatorStopForGapStrategy, ElevatorRegionMergeStrategy, CrossElementGroupSelectStrategy},
 };
 use crate::check_descriptor::{EntityVisibility, ParamDescriptor, ParamKindDto};
 
@@ -339,21 +339,39 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
             visibility: None,
         },
         StrategyDescriptor {
-            id: "missing_one_ways_from_passage",
-            handles: MISSING_ONE_WAYS.as_str(),
-            params: strategy_params_dto(<MissingOneWaysFromPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::params(&MissingOneWaysFromPassageStrategy), &[]),
-            experimental: <MissingOneWaysFromPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::is_experimental(&MissingOneWaysFromPassageStrategy),
-            nested_suppressed_params: <MissingOneWaysFromPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::nested_suppressed_params(&MissingOneWaysFromPassageStrategy),
+            id: "add_one_way_from_wall",
+            handles: MISSING_ONE_WAY.as_str(),
+            params: strategy_params_dto(<AddOneWayFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWayIssue>>::params(&AddOneWayFromWallStrategy), &[]),
+            experimental: <AddOneWayFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWayIssue>>::is_experimental(&AddOneWayFromWallStrategy),
+            nested_suppressed_params: <AddOneWayFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWayIssue>>::nested_suppressed_params(&AddOneWayFromWallStrategy),
             nested_slots: vec![],
             visibility: None,
         },
         StrategyDescriptor {
-            id: "missing_one_ways_from_wall",
+            id: "add_one_way_from_wall_batch",
             handles: MISSING_ONE_WAYS.as_str(),
-            params: strategy_params_dto(<MissingOneWaysFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::params(&MissingOneWaysFromWallStrategy), &[]),
-            experimental: <MissingOneWaysFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::is_experimental(&MissingOneWaysFromWallStrategy),
-            nested_suppressed_params: <MissingOneWaysFromWallStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::nested_suppressed_params(&MissingOneWaysFromWallStrategy),
+            params: strategy_params_dto(<AddOneWayFromWallBatchStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::params(&AddOneWayFromWallBatchStrategy), &[]),
+            experimental: <AddOneWayFromWallBatchStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::is_experimental(&AddOneWayFromWallBatchStrategy),
+            nested_suppressed_params: <AddOneWayFromWallBatchStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::nested_suppressed_params(&AddOneWayFromWallBatchStrategy),
+            nested_slots: nested_slots_dto(<AddOneWayFromWallBatchStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::expected_nested(&AddOneWayFromWallBatchStrategy)),
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "add_one_way_from_passage",
+            handles: MISSING_ONE_WAY.as_str(),
+            params: strategy_params_dto(<AddOneWayFromPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWayIssue>>::params(&AddOneWayFromPassageStrategy), &[]),
+            experimental: <AddOneWayFromPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWayIssue>>::is_experimental(&AddOneWayFromPassageStrategy),
+            nested_suppressed_params: <AddOneWayFromPassageStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWayIssue>>::nested_suppressed_params(&AddOneWayFromPassageStrategy),
             nested_slots: vec![],
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "add_one_way_from_passage_batch",
+            handles: MISSING_ONE_WAYS.as_str(),
+            params: strategy_params_dto(<AddOneWayFromPassageBatchStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::params(&AddOneWayFromPassageBatchStrategy), &[]),
+            experimental: <AddOneWayFromPassageBatchStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::is_experimental(&AddOneWayFromPassageBatchStrategy),
+            nested_suppressed_params: <AddOneWayFromPassageBatchStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::nested_suppressed_params(&AddOneWayFromPassageBatchStrategy),
+            nested_slots: nested_slots_dto(<AddOneWayFromPassageBatchStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingOneWaysIssue>>::expected_nested(&AddOneWayFromPassageBatchStrategy)),
             visibility: None,
         },
         StrategyDescriptor {
@@ -689,7 +707,7 @@ mod tests {
     #[test]
     fn add_strategies_suppress_reserve_and_attempts_when_nested() {
         let strategies = available_strategies_list();
-        for id in ["missing_one_ways_from_wall", "missing_one_ways_from_passage", "add_vertical_passage", "add_elevator_stop", "add_split", "add_teleport_batch"] {
+        for id in ["add_one_way_from_wall_batch", "add_one_way_from_passage_batch", "add_vertical_passage", "add_elevator_stop", "add_split", "add_teleport_batch"] {
             let s = strategies.iter().find(|s| s.id == id).unwrap();
             assert_eq!(s.nested_suppressed_params, &["reserve_percent", "attempts_limit"], "strategy {id}");
         }

@@ -2,8 +2,8 @@ use crate::quality_control::RepairArea;
 
 /// A live, mutable working copy of a deficit issue's `missing: Vec<(RepairArea, u32)>` — shared by
 /// every strategy that services a `min_*`/`split_count`/`split_density`-style deficit issue
-/// (`MissingLoopsRandomStrategy`, `MissingLoopsSplitStrategy`, `MissingOneWaysFromWallStrategy`,
-/// `MissingOneWaysFromPassageStrategy`, `AddTeleportBatchStrategy`, `AddSplitStrategy`).
+/// (`MissingLoopsRandomStrategy`, `MissingLoopsSplitStrategy`, `AddOneWayFromWallBatchStrategy`,
+/// `AddOneWayFromPassageBatchStrategy`, `AddTeleportBatchStrategy`, `AddSplitStrategy`).
 ///
 /// **Why this exists** (GitHub issue #369 double-repair follow-up): a `FloorScope::PerFloor` check
 /// and a `FloorScope::WholeMaze` check on the *same* rule both contribute entries to one issue's
@@ -55,15 +55,6 @@ impl RemainingDeficits {
         }
     }
 
-    /// Same as `consume`, but for a caller that only learns an aggregate count after the fact
-    /// (e.g. `missing_one_ways_shared::pick_random_pairs`, which returns one `found: u32` per area
-    /// rather than notifying per accepted pair) — `count` new entities were added, each covering
-    /// `area` and `RepairArea::WholeMaze`.
-    pub(super) fn consume_many(&mut self, area: RepairArea, count: u32) {
-        for _ in 0..count {
-            self.consume(&[area, RepairArea::WholeMaze]);
-        }
-    }
 }
 
 #[cfg(test)]
