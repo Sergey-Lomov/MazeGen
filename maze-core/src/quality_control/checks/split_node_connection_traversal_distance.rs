@@ -14,7 +14,7 @@ pub const SPLIT_NODE_CONNECTION_TRAVERSAL_DISTANCE_MIN_DETOUR_DEFAULT: u32 = 10;
 /// the point of splitting that tile.
 ///
 /// Uses the raw directed `maze.graph` (outgoing edges only), not the corridor-compressed
-/// `NavGraph` — same "count every real hop" rationale `MissingTeleportsStrategy::bfs_distances`
+/// `NavGraph` — same "count every real hop" rationale `AddTeleportStrategy::bfs_distances`
 /// uses, mirrored here rather than reused since this check needs early-exit-capped BFS plus the
 /// actual full path found, not just a distance map.
 ///

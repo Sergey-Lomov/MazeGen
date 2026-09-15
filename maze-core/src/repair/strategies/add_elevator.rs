@@ -53,7 +53,7 @@ static PARAMS: [StrategyParam; 6] = crate::add_strategy_params!(STOP_COUNT_PARAM
 /// stop pair via backtracking, so gaps aren't forced into a uniform/even spread; the two endpoint
 /// floors are always included as stops.
 ///
-/// **Infeasible slots don't abort the whole repair** — mirrors `MissingTeleportsStrategy`'s
+/// **Infeasible slots don't abort the whole repair** — mirrors `AddTeleportBatchStrategy`'s
 /// `PARAM_ATTEMPTS_LIMIT` pattern: a slot retries up to `attempts_limit` times (new random start
 /// point + span/stop-count roll each attempt), and a slot that never manages to build a fully valid
 /// elevator (every planned stop's point free of an existing edge to every other planned stop, and

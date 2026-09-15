@@ -34,7 +34,7 @@ static PARAMS: [StrategyParam; 4] = crate::add_strategy_params!(ONE_WAY_CHANCE_P
 ///
 /// `loop_one_way_chance` (GitHub issue #217 follow-up) mirrors base-generation's own
 /// `ElementsConfig::one_way_chance` coin-flip contract (`generation::edge_ops::add_edge_kind`) —
-/// named distinctly from that field (and from `MissingTeleportsStrategy`'s own `one_way_chance`
+/// named distinctly from that field (and from `AddTeleportStrategy`'s own `one_way_chance`
 /// param) since a `StrategyParam::id` is looked up by web i18n as a flat key with no
 /// strategy-scoping, and a shared id would resolve to whichever strategy's label was registered,
 /// not necessarily this one's. Per candidate pair, a `[0, 100)` roll below `loop_one_way_chance`

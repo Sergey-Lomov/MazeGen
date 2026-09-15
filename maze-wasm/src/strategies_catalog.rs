@@ -2,8 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use maze_core::{
     space::SquareTessellation,
-    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, MISSING_VERTICAL_PASSAGES, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, MISSING_ELEVATORS, AREA_MISSING_ELEVATOR_STOPS, MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP, INVALID_CROSS_ELEMENT_GROUP},
-    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, VerticalPassageRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, MissingTeleportsStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy, MissingLoopsVerticalStrategy, RemoveElevatorStrategy, ReplaceElevatorWithPassagesStrategy, ElevatorGroupSelectStrategy, RemoveElevatorStopStrategy, ElevatorStopGroupSelectStrategy, AddElevatorStrategy, AddElevatorStopStrategy, AddElevatorStopCountStrategy, AddElevatorHeightStopStrategy, AddElevatorStopForGapStrategy, ElevatorRegionMergeStrategy, CrossElementGroupSelectStrategy},
+    quality_control::{MISSING_ENDPOINTS, INVALID_LOOP, INVALID_LOOP_GROUP, MISSING_LOOPS, REGION_NEEDS_EXPANSION, REGION_NEEDS_SHRINK, MISSING_REGIONS, EXCESSIVE_SCC_COUNT, INVALID_TELEPORT, INVALID_TELEPORT_GROUP, INVALID_ONE_WAY, INVALID_ONE_WAY_GROUP, MISSING_ONE_WAYS, MISSING_TELEPORTS, MISSING_TELEPORT, INVALID_SPLIT_TILE, INVALID_SPLIT_TILE_GROUP, MISSING_SPLIT_TILES, INVALID_SPLIT_NODE, INVALID_SPLIT_NODE_CONNECTION, INVALID_SPLIT_NODE_CONNECTION_GROUP, INVALID_SPLIT_NODE_GROUP, INVALID_SPLIT_ROUTE, INVALID_VERTICAL_PASSAGE, INVALID_VERTICAL_PASSAGE_GROUP, MISSING_VERTICAL_PASSAGES, INVALID_ELEVATOR, INVALID_ELEVATOR_GROUP, INVALID_ELEVATOR_STOP, INVALID_ELEVATOR_STOP_GROUP, MISSING_ELEVATORS, AREA_MISSING_ELEVATOR_STOPS, MISSING_ELEVATOR_STOP_COUNT, MISSING_ELEVATOR_HEIGHT, EXCESSIVE_ELEVATOR_STOP_GAP, INVALID_CROSS_ELEMENT_GROUP},
+    repair::{RepairStrategy, RandomEndpointsStrategy, FarthestEndpointsStrategy, ScoredEndpointsStrategy, InvalidLoopRandomStrategy, InvalidLoopScoredStrategy, InvalidLoopGroupSelectStrategy, MissingLoopsRandomStrategy, MissingLoopsSplitStrategy, ExpandRegionPassageStrategy, TeleportRegionMergeStrategy, VerticalPassageRegionMergeStrategy, RegionShrinkSplitStrategy, MissingRegionsStrategy, ReduceSccCountStrategy, RemoveTeleportStrategy, TeleportGroupSelectStrategy, WeightedRegionMergeStrategy, PriorityRegionMergeStrategy, PriorityMissingLoopsStrategy, OneWayToPassageStrategy, OneWayToWallStrategy, OneWayGroupSelectStrategy, MissingOneWaysFromPassageStrategy, MissingOneWaysFromWallStrategy, AddTeleportStrategy, AddTeleportBatchStrategy, RemoveSplitStrategy, SplitGroupSelectStrategy, AddSplitStrategy, RemoveSplitNodeStrategy, RemoveSplitNodeConnectionStrategy, SplitNodeConnectionGroupSelectStrategy, SplitNodeGroupSelectStrategy, SplitRouteCutStrategy, AddVerticalPassageStrategy, RemoveVerticalPassageStrategy, VerticalPassageGroupSelectStrategy, MissingLoopsVerticalStrategy, RemoveElevatorStrategy, ReplaceElevatorWithPassagesStrategy, ElevatorGroupSelectStrategy, RemoveElevatorStopStrategy, ElevatorStopGroupSelectStrategy, AddElevatorStrategy, AddElevatorStopStrategy, AddElevatorStopCountStrategy, AddElevatorHeightStopStrategy, AddElevatorStopForGapStrategy, ElevatorRegionMergeStrategy, CrossElementGroupSelectStrategy},
 };
 use crate::check_descriptor::{EntityVisibility, ParamDescriptor, ParamKindDto};
 
@@ -357,15 +357,24 @@ pub fn available_strategies_list() -> Vec<StrategyDescriptor> {
             visibility: None,
         },
         StrategyDescriptor {
-            id: "missing_teleports",
-            handles: MISSING_TELEPORTS.as_str(),
+            id: "add_teleport",
+            handles: MISSING_TELEPORT.as_str(),
             // `cross_floor_mode`/`cross_floor_balance` (GitHub issue #381) only matter when a
             // teleport can actually land on a different floor -- meaningless with 1 floor (GitHub
             // issue #349 follow-up).
-            params: strategy_params_dto(<MissingTeleportsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportsIssue>>::params(&MissingTeleportsStrategy), &[("cross_floor_mode", EntityVisibility::MultiFloorOnly), ("cross_floor_balance", EntityVisibility::MultiFloorOnly)]),
-            experimental: <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportsIssue>>::is_experimental(&MissingTeleportsStrategy),
-            nested_suppressed_params: <MissingTeleportsStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportsIssue>>::nested_suppressed_params(&MissingTeleportsStrategy),
+            params: strategy_params_dto(<AddTeleportStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportIssue>>::params(&AddTeleportStrategy), &[("cross_floor_mode", EntityVisibility::MultiFloorOnly), ("cross_floor_balance", EntityVisibility::MultiFloorOnly)]),
+            experimental: <AddTeleportStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportIssue>>::is_experimental(&AddTeleportStrategy),
+            nested_suppressed_params: <AddTeleportStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportIssue>>::nested_suppressed_params(&AddTeleportStrategy),
             nested_slots: vec![],
+            visibility: None,
+        },
+        StrategyDescriptor {
+            id: "add_teleport_batch",
+            handles: MISSING_TELEPORTS.as_str(),
+            params: strategy_params_dto(<AddTeleportBatchStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportsIssue>>::params(&AddTeleportBatchStrategy), &[]),
+            experimental: <AddTeleportBatchStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportsIssue>>::is_experimental(&AddTeleportBatchStrategy),
+            nested_suppressed_params: <AddTeleportBatchStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportsIssue>>::nested_suppressed_params(&AddTeleportBatchStrategy),
+            nested_slots: nested_slots_dto(<AddTeleportBatchStrategy as RepairStrategy<SquareTessellation, maze_core::quality_control::MissingTeleportsIssue>>::expected_nested(&AddTeleportBatchStrategy)),
             visibility: None,
         },
         StrategyDescriptor {
@@ -605,15 +614,17 @@ mod tests {
         }
     }
 
-    // GitHub issue #381/#349 follow-up: `missing_teleports`'s cross-floor mode/balance only
-    // matter when a teleport can actually land on a different floor.
+    // GitHub issue #381/#349 follow-up: `add_teleport`'s cross-floor mode/balance only matter when
+    // a teleport can actually land on a different floor. `add_teleport_batch` (the series) doesn't
+    // declare these at all post-#522 design correction — it only ever inherits the standard
+    // `reserve_percent`/`attempts_limit` into its nested `add_teleport` slot.
     #[test]
-    fn missing_teleports_marks_cross_floor_params_multi_floor_only() {
+    fn add_teleport_marks_cross_floor_params_multi_floor_only() {
         let strategies = available_strategies_list();
-        let strategy = strategies.iter().find(|s| s.id == "missing_teleports").unwrap();
-        for id in ["cross_floor_mode", "cross_floor_balance"] {
-            let param = strategy.params.iter().find(|p| p.id == id).unwrap();
-            assert_eq!(param.visibility, Some(EntityVisibility::MultiFloorOnly));
+        let strategy = strategies.iter().find(|s| s.id == "add_teleport").unwrap();
+        for param_id in ["cross_floor_mode", "cross_floor_balance"] {
+            let param = strategy.params.iter().find(|p| p.id == param_id).unwrap();
+            assert_eq!(param.visibility, Some(EntityVisibility::MultiFloorOnly), "strategy add_teleport param {param_id}");
         }
     }
 
@@ -624,7 +635,7 @@ mod tests {
                 if strategy.id == "scored_endpoints" && (param.id == "vertical_passage_weight" || param.id == "elevator_weight") {
                     continue;
                 }
-                if strategy.id == "missing_teleports" && (param.id == "cross_floor_mode" || param.id == "cross_floor_balance") {
+                if (strategy.id == "add_teleport" || strategy.id == "add_teleport_batch") && (param.id == "cross_floor_mode" || param.id == "cross_floor_balance") {
                     continue;
                 }
                 assert_eq!(param.visibility, None, "strategy {} param {} should be always-visible", strategy.id, param.id);
@@ -678,9 +689,20 @@ mod tests {
     #[test]
     fn add_strategies_suppress_reserve_and_attempts_when_nested() {
         let strategies = available_strategies_list();
-        for id in ["missing_one_ways_from_wall", "missing_one_ways_from_passage", "add_vertical_passage", "add_elevator_stop", "add_split"] {
+        for id in ["missing_one_ways_from_wall", "missing_one_ways_from_passage", "add_vertical_passage", "add_elevator_stop", "add_split", "add_teleport_batch"] {
             let s = strategies.iter().find(|s| s.id == id).unwrap();
             assert_eq!(s.nested_suppressed_params, &["reserve_percent", "attempts_limit"], "strategy {id}");
         }
+    }
+
+    // GitHub issue #522 design correction: `add_teleport_batch` only ever inherits the standard
+    // `reserve_percent`/`attempts_limit` into its nested `add_teleport` slot (no compatibility
+    // façade re-declaring the child's own creation params) — so `add_teleport`'s 7 creation params
+    // stay fully user-configurable from the nested UI node, same as a standalone strategy's params.
+    #[test]
+    fn add_teleport_suppresses_none_of_its_creation_params_when_nested() {
+        let strategies = available_strategies_list();
+        let s = strategies.iter().find(|s| s.id == "add_teleport").unwrap();
+        assert!(s.nested_suppressed_params.is_empty(), "strategy add_teleport");
     }
 }

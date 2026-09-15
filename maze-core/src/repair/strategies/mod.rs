@@ -31,7 +31,8 @@ mod missing_one_ways_shared;
 mod remaining_deficits;
 pub mod missing_one_ways_from_passage;
 pub mod missing_one_ways_from_wall;
-pub mod missing_teleports;
+pub mod add_teleport;
+pub mod add_teleport_batch;
 pub mod remove_split;
 pub mod split_group_select;
 pub mod add_split;
@@ -88,7 +89,8 @@ pub use one_way_group_select::{OneWayGroupSelectStrategy, SLOT_FIX_TARGET as ONE
 pub use group_select::{PARAM_PRIORITY as ONE_WAY_GROUP_SELECT_PARAM_PRIORITY, PRIORITY_RANDOM as ONE_WAY_GROUP_SELECT_PRIORITY_RANDOM, PRIORITY_PROBLEMATIC as ONE_WAY_GROUP_SELECT_PRIORITY_PROBLEMATIC};
 pub use missing_one_ways_from_passage::MissingOneWaysFromPassageStrategy;
 pub use missing_one_ways_from_wall::MissingOneWaysFromWallStrategy;
-pub use missing_teleports::{MissingTeleportsStrategy, PARAM_ENTRY_PICK as MISSING_TELEPORTS_PARAM_ENTRY_PICK, PARAM_DESIRED_LENGTH as MISSING_TELEPORTS_PARAM_DESIRED_LENGTH, ENTRY_RANDOM as MISSING_TELEPORTS_ENTRY_RANDOM, ENTRY_FARTHEST_FROM_RANDOM as MISSING_TELEPORTS_ENTRY_FARTHEST_FROM_RANDOM};
+pub use add_teleport::{AddTeleportStrategy, PARAM_ENTRY_PICK as ADD_TELEPORT_PARAM_ENTRY_PICK, PARAM_DESIRED_LENGTH as ADD_TELEPORT_PARAM_DESIRED_LENGTH, ENTRY_RANDOM as ADD_TELEPORT_ENTRY_RANDOM, ENTRY_FARTHEST_FROM_RANDOM as ADD_TELEPORT_ENTRY_FARTHEST_FROM_RANDOM};
+pub use add_teleport_batch::{AddTeleportBatchStrategy, SLOT_ADD_TELEPORT as ADD_TELEPORT_BATCH_SLOT_ADD_TELEPORT};
 pub use add_elevator::AddElevatorStrategy;
 pub use add_elevator_stop_count::{
     AddElevatorStopCountStrategy, PARAM_EXPAND_ELEVATOR as ADD_ELEVATOR_STOP_COUNT_PARAM_EXPAND_ELEVATOR,

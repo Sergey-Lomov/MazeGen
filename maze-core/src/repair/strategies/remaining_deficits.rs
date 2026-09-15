@@ -3,7 +3,7 @@ use crate::quality_control::RepairArea;
 /// A live, mutable working copy of a deficit issue's `missing: Vec<(RepairArea, u32)>` — shared by
 /// every strategy that services a `min_*`/`split_count`/`split_density`-style deficit issue
 /// (`MissingLoopsRandomStrategy`, `MissingLoopsSplitStrategy`, `MissingOneWaysFromWallStrategy`,
-/// `MissingOneWaysFromPassageStrategy`, `MissingTeleportsStrategy`, `AddSplitStrategy`).
+/// `MissingOneWaysFromPassageStrategy`, `AddTeleportBatchStrategy`, `AddSplitStrategy`).
 ///
 /// **Why this exists** (GitHub issue #369 double-repair follow-up): a `FloorScope::PerFloor` check
 /// and a `FloorScope::WholeMaze` check on the *same* rule both contribute entries to one issue's

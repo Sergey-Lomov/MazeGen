@@ -105,9 +105,13 @@ export const strategyI18n: Record<string, { label: MessageFn; description: Messa
     label: m["strategy.missing_one_ways_from_wall.label"] as MessageFn,
     description: m["strategy.missing_one_ways_from_wall.description"] as MessageFn,
   },
-  missing_teleports: {
-    label: m["strategy.missing_teleports.label"] as MessageFn,
-    description: m["strategy.missing_teleports.description"] as MessageFn,
+  add_teleport: {
+    label: m["strategy.add_teleport.label"] as MessageFn,
+    description: m["strategy.add_teleport.description"] as MessageFn,
+  },
+  add_teleport_batch: {
+    label: m["strategy.add_teleport_batch.label"] as MessageFn,
+    description: m["strategy.add_teleport_batch.description"] as MessageFn,
   },
   remove_split: {
     label: m["strategy.remove_split.label"] as MessageFn,
@@ -226,13 +230,18 @@ const CROSS_ELEMENT_SLOT_LABELS: Record<string, MessageFn> = {
 /** Label for a nested-strategy slot, chosen by the slot's own issue `kind` -- "merge" for a
  * region-expansion slot (the nested strategy merges regions), "add-elevator" for
  * `AddElevatorStopStrategy`'s slot (GitHub issue #408 — deliberately not "removal", the nested
- * strategy there adds a new elevator, it doesn't remove anything), "removal" for every other kind
- * (the nested strategy removes the flagged element). `slotId`, when it names one of
- * `cross_element_group_select`'s per-type slots, wins over the generic label. */
+ * strategy there adds a new elevator, it doesn't remove anything), generic "add" for any other
+ * Check-less singular `missing_<type>` kind synthesized by a series/child split (GitHub issue
+ * #522's pattern — e.g. `missing_teleport` for `AddTeleportBatchStrategy`'s slot; future splits
+ * reuse this same generic label rather than each minting their own type-specific string),
+ * "removal" for every other kind (the nested strategy removes the flagged element). `slotId`,
+ * when it names one of `cross_element_group_select`'s per-type slots, wins over the generic
+ * label. */
 export function resolveNestedStrategyLabel(kind: string, slotId?: string): string {
   if (slotId && CROSS_ELEMENT_SLOT_LABELS[slotId]) return CROSS_ELEMENT_SLOT_LABELS[slotId]();
   if (kind === "region_needs_expansion") return m["quality.nested_strategy.merge_label"]();
   if (kind === "missing_elevators") return m["quality.nested_strategy.add_elevator_label"]();
+  if (kind === "missing_teleport") return m["quality.nested_strategy.add_label"]();
   return m["quality.nested_strategy.removal_label"]();
 }
 

@@ -337,7 +337,7 @@ mod build_strategy_tests {
         "expand_region_passage", "teleport_region_merge", "vertical_passage_region_merge", "elevator_region_merge", "missing_regions", "reduce_scc_count",
         "weighted_region_merge", "remove_teleport", "teleport_group_select",
         "one_way_to_passage", "one_way_to_wall",
-        "missing_one_ways_from_passage", "missing_one_ways_from_wall", "missing_teleports",
+        "missing_one_ways_from_passage", "missing_one_ways_from_wall", "add_teleport", "add_teleport_batch",
         "remove_split", "split_group_select", "add_split",
     ];
 

@@ -5,7 +5,7 @@ use crate::graph::pathfinding::{dijkstra_forward, dijkstra_reverse};
 /// Farthest node forward-reachable from `source` via directed BFS/Dijkstra — ties break toward
 /// the lowest `NodeId` (Determinism Contract, `Specs/repair.md`). Falls back to `source` itself
 /// when nothing else is reachable. Shared by `FarthestEndpointsStrategy` (GitHub issue #89) and
-/// `MissingTeleportsStrategy`'s `entry_pick: farthest_from_random` (GitHub issue #212) — both need
+/// `AddTeleportStrategy`'s `entry_pick: farthest_from_random` (GitHub issue #212) — both need
 /// "farthest node you can walk to from here" on the same directed `NavGraph`.
 pub(crate) fn farthest_from(nav: &NavGraph, source: usize) -> NodeId {
     let dist = dijkstra_forward(nav, source);

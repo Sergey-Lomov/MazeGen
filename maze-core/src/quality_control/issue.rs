@@ -22,6 +22,7 @@ pub enum IssueKind {
     InvalidOneWayGroup,
     MissingOneWays,
     MissingTeleports,
+    MissingTeleport,
     InvalidSplitTile,
     InvalidSplitTileGroup,
     MissingSplitTiles,
@@ -145,6 +146,12 @@ pub const MISSING_ONE_WAYS: IssueKind = IssueKind::MissingOneWays;
 /// one. Carries `MissingTeleportsIssue { missing }` — see that type's doc comment. No repair
 /// strategy registered yet for this kind (deliberately out of scope for #211).
 pub const MISSING_TELEPORTS: IssueKind = IssueKind::MissingTeleports;
+/// Synthetic delegation-only request to add exactly one teleport starting from a given candidate
+/// node — never produced by a Check, never published to the QC pool. Exists only as the nested
+/// slot target for `AddTeleportBatchStrategy` (issue #522, part of epic #520), mirroring
+/// `INVALID_VERTICAL_PASSAGE`'s Check-less-delegation role. Carries `MissingTeleportIssue {
+/// candidate, excluded_pairs }` — see that type's doc comment. Repaired by `AddTeleportStrategy`.
+pub const MISSING_TELEPORT: IssueKind = IssueKind::MissingTeleport;
 /// An extra split node (`Field::add_node_at`'s minted node, never a point's slot-0 original) is
 /// invalid for some check-specific reason — currently `SplitDistanceFromWaypointCheck` (the
 /// node's point sits too close to/far from `meta.start`/`meta.finish`, per a configured

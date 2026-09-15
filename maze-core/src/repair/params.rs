@@ -13,7 +13,7 @@ pub enum StrategyParamKind {
     Float { default: f64, min: f64, max: f64 },
     Bool { default: bool },
     Enum { options: &'static [&'static str], default: &'static str },
-    /// A `[min, max]` range, e.g. a desired distance band — see `MissingTeleportsStrategy`'s
+    /// A `[min, max]` range, e.g. a desired distance band — see `AddTeleportStrategy`'s
     /// `PARAM_DESIRED_LENGTH` (GitHub issue #212). `default_min`/`default_max` bound the same
     /// range the UI slider starts at; `min`/`max` bound what a config override may set either
     /// endpoint to.
@@ -51,7 +51,7 @@ impl StrategyParamValue {
 
 /// How strongly a repair strategy should prefer one of two candidate groups ("preferred" vs.
 /// "other") over the other when picking among feasible candidates — e.g.
-/// `MissingTeleportsStrategy`'s choice between an exit unreachable from entry vs. one at the
+/// `AddTeleportStrategy`'s choice between an exit unreachable from entry vs. one at the
 /// desired distance (GitHub issue #381), or `AddElevatorStopCountStrategy`'s choice between a
 /// floor outside vs. inside an elevator's current range. `order_zones` turns a level plus the two
 /// groups into the ordered list of zones a strategy should try in turn.
