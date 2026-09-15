@@ -69,7 +69,7 @@ mod tests {
         g.add_edge(e, c, EdgeKind::Basic);
         let start = p(0);
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(start), finish: None, route_score: None };
+        maze.meta = MazeMeta { start: Some(start), finish: None };
         maze
     }
 
@@ -128,7 +128,7 @@ mod tests {
         g.add_edge(fc, fa, EdgeKind::Basic);
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(na), finish: None, route_score: None };
+        maze.meta = MazeMeta { start: Some(na), finish: None };
         maze
     }
 
@@ -242,7 +242,7 @@ mod tests {
         g.add_bidirectional_edge(a, d, EdgeKind::Basic);
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(a), finish: None, route_score: None };
+        maze.meta = MazeMeta { start: Some(a), finish: None };
         maze
     }
 

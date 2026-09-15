@@ -62,7 +62,7 @@ pub mod cross_element_group_select;
 
 pub use random_endpoints::RandomEndpointsStrategy;
 pub use farthest_endpoints::FarthestEndpointsStrategy;
-pub use scored_endpoints::ScoredEndpointsStrategy;
+pub use scored_endpoints::{ScoredEndpointsStrategy, ScoreWeights, score_for_route};
 pub use invalid_loop_random::InvalidLoopRandomStrategy;
 pub use invalid_loop_scored::InvalidLoopScoredStrategy;
 pub use invalid_loop_group_select::{InvalidLoopGroupSelectStrategy, PARAM_SELECTION_MODE, SELECTION_RANDOM, SELECTION_SHORTEST, SELECTION_LONGEST, SLOT_CUT_TARGET as INVALID_LOOP_GROUP_SELECT_SLOT_CUT_TARGET};

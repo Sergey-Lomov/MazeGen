@@ -69,7 +69,7 @@ mod tests {
         }
         let finish = p(distance as i32 + 2);
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: None, finish: Some(finish), route_score: None };
+        maze.meta = MazeMeta { start: None, finish: Some(finish) };
         maze
     }
 
@@ -127,7 +127,7 @@ mod tests {
         g.add_edge(nc, na, EdgeKind::Basic);
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: None, finish: Some(na), route_score: None };
+        maze.meta = MazeMeta { start: None, finish: Some(na) };
         maze
     }
 

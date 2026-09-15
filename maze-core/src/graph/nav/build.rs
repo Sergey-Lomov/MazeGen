@@ -207,14 +207,14 @@ fn process_outgoing(
     pinned: &HashSet<NodeId>,
     non_corridor_endpoints: &HashSet<NodeId>,
 ) {
-    let (path, terminal, is_teleport, is_elevator) = if is_corridor_node(graph, next, pinned, non_corridor_endpoints) {
+    let (path, terminal, is_teleport, is_elevator, is_vertical) = if is_corridor_node(graph, next, pinned, non_corridor_endpoints) {
         let mut visited_corridor: HashSet<NodeId> = HashSet::new();
         visited_corridor.insert(junction);
         let (path, terminal) = walk_corridor(graph, junction, next, &mut visited_corridor, pinned, non_corridor_endpoints);
         // Corridor-interior hops are always Basic (teleport/elevator/vertical-passage endpoints are never corridor nodes).
-        (path, terminal, false, false)
+        (path, terminal, false, false, false)
     } else {
-        (vec![junction, next], next, first_kind == EdgeKind::Teleport, first_kind == EdgeKind::Elevator)
+        (vec![junction, next], next, first_kind == EdgeKind::Teleport, first_kind == EdgeKind::Elevator, first_kind == EdgeKind::VerticalPassage)
     };
 
     for &n in &path[1..] {
@@ -223,7 +223,7 @@ fn process_outgoing(
 
     let from_nav = nav.add_node(junction);
     let to_nav   = nav.add_node(terminal);
-    nav.add_edge(from_nav, to_nav, path, is_teleport, is_elevator);
+    nav.add_edge(from_nav, to_nav, path, is_teleport, is_elevator, is_vertical);
 
     enqueue_junction(terminal, visited_junctions, junction_stack);
 }
@@ -340,7 +340,7 @@ fn build_ring(
         if let Some(path) = walk_ring_direction(graph, anchor, first_step, remaining) {
             // A ring consists entirely of corridor nodes (teleport/elevator endpoints are never
             // corridor nodes, so never part of a ring), so its hops are always Basic.
-            nav.add_edge(nav_id, nav_id, path, false, false);
+            nav.add_edge(nav_id, nav_id, path, false, false, false);
         }
     }
 }

@@ -86,6 +86,28 @@ impl MazeAnalysis {
         cache.as_ref().unwrap().3.clone()
     }
 
+    /// Computes the same weighted score `ScoredEndpointsStrategy` uses to pick endpoints, but for
+    /// the route already fixed by `meta.start`/`meta.finish` (GitHub issue #532) — unlike the
+    /// strategy, this never runs as a repair side effect, so it stays available for a route whose
+    /// endpoints were never "missing" in the first place (e.g. right after a post-edit confirm,
+    /// where the strategy's own `MissingEndpointsIssue` never fires). Not cached (weights are
+    /// caller-supplied and may vary per call) — reuses `nav_graph()`'s own cache for the pinned nav
+    /// graph, so repeated calls at the same graph version/endpoints/weights are still cheap.
+    ///
+    /// Returns `None` if either `meta.start` or `meta.finish` is unset, or if no route exists
+    /// between them.
+    pub fn route_score<T: space::Tessellation>(
+        &self,
+        graph: &Graph,
+        field: &space::MultiLevelField<T>,
+        meta: &MazeMeta,
+        weights: &crate::repair::strategies::ScoreWeights,
+    ) -> Option<f64> {
+        let (start, finish) = (meta.start?, meta.finish?);
+        let nav = self.nav_graph(graph, meta);
+        crate::repair::strategies::score_for_route(&nav, field, graph, start, finish, weights)
+    }
+
     /// Classifies every SCC region relative to `meta.start`/`meta.finish` (see
     /// `graph::region_class`). Keyed on `(graph.version(), meta.start, meta.finish)` — same
     /// invalidation shape as `route_info`/`scc`, since classification depends on both. Reuses

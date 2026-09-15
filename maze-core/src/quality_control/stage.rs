@@ -175,9 +175,9 @@ impl<T: Tessellation> Stage<T> {
     /// `maze.graph.version()` changes, `failed` is cleared entirely, since `Failed` only means
     /// "couldn't fix the issue instance just given" (`Specs/repair.md`'s `RepairResult` doc), not
     /// "broken for the rest of the stage run" — a graph mutation may reshape or remove the very
-    /// issue that made a previously failed rule fail. A `Fixed` result with a route score sets
-    /// `maze.meta.route_score` if not already set (first strategy to report a score wins,
-    /// matching the original flat pipeline).
+    /// issue that made a previously failed rule fail. A `Fixed` result's own `score` (if any) is
+    /// otherwise unused here — a route's score is computed independently of repair dispatch via
+    /// `MazeAnalysis::route_score` (GitHub issue #532), not accumulated from strategy results.
     fn check_and_dispatch(
         &self,
         maze: &mut Maze<T>,
@@ -213,12 +213,7 @@ impl<T: Tessellation> Stage<T> {
                     found_any = true;
                     match result {
                         RepairResult::Failed => { failed.insert(rule.id().to_string()); }
-                        RepairResult::Fixed { score: Some(s) } => {
-                            if maze.meta.route_score.is_none() {
-                                maze.meta.route_score = Some(s);
-                            }
-                        }
-                        RepairResult::Fixed { score: None } => {}
+                        RepairResult::Fixed { .. } => {}
                     }
                 }
             }

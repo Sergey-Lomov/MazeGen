@@ -1,5 +1,5 @@
 import React from "react";
-import { typography, muted } from "../styles/theme";
+import { typography, muted, disabled as disabledStyle, spacing } from "../styles/theme";
 import { Switch } from "./Switch";
 import { Inline } from "./Layout";
 import { InfoIconButton } from "./InfoIconButton";
@@ -10,13 +10,16 @@ import { InfoIconButton } from "./InfoIconButton";
 export function ToggleRow({ label, checked, onChange, disabled, info }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; info?: () => void }) {
   return (
     <Inline gap="groupGap">
-      <span style={{ ...styles.toggleLabel, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
-      {info && <InfoIconButton onClick={info} />}
+      <span style={styles.toggleLabelGroup}>
+        <span style={disabled ? disabledStyle(typography.body) : styles.toggleLabel}>{label}</span>
+        {info && <InfoIconButton onClick={info} />}
+      </span>
       <Switch checked={checked && !disabled} onChange={disabled ? () => {} : onChange} />
     </Inline>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  toggleLabel: { flex: 1, ...muted(typography.body) },
+  toggleLabelGroup: { flex: 1, display: "flex", alignItems: "center", gap: spacing.rowGap },
+  toggleLabel: { ...muted(typography.body) },
 };

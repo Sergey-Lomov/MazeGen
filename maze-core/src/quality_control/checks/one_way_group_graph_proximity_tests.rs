@@ -138,7 +138,7 @@ fn ignores_bidirectional_passage() {
 fn protect_route_excludes_a_pair_fully_on_route() {
     let (mut maze, e1, e2) = maze_with_two_one_ways_gapped(0);
     let nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
-    maze.meta = MazeMeta { start: Some(nodes[0]), finish: Some(nodes[2]), route_score: None };
+    maze.meta = MazeMeta { start: Some(nodes[0]), finish: Some(nodes[2]) };
 
     let c = check(1000.0, true);
     let mut issues = Vec::new();
@@ -152,7 +152,7 @@ fn protect_route_excludes_a_pair_fully_on_route() {
 fn protect_route_disabled_flags_the_route_pair_as_before() {
     let (mut maze, _, _) = maze_with_two_one_ways_gapped(0);
     let nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
-    maze.meta = MazeMeta { start: Some(nodes[0]), finish: Some(nodes[2]), route_score: None };
+    maze.meta = MazeMeta { start: Some(nodes[0]), finish: Some(nodes[2]) };
 
     let c = check(1000.0, false);
     let mut issues = Vec::new();

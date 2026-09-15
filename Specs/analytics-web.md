@@ -25,7 +25,7 @@ Block order (top to bottom):
 
 1. **Issues**
 2. **Overlay layers** — always visible when card is open
-3. **Path** — hidden when `routeInfo == null` (loose check — WASM may return `undefined`)
+3. **Path** — hidden when `statistics.graph_stats.region_classes` is empty (start or finish unset, same gate as the Region classes overlay toggle); shown otherwise even when `routeInfo == null` (no route connects start and finish), in which case it displays a "no path" notice instead of stat rows (GitHub issue #534)
 4. **Summary statistics** — hidden when `statistics == null`; a compact block plus a "Detailed report" button opening `DetailedReportPanel` (GitHub issue #364)
 5. **Timing** — hidden when `timing == null`
 
@@ -74,17 +74,21 @@ Toggles, each backed by a store boolean:
 
 Toggle state persists when the card is closed and reopened. It resets only on full store reset. `showPureCyclesOverlay` and `showRegionClassesOverlay` are not yet persisted in project export (`ProjectFileAnalytics`) — they reset to default on project load, unlike the other toggles in this table.
 
-An info icon (ℹ) sits left of the Region classes switch, opening a legend modal that maps each `RegionClass` color to its name and a one-line meaning (`RegionClassLegendModal` in `AnalyticsFeature.tsx`) — see `graph-analytics.md`'s "Region Classes" section for the class semantics and `REGION_CLASS_COLORS`.
+An info icon (ℹ) sits next to the Region classes label (same convention as every other `ToggleRow`/`StatRow` info icon, GitHub issue #532's round of polish), opening a legend modal that maps each `RegionClass` color to its name and a one-line meaning (`RegionClassLegendModal` in `AnalyticsFeature.tsx`) — see `graph-analytics.md`'s "Region Classes" section for the class semantics and `REGION_CLASS_COLORS`.
 
 ### Path Block
 
-Shown only when `routeInfo != null`. Fields:
+Shown whenever `statistics.graph_stats.region_classes` is non-empty (start and finish both set — the same condition `MazeAnalysis::region_classes` on the Rust side returns an empty map for, independent of whether a route actually exists). Hidden when `statistics == null` or start/finish aren't both set.
 
+When `routeInfo == null` (start/finish set but no route connects them, e.g. disconnected regions), the block shows a single "no path" notice (`analytics.no_route`, styled with the `disabled` typography token — same visual weight as a disabled `ToggleRow` label) instead of the stat rows below (GitHub issue #534).
+
+When `routeInfo != null`, fields in display order:
+
+- `score` — shown first, only when `routeInfo.score != null` (GitHub issue #532). Formatted by `formatScore`: at most 2 decimal places, trailing zero decimals dropped (e.g. `3` not `3.00`, `1.5` not `1.50`), never a 3rd decimal. An info icon next to the label opens `ScoreInfoModal`, which explains what the score represents and lists the project's current `scored_endpoints` weights below a divider.
 - `path_length` — integer, number of nodes on the route
 - `junction_count` — number of junction nodes on the route
 - `one_way_count` — number of one-way passages on the route
 - `split_count` — number of split-tile occurrences on the route (GitHub issue #261)
-- `score` — float, shown only when `routeInfo.score != null`
 
 ### Summary Statistics & Detailed Report (GitHub issue #364)
 

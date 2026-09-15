@@ -760,6 +760,8 @@ Handles `MISSING_ENDPOINTS`. Selects start/finish pair by maximizing a weighted 
 
 Score formula: `path_tiles * path_weight + junction_count * junction_weight + oneway_count * oneway_weight + teleport_count * teleport_weight + split_count * split_weight + vertical_passage_count * vertical_passage_weight + elevator_count * elevator_weight`
 
+The formula itself lives in a standalone `score_for_route` function, independent of repair dispatch — also called directly by `MazeAnalysis::route_score` (`analysis.md`) to compute a route's score outside the repair pipeline entirely, e.g. after a post-edit where `MissingEndpointsIssue` never fires because both endpoints are already set (GitHub issue #532).
+
 - Junction: nav node with ≥ 3 distinct neighbors (union of incoming and outgoing).
 - One-way edge: nav edge `(u → v)` where no reverse edge `(v → u)` exists.
 - Teleport edge: nav edge whose corridor `path` crosses a `Teleport`-kind edge in the underlying maze graph.

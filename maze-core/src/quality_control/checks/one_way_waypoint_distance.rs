@@ -127,7 +127,7 @@ mod tests {
         g.add_edge(p(one_way_from as i32), p(one_way_from as i32 + 1), EdgeKind::Basic);
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(nodes[0]), finish: None, route_score: None };
+        maze.meta = MazeMeta { start: Some(nodes[0]), finish: None };
         (maze, nodes)
     }
 
@@ -200,7 +200,7 @@ mod tests {
         let one_way_id = g.add_edge(p(2), p(3), EdgeKind::Basic);
         let finish_node = p(0);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        maze.meta = MazeMeta { start: None, finish: Some(finish_node), route_score: None };
+        maze.meta = MazeMeta { start: None, finish: Some(finish_node) };
 
         let check = OneWayWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
@@ -230,7 +230,7 @@ mod tests {
         g.add_bidirectional_edge(p(1), p(2), EdgeKind::Basic);
         let start_node = p(0);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(start_node), finish: None, route_score: None };
+        maze.meta = MazeMeta { start: Some(start_node), finish: None };
 
         let check = OneWayWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
@@ -261,7 +261,7 @@ mod tests {
         g.add_edge(p(2), p(0), EdgeKind::Teleport);
         let start_node = p(0);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(start_node), finish: None, route_score: None };
+        maze.meta = MazeMeta { start: Some(start_node), finish: None };
 
         let check = OneWayWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
@@ -296,7 +296,7 @@ mod tests {
         let start = p(0);
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(start), finish: None, route_score: None };
+        maze.meta = MazeMeta { start: Some(start), finish: None };
 
         let check = OneWayWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
@@ -329,7 +329,7 @@ mod tests {
         let (start, finish) = (p(10), p(0));
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(start), finish: Some(finish), route_score: None };
+        maze.meta = MazeMeta { start: Some(start), finish: Some(finish) };
 
         let check = OneWayWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
@@ -429,7 +429,7 @@ mod tests {
         let start = p(0);
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(start), finish: None, route_score: None };
+        maze.meta = MazeMeta { start: Some(start), finish: None };
 
         let check = OneWayWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),

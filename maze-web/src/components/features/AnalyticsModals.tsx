@@ -6,8 +6,9 @@ import { canvas } from "../../pixi/colorTokens";
 import { TileFaceEditor } from "./TileFaceEditor";
 import { tileNodesForTopology } from "../../pixi/splitPatternTile";
 import { titleKeyForTopology } from "../../pixi/splitPatternTitles";
-import { resolveCheckLabel, resolveStrategyLabel } from "./qualityI18n";
-import { StatRow, formatMs } from "./AnalyticsSections";
+import { resolveCheckLabel, resolveParamLabel, resolveStrategyLabel } from "./qualityI18n";
+import { buildValues } from "./useParamEditor";
+import { StatRow, SubsectionTitle, formatMs } from "./AnalyticsSections";
 import { styles, messageFor } from "./analyticsStyles";
 import type { SplitGroupDto, TimingNodeDto, GenerationTimingDto } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
@@ -95,6 +96,37 @@ export function SidesInfoModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal title={m["analytics.sides_section"]()} onClose={onClose}>
       <div style={styles.legendDesc}>{m["analytics.sides_info_desc"]()}</div>
+    </Modal>
+  );
+}
+
+const SCORED_ENDPOINTS_STRATEGY_ID = "scored_endpoints";
+
+/** Explains what the Path section's "Score" stat represents (GitHub issue #532/#534), and lists
+ *  the project's currently configured `scored_endpoints` weights below a divider, the exact
+ *  values `MazeAnalysis::route_score` computed the shown score from, resolved the same way
+ *  `RuleStrategyPanel`'s live editor does (`buildValues`: stored override, falling back to the
+ *  param's own default). The strategy is guaranteed configured whenever this modal can even open
+ *  (the score is only ever non-null when it is, see `score_weights_from_rule_groups`/
+ *  `score_weights_from_stages`), so no empty-state branch is needed here. */
+export function ScoreInfoModal({ onClose }: { onClose: () => void }) {
+  const availableStrategies = useMazeStore((s) => s.availableStrategies);
+  const strategyParams = useMazeStore((s) => s.strategyParams);
+  const descriptor = availableStrategies.find((s) => s.id === SCORED_ENDPOINTS_STRATEGY_ID);
+  const values = descriptor ? buildValues(descriptor.params, strategyParams[SCORED_ENDPOINTS_STRATEGY_ID] ?? {}) : {};
+  return (
+    <Modal title={m["analytics.score"]()} onClose={onClose}>
+      <div style={styles.legendDesc}>{m["analytics.score_info_desc"]()}</div>
+      <div style={styles.legendDesc}>{m["analytics.score_info_visibility"]()}</div>
+      <div style={styles.divider} />
+      <div style={styles.scoreInfoWeights}>
+        <SubsectionTitle label={m["analytics.score_info_current_weights"]()} />
+        <div style={styles.scoreInfoValues}>
+          {descriptor?.params.map((p) => (
+            <StatRow key={p.id} label={resolveParamLabel(p.id, p.label, descriptor.id)} valueText={values[p.id]} />
+          ))}
+        </div>
+      </div>
     </Modal>
   );
 }

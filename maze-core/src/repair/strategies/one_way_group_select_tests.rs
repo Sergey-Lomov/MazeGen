@@ -347,7 +347,7 @@ fn protect_route_disabled_allows_a_route_critical_edge_to_be_picked() {
     let nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
     // e1 (0->1) sits on the only route -- with protect_route disabled it's a legitimate
     // candidate again, unlike `protect_route_falls_back_to_the_other_side_of_the_pair`.
-    maze.meta = MazeMeta { start: Some(nodes[0]), finish: Some(nodes[1]), route_score: None };
+    maze.meta = MazeMeta { start: Some(nodes[0]), finish: Some(nodes[1]) };
 
     let issue = group_issue(vec![vec![e1]]);
     let mut rng = MazeRng::seed_from_u64(1);
@@ -390,7 +390,7 @@ fn protect_route_falls_back_to_the_other_side_of_the_pair() {
     let (mut maze, e1, e2) = maze_with_two_one_ways();
     let nodes: Vec<_> = maze.field.field_of(maze.field.single_level_id()).unwrap().all_points().map(|p| maze.field.node_at(maze.field.single_level_id(), p).unwrap()).collect();
     // e1 (0->1) sits on the route; e2 (2->3) does not (disconnected).
-    maze.meta = MazeMeta { start: Some(nodes[0]), finish: Some(nodes[1]), route_score: None };
+    maze.meta = MazeMeta { start: Some(nodes[0]), finish: Some(nodes[1]) };
 
     let issue = group_issue(vec![vec![e1, e2]]);
     let mut rng = MazeRng::seed_from_u64(1);
@@ -416,7 +416,7 @@ fn protect_route_leaves_a_fully_protected_group_untouched() {
     let ea = g.add_edge(p[0], p[1], EdgeKind::Basic);
     let eb = g.add_edge(p[1], p[2], EdgeKind::Basic);
     let mut maze = Maze::new(field, g);
-    maze.meta = MazeMeta { start: Some(p[0]), finish: Some(p[2]), route_score: None };
+    maze.meta = MazeMeta { start: Some(p[0]), finish: Some(p[2]) };
 
     let issue = group_issue(vec![vec![ea, eb]]);
     let mut rng = MazeRng::seed_from_u64(1);

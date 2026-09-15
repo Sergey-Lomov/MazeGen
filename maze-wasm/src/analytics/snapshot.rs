@@ -44,6 +44,12 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     // from the client's own `cfg.nodes`, since post-edit's removal history can leave a hole in the
     // `i` sequence that a freshly recomputed position would wrongly compact away.
     index_of: impl Fn(maze_core::ids::NodeId, T::Point, usize) -> u32,
+    // The project's configured `scored_endpoints` weights, if that strategy is configured on any
+    // rule (GitHub issue #532) — used to compute `route_info.score` directly from the current
+    // `maze.meta.start`/`finish`, independent of whether a repair actually dispatched (see
+    // `MazeAnalysis::route_score`). `None` when no rule configures that strategy: there is
+    // genuinely no score to show, not a bug, so `route_info.score` stays `None` too.
+    score_weights: Option<&maze_core::repair::strategies::ScoreWeights>,
 ) -> Result<MazeSnapshot, String> {
     let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
     let graph_analytics = maze.analysis.graph_analytics(&maze.graph, &maze.meta);
@@ -332,13 +338,18 @@ pub fn build_analytics_snapshot<T: Tessellation>(
 
     let statistics = MazeStatisticsDto { graph_stats, cell_count, cell_stats, passage_stats, elements_stats, vertical_stats, elevator_stop_count };
 
+    let score = score_weights.and_then(|w| maze.analysis.route_score(&maze.graph, &maze.field, &maze.meta, w));
     let route_info = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta).map(|r| RouteInfoDto {
-        path_length:    r.path_length,
+        path_length: r.path_length,
         junction_count: r.junction_count,
-        one_way_count:  r.one_way_count,
-        split_count:    r.split_count,
-        score:          maze.meta.route_score,
-        path:           r.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect(),
+        one_way_count: r.one_way_count,
+        split_count: r.split_count,
+        teleport_count: r.teleport_count,
+        vertical_bidirectional_count: r.vertical_bidirectional_count,
+        vertical_one_way_count: r.vertical_one_way_count,
+        elevator_count: r.elevator_count,
+        score,
+        path: r.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect(),
     });
 
     Ok(MazeSnapshot {
@@ -388,7 +399,7 @@ mod tests {
         }
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32, None).unwrap();
 
         assert!(snapshot.statistics.graph_stats.cycle_analysis_overflowed);
         assert!(snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
@@ -406,7 +417,7 @@ mod tests {
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32, None).unwrap();
 
         assert!(!snapshot.statistics.graph_stats.cycle_analysis_overflowed);
         assert!(!snapshot.issues.iter().any(|i| i.kind == CYCLE_ANALYSIS_OVERFLOWED.to_string()));
@@ -425,7 +436,7 @@ mod tests {
         g.build_initial_bidirectional_edge(a, b, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32, None).unwrap();
         let stats = &snapshot.statistics;
 
         assert_eq!(stats.cell_count.total, 3);
@@ -458,7 +469,7 @@ mod tests {
         g.add_node(extra);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32, None).unwrap();
 
         let at_split_point: Vec<_> = snapshot.nodes.iter().filter(|n| n.x == 1 && n.y == 0).collect();
         assert_eq!(at_split_point.len(), 2, "split point's node list must appear exactly once, not once per its own node count");
@@ -485,7 +496,7 @@ mod tests {
         g.build_initial_bidirectional_edge(a0, a2, EdgeKind::Elevator);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32, None).unwrap();
         let stats = &snapshot.statistics;
 
         assert_eq!(stats.vertical_stats.elevator_groups, 1);
@@ -510,7 +521,7 @@ mod tests {
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
         // Neither start nor finish set.
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32, None).unwrap();
 
         assert!(snapshot.statistics.graph_stats.region_classes.is_empty());
     }
@@ -531,7 +542,7 @@ mod tests {
         maze.meta.start = Some(a);
         maze.meta.finish = Some(c);
 
-        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32).unwrap();
+        let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &PresetState::empty(), |p| (p.x, p.y), |_, _, pos| pos as u32, None).unwrap();
 
         // Fully bidirectional 3-node line collapses into a single SCC — start and finish share
         // a region, which is always "path" by definition.

@@ -5,5 +5,4 @@ pub use maze_runner::config::{
     GenerateConfig, PresetConnectionDto, PresetEndpointDto,
     build_repair_limits, build_generation_config,
 };
-#[cfg(test)]
 pub(crate) use maze_runner::config::StrategyConfig;

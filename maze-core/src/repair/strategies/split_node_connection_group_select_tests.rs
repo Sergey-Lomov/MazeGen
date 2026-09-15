@@ -127,7 +127,7 @@ fn protect_original_only_group_reports_failed() {
 fn protect_route_excludes_a_route_critical_connection() {
     let (mut maze, slot0, _extra, e_slot0, e_extra) = maze_with_split_converging_on_one_neighbor();
     let left = maze.field.node_at(maze.field.single_level_id(), SquarePoint { x: 0, y: 0 }).unwrap();
-    maze.meta = MazeMeta { start: Some(slot0), finish: Some(left), route_score: None };
+    maze.meta = MazeMeta { start: Some(slot0), finish: Some(left) };
 
     let issue = group_issue(vec![(vec![e_slot0, e_extra], 1)]);
     let mut rng = MazeRng::seed_from_u64(1);

@@ -66,6 +66,28 @@ static PARAMS: &[StrategyParam] = &[
     },
 ];
 
+/// Computes the same weighted score `ScoredEndpointsStrategy` uses to pick endpoints, but for an
+/// already-fixed `(start, finish)` maze-node pair — used to report a route's score outside the
+/// repair pipeline (e.g. `MazeAnalysis::route_score`), where both endpoints are already set and no
+/// `MissingEndpointsIssue` ever fires to trigger the strategy itself (GitHub issue #532: without
+/// this, a route's score was only ever set as a side effect of the strategy dispatching a repair,
+/// so it silently disappeared after any post-edit confirm since start/finish are never missing
+/// there). Returns `None` if either endpoint isn't a nav node or no path connects them.
+pub fn score_for_route<T: Tessellation>(
+    nav: &NavGraph,
+    field: &MultiLevelField<T>,
+    graph: &Graph,
+    start: crate::ids::NodeId,
+    finish: crate::ids::NodeId,
+    weights: &ScoreWeights,
+) -> Option<f64> {
+    let start_nav = nav.nav_node_for(start)?;
+    let finish_nav = nav.nav_node_for(finish)?;
+    let ctx = ScoredPathContext::build(nav, field, graph);
+    let (_, _, score) = ctx.best_pair(nav, Some(start_nav), Some(finish_nav), weights)?;
+    Some(score)
+}
+
 pub struct ScoredEndpointsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpointsStrategy {
@@ -88,13 +110,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
             return (RepairResult::Fixed { score: None }, vec![]);
         }
 
-        let path_weight    = params.get(PARAM_PATH_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_PATH_WEIGHT);
-        let junction_weight = params.get(PARAM_JUNCTION_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_JUNCTION_WEIGHT);
-        let oneway_weight  = params.get(PARAM_ONEWAY_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_ONEWAY_WEIGHT);
-        let teleport_weight = params.get(PARAM_TELEPORT_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_TELEPORT_WEIGHT);
-        let split_weight   = params.get(PARAM_SPLIT_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_SPLIT_WEIGHT);
-        let vertical_passage_weight = params.get(PARAM_VERTICAL_PASSAGE_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_VERTICAL_PASSAGE_WEIGHT);
-        let elevator_weight = params.get(PARAM_ELEVATOR_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_ELEVATOR_WEIGHT);
+        let weights = ScoreWeights::from_params(params);
 
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
         let nav = &nav;
@@ -104,10 +120,6 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
         }
 
         let ctx = ScoredPathContext::build(nav, &maze.field, &maze.graph);
-        let weights = ScoreWeights {
-            path_weight, junction_weight, oneway_weight, teleport_weight, split_weight,
-            vertical_passage_weight, elevator_weight,
-        };
 
         // Resolve whichever endpoint is already set to its NavNodeId, fixing it as the
         // corresponding best_pair bound; the other stays None (searched over all nav-nodes).
@@ -142,14 +154,37 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
 
 crate::impl_erased_repair_strategy!(ScoredEndpointsStrategy, MissingEndpointsIssue);
 
-struct ScoreWeights {
-    path_weight:    f64,
-    junction_weight: f64,
-    oneway_weight:  f64,
-    teleport_weight: f64,
-    split_weight:   f64,
-    vertical_passage_weight: f64,
-    elevator_weight: f64,
+pub struct ScoreWeights {
+    pub path_weight:    f64,
+    pub junction_weight: f64,
+    pub oneway_weight:  f64,
+    pub teleport_weight: f64,
+    pub split_weight:   f64,
+    pub vertical_passage_weight: f64,
+    pub elevator_weight: f64,
+}
+
+impl ScoreWeights {
+    fn from_params(params: &StrategyParams) -> Self {
+        Self {
+            path_weight: params.get(PARAM_PATH_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_PATH_WEIGHT),
+            junction_weight: params.get(PARAM_JUNCTION_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_JUNCTION_WEIGHT),
+            oneway_weight: params.get(PARAM_ONEWAY_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_ONEWAY_WEIGHT),
+            teleport_weight: params.get(PARAM_TELEPORT_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_TELEPORT_WEIGHT),
+            split_weight: params.get(PARAM_SPLIT_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_SPLIT_WEIGHT),
+            vertical_passage_weight: params.get(PARAM_VERTICAL_PASSAGE_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_VERTICAL_PASSAGE_WEIGHT),
+            elevator_weight: params.get(PARAM_ELEVATOR_WEIGHT).and_then(|v| v.as_float()).unwrap_or(DEFAULT_ELEVATOR_WEIGHT),
+        }
+    }
+
+    /// Builds weights from a `scored_endpoints` strategy config's raw `HashMap<String, String>`
+    /// overrides (GitHub issue #532) — same parsing/clamping/defaulting `RepairStrategy::apply`
+    /// gets via its own `StrategyParams`, but usable outside the repair pipeline (e.g. by a
+    /// caller that only has the raw `StrategyConfig.params` from a project's rule config, not a
+    /// live `RepairStrategy::apply` call).
+    pub fn from_raw_overrides(overrides: &std::collections::HashMap<String, String>) -> Self {
+        Self::from_params(&crate::repair::params::build_params(PARAMS, Some(overrides)))
+    }
 }
 
 /// Precomputed data derived from NavGraph for scoring endpoint pairs.

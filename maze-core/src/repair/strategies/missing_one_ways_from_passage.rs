@@ -232,7 +232,7 @@ mod tests {
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
         g.add_bidirectional_edge(n1, n2, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(n0), finish: Some(n2), route_score: None };
+        maze.meta = MazeMeta { start: Some(n0), finish: Some(n2) };
 
         let issue = missing_issue(2);
         let mut rng = MazeRng::seed_from_u64(1);
@@ -262,7 +262,7 @@ mod tests {
         let (n0, n1, n2) = (p(0), p(1), p(2));
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(n0), finish: Some(n1), route_score: None };
+        maze.meta = MazeMeta { start: Some(n0), finish: Some(n1) };
         let _ = n2;
 
         let mut preset_state = PresetState::empty();
@@ -291,7 +291,7 @@ mod tests {
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
         g.add_bidirectional_edge(n1, n2, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(n0), finish: Some(n2), route_score: None };
+        maze.meta = MazeMeta { start: Some(n0), finish: Some(n2) };
 
         let mut overrides = HashMap::new();
         overrides.insert(PARAM_PROTECT_ROUTE.to_string(), "false".to_string());

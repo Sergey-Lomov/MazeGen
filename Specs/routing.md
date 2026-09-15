@@ -24,7 +24,11 @@ pub struct RouteInfo {
     pub junction_count: usize, // nav nodes with >= 3 distinct outgoing nav neighbors on the path
     pub one_way_count: usize,  // nav edges without a reverse nav edge on the path
     pub split_count: usize,    // occurrences of a split tile's node among path nodes (see below)
-    pub score: Option<f64>,    // filled externally from ScoredEndpointsStrategy; always None here
+    pub teleport_count: usize, // Teleport-kind nav edges on the path
+    pub vertical_bidirectional_count: usize, // VerticalPassage-kind nav edges on the path with a reverse edge
+    pub vertical_one_way_count: usize,       // VerticalPassage-kind nav edges on the path without a reverse edge
+    pub elevator_count: usize, // Elevator-kind nav edges on the path
+    pub score: Option<f64>,    // filled externally, see MazeAnalysis::route_score below; None here
     pub path: Vec<NodeId>,     // all maze nodes in order from start to finish
 }
 ```
@@ -45,9 +49,23 @@ Number of nav edges on the path for which no reverse nav edge exists (i.e. you c
 
 Count of path nodes (by position, not deduplicated by field point) that sit on a split tile — a field point with two or more nodes (GitHub issue #261). Each occurrence on the path adds to the count independently: a route that passes through two distinct nodes of the same split point (entering via one, exiting via the other) counts 2, even though no single `NodeId` is ever revisited (Dijkstra shortest paths never repeat a node).
 
+### teleport_count / vertical_bidirectional_count / vertical_one_way_count / elevator_count
+
+Per-kind counts of nav edges on the path (GitHub issue #531), each derived from the corresponding `NavEdge` flag (`Specs/nav-graph.md`):
+
+- `teleport_count`: number of path edges with `is_teleport` set.
+- `vertical_bidirectional_count` / `vertical_one_way_count`: path edges with `is_vertical` set, split by whether the edge has a `reverse_edge` (bidirectional passage) or not (one-way passage). The two counts are disjoint and together cover every `VerticalPassage`-kind hop on the path.
+- `elevator_count`: number of path edges with `is_elevator` set.
+
+All four are `0` in the same-nav-node special case below, since that case never walks any nav edges.
+
 ### path
 
 Full ordered list of maze `NodeId`s from `start` to `finish`. Built by concatenating the `NavEdge.path` segments; shared junction nodes at segment boundaries are deduplicated (the first node of each subsequent segment is skipped).
+
+### score
+
+Always `None` from `compute_route_info` itself — filled in separately by `MazeAnalysis::route_score` (see `Specs/analysis.md`), which reuses this same nav graph to score the `start`/`finish` route against the project's configured `scored_endpoints` weights (`ScoreWeights`, `maze_core::repair::strategies::score_for_route`). Computed independently of repair dispatch (GitHub issue #532) — it reflects the current route after any post-edit, not just right after generation, and is `None` whenever no rule configures `scored_endpoints` (there is genuinely no score to show, not a missing feature).
 
 ### Special case: same nav node
 
@@ -55,7 +73,7 @@ Under the required precondition (both `start` and `finish` pinned), `start_nav =
 
 - `path_length` = 1 if `start == finish`, else 2.
 - `path` = `[start]` if `start == finish`, else `[start, finish]`.
-- `junction_count` = 0, `one_way_count` = 0.
+- `junction_count` = 0, `one_way_count` = 0, `teleport_count` = 0, `vertical_bidirectional_count` = 0, `vertical_one_way_count` = 0, `elevator_count` = 0.
 - `split_count` = 1 if the single node sits on a split tile, else 0 (0 if `start == finish` and `path = [start]`; each of the two path nodes checked independently when `start != finish`).
 
 ## Algorithm

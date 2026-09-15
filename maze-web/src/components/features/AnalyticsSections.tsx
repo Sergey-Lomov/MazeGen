@@ -7,10 +7,13 @@ import * as m from "~/paraglide/messages";
 import React from "react";
 import { InfoIconButton } from "../InfoIconButton";
 
-export function StatRow({ label, count, pct, valueText }: { label: string; count?: number; pct?: number | null; valueText?: string }) {
+export function StatRow({ label, count, pct, valueText, onOpenInfo }: { label: string; count?: number; pct?: number | null; valueText?: string; onOpenInfo?: () => void }) {
   return (
     <div style={styles.statRow}>
-      <span style={styles.statLabel}>{label}</span>
+      <span style={styles.statLabelGroup}>
+        <span style={styles.statLabel}>{label}</span>
+        {onOpenInfo && <InfoIconButton onClick={onOpenInfo} />}
+      </span>
       <span style={styles.statCount}>{valueText ?? count}</span>
       {pct !== undefined && <span style={styles.statPct}>{pct == null ? "—" : `${pct.toFixed(1)}%`}</span>}
     </div>
@@ -19,6 +22,14 @@ export function StatRow({ label, count, pct, valueText }: { label: string; count
 
 export function formatMs(ms: number): string {
   return `${Math.round(ms)} ms`;
+}
+
+// Rounds to at most 2 decimal places, dropping trailing zeros (1 -> "1", 1.5 -> "1.5", never
+// a 3rd decimal, e.g. 1.005 -> "1.01" not "1.005") -- GitHub issue #532's route score is a
+// weighted sum that's rarely a clean integer, so a plain toFixed(2) padded most values with
+// misleading trailing zeros (e.g. "3.00").
+export function formatScore(score: number): string {
+  return (Math.round(score * 100) / 100).toString();
 }
 
 export function GraphSection({ g }: { g: GraphStatsDto }) {

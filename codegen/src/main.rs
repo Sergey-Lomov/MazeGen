@@ -176,6 +176,7 @@ fn main() -> ExitCode {
                 ("CheckInstanceConfig", "../types"),
                 ("WasmTessellationConfig", "../types"),
                 ("PresetConnection", "../types"),
+                ("StrategyConfig", "../types"),
             ]);
             let dto_ts_path = repo_root.join("maze-web").join("src").join("wasm").join("generated").join("dto.ts");
             write_or_check(&dto_ts_path, &dto_ts_text, check_only, &mut had_errors);
