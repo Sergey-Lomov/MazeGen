@@ -10,7 +10,7 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::remaining_deficits::RemainingDeficits;
-use super::dead_end_priority::apply_src_mode;
+use super::pool::Pool;
 use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
 
 pub const PARAM_STOP_COUNT: &str = "stop_count";
@@ -130,17 +130,14 @@ impl<T: Tessellation> RepairStrategy<T, MissingElevatorsIssue> for AddElevatorSt
             };
 
             let base_pool: Vec<NodeId> = maze.field.all_node_ids().collect();
-            let mut pool = apply_src_mode(maze, base_pool, src_mode, rng);
+            let mut pool = Pool::new(base_pool, src_mode, maze, rng);
             let mut added: u32 = 0;
 
             while added < target && !pool.is_empty() {
                 let mut slot_filled = false;
 
                 for _ in 0..attempts_limit {
-                    if pool.is_empty() {
-                        break;
-                    }
-                    let start = pool.pop().unwrap();
+                    let Some(start) = pool.take() else { break };
 
                     if let Some(stops) = try_build_elevator(
                         maze, start, &levels, stop_count_min, stop_count_max,

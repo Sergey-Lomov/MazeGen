@@ -873,6 +873,26 @@ A dead end is a node with exactly one distinct graph neighbor (incoming and outg
 
 Issue #278 also tracks a systematic audit of every other strategy parameter with a similar "priority tier, then fall back to the rest" shape, checking each one independently for the same exhaustion risk and for whether a single combined pool (as here) or two separate pools is the better fit given that strategy's own performance profile — not assumed to generalize from this fix alone.
 
+### Pool (shared, not a strategy)
+
+`maze-core/src/repair/strategies/pool.rs` — shared candidate-pool wrapper (GitHub issue #521, part of epic #520). Extracted from the near-identical inline `Vec<NodeId>` handling that `AddElevatorStrategy`, `AddSplitStrategy`, and `AddVerticalPassageStrategy` each reimplemented: build a candidate list, order it via `apply_src_mode`, then consume it one `pop`-from-end candidate at a time until exhausted.
+
+```rust
+pub struct Pool { /* ordered Vec<NodeId> */ }
+
+impl Pool {
+    pub fn new<T: Tessellation>(candidates: Vec<NodeId>, src_mode: &str, maze: &Maze<T>, rng: &mut dyn RngCore) -> Self;
+    pub fn take(&mut self) -> Option<NodeId>;
+    pub fn is_empty(&self) -> bool;
+}
+```
+
+`Pool::new` orders `candidates` via `apply_src_mode` (dead-ends-last under `dead_end_priority`, shuffled otherwise); `take` pops from the end, matching that ordering, and returns `None` once exhausted. A failed candidate is simply never returned again — `take` already removed it, same as the strategies' own prior inline eviction.
+
+**Deliberately excludes `attempts_limit` accounting.** The three migrated strategies budget failed attempts differently (`AddElevatorStrategy` resets a per-slot consecutive count each time a slot is filled; `AddSplitStrategy`/`AddVerticalPassageStrategy` run one running total per area) — folding a budget into `Pool` would force one semantics onto every caller. `Pool` only owns candidate storage, ordering, and pop-based eviction; each strategy's own loop still tracks its own `attempts_limit` counter exactly as before. This also anticipates epic #520's follow-up split (single-element vs series/repeat strategies): the series strategy is expected to own the pool *and* whichever attempt-budget shape it needs, constructing/holding a `Pool` from outside the single-element strategy that consumes it, rather than `Pool` prescribing one.
+
+**`MissingTeleportsStrategy` is not migrated** — it doesn't use `apply_src_mode`/`src_mode` at all (its own `entry_pick` param is the source-ordering knob) and consumes its candidate list via random-index pick + `swap_remove`, not pop-from-end. Forcing it onto `Pool`'s pop-based consumption would change its actual selection semantics, which is out of scope for a pure extraction.
+
 ### MissingLoopsRandomStrategy
 
 Handles `MISSING_LOOPS` — opposite approach from `InvalidLoopRandomStrategy`/`InvalidLoopScoredStrategy`, which cut edges from existing bad loops. This strategy instead seeds new connections at random between geometrically adjacent node pairs, expecting a follow-up QC pass to discard whichever of them don't end up forming a valid loop. `issue.missing` (how many loops short of the requirement) is mandatory — the producing check (`MinLoopsCountCheck`/`MinLoopDensityCheck`) already computed it; there is no other channel.

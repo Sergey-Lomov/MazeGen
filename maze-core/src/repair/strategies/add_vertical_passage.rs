@@ -10,7 +10,7 @@ use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use super::remaining_deficits::RemainingDeficits;
 use super::vertical_target::{DirectionConstraint, resolve_vertical_target};
-use super::dead_end_priority::apply_src_mode;
+use super::pool::Pool;
 use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
 
 pub const PARAM_ONE_WAY_BALANCE: &str = "one_way_balance";
@@ -104,15 +104,13 @@ impl<T: Tessellation> RepairStrategy<T, MissingVerticalPassagesIssue> for AddVer
                     RepairArea::Level(level) => maze.field.level_of(n) == Some(level),
                 })
                 .collect();
-            let mut pool: Vec<NodeId> = apply_src_mode(maze, eligible, src_mode, rng);
+            let mut pool = Pool::new(eligible, src_mode, maze, rng);
             let mut added: u32 = 0;
             // A popped `src` that adds nothing counts against the budget (running total).
             let mut failed_attempts: usize = 0;
 
-            while added < target && !pool.is_empty() && failed_attempts < max_failed_attempts {
-                // Pop from the end, not a random index — `apply_src_mode` orders the pool so
-                // dead-end candidates sit here when `dead_end_priority` is active.
-                let src = pool.pop().expect("pool.is_empty() already checked by the while condition");
+            while added < target && failed_attempts < max_failed_attempts {
+                let Some(src) = pool.take() else { break };
 
                 let Some((from, to)) = resolve_vertical_target(maze, src, rng, &constraint, direction_balance) else {
                     failed_attempts += 1;

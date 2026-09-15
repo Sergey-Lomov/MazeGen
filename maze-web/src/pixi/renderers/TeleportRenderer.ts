@@ -181,7 +181,7 @@ export class TeleportRenderer {
     // visible badges (same label formula `drawGroupPoints` uses: `formatIndexLabel(n - 1)`).
     // Skipped entirely when this floor draws no badge — nothing to size, and the `BitmapText`
     // width probe is pure cost (and needs a canvas the way a headless test may not have one).
-    if (this.selectionFloorBadges.size === 0) {
+    if (this.selectionFloorBadges.size === 0 || style.connectorStyle === "none") {
       this.selectionFloorBadgeFontSize = 0;
     } else {
       const badgeLabels =
@@ -290,6 +290,9 @@ export class TeleportRenderer {
     const rounded = style.cornerStyle === "round";
     for (const [px, py] of group.points) {
       if (this.selectionFloorBadges.has(coordKey(px, py))) {
+        // A floor badge (and its gap ring) follows the connector's own visibility — no connector,
+        // no badge, no ring, no ordinary marker either (GitHub issue #519, see `drawGroupPoints`).
+        if (style.connectorStyle === "none") continue;
         // GitHub issue #485: the badge has its own `floorBadge.size`, independent of the edge
         // marker's `style.size`, and its border follows `style.borderWidth`. The gap ring matches
         // the badge's own `floorBadge.shape` (drawn rounded, like the badge body in
@@ -330,6 +333,11 @@ export class TeleportRenderer {
     for (const [px, py] of group.points) {
       const floorNumber = this.selectionFloorBadges.get(coordKey(px, py));
       if (floorNumber !== undefined) {
+        // A floor badge stands in for the connector's off-floor endpoint — it must follow the
+        // same visibility rule as the connector itself (GitHub issue #519). With `connectorStyle:
+        // "none"` there's no connector to point at, so the point draws nothing at all here (not an
+        // ordinary marker either — this point is a synthetic midpoint, not a real teleport node).
+        if (style.connectorStyle === "none") continue;
         // A group override's `borderColor` is the group's "secondary" color (it also drives the
         // marker border and every connector touching the group, see above) — when group
         // customization is on, the badge's fill and border both follow it instead of the ordinary
