@@ -10,6 +10,10 @@ pub struct RouteInfo {
     pub junction_count: usize, // nav-nodes with degree >= 3 on the path
     pub one_way_count: usize,  // nav-edges without reverse on the path
     pub split_count: usize,    // occurrences of a split tile's node among path nodes (each hop counted, not deduped by tile)
+    pub teleport_count: usize, // Teleport-kind nav-edges on the path
+    pub vertical_bidirectional_count: usize, // VerticalPassage-kind nav-edges on the path with a reverse edge
+    pub vertical_one_way_count: usize,       // VerticalPassage-kind nav-edges on the path without a reverse edge
+    pub elevator_count: usize, // Elevator-kind nav-edges on the path
     pub path: Vec<NodeId>,     // all maze nodes on the route in order
 }
 
@@ -79,6 +83,14 @@ fn count_junctions(nav: &NavGraph, nav_nodes_on_path: &[NavNodeId]) -> usize {
     }).count()
 }
 
+fn count_by_kind(
+    path_edge_indices: &[usize],
+    all_edges: &[&crate::graph::nav::NavEdge],
+    is_kind: impl Fn(&crate::graph::nav::NavEdge) -> bool,
+) -> usize {
+    path_edge_indices.iter().filter(|&&ei| is_kind(all_edges[ei])).count()
+}
+
 /// Counts every path-node occurrence that sits on a split tile (a field point with >= 2 nodes) —
 /// each hop is counted independently, so a route crossing the same split tile twice counts twice.
 fn count_splits<T: Tessellation>(field: &MultiLevelField<T>, path: &[NodeId]) -> usize {
@@ -107,7 +119,17 @@ pub fn compute_route_info<T: Tessellation>(nav: &NavGraph, field: &MultiLevelFie
         let path = if start == finish { vec![start] } else { vec![start, finish] };
         let path_length = path.len();
         let split_count = count_splits(field, &path);
-        return Some(RouteInfo { path_length, junction_count: 0, one_way_count: 0, split_count, path });
+        return Some(RouteInfo {
+            path_length,
+            junction_count: 0,
+            one_way_count: 0,
+            split_count,
+            teleport_count: 0,
+            vertical_bidirectional_count: 0,
+            vertical_one_way_count: 0,
+            elevator_count: 0,
+            path,
+        });
     }
 
     let all_edges: Vec<_> = nav.edges().collect();
@@ -129,8 +151,22 @@ pub fn compute_route_info<T: Tessellation>(nav: &NavGraph, field: &MultiLevelFie
     let one_way_count = count_one_way(&path_edge_indices, &all_edges, &edge_pairs);
     let junction_count = count_junctions(nav, &nav_nodes_on_path);
     let split_count   = count_splits(field, &maze_path);
+    let teleport_count = count_by_kind(&path_edge_indices, &all_edges, |e| e.is_teleport);
+    let vertical_bidirectional_count = count_by_kind(&path_edge_indices, &all_edges, |e| e.is_vertical && e.reverse_edge.is_some());
+    let vertical_one_way_count = count_by_kind(&path_edge_indices, &all_edges, |e| e.is_vertical && e.reverse_edge.is_none());
+    let elevator_count = count_by_kind(&path_edge_indices, &all_edges, |e| e.is_elevator);
 
-    Some(RouteInfo { path_length, junction_count, one_way_count, split_count, path: maze_path })
+    Some(RouteInfo {
+        path_length,
+        junction_count,
+        one_way_count,
+        split_count,
+        teleport_count,
+        vertical_bidirectional_count,
+        vertical_one_way_count,
+        elevator_count,
+        path: maze_path,
+    })
 }
 
 #[cfg(test)]
@@ -323,5 +359,59 @@ mod tests {
         let route = compute_route_info(&nav, &field, n0, n2).unwrap();
         assert_eq!(route.path, vec![n0, n1, extra, n2]);
         assert_eq!(route.split_count, 2, "route crosses the split tile via two distinct nodes, each must count");
+    }
+
+    #[test]
+    fn teleport_hop_on_path_is_counted() {
+        let (field, nodes) = field_with_nodes(2);
+        let mut g = Graph::new();
+        for &id in &nodes { g.add_node(id); }
+        g.add_edge(nodes[0], nodes[1], EdgeKind::Teleport);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[1]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[1]).unwrap();
+        assert_eq!(route.teleport_count, 1);
+        assert_eq!(route.vertical_bidirectional_count, 0);
+        assert_eq!(route.vertical_one_way_count, 0);
+        assert_eq!(route.elevator_count, 0);
+    }
+
+    #[test]
+    fn bidirectional_vertical_passage_on_path_counts_as_bidirectional_not_one_way() {
+        let (field, nodes) = field_with_nodes(2);
+        let mut g = Graph::new();
+        for &id in &nodes { g.add_node(id); }
+        g.add_edge(nodes[0], nodes[1], EdgeKind::VerticalPassage);
+        g.add_edge(nodes[1], nodes[0], EdgeKind::VerticalPassage);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[1]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[1]).unwrap();
+        assert_eq!(route.vertical_bidirectional_count, 1);
+        assert_eq!(route.vertical_one_way_count, 0);
+    }
+
+    #[test]
+    fn one_way_vertical_passage_on_path_counts_as_one_way_not_bidirectional() {
+        let (field, nodes) = field_with_nodes(2);
+        let mut g = Graph::new();
+        for &id in &nodes { g.add_node(id); }
+        g.add_edge(nodes[0], nodes[1], EdgeKind::VerticalPassage); // one-way only
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[1]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[1]).unwrap();
+        assert_eq!(route.vertical_bidirectional_count, 0);
+        assert_eq!(route.vertical_one_way_count, 1);
+    }
+
+    #[test]
+    fn elevator_hop_on_path_is_counted() {
+        let (field, nodes) = field_with_nodes(2);
+        let mut g = Graph::new();
+        for &id in &nodes { g.add_node(id); }
+        g.add_edge(nodes[0], nodes[1], EdgeKind::Elevator);
+        g.add_edge(nodes[1], nodes[0], EdgeKind::Elevator);
+        let nav = build_nav_graph_pinned(&g, &pinned(&[nodes[0], nodes[1]]));
+        let route = compute_route_info(&nav, &field, nodes[0], nodes[1]).unwrap();
+        assert_eq!(route.elevator_count, 1);
+        assert_eq!(route.teleport_count, 0);
+        assert_eq!(route.vertical_bidirectional_count, 0);
+        assert_eq!(route.vertical_one_way_count, 0);
     }
 }

@@ -26,7 +26,7 @@ All other nodes are **junction nodes** and become `NavNode` entries. The three e
 
 **VerticalPassage endpoints are never passage nodes**, same rationale and same unconditional scope as the teleport/elevator exemptions above (GitHub issue #517): a `VerticalPassage` endpoint can coincidentally satisfy the 2-symmetric-pairs degree shape (e.g. two bidirectional vertical passages to two other-floor nodes). Without this exemption such a node got silently compressed into some other nav-edge's interior `path`, so `nav_node_for` returned `None` for it — any caller keying off the endpoint's own `NavNodeId` (routing, QC distance checks, the web renderers' cross-floor badge/marker placement) resolved a neighboring corridor node instead, rendering the passage's marker/badge on the wrong cell.
 
-Unlike `NavEdge.is_teleport`/`is_elevator` below, a single-hop `NavEdge` backed by a `VerticalPassage` graph edge carries no `is_vertical_passage` flag of its own — it is indistinguishable from an ordinary `Basic` one-hop edge at the `NavEdge` level. This exemption only guarantees the endpoint keeps its own `NavNodeId`; it does not add vertical-passage hop-kind tracking to `NavEdge`.
+Like `NavEdge.is_teleport`/`is_elevator` below, a single-hop `NavEdge` backed by a `VerticalPassage` graph edge carries its own `is_vertical` flag (GitHub issue #531), set the same way and for the same reason: `VerticalPassage` endpoints are never passage nodes (see above), so a `VerticalPassage` hop is always single-hop.
 
 > **Note on terminology:** "Corridor" in generation settings (`corridor_chance`, `corridor_length`) refers to multi-node passages generated as a unit — a different concept. The nav graph uses "passage node" for the topological property (exactly 2 symmetric bidirectional neighbors), independent of how the maze was generated. The geometric stat "Straight" in `GeometricNodeStats` is a related but distinct concept: a node with 2 outgoing neighbors where the path is geometrically straight (per `field.is_straight`).
 
@@ -56,6 +56,9 @@ pub struct NavEdge {
     /// True if this is a single-hop (`path.len() == 2`) edge backed by an `Elevator`-kind graph
     /// edge between `path[0]` and `path[1]`.
     pub is_elevator: bool,
+    /// True if this is a single-hop (`path.len() == 2`) edge backed by a `VerticalPassage`-kind
+    /// graph edge between `path[0]` and `path[1]`.
+    pub is_vertical: bool,
 }
 ```
 
@@ -63,13 +66,14 @@ pub struct NavEdge {
 - `path[last]` is the maze node of the target `NavNode`.
 - Intermediate entries are the passage nodes absorbed into this edge.
 - For a bidirectional passage `A⇄X⇄B`, two edges are produced: `A→B` with path `[A, X, B]` and `B→A` with path `[B, X, A]`.
-- `reverse_edge` is populated post-construction by `link_reverse_edges`, keyed on `(path, is_teleport, is_elevator)` — see "Reverse edge linking" below.
+- `reverse_edge` is populated post-construction by `link_reverse_edges`, keyed on `(path, is_teleport, is_elevator, is_vertical)` — see "Reverse edge linking" below.
 - `is_teleport` (GitHub issue #197): only a single-hop edge can be teleport-backed — passage nodes are never teleport endpoints (see above), so a multi-hop `path` is always `Basic` hops end to end. A `Basic` edge may coexist in the same direction between the same pair as a `Teleport` edge (`Graph::add_edge`'s kind-aware dedup); construction then builds two distinct one-hop `NavEdge`s sharing the same `path`, disambiguated by this flag. Set at construction time from the specific graph `EdgeId` being processed — not re-derived via `Graph::edge_between_kind(path[0], path[1], ..)` afterward, which would be ambiguous between the two coexisting kinds.
 - `is_elevator` (GitHub issue #372): same rationale as `is_teleport`, for `EdgeKind::Elevator` instead — only a single-hop edge can be elevator-backed, since elevator endpoints are never passage nodes (see above).
+- `is_vertical` (GitHub issue #531): same rationale as `is_teleport`/`is_elevator`, for `EdgeKind::VerticalPassage` instead — only a single-hop edge can be vertical-passage-backed, since vertical-passage endpoints are never passage nodes (see above). Used by `routing::compute_route_info` to report `vertical_bidirectional_count`/`vertical_one_way_count` on the route (`Specs/routing.md`).
 
 ### Reverse edge linking
 
-After construction, `link_reverse_edges` scans all edges and links each to its reverse (same corridor, opposite direction) via `reverse_edge`, where a reverse exists. Two edges are reverses of each other when one's `path` is the exact reverse of the other's **and** both have the same `is_teleport` and `is_elevator` values — keying on `path` alone would risk linking a `Basic` edge's `reverse_edge` to an unrelated `Teleport`/`Elevator` edge (or vice versa) when more than one kind of one-hop edge exists in each direction between the same node pair.
+After construction, `link_reverse_edges` scans all edges and links each to its reverse (same corridor, opposite direction) via `reverse_edge`, where a reverse exists. Two edges are reverses of each other when one's `path` is the exact reverse of the other's **and** both have the same `is_teleport`, `is_elevator`, and `is_vertical` values — keying on `path` alone would risk linking a `Basic` edge's `reverse_edge` to an unrelated `Teleport`/`Elevator`/`VerticalPassage` edge (or vice versa) when more than one kind of one-hop edge exists in each direction between the same node pair.
 
 ### NavGraph
 

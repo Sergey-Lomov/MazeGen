@@ -203,7 +203,9 @@ export function AnalyticsFeature() {
 
       {regionClassLegendOpen && <RegionClassLegendModal onClose={() => setRegionClassLegendOpen(false)} />}
 
-      {/* Path block — hidden when no route */}
+      {/* Path block — hidden when no route. Each element-type row (GitHub issue #531) shows only
+          when the maze has at least one instance of that element, maze-wide — otherwise it's
+          skipped entirely rather than showing a misleading always-zero row. */}
       {routeInfo != null && (
         <>
           <div style={styles.divider} />
@@ -212,8 +214,24 @@ export function AnalyticsFeature() {
             <div style={styles.statBlock}>
               <StatRow label={m["analytics.path_length"]()} count={routeInfo.path_length} />
               <StatRow label={m["analytics.junction_count"]()} count={routeInfo.junction_count} />
-              <StatRow label={m["analytics.one_way_count"]()} count={routeInfo.one_way_count} />
-              <StatRow label={m["analytics.split_count"]()} count={routeInfo.split_count} />
+              {(statistics?.elements_stats.total.one_way_passages ?? 0) > 0 && (
+                <StatRow label={m["analytics.one_way_count"]()} count={routeInfo.one_way_count} />
+              )}
+              {(statistics != null && (statistics.elements_stats.total.two_way_teleports + statistics.elements_stats.total.one_way_teleports) > 0) && (
+                <StatRow label={m["analytics.teleport_count"]()} count={routeInfo.teleport_count} />
+              )}
+              {(statistics?.elements_stats.total.split_tile_count ?? 0) > 0 && (
+                <StatRow label={m["analytics.split_count"]()} count={routeInfo.split_count} />
+              )}
+              {(statistics?.vertical_stats.bidirectional_passages ?? 0) > 0 && (
+                <StatRow label={m["analytics.vertical_bidirectional_count"]()} count={routeInfo.vertical_bidirectional_count} />
+              )}
+              {(statistics != null && (statistics.vertical_stats.one_way_passages_up + statistics.vertical_stats.one_way_passages_down) > 0) && (
+                <StatRow label={m["analytics.vertical_one_way_count"]()} count={routeInfo.vertical_one_way_count} />
+              )}
+              {(statistics?.vertical_stats.elevator_groups ?? 0) > 0 && (
+                <StatRow label={m["analytics.elevator_count"]()} count={routeInfo.elevator_count} />
+              )}
               {routeInfo.score != null && (
                 <div style={styles.scoreRow}>
                   <span style={styles.statLabel}>{m["analytics.score"]()}</span>

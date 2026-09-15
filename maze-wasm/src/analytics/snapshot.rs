@@ -333,12 +333,16 @@ pub fn build_analytics_snapshot<T: Tessellation>(
     let statistics = MazeStatisticsDto { graph_stats, cell_count, cell_stats, passage_stats, elements_stats, vertical_stats, elevator_stop_count };
 
     let route_info = maze.analysis.route_info(&maze.graph, &maze.field, &maze.meta).map(|r| RouteInfoDto {
-        path_length:    r.path_length,
+        path_length: r.path_length,
         junction_count: r.junction_count,
-        one_way_count:  r.one_way_count,
-        split_count:    r.split_count,
-        score:          maze.meta.route_score,
-        path:           r.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect(),
+        one_way_count: r.one_way_count,
+        split_count: r.split_count,
+        teleport_count: r.teleport_count,
+        vertical_bidirectional_count: r.vertical_bidirectional_count,
+        vertical_one_way_count: r.vertical_one_way_count,
+        elevator_count: r.elevator_count,
+        score: maze.meta.route_score,
+        path: r.path.iter().filter_map(|&id| u32::try_from(id).ok()).collect(),
     });
 
     Ok(MazeSnapshot {

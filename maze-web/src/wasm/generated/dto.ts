@@ -96,6 +96,10 @@ export interface RouteInfoDto {
   junction_count: number;
   one_way_count: number;
   split_count: number;
+  teleport_count: number;
+  vertical_bidirectional_count: number;
+  vertical_one_way_count: number;
+  elevator_count: number;
   score: number | null;
   path: number[];
 }

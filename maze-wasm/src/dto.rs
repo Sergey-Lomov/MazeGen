@@ -101,6 +101,10 @@ pub struct RouteInfoDto {
     pub junction_count: usize,
     pub one_way_count: usize,
     pub split_count: usize,
+    pub teleport_count: usize,
+    pub vertical_bidirectional_count: usize,
+    pub vertical_one_way_count: usize,
+    pub elevator_count: usize,
     pub score: Option<f64>,
     pub path: Vec<u32>,
 }
