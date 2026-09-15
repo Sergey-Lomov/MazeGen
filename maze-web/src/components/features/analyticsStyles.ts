@@ -20,6 +20,7 @@ export const styles: Record<string, React.CSSProperties> = {
   statRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
   statLabelGroup: { flex: 1, display: "flex", alignItems: "center", gap: spacing.rowGap },
   statLabel: { ...muted(typography.body) },
+  noRouteText: { ...disabled(typography.body) },
   statCount: { ...typography.caption, minWidth: 32, textAlign: "right" },
   statPct: { ...disabled(typography.body), minWidth: 44, textAlign: "right" },
   scoreInfoWeights: { display: "flex", flexDirection: "column", gap: spacing.itemGap },

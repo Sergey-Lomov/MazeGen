@@ -204,41 +204,51 @@ export function AnalyticsFeature() {
 
       {regionClassLegendOpen && <RegionClassLegendModal onClose={() => setRegionClassLegendOpen(false)} />}
 
-      {/* Path block — hidden when no route. Each element-type row (GitHub issue #531) shows only
-          when the maze has at least one instance of that element, maze-wide — otherwise it's
-          skipped entirely rather than showing a misleading always-zero row. */}
-      {routeInfo != null && (
+      {/* Path block — visible whenever start/finish are both set (same gate the backend uses for
+          `region_classes`, see `regionClassesUnavailable` above), even if no route connects them
+          (GitHub issue #534) — shows a "no path" notice instead of disappearing, so the maze
+          state (disconnected regions) doesn't look like a missing feature. Each element-type row
+          (GitHub issue #531) shows only when the maze has at least one instance of that element,
+          maze-wide — otherwise it's skipped entirely rather than showing a misleading
+          always-zero row. */}
+      {!regionClassesUnavailable && (
         <>
           <div style={styles.divider} />
           <SectionHeader label={m["analytics.path"]()} expanded={isExpanded("path")} onToggle={() => toggleSection("path")} />
           {isExpanded("path") && (
             <div style={styles.statBlock}>
-              {routeInfo.score != null && (
-                <StatRow
-                  label={m["analytics.score"]()}
-                  valueText={formatScore(routeInfo.score)}
-                  onOpenInfo={() => setScoreInfoOpen(true)}
-                />
-              )}
-              <StatRow label={m["analytics.path_length"]()} count={routeInfo.path_length} />
-              <StatRow label={m["analytics.junction_count"]()} count={routeInfo.junction_count} />
-              {(statistics?.elements_stats.total.one_way_passages ?? 0) > 0 && (
-                <StatRow label={m["analytics.one_way_count"]()} count={routeInfo.one_way_count} />
-              )}
-              {(statistics != null && (statistics.elements_stats.total.two_way_teleports + statistics.elements_stats.total.one_way_teleports) > 0) && (
-                <StatRow label={m["analytics.teleport_count"]()} count={routeInfo.teleport_count} />
-              )}
-              {(statistics?.elements_stats.total.split_tile_count ?? 0) > 0 && (
-                <StatRow label={m["analytics.split_count"]()} count={routeInfo.split_count} />
-              )}
-              {(statistics?.vertical_stats.bidirectional_passages ?? 0) > 0 && (
-                <StatRow label={m["analytics.vertical_bidirectional_count"]()} count={routeInfo.vertical_bidirectional_count} />
-              )}
-              {(statistics != null && (statistics.vertical_stats.one_way_passages_up + statistics.vertical_stats.one_way_passages_down) > 0) && (
-                <StatRow label={m["analytics.vertical_one_way_count"]()} count={routeInfo.vertical_one_way_count} />
-              )}
-              {(statistics?.vertical_stats.elevator_groups ?? 0) > 0 && (
-                <StatRow label={m["analytics.elevator_count"]()} count={routeInfo.elevator_count} />
+              {routeInfo == null ? (
+                <div style={styles.noRouteText}>{m["analytics.no_route"]()}</div>
+              ) : (
+                <>
+                  {routeInfo.score != null && (
+                    <StatRow
+                      label={m["analytics.score"]()}
+                      valueText={formatScore(routeInfo.score)}
+                      onOpenInfo={() => setScoreInfoOpen(true)}
+                    />
+                  )}
+                  <StatRow label={m["analytics.path_length"]()} count={routeInfo.path_length} />
+                  <StatRow label={m["analytics.junction_count"]()} count={routeInfo.junction_count} />
+                  {(statistics?.elements_stats.total.one_way_passages ?? 0) > 0 && (
+                    <StatRow label={m["analytics.one_way_count"]()} count={routeInfo.one_way_count} />
+                  )}
+                  {(statistics != null && (statistics.elements_stats.total.two_way_teleports + statistics.elements_stats.total.one_way_teleports) > 0) && (
+                    <StatRow label={m["analytics.teleport_count"]()} count={routeInfo.teleport_count} />
+                  )}
+                  {(statistics?.elements_stats.total.split_tile_count ?? 0) > 0 && (
+                    <StatRow label={m["analytics.split_count"]()} count={routeInfo.split_count} />
+                  )}
+                  {(statistics?.vertical_stats.bidirectional_passages ?? 0) > 0 && (
+                    <StatRow label={m["analytics.vertical_bidirectional_count"]()} count={routeInfo.vertical_bidirectional_count} />
+                  )}
+                  {(statistics != null && (statistics.vertical_stats.one_way_passages_up + statistics.vertical_stats.one_way_passages_down) > 0) && (
+                    <StatRow label={m["analytics.vertical_one_way_count"]()} count={routeInfo.vertical_one_way_count} />
+                  )}
+                  {(statistics?.vertical_stats.elevator_groups ?? 0) > 0 && (
+                    <StatRow label={m["analytics.elevator_count"]()} count={routeInfo.elevator_count} />
+                  )}
+                </>
               )}
             </div>
           )}

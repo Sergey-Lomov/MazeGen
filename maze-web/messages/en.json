@@ -1576,7 +1576,7 @@
   "analytics.score_info_desc": "How interesting and challenging the current start/finish route is. The score accounts for path length, junction count, one-way passages, teleports, elevators, and other special elements.",
   "analytics.score_info_visibility": "Only shown when the quality control's endpoint-fixing strategy is set to \"Scored endpoints\", since the score is computed directly from that strategy's own weight parameters.",
   "analytics.score_info_current_weights": "Current settings",
-  "analytics.no_route": "No route",
+  "analytics.no_route": "No path from start to finish",
   "analytics.layer_maze": "Maze",
   "analytics.layer_components": "Connectivity regions",
   "analytics.layer_graph": "Graph",

@@ -51,7 +51,7 @@ function makeStatistics(overrides: {
       pure_cycle_node_ids: [],
       pure_cycle_edge_pairs: [],
       cycle_analysis_overflowed: false,
-      region_classes: {},
+      region_classes: { 0: "path" },
     },
     cell_count: { total: 1, by_floor: { 0: 1 } },
     cell_stats: { total: baseCellStats, by_floor: { 0: baseCellStats } },
@@ -131,6 +131,26 @@ describe("AnalyticsFeature Path section element-type rows", () => {
     useMazeStore.setState({ statistics: makeStatistics({ verticalStats: { elevator_groups: 1 } }) });
     render(<AnalyticsFeature />);
     expect(screen.getByText("Elevator rides on path")).toBeInTheDocument();
+  });
+});
+
+// GitHub issue #534: when start/finish are both set (region_classes non-empty) but no route
+// connects them, the Path section stays visible with an info notice instead of disappearing.
+describe("AnalyticsFeature Path section no-route notice", () => {
+  it("shows a no-route notice instead of stat rows when routeInfo is null but region_classes is non-empty", () => {
+    useMazeStore.setState({ statistics: makeStatistics({}), routeInfo: null });
+    render(<AnalyticsFeature />);
+    expect(screen.getByText("Path")).toBeInTheDocument();
+    expect(screen.getByText("No path from start to finish")).toBeInTheDocument();
+    expect(screen.queryByText("Path length")).not.toBeInTheDocument();
+  });
+
+  it("hides the Path section entirely when region_classes is empty (start/finish unset)", () => {
+    const stats = makeStatistics({});
+    stats.graph_stats.region_classes = {};
+    useMazeStore.setState({ statistics: stats, routeInfo: null });
+    render(<AnalyticsFeature />);
+    expect(screen.queryByText("Path")).not.toBeInTheDocument();
   });
 });
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { typography, muted, spacing } from "../styles/theme";
+import { typography, muted, disabled as disabledStyle, spacing } from "../styles/theme";
 import { Switch } from "./Switch";
 import { Inline } from "./Layout";
 import { InfoIconButton } from "./InfoIconButton";
@@ -11,7 +11,7 @@ export function ToggleRow({ label, checked, onChange, disabled, info }: { label:
   return (
     <Inline gap="groupGap">
       <span style={styles.toggleLabelGroup}>
-        <span style={{ ...styles.toggleLabel, ...(disabled ? { opacity: 0.4 } : {}) }}>{label}</span>
+        <span style={disabled ? disabledStyle(typography.body) : styles.toggleLabel}>{label}</span>
         {info && <InfoIconButton onClick={info} />}
       </span>
       <Switch checked={checked && !disabled} onChange={disabled ? () => {} : onChange} />

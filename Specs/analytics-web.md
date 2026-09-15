@@ -25,7 +25,7 @@ Block order (top to bottom):
 
 1. **Issues**
 2. **Overlay layers** — always visible when card is open
-3. **Path** — hidden when `routeInfo == null` (loose check — WASM may return `undefined`)
+3. **Path** — hidden when `statistics.graph_stats.region_classes` is empty (start or finish unset, same gate as the Region classes overlay toggle); shown otherwise even when `routeInfo == null` (no route connects start and finish), in which case it displays a "no path" notice instead of stat rows (GitHub issue #534)
 4. **Summary statistics** — hidden when `statistics == null`; a compact block plus a "Detailed report" button opening `DetailedReportPanel` (GitHub issue #364)
 5. **Timing** — hidden when `timing == null`
 
@@ -78,7 +78,11 @@ An info icon (ℹ) sits next to the Region classes label (same convention as eve
 
 ### Path Block
 
-Shown only when `routeInfo != null`. Fields, in display order:
+Shown whenever `statistics.graph_stats.region_classes` is non-empty (start and finish both set — the same condition `MazeAnalysis::region_classes` on the Rust side returns an empty map for, independent of whether a route actually exists). Hidden when `statistics == null` or start/finish aren't both set.
+
+When `routeInfo == null` (start/finish set but no route connects them, e.g. disconnected regions), the block shows a single "no path" notice (`analytics.no_route`, styled with the `disabled` typography token — same visual weight as a disabled `ToggleRow` label) instead of the stat rows below (GitHub issue #534).
+
+When `routeInfo != null`, fields in display order:
 
 - `score` — shown first, only when `routeInfo.score != null` (GitHub issue #532). Formatted by `formatScore`: at most 2 decimal places, trailing zero decimals dropped (e.g. `3` not `3.00`, `1.5` not `1.50`), never a 3rd decimal. An info icon next to the label opens `ScoreInfoModal`, which explains what the score represents and lists the project's current `scored_endpoints` weights below a divider.
 - `path_length` — integer, number of nodes on the route
