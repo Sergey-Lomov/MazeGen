@@ -138,7 +138,7 @@ mod tests {
         g.add_edge(entry, far, EdgeKind::Teleport);
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(nodes[0]), finish: None, route_score: None };
+        maze.meta = MazeMeta { start: Some(nodes[0]), finish: None };
         (maze, nodes)
     }
 
@@ -233,7 +233,7 @@ mod tests {
         let start = p(0);
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(start), finish: None, route_score: None };
+        maze.meta = MazeMeta { start: Some(start), finish: None };
 
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
@@ -268,7 +268,7 @@ mod tests {
         let (start, finish) = (p(10), p(0));
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(start), finish: Some(finish), route_score: None };
+        maze.meta = MazeMeta { start: Some(start), finish: Some(finish) };
 
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),
@@ -376,7 +376,7 @@ mod tests {
         let start = p(0);
 
         let mut maze = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(start), finish: None, route_score: None };
+        maze.meta = MazeMeta { start: Some(start), finish: None };
 
         let check = TeleportWaypointDistanceCheck {
             instance_id: TEST_ID.to_string(),

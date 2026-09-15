@@ -8,6 +8,7 @@ use maze_core::{
 };
 use crate::generation_config::{GenerateConfig, build_generation_config, build_repair_limits};
 use crate::analytics::build_analytics_snapshot;
+use crate::analytics::score_weights_from_stages;
 use crate::result::GenerateResult;
 
 fn preset_endpoint_dto_to_core(dto: &maze_runner::config::PresetEndpointDto) -> PresetEndpoint {
@@ -226,7 +227,8 @@ pub fn run_generate<T: Tessellation + 'static>(
     // `graph_analytics`/`nav_graph` computation (cycle enumeration on the final graph) runs
     // entirely outside the QC pipeline and was previously invisible in the reported total.
     let snapshot_start = maze_core::generation::pipeline::now_ms();
-    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, &repair_preset_state, &point_to_xy, |_, _, pos| pos as u32)
+    let score_weights = score_weights_from_stages(&config.stages);
+    let mut snapshot = build_analytics_snapshot(&mut maze, None, Some(issues), &check_types, &repair_preset_state, &point_to_xy, |_, _, pos| pos as u32, score_weights.as_ref())
         .map_err(|e| JsValue::from_str(&e))?;
     timing.snapshot_ms = maze_core::generation::pipeline::now_ms() - snapshot_start;
     snapshot.timing = Some(timing_to_dto(timing));

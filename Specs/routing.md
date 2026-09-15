@@ -28,7 +28,7 @@ pub struct RouteInfo {
     pub vertical_bidirectional_count: usize, // VerticalPassage-kind nav edges on the path with a reverse edge
     pub vertical_one_way_count: usize,       // VerticalPassage-kind nav edges on the path without a reverse edge
     pub elevator_count: usize, // Elevator-kind nav edges on the path
-    pub score: Option<f64>,    // filled externally from ScoredEndpointsStrategy; always None here
+    pub score: Option<f64>,    // filled externally, see MazeAnalysis::route_score below; None here
     pub path: Vec<NodeId>,     // all maze nodes in order from start to finish
 }
 ```
@@ -62,6 +62,10 @@ All four are `0` in the same-nav-node special case below, since that case never 
 ### path
 
 Full ordered list of maze `NodeId`s from `start` to `finish`. Built by concatenating the `NavEdge.path` segments; shared junction nodes at segment boundaries are deduplicated (the first node of each subsequent segment is skipped).
+
+### score
+
+Always `None` from `compute_route_info` itself — filled in separately by `MazeAnalysis::route_score` (see `Specs/analysis.md`), which reuses this same nav graph to score the `start`/`finish` route against the project's configured `scored_endpoints` weights (`ScoreWeights`, `maze_core::repair::strategies::score_for_route`). Computed independently of repair dispatch (GitHub issue #532) — it reflects the current route after any post-edit, not just right after generation, and is `None` whenever no rule configures `scored_endpoints` (there is genuinely no score to show, not a missing feature).
 
 ### Special case: same nav node
 

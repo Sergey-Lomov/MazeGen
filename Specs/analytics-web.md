@@ -74,17 +74,17 @@ Toggles, each backed by a store boolean:
 
 Toggle state persists when the card is closed and reopened. It resets only on full store reset. `showPureCyclesOverlay` and `showRegionClassesOverlay` are not yet persisted in project export (`ProjectFileAnalytics`) — they reset to default on project load, unlike the other toggles in this table.
 
-An info icon (ℹ) sits left of the Region classes switch, opening a legend modal that maps each `RegionClass` color to its name and a one-line meaning (`RegionClassLegendModal` in `AnalyticsFeature.tsx`) — see `graph-analytics.md`'s "Region Classes" section for the class semantics and `REGION_CLASS_COLORS`.
+An info icon (ℹ) sits next to the Region classes label (same convention as every other `ToggleRow`/`StatRow` info icon, GitHub issue #532's round of polish), opening a legend modal that maps each `RegionClass` color to its name and a one-line meaning (`RegionClassLegendModal` in `AnalyticsFeature.tsx`) — see `graph-analytics.md`'s "Region Classes" section for the class semantics and `REGION_CLASS_COLORS`.
 
 ### Path Block
 
-Shown only when `routeInfo != null`. Fields:
+Shown only when `routeInfo != null`. Fields, in display order:
 
+- `score` — shown first, only when `routeInfo.score != null` (GitHub issue #532). Formatted by `formatScore`: at most 2 decimal places, trailing zero decimals dropped (e.g. `3` not `3.00`, `1.5` not `1.50`), never a 3rd decimal. An info icon next to the label opens `ScoreInfoModal`, which explains what the score represents and lists the project's current `scored_endpoints` weights below a divider.
 - `path_length` — integer, number of nodes on the route
 - `junction_count` — number of junction nodes on the route
 - `one_way_count` — number of one-way passages on the route
 - `split_count` — number of split-tile occurrences on the route (GitHub issue #261)
-- `score` — float, shown only when `routeInfo.score != null`
 
 ### Summary Statistics & Detailed Report (GitHub issue #364)
 

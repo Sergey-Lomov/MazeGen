@@ -5,6 +5,7 @@ import type { RegionClass } from "../types";
 import type { CheckInstanceConfig } from "../types";
 import type { WasmTessellationConfig } from "../types";
 import type { PresetConnection } from "../types";
+import type { StrategyConfig } from "../types";
 
 /**
  * `i` is a node's stable index among its point's nodes (GitHub issue #236) — `0` is always the
@@ -561,13 +562,17 @@ export interface VerticalEdgeDto {
 
 /**
  * One `QcRuleState`'s worth of active checks plus that rule's rule-level params (GitHub issue
- * #245) — `compute_analytics`'s analytics-only path has no strategy and never dispatches repair,
- * so this carries only what `resolve_rule_params`/the checks themselves actually consume, unlike
- * the real `QcRuleConfig` (no `id`/`strategy` field).
+ * #245) — `compute_analytics`'s analytics-only path never dispatches repair, so `strategy` here
+ * is never actually run as a repair strategy; it is only read for the values a strategy carries
+ * independent of dispatch, e.g. `scored_endpoints`'s weights, needed to compute a route's score
+ * outside the repair pipeline (GitHub issue #532, see `MazeAnalysis::route_score`). Unlike the
+ * real `QcRuleConfig` there is no `id` field — the synthetic rule id `analytics_only_stages`
+ * mints is never observed by anything on this path.
  */
 export interface AnalyticsRuleGroupConfig {
   checks: CheckInstanceConfig[];
   params?: Record<string, string>;
+  strategy?: StrategyConfig;
 }
 
 export interface ComputeAnalyticsConfig {

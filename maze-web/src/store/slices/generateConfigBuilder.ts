@@ -74,22 +74,28 @@ function nestedToConfig(state: MazeStore, n: NestedStrategyState, depth = 0): St
   };
 }
 
+// Builds a rule's `StrategyConfig` from its own `strategyId`/`state.strategyParams` (the project's
+// real, user-configured weights) — shared by `ruleToConfig` (generation) and `confirmPostEdit`
+// (GitHub issue #532, so post-edit's route score is computed from the same real weights generation
+// uses, never defaults — see `AnalyticsRuleGroupConfig.strategy` on the wasm side).
+export function ruleStrategyToConfig(state: MazeStore, g: QcRuleState): StrategyConfig | null {
+  if (!g.strategyId || g.disabled) return null;
+  const descriptor = state.availableStrategies.find((s) => s.id === g.strategyId);
+  const paramOverrides = state.strategyParams[g.strategyId] ?? {};
+  const params: Record<string, string> = {};
+  if (descriptor) {
+    for (const p of descriptor.params) {
+      if (paramOverrides[p.id] !== undefined) params[p.id] = paramOverrides[p.id];
+    }
+  }
+  const nested = g.nestedStrategies.map((n) => nestedToConfig(state, n));
+  return { id: g.strategyId, params, ...(nested.length > 0 ? { nested } : {}) };
+}
+
 // Builds one `QcRuleConfig` from a `QcRuleState` — `ruleDisabled` filtering happens in
 // `buildGenerateConfig` before this is called (per-stage, per rule), not here.
 function ruleToConfig(state: MazeStore, g: QcRuleState): { id: string; checks: { local_id: string; type_id: string; params: Record<string, string> }[]; strategy: StrategyConfig | null; params: Record<string, string> } {
-  let strategy: StrategyConfig | null = null;
-  if (g.strategyId && !g.disabled) {
-    const descriptor = state.availableStrategies.find((s) => s.id === g.strategyId);
-    const paramOverrides = state.strategyParams[g.strategyId] ?? {};
-    const params: Record<string, string> = {};
-    if (descriptor) {
-      for (const p of descriptor.params) {
-        if (paramOverrides[p.id] !== undefined) params[p.id] = paramOverrides[p.id];
-      }
-    }
-    const nested = g.nestedStrategies.map((n) => nestedToConfig(state, n));
-    strategy = { id: g.strategyId, params, ...(nested.length > 0 ? { nested } : {}) };
-  }
+  const strategy = ruleStrategyToConfig(state, g);
   // Order preserved from `QcRuleState.checks` — no resorting, so serialization/test
   // determinism doesn't depend on Map/object iteration order at this layer. A `disabled` check
   // (see `CheckInstance.disabled`'s doc comment) is omitted entirely, as if never selected.

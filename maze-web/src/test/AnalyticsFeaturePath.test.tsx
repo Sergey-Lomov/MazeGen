@@ -1,8 +1,8 @@
 import { describe, it, beforeEach, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { AnalyticsFeature } from "../components/features/AnalyticsFeature";
 import { useMazeStore } from "../store/mazeStore";
-import type { MazeStatisticsDto, RouteInfoDto } from "../wasm/types";
+import type { MazeStatisticsDto, RouteInfoDto, StrategyDescriptor } from "../wasm/types";
 
 // Regression coverage for GitHub issue #531: the Path section's element-type rows (one-way,
 // teleport, split, vertical bidirectional/one-way, elevator) must each show only when the maze
@@ -131,5 +131,49 @@ describe("AnalyticsFeature Path section element-type rows", () => {
     useMazeStore.setState({ statistics: makeStatistics({ verticalStats: { elevator_groups: 1 } }) });
     render(<AnalyticsFeature />);
     expect(screen.getByText("Elevator rides on path")).toBeInTheDocument();
+  });
+});
+
+// GitHub issue #532/#534: the score row sits first in the Path block, formatted by formatScore,
+// and its info icon opens ScoreInfoModal (description + current scored_endpoints weights).
+const scoredEndpointsDescriptor: StrategyDescriptor = {
+  id: "scored_endpoints",
+  handles: "missing_endpoints",
+  params: [
+    { id: "path_weight", label: "Path length weight", kind: { type: "float", default: 1, min: 0, max: 100 } },
+  ],
+  experimental: false,
+  nested_slots: [],
+};
+
+describe("AnalyticsFeature Path section score row", () => {
+  it("does not render the score row when score is null", () => {
+    useMazeStore.setState({ statistics: makeStatistics({}), routeInfo: { ...baseRouteInfo, score: null } });
+    render(<AnalyticsFeature />);
+    expect(screen.queryByText("Score")).not.toBeInTheDocument();
+  });
+
+  it("renders the score row first, formatted with no trailing zero decimals, and opens ScoreInfoModal on info click", () => {
+    useMazeStore.setState({
+      statistics: makeStatistics({}),
+      routeInfo: { ...baseRouteInfo, score: 3.5 },
+      availableStrategies: [scoredEndpointsDescriptor],
+      strategyParams: { scored_endpoints: { path_weight: "2" } },
+    });
+    render(<AnalyticsFeature />);
+
+    const scoreLabel = screen.getByText("Score");
+    expect(scoreLabel).toBeInTheDocument();
+    expect(screen.getByText("3.5")).toBeInTheDocument();
+
+    // Score row must be the first stat row in the Path block.
+    const rows = screen.getAllByText(/^(Score|Path length)$/);
+    expect(rows[0]).toHaveTextContent("Score");
+
+    expect(screen.queryByText("Path length weight")).not.toBeInTheDocument();
+    fireEvent.click(scoreLabel.parentElement!.querySelector('[role="button"]')!);
+    const weightLabel = screen.getByText("Path length weight");
+    expect(weightLabel).toBeInTheDocument();
+    expect(weightLabel.closest("div")!.parentElement).toHaveTextContent("2");
   });
 });

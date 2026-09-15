@@ -91,7 +91,7 @@ describe("VectorByWallsSettingsPanel", () => {
 
     const toggle = screen.getByText(m["image_export.vector_by_walls.replace_two_floor_elevators_with_stairs"]());
     expect(toggle).toBeInTheDocument();
-    fireEvent.click(toggle.parentElement!.querySelector('input[type="checkbox"]')!);
+    fireEvent.click(toggle.parentElement!.parentElement!.querySelector('input[type="checkbox"]')!);
     expect(useMazeStore.getState().vectorByWallsSettings.replaceTwoFloorElevatorsWithStairs).toBe(false);
   });
 
@@ -439,7 +439,7 @@ describe("VectorByWallsSettingsPanel", () => {
       });
       render(<VectorByWallsSettingsPanel />);
       const toggle = screen.getByText(m["image_export.vector_by_walls.teleport_group_customization"]())
-        .parentElement!.querySelector('input[type="checkbox"]')!;
+        .parentElement!.parentElement!.querySelector('input[type="checkbox"]')!;
       fireEvent.click(toggle);
       expect(useMazeStore.getState().vectorByWallsSettings.teleportGroupCustomization).toBe(true);
     });
@@ -878,7 +878,7 @@ describe("VectorByWallsSettingsPanel", () => {
       });
       render(<VectorByWallsSettingsPanel />);
       const checkbox = screen.getByText(m["image_export.vector_by_walls.split_special_shapes"]())
-        .parentElement!.querySelector('input[type="checkbox"]')!;
+        .parentElement!.parentElement!.querySelector('input[type="checkbox"]')!;
       fireEvent.click(checkbox);
       expect(useMazeStore.getState().vectorByWallsSettings.splitSpecialShapes).toBe(true);
     });

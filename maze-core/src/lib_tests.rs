@@ -306,7 +306,7 @@ mod distance_cache_tests {
 
         // Same graph.version(), nodes[0] is no longer start — with no incoming edge into
         // nodes[0], it's unreachable from nodes[1]. Confirms the cache key includes start.
-        let meta_with_node1_as_start = MazeMeta { start: Some(nodes[1]), finish: Some(nodes[3]), route_score: None };
+        let meta_with_node1_as_start = MazeMeta { start: Some(nodes[1]), finish: Some(nodes[3]) };
         let with_node1_as_start = maze.analysis.region_classes(&maze.graph, &maze.field, &meta_with_node1_as_start);
         assert_eq!(with_node1_as_start[&scc.component_of(nodes[0]).unwrap()], RegionClass::Unreachable);
     }

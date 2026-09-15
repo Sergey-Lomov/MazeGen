@@ -24,6 +24,7 @@ import type {
   PostEditVerticalPassageEntry, PostEditElevatorEntry,
 } from "../storeTypes";
 import { fieldConfigToWasm, buildValidPresetConnections } from "./generationSlice";
+import { ruleStrategyToConfig } from "./generateConfigBuilder";
 import { relevantRuleParams, activeFloorField, activeFloorLevel, floorTessellationOf, resolveFieldAtOf } from "../storeHelpers";
 import { configAllCells } from "../../pixi/tessellationCells";
 import {
@@ -214,9 +215,14 @@ export const createPostEditSlice: StateCreator<MazeStore, [], [], PostEditState 
         for (const p of relevantRuleParams(state.availableRuleParams, activeCheckTypeIds, null)) {
           if (g.params[p.id] !== undefined) params[p.id] = g.params[p.id];
         }
+        // Real user-configured strategy weights (e.g. `scored_endpoints`), GitHub issue #532 —
+        // this path never dispatches repair, but the wasm side still reads `strategy` directly to
+        // compute the route score from the project's actual weights instead of defaults.
+        const strategy = ruleStrategyToConfig(state, g);
         return {
           checks: activeChecks.map((c) => ({ local_id: c.localId.toString(), type_id: c.typeId, params: c.params })),
           params,
+          ...(strategy ? { strategy } : {}),
         };
       })
       .filter((g) => g.checks.length > 0);

@@ -73,6 +73,36 @@ fn analytics_only_stages(rule_groups: Vec<crate::dto::AnalyticsRuleGroupConfig>)
     vec![generation_config::StageConfig { id: "analytics_only_stage".to_string(), name: "Analytics".to_string(), rules }]
 }
 
+/// Finds the `scored_endpoints` strategy's configured weights among `stages`' rules (GitHub issue
+/// #532) — a route's score is computed directly (`MazeAnalysis::route_score`), independent of
+/// whether the strategy actually dispatches repair, but it still needs the user's own configured
+/// weights rather than made-up defaults. Returns `None` if no rule configures `scored_endpoints`
+/// (the project genuinely has no scoring strategy — there is no score to show, not a bug).
+/// `stages` carries at most one such rule in practice (the UI lets a `MissingEndpointsIssue` rule
+/// have only one strategy), but this takes the first match regardless. Generation-path counterpart
+/// of `score_weights_from_rule_groups` (post-edit's own config shape, which `analytics_only_stages`
+/// otherwise strips `strategy` out of before it ever reaches a `StageConfig`).
+pub(crate) fn score_weights_from_stages(stages: &[generation_config::StageConfig]) -> Option<maze_core::repair::strategies::ScoreWeights> {
+    score_weights_from_strategies(stages.iter().flat_map(|s| &s.rules).filter_map(|r| r.strategy.as_ref()))
+}
+
+/// Post-edit counterpart of `score_weights_from_stages` — reads straight off `cfg.rule_groups`
+/// (GitHub issue #532), since `analytics_only_stages` discards each group's `strategy` when
+/// building its throwaway synthetic `QcRuleConfig`s (that path never dispatches repair, so a real
+/// `RepairStrategy` has no home there) and calling this after that conversion would always see
+/// `None`.
+fn score_weights_from_rule_groups(rule_groups: &[crate::dto::AnalyticsRuleGroupConfig]) -> Option<maze_core::repair::strategies::ScoreWeights> {
+    score_weights_from_strategies(rule_groups.iter().filter_map(|g| g.strategy.as_ref()))
+}
+
+fn score_weights_from_strategies<'a>(
+    strategies: impl Iterator<Item = &'a generation_config::StrategyConfig>,
+) -> Option<maze_core::repair::strategies::ScoreWeights> {
+    strategies.into_iter()
+        .find(|s| s.id == "scored_endpoints")
+        .map(|s| maze_core::repair::strategies::ScoreWeights::from_raw_overrides(&s.params))
+}
+
 fn run_compute_analytics<T: Tessellation + 'static>(
     cfg: ComputeAnalyticsConfig,
     point_to_xy: impl Fn(T::Point) -> (i32, i32),
@@ -132,6 +162,7 @@ where
     // rules of its own and never dispatches repair (see `build_analytics_snapshot`'s
     // `run_check_only` path, GitHub issue #106), so a throwaway one-check-per-rule wrapper is the
     // simplest way to satisfy that shape without rule semantics actually mattering here.
+    let score_weights = score_weights_from_rule_groups(&cfg.rule_groups);
     let stages = analytics_only_stages(cfg.rule_groups);
     let qc_config = GenerateConfig {
         tessellation: cfg.tessellation,
@@ -167,7 +198,8 @@ where
     // `compute_analytics` is genuinely multi-level as of GitHub issue #359 — every floor's own
     // nodes/edges are surfaced, not just floor 0's.
     build_analytics_snapshot(&mut maze, Some(&qc_engine), None, &check_types, &preset_state, point_to_xy,
-        |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32))
+        |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32),
+        score_weights.as_ref())
 }
 
 #[cfg(test)]
@@ -176,7 +208,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn group(checks: Vec<generation_config::CheckInstanceConfig>, params: HashMap<String, String>) -> crate::dto::AnalyticsRuleGroupConfig {
-        crate::dto::AnalyticsRuleGroupConfig { checks, params }
+        crate::dto::AnalyticsRuleGroupConfig { checks, params, strategy: None }
     }
 
     fn check(type_id: &str) -> generation_config::CheckInstanceConfig {
@@ -257,6 +289,47 @@ mod tests {
             let Ok(snapshot) = run(cfg) else { panic!("happy-path config must assemble a snapshot") };
             assert_eq!(snapshot.nodes.len(), 2);
             assert!(snapshot.edges.iter().any(|e| e.from == 1 && e.to == 2), "the configured passage edge must reach the snapshot");
+        }
+
+        // GitHub issue #532 regression: post-edit never dispatches repair (start/finish are
+        // already set, so `MissingEndpointsIssue` never fires), so the score must come from
+        // `score_weights_from_rule_groups` reading the rule group's real `scored_endpoints`
+        // weights directly, not from repair's `route_score` side effect.
+        #[test]
+        fn route_score_is_populated_post_edit_when_scored_endpoints_is_configured() {
+            let mut cfg = base_cfg();
+            cfg.edges = vec![crate::dto::PostEditEdgeDto {
+                from: crate::dto::PostEditEndpointDto::Node { id: 1 },
+                to: crate::dto::PostEditEndpointDto::Node { id: 2 },
+                kind: "basic".to_string(),
+            }];
+            cfg.start = Some(1);
+            cfg.finish = Some(2);
+            cfg.rule_groups = vec![crate::dto::AnalyticsRuleGroupConfig {
+                checks: vec![check("missing_endpoints")],
+                params: HashMap::new(),
+                strategy: Some(generation_config::StrategyConfig { id: "scored_endpoints".to_string(), params: HashMap::new(), slot_id: None, nested: vec![] }),
+            }];
+
+            let Ok(snapshot) = run(cfg) else { panic!("happy-path config must assemble a snapshot") };
+            let route_info = snapshot.route_info.expect("start/finish are set, route_info must be Some");
+            assert!(route_info.score.is_some(), "scored_endpoints is configured, route score must be populated even though repair never dispatched");
+        }
+
+        #[test]
+        fn route_score_is_none_post_edit_when_no_scoring_strategy_is_configured() {
+            let mut cfg = base_cfg();
+            cfg.edges = vec![crate::dto::PostEditEdgeDto {
+                from: crate::dto::PostEditEndpointDto::Node { id: 1 },
+                to: crate::dto::PostEditEndpointDto::Node { id: 2 },
+                kind: "basic".to_string(),
+            }];
+            cfg.start = Some(1);
+            cfg.finish = Some(2);
+
+            let Ok(snapshot) = run(cfg) else { panic!("happy-path config must assemble a snapshot") };
+            let route_info = snapshot.route_info.expect("start/finish are set, route_info must be Some");
+            assert!(route_info.score.is_none(), "no rule configures scored_endpoints, there is genuinely no score to show");
         }
 
         #[test]
@@ -362,6 +435,30 @@ mod tests {
         assert!(rules[1].params.is_empty(), "a group with no rule-level params must not gain any");
     }
 
+    // GitHub issue #532: `analytics_only_stages` never carries `strategy` onto its synthetic rules
+    // (this path never dispatches repair, so a strategy has nowhere to run) -- `score_weights_from_rule_groups`
+    // must therefore read straight off the pre-conversion `rule_groups`, not off `analytics_only_stages`'s output.
+    #[test]
+    fn score_weights_from_rule_groups_finds_scored_endpoints_weights() {
+        let mut params = HashMap::new();
+        params.insert("junction_weight".to_string(), "7".to_string());
+        let rule_groups = vec![
+            crate::dto::AnalyticsRuleGroupConfig {
+                checks: vec![check("missing_endpoints")],
+                params: HashMap::new(),
+                strategy: Some(generation_config::StrategyConfig { id: "scored_endpoints".to_string(), params, slot_id: None, nested: vec![] }),
+            },
+        ];
+        let weights = score_weights_from_rule_groups(&rule_groups).expect("scored_endpoints strategy is configured");
+        assert_eq!(weights.junction_weight, 7.0);
+    }
+
+    #[test]
+    fn score_weights_from_rule_groups_is_none_without_scored_endpoints() {
+        let rule_groups = vec![group(vec![check("missing_endpoints")], HashMap::new())];
+        assert!(score_weights_from_rule_groups(&rule_groups).is_none());
+    }
+
     // GitHub issue #245 follow-up: extends preset_locked to node/route-based split issue kinds.
     // Full-chain integration test driving the real post-edit analytics path (`preset_split_points`
     // -> `resolve_preset_nodes_for_post_edit` -> `PresetState.preset_declared_nodes` ->
@@ -433,7 +530,7 @@ mod tests {
             let qc = QualityControlEngine::new(vec![Stage::new("stage_1".to_string(), "Stage 1".to_string(), vec![Box::new(rule) as Box<dyn RuleTrait<SquareTessellation>>])]);
 
             let snapshot = build_analytics_snapshot(&mut maze, Some(&qc), None, &HashMap::new(), &preset_state, point_to_xy,
-                |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32)).unwrap();
+                |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32), None).unwrap();
 
             let issue_dto = snapshot.issues.iter().find(|i| i.kind == "invalid_split_node")
                 .expect("snapshot must carry the invalid_split_node issue");
@@ -480,7 +577,7 @@ mod tests {
 
             let preset_state = maze_core::generation::PresetState::empty();
             let snapshot = build_analytics_snapshot(&mut maze, None, Some(vec![]), &HashMap::new(), &preset_state, point_to_xy,
-                |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32)).unwrap();
+                |id, _, pos| index_by_node.get(&id).copied().unwrap_or(pos as u32), None).unwrap();
 
             assert!(snapshot.edges.iter().any(|e| e.from == 1 && e.to == 2 && matches!(e.kind, crate::dto::EdgeKindDto::VerticalPassage)),
                 "vertical_passage edge must reach the snapshot as EdgeKindDto::VerticalPassage");

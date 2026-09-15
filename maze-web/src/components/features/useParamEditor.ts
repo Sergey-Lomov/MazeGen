@@ -75,7 +75,7 @@ export function useParamEditor({ entityId, params, storeValues, onCommit }: UseP
   return { values, onChange, flushRef };
 }
 
-function buildValues(params: ParamDescriptor[], storeValues: Record<string, string>): Record<string, string> {
+export function buildValues(params: ParamDescriptor[], storeValues: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
     params.map((p) => [p.id, storeValues[p.id] ?? getDefaultValue(p)])
   );

@@ -95,7 +95,7 @@ mod tests {
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
         g.add_bidirectional_edge(n1, n2, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(n0), finish: Some(n2), route_score: None };
+        maze.meta = MazeMeta { start: Some(n0), finish: Some(n2) };
         (maze, n0, n1, n2)
     }
 
@@ -126,7 +126,7 @@ mod tests {
         g.add_bidirectional_edge(n0, n1, EdgeKind::Basic);
         g.add_bidirectional_edge(n2, n3, EdgeKind::Basic);
         let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
-        maze.meta = MazeMeta { start: Some(n0), finish: Some(n1), route_score: None };
+        maze.meta = MazeMeta { start: Some(n0), finish: Some(n1) };
 
         // n2/n3 form a disconnected side passage, never touched by the n0->n1 route.
         assert_eq!(route_direction(&maze, n2, n3), None);

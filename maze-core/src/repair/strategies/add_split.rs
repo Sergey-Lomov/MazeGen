@@ -324,7 +324,7 @@ mod tests {
         for w in nodes.windows(2) {
             maze.graph.add_bidirectional_edge(w[0], w[1], EdgeKind::Basic);
         }
-        maze.meta = crate::meta::MazeMeta { start: Some(nodes[0]), finish: Some(*nodes.last().unwrap()), route_score: None };
+        maze.meta = crate::meta::MazeMeta { start: Some(nodes[0]), finish: Some(*nodes.last().unwrap()) };
         maze
     }
 

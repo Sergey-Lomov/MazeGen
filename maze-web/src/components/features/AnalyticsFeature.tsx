@@ -8,8 +8,8 @@ import { IssuesBlock } from "../IssuesBlock";
 import { ToggleRow } from "../ToggleRow";
 import { SectionHeader } from "../SectionHeader";
 import { SidePanel } from "../SidePanel";
-import { RegionClassLegendModal, SidesInfoModal, SplitPatternStatsModal, TimingDetailedReportModal } from "./AnalyticsModals";
-import { StatRow, formatMs, GraphSection, CellsSection, SidesSection, SubsectionTitle, ElementsSection, VerticalSection, StatGroup } from "./AnalyticsSections";
+import { RegionClassLegendModal, ScoreInfoModal, SidesInfoModal, SplitPatternStatsModal, TimingDetailedReportModal } from "./AnalyticsModals";
+import { StatRow, formatMs, formatScore, GraphSection, CellsSection, SidesSection, SubsectionTitle, ElementsSection, VerticalSection, StatGroup } from "./AnalyticsSections";
 import { styles } from "./analyticsStyles";
 import type { MazeStatisticsDto } from "../../wasm/types";
 import * as m from "~/paraglide/messages";
@@ -152,6 +152,7 @@ export function AnalyticsFeature() {
   const regionClassesUnavailable = Object.keys(statistics?.graph_stats.region_classes ?? {}).length === 0;
   const [timingReportOpen, setTimingReportOpen] = React.useState(false);
   const [detailedReportOpen, setDetailedReportOpen] = React.useState(false);
+  const [scoreInfoOpen, setScoreInfoOpen] = React.useState(false);
 
   const showMazeOverlay = useMazeStore((s) => s.showMazeOverlay);
   const showComponentsOverlay = useMazeStore((s) => s.showComponentsOverlay);
@@ -212,6 +213,13 @@ export function AnalyticsFeature() {
           <SectionHeader label={m["analytics.path"]()} expanded={isExpanded("path")} onToggle={() => toggleSection("path")} />
           {isExpanded("path") && (
             <div style={styles.statBlock}>
+              {routeInfo.score != null && (
+                <StatRow
+                  label={m["analytics.score"]()}
+                  valueText={formatScore(routeInfo.score)}
+                  onOpenInfo={() => setScoreInfoOpen(true)}
+                />
+              )}
               <StatRow label={m["analytics.path_length"]()} count={routeInfo.path_length} />
               <StatRow label={m["analytics.junction_count"]()} count={routeInfo.junction_count} />
               {(statistics?.elements_stats.total.one_way_passages ?? 0) > 0 && (
@@ -232,16 +240,12 @@ export function AnalyticsFeature() {
               {(statistics?.vertical_stats.elevator_groups ?? 0) > 0 && (
                 <StatRow label={m["analytics.elevator_count"]()} count={routeInfo.elevator_count} />
               )}
-              {routeInfo.score != null && (
-                <div style={styles.scoreRow}>
-                  <span style={styles.statLabel}>{m["analytics.score"]()}</span>
-                  <span style={styles.statCount}>{routeInfo.score.toFixed(2)}</span>
-                </div>
-              )}
             </div>
           )}
         </>
       )}
+
+      {scoreInfoOpen && <ScoreInfoModal onClose={() => setScoreInfoOpen(false)} />}
 
       {/* Summary statistics block — GitHub issue #364 */}
       {statistics != null && (

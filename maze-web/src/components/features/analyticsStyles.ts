@@ -18,10 +18,12 @@ export const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   statBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   statRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
-  statLabel: { flex: 1, ...muted(typography.body) },
+  statLabelGroup: { flex: 1, display: "flex", alignItems: "center", gap: spacing.rowGap },
+  statLabel: { ...muted(typography.body) },
   statCount: { ...typography.caption, minWidth: 32, textAlign: "right" },
   statPct: { ...disabled(typography.body), minWidth: 44, textAlign: "right" },
-  scoreRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
+  scoreInfoWeights: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  scoreInfoValues: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   // `rawBody` layout (see `TimingDetailedReportModal`) — the header row sits outside the
   // scrolling area so only the tree itself scrolls when the report is tall, and the two root
   // nodes ("Initial generation"/"Quality control") stack with no gap between them, matching every
