@@ -29,11 +29,14 @@ export function splitNodeDiagnostics(nodes: TileFaceNode[], skipIndices?: Set<nu
 
   nodes.forEach((node, i) => {
     if (skipIndices?.has(i)) return;
+    // 1-based, matching `Node {n}` numbering everywhere else in the split-node UI (dialogs, panel
+    // row titles) — GitHub issue #539, this used to be the raw 0-based array index.
+    const name = m["post_edit.split_node_label"]({ slotId: i + 1 });
     // A boundary face is never a real neighbor either way — only non-boundary faces count toward
     // "has any wall-openable side at all".
     const openable = node.faces.filter((f) => !f.boundary);
     if (openable.length > 0 && openable.every((f) => f.kind === "wall")) {
-      messages.push(m["generation.split_diag_dead_node"]({ index: i }));
+      messages.push(m["generation.split_diag_dead_node"]({ name }));
       return;
     }
     // `undefined` (preset's optional/undecided connection — GitHub issue #234) still leaves the
@@ -42,7 +45,7 @@ export function splitNodeDiagnostics(nodes: TileFaceNode[], skipIndices?: Set<nu
     const hasConnection = node.faces.some((f) =>
       f.kind === "passage" || f.kind === "one_way_out" || f.kind === "one_way_in" || f.kind === "undefined");
     if (!hasConnection) {
-      messages.push(m["generation.split_diag_unreachable_node"]({ index: i }));
+      messages.push(m["generation.split_diag_unreachable_node"]({ name }));
     }
   });
 
@@ -56,7 +59,9 @@ export function patternEmptyNodeDiagnostics(pattern: SplitPattern): string[] {
   const messages: string[] = [];
   for (let i = 0; i < pattern.node_count; i++) {
     if ((pattern.faces[i]?.length ?? 0) === 0) {
-      messages.push(m["generation.split_diag_empty_node"]({ index: i }));
+      // 1-based, matching `splitNodeDiagnostics`'s numbering — both lists are concatenated into
+      // one warnings strip by `AbstractPatternEditorDialog` and must agree on the same node's number.
+      messages.push(m["generation.split_diag_empty_node"]({ index: i + 1 }));
     }
   }
   return messages;
@@ -70,7 +75,8 @@ export function patternSiblingDiagnostics(pattern: SplitPattern): string[] {
   pattern.faces.forEach((nodeFaces, nodeIndex) => {
     for (const face of nodeFaces) {
       if (face.sibling_target !== undefined && (face.sibling_target < 0 || face.sibling_target >= pattern.node_count)) {
-        messages.push(m["generation.split_diag_dangling_sibling"]({ index: nodeIndex, face: face.face_index }));
+        // 1-based, matching `splitNodeDiagnostics`'s numbering — see `patternEmptyNodeDiagnostics`.
+        messages.push(m["generation.split_diag_dangling_sibling"]({ index: nodeIndex + 1, face: face.face_index }));
       }
     }
   });
