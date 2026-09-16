@@ -271,8 +271,8 @@
   "generation.split_face_sibling_target": "Соседний узел",
   "generation.split_face_sibling_none": "Нет (внешний сосед)",
   "generation.split_diag_empty_node": "У узла {index} не задано ни одной грани.",
-  "generation.split_diag_dead_node": "У узла {index} только стены и нет ни одного валидного соседа — он будет недостижим.",
-  "generation.split_diag_unreachable_node": "У узла {index} нет ни одного соединения — он будет недостижим.",
+  "generation.split_diag_dead_node": "У «{name}» только стены и нет ни одного валидного соседа, он будет недостижим.",
+  "generation.split_diag_unreachable_node": "У «{name}» нет ни одного соединения, он будет недостижим.",
   "generation.split_diag_dangling_sibling": "Узел {index}, грань {face}: связанный узел больше не существует.",
 
   "debug.outdated_warning": "Снимок отладки устарел, перегенерируйте для обновления",
