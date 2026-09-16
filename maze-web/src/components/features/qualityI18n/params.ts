@@ -67,21 +67,21 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.oneway_weight.label"] as MessageFn,
     description: m["param.oneway_weight.description"] as MessageFn,
   },
-  teleport_weight: {
-    label: m["param.teleport_weight.label"] as MessageFn,
-    description: m["param.teleport_weight.description"] as MessageFn,
+  cross_floor_weight: {
+    label: m["param.cross_floor_weight.label"] as MessageFn,
+    description: m["param.cross_floor_weight.description"] as MessageFn,
   },
   split_weight: {
     label: m["param.split_weight.label"] as MessageFn,
     description: m["param.split_weight.description"] as MessageFn,
   },
-  vertical_passage_weight: {
-    label: m["param.vertical_passage_weight.label"] as MessageFn,
-    description: m["param.vertical_passage_weight.description"] as MessageFn,
+  teleport_weight: {
+    label: m["param.teleport_weight.label"] as MessageFn,
+    description: m["param.teleport_weight.description"] as MessageFn,
   },
-  elevator_weight: {
-    label: m["param.elevator_weight.label"] as MessageFn,
-    description: m["param.elevator_weight.description"] as MessageFn,
+  elevator_stop_weight: {
+    label: m["param.elevator_stop_weight.label"] as MessageFn,
+    description: m["param.elevator_stop_weight.description"] as MessageFn,
   },
   invalid_overlap_weight: {
     label: m["param.invalid_overlap_weight.label"] as MessageFn,

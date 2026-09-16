@@ -20,8 +20,8 @@ pub fn compute_route_info<T: Tessellation>(nav: &NavGraph, field: &Field<T>, sta
 
 ```rust
 pub struct RouteInfo {
-    pub path_length: usize,    // number of maze nodes including start and finish
-    pub junction_count: usize, // nav nodes with >= 3 distinct outgoing nav neighbors on the path
+    pub path_length: usize,    // number of tile-to-tile transitions (node count - 1)
+    pub junction_count: usize, // nav nodes on the path with >1 outgoing edge besides the way back
     pub one_way_count: usize,  // nav edges without a reverse nav edge on the path
     pub split_count: usize,    // occurrences of a split tile's node among path nodes (see below)
     pub teleport_count: usize, // Teleport-kind nav edges on the path
@@ -35,11 +35,18 @@ pub struct RouteInfo {
 
 ### path_length
 
-Count of maze nodes traversed inclusive of both endpoints. For a straight 5-node corridor `[A, X1, X2, X3, B]` the path_length is 5.
+Count of tile-to-tile transitions on the route — node count minus 1, matching the unit every other `RouteInfo`/score component is counted in (GitHub issue #535 follow-up), not the raw node count. For a straight 5-node corridor `[A, X1, X2, X3, B]` the path_length is 4.
 
 ### junction_count
 
-Number of nav nodes on the path (including start and finish) where the number of **distinct outgoing nav neighbors** is ≥ 3. A nav node that is a dead-end on the route but a junction in the full graph counts only if it has ≥ 3 outgoing edges in the nav graph.
+Route-aware, not a whole-graph degree check (GitHub issue #535 follow-up). For each nav node visited on the path, take its outgoing nav edges, exclude the reverse of the edge the route just arrived on (if any), and count the node as a junction if more than one outgoing edge remains:
+
+- **Start node**: no "arrived via" edge to exclude, so its full outgoing edge set is used directly. A start with exactly 2 outgoing edges already counts as a junction (the route never "arrived", so both are genuine choices).
+- **Any other node on the path**: the incoming edge's `reverse_edge` (same corridor, opposite direction) is excluded first. A node with exactly one way forward, once the way back is excluded, is not a junction (the common 2-in/2-out corridor shape) — a node needs 2 or more ways forward besides the way back to count.
+- **Finish node**: never counts as a junction, regardless of its own outgoing edges. The player has already reached the finish, so no further choice is ever presented to them there.
+- **Elevator groups count as a single choice**, not one choice per stop (GitHub issue #535 follow-up part 2): a player picks a destination floor directly rather than treating each stop as its own branch, so all `is_elevator` outgoing edges from a node collapse into at most one logical "take the elevator" option before the `> 1` threshold is applied — this is what stops a dead-end elevator with 3+ stops from looking like a junction on its own. If the route arrived via an `is_elevator` edge, the elevator has already been used to get here, so the whole group (every node reachable from this one via `is_elevator` edges, not just the exact reverse edge) is excluded entirely rather than folded — riding the same elevator again is not a fresh choice, only non-elevator ways forward count.
+
+This is synchronized with the junction count used by `scored_endpoints`'s route scoring (`Specs/repair.md`) via the shared `route_aware_junction_flags` (`maze_core::graph::pathfinding`); it is intentionally distinct from whatever whole-graph junction definition the Analytics Statistics panel uses, which counts junctions independent of any specific route.
 
 ### one_way_count
 
@@ -71,7 +78,7 @@ Always `None` from `compute_route_info` itself — filled in separately by `Maze
 
 Under the required precondition (both `start` and `finish` pinned), `start_nav == finish_nav` can only occur when `start == finish` (same maze node used as both endpoints). The two-node case `path = [start, finish]` exists as a guard but is not reachable in practice.
 
-- `path_length` = 1 if `start == finish`, else 2.
+- `path_length` = 0 if `start == finish`, else 1.
 - `path` = `[start]` if `start == finish`, else `[start, finish]`.
 - `junction_count` = 0, `one_way_count` = 0, `teleport_count` = 0, `vertical_bidirectional_count` = 0, `vertical_one_way_count` = 0, `elevator_count` = 0.
 - `split_count` = 1 if the single node sits on a split tile, else 0 (0 if `start == finish` and `path = [start]`; each of the two path nodes checked independently when `start != finish`).

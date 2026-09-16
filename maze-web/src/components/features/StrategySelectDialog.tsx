@@ -152,6 +152,7 @@ const styles: Record<string, React.CSSProperties> = {
   description: {
     ...typography.body,
     lineHeight: 1.6,
+    whiteSpace: "pre-line",
   },
   // `typography.message` — the theme's own "label"-weight token (body size, secondary color).
   label: {

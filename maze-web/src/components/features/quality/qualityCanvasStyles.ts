@@ -328,6 +328,7 @@ export const qualityCanvasStyles: Record<string, React.CSSProperties> = {
   detailDesc: {
     ...muted(typography.body),
     lineHeight: 1.5,
+    whiteSpace: "pre-line",
   },
   optionList: {
     margin: 0,

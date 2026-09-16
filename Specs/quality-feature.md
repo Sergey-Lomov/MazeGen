@@ -517,8 +517,8 @@ type EntityVisibility = { type: "multi_floor_only" };
 ```
 
 - `MultiFloorOnly` — hidden whenever the maze has fewer than 2 floors. First consumer:
-  `scored_endpoints`'s `vertical_passage_weight`/`elevator_weight` params (issue #390), meaningless
-  on a single-floor maze. Extended (issue #349 follow-up) to:
+  `scored_endpoints`'s `cross_floor_weight`/`elevator_stop_weight` params (issue #390),
+  meaningless on a single-floor maze. Extended (issue #349 follow-up) to:
   - Every param built from `floor_scope_param`/`geometric_floor_mode_param`/
     `teleport_floor_kind_param` (`check_descriptor.rs`) — `floor_scope` (WholeMaze vs PerFloor),
     `floor_mode` (geometric cross-floor distance handling), and `teleport_floor_kind`
@@ -569,7 +569,7 @@ new match arm here, not a new bespoke check at each call site.
 
 **Hiding never touches stored state.** A param's entry in `values`/the store, and a rule's
 already-configured check/strategy assignment, are left exactly as-is while hidden — e.g. removing a
-floor and later re-adding one does not reset `vertical_passage_weight`/`elevator_weight`, and
+floor and later re-adding one does not reset `cross_floor_weight`/`elevator_stop_weight`, and
 removing floors down to 1 does not drop an already-configured vertical-passage rule from
 `RulesColumn`. Only visibility in the *selection* UI is conditional; the underlying config
 round-trips unchanged regardless of floor count. (A `forceShowHidden`-style store flag, checked

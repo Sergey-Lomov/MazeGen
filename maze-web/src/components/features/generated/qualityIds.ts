@@ -193,6 +193,7 @@ export const PARAM_IDS = [
   "count_incoming",
   "cross_floor_balance",
   "cross_floor_mode",
+  "cross_floor_weight",
   "cycle_kind",
   "desired_length",
   "direction",
@@ -203,9 +204,9 @@ export const PARAM_IDS = [
   "edge_hub",
   "edge_scope",
   "edge_split",
+  "elevator_stop_weight",
   "elevator_stops_skip",
   "elevator_stops_span",
-  "elevator_weight",
   "entry_pick",
   "existing_reuse_balance",
   "expand_elevator",
@@ -310,7 +311,6 @@ export const PARAM_IDS = [
   "vertical_direction_balance",
   "vertical_loop_one_way_chance",
   "vertical_passage_priority",
-  "vertical_passage_weight",
   "waypoint",
 ] as const;
 

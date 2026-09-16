@@ -201,6 +201,7 @@ const styles: Record<string, React.CSSProperties> = {
   description: {
     ...typography.body,
     lineHeight: 1.6,
+    whiteSpace: "pre-line",
   },
   paramsSection: {
     display: "flex",

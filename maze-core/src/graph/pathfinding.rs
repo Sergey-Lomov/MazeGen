@@ -146,6 +146,117 @@ pub(crate) fn build_outgoing_index(
     out
 }
 
+/// Every nav node reachable from `start` by following only `is_elevator` edges (either direction) —
+/// the nav-graph-local view of one elevator's full stop set (GitHub issue #535 follow-up). Mirrors
+/// `quality_control::checks::elevator_core::elevator_groups`, but that helper walks the underlying
+/// maze `Graph`/`EdgeKind::Elevator`, while junction detection needs the same grouping in `NavNodeId`
+/// space, so it is reimplemented here rather than shared. Generation always wires an elevator's
+/// floors as a fully-connected two-way fan, but this makes no such assumption -- it just follows
+/// whatever `is_elevator` edges actually exist, both directions, so a partially-repaired fan is
+/// still recognized as one group. Always includes `start` itself.
+fn elevator_group(nav: &NavGraph, start: NavNodeId) -> std::collections::HashSet<NavNodeId> {
+    let mut group = std::collections::HashSet::new();
+    let mut stack = vec![start];
+    while let Some(nid) = stack.pop() {
+        if !group.insert(nid) {
+            continue;
+        }
+        for e in nav.outgoing_edges(nid).filter(|e| e.is_elevator) {
+            if !group.contains(&e.to) {
+                stack.push(e.to);
+            }
+        }
+        for e in nav.incoming_edges(nid).filter(|e| e.is_elevator) {
+            if !group.contains(&e.from) {
+                stack.push(e.from);
+            }
+        }
+    }
+    group
+}
+
+/// Route-aware junction count (GitHub issue #535 follow-up): a nav node on a specific path counts
+/// as a junction if it has more than one outgoing "genuine choice" that isn't simply backtracking
+/// the way the route just arrived. Concretely, for each node visited (in order, `nav_nodes_on_path[0]`
+/// being the route's start), the incoming edge's `reverse_edge` (if any) is excluded from that
+/// node's outgoing edges before counting -- a node with exactly one way forward (the common
+/// "2-in/2-out corridor" shape, once the way back is excluded) is not a junction, but a node with
+/// two or more ways forward is, whether or not one of those ways can also lead back where the route
+/// came from by some other, non-reverse edge. The start node has no incoming edge to exclude, so
+/// its full outgoing set is used directly -- unlike a whole-graph, route-agnostic degree check, this
+/// means a start with exactly 2 outgoing edges already counts as a junction (the player never
+/// "arrived", so both are genuine choices), while a mid-route node needs 2 outgoing edges *besides*
+/// the way back. The finish node (last entry) is never a junction, regardless of its outgoing
+/// edges: the player has already reached the finish, so no further choice is ever presented to them
+/// there.
+///
+/// An elevator's whole stop set is folded into a single logical choice (GitHub issue #535 follow-up
+/// part 2), since a player picks a destination floor directly rather than treating each stop as its
+/// own branch: instead of counting each `is_elevator` outgoing edge as a separate option (which
+/// would make a dead-end elevator with 3+ stops look like a junction, plus grant it every other
+/// per-hop bonus on top), all `is_elevator` outgoing edges collapse into at most one "take the
+/// elevator" option. And if the route arrived via an `is_elevator` edge, the elevator has already
+/// been used to get here -- riding it again is not a fresh choice, so the whole group (every
+/// `is_elevator` edge reachable from this node, not just the exact reverse edge) is excluded
+/// entirely, leaving only non-elevator ways forward.
+///
+/// `nav_nodes_on_path` and `path_edge_indices` must be built the same way `routing::compute_route_info`
+/// and `scored_endpoints::score_path` already do: `nav_nodes_on_path[i+1] == edges[path_edge_indices[i]].to`,
+/// `nav_nodes_on_path[0] == edges[path_edge_indices[0]].from`. `edges` must be indexed the same way
+/// `nav.edges()` enumerates them (i.e. built via `nav.edges().collect()`), since `reverse_edge` indices
+/// are only meaningful in that space.
+///
+/// `elevator_group_cache` memoizes `elevator_group` by its start node across calls -- callers that
+/// invoke this in a loop over many candidate routes (e.g. `scored_endpoints::best_pair`) should keep
+/// one cache alive for the whole loop, since the same elevator group is often revisited across
+/// different candidate pairs; a call site scoring a single route can pass a fresh, throwaway map.
+pub(crate) fn route_aware_junction_flags(
+    nav: &NavGraph,
+    nav_nodes_on_path: &[NavNodeId],
+    path_edge_indices: &[usize],
+    edges: &[&super::nav::NavEdge],
+    elevator_group_cache: &mut std::collections::HashMap<NavNodeId, std::rc::Rc<std::collections::HashSet<NavNodeId>>>,
+) -> Vec<bool> {
+    let last = nav_nodes_on_path.len().saturating_sub(1);
+    nav_nodes_on_path.iter().enumerate().map(|(i, &nid)| {
+        if i == last {
+            return false;
+        }
+        let arrival_edge = if i == 0 { None } else { Some(edges[path_edge_indices[i - 1]]) };
+        let arrived_via_elevator = arrival_edge.is_some_and(|e| e.is_elevator);
+        let excluded_reverse = arrival_edge.and_then(|e| e.reverse_edge);
+
+        let elevator_group = if arrived_via_elevator {
+            Some(elevator_group_cache.entry(nid).or_insert_with(|| std::rc::Rc::new(elevator_group(nav, nid))).clone())
+        } else {
+            None
+        };
+
+        let mut choices = 0usize;
+        let mut elevator_choice_taken = false;
+        for ei in nav.outgoing_edge_indices(nid) {
+            if Some(ei) == excluded_reverse {
+                continue;
+            }
+            let e = &edges[ei];
+            if e.is_elevator {
+                if let Some(group) = &elevator_group {
+                    if group.contains(&e.to) {
+                        continue;
+                    }
+                }
+                if !elevator_choice_taken {
+                    elevator_choice_taken = true;
+                    choices += 1;
+                }
+                continue;
+            }
+            choices += 1;
+        }
+        choices > 1
+    }).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

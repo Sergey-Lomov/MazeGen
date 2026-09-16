@@ -17,7 +17,7 @@ use maze_core::RegionClass;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EntityVisibility {
     /// Hidden whenever the maze has fewer than 2 floors. First consumers: `ScoredEndpointsStrategy`'s
-    /// `vertical_passage_weight`/`elevator_weight` params (GitHub issue #390), and every check/
+    /// `cross_floor_weight`/`elevator_stop_weight` params (GitHub issue #390), and every check/
     /// strategy that only makes sense with vertical passages/elevators, which don't exist on a
     /// single-floor maze (GitHub issue #349 follow-up).
     MultiFloorOnly,
