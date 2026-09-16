@@ -209,6 +209,7 @@ export const PARAM_IDS = [
   "elevator_stops_span",
   "entry_pick",
   "existing_reuse_balance",
+  "exit_pick",
   "expand_elevator",
   "floor_mode",
   "floor_scope",

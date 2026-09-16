@@ -563,6 +563,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.search_mode.label"] as MessageFn,
     description: m["param.search_mode.description"] as MessageFn,
   },
+  exit_pick: {
+    label: m["param.exit_pick.label"] as MessageFn,
+    description: m["param.exit_pick.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -646,6 +650,9 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "floor_scope.per_floor": m["param.floor_scope.option.per_floor"] as MessageFn,
   "entry_pick.random": m["param.entry_pick.option.random"] as MessageFn,
   "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random"] as MessageFn,
+  "entry_pick.dead_end_priority": m["param.entry_pick.option.dead_end_priority"] as MessageFn,
+  "exit_pick.random": m["param.exit_pick.option.random"] as MessageFn,
+  "exit_pick.dead_end_priority": m["param.exit_pick.option.dead_end_priority"] as MessageFn,
   "cross_floor_mode.forbidden": m["param.cross_floor_mode.option.forbidden"] as MessageFn,
   "cross_floor_mode.natural": m["param.cross_floor_mode.option.natural"] as MessageFn,
   "cross_floor_mode.manual": m["param.cross_floor_mode.option.manual"] as MessageFn,
@@ -767,6 +774,9 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "floor_scope.per_floor": m["param.floor_scope.option.per_floor.explanation"] as MessageFn,
   "entry_pick.random": m["param.entry_pick.option.random.explanation"] as MessageFn,
   "entry_pick.farthest_from_random": m["param.entry_pick.option.farthest_from_random.explanation"] as MessageFn,
+  "entry_pick.dead_end_priority": m["param.entry_pick.option.dead_end_priority.explanation"] as MessageFn,
+  "exit_pick.random": m["param.exit_pick.option.random.explanation"] as MessageFn,
+  "exit_pick.dead_end_priority": m["param.exit_pick.option.dead_end_priority.explanation"] as MessageFn,
   "cross_floor_mode.forbidden": m["param.cross_floor_mode.option.forbidden.explanation"] as MessageFn,
   "cross_floor_mode.natural": m["param.cross_floor_mode.option.natural.explanation"] as MessageFn,
   "cross_floor_mode.manual": m["param.cross_floor_mode.option.manual.explanation"] as MessageFn,
