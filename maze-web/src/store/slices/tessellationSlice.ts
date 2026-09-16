@@ -79,6 +79,7 @@ export const createTessellationSlice: StateCreator<MazeStore, [], [], Tessellati
         presetActiveSplitNode: {},
         presetFocusedPoint: null,
         presetSplitTargetPrompt: null,
+        presetEntityDeletePrompt: null,
         postEditDraftSplitPoints: {},
         postEditActiveSplitNode: {},
         postEditFocusedPoint: null,

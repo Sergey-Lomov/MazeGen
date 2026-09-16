@@ -2,7 +2,7 @@ import { useMazeStore } from "../store/mazeStore";
 import type { NodeLockKind } from "../wasm/types";
 import type { Container } from "pixi.js";
 import { pickEdgeAtPosition, pickTeleportEndpointAt, pickVerticalPassageEndpointAt, isInEdgeVertexDeadZone, type PresetTeleportEndpointHit, type PresetVerticalPassageEndpointHit } from "./fieldEditUtils";
-import { presetEndpoint } from "./presetEndpoint";
+import { presetEndpoint, type PresetEndpoint } from "./presetEndpoint";
 import { makeProjection, encodePoint } from "./tessellationProjection";
 import type { PresetConnectionsRenderer } from "./PresetConnectionsRenderer";
 import { BaseController } from "./BaseController";
@@ -16,6 +16,18 @@ const VERTEX_TOOLS = new Set(["set_start", "set_finish", "teleport_one_way", "te
 // Node-locking and generation-source tools target a whole cell/point, not an edge — they hover
 // the cell under the cursor (GitHub issue #456), same as `VERTEX_TOOLS` / `manage_split_nodes`.
 const CELL_HOVER_TOOLS = new Set(["lock_in", "lock_out", "full_lock", "gen_source"]);
+
+/** True while any preset modal picker/prompt is open — pointer input must not keep driving canvas
+ *  tools underneath it (GitHub issue #540 follow-up bug report): without this guard, an in-flight
+ *  cell/edge drag gesture that opened `presetEntityDeletePrompt` on its first cell kept running as
+ *  the cursor moved to further cells (button still down), silently re-targeting the open dialog to
+ *  whatever cell the mouse happened to be over. */
+function isPresetModalOpen(state: ReturnType<typeof useMazeStore.getState>): boolean {
+  return state.presetSplitTargetPrompt !== null
+    || state.presetEntityDeletePrompt !== null
+    || state.presetVerticalPassagePending !== null
+    || state.presetElevatorPending !== null;
+}
 
 /** Teleports whose `from` sits on `level` — hit-testing/editing only ever targets the active
  * floor's own teleport endpoints (GitHub issue #340); a teleport landing on another floor is
@@ -32,6 +44,10 @@ export class PresetConnectionsController extends BaseController {
   private draggingVerticalPassageEndpoint: PresetVerticalPassageEndpointHit | null = null;
   private verticalPassageDragMoved = false;
   private lastViewportPos = { x: 0, y: 0 };
+  // Captured at pointerdown so a cell-drag gesture (which re-requests deletion on every cell it
+  // visits, via `continueCellDrag`'s callback) keeps using the shift state the drag started with,
+  // not whatever it happens to be on a later pointermove.
+  private bulkDelete = false;
 
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.code === "Escape") {
@@ -39,6 +55,7 @@ export class PresetConnectionsController extends BaseController {
       useMazeStore.getState().cancelPresetVerticalPassagePlacement();
       useMazeStore.getState().cancelPresetElevatorPlacement();
       useMazeStore.getState().cancelPresetSplitTarget();
+      useMazeStore.getState().cancelPresetEntityDelete();
     }
   };
 
@@ -57,6 +74,11 @@ export class PresetConnectionsController extends BaseController {
 
     const state = useMazeStore.getState();
     if (state.openCard !== "preset_connections") return;
+    if (isPresetModalOpen(state)) {
+      this.renderer.updateHover(null);
+      this.renderer.updateCellHover(null);
+      return;
+    }
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     this.lastViewportPos = { x: vpX, y: vpY };
@@ -169,7 +191,13 @@ export class PresetConnectionsController extends BaseController {
       this.renderer.updateHover(null);
       this.renderer.updateCellHover(inField ? [cell.x, cell.y] : null, true);
       this.continueCellDrag(inField ? [cell.x, cell.y] : null, (p) => {
-        useMazeStore.getState().resetPresetPoint(p);
+        const l = activeFloorLevel(useMazeStore.getState());
+        useMazeStore.getState().requestPresetEntityDelete(p, l, { kind: "point_all" }, this.bulkDelete);
+        // A count>1 request opens `presetEntityDeletePrompt` synchronously — the drag gesture
+        // must end right here, or it silently keeps running (as "button still held") once the
+        // dialog closes, since no further pointerdown/pointerup pair will come to end it normally
+        // (GitHub issue #540 follow-up bug report).
+        if (useMazeStore.getState().presetEntityDeletePrompt) this.endEdgeDrag();
       });
       return;
     }
@@ -183,11 +211,16 @@ export class PresetConnectionsController extends BaseController {
     });
   }
 
-  onPointerDown(canvasX: number, canvasY: number, button: number): void {
+  onPointerDown(canvasX: number, canvasY: number, button: number, shiftKey?: boolean): void {
     const state = useMazeStore.getState();
     if (state.openCard !== "preset_connections") return;
+    if (isPresetModalOpen(state)) return;
 
     if (this.tryStartPan(canvasX, canvasY, button)) return;
+    // Held shift bypasses the entity picker dialog for this gesture — captured here (not read
+    // fresh at request time) so a drag started with shift held stays bulk-delete for every cell
+    // it visits, even if shift happens to be released mid-drag.
+    this.bulkDelete = shiftKey === true;
 
     const { x: vpX, y: vpY } = this.toViewport(canvasX, canvasY);
     const tool = state.presetConnectionsTool;
@@ -237,12 +270,35 @@ export class PresetConnectionsController extends BaseController {
       const elevatorHit = store.presetElevators.find((e) => e.floors.some((f) => (f.level ?? 0) === (level ?? 0) && f.point[0] === coords[0] && f.point[1] === coords[1]));
 
       if (button === 2) {
-        if (onStart) store.setPresetStart(null);
-        else if (onFinish) store.setPresetFinish(null);
-        else if (teleportHit) store.removePresetTeleport(teleportHit.id);
-        else if (verticalPassageHit) store.removePresetVerticalPassage(verticalPassageHit.id);
-        else if (elevatorHit) store.removePresetElevator(elevatorHit.id);
-        else if (store.presetTeleportPendingFrom) this.cancelPendingTeleport();
+        const endpoints: PresetEndpoint[] = [];
+        if (onStart && store.presetStart) endpoints.push(store.presetStart);
+        if (onFinish && store.presetFinish) endpoints.push(store.presetFinish);
+        if (teleportHit) {
+          const entry = store.presetTeleports.find((t) => t.id === teleportHit.id);
+          if (entry) endpoints.push(entry[teleportHit.end]);
+        }
+        if (verticalPassageHit) {
+          const entry = store.presetVerticalPassages.find((v) => v.id === verticalPassageHit.id);
+          if (entry) endpoints.push(entry[verticalPassageHit.end]);
+        }
+        if (elevatorHit) {
+          const floorEndpoint = elevatorHit.floors.find(
+            (f) => (f.level ?? 0) === (level ?? 0) && f.point[0] === coords[0] && f.point[1] === coords[1],
+          );
+          if (floorEndpoint) endpoints.push(floorEndpoint);
+        }
+
+        if (endpoints.length === 0) {
+          if (store.presetTeleportPendingFrom) this.cancelPendingTeleport();
+        } else if (endpoints.length === 1) {
+          if (onStart) store.setPresetStart(null);
+          else if (onFinish) store.setPresetFinish(null);
+          else if (teleportHit) store.removePresetTeleport(teleportHit.id);
+          else if (verticalPassageHit) store.removePresetVerticalPassage(verticalPassageHit.id);
+          else if (elevatorHit) store.removePresetElevator(elevatorHit.id);
+        } else {
+          store.requestPresetEntityDelete(coords, level, { kind: "vertex_markers", endpoints }, shiftKey);
+        }
         return;
       }
       if (button !== 0) return;
@@ -348,8 +404,14 @@ export class PresetConnectionsController extends BaseController {
       const key = encodePoint(cell.x, cell.y);
       // Invalid preset entities remain addressable by their projected coordinates, even when
       // their point is outside the current field.
-      useMazeStore.getState().resetPresetPoint([cell.x, cell.y]);
-      if (this.renderer.getCachedCellSet().has(key)) this.beginCellDrag([cell.x, cell.y]);
+      useMazeStore.getState().requestPresetEntityDelete([cell.x, cell.y], level, { kind: "point_all" }, this.bulkDelete);
+      // A count>1 request opens `presetEntityDeletePrompt` synchronously — don't arm a drag
+      // gesture in that case, or it's stuck "held" once the dialog closes (no further
+      // pointerdown/pointerup pair reaches the canvas to end it normally; GitHub issue #540
+      // follow-up bug report).
+      if (this.renderer.getCachedCellSet().has(key) && !useMazeStore.getState().presetEntityDeletePrompt) {
+        this.beginCellDrag([cell.x, cell.y]);
+      }
       return;
     }
 

@@ -68,7 +68,7 @@ export class SceneInteraction {
       const st = useMazeStore.getState();
       const controller = getController(st);
       if (controller) {
-        controller.onPointerDown(e.globalX, e.globalY, e.button);
+        controller.onPointerDown(e.globalX, e.globalY, e.button, e.shiftKey);
         return;
       }
       this.defaultPan.begin(e.globalX, e.globalY);

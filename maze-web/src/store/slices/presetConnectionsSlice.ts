@@ -2,6 +2,7 @@ import type { StateCreator } from "zustand";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import { applyTool, computeInvalidKeys, computeInvalidTeleportIds, computeInvalidVerticalPassageIds, computeInvalidElevatorIds, computeInvalidMarkers, computeInvalidEndpoint, computeInvalidLockedNodeKeys, computeInvalidSplitPoints, resolveCells, presetEdgeKey, canonicalizePresetPair, resolvePresetActiveEndpoint, resolvePresetPartnerAt, allNodesAt, cycleTeleportDirection, removeTeleport, moveTeleportEndpoint, rotatePresetSplitPoint, cycleVerticalPassageDirection, removeVerticalPassage, moveVerticalPassageEndpoint, removeElevator, cellExistsAt } from "../../pixi/fieldEditUtils";
 import { presetEndpoint, presetEndpointIsSplit, presetEndpointsEqual, type PresetEndpoint } from "../../pixi/presetEndpoint";
+import { buildPresetPointEntities, type PresetPointEntityDescriptor, type PresetPointEntityScope } from "../../pixi/pointEntities";
 import type { SplitRef } from "../../pixi/postEditEndpoint";
 import { addSlot, removeSlot, cycleActive, setActive } from "../../pixi/splitPointsCore";
 import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
@@ -9,6 +10,32 @@ import { getNeighborData } from "../../pixi/tessellationGeometry";
 import type { NodeLockKind } from "../../wasm/types";
 import type { MazeState, MazeStore, PresetConnectionsState, PresetConnectionsActions } from "../storeTypes";
 import { debugStaleOf, withRecomputedAutoLock, recomputeAutoLock, activeFloorField, activeFloorLevel, resolveFieldAtOf, levelFieldsOf } from "../storeHelpers";
+
+/** Plain 0-based active floor index (0 = floor 0), unlike `activeFloorLevel` (`undefined` = floor
+ * 0) — `buildPresetPointEntities`'s `activeFloorLevel` param needs this convention to match
+ * `cellInspectionResolver.ts`'s `activeFloorIndex`, since it's compared directly against a
+ * `PresetEndpoint.level` normalized the same way (`other.level ?? 0`). */
+function activeFloorIndex(state: MazeState): number {
+  return Math.max(state.floors.findIndex((f) => f.id === state.activeFloorId), 0);
+}
+
+/** Removes `presetConnections[key]`, but — unlike a plain `.delete` — leaves the pair reading as
+ *  the maze's current `defaultEdgeState` (GitHub issue #540 follow-up bug report) rather than
+ *  always falling back to `"undefined"`: when the default is `"wall"`/`"passage"`, every ordinary
+ *  edge of the field already carries an explicit `source: "default"` entry (`applyDefaultEdgeState`)
+ *  representing that state, so simply deleting the entry would silently regress it to undefined
+ *  instead of the configured default. Mutates `presetConnections` in place — callers own cloning
+ *  the map first. */
+function resetEdgeToDefault(
+  presetConnections: Map<string, PresetConnectionEntry>,
+  defaultEdgeState: "undefined" | "wall" | "passage",
+  key: string,
+  from: PresetEndpoint,
+  to: PresetEndpoint,
+): void {
+  if (defaultEdgeState === "undefined") presetConnections.delete(key);
+  else presetConnections.set(key, { from, to, state: defaultEdgeState, source: "default" });
+}
 
 export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], PresetConnectionsState & PresetConnectionsActions> = (set, get) => ({
   presetConnections: new Map<string, PresetConnectionEntry>(),
@@ -40,6 +67,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
   presetHoveredLink: null,
   presetSectionsExpanded: { problems: true },
   presetSplitTargetPrompt: null,
+  presetEntityDeletePrompt: null,
 
   setPresetConnectionsTool: (tool) => set({
     presetConnectionsTool: tool,
@@ -47,6 +75,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     presetVerticalPassagePending: null,
     presetElevatorPending: null,
     presetSplitTargetPrompt: null,
+    presetEntityDeletePrompt: null,
   }),
 
   setPresetSectionExpanded: (id, expanded) =>
@@ -114,6 +143,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     presetFocusedPoint: null,
     presetHoveredLink: null,
     presetSplitTargetPrompt: null,
+    presetEntityDeletePrompt: null,
     debugStale: debugStaleOf(state),
   })),
 
@@ -363,6 +393,70 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     });
   },
 
+  /** Removes an entire preset split point (every declared slot at once) and migrates every
+   *  entity anchored on a removed slot node onto the point's original node (GitHub issue #540) —
+   *  unlike `removePresetSplitNode`, nothing is deleted except the connections/edges of the split
+   *  shape itself: those simply drop (reverting to the default/undefined state, since an absent
+   *  `presetConnections` entry already reads as `"undefined"`) — this includes the original node's
+   *  own edges too, not just the removed slot nodes', because a recognized special shape (bridge,
+   *  diagonal, ...) draws across faces of *both* the original and its slot node together, so once
+   *  the split is gone there's no single "this edge belongs to the shape" vs "this edge doesn't"
+   *  distinction left to preserve. Meanwhile teleports/vertical passages/elevators/start/finish/
+   *  gen-source are retargeted in place so they keep working, now anchored on the original node.
+   *  Never refuses — the previous "reassign start/finish/gen-source first" restriction doesn't
+   *  apply once those markers migrate instead of being destroyed. */
+  removePresetSplitAll: (point, level) => set((state) => {
+    const key = level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${level}`;
+    const slotIds = state.presetSplitPoints[key] ?? [];
+    if (slotIds.length === 0) return state;
+
+    const original = presetEndpoint(point, undefined, level);
+    const isRemovedNode = (ep: PresetEndpoint) =>
+      ep.slotId !== undefined && ep.point[0] === point[0] && ep.point[1] === point[1] && (ep.level ?? 0) === (level ?? 0);
+    const isPointNode = (ep: PresetEndpoint) => isRemovedNode(ep) || presetEndpointsEqual(ep, original);
+    const retarget = (ep: PresetEndpoint) => (isRemovedNode(ep) ? original : ep);
+
+    const presetConnections = new Map<string, PresetConnectionEntry>();
+    for (const entry of state.presetConnections.values()) {
+      const fromIsPoint = isPointNode(entry.from);
+      const toIsPoint = isPointNode(entry.to);
+      if (!fromIsPoint && !toIsPoint) {
+        presetConnections.set(presetEdgeKey(entry.from, entry.to), entry);
+        continue;
+      }
+      if (fromIsPoint && toIsPoint) continue; // internal to the split shape — just gone, no edge left to default
+      // One side leaves the field (the split), the other is a real external neighbor — that
+      // neighbor-facing edge still exists once the split is gone, so it reverts to the current
+      // default state rather than vanishing outright (GitHub issue #540 follow-up bug report).
+      const from = fromIsPoint ? original : entry.from;
+      const to = toIsPoint ? original : entry.to;
+      resetEdgeToDefault(presetConnections, state.defaultEdgeState, presetEdgeKey(from, to), from, to);
+    }
+    const presetTeleports = state.presetTeleports.map((t) => (
+      isRemovedNode(t.from) || isRemovedNode(t.to) ? { ...t, from: retarget(t.from), to: retarget(t.to) } : t
+    ));
+    const presetVerticalPassages = state.presetVerticalPassages.map((v) => (
+      isRemovedNode(v.from) || isRemovedNode(v.to) ? { ...v, from: retarget(v.from), to: retarget(v.to) } : v
+    ));
+    const presetElevators = state.presetElevators.map((e) => (
+      e.floors.some(isRemovedNode) ? { ...e, floors: e.floors.map(retarget) } : e
+    ));
+
+    const presetSplitPoints = { ...state.presetSplitPoints };
+    delete presetSplitPoints[key];
+    const presetActiveSplitNode = { ...state.presetActiveSplitNode };
+    delete presetActiveSplitNode[key];
+
+    return withRecomputedAutoLock(state, {
+      presetConnections, presetTeleports, presetVerticalPassages, presetElevators,
+      presetSplitPoints, presetActiveSplitNode,
+      presetStart: state.presetStart && isRemovedNode(state.presetStart) ? retarget(state.presetStart) : state.presetStart,
+      presetFinish: state.presetFinish && isRemovedNode(state.presetFinish) ? retarget(state.presetFinish) : state.presetFinish,
+      presetGenSource: state.presetGenSource && isRemovedNode(state.presetGenSource) ? retarget(state.presetGenSource) : state.presetGenSource,
+      presetsDirty: true,
+    });
+  }),
+
   cyclePresetActiveSplitNode: (point) => set((state) => {
     const level = activeFloorLevel(state);
     return {
@@ -489,7 +583,9 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
 
     const presetConnections = new Map(state.presetConnections);
     for (const [k, entry] of presetConnections) {
-      if (touchesPoint(entry.from) || touchesPoint(entry.to)) presetConnections.delete(k);
+      if (touchesPoint(entry.from) || touchesPoint(entry.to)) {
+        resetEdgeToDefault(presetConnections, state.defaultEdgeState, k, entry.from, entry.to);
+      }
     }
     const presetTeleports = state.presetTeleports.filter((t) => !touchesPoint(t.from) && !touchesPoint(t.to));
     const presetVerticalPassages = state.presetVerticalPassages.filter((p) => !touchesPoint(p.from) && !touchesPoint(p.to));
@@ -516,7 +612,7 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
     });
   }),
 
-  requestPresetSplitTarget: (prompt) => set({ presetSplitTargetPrompt: prompt }),
+  requestPresetSplitTarget: (prompt) => set({ presetSplitTargetPrompt: prompt, presetEntityDeletePrompt: null }),
   cancelPresetSplitTarget: () => set({ presetSplitTargetPrompt: null }),
   applyPresetSplitTargetPick: (slotId) => {
     const prompt = get().presetSplitTargetPrompt;
@@ -554,7 +650,131 @@ export const createPresetConnectionsSlice: StateCreator<MazeStore, [], [], Prese
       }
     }
   },
+
+  requestPresetEntityDelete: (point, level, scope, bulk) => {
+    const state = get();
+    const entities = buildPresetPointEntities(point, level, activeFloorIndex(state), scope, {
+      presetSplitPoints: state.presetSplitPoints,
+      presetStart: state.presetStart,
+      presetFinish: state.presetFinish,
+      presetGenSource: state.presetGenSource,
+      presetTeleports: state.presetTeleports,
+      presetVerticalPassages: state.presetVerticalPassages,
+      presetElevators: state.presetElevators,
+      presetConnections: state.presetConnections,
+      lockedNodes: state.lockedNodes,
+      autoLockedNodes: state.autoLockedNodes,
+    });
+    if (entities.length === 0) return;
+    // Held shift bypasses the picker dialog entirely and removes every entity at once — the old
+    // pre-#540 one-shot behavior, kept available for users who don't want a confirm step every time.
+    if (bulk) {
+      removeAllPresetPointEntitiesFor(get, point, scope, entities);
+      return;
+    }
+    if (entities.length === 1) {
+      get().removePresetPointEntity(entities[0]);
+      return;
+    }
+    set({ presetEntityDeletePrompt: { point, level, scope }, presetSplitTargetPrompt: null });
+  },
+
+  cancelPresetEntityDelete: () => set({ presetEntityDeletePrompt: null }),
+
+  removePresetPointEntity: (descriptor) => {
+    switch (descriptor.kind) {
+      case "start":
+        get().setPresetStartEndpoint(null);
+        break;
+      case "finish":
+        get().setPresetFinishEndpoint(null);
+        break;
+      case "gen_source":
+        get().setPresetGenSourceEndpoint(null);
+        break;
+      case "teleport":
+        get().removePresetTeleport(Number(descriptor.id));
+        break;
+      case "vertical_passage":
+        get().removePresetVerticalPassage(Number(descriptor.id));
+        break;
+      case "elevator":
+        get().removePresetElevator(Number(descriptor.id));
+        break;
+      case "lock":
+        get().removeLockedNode(descriptor.endpoint.point[0], descriptor.endpoint.point[1]);
+        break;
+      case "edge":
+        set((state) => {
+          const presetConnections = new Map(state.presetConnections);
+          const entry = presetConnections.get(descriptor.id);
+          if (entry) resetEdgeToDefault(presetConnections, state.defaultEdgeState, descriptor.id, entry.from, entry.to);
+          return withRecomputedAutoLock(state, { presetConnections, presetsDirty: true });
+        });
+        break;
+      case "split_node":
+        get().removePresetSplitAll(descriptor.endpoint.point, descriptor.endpoint.level);
+        break;
+    }
+
+    const prompt = get().presetEntityDeletePrompt;
+    if (!prompt) return;
+    const stateAfter = get();
+    const remaining = buildPresetPointEntities(prompt.point, prompt.level, activeFloorIndex(stateAfter), prompt.scope, {
+      presetSplitPoints: stateAfter.presetSplitPoints,
+      presetStart: stateAfter.presetStart,
+      presetFinish: stateAfter.presetFinish,
+      presetGenSource: stateAfter.presetGenSource,
+      presetTeleports: stateAfter.presetTeleports,
+      presetVerticalPassages: stateAfter.presetVerticalPassages,
+      presetElevators: stateAfter.presetElevators,
+      presetConnections: stateAfter.presetConnections,
+      lockedNodes: stateAfter.lockedNodes,
+      autoLockedNodes: stateAfter.autoLockedNodes,
+    });
+    if (remaining.length === 0) set({ presetEntityDeletePrompt: null });
+  },
+
+  removeAllPresetPointEntities: () => {
+    const prompt = get().presetEntityDeletePrompt;
+    if (!prompt) return;
+    set({ presetEntityDeletePrompt: null });
+    const state = get();
+    const entities = buildPresetPointEntities(prompt.point, prompt.level, activeFloorIndex(state), prompt.scope, {
+      presetSplitPoints: state.presetSplitPoints,
+      presetStart: state.presetStart,
+      presetFinish: state.presetFinish,
+      presetGenSource: state.presetGenSource,
+      presetTeleports: state.presetTeleports,
+      presetVerticalPassages: state.presetVerticalPassages,
+      presetElevators: state.presetElevators,
+      presetConnections: state.presetConnections,
+      lockedNodes: state.lockedNodes,
+      autoLockedNodes: state.autoLockedNodes,
+    });
+    removeAllPresetPointEntitiesFor(get, prompt.point, prompt.scope, entities);
+  },
 });
+
+/** Shared by "Delete all" in the open dialog and by the shift-held bulk-delete shortcut — both
+ * resolve the same scope to the same final state, just via different entry points (GitHub issue
+ * #540 follow-up). `point_all` reuses the pre-#540 one-shot reset/delete action directly, since it
+ * already does the exact same full-point cleanup (including `presetActiveSplitNode`); a narrower
+ * `vertex_markers` scope has no equivalent bulk action, so it removes each descriptor in turn. */
+function removeAllPresetPointEntitiesFor(
+  get: () => MazeStore,
+  point: [number, number],
+  scope: PresetPointEntityScope,
+  entities: PresetPointEntityDescriptor[],
+): void {
+  if (scope.kind === "point_all") {
+    get().resetPresetPoint(point);
+    return;
+  }
+  const order: Record<string, number> = { edge: 0, start: 1, finish: 1, gen_source: 1, teleport: 1, vertical_passage: 1, elevator: 1, lock: 2, split_node: 3 };
+  const sorted = [...entities].sort((a, b) => (order[a.kind] ?? 1) - (order[b.kind] ?? 1));
+  for (const e of sorted) get().removePresetPointEntity(e);
+}
 
 /** Builds the new `PresetVerticalPassageEntry` for a single-click placement (GitHub issue #357
  * follow-up) — `origin` is always `from`; `direction` ("up"/"down", already resolved as available

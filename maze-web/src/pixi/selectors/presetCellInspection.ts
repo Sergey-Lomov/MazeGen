@@ -1,8 +1,9 @@
-import { presetEndpointsEqual, type PresetEndpoint } from "../presetEndpoint";
+import { type PresetEndpoint } from "../presetEndpoint";
 import {
   allNodesAt, presetSplitNodeFaceKinds,
   type PresetConnectionEntry, type PresetTeleportEntry, type PresetVerticalPassageEntry, type PresetElevatorEntry,
 } from "../fieldEditUtils";
+import { presetVertexMarkerEntities } from "../pointEntities";
 import { splitNodeSemanticNamesFromKinds } from "../splitNodeNames";
 import type { NodeLockKind } from "../../wasm/types";
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
@@ -16,24 +17,12 @@ function formatLockKind(kind: NodeLockKind): string {
   }
 }
 
-function formatFloor(level: number): string {
-  return `L${level + 1}`;
-}
-
-/** Same-floor target shows plain cell coordinates, cross-floor target shows the floor label
- *  instead — mirrors `cellInspection.ts`'s `formatTarget` for the post-generation graph. */
-function formatTarget(other: PresetEndpoint, activeFloorLevel: number): string {
-  const otherLevel = other.level ?? 0;
-  return otherLevel === activeFloorLevel ? `(${other.point[0]},${other.point[1]})` : `(${formatFloor(otherLevel)})`;
-}
-
 /** Every marker-line contributed by one specific preset-stage node (an original node or a declared
  *  split slot) — start/finish/gen-source markers, preset teleport/vertical-passage/elevator
  *  endpoints, and node locks (manual or auto), all addressed by exact `PresetEndpoint` match
- *  (GitHub issue #353's Preset Connections follow-up). Unlike the post-generation inspector, there
- *  is no unscoped node/edge list to resolve a cross-floor target through — each collection here is
- *  already flat/maze-wide, so a cross-floor teleport/vertical-passage's other endpoint is simply
- *  the entry's own `from`/`to`, no lookup needed. */
+ *  (GitHub issue #353's Preset Connections follow-up). Thin adapter over `presetVertexMarkerEntities`
+ *  (`pixi/pointEntities.ts`, GitHub issue #540) — this function only appends the lock line, which
+ *  the entity-delete dialog's `point_all` scope reports separately instead. */
 function buildPresetNodeMarkerLines(
   endpoint: PresetEndpoint,
   activeFloorLevel: number,
@@ -45,45 +34,10 @@ function buildPresetNodeMarkerLines(
   presetElevators: PresetElevatorEntry[],
   lockKind: NodeLockKind | undefined,
 ): string[] {
-  const lines: string[] = [];
-  if (presetStart && presetEndpointsEqual(presetStart, endpoint)) lines.push(m["status.cell_start"]());
-  if (presetFinish && presetEndpointsEqual(presetFinish, endpoint)) lines.push(m["status.cell_finish"]());
-  if (presetGenSource && presetEndpointsEqual(presetGenSource, endpoint)) lines.push(m["status.cell_gen_source"]());
-
-  for (const t of presetTeleports) {
-    const departingHere = presetEndpointsEqual(t.from, endpoint);
-    const arrivingHere = presetEndpointsEqual(t.to, endpoint);
-    if (!departingHere && !arrivingHere) continue;
-    const other = departingHere ? t.to : t.from;
-    const target = formatTarget(other, activeFloorLevel);
-    const isForward = departingHere === (t.direction !== "backward");
-    const arrow = t.direction === "two_way" ? "<->" : isForward ? "->" : "<-";
-    lines.push(m["status.cell_teleport"]({ arrow, target }));
-  }
-
-  for (const v of presetVerticalPassages) {
-    const departingHere = presetEndpointsEqual(v.from, endpoint);
-    const arrivingHere = presetEndpointsEqual(v.to, endpoint);
-    if (!departingHere && !arrivingHere) continue;
-    const other = departingHere ? v.to : v.from;
-    const target = `(${formatFloor(other.level ?? 0)})`;
-    const isForward = departingHere === (v.direction !== "backward");
-    const arrow = v.direction === "two_way" ? "<->" : isForward ? "->" : "<-";
-    lines.push(m["status.cell_vertical_passage"]({ arrow, target }));
-  }
-
-  const elevatorTargetLevels: number[] = [];
-  for (const e of presetElevators) {
-    if (!e.floors.some((f) => presetEndpointsEqual(f, endpoint))) continue;
-    for (const f of e.floors) {
-      if (presetEndpointsEqual(f, endpoint)) continue;
-      elevatorTargetLevels.push(f.level ?? 0);
-    }
-  }
-  if (elevatorTargetLevels.length > 0) {
-    const sorted = [...new Set(elevatorTargetLevels)].sort((a, b) => a - b);
-    lines.push(m["status.cell_elevator"]({ targets: sorted.map(formatFloor).join(", ") }));
-  }
+  const lines = presetVertexMarkerEntities(
+    endpoint, activeFloorLevel, presetStart, presetFinish, presetGenSource,
+    presetTeleports, presetVerticalPassages, presetElevators,
+  ).map((e) => e.title);
 
   if (lockKind) lines.push(m["status.cell_lock"]({ kind: formatLockKind(lockKind) }));
 

@@ -213,7 +213,7 @@ describe("buildPresetCellInspection", () => {
         3, 5, 0, { "3,5": [0] }, null, null, presetEndpoint([3, 5]), [], [], [],
         new Map([["3,5", "out"]]), new Set(),
       );
-      expect(result).toBe("x:3, y:5 | [Узел 1: Источник; Блокировка (выход)] | [Узел 2: пусто]");
+      expect(result).toBe("x:3, y:5 | [Узел 1: Источник генерации; Блокировка (выход)] | [Узел 2: пусто]");
       expect(result).not.toMatch(/Gen source|Lock|empty|Node|out/);
 
       for (const [kind, label] of [["in", "вход"], ["out", "выход"], ["both", "оба"]] as const) {

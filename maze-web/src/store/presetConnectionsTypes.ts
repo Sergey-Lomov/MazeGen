@@ -2,6 +2,7 @@ import type { NodeLockKind } from "../wasm/types";
 import type { PresetConnectionEntry, PresetConnectionTool, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../pixi/presetEndpoint";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
+import type { PresetPointEntityDescriptor, PresetPointEntityScope } from "../pixi/pointEntities";
 
 export interface PresetConnectionsState {
   /** Every preset connection across every floor, in one flat map (GitHub issue #340) — an entry's
@@ -106,6 +107,17 @@ export interface PresetConnectionsState {
           | { tool: "teleport_one_way" | "teleport_two_way" };
       }
     | null;
+  /** In-progress entity-delete prompt (GitHub issue #540) — set whenever a `clear` cell click, or a
+   *  RMB vertex-tool click with more than one matching marker, targets a point carrying more than
+   *  one removable entity. `requestPresetEntityDelete` is the sole entry point: it counts the live
+   *  descriptors for `scope` and only opens this prompt when the count is >1 (0 is a no-op, 1 calls
+   *  `removePresetPointEntity` directly, no dialog). The dialog rebuilds its row list from this
+   *  `scope` on every render (`buildPresetPointEntities`), never caching descriptors — see
+   *  `Specs/preset-connections.md`'s "Entity delete/reset dialog" section. Mutually exclusive with
+   *  `presetSplitTargetPrompt` — opening one closes the other. */
+  presetEntityDeletePrompt:
+    | { point: [number, number]; level?: number; scope: PresetPointEntityScope }
+    | null;
 }
 
 export interface PresetConnectionsActions {
@@ -179,6 +191,10 @@ export interface PresetConnectionsActions {
   removePresetElevator: (id: number) => void;
   addPresetSplitNode: (point: [number, number]) => void;
   removePresetSplitNode: (point: [number, number], slotId: number) => void;
+  /** Removes an entire split point (every declared slot at once) and migrates every entity
+   *  anchored on a removed node onto the original node instead of deleting it (GitHub issue #540's
+   *  entity-delete dialog "split segment" row) — see `removePresetSplitAll`'s own doc comment. */
+  removePresetSplitAll: (point: [number, number], level?: number) => void;
   cyclePresetActiveSplitNode: (point: [number, number]) => void;
   setPresetActiveSplitNode: (point: [number, number], endpoint: PresetEndpoint) => void;
   setPresetFocusedPoint: (point: [number, number] | null) => void;
@@ -208,4 +224,21 @@ export interface PresetConnectionsActions {
    *  `slotId: undefined` = the point's original node. No-op if nothing is pending. */
   applyPresetSplitTargetPick: (slotId: number | undefined) => void;
   cancelPresetSplitTarget: () => void;
+  /** Entry point from `PresetConnectionsController` for both the `clear` cell tool (`scope:
+   *  "point_all"`) and RMB vertex-tools (`scope: "vertex_markers"`, GitHub issue #540). Counts the
+   *  live descriptors `buildPresetPointEntities` returns for `scope`: 0 is a no-op, exactly 1 calls
+   *  `removePresetPointEntity` on it directly (no dialog, matches the pre-#540 single-entity
+   *  behavior), more than 1 opens `presetEntityDeletePrompt`. Closes `presetSplitTargetPrompt` if it
+   *  happens to be open (the two prompts are mutually exclusive). */
+  requestPresetEntityDelete: (point: [number, number], level: number | undefined, scope: PresetPointEntityScope, bulk?: boolean) => void;
+  cancelPresetEntityDelete: () => void;
+  /** Removes exactly one entity by its descriptor (`kind`+`id`) — the single code path both a
+   *  dialog row click and `requestPresetEntityDelete`'s count===1 shortcut go through. Dispatches
+   *  to the matching existing per-entity remover based on `descriptor.kind`. Closes the prompt if,
+   *  after removal, the prompt's own scope has no descriptors left. */
+  removePresetPointEntity: (descriptor: PresetPointEntityDescriptor) => void;
+  /** "Delete all" — removes every descriptor currently in `presetEntityDeletePrompt`'s scope (not
+   *  necessarily the whole point — a `vertex_markers` scope only removes its own 1-5 markers) and
+   *  closes the prompt. For `scope: "point_all"` this is equivalent to the old `resetPresetPoint`. */
+  removeAllPresetPointEntities: () => void;
 }

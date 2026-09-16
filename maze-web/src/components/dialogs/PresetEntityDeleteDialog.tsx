@@ -1,0 +1,137 @@
+import React, { useMemo } from "react";
+import { useMazeStore } from "../../store/mazeStore";
+import { Modal } from "../Modal";
+import { Button } from "../Button";
+import { buildPresetPointEntities } from "../../pixi/pointEntities";
+import { presetConnectionsOnLevel, recordOnLevel, presetSplitNodeFaceKinds } from "../../pixi/fieldEditUtils";
+import { buildActiveCells } from "../../pixi/selectors/fieldSelectors";
+import { buildCellSet } from "../../pixi/selectors/sharedSelectors";
+import { presetEndpoint } from "../../pixi/presetEndpoint";
+import { splitNodeSemanticNamesFromKinds } from "../../pixi/splitNodeNames";
+import { activeFloorLevel } from "../../store/storeHelpers";
+import { ui, radius, dialogSpacing, typography, inset } from "../../styles/theme";
+import * as m from "~/paraglide/messages";
+
+interface Props {
+  onClose: () => void;
+}
+
+/** Entity-delete picker for the preset `clear` cell tool and RMB vertex-tools (GitHub issue #540).
+ * Shown whenever the targeted point/scope carries more than one removable entity — clicking a row
+ * removes just that entity, "Delete all" removes every entity currently in scope. The row list is
+ * rebuilt from live store state on every render (never cached at open time), so it stays correct as
+ * rows disappear one click at a time; the dialog auto-closes once the scope is empty. */
+export function PresetEntityDeleteDialog({ onClose }: Props) {
+  const prompt = useMazeStore((s) => s.presetEntityDeletePrompt);
+  const removeOne = useMazeStore((s) => s.removePresetPointEntity);
+  const removeAll = useMazeStore((s) => s.removeAllPresetPointEntities);
+  const presetSplitPoints = useMazeStore((s) => s.presetSplitPoints);
+  const presetStart = useMazeStore((s) => s.presetStart);
+  const presetFinish = useMazeStore((s) => s.presetFinish);
+  const presetGenSource = useMazeStore((s) => s.presetGenSource);
+  const presetTeleports = useMazeStore((s) => s.presetTeleports);
+  const presetVerticalPassages = useMazeStore((s) => s.presetVerticalPassages);
+  const presetElevators = useMazeStore((s) => s.presetElevators);
+  const presetConnections = useMazeStore((s) => s.presetConnections);
+  const lockedNodes = useMazeStore((s) => s.lockedNodes);
+  const autoLockedNodes = useMazeStore((s) => s.autoLockedNodes);
+  const activeFloorIndex = useMazeStore((s) => Math.max(s.floors.findIndex((f) => f.id === s.activeFloorId), 0));
+  const cfg = useMazeStore((s) => s.floorFields[s.activeFloorId].tessellationConfig);
+  const fieldPoints = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldPoints);
+  const fieldEditMode = useMazeStore((s) => s.floorFields[s.activeFloorId].fieldEditMode);
+  const level = useMazeStore(activeFloorLevel);
+
+  const entities = useMemo(() => {
+    if (!prompt) return [];
+    const point = prompt.point;
+    const slotIds = presetSplitPoints[prompt.level === undefined ? `${point[0]},${point[1]}` : `${point[0]},${point[1]}@${prompt.level}`] ?? [];
+    let splitSemanticNames: { full: string; short: string }[] | null = null;
+    if (slotIds.length > 0) {
+      const cells = buildActiveCells(fieldPoints, fieldEditMode, cfg);
+      const inFieldCells = buildCellSet(cells);
+      const levelSplitPoints = recordOnLevel(presetSplitPoints, level);
+      const levelConnections = presetConnectionsOnLevel(presetConnections, level);
+      const slotOrder: (number | undefined)[] = [undefined, ...slotIds];
+      const faceKindsByNode = slotOrder.map((slotId) => presetSplitNodeFaceKinds(
+        presetEndpoint(point, slotId, level), point, cfg, inFieldCells, levelConnections, levelSplitPoints, {}, level,
+      ));
+      splitSemanticNames = splitNodeSemanticNamesFromKinds(faceKindsByNode);
+    }
+    return buildPresetPointEntities(prompt.point, prompt.level, activeFloorIndex, prompt.scope, {
+      presetSplitPoints, presetStart, presetFinish, presetGenSource,
+      presetTeleports, presetVerticalPassages, presetElevators,
+      presetConnections, lockedNodes, autoLockedNodes, splitSemanticNames,
+    });
+  }, [
+    prompt, activeFloorIndex, presetSplitPoints, presetStart, presetFinish, presetGenSource,
+    presetTeleports, presetVerticalPassages, presetElevators, presetConnections, lockedNodes, autoLockedNodes,
+    cfg, fieldPoints, fieldEditMode, level,
+  ]);
+
+  if (!prompt) return null;
+  if (entities.length === 0) {
+    onClose();
+    return null;
+  }
+  const [x, y] = prompt.point;
+
+  return (
+    <Modal title={m["preset.entity_delete_title"]({ x, y })} size="approve" onClose={onClose}>
+      <p style={styles.hint}>{m["preset.entity_delete_hint"]()}</p>
+      <div style={styles.list}>
+        {entities.map((e) => (
+          <Button
+            key={`${e.kind}:${e.id}`}
+            variant="secondary"
+            layoutStyle={styles.item}
+            onClick={() => removeOne(e)}
+          >
+            {e.title}
+          </Button>
+        ))}
+      </div>
+      <div style={styles.footer}>
+        <Button variant="secondary" layoutStyle={styles.btnCancel} onClick={onClose}>{m["common.cancel"]()}</Button>
+        <Button variant="destructive" layoutStyle={styles.btnCancel} onClick={() => { removeAll(); onClose(); }}>
+          {m["preset.entity_delete_all"]()}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  hint: {
+    ...typography.control,
+    color: ui.text.secondary,
+    margin: 0,
+    paddingBottom: dialogSpacing.paddingY,
+  },
+  list: {
+    display: "flex",
+    flexDirection: "column",
+    gap: dialogSpacing.gap,
+  },
+  item: {
+    ...typography.control,
+    display: "flex",
+    alignItems: "center",
+    width: "100%",
+    justifyContent: "flex-start",
+    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
+    borderRadius: radius.sm,
+  },
+  footer: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: dialogSpacing.gap,
+    paddingTop: dialogSpacing.paddingY,
+    borderTop: `1px solid ${ui.border.default}`,
+  },
+  btnCancel: {
+    ...typography.control,
+    padding: `${inset.buttonInsetY}px ${inset.buttonInsetX}px`,
+    cursor: "default",
+    borderRadius: radius.sm,
+  },
+};

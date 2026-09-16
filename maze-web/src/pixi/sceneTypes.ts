@@ -3,7 +3,7 @@ export interface ViewportListener {
 }
 
 export interface PointerHandler {
-  onPointerDown(canvasX: number, canvasY: number, button: number): void;
+  onPointerDown(canvasX: number, canvasY: number, button: number, shiftKey?: boolean): void;
   onPointerMove(canvasX: number, canvasY: number, buttons?: number): void;
   onPointerUp(button?: number): void;
   clearHover?(): void;
