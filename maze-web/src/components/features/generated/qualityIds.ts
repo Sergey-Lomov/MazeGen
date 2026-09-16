@@ -261,6 +261,7 @@ export const PARAM_IDS = [
   "min_ratio",
   "min_region_ratio",
   "min_region_size",
+  "min_score",
   "min_stops",
   "min_stops_ratio",
   "min_teleport_ratio",

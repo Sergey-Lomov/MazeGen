@@ -1,5 +1,17 @@
 import type { IssueDto } from "../wasm/types";
 
+export function missingEndpointsIssue(sourceCheck: string): IssueDto {
+  // `missing_endpoints` is a `NO_DETAIL_CHECKS` entry -- no per-element highlight payload, no
+  // `.with_detail(...)` data on the Rust side.
+  return {
+    kind: "missing_endpoints",
+    payload: { kind: "none" },
+    source_checks: [sourceCheck],
+    source_check_types: { [sourceCheck]: sourceCheck },
+    details: {},
+  };
+}
+
 export function invalidLoopIssue(sourceCheck: string): IssueDto {
   return {
     kind: "invalid_loop",

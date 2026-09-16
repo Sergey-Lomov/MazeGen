@@ -519,6 +519,40 @@ fn score_path_counts_the_routes_own_start_node_as_a_split_too() {
 }
 
 #[test]
+fn apply_fails_when_best_score_below_min_score() {
+    let (mut maze, _) = make_connected_maze(5);
+
+    let mut overrides = StdHashMap::new();
+    overrides.insert(PARAM_MIN_SCORE.to_string(), "1000000".to_string());
+    let params = build_params(
+        <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy),
+        Some(&overrides),
+    );
+
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(true, true), &mut maze, &mut rng(), &params, &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Failed));
+    assert!(maze.meta.start.is_none());
+    assert!(maze.meta.finish.is_none());
+}
+
+#[test]
+fn apply_succeeds_when_best_score_meets_min_score() {
+    let (mut maze, nodes) = make_connected_maze(5);
+
+    let mut overrides = StdHashMap::new();
+    overrides.insert(PARAM_MIN_SCORE.to_string(), "1".to_string());
+    let params = build_params(
+        <ScoredEndpointsStrategy as RepairStrategy<SquareTessellation, MissingEndpointsIssue>>::params(&ScoredEndpointsStrategy),
+        Some(&overrides),
+    );
+
+    let result = apply_and_commit(&ScoredEndpointsStrategy, &issue(true, true), &mut maze, &mut rng(), &params, &PresetState::empty(), &[]);
+    assert!(matches!(result, RepairResult::Fixed { score: Some(_) }));
+    let (a, b) = (maze.meta.start.unwrap(), maze.meta.finish.unwrap());
+    assert!((a == nodes[0] && b == nodes[4]) || (a == nodes[4] && b == nodes[0]));
+}
+
+#[test]
 fn apply_is_deterministic_for_fixed_seed() {
     let (mut maze_a, _) = make_connected_maze(5);
     let mut rng_a = MazeRng::seed_from_u64(123);

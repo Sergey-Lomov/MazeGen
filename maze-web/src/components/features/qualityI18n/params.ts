@@ -83,6 +83,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.elevator_stop_weight.label"] as MessageFn,
     description: m["param.elevator_stop_weight.description"] as MessageFn,
   },
+  min_score: {
+    label: m["param.min_score.label"] as MessageFn,
+    description: m["param.min_score.description"] as MessageFn,
+  },
   invalid_overlap_weight: {
     label: m["param.invalid_overlap_weight.label"] as MessageFn,
     description: m["param.invalid_overlap_weight.description"] as MessageFn,

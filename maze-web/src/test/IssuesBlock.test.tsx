@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { IssueBubble, IssuesBlock } from "../components/IssuesBlock";
 import { useMazeStore } from "../store/mazeStore";
 import type { IssueDto } from "../wasm/types";
-import { invalidLoopIssue, regionNeedsExpansionIssue, excessiveSccCountIssue } from "./issuesBlockFixtures";
+import { invalidLoopIssue, regionNeedsExpansionIssue, excessiveSccCountIssue, missingEndpointsIssue } from "./issuesBlockFixtures";
 
 describe("IssuesBlock", () => {
   it("renders nothing for an empty issues list", () => {
@@ -148,6 +148,20 @@ describe("IssuesBlock", () => {
 
     fireEvent.click(screen.getByText("Region group validation"));
     expect(screen.getByText("1 instance is set by presets and cannot be fixed")).toBeInTheDocument();
+  });
+
+  it("a missing_endpoints bubble uses its own problem-report wording, distinct from the rule/picker action wording sharing the same issue kind", () => {
+    // GitHub issue #538 follow-up: `issue.missing_endpoints.label`/`.description` is also used as
+    // the default rule name and in check/issue picker dialogs ("Add waypoints"), so the bubble
+    // needs its own `warning_label`/`warning_description` text instead of reusing that pair.
+    const issue = missingEndpointsIssue("missing_endpoints");
+    render(<IssueBubble issue={issue} sourceCheck="missing_endpoints" />);
+
+    expect(screen.getByText("Missing waypoints")).toBeInTheDocument();
+    expect(screen.queryByText("Add waypoints")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Missing waypoints"));
+    expect(screen.getByText("The maze has no start or no finish.")).toBeInTheDocument();
   });
 
   it("collapsing the Issues section hides its bubbles; the section header itself stays visible", () => {

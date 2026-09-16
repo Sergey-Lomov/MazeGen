@@ -757,6 +757,7 @@ Handles `MISSING_ENDPOINTS`. Selects start/finish pair by maximizing a weighted 
 | `split_weight` | Float | 5.0 | [0, 100] | Weight applied to number of split-tile occurrences on path |
 | `teleport_weight` | Float | 5.0 | [0, 100] | Weight applied to number of teleport nav edges crossed on path |
 | `elevator_stop_weight` | Float | 5.0 | [0, 100] | Weight applied to summed elevator-stop bonus (see below) of `Elevator`-kind hops crossed on path |
+| `min_score` | Float | 0.0 | [0, 100000] | Minimum score the best-scoring pair must reach; below it the strategy fails instead of committing that pair (GitHub issue #538) |
 
 Score formula: `path_tiles * path_weight + junction_count * junction_weight + oneway_count * oneway_weight + cross_floor_count * cross_floor_weight + split_count * split_weight + teleport_count * teleport_weight + elevator_stop_count * elevator_stop_weight`
 
@@ -777,6 +778,7 @@ Behavior per case:
 - **Only start set**: fixes start, searches for best finish.
 - **Only finish set**: fixes finish, searches for best start.
 - No reachable path found: returns `Failed`.
+- Best-scoring pair's score is below `min_score`: returns `Failed` instead of committing that pair — no waypoints are added, even when a reachable candidate pair exists (GitHub issue #538).
 
 ### InvalidLoopRandomStrategy
 

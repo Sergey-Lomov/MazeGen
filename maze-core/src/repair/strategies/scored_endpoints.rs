@@ -20,6 +20,7 @@ pub const PARAM_CROSS_FLOOR_WEIGHT: &str = "cross_floor_weight";
 pub const PARAM_SPLIT_WEIGHT: &str = "split_weight";
 pub const PARAM_TELEPORT_WEIGHT: &str = "teleport_weight";
 pub const PARAM_ELEVATOR_STOP_WEIGHT: &str = "elevator_stop_weight";
+pub const PARAM_MIN_SCORE: &str = "min_score";
 
 const DEFAULT_PATH_WEIGHT: f64 = 2.0;
 const DEFAULT_JUNCTION_WEIGHT: f64 = 3.0;
@@ -28,6 +29,7 @@ const DEFAULT_CROSS_FLOOR_WEIGHT: f64 = 12.0;
 const DEFAULT_SPLIT_WEIGHT: f64 = 8.0;
 const DEFAULT_TELEPORT_WEIGHT: f64 = 8.0;
 const DEFAULT_ELEVATOR_STOP_WEIGHT: f64 = 4.0;
+const DEFAULT_MIN_SCORE: f64 = 0.0;
 
 static PARAMS: &[StrategyParam] = &[
     StrategyParam {
@@ -64,6 +66,11 @@ static PARAMS: &[StrategyParam] = &[
         id: PARAM_ELEVATOR_STOP_WEIGHT,
         label: "Elevator stop count weight",
         kind: StrategyParamKind::Float { default: DEFAULT_ELEVATOR_STOP_WEIGHT, min: 0.0, max: 100.0 },
+    },
+    StrategyParam {
+        id: PARAM_MIN_SCORE,
+        label: "Minimum score",
+        kind: StrategyParamKind::Float { default: DEFAULT_MIN_SCORE, min: 0.0, max: 100_000.0 },
     },
 ];
 
@@ -144,6 +151,11 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpoin
         let Some((s, f, achieved_score)) = ctx.best_pair(nav, fixed_start, fixed_finish, &weights) else {
             return (RepairResult::Failed, vec![]);
         };
+
+        let min_score = params.get(PARAM_MIN_SCORE).and_then(|v| v.as_float()).unwrap_or(DEFAULT_MIN_SCORE);
+        if achieved_score < min_score {
+            return (RepairResult::Failed, vec![]);
+        }
 
         let mut commands = Vec::new();
         if issue.missing_start { commands.push(MutationCommand::SetStart(nav.nodes[s].node_id)); }

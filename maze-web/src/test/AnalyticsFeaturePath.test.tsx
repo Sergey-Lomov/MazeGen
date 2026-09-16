@@ -160,7 +160,7 @@ const scoredEndpointsDescriptor: StrategyDescriptor = {
   id: "scored_endpoints",
   handles: "missing_endpoints",
   params: [
-    { id: "path_weight", label: "Path length weight", kind: { type: "float", default: 1, min: 0, max: 100 } },
+    { id: "path_weight", label: "Path step weight", kind: { type: "float", default: 1, min: 0, max: 100 } },
   ],
   experimental: false,
   nested_slots: [],
@@ -190,9 +190,9 @@ describe("AnalyticsFeature Path section score row", () => {
     const rows = screen.getAllByText(/^(Score|Path length)$/);
     expect(rows[0]).toHaveTextContent("Score");
 
-    expect(screen.queryByText("Path length weight")).not.toBeInTheDocument();
+    expect(screen.queryByText("Path step weight")).not.toBeInTheDocument();
     fireEvent.click(scoreLabel.parentElement!.querySelector('[role="button"]')!);
-    const weightLabel = screen.getByText("Path length weight");
+    const weightLabel = screen.getByText("Path step weight");
     expect(weightLabel).toBeInTheDocument();
     expect(weightLabel.closest("div")!.parentElement).toHaveTextContent("2");
   });
