@@ -9,6 +9,7 @@ use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
+use crate::generation::{cmd_add_directed_edge, cmd_add_bidirectional_edge};
 use super::dead_end_priority::apply_src_mode;
 use super::standard_add_params::{self, reserve_target, attempts_limit, src_mode};
 use super::remaining_deficits::RemainingDeficits;
@@ -143,17 +144,19 @@ impl<T: Tessellation> RepairStrategy<T, MissingLoopsIssue> for MissingLoopsRando
                     if rng.random::<f64>() < one_way_chance {
                         let forward = rng.random::<bool>();
                         let (from, to) = if forward { (src, dst) } else { (dst, src) };
-                        if !crate::generation::directed_edge_feasible(preset_state, from, to) {
+                        let cmds = cmd_add_directed_edge(from, to, preset_state);
+                        if cmds.is_empty() {
                             continue;
                         }
-                        commands.push(MutationCommand::AddDirectedEdge { from, to });
+                        commands.extend(cmds);
                     } else {
                         // Strictly bidirectional: skip the pair unless both directions are
                         // unblocked, rather than `can_connect`'s "at least one direction" contract.
-                        if !crate::generation::bidirectional_edge_feasible(preset_state, src, dst) {
+                        let cmds = cmd_add_bidirectional_edge(src, dst, preset_state);
+                        if cmds.is_empty() {
                             continue;
                         }
-                        commands.push(MutationCommand::AddBidirectionalEdge { a: src, b: dst });
+                        commands.extend(cmds);
                     }
                     proposed_pairs.insert((src, dst));
                     added += 1;

@@ -9,6 +9,7 @@ use crate::repair::params::{StrategyParam, StrategyParamKind, StrategyParamValue
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
+use crate::generation::{cmd_add_directed_teleport, cmd_add_bidirectional_teleport};
 use super::farthest_reachable::farthest_from;
 use super::standard_add_params::{self, reserve_target, attempts_limit};
 use super::remaining_deficits::RemainingDeficits;
@@ -210,14 +211,14 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
                         continue;
                     };
 
-                    let add_reverse = !rng.random_bool((one_way_chance / 100.0).clamp(0.0, 1.0))
-                        && crate::generation::directed_edge_feasible(preset_state, exit, entry);
-                    if add_reverse {
-                        commands.push(MutationCommand::AddBidirectionalTeleport { a: entry, b: exit });
+                    let want_reverse = !rng.random_bool((one_way_chance / 100.0).clamp(0.0, 1.0));
+                    let bidi_cmds = if want_reverse { cmd_add_bidirectional_teleport(entry, exit, preset_state) } else { vec![] };
+                    if !bidi_cmds.is_empty() {
+                        commands.extend(bidi_cmds);
                         proposed.insert((entry, exit));
                         proposed.insert((exit, entry));
                     } else {
-                        commands.push(MutationCommand::AddDirectedTeleport { from: entry, to: exit });
+                        commands.extend(cmd_add_directed_teleport(entry, exit, preset_state));
                         proposed.insert((entry, exit));
                     }
                     added += 1;

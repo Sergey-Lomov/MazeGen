@@ -8,6 +8,7 @@ use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
+use crate::generation::cmd_add_directed_edge;
 use super::missing_one_ways_shared::{pick_random_pairs, canonical_pair, ProposedPairs};
 use super::remaining_deficits::RemainingDeficits;
 use super::standard_add_params::{reserve_target, attempts_limit, src_mode};
@@ -77,18 +78,18 @@ impl<T: Tessellation> RepairStrategy<T, MissingOneWaysIssue> for MissingOneWaysF
                     }
 
                     proposed.insert(canonical_pair(src, dst));
-                    let add_fwd = crate::generation::directed_edge_feasible(preset_state, src, dst);
-                    let add_bwd = crate::generation::directed_edge_feasible(preset_state, dst, src);
-                    let (from, to) = if add_fwd && add_bwd {
-                        if rng.random::<bool>() { (src, dst) } else { (dst, src) }
-                    } else if add_fwd {
-                        (src, dst)
-                    } else if add_bwd {
-                        (dst, src)
+                    let fwd_cmds = cmd_add_directed_edge(src, dst, preset_state);
+                    let bwd_cmds = cmd_add_directed_edge(dst, src, preset_state);
+                    let cmds = if !fwd_cmds.is_empty() && !bwd_cmds.is_empty() {
+                        if rng.random::<bool>() { fwd_cmds } else { bwd_cmds }
+                    } else if !fwd_cmds.is_empty() {
+                        fwd_cmds
+                    } else if !bwd_cmds.is_empty() {
+                        bwd_cmds
                     } else {
                         return false;
                     };
-                    commands.push(MutationCommand::AddDirectedEdge { from, to });
+                    commands.extend(cmds);
                     true
                 },
             );

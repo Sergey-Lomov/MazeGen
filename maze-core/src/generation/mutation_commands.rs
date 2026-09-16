@@ -20,9 +20,9 @@ use super::preset_state::PresetState;
 use super::edge_ops::{directed_edge_feasible, bidirectional_edge_feasible, remove_edge_between_feasible};
 use super::node_ops::{remove_node_feasible, replace_point_nodes_feasible};
 
-// Step 1 of GitHub issue #118's migration (Specs/repair.md): additive, not yet wired into any
-// caller — strategies still mutate `&mut Maze` directly today. `#[allow(dead_code)]` until step 2
-// switches `RepairStrategy::apply` to call these instead of the `try_*` helpers above.
+// GitHub issue #118's migration (Specs/repair.md): strategies switch to these builders one at a
+// time (GitHub issue #536) rather than reimplementing the same feasibility check inline — a
+// builder still marked `#[allow(dead_code)]` below has no caller yet.
 // Add-side `cmd_*` builders only ever consult `PresetState`, never `Graph` — every `try_add_*`
 // counterpart is completion-aware/idempotent (adds whichever direction is missing, or is a no-op
 // if the edge already exists) and so never fails for a *structural* reason, only a preset one
@@ -30,13 +30,11 @@ use super::node_ops::{remove_node_feasible, replace_point_nodes_feasible};
 // share here because there is nothing it could catch that preset feasibility doesn't already
 // cover — see `Graph::can_add_edge`'s doc comment for where a structural check would matter.
 
-#[allow(dead_code)]
 pub(crate) fn cmd_add_directed_edge(from: NodeId, to: NodeId, preset_state: &PresetState) -> Vec<MutationCommand> {
     if !directed_edge_feasible(preset_state, from, to) { return vec![]; }
     vec![MutationCommand::AddDirectedEdge { from, to }]
 }
 
-#[allow(dead_code)]
 pub(crate) fn cmd_add_bidirectional_edge(a: NodeId, b: NodeId, preset_state: &PresetState) -> Vec<MutationCommand> {
     if !bidirectional_edge_feasible(preset_state, a, b) { return vec![]; }
     // One command covers both directions — mirrors try_add_bidirectional_edge's own atomic
@@ -44,13 +42,11 @@ pub(crate) fn cmd_add_bidirectional_edge(a: NodeId, b: NodeId, preset_state: &Pr
     vec![MutationCommand::AddBidirectionalEdge { a, b }]
 }
 
-#[allow(dead_code)]
 pub(crate) fn cmd_add_directed_teleport(a: NodeId, b: NodeId, preset_state: &PresetState) -> Vec<MutationCommand> {
     if !directed_edge_feasible(preset_state, a, b) { return vec![]; }
     vec![MutationCommand::AddDirectedTeleport { from: a, to: b }]
 }
 
-#[allow(dead_code)]
 pub(crate) fn cmd_add_bidirectional_teleport(a: NodeId, b: NodeId, preset_state: &PresetState) -> Vec<MutationCommand> {
     if !bidirectional_edge_feasible(preset_state, a, b) { return vec![]; }
     vec![MutationCommand::AddBidirectionalTeleport { a, b }]
