@@ -287,6 +287,7 @@ export const PARAM_IDS = [
   "same_type_only",
   "sample_mode",
   "sample_size",
+  "search_mode",
   "selection",
   "selection_mode",
   "skip",
