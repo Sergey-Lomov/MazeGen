@@ -730,21 +730,29 @@ Handles `MISSING_ENDPOINTS`. No configurable parameters.
 
 ### FarthestEndpointsStrategy
 
-Handles `MISSING_ENDPOINTS`. No configurable parameters. Places start and finish at nav-graph nodes chosen to be far apart (distance measured in tile count — edge weight = `path.len() - 1`), via a fast two-Dijkstra sweep — **not** an exhaustive search over all pairs.
+Handles `MISSING_ENDPOINTS`. Places start and finish at nodes chosen to be far apart (distance measured in tile count — edge weight = `path.len() - 1`), via a fast two-Dijkstra/two-BFS sweep — **not** an exhaustive search over all pairs (that's `ScoredEndpointsStrategy`'s job).
 
-**Known limitation (heuristic, not a guaranteed diameter)**: the two-Dijkstra sweep (pick a node, find the farthest node from it, then the farthest node from *that*) is the standard approach for finding a graph's diameter, but it is only exact on trees. On a general graph with cycles — which any maze with loops is — the sweep can converge on a pair that is close to the maximum but not actually it. Confirmed on a real repro (GitHub issue #95, 5x5 QC-only preset graph): the sweep picked a pair at tile-distance 12 while the true maximum over all pairs, found by brute force, was 14. `ScoredEndpointsStrategy` does an exhaustive search instead and is not affected by this; use it when an exact result matters more than speed.
+**Parameters:**
+
+| id | type | default | description |
+|----|------|---------|-------------|
+| `search_mode` | Enum (`nav_graph`, `exhaustive`) | `nav_graph` | `nav_graph` sweeps the corridor-compressed `NavGraph` (fast, but every candidate is a junction/dead-end node — never mid-corridor). `exhaustive` sweeps every raw-graph tile node via plain BFS — correct even when the true tile-hop-farthest node sits mid-corridor on a loop bridge, at the cost of visiting every tile (GitHub issue #515). Shared with `MissingTeleportsStrategy`'s `entry_pick: farthest_from_random`, see `farthest_reachable::PARAM_SEARCH_MODE`. |
+
+**Known limitation (heuristic, not a guaranteed diameter)**: the two-Dijkstra/two-BFS sweep (pick a node, find the farthest node from it, then the farthest node from *that*) is the standard approach for finding a graph's diameter, but it is only exact on trees. On a general graph with cycles — which any maze with loops is — the sweep can converge on a pair that is close to the maximum but not actually it. Confirmed on a real repro (GitHub issue #95, 5x5 QC-only preset graph): the sweep picked a pair at tile-distance 12 while the true maximum over all pairs, found by brute force, was 14. `ScoredEndpointsStrategy` does an exhaustive search instead and is not affected by this; use it when an exact result matters more than speed. `search_mode: exhaustive` widens the sweep's own candidate pool to every tile (fixing the *nav-graph-only-candidates* limitation from GitHub issue #515) but does not turn the sweep itself into a true all-pairs search — the tree-only-exactness limitation described here still applies under both modes.
 
 - If both `maze.meta.start` and `maze.meta.finish` are `Some`: returns `Fixed` immediately.
-- Empty nav graph: returns `Failed`.
-- **Neither set**: picks a random nav node via `rng`. Runs reverse Dijkstra (incoming edges) from that node to find the node farthest *upstream* — candidate `start` (landing in a source SCC). Then runs forward Dijkstra from that candidate to find the farthest reachable node — candidate `finish`. Since the graph is directed, `dist(candidate_start -> candidate_finish)` can differ from `dist(candidate_finish -> candidate_start)` (see GitHub issue #95: the two-Dijkstra sweep only measures the forward direction, and on a directed graph that isn't guaranteed to be the longer one even though it identifies the correct pair of nodes). `orient_farthest_pair` runs a forward Dijkstra in both directions between the candidate pair and swaps `start`/`finish` if the reverse direction turns out longer; falls back to the original orientation if the reverse direction is unreachable. This orientation fix is independent of, and does not solve, the sweep's tree-only-exactness limitation described above.
-- **Only start set**: runs Dijkstra from `start`'s nav node, takes the farthest node as `finish`.
-- **Only finish set**: runs reverse Dijkstra (traversing incoming edges) from `finish`'s nav node, takes the farthest node as `start`. This finds the node with the longest path that can actually reach `finish`, which is correct for one-way graphs.
-- If farthest node equals the source (isolated nav node or no reachable peers in the same component): returns `Failed`.
-- Disconnected nav-graph: Dijkstra only reaches nodes in the same connected component as the source. Unreachable nodes (distance `usize::MAX`) are excluded from selection, so start and finish always end up in the same component.
+- Empty nav graph (`nav_graph` mode) / empty field (`exhaustive` mode): returns `Failed`.
+- **Neither set**: picks a random node via `rng`. Runs a reverse sweep (incoming edges) from that node to find the node farthest *upstream* — candidate `start` (landing in a source SCC). Then runs a forward sweep from that candidate to find the farthest reachable node — candidate `finish`. Since the graph is directed, `dist(candidate_start -> candidate_finish)` can differ from `dist(candidate_finish -> candidate_start)` (see GitHub issue #95: the sweep only measures the forward direction, and on a directed graph that isn't guaranteed to be the longer one even though it identifies the correct pair of nodes). `orient_farthest_pair`/`orient_farthest_pair_exhaustive` measures both directions between the candidate pair and swaps `start`/`finish` if the reverse direction turns out longer; falls back to the original orientation if the reverse direction is unreachable. This orientation fix is independent of, and does not solve, the sweep's tree-only-exactness limitation described above.
+- **Only start set**: sweeps forward from `start`, takes the farthest node as `finish`.
+- **Only finish set**: sweeps in reverse (incoming edges) from `finish`, takes the farthest node as `start`. This finds the node with the longest path that can actually reach `finish`, which is correct for one-way graphs.
+- If farthest node equals the source (isolated node or no reachable peers in the same component): returns `Failed`.
+- Disconnected graph: the sweep only reaches nodes in the same connected component as the source. Unreachable nodes are excluded from selection, so start and finish always end up in the same component.
 
 ### ScoredEndpointsStrategy
 
 Handles `MISSING_ENDPOINTS`. Selects start/finish pair by maximizing a weighted score over all reachable (start → finish) paths in the nav graph.
+
+**No `search_mode` param** (unlike `FarthestEndpointsStrategy`/`MissingTeleportsStrategy`, GitHub issue #515): `best_pair` already searches exhaustively, but over nav-node pairs — `O(nav_nodes^2)`. Widening it to every raw-graph tile pair would be `O(tiles^2)`, and tiles typically outnumber nav nodes by 5-20x, making an exhaustive raw-graph mode extremely expensive on any non-trivial maze. Deliberately not offered.
 
 **Parameters:**
 
@@ -1349,7 +1357,8 @@ Handles `MISSING_TELEPORTS` (see GitHub issue #211/#212) by adding the whole com
 
 | id | type | default | description |
 |----|------|---------|-------------|
-| `entry_pick` | Enum (`random`, `farthest_from_random`) | `random` | How a teleport's entry node is chosen — `farthest_from_random` hops from a random node to the farthest node forward-reachable from it (`farthest_reachable::farthest_from`, over the corridor-compressed `NavGraph`), same helper `FarthestEndpointsStrategy` uses. |
+| `entry_pick` | Enum (`random`, `farthest_from_random`) | `random` | How a teleport's entry node is chosen — `farthest_from_random` hops from a random node to the farthest node forward-reachable from it (`farthest_reachable::farthest_from`/`farthest_from_exhaustive`, per `search_mode`), same helper `FarthestEndpointsStrategy` uses. |
+| `search_mode` | Enum (`nav_graph`, `exhaustive`) | `nav_graph` | Only affects `entry_pick: farthest_from_random`. `nav_graph` searches the corridor-compressed `NavGraph` (fast, but the farthest point can only ever be a junction/dead-end node). `exhaustive` runs a plain BFS over every raw-graph tile node — correct even when the true tile-hop-farthest node sits mid-corridor on a loop bridge, at higher cost (GitHub issue #515). Shared param, see `farthest_reachable::PARAM_SEARCH_MODE`. |
 | `unreachable_priority` | Priority (`PriorityLevel`) | `indifferent` | How strongly to prefer an exit currently unreachable from entry over one in the desired interval — see the zone fallback below and `PriorityLevel` above (GitHub issue #381 follow-up; the "unreachable" set is the "preferred" group, "in_interval" is "other"). |
 | `desired_length` | Interval | `0..1000` | Tile-hop distance band (plain BFS over the raw `Graph`, **not** the `NavGraph`) an exit should fall within, measured from entry. |
 | `allow_out_of_interval` | Bool | `true` | If neither the desired-interval set nor the unreachable set yields a candidate, allow falling back to a reachable exit outside the interval instead of failing this entry. |

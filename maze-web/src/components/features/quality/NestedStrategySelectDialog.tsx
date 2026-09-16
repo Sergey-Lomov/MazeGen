@@ -122,7 +122,7 @@ function NestedStrategyParamPanel({ ruleId, path, strategyId, params, storeValue
   storeValues: Record<string, string>;
   onCommit: (paramId: string, value: string) => void;
 }) {
-  const localizedParams = params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }));
+  const localizedParams = params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label, strategyId) }));
   const { values, onChange } = useParamEditor({
     entityId: `${ruleId}:${path.map((p) => `${p.slotId}.${p.index}`).join(".")}:${strategyId}`,
     params: localizedParams,
@@ -137,7 +137,7 @@ function NestedStrategyParamPanel({ ruleId, path, strategyId, params, storeValue
         params={localizedParams}
         values={values}
         onChange={onChange}
-        getDescription={(p) => resolveParamDescription(p.id)}
+        getDescription={(p) => resolveParamDescription(p.id, strategyId)}
       />
     </div>
   );
@@ -153,7 +153,7 @@ function DraftStrategyParamPanel({ strategyId, params, draftValues, onChange }: 
   draftValues: Record<string, string>;
   onChange: (paramId: string, value: string) => void;
 }) {
-  const localizedParams = params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }));
+  const localizedParams = params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label, strategyId) }));
 
   function getValue(p: ParamDescriptor): string {
     if (draftValues[p.id] !== undefined) return draftValues[p.id];
@@ -174,7 +174,7 @@ function DraftStrategyParamPanel({ strategyId, params, draftValues, onChange }: 
         params={localizedParams}
         getValue={getValue}
         onChange={onChange}
-        getDescription={(p) => resolveParamDescription(p.id)}
+        getDescription={(p) => resolveParamDescription(p.id, strategyId)}
       />
     </div>
   );

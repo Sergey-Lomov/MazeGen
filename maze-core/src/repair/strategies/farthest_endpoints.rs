@@ -5,21 +5,35 @@ use crate::space::Tessellation;
 use crate::graph::nav::NavGraph;
 use crate::graph::pathfinding::dijkstra_forward;
 use crate::quality_control::MissingEndpointsIssue;
-use crate::repair::params::StrategyParams;
+use crate::repair::params::{StrategyParam, StrategyParams};
 use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use crate::generation::PresetState;
-use super::farthest_reachable::{farthest_from, farthest_to};
+use crate::graph::Graph;
+use super::farthest_reachable::{
+    farthest_from, farthest_to, farthest_from_exhaustive, farthest_to_exhaustive,
+    exhaustive_distance, search_mode, SEARCH_MODE_PARAM, SEARCH_MODE_EXHAUSTIVE,
+};
+
+static PARAMS: &[StrategyParam] = &[SEARCH_MODE_PARAM];
 
 pub struct FarthestEndpointsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for FarthestEndpointsStrategy {
     fn strategy_id(&self) -> &'static str { "farthest_endpoints" }
 
-    fn apply(&self, issue: &MissingEndpointsIssue, maze: &Maze<T>, rng: &mut dyn RngCore, _params: &StrategyParams, _preset_state: &PresetState, _nested: &[NestedStrategyConfig<T>]) -> (RepairResult, Vec<MutationCommand>) {
+    fn params(&self) -> &'static [StrategyParam] {
+        PARAMS
+    }
+
+    fn apply(&self, issue: &MissingEndpointsIssue, maze: &Maze<T>, rng: &mut dyn RngCore, params: &StrategyParams, _preset_state: &PresetState, _nested: &[NestedStrategyConfig<T>]) -> (RepairResult, Vec<MutationCommand>) {
         if !issue.missing_start && !issue.missing_finish {
             return (RepairResult::Fixed { score: None }, vec![]);
+        }
+
+        if search_mode(params) == SEARCH_MODE_EXHAUSTIVE {
+            return apply_exhaustive(issue, maze, rng);
         }
 
         let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
@@ -86,6 +100,50 @@ impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for FarthestEndpo
 
 crate::impl_erased_repair_strategy!(FarthestEndpointsStrategy, MissingEndpointsIssue);
 
+/// `SEARCH_MODE_EXHAUSTIVE` counterpart to the nav-graph branch above — mirrors its three cases
+/// (both missing / only finish missing / only start missing) but searches every raw-graph tile
+/// node instead of only junction/dead-end nav nodes (GitHub issue #515).
+fn apply_exhaustive<T: Tessellation>(issue: &MissingEndpointsIssue, maze: &Maze<T>, rng: &mut dyn RngCore) -> (RepairResult, Vec<MutationCommand>) {
+    let all_nodes: Vec<NodeId> = maze.field.all_node_ids().collect();
+    if all_nodes.is_empty() {
+        return (RepairResult::Failed, vec![]);
+    }
+
+    let commands = match (issue.missing_start, issue.missing_finish) {
+        (true, true) => {
+            let random_node = all_nodes[rng.random_range(0..all_nodes.len())];
+
+            let start_node = farthest_to_exhaustive(&maze.graph, random_node);
+            let finish_node = farthest_from_exhaustive(&maze.graph, start_node);
+            if finish_node == start_node {
+                return (RepairResult::Failed, vec![]);
+            }
+
+            let (start_node, finish_node) = orient_farthest_pair_exhaustive(&maze.graph, start_node, finish_node);
+            vec![MutationCommand::SetStart(start_node), MutationCommand::SetFinish(finish_node)]
+        }
+        (false, true) => {
+            let start = maze.meta.start.expect("missing_start is false");
+            let finish_node = farthest_from_exhaustive(&maze.graph, start);
+            if finish_node == start {
+                return (RepairResult::Failed, vec![]);
+            }
+            vec![MutationCommand::SetFinish(finish_node)]
+        }
+        (true, false) => {
+            let finish = maze.meta.finish.expect("missing_finish is false");
+            let start_node = farthest_to_exhaustive(&maze.graph, finish);
+            if start_node == finish {
+                return (RepairResult::Failed, vec![]);
+            }
+            vec![MutationCommand::SetStart(start_node)]
+        }
+        (false, false) => unreachable!(),
+    };
+
+    (RepairResult::Fixed { score: None }, commands)
+}
+
 /// Directed graph: dist(a->b) can differ from dist(b->a). Given a candidate pair, returns
 /// (start, finish) oriented so the path between them is the longer of the two directions.
 /// Falls back to the original orientation if the reverse direction is unreachable.
@@ -101,6 +159,20 @@ fn orient_farthest_pair(nav: &NavGraph, a: usize, b: usize) -> (NodeId, NodeId) 
     } else {
         (a_id, b_id)
     }
+}
+
+/// `SEARCH_MODE_EXHAUSTIVE` counterpart to `orient_farthest_pair`, comparing raw-graph tile-hop
+/// distances instead of nav-graph ones.
+fn orient_farthest_pair_exhaustive(graph: &Graph, a: NodeId, b: NodeId) -> (NodeId, NodeId) {
+    let forward_dist = exhaustive_distance(graph, a, b).unwrap_or(usize::MAX);
+    let backward_dist = exhaustive_distance(graph, b, a);
+
+    if let Some(backward_dist) = backward_dist {
+        if backward_dist > forward_dist {
+            return (b, a);
+        }
+    }
+    (a, b)
 }
 
 #[cfg(test)]
@@ -286,6 +358,40 @@ mod tests {
         maze.analysis.nav_graph(&maze.graph, &maze.meta)
     }
 
+    fn exhaustive_params() -> StrategyParams {
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert(super::super::farthest_reachable::PARAM_SEARCH_MODE.to_string(), SEARCH_MODE_EXHAUSTIVE.to_string());
+        crate::repair::params::build_params(PARAMS, Some(&overrides))
+    }
+
+    /// `search_mode: exhaustive` finds a start node the nav-graph mode cannot: same loop layout as
+    /// `exhaustive_search_finds_a_mid_corridor_farthest_point...` in the `farthest_reachable`
+    /// module, but exercised end-to-end through the strategy's `apply` (GitHub issue #515).
+    #[test]
+    fn search_mode_exhaustive_can_place_an_endpoint_mid_corridor_on_a_loop() {
+        let mut ids = IdGenerator::new();
+        let field = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[0], nodes[2], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[2], nodes[3], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[3], nodes[4], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[4], nodes[5], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[5], nodes[0], EdgeKind::Basic);
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        maze.meta.start = Some(nodes[0]);
+
+        let mut rng = MazeRng::seed_from_u64(1);
+        let params = exhaustive_params();
+        let (result, commands) = RepairStrategy::apply(&FarthestEndpointsStrategy, &issue(false, true), &maze, &mut rng, &params, &PresetState::empty(), &[]);
+        crate::quality_control::apply_commands::apply_commands(&mut maze, &PresetState::empty(), commands, None, None);
+        assert!(matches!(result, RepairResult::Fixed { score: None }));
+        assert_eq!(maze.meta.finish, Some(nodes[3]), "exhaustive mode must find the true mid-corridor farthest point");
+    }
+
     #[test]
     fn orient_farthest_pair_keeps_original_orientation_when_forward_is_longer() {
         // Directed chain a -> b (3 hops), no reverse path at all -- backward_dist is
@@ -330,6 +436,52 @@ mod tests {
         let a = nav.nav_node_for(nodes[0]).unwrap();
         let b = nav.nav_node_for(nodes[2]).unwrap();
         let (start, finish) = orient_farthest_pair(&nav, a, b);
+        assert_eq!((start, finish), (nodes[0], nodes[2]), "no reverse path exists at all -- must keep the original orientation");
+    }
+
+    #[test]
+    fn apply_fails_on_empty_field_in_exhaustive_mode() {
+        let mut ids = IdGenerator::new();
+        let field = MultiLevelField::single_level(square_rect(1, 1), &mut ids).unwrap();
+        let g = Graph::new(); // no nodes registered -- empty field
+        let mut maze: Maze<SquareTessellation> = Maze::new(field, g);
+        let mut rng = MazeRng::seed_from_u64(1);
+        let params = exhaustive_params();
+        let (result, _) = RepairStrategy::apply(&FarthestEndpointsStrategy, &issue(true, true), &maze, &mut rng, &params, &PresetState::empty(), &[]);
+        assert!(matches!(result, RepairResult::Failed));
+    }
+
+    #[test]
+    fn orient_farthest_pair_exhaustive_keeps_original_orientation_when_forward_is_longer() {
+        // Same shape as `orient_farthest_pair_keeps_original_orientation_when_forward_is_longer`,
+        // exercised over the raw graph instead of the nav graph.
+        let (maze, nodes) = directed_line_maze(4);
+        let (start, finish) = orient_farthest_pair_exhaustive(&maze.graph, nodes[0], nodes[3]);
+        assert_eq!((start, finish), (nodes[0], nodes[3]));
+    }
+
+    #[test]
+    fn orient_farthest_pair_exhaustive_swaps_when_backward_is_longer() {
+        let mut ids = IdGenerator::new();
+        let field = MultiLevelField::single_level(square_rect(5, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        g.build_initial_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        g.build_initial_edge(nodes[1], nodes[2], EdgeKind::Basic);
+        g.build_initial_edge(nodes[2], nodes[3], EdgeKind::Basic);
+        g.build_initial_edge(nodes[3], nodes[4], EdgeKind::Basic);
+        g.build_initial_edge(nodes[4], nodes[0], EdgeKind::Basic);
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+        let (start, finish) = orient_farthest_pair_exhaustive(&maze.graph, nodes[0], nodes[1]);
+        assert_eq!((start, finish), (nodes[1], nodes[0]), "reverse direction (4 hops) is longer than forward (1 hop) -- must swap");
+    }
+
+    #[test]
+    fn orient_farthest_pair_exhaustive_falls_back_to_original_when_reverse_is_unreachable() {
+        let (maze, nodes) = directed_line_maze(3);
+        let (start, finish) = orient_farthest_pair_exhaustive(&maze.graph, nodes[0], nodes[2]);
         assert_eq!((start, finish), (nodes[0], nodes[2]), "no reverse path exists at all -- must keep the original orientation");
     }
 

@@ -10,7 +10,7 @@ use crate::repair::result::RepairResult;
 use crate::repair::strategy::{RepairStrategy, NestedStrategyConfig};
 use crate::repair::command::MutationCommand;
 use crate::generation::{cmd_add_directed_teleport, cmd_add_bidirectional_teleport};
-use super::farthest_reachable::farthest_from;
+use super::farthest_reachable::{farthest_from, farthest_from_exhaustive, search_mode, SEARCH_MODE_PARAM, SEARCH_MODE_EXHAUSTIVE};
 use super::standard_add_params::{self, reserve_target, attempts_limit};
 use super::remaining_deficits::RemainingDeficits;
 
@@ -74,8 +74,9 @@ const CROSS_FLOOR_BALANCE_PARAM: StrategyParam = StrategyParam {
 // source-ordering knob — a second `src_mode` on top would be redundant. `reserve_percent` and
 // `attempts_limit` are the shared standard block (GitHub issue #486); `attempts_limit`'s default
 // unified from the old `3` to `25`.
-static PARAMS: [StrategyParam; 9] = crate::add_strategy_params!(no_src_mode:
+static PARAMS: [StrategyParam; 10] = crate::add_strategy_params!(no_src_mode:
     ENTRY_PICK_PARAM,
+    SEARCH_MODE_PARAM,
     UNREACHABLE_PRIORITY_PARAM,
     DESIRED_LENGTH_PARAM,
     ALLOW_OUT_OF_INTERVAL_PARAM,
@@ -148,6 +149,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
             Some(StrategyParamValue::Enum(s)) => s.as_str(),
             _ => ENTRY_RANDOM,
         };
+        let search_mode = search_mode(params);
         let unreachable_priority = params.get(PARAM_UNREACHABLE_PRIORITY).and_then(|v| v.as_priority()).unwrap_or(PriorityLevel::Indifferent);
         let (desired_min, desired_max) = params.get(PARAM_DESIRED_LENGTH).and_then(|v| v.as_interval()).unwrap_or((0.0, 1000.0));
         let desired_min = desired_min.max(0.0) as usize;
@@ -198,7 +200,7 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
                     let candidate = pool[pick];
 
                     let entry = match entry_pick {
-                        ENTRY_FARTHEST_FROM_RANDOM => farthest_from_via_nav(maze, candidate),
+                        ENTRY_FARTHEST_FROM_RANDOM => farthest_from_via_nav(maze, candidate, search_mode),
                         _ => candidate,
                     };
 
@@ -262,18 +264,27 @@ impl<T: Tessellation> RepairStrategy<T, MissingTeleportsIssue> for MissingTelepo
 crate::impl_erased_repair_strategy!(MissingTeleportsStrategy, MissingTeleportsIssue);
 
 /// `entry_pick: farthest_from_random`'s own step: hop from a uniformly-picked node to the
-/// farthest node forward-reachable from it, via the corridor-compressed `NavGraph` — same
-/// helper `FarthestEndpointsStrategy` uses (GitHub issue #212's shared-helper request).
+/// farthest node forward-reachable from it — helper shared with `FarthestEndpointsStrategy`
+/// (GitHub issue #212's shared-helper request). `PARAM_SEARCH_MODE` (GitHub issue #515) picks
+/// between the two search modes; see `farthest_reachable` module doc.
 ///
-/// `from` is usually a corridor-interior node (the candidate pool is every maze node, and those
-/// vastly outnumber junction/dead-end nodes), which `NavGraph::nav_node_for` cannot resolve —
-/// falling back to `from` itself there would silently skip the farthest-search for the common
-/// case. Instead, resolve via `corridor_index` to the nav node the corridor leads into. This is
-/// coarse (it's the corridor's destination nav node, not `from`'s own position), but it keeps the
-/// search on the nav graph instead of degenerating into a no-op. Note: a true farthest point can
-/// still land mid-corridor when loops are present — `farthest_from` only ever considers nav
-/// nodes, so that deeper limitation remains unaddressed here.
-fn farthest_from_via_nav<T: Tessellation>(maze: &Maze<T>, from: NodeId) -> NodeId {
+/// `SEARCH_MODE_EXHAUSTIVE` runs a plain BFS from `from` itself over the raw graph — every tile is
+/// a candidate, so no resolution step is needed.
+///
+/// `SEARCH_MODE_NAV_GRAPH` (default) searches the corridor-compressed `NavGraph`, which only knows
+/// junction/dead-end nodes. `from` is usually a corridor-interior node (the candidate pool is
+/// every maze node, and those vastly outnumber junction/dead-end nodes), which
+/// `NavGraph::nav_node_for` cannot resolve — falling back to `from` itself there would silently
+/// skip the farthest-search for the common case. Instead, resolve via `corridor_index` to the nav
+/// node the corridor leads into. This is coarse (it's the corridor's destination nav node, not
+/// `from`'s own position), but it keeps the search on the nav graph instead of degenerating into a
+/// no-op. Note: a true farthest point can still land mid-corridor when loops are present —
+/// `farthest_from` only ever considers nav nodes, so that deeper limitation is exactly what
+/// `SEARCH_MODE_EXHAUSTIVE` exists to address.
+fn farthest_from_via_nav<T: Tessellation>(maze: &Maze<T>, from: NodeId, search_mode: &str) -> NodeId {
+    if search_mode == SEARCH_MODE_EXHAUSTIVE {
+        return farthest_from_exhaustive(&maze.graph, from);
+    }
     let nav = maze.analysis.nav_graph(&maze.graph, &maze.meta);
     let Some(nav_id) = nav.nav_node_for(from).or_else(|| nav.corridor_index.get(&from).copied()) else {
         return from;

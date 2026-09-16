@@ -559,6 +559,10 @@ export const paramI18n: Record<string, { label: MessageFn; description: MessageF
     label: m["param.include_finish.label"] as MessageFn,
     description: m["param.include_finish.description"] as MessageFn,
   },
+  search_mode: {
+    label: m["param.search_mode.label"] as MessageFn,
+    description: m["param.search_mode.description"] as MessageFn,
+  },
 };
 
 // Nested-strategy slot descriptions, keyed by `NestedSlot.slot_id` — same shape as `paramI18n`
@@ -668,6 +672,8 @@ export const paramOptionI18n: Record<string, MessageFn> = {
   "selection.most_connected": m["param.selection.option.most_connected"] as MessageFn,
   "selection.least_connected": m["param.selection.option.least_connected"] as MessageFn,
   "selection.merge": m["param.selection.option.merge"] as MessageFn,
+  "search_mode.nav_graph": m["param.search_mode.option.nav_graph"] as MessageFn,
+  "search_mode.exhaustive": m["param.search_mode.option.exhaustive"] as MessageFn,
 };
 
 // Explanations for individual option values of Enum-kind params, shown under the param's
@@ -776,6 +782,8 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
   "selection.most_connected": m["param.selection.option.most_connected.explanation"] as MessageFn,
   "selection.least_connected": m["param.selection.option.least_connected.explanation"] as MessageFn,
   "selection.merge": m["param.selection.option.merge.explanation"] as MessageFn,
+  "search_mode.nav_graph": m["param.search_mode.option.nav_graph.explanation"] as MessageFn,
+  "search_mode.exhaustive": m["param.search_mode.option.exhaustive.explanation"] as MessageFn,
 };
 
 // Per-strategy override for a shared param's label (e.g. `selection`, reused by strategies that
@@ -783,6 +791,7 @@ export const paramOptionExplanationI18n: Record<string, MessageFn> = {
 // owning strategy's id.
 const paramLabelOverrideI18n: Record<string, MessageFn> = {
   "selection.remove_split": m["param.selection.remove_split.label"] as MessageFn,
+  "search_mode.missing_teleports": m["param.search_mode.missing_teleports.label"] as MessageFn,
 };
 
 export function resolveParamLabel(id: string, fallback: string, contextId?: string): string {
@@ -802,6 +811,7 @@ const paramDescriptionOverrideI18n: Record<string, MessageFn> = {
   // that do (`teleport_graph_distance` etc.), so the generic description can't be rewritten.
   "distance.cross_element_geometric_proximity": m["param.distance.cross_element_proximity.description"] as MessageFn,
   "distance.cross_element_graph_proximity": m["param.distance.cross_element_proximity.description"] as MessageFn,
+  "search_mode.missing_teleports": m["param.search_mode.missing_teleports.description"] as MessageFn,
 };
 
 export function resolveParamDescription(id: string, contextId?: string): string | undefined {

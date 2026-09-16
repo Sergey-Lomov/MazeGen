@@ -84,10 +84,10 @@ export function NewRuleStrategyDialog({ kind, onBack, onConfirm, onClose }: Prop
           <div style={styles.paramsSeparator} />
           {selectedStrategy.params.length > 0 && (
             <ParamFields
-              params={selectedStrategy.params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label) }))}
+              params={selectedStrategy.params.map((p) => ({ ...p, label: resolveParamLabel(p.id, p.label, selectedStrategy.id) }))}
               getValue={(p) => paramOverrides[selectedId]?.[p.id] ?? defaultValue(p)}
               onChange={handleParamChange}
-              getDescription={(p) => resolveParamDescription(p.id)}
+              getDescription={(p) => resolveParamDescription(p.id, selectedStrategy.id)}
             />
           )}
           {requiredNestedSlots.map((slot) => (

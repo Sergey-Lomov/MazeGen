@@ -96,6 +96,11 @@ pub fn score_for_route<T: Tessellation>(
     Some(score)
 }
 
+/// No `search_mode` param here unlike `FarthestEndpointsStrategy`/`MissingTeleportsStrategy`
+/// (GitHub issue #515): this strategy's `best_pair` is already an exhaustive search, but over
+/// nav-node pairs — `O(nav_nodes^2)`. Widening it to every raw-graph tile pair would be
+/// `O(tiles^2)`, and tiles typically outnumber nav nodes by 5-20x, making an exhaustive raw-graph
+/// mode extremely expensive on any non-trivial maze. Deliberately not offered.
 pub struct ScoredEndpointsStrategy;
 
 impl<T: Tessellation> RepairStrategy<T, MissingEndpointsIssue> for ScoredEndpointsStrategy {

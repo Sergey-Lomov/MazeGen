@@ -403,6 +403,30 @@
     }
 
     #[test]
+    fn farthest_from_via_nav_exhaustive_mode_finds_a_mid_corridor_node_nav_graph_mode_cannot() {
+        // Same loop layout as `farthest_reachable`'s own mid-corridor test (GitHub issue #515):
+        // a 3-way junction at nodes[0] branching into a short dead end (nodes[1]) and a loop back
+        // into the junction via nodes[2..6], with the loop's midpoint (nodes[3]) farther in
+        // tile-hops than the dead end but invisible to the nav-graph search.
+        let mut ids = IdGenerator::new();
+        let field = MultiLevelField::single_level(square_rect(6, 1), &mut ids).unwrap();
+        let field_level = field.single_level_id();
+        let mut g = Graph::new();
+        for node in field.all_node_ids() { g.add_node(node); }
+        let nodes: Vec<_> = field.field_of(field_level).unwrap().all_points().map(|p| field.node_at(field_level, p).unwrap()).collect();
+        g.build_initial_bidirectional_edge(nodes[0], nodes[1], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[0], nodes[2], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[2], nodes[3], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[3], nodes[4], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[4], nodes[5], EdgeKind::Basic);
+        g.build_initial_bidirectional_edge(nodes[5], nodes[0], EdgeKind::Basic);
+        let maze: Maze<SquareTessellation> = Maze::new(field, g);
+
+        assert_eq!(farthest_from_via_nav(&maze, nodes[0], "nav_graph"), nodes[1], "nav-graph mode can only ever land on a junction/dead-end node");
+        assert_eq!(farthest_from_via_nav(&maze, nodes[0], "exhaustive"), nodes[3], "exhaustive mode finds the true tile-hop-farthest mid-corridor node on the loop");
+    }
+
+    #[test]
     fn allow_out_of_interval_falls_back_to_an_out_of_range_exit_when_nothing_else_qualifies() {
         // 1x5 corridor, desired_length pinned to an interval no node can ever satisfy (min=max=99
         // on a graph whose farthest possible tile-hop distance is 4) and unreachable_priority=forbidden
