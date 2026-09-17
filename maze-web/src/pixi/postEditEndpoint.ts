@@ -141,16 +141,24 @@ export function resolvePostEditPartnerAt(
 ): PostEditEndpoint | null {
   if (neighborNodeIds.length === 0) return null;
   const sortedSlots = [...neighborSplitSlots].sort((a, b) => a - b);
-  // Every confirmed node — including a split slot — already has a real `NodeId`, and existing
-  // `postEditDraftEdges` entries are recorded against that plain `nodeEndpoint`, never a `split`
-  // endpoint (that variant only ever addresses a slot not yet confirmed, see `PostEditEndpoint`'s
-  // doc comment) — search/return `nodeEndpoint(id)` for every candidate so an existing edge's key
-  // actually matches.
+  // A confirmed split slot's generation-time edges are keyed by `splitEndpoint(...)` (baseline
+  // build, `buildMultiFloorPostEditDraft`'s `endpointFor`), while a user-drawn edge on the same
+  // slot is keyed by plain `nodeEndpoint(id)` (`setEdge` commands always carry the resolved node
+  // endpoint) — an existing edge can be recorded under either form, so both must be tried.
+  // `neighborNodeIds[0]` is the point's original node (`i === 0`); `neighborNodeIds[k + 1]`
+  // corresponds to `sortedSlots[k]` (same convention as the active-slot fallback below).
   const candidates: PostEditEndpoint[] = neighborNodeIds.map((id) => nodeEndpoint(id));
+  const splitCandidateFor = (idx: number): PostEditEndpoint | undefined => {
+    const slotId = sortedSlots[idx - 1];
+    return slotId === undefined ? undefined : splitEndpoint(neighborPoint, slotId, level);
+  };
 
-  for (const candidate of candidates) {
+  for (let idx = 0; idx < candidates.length; idx++) {
+    const candidate = candidates[idx];
+    const splitCandidate = splitCandidateFor(idx);
     for (const from of pointOldEndpoints) {
       if (draftEdges[edgeKey(from, candidate)] || draftEdges[edgeKey(candidate, from)]) return candidate;
+      if (splitCandidate && (draftEdges[edgeKey(from, splitCandidate)] || draftEdges[edgeKey(splitCandidate, from)])) return candidate;
     }
   }
   const key = level === undefined ? `${neighborPoint[0]},${neighborPoint[1]}` : `${neighborPoint[0]},${neighborPoint[1]}@${level}`;

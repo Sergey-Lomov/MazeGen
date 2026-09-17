@@ -10,7 +10,7 @@ vi.mock("../wasm/wasmLoader", () => ({
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ManageSplitNodesDialog } from "../components/features/ManageSplitNodesDialog";
 import { useMazeStore } from "../store/mazeStore";
-import { baseStoreState } from "./storeTestHelpers";
+import { baseStoreState, postEditStatePatch } from "./storeTestHelpers";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 
 beforeEach(() => {
@@ -18,11 +18,20 @@ beforeEach(() => {
   useMazeStore.setState({
     // Node 5 is the split point (2,2)'s original node — the dialog resolves the "Node 1" row to
     // its real NodeId from this snapshot, not from the point's coordinates (see the fixed bug
-    // where it was mistakenly built as `nodeEndpoint(point[0])`).
-    nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 5, x: 2, y: 2, i: 0 }],
-    postEditDraftSplitPoints: { "2,2": [0, 1] },
+    // where it was mistakenly built as `nodeEndpoint(point[0])`). Two split slots (0, 1) are
+    // added via the command log (GitHub issue #543) so `postEditBaseline`/`_nextSplitSlotId`
+    // stay consistent with `postEditDraftSplitPoints` — the dialog's actions mint new slot ids
+    // from `_nextSplitSlotId`, not from the mirror field alone.
+    ...postEditStatePatch({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 5, x: 2, y: 2, i: 0 }],
+      edges: [],
+      commands: [
+        { kind: "addSplitNode", point: [2, 2], slotId: 0 },
+        { kind: "addSplitNode", point: [2, 2], slotId: 1 },
+      ],
+      nextSplitSlotId: { "2,2": 2 },
+    }),
     postEditActiveSplitNode: {},
-    postEditDraftEdges: {},
     postEditDraftTeleports: [],
     postEditDraftMeta: null,
   });

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildPostEditMazeSource, resolveCellInspection } from "../pixi/cellInspectionResolver";
 import { buildCellInspection } from "../pixi/selectors/mazeSelectors";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
+import { suppressionPairKey } from "../pixi/postEditReplay";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEdge } from "../store/postEditTypes";
 import { useMazeStore } from "../store/mazeStore";
@@ -102,7 +103,7 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
     const suppressed = state({
       nodes,
       _generatedEdges: generatedVP,
-      postEditSuppressedVerticalPassagePairs: new Set(["1,2"]),
+      postEditSuppressedVerticalPassagePairs: new Set([suppressionPairKey(nodeEndpoint(1), nodeEndpoint(2))]),
     });
     expect(inspect(suppressed, 0, 0)).toBe("x:0, y:0");
   });
@@ -121,7 +122,10 @@ describe("buildPostEditMazeSource (GitHub issue #488)", () => {
     const suppressed = state({
       nodes,
       _generatedEdges: generatedElev,
-      postEditSuppressedElevatorPairs: new Set(["1,2", "1,3"]),
+      postEditSuppressedElevatorPairs: new Set([
+        suppressionPairKey(nodeEndpoint(1), nodeEndpoint(2)),
+        suppressionPairKey(nodeEndpoint(1), nodeEndpoint(3)),
+      ]),
     });
     expect(inspect(suppressed, 0, 0)).toBe("x:0, y:0");
   });

@@ -5,7 +5,7 @@ import { computeInvalidKeys, computeInvalidTeleportIds, computeInvalidMarkers, c
 import { presetEndpoint, presetEndpointToDto } from "../../pixi/presetEndpoint";
 import { configAllCells } from "../../pixi/tessellationCells";
 import { postEditTeleportsToDto } from "../../pixi/postEditUtils";
-import { buildMultiFloorPostEditDraft } from "./postEditSliceHelpers";
+import { buildMultiFloorPostEditDraft, buildPostEditBaseline, derivedStateToLegacyFields as legacyFieldsFor } from "./postEditSliceHelpers";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type { MazeStore, PostEditTool, QcRuleState, NestedStrategyState, DebugArenaHandle } from "../storeTypes";
 import { activeFloorTessellationOf, activeFloorField, floorTessellationOf, resolveFieldAtOf, relevantRuleParams } from "../storeHelpers";
@@ -320,14 +320,15 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
     // `postEditSlice.ts` (GitHub issue #425 — the two used to duplicate this per-level logic, and
     // this path's own copy used a single global, level-unaware node/point grouping across every
     // floor combined, silently breaking every split point on any floor above the first).
-    const {
-      draftEdges, draftTeleports: generatedTeleports, splitPoints: generatedSplitPoints, endpointFor: endpointForGeneratedId,
-    } = buildMultiFloorPostEditDraft(snapshot.nodes, snapshot.edges);
+    const { draftTeleports: generatedTeleports } = buildMultiFloorPostEditDraft(snapshot.nodes, snapshot.edges);
     const nextTeleportId = generatedTeleports.length + 1;
-    const draftMeta = {
-      start: snapshot.start !== null ? endpointForGeneratedId(snapshot.start) : null,
-      finish: snapshot.finish !== null ? endpointForGeneratedId(snapshot.finish) : null,
-    };
+    // Fresh baseline at a bumped revision (GitHub issue #543 plan section 4) — a new generation is
+    // the one case that changes the revision; every other post-edit mutation replays on top of the
+    // same one. Command log resets to empty (no draft edits survive a fresh generate()).
+    const revision = (get().postEditBaseline?.revision ?? 0) + 1;
+    const baseline = buildPostEditBaseline(snapshot.nodes, snapshot.edges, revision, snapshot.start, snapshot.finish);
+    const draftEdges = baseline.derived.edges;
+    const draftMeta = baseline.derived.meta;
     set({
       nodes: snapshot.nodes,
       edges: snapshot.edges,
@@ -350,11 +351,13 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       showKruskalDsuGroups: false,
       debugSearchQuery: "",
       debugFocusNodeIndex: null,
-      postEditDraftEdges: draftEdges,
-      postEditDraftTeleports: generatedTeleports,
-      postEditDraftSplitPoints: generatedSplitPoints,
+      postEditBaseline: baseline,
+      postEditDerived: baseline.derived,
+      postEditCommands: [],
+      ...legacyFieldsFor(baseline.derived),
       postEditActiveSplitNode: {},
       _nextPostEditTeleportId: nextTeleportId,
+      _nextSplitSlotId: {},
       postEditTeleportPendingFrom: null,
       // Filled directly from the just-computed `snapshot` (same graph, same analytics) instead
       // of re-running `confirmPostEdit`'s own `computeAnalytics` wasm call, which would recompute
@@ -373,7 +376,6 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
         navEdges: snapshot.nav_edges,
         issues: snapshot.issues,
       },
-      postEditDraftMeta: draftMeta,
       postEditTool: "wall" as PostEditTool,
       postEditDirty: false,
       mazeDirty: true,
@@ -383,15 +385,12 @@ export function generateWithSeed(seed: number, get: StoreGet, set: StoreSet, qcE
       _generatedEdges: snapshot.edges,
       // User-placed vertical passages/elevators (GitHub issue #341) have no generation-time
       // counterpart to seed from — a fresh generate() clears any leftover draft from the previous
-      // maze, same as it clears every other post-edit draft collection above.
-      postEditDraftVerticalPassages: [],
+      // maze, same as it clears every other post-edit draft collection above (already covered by
+      // the fresh, empty-log `baseline` spread via `legacyFieldsFor`).
       postEditVerticalPassagePending: null,
       _nextPostEditVerticalPassageId: 1,
-      postEditDraftElevators: [],
       postEditElevatorPending: null,
       _nextPostEditElevatorId: 1,
-      postEditSuppressedElevatorPairs: new Set<string>(),
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
       postEditSplitTargetPrompt: null,
     });
   } catch (err) {

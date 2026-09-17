@@ -1,11 +1,8 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
-import type {
-  PostEditEdge, PostEditTool, PostEditTeleportEntry, PostEditMeta,
-} from "../store/mazeStore";
+import type { PostEditEdge } from "../store/mazeStore";
 import { getNeighborData } from "./tessellationGeometry";
 import type { FieldConfig as TessellationConfig } from "../fieldConfig";
 import { type PostEditEndpoint, nodeEndpoint, splitEndpoint, edgeKey, endpointsEqual } from "./postEditEndpoint";
-import { deriveSplitPointsFromNodes } from "./splitPointsCore";
 
 export {
   extractPostEditTeleports,
@@ -76,76 +73,24 @@ export function pruneRemovedSplitNodes<T extends { x: number; y: number; i: numb
   });
 }
 
-/** `from`/`to` are always plain node endpoints here — the caller (`PostEditController`) resolves
- * a cell-edge click to the currently active real node before calling this, since edge tools apply
- * to a specific, already-resolved node (there's nothing to "wall off" for a node that doesn't
- * exist yet). `edgeKeyStr` is the pre-built `edgeKey(from, to)` string. */
-export function applyPostEditEdgeTool(
-  edges: Record<string, PostEditEdge>,
-  tool: PostEditTool,
-  edgeKeyStr: string,
-  from: PostEditEndpoint,
-  to: PostEditEndpoint,
-  originalEdges: EdgeDto[],
-): Record<string, PostEditEdge> {
-  const next = { ...edges };
-  const bwdKey = edgeKey(to, from);
-  const fromId = from.kind === "node" ? from.id : undefined;
-  const toId = to.kind === "node" ? to.id : undefined;
-
-  if (tool === "reset") {
-    const origAB = originalEdges.some(e => e.from === fromId && e.to === toId);
-    const origBA = originalEdges.some(e => e.from === toId && e.to === fromId);
-    delete next[edgeKeyStr];
-    delete next[bwdKey];
-    if (origAB && origBA) {
-      next[edgeKeyStr] = { from, to, kind: "basic" };
-      next[bwdKey] = { from: to, to: from, kind: "basic" };
-    } else if (origAB) {
-      next[edgeKeyStr] = { from, to, kind: "one_way_forward" };
-    } else if (origBA) {
-      next[bwdKey] = { from: to, to: from, kind: "one_way_forward" };
-    }
-  } else if (tool === "wall") {
-    delete next[edgeKeyStr];
-    delete next[bwdKey];
-  } else if (tool === "passage") {
-    next[edgeKeyStr] = { from, to, kind: "basic" };
-    next[bwdKey] = { from: to, to: from, kind: "basic" };
-  } else if (tool === "one_way") {
-    if (next[edgeKeyStr] !== undefined) {
-      delete next[edgeKeyStr];
-      next[bwdKey] = { from: to, to: from, kind: "one_way_backward" };
-    } else {
-      delete next[bwdKey];
-      next[edgeKeyStr] = { from, to, kind: "one_way_forward" };
-    }
-  }
-
-  return next;
-}
-
-/** Rotates every geometric-face connection of a split point's nodes by one offset index
- * (clockwise/counter-clockwise, per `getNeighborData`'s fixed offset order) — the post-edit
- * counterpart of `rotatePresetSplitPoint` (fieldEditUtils.ts). Each `postEditDraftEdges` Record
- * entry is already a one-directional edge in its own right (a bidirectional passage is two
- * separate entries, `A->B` and `B->A` — see `applyPostEditEdgeTool`'s "passage" branch), so unlike
- * the preset side there's no canonical-order direction field to re-derive — an entry just gets
- * re-keyed to point at the new neighbor, `kind` unchanged.
+/** Computes every geometric-face connection move a split point's nodes would undergo when rotated
+ * by one offset index (clockwise/counter-clockwise, per `getNeighborData`'s fixed offset order) —
+ * the post-edit counterpart of `rotatePresetSplitPoint` (fieldEditUtils.ts). Each `postEditDraftEdges`
+ * Record entry is already a one-directional edge in its own right (a bidirectional passage is two
+ * separate entries, `A->B` and `B->A`), so unlike the preset side there's no canonical-order
+ * direction field to re-derive — an entry just gets re-keyed to point at the new neighbor, `kind`
+ * unchanged.
  *
- * The entry's *other* side (not one of this point's own endpoints) moves to whichever node is
- * currently active at the new neighbor point (`resolveActiveAt`, same "active node, or that
- * point's original node" rule the dialog's own face clicks use) — there's no other way to say
- * "the same relative node" for a point that might itself be split.
- *
- * Refuses (returns the input unchanged) if any face that currently carries a connection would
- * land on a neighbor outside the field.
+ * Returns `undefined` if any face that currently carries a connection would land on a neighbor
+ * outside the field (rotation must be refused entirely) — the sole caller, `rotateSplitPointMoves`,
+ * treats this as "nothing to do".
  *
  * `level` is the 0-based floor index `point` addresses (`undefined` = floor 0, GitHub issue #358)
  * — `nodes` is expected already scoped to that floor by the caller (a same-(x,y) node on another
- * floor must not be picked up as this point's original/neighbor node), and `activeSplitNode`
- * lookups are folded through the same `"@level"`-suffixed key `postEditDraftSplitPoints` uses. */
-export function rotatePostEditSplitPoint(
+ * floor must not be picked up as this point's original/neighbor node). */
+type RotateMove = { oldKey: string; ep: PostEditEndpoint; otherIsFrom: boolean; newNeighbor: [number, number]; kind: PostEditEdge["kind"] };
+
+function collectRotateMoves(
   edges: Record<string, PostEditEdge>,
   point: [number, number],
   slotIds: number[],
@@ -153,22 +98,11 @@ export function rotatePostEditSplitPoint(
   cfg: TessellationConfig,
   cellSet: Set<string>,
   nodes: NodeDto[],
-  activeSplitNode: Record<string, PostEditEndpoint>,
-  level?: number,
-): Record<string, PostEditEdge> {
+  level: number | undefined,
+): RotateMove[] | undefined {
   const { offsets } = getNeighborData(cfg, point[0], point[1]);
   const n = offsets.length;
-  if (n === 0) return edges;
-
-  const pointKey = (p: [number, number]) => level === undefined ? `${p[0]},${p[1]}` : `${p[0]},${p[1]}@${level}`;
-
-  const resolveActiveAt = (p: [number, number]): PostEditEndpoint | null => {
-    const ids: number[] = [];
-    for (const node of nodes) if (node.x === p[0] && node.y === p[1]) ids.push(node.id);
-    if (ids.length === 0) return null;
-    const activeEntry = activeSplitNode[pointKey(p)];
-    return activeEntry ?? nodeEndpoint(ids[0]);
-  };
+  if (n === 0) return [];
 
   const coordsOf = (ep: PostEditEndpoint): [number, number] | undefined => {
     if (ep.kind === "split") return ep.point;
@@ -184,8 +118,7 @@ export function rotatePostEditSplitPoint(
     ...slotIds.map((slotId) => splitEndpoint(point, slotId, level)),
   ];
 
-  type Move = { oldKey: string; ep: PostEditEndpoint; otherIsFrom: boolean; newNeighbor: [number, number]; kind: PostEditEdge["kind"] };
-  const moves: Move[] = [];
+  const moves: RotateMove[] = [];
 
   for (const ep of endpoints) {
     for (const [key, edge] of Object.entries(edges)) {
@@ -202,155 +135,49 @@ export function rotatePostEditSplitPoint(
 
       const j = (i + direction + n) % n;
       const newNeighbor: [number, number] = [point[0] + offsets[j][0], point[1] + offsets[j][1]];
-      if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) return edges; // boundary — refuse entirely
+      if (!cellSet.has(`${newNeighbor[0]},${newNeighbor[1]}`)) return undefined; // boundary — refuse entirely
 
       moves.push({ oldKey: key, ep, otherIsFrom: epIsTo, newNeighbor, kind: edge.kind });
     }
   }
+  return moves;
+}
 
-  const next = { ...edges };
-  for (const { oldKey } of moves) delete next[oldKey];
-  for (const { ep, otherIsFrom, newNeighbor, kind } of moves) {
+/** Resolves `collectRotateMoves`'s raw move list into `ResolvedRotateMove[]` — used to build a
+ * `rotateSplitPoint` command (GitHub issue #543), whose replay has no tessellation/field access and
+ * needs each move's resulting endpoints/kind pre-computed (see `ResolvedRotateMove`'s doc comment,
+ * `postEditCommandTypes.ts`). Returns `[]` if the rotation must be refused (a moved connection
+ * would land outside the field) — the caller treats an empty move list as "nothing to do". */
+export function rotateSplitPointMoves(
+  edges: Record<string, PostEditEdge>,
+  point: [number, number],
+  slotIds: number[],
+  direction: 1 | -1,
+  cfg: TessellationConfig,
+  cellSet: Set<string>,
+  nodes: NodeDto[],
+  activeSplitNode: Record<string, PostEditEndpoint>,
+  level?: number,
+): { oldKey: string; from: PostEditEndpoint; to: PostEditEndpoint; edgeKind: PostEditEdge["kind"] }[] {
+  const moves = collectRotateMoves(edges, point, slotIds, direction, cfg, cellSet, nodes, level);
+  if (moves === undefined) return [];
+
+  const pointKey = (p: [number, number]) => level === undefined ? `${p[0]},${p[1]}` : `${p[0]},${p[1]}@${level}`;
+  const resolveActiveAt = (p: [number, number]): PostEditEndpoint | null => {
+    const ids: number[] = [];
+    for (const node of nodes) if (node.x === p[0] && node.y === p[1]) ids.push(node.id);
+    if (ids.length === 0) return null;
+    const activeEntry = activeSplitNode[pointKey(p)];
+    return activeEntry ?? nodeEndpoint(ids[0]);
+  };
+
+  const resolved: { oldKey: string; from: PostEditEndpoint; to: PostEditEndpoint; edgeKind: PostEditEdge["kind"] }[] = [];
+  for (const { oldKey, ep, otherIsFrom, newNeighbor, kind } of moves) {
     const newOther = resolveActiveAt(newNeighbor);
-    if (!newOther) continue; // shouldn't happen — every in-field cell has at least its original node
+    if (!newOther) continue;
     const from = otherIsFrom ? newOther : ep;
     const to = otherIsFrom ? ep : newOther;
-    next[edgeKey(from, to)] = { from, to, kind };
+    resolved.push({ oldKey, from, to, edgeKind: kind });
   }
-  return next;
-}
-
-/** Result of `resetPostEditPoint` — a full replacement for every one of `postEditDraftEdges`/
- * `postEditDraftTeleports`/`postEditDraftSplitPoints`/`postEditDraftMeta` field touching `point`,
- * restored to generation-time state (GitHub issue #327's unified cell reset). */
-export interface PostEditPointReset {
-  draftEdges: Record<string, PostEditEdge>;
-  draftTeleports: PostEditTeleportEntry[];
-  splitPoints: Record<string, number[]>;
-  activeSplitNode: Record<string, PostEditEndpoint>;
-  draftMeta: PostEditMeta;
-}
-
-/** Resets a single point's manual edits back to what generation produced there — the cell branch
- * of the unified Reset tool (GitHub issue #327), as opposed to the edge branch (still
- * `applyPostEditEdgeTool`'s "reset", one face pair at a time). Unlike the edge branch, a split
- * connection *can* be reset this way — the whole point, including every one of its nodes'
- * edges/teleports/split-slot list/start-finish assignment, is dropped and rebuilt from
- * `_generatedNodes`/`_generatedEdges`, mirroring what `resetPostEdit` does for the entire graph.
- *
- * A manually `addSplitNode`-added slot that was never part of generation does not survive — same
- * "strict superset of the old clear behavior" reasoning `resetPostEdit`'s own doc comment gives.
- *
- * `generatedNodes`/`generatedEdges` are `_generatedNodes`/`_generatedEdges` (not `state.nodes`/
- * `state.edges`, which `confirmPostEdit` overwrites — see `applyPostEditToolAt`'s same guard).
- * `generatedStart`/`generatedFinish` are `_generatedStart`/`_generatedFinish`.
- *
- * `level` is the 0-based `floors` array index `point` addresses (`undefined` = floor 0, same
- * convention `PostEditEndpoint.level`/`activeFloorLevel` use, GitHub issue #358) — `point` alone
- * is not a unique address once `generatedNodes` spans every floor (GitHub issue #337): every
- * node/edge/split-point lookup below is scoped to nodes actually on `level`, or a same-(x,y) node
- * on another floor would be picked up as if it were at `point` on this one. */
-export function resetPostEditPoint(
-  point: [number, number],
-  draftEdges: Record<string, PostEditEdge>,
-  draftTeleports: PostEditTeleportEntry[],
-  draftSplitPoints: Record<string, number[]>,
-  draftActiveSplitNode: Record<string, PostEditEndpoint>,
-  draftMeta: PostEditMeta,
-  generatedNodes: NodeDto[],
-  generatedEdges: EdgeDto[],
-  generatedStart: number | null,
-  generatedFinish: number | null,
-  level?: number,
-): PostEditPointReset {
-  const bareKey = `${point[0]},${point[1]}`;
-  const key = level === undefined ? bareKey : `${bareKey}@${level}`;
-
-  // Every endpoint currently addressing this point in the draft — original node (if it still
-  // exists, e.g. hasn't been removed) plus every declared draft slot — is a removal target, even
-  // one added manually after generation and never confirmed.
-  const currentIds = new Set<number>();
-  for (const n of generatedNodes) if (n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0)) currentIds.add(n.id);
-  // A node id from generatedNodes is stable across confirms (see PostEditEndpoint's doc comment),
-  // so it's safe to use directly as a removal target here even for one already dropped from the
-  // draft by an earlier removeSplitNode — it simply won't match anything in refsTarget below, same
-  // as any other id with no live reference. No separate "current nodes" snapshot is needed.
-  const draftTargets: PostEditEndpoint[] = [
-    ...[...currentIds].map((id) => nodeEndpoint(id)),
-    ...(draftSplitPoints[key] ?? []).map((slotId) => splitEndpoint(point, slotId, level)),
-  ];
-  const refsTarget = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
-    draftTargets.some((t) => endpointsEqual(e.from, t) || endpointsEqual(e.to, t));
-
-  const nextDraftEdges = Object.fromEntries(
-    Object.entries(draftEdges).filter(([, e]) => !refsTarget(e)),
-  );
-  const nextDraftTeleports = draftTeleports.filter((t) => !refsTarget(t));
-
-  const nextSplitPoints = { ...draftSplitPoints };
-  delete nextSplitPoints[key];
-  const nextActiveSplitNode = { ...draftActiveSplitNode };
-  delete nextActiveSplitNode[key];
-
-  const nextMeta: PostEditMeta = { ...draftMeta };
-  if (draftMeta.start !== null && draftTargets.some((t) => endpointsEqual(t, draftMeta.start!))) nextMeta.start = null;
-  if (draftMeta.finish !== null && draftTargets.some((t) => endpointsEqual(t, draftMeta.finish!))) nextMeta.finish = null;
-
-  // Rebuild this point's generation-time state from the frozen snapshot — original node keeps its
-  // (stable) id, generation-time extra nodes become fresh `split` endpoints via the same slotId
-  // derivation `resetPostEdit` uses for the whole graph (GitHub issue #222's auto-split contract).
-  // Scoped to `level`'s own nodes first (`deriveSplitPointsFromNodes` groups purely by (x, y), so
-  // an unscoped call would fold another floor's same-(x,y) point's slots into this one's).
-  const levelNodes = generatedNodes.filter((n) => (n.level ?? 0) === (level ?? 0));
-  const generatedSplitPoints = deriveSplitPointsFromNodes(levelNodes);
-  const pointSlots = generatedSplitPoints[bareKey] ?? [];
-  if (pointSlots.length > 0) nextSplitPoints[key] = pointSlots;
-
-  const endpointForGeneratedId = (id: number): PostEditEndpoint => {
-    const node = levelNodes.find((n) => n.id === id);
-    if (!node || node.i === 0) return nodeEndpoint(id);
-    const sortedSlots = [...pointSlots].sort((a, b) => a - b);
-    const slotId = sortedSlots[node.i - 1];
-    return slotId !== undefined ? splitEndpoint([node.x, node.y], slotId, level) : nodeEndpoint(id);
-  };
-
-  const pointGeneratedIds = new Set([...currentIds]);
-  const touchesPoint = (id: number) => pointGeneratedIds.has(id);
-
-  const basicEdges = generatedEdges.filter((e) => e.kind !== "teleport" && (touchesPoint(e.from) || touchesPoint(e.to)));
-  const basicEdgeSet = new Set(generatedEdges.filter((e) => e.kind !== "teleport").map((e) => `${e.from}-${e.to}`));
-  for (const e of basicEdges) {
-    const hasReverse = basicEdgeSet.has(`${e.to}-${e.from}`);
-    const from = endpointForGeneratedId(e.from);
-    const to = endpointForGeneratedId(e.to);
-    nextDraftEdges[edgeKey(from, to)] = { from, to, kind: hasReverse ? "basic" : "one_way_forward" };
-  }
-
-  const teleportEdges = generatedEdges.filter((e) => e.kind === "teleport" && (touchesPoint(e.from) || touchesPoint(e.to)));
-  const teleportByPair = new Set(generatedEdges.filter((e) => e.kind === "teleport").map((e) => `${e.from}->${e.to}`));
-  const seenTeleportPair = new Set<string>();
-  let nextTeleportId = Math.max(0, ...nextDraftTeleports.map((t) => t.id)) + 1;
-  for (const e of teleportEdges) {
-    const pairKey = e.from < e.to ? `${e.from},${e.to}` : `${e.to},${e.from}`;
-    if (seenTeleportPair.has(pairKey)) continue;
-    seenTeleportPair.add(pairKey);
-    const reverseExists = teleportByPair.has(`${e.to}->${e.from}`);
-    nextDraftTeleports.push({
-      id: nextTeleportId++,
-      from: endpointForGeneratedId(e.from),
-      to: endpointForGeneratedId(e.to),
-      direction: reverseExists ? "two_way" : "forward",
-    });
-  }
-
-  if (generatedStart !== null && touchesPoint(generatedStart)) nextMeta.start = endpointForGeneratedId(generatedStart);
-  if (generatedFinish !== null && touchesPoint(generatedFinish)) nextMeta.finish = endpointForGeneratedId(generatedFinish);
-
-  return {
-    draftEdges: nextDraftEdges,
-    draftTeleports: nextDraftTeleports,
-    splitPoints: nextSplitPoints,
-    activeSplitNode: nextActiveSplitNode,
-    draftMeta: nextMeta,
-  };
+  return resolved;
 }

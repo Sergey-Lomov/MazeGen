@@ -16,20 +16,166 @@ Post-Edit sits between Generation and Analytics in `FeaturesPanel`. It lets user
 | Post-edit confirmed | After `confirmPostEdit()` (auto or manual) | From `confirmPostEdit()` result |
 | Post-edit draft | `autoConfirm=false`, edges/meta changed since last confirm | Frozen at last confirm — canvas shows draft, analytics shows confirmed |
 
-## Store Fields
+## Command Log (GitHub issue #543)
+
+Post-edit's working state is a single ordered, replayable **command log**, not a set of
+independent per-entity draft snapshots. Every manual change (edge tool click, teleport/vertical
+passage/elevator add/edit/remove, start/finish assignment, split-node add/remove/rotate/blueprint,
+point delete) appends one `PostEditCommand` to the log; the current derived state is always this
+log folded over a fixed baseline, never mutated in place.
+
+This replaces an earlier design where each entity kind tracked "changed vs. generation" its own
+way (a signature diff against `_generatedEdges` for edges, a suppression set for vertical
+passages/elevators, a raw id comparison for start/finish, no tracking at all for teleports) — that
+inconsistency was the root cause of a string of reset/delete bugs (each entity kind needing its own
+point-release/patch). A single log + replay gives every entity kind the same reset/delete/undo
+semantics for free.
+
+### `PostEditCommand` (`store/postEditCommandTypes.ts`)
+
+```typescript
+type PostEditCommand =
+  | { kind: "setEdge"; from: PostEditEndpoint; to: PostEditEndpoint; edgeKind: PostEditEdgeKind }
+  | { kind: "addTeleport"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
+  | { kind: "setTeleportDirection"; id: number; direction: PostEditTeleportDirection }
+  | { kind: "moveTeleportEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
+  | { kind: "removeTeleport"; id: number }
+  | { kind: "setMeta"; slot: "start" | "finish"; endpoint: PostEditEndpoint | null }
+  | { kind: "addSplitNode"; point: [number, number]; level?: number; slotId: number }
+  | { kind: "removeSplitNode"; point: [number, number]; level?: number; slotId: number }
+  | { kind: "rotateSplitPoint"; point: [number, number]; level?: number; moves: ResolvedRotateMove[] }
+  | { kind: "applySplitBlueprint"; point: [number, number]; level?: number; resolvedSlots: ResolvedSplitSlot[] }
+  | { kind: "addVerticalPassage"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection }
+  | { kind: "setVerticalPassageDirection"; id: number; direction: PostEditVerticalPassageDirection }
+  | { kind: "moveVerticalPassageEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
+  | { kind: "removeVerticalPassage"; id: number }
+  | { kind: "addElevator"; id: number; floors: PostEditEndpoint[] }
+  | { kind: "updateElevatorFloors"; id: number; floors: PostEditEndpoint[] }
+  | { kind: "removeElevator"; id: number }
+  | { kind: "deletePoint"; point: [number, number]; level?: number }
+  | { kind: "suppressGenerationPair"; entity: "verticalPassage" | "elevator"; a: PostEditEndpoint; b: PostEditEndpoint };
+```
+
+Every command addresses entities exclusively through the three stable identity kinds already used
+elsewhere in post-edit — `PostEditEndpoint` (node/split), and the monotonic
+teleport/vertical-passage/elevator ids — no new identity concept. All conditional decisions
+(wall/passage/one-way toggle outcome, vertical-passage/elevator seed detection, split-node id/face
+assignment) are resolved **once, at command-construction time**, reading live confirmed state, same
+as before this refactor — replay itself never reads outside its own `PostEditReplayContext`/fold
+state:
+
+- `rotateSplitPoint.moves`/`applySplitBlueprint.resolvedSlots` carry pre-computed, fully resolved
+  edge re-keys/face assignments (`rotateSplitPointMoves`/split-blueprint resolution in
+  `pixi/postEditUtils.ts`) — replay has no tessellation/field access, so a rotation's or blueprint's
+  geometric outcome is computed once by the store action, not re-derived during replay.
+- `addSplitNode.slotId` is the already-resolved next id (from `_nextSplitSlotId`'s high-water mark
+  for that point, not recomputed at replay time).
+- `suppressGenerationPair` — a generation-time vertical-passage/elevator mesh edge has been edited
+  via a *seed* draft entry derived from it; the pair (`a`/`b`, node endpoints, order-independent,
+  via `suppressionPairKey`) is recorded so `confirmPostEdit` stops re-emitting the original
+  generation-time pair once a draft entry exists for it. Recorded on the log/derived state, not a
+  separate suppression-set store field, so it survives point-reset/replay like any other log fact.
+
+### Replay (`pixi/postEditReplay.ts`)
+
+```typescript
+interface PostEditReplayContext {
+  nodes: NodeDto[]; // baseline nodes the log's endpoints resolve against — never live confirmed state.nodes
+  resolveSplit: (point: [number, number], slotId: number, level?: number) => number | undefined;
+}
+
+interface PostEditBaseline {
+  revision: number; // bumped on every new generation, never on post-edit reset
+  context: PostEditReplayContext;
+  derived: PostEditDerivedState; // pristine, empty-log derived state — never overwritten after construction
+}
+
+function applyPostEditCommand(context, state: PostEditDerivedState, command): { state: PostEditDerivedState; applied: boolean };
+function replayPostEditCommands(baseline: PostEditBaseline, commands: PostEditCommand[]): PostEditDerivedState;
+function replayPostEditCommandsFailClosed(baseline: PostEditBaseline, commands: PostEditCommand[]): PostEditDerivedState | undefined;
+```
+
+`applyPostEditCommand` is the sole place holding per-entity-kind logic (folded in from the old
+`applyPostEditEdgeTool`/teleport/vertical-passage/split-node functions) — never mutates its input
+`state` or any nested `Record`/array, always returns fresh references for anything it changes.
+`applied: false` signals a structurally invalid command (a reference that doesn't resolve against
+`context`+`state`) without throwing — a plain bool a caller can act on. Add-entity cases
+(`addTeleport`/`addVerticalPassage`/`addElevator`) additionally guard against a duplicate id already
+present in their target collection, returning `applied: false` rather than silently creating a
+second entry two different lookups could each resolve differently (mirrors `addSplitNode`'s
+existing per-point slot-id guard).
+
+`replayPostEditCommands` folds the full command list over `baseline.derived` via
+`applyPostEditCommand`, silently skipping any command that doesn't apply — used for reset,
+point-reset, and any replace-the-whole-log operation. `replayPostEditCommandsFailClosed` is the
+load-time variant: if *any* command in a loaded log fails to apply, it returns `undefined` instead
+of a partially-applied state — the caller (`mazeStore.ts`'s load path) then discards the entire
+`postEdit` section rather than risk silent data loss from a half-replayed log (see "Persistence"
+below). Ordinary incremental edits don't call `replayPostEditCommands` at all — `appendPostEditCommand`
+(below) applies just the new command directly against the current `postEditDerived`, which is
+equivalent to but cheaper than a full replay (covered by a parity test).
+
+### Point-reset — fixed-point lifeline pruning
+
+`filterCommandsForPoint(baseline, commands, point, level)` implements the cell branch of the Reset
+tool and `deletePostEditPoint`'s undo path. A **lifeline** is the logical entity a command belongs
+to (`lifelineKeyOf`) — `` `${kind}:${id}` `` for teleport/vertical-passage/elevator,
+`` `slot:${point}:${level}:${slotId}` `` for a split slot, `` `edge:${edgeKey(from,to)}` `` for an
+edge, `` `meta:${slot}` `` for start/finish, and its own `` `deletePoint:${point}:${level}` `` key
+for a `deletePoint` command (so a delete is itself something a point-reset undoes).
+`collectAffectedLifelines` walks the command list once, computing (against the state *before* each
+command in sequence) whether that command's entity currently touches `point`/`level` — including
+split-structure commands addressing that point directly, move-commands whose old *or* new endpoint
+lands there, and any command referencing a slot lifeline already marked affected (so an edge/
+teleport hung off a to-be-removed split slot is pulled in too). `filterCommandsForPoint` repeats
+this to a fixed point (re-scanning until nothing new gets pulled in) — a single pass can't catch
+multi-level dependency chains (slot removed → edge on that slot removed → a teleport that was moved
+onto that edge's other endpoint also removed → …).
+
+This also means an entity's lifeline is indivisible across points: resetting point A undoes every
+command that lifeline ever received, even one made while the entity's endpoint was at a different
+point B — e.g. a generation-time teleport A↔B, moved to end at C, then edited at C: resetting A
+removes the whole lifeline, including the edit made at C, because the lifeline's root command
+originated at A. This is deliberate UI-level semantics ("resetting a point resets everything that
+entity ever touched"), not an implementation accident.
+
+`resetPostEditPoint(point)` = `replacePostEditCommands(get, set, filterCommandsForPoint(baseline,
+commands, point, level), /* dirty */ true)`. `resetPostEdit()` (whole graph) is the trivial case:
+`replacePostEditCommands(get, set, [], /* dirty */ false)`.
+
+### Log-mutation entry points (`store/slices/postEditSliceHelpers.ts`)
+
+`appendPostEditCommand(get, set, command): boolean` and `replacePostEditCommands(get, set,
+commands, dirty): void` are the **only** two places allowed to write `postEditCommands`/
+`postEditDerived` — every store action builds a command (after its own UX-precondition guards, same
+error messages as before) and goes through one of these two, never `set({ postEditCommands: ... })`
+directly.
+
+- `appendPostEditCommand` applies the new command directly against the current `postEditDerived`
+  (not a full replay); returns `false` (log/state left untouched) if the command didn't apply — the
+  calling action must not advance any id counter (`_nextPostEditTeleportId` etc.) unless this
+  returns `true`. Bumps `_postEditRequestId` on success, so any in-flight `confirmPostEdit` becomes
+  stale regardless of whether the caller remembers to re-trigger confirm.
+- `replacePostEditCommands` always does a full `replayPostEditCommands` from `postEditBaseline` —
+  used by reset, point-reset, and load. `dirty` is caller-supplied (see the dirty table below), not
+  inferred.
+
+### Store fields
 
 | Field | Type | Description |
 |---|---|---|
-| `postEditDraftEdges` | `Record<string, PostEditEdge> \| null` | Current working Basic/one-way edges. `null` before first generation. Read by `PostEditRenderer`. |
-| `postEditDraftTeleports` | `PostEditTeleportEntry[]` | Current working teleport links, edited by node id. Kept as a plain list, not folded into `postEditDraftEdges`'s `Record` — a Teleport and a Basic edge can coexist in the same direction between the same pair (see `Graph::add_edge`'s kind-aware dedup), which that `Record` (keyed by `from-to`, one slot per directed pair) cannot represent without one silently overwriting the other. Converted to `EdgeDto[]` via `postEditTeleportsToDto` at the WASM-call/render boundary. Read by `PostEditRenderer`. |
+| `postEditCommands` | `PostEditCommand[]` | The command log — single source of truth for every manual post-edit change. |
+| `postEditBaseline` | `PostEditBaseline \| null` | Generation-time snapshot (`context`) + revision + pristine (empty-log) derived state. `derived` here is never overwritten after construction. `null` before the first generation. |
+| `postEditDerived` | `PostEditDerivedState \| null` | Current derived state — `postEditBaseline.derived` with `postEditCommands` replayed on top; kept in sync by `appendPostEditCommand`/`replacePostEditCommands`. `null` before the first generation. |
+| `postEditDraftEdges` / `postEditDraftTeleports` / `postEditDraftMeta` / `postEditDraftSplitPoints` / `postEditDraftVerticalPassages` / `postEditDraftElevators` / `postEditSuppressedVerticalPassagePairs` / `postEditSuppressedElevatorPairs` | (unchanged shapes) | **Derived, not independently mutated.** Mirrored 1:1 from `postEditDerived` via `derivedStateToLegacyFields` on every log mutation, kept as plain fields (not lazy getters) since most of the ~40 read sites subscribe to them individually via zustand selectors. Treat as read-only outside `postEditSlice.ts`/`postEditSliceHelpers.ts` — the log is what gets mutated, these fields just reflect it. |
 | `postEditTeleportPendingFrom` | `number \| null` | Node id of the pending teleport's fixed origin during two-click placement, or `null`. |
-| `_nextPostEditTeleportId` | `number` | Monotonic id source for `postEditDraftTeleports` entries. |
-| `postEditDraftMeta` | `PostEditMeta \| null` | Current working start/finish overrides. Read by `PostEditRenderer`. |
-| `postEditDraftSplitPoints` | `Record<string, number[]>` | slotIds of each split point's extra nodes, keyed by `"x,y"` — see "Split Points" below (GitHub issue #221). |
-| `postEditActiveSplitNode` | `Record<string, PostEditEndpoint>` | Which of a split point's nodes edge-tool clicks currently target, keyed by `"x,y"`. No entry means the point's original node. |
+| `_nextPostEditTeleportId` / `_nextPostEditVerticalPassageId` / `_nextPostEditElevatorId` | `number` | High-water marks for new entity ids — never regress/reuse, persisted separately from the log (see "Persistence"). |
+| `_nextSplitSlotId` | `Record<string, number>` | Per-point high-water mark for split slot ids, keyed `"x,y"`/`"x,y@level"` — same never-reuse reasoning as the id counters above, needed because a point-reset can prune a high-id slot command out of the log while the mark stays put. |
+| `postEditActiveSplitNode` | `Record<string, PostEditEndpoint>` | Which of a split point's nodes edge-tool clicks currently target, keyed by `"x,y"`. No entry means the point's original node. Ephemeral UI state, not in the log. |
 | `postEditFocusedPoint` | `[number, number] \| null` | The point currently selected for the "Manage split nodes" panel. |
 | `postEditSplitTargetPrompt` | `{ point; level?; nodeIds: number[]; action } \| null` | In-progress "which split node?" prompt (GitHub issue #474) — see "Split-target prompt" below. `null` when no prompt is open. Not persisted. |
 | `postEditHoveredLink` | `{ from: PostEditEndpoint; to: PostEditEndpoint } \| null` | The link currently hovered in the "Manage split nodes" panel's link bubbles (GitHub issue #237) — drives a canvas highlight, `null` when nothing is hovered. Ephemeral UI state, not persisted; cleared on panel close. |
+| `postEditVerticalPassagePending` / `postEditElevatorPending` | ... | In-progress vertical-passage/elevator placement state — ephemeral, not in the log. |
 | `postEditEdges` | `Record<string, PostEditEdge> \| null` | Snapshot of `postEditDraftEdges` at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
 | `postEditTeleportEdges` | `EdgeDto[]` | Snapshot of `postEditDraftTeleports` (converted via `postEditTeleportsToDto`) at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
 | `postEditMeta` | `PostEditMeta \| null` | Snapshot of `postEditDraftMeta` at last `confirmPostEdit`. Read by `AnalyticsRenderer`. |
@@ -37,9 +183,45 @@ Post-Edit sits between Generation and Analytics in `FeaturesPanel`. It lets user
 | `postEditTool` | `PostEditTool` | Active tool. Reset to `"wall"` on generate and `resetPostEdit`. |
 | `postEditAutoConfirm` | `boolean` | Default `true`. When true, `confirmPostEdit` fires 300ms after each edge edit. |
 | `postEditOpen` | `boolean` | Drives canvas layer visibility. |
-| `_postEditRequestId` | `number` | Versioning for stale async `confirmPostEdit` results. |
-| `_generatedStart` | `number \| null` | Start as generated — restored on `resetPostEdit`. |
-| `_generatedFinish` | `number \| null` | Finish as generated — restored on `resetPostEdit`. |
+| `_postEditRequestId` | `number` | Versioning for stale async `confirmPostEdit` results; bumped by both `appendPostEditCommand`/`replacePostEditCommands` themselves, not only by an explicit `confirmPostEdit` call. |
+| `postEditDirty` | `boolean` | True after any manual post-edit change since the last generate/reset. |
+
+### Dirty semantics
+
+| Operation | `postEditDirty` |
+|---|---|
+| append (any user edit) | `true` |
+| `resetPostEditPoint` | `true` (log changed, confirm still needed) |
+| `resetPostEdit` (whole graph) | `false` |
+| load from project file | restored from `file.dirtyFlags.postEdit` |
+| `generate()` / new generation | `false` (fresh baseline, empty log) |
+
+### Persistence
+
+`ProjectFilePostEdit`:
+```typescript
+{
+  commands: PostEditCommand[];
+  nextTeleportId: number;
+  nextVerticalPassageId: number;
+  nextElevatorId: number;
+  nextSplitSlotId: Record<string, number>;
+}
+```
+`CURRENT_VERSION` bumped 3→4 for this shape (breaking change, no migration from the old
+per-entity-draft-field project format).
+
+High-water marks are persisted **separately** from the log, not restored as `max(id in log)+1` — a
+point-reset can prune high-id commands out of the log while entities elsewhere in the file (or in
+an export) may still reference those ids, so the marks must never regress.
+
+Load is **fail-closed**: `mazeStore.ts` calls `replayPostEditCommandsFailClosed` against the
+freshly-rebuilt baseline (generation is re-run deterministically from the persisted seed/config
+before the post-edit section loads, so the baseline the log was recorded against is reproduced
+exactly). If any command fails to resolve, the entire `postEdit` section — log **and** its
+high-water marks — is discarded, and the maze loads in a clean post-generation state (as if
+`file.postEdit` were `null`). No partial/corrupted post-edit state is ever surfaced; the marks
+never partially apply independent of the log they'd otherwise seed.
 
 ### PostEditEndpoint (GitHub issue #221)
 
@@ -172,22 +354,23 @@ Generator auto-split (GitHub issue #222), broader serialization work (#224) beyo
 ### On `generate()`
 
 1. Runs WASM generation.
-2. Initializes `postEditDraftEdges`, `postEditDraftTeleports`, and `postEditDraftSplitPoints` via `buildMultiFloorPostEditDraft(snapshot.nodes, snapshot.edges)` — shared with `resetPostEdit()` below (GitHub issue #425: this path used to build its own single global, level-unaware `pointNodeMap`/split-point grouping across every floor's nodes combined, silently breaking every split point on any floor above the first; now both paths process each floor's own nodes/edges separately via the same helper, see `postEditSliceHelpers.ts`). Detects one_way by absence of reverse edge; a forward+backward teleport pair between the same two nodes collapses into one `"two_way"` entry, a lone direction becomes a `"forward"` entry; a teleport whose two endpoints sit on different floors is re-derived separately from the full, unfiltered edge list (GitHub issue #363). Resets `_nextPostEditTeleportId` to one past the merged, renumbered teleport count.
-3. (Folded into step 2 above — kept as a separate numbered step historically, now a no-op distinction.)
-4. Sets `postEditDraftMeta = { start: endpointFor(snapshot.start), finish: endpointFor(snapshot.finish) }` (or `null` per field when the snapshot's own is `null`), using `buildMultiFloorPostEditDraft`'s own `endpointFor` resolver — a freshly generated split-point node resolves to a `split` endpoint stamped with its own floor's `level`, not a bare `node` endpoint, since the point-keyed split derivation always runs per floor. Sets `postEditTeleportPendingFrom = null`.
-5. Resets `postEditEdges = null`, `postEditTeleportEdges = []`, `postEditMeta = null`, `postEditAnalytics = null`.
-6. Sets `_generatedStart`, `_generatedFinish`.
-7. Resets `postEditTool` to `"wall"`.
-8. Calls `confirmPostEdit()` immediately — populates `postEditEdges`, `postEditTeleportEdges`, `postEditMeta`, `postEditAnalytics`.
+2. Builds a fresh `postEditBaseline` via `buildPostEditBaseline(nodes, edges, revision, generatedStart, generatedFinish)` (`postEditSliceHelpers.ts`) — bumps `revision`, builds the `PostEditReplayContext` (nodes + `resolveSplit`), and derives the pristine (empty-log) `PostEditDerivedState` via the shared `buildMultiFloorPostEditDraft(nodes, edges)` (groups nodes per floor first via `groupNodesByLevel`, GitHub issue #425/#358, so a same-`(x, y)` node on a different floor is never conflated into the same point's split-slot group; also re-derives any teleport whose two endpoints sit on different floors from the full, unfiltered edge list, GitHub issue #363). Sets `postEditCommands = []`, `postEditDerived = postEditBaseline.derived`, and mirrors the legacy draft fields via `derivedStateToLegacyFields`.
+3. Resets `_nextPostEditTeleportId`/`_nextPostEditVerticalPassageId`/`_nextPostEditElevatorId`/`_nextSplitSlotId` to one past whatever the baseline derivation found, and `postEditTeleportPendingFrom = null`.
+4. Resets `postEditEdges = null`, `postEditTeleportEdges = []`, `postEditMeta = null`, `postEditAnalytics = null`.
+5. Sets `postEditDirty = false`.
+6. Resets `postEditTool` to `"wall"`.
+7. Calls `confirmPostEdit()` immediately — populates `postEditEdges`, `postEditTeleportEdges`, `postEditMeta`, `postEditAnalytics`.
 
 ### On `resetPostEdit()`
 
-1. Rebuilds `postEditDraftEdges`, `postEditDraftTeleports`, and `postEditDraftSplitPoints` from `_generatedNodes`/`_generatedEdges` via the same `buildMultiFloorPostEditDraft(nodes, edges)` used by `generate()` above (`postEditSliceHelpers.ts`) — internally groups nodes per floor first (`groupNodesByLevel`, see `Specs/floors.md`'s "Post-edit multi-floor awareness") so a same-(x, y) node on a different floor is never conflated into the same point's split-slot group.
-2. That same helper also re-derives any teleport whose two endpoints sit on different floors from the full, unfiltered edge list (the per-floor grouping in step 1 requires both endpoints on the same floor, which would otherwise silently drop any cross-floor teleport — GitHub issue #363), then merges and renumbers every batch as one sequence (`id: 1..N`) so ids stay unique across floors/batches — every by-id lookup (drag handling, `cyclePostEditTeleportDirection`, `removePostEditTeleport`, ...) uses the first matching id, so duplicate ids from independently-numbered batches would resolve to the wrong entry. Resets `_nextPostEditTeleportId` to one past the merged count, and `postEditTeleportPendingFrom = null`.
-3. Restores `postEditDraftMeta` from `_generatedStart`/`_generatedFinish`.
-4. Resets `postEditEdges = null`, `postEditTeleportEdges = []`, `postEditMeta = null`, `postEditAnalytics = null`.
-5. Resets `postEditTool` to `"wall"`.
-6. Calls `confirmPostEdit()`.
+Whole-graph reset — the trivial case of "replace the log": `replacePostEditCommands(get, set, [],
+/* dirty */ false)`. Since `postEditBaseline.derived` is the pristine, never-mutated empty-log
+state, replacing the log with `[]` and replaying is equivalent to (and implemented as) just
+reading `postEditBaseline.derived` straight back into `postEditDerived`/the legacy mirror fields —
+no separate rebuild-from-generation-snapshot logic distinct from `generate()`'s own baseline
+construction. Also resets `postEditEdges = null`, `postEditTeleportEdges = []`, `postEditMeta =
+null`, `postEditAnalytics = null`, `postEditTeleportPendingFrom = null`, and `postEditTool` to
+`"wall"`, then calls `confirmPostEdit()`.
 
 ### On `confirmPostEdit()`
 
@@ -255,26 +438,24 @@ The unified Reset tool is hover-sensitive to both edges and cells, dispatched in
 `pickEdgeAtPosition(..., true)` (the same near-edge dead-zone threshold `wall`/`passage`/`one_way`
 hover uses):
 
-- **Near-edge zone, and neither endpoint's point is currently split** — edge branch, identical to
-  the pre-#327 `reset` tool: looks up `(from_, to_)` pair in `_generatedEdges` (not `state.edges` —
-  see `applyPostEditToolAt`'s guard) via `applyPostEditEdgeTool`:
-  - Both directions exist → restores both as `"basic"`.
-  - Only `from_→to_` exists → restores as `"one_way_forward"`, removes `bwd`.
-  - Only `to_→from_` exists → restores as `"one_way_forward"` (on the `to_→from_` record), removes `fwd`.
-  - Neither exists → removes both.
+- **Near-edge zone, and neither endpoint's point is currently split** — edge branch: appends a
+  `setEdge` command restoring `(from_, to_)`'s generation-time kind, computed by reading
+  `postEditBaseline.derived`'s edges (the pristine, empty-log state — equivalent to "what
+  generation produced", never `state.edges`):
+  - Both directions existed at generation → restores both as `"basic"`.
+  - Only `from_→to_` existed → restores as `"one_way_forward"`, removes `bwd`.
+  - Only `to_→from_` existed → restores as `"one_way_forward"` (on the `to_→from_` record), removes `fwd`.
+  - Neither existed → removes both (`"wall"`).
   Drag-capable, same as `wall`/`passage`.
 - **Outside the near-edge zone, or the near-edge hit touches a split point (either endpoint's
-  point currently has more than one node)** — cell branch: `resetPostEditPoint(point)` resets the
-  whole point back to generation-time state — every edge/teleport referencing any of the point's
-  current nodes (original plus every draft split slot, including one added via `addSplitNode` and
-  never confirmed) is dropped and rebuilt from `_generatedNodes`/`_generatedEdges`, the point's
-  split-slot list is re-derived from `_generatedNodes` (a manually added slot that was never part
-  of generation does not survive — same "strict superset of clear" reasoning `resetPostEdit`'s own
-  doc comment gives for the whole-graph reset), and `postEditDraftMeta.start`/`.finish` is cleared
-  if it addressed one of the point's old nodes, then reassigned if the point held
-  `_generatedStart`/`_generatedFinish`. This is the only way to reset a split connection — the edge
-  branch refuses it. See `resetPostEditPoint` (postEditUtils.ts) and its `PostEditPointReset`
-  result type.
+  point currently has more than one node)** — cell branch: `resetPostEditPoint(point)` prunes every
+  command in the log whose lifeline ever touched `point` (fixed-point cascade, see "Point-reset" in
+  the Command Log section above) and replays what remains. This restores the point to
+  generation-time state — every edge/teleport/vertical-passage/elevator/start-finish command
+  touching any of the point's current *or past* nodes (original plus every split slot ever added
+  there, including one added via `addSplitNode` and never confirmed) is dropped, so the derived
+  state falls back to `postEditBaseline.derived` for that lifeline. This is the only way to reset a
+  split connection — the edge branch refuses it.
 
   Drag-capable, same as the edge branch (GitHub issue #489): a press-drag paints a reset stroke
   across every in-field cell the cursor enters, deduped per gesture. `BaseController`'s
@@ -288,10 +469,10 @@ hover uses):
   reconfirm on pointer-up, identical to the edge branch.
 
   Post-edit itself isn't multi-floor-aware (`Specs/floors.md`'s "Non-goals") even though generation
-  can be (GitHub issue #337): both this cell-reset path and the whole-graph `resetPostEdit` filter
-  `_generatedNodes`/`_generatedEdges` down to floor 0 before use, in the `postEditSlice.ts` store
-  actions that call into these functions — otherwise a floor-1 node sharing the reset point's
-  `(x, y)` would be picked up as if it were a second split slot at that point on floor 0.
+  can be (GitHub issue #337): `filterCommandsForPoint`'s lifeline matching takes an explicit
+  `level` alongside `point`, so a floor-1 node sharing the reset point's `(x, y)` is never picked up
+  as if it were a second split slot at that point on floor 0 — the same per-floor point key
+  (`"x,y"`/`"x,y@level"`) used throughout split-slot bookkeeping.
 - Right/middle click has no reset-tool meaning beyond the shared middle-click pan.
 
 **Danger styling:** the Reset icon button uses the `btn-tool-icon-selected-danger` class (red border + inset shadow when selected, `base.error`) instead of the accent `btn-tool-icon-selected` — `reset` is in `PostEditFeature`'s `DANGER_TOOLS` set. Its canvas hover highlight (edge or cell) renders in `canvas.fieldEditor.danger` (red) instead of `canvas.fieldEditor.hover` — `PostEditRenderer.updateHover`/`.updateCellHover` take an optional `danger` flag for this, set whenever `postEditTool === "reset"`. Both cues exist so a destructive tool reads as destructive before the user commits to a click. (`delete` is styled the same way — also in `DANGER_TOOLS`.)
@@ -304,31 +485,34 @@ near-edge/edge-branch distinction — clicking anywhere near a cell targets the 
 the vertex tools'/`manage_split_nodes`' own cell-hover branch rather than `reset`'s dual-mode
 dispatch).
 
-A left click on any in-field cell calls `deletePostEditPoint(point)`, which removes, for **every**
-node currently at that point (original plus every declared split slot — not just the active one).
-Drag-capable (GitHub issue #489): a press-drag paints a delete stroke across every in-field cell
-the cursor enters, deduped per gesture via `BaseController`'s `beginCellDrag`/`continueCellDrag`.
-Removed per point:
+A left click on any in-field cell calls `deletePostEditPoint(point)`, which appends a `deletePoint`
+command — its `applyPostEditCommand` case removes, for **every** node currently at that point
+(original plus every declared split slot — not just the active one). Drag-capable (GitHub issue
+#489): a press-drag paints a delete stroke across every in-field cell the cursor enters, deduped
+per gesture via `BaseController`'s `beginCellDrag`/`continueCellDrag`. Removed per point:
 
-- `postEditDraftMeta.start`/`.finish`, if either currently addresses one of the point's nodes (same
-  effect as `clearPostEditEndpoint`, applied to both markers uniformly).
-- Every `postEditDraftTeleports` entry with an endpoint on one of the point's nodes.
-- Every `postEditDraftVerticalPassages`/`postEditDraftElevators` entry with an endpoint on one of
-  the point's nodes.
-- Any generation-time vertical passage/elevator pair touching one of the point's nodes gets added to
-  `postEditSuppressedVerticalPassagePairs`/`postEditSuppressedElevatorPairs` (same suppression
-  mechanism an edit uses, `Specs/floors.md`'s "Post-edit vertical-passage/elevator editing") — without
-  this the old generation-time edge would keep being resent from `_generatedEdges` on every confirm,
-  silently undoing the deletion. An elevator's suppression covers its *entire* generation-time
-  connected component (BFS over `_generatedEdges`' own `elevator` edges, mirroring
-  `resetPostEditPoint`'s own un-suppress BFS) — a multi-floor elevator's mesh can include pairs that
-  never name this point's own node directly.
+- Start/finish, if either currently addresses one of the point's nodes (same effect as
+  `clearPostEditEndpoint`, applied to both markers uniformly) — via an implicit `setMeta` outcome
+  within the same command's replay.
+- Every teleport with an endpoint on one of the point's nodes.
+- Every vertical passage/elevator with an endpoint on one of the point's nodes.
+- Any generation-time vertical passage/elevator pair touching one of the point's nodes is covered by
+  a `suppressGenerationPair` entry recorded on the derived state (same mechanism an edit uses,
+  `Specs/floors.md`'s "Post-edit vertical-passage/elevator editing") — without this the old
+  generation-time edge would keep being resent from the baseline on every confirm, silently undoing
+  the deletion. An elevator's suppression covers its *entire* generation-time connected component
+  (BFS over the baseline's own `elevator` edges) — a multi-floor elevator's mesh can include pairs
+  that never name this point's own node directly.
 
-`postEditDraftEdges`/`postEditDraftSplitPoints` are never touched — a point's basic edges (walls/
-passages/one-ways) and its split-node structure survive a delete untouched; only `wall`/`reset`/
-"Manage split nodes" edit those. Unlike `reset`, delete never restores anything from
-`_generatedNodes`/`_generatedEdges` — it's a pure removal, so a piece of content created entirely in
-post-edit (no generation-time counterpart) is simply gone, same as one that did have one.
+Basic edges and split-node structure (`setEdge`/`addSplitNode`/etc.) are never touched by
+`deletePoint` — a point's walls/passages/one-ways and its split-node structure survive a delete
+untouched; only `wall`/`reset`/"Manage split nodes" edit those. Unlike `reset`, delete never
+restores anything by itself — it's a pure removal, so a piece of content created entirely in
+post-edit (no generation-time counterpart) is simply gone, same as one that did have one. But
+because `deletePoint` is itself a command with its own lifeline (`` `deletePoint:${point}:${level}` ``,
+see "Point-reset" above), a later `resetPostEditPoint`/`resetPostEdit` **does** undo it, restoring
+whatever it removed — "reset undoes delete" is a direct consequence of the fixed-point lifeline
+cascade, not a special case bolted onto delete.
 
 Uses the same danger styling as `reset` (`toggle-danger`/`toggle-danger-active`, red cell hover via
 `updateCellHover`'s `danger` flag).
@@ -400,13 +584,24 @@ Handles pointer events when `postEditOpen`. Node map (`Map<"x,y", NodeId[]>` —
 
 ## `buildPostEditDraftEdgesFromGenerated`
 
-Shared function used by `_generateWithSeed` and `resetPostEdit`. Ignores `kind: "teleport"`, `kind: "vertical_passage"`, and `kind: "elevator"` entries entirely — teleport edges are tracked separately (see `extractPostEditTeleports` below); vertical passage/elevator edges are resent unchanged from `_generatedEdges` by `confirmPostEdit` (via WASM's `restore_vertical_edges`), so leaking them into this `Record` too would resend the same physical edge twice — once as a `Basic` draft entry, once as its own `VerticalPassage`/`Elevator` edge — producing a duplicate parallel nav-edge that desyncs `link_reverse_edges`'s pairing and gets misread as a phantom cycle (GitHub issue #370). Detects one_way edges by absence of reverse: if `A→B` exists but `B→A` does not → `one_way_forward`. If both exist → `basic`.
+Shared function in `pixi/postEditUtils.ts`, used internally by `buildMultiFloorPostEditDraft`
+(`postEditSliceHelpers.ts` — itself called by `buildPostEditBaseline` on `generate()` and by the
+trivial `resetPostEdit` case, see "Lifecycle" above). Ignores `kind: "teleport"`, `kind:
+"vertical_passage"`, and `kind: "elevator"` entries entirely — teleport edges are tracked
+separately (see `extractPostEditTeleports` below); vertical passage/elevator edges are resent
+unchanged from the baseline by `confirmPostEdit` (via WASM's `restore_vertical_edges`), so leaking
+them into this `Record` too would resend the same physical edge twice — once as a `Basic` draft
+entry, once as its own `VerticalPassage`/`Elevator` edge — producing a duplicate parallel nav-edge
+that desyncs `link_reverse_edges`'s pairing and gets misread as a phantom cycle (GitHub issue
+#370). Detects one_way edges by absence of reverse: if `A→B` exists but `B→A` does not →
+`one_way_forward`. If both exist → `basic`.
 
 The "Reset to generation" action uses a compact confirmation alert: the action label is the title, the body is omitted, and the Cancel/OK footer has no divider. This is the shared reset-confirmation layout used by presets.
 
 ## `extractPostEditTeleports`
 
-Shared function in `postEditUtils.ts`, used by `_generateWithSeed` and `resetPostEdit` alongside `buildPostEditDraftEdgesFromGenerated`. Filters generation's `EdgeDto[]` down to `kind: "teleport"` entries and rebuilds them as `PostEditTeleportEntry[]`: a forward+backward pair between the same two nodes collapses into one `"two_way"` entry, a lone direction becomes a `"forward"` entry. Returns `{ teleports, nextId }` — `nextId` seeds `_nextPostEditTeleportId` so ids assigned afterward by `addPostEditTeleport` don't collide. Not folded into `buildPostEditDraftEdgesFromGenerated`'s `Record` output because a Teleport and a Basic edge can coexist in the same direction between the same pair — that `Record` has only one slot per `from-to` key and would drop one of the two.
+Shared function in `pixi/postEditTeleportUtils.ts`, used internally by `buildMultiFloorPostEditDraft`
+alongside `buildPostEditDraftEdgesFromGenerated` (same call sites as above). Filters generation's `EdgeDto[]` down to `kind: "teleport"` entries and rebuilds them as `PostEditTeleportEntry[]`: a forward+backward pair between the same two nodes collapses into one `"two_way"` entry, a lone direction becomes a `"forward"` entry. Returns `{ teleports, nextId }` — `nextId` seeds `_nextPostEditTeleportId` so ids assigned afterward by `addPostEditTeleport` don't collide. Not folded into `buildPostEditDraftEdgesFromGenerated`'s `Record` output because a Teleport and a Basic edge can coexist in the same direction between the same pair — that `Record` has only one slot per `from-to` key and would drop one of the two.
 
 ## `postEditTeleportsToDto`
 

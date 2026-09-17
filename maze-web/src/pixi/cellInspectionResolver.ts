@@ -7,8 +7,9 @@ import { buildActiveCells } from "./selectors/fieldSelectors";
 import { buildCellSet } from "./selectors/sharedSelectors";
 import { pruneRemovedSplitNodes, postEditVerticalToDto } from "./postEditUtils";
 import { postEditTeleportsToDto } from "./postEditTeleportUtils";
-import { buildSplitNodeResolver, resolveEndpoint } from "./postEditEndpoint";
+import { buildSplitNodeResolver, resolveEndpoint, nodeEndpoint } from "./postEditEndpoint";
 import { buildMultiFloorPointNodeMap } from "../store/slices/postEditSliceHelpers";
+import { suppressionPairKey } from "./postEditReplay";
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { FeatureId } from "../store/tessellationTypes";
 
@@ -76,10 +77,10 @@ export function buildPostEditMazeSource(st: MazeState): MazeGraph {
     .filter((e): e is EdgeDto & { kind: "vertical_passage" | "elevator" } =>
       e.kind === "vertical_passage" || e.kind === "elevator")
     .filter((e) => {
-      const [a, b] = [e.from, e.to].sort((x, y) => x - y);
+      const key = suppressionPairKey(nodeEndpoint(e.from), nodeEndpoint(e.to));
       return e.kind === "elevator"
-        ? !st.postEditSuppressedElevatorPairs.has(`${a},${b}`)
-        : !st.postEditSuppressedVerticalPassagePairs.has(`${a},${b}`);
+        ? !st.postEditSuppressedElevatorPairs.has(key)
+        : !st.postEditSuppressedVerticalPassagePairs.has(key);
     })
     .map((e) => ({ from: e.from, to: e.to, kind: e.kind }));
 

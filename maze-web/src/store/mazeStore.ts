@@ -12,6 +12,8 @@ import { createFloorsSlice } from "./slices/floorsSlice";
 import { buildPreviewState, buildResetMazeState, deriveEditState, kindAndShapeFromConfig, recomputeAutoLock } from "./storeHelpers";
 import type { FloorFieldConfig } from "./storeTypes";
 import { warmCartesianCache } from "../pixi/cartesianCache";
+import { replayPostEditCommandsFailClosed } from "../pixi/postEditReplay";
+import { derivedStateToLegacyFields as legacyFieldsFor } from "./slices/postEditSliceHelpers";
 
 export type {
   PostEditEdgeKind, PostEditTool, PostEditEdge, PostEditMeta, PostEditAnalytics,
@@ -220,37 +222,34 @@ export const useMazeStore = create<MazeStore>()((...a) => ({
     // Only proceed with post-edit and analytics if generation succeeded
     if (get().generationStatus !== "done") return;
 
-    // After generation: if postEdit was saved, restore it over the generated draft
+    // After generation: if postEdit was saved, replay it over the freshly-built baseline
+    // (GitHub issue #543) — fail-closed: if a single command doesn't resolve (corrupted file, or a
+    // baseline that no longer matches because generation isn't actually deterministic for this
+    // config), the *entire* section is rejected, high-water marks included, rather than partially
+    // applying a corrupted log or restoring counters detached from the log they belong to (see
+    // `ProjectFilePostEdit`'s own doc comment). Rejected: maze stays in the clean post-generation
+    // state `generateWithSeed` above already produced, identical to `file.postEdit === null`.
     if (file.postEdit !== null) {
-      set({
-        postEditDraftEdges: Object.fromEntries(file.postEdit.edges),
-        postEditDraftMeta: file.postEdit.meta,
-        postEditDraftTeleports: file.postEdit.teleports,
-        _nextPostEditTeleportId: file.postEdit.teleports.length === 0
-          ? 1
-          : Math.max(...file.postEdit.teleports.map((t) => t.id)) + 1,
-        // Defaults to {} for project files saved before split points existed (GitHub issue #221).
-        // No separate slotId counter to restore — addSplitNode computes the next slotId on the
-        // fly from the max of each point's existing slotIds (see postEditSlice.ts).
-        postEditDraftSplitPoints: file.postEdit.splitPoints ?? {},
-        // Ephemeral UI selection, never persisted — always starts fresh on load.
-        postEditActiveSplitNode: {},
-        postEditEdges: null,
-        postEditMeta: null,
-        postEditAnalytics: null,
-        // Defaults to [] for project files saved before post-edit vertical passages/elevators
-        // existed (GitHub issue #341).
-        postEditDraftVerticalPassages: file.postEdit.verticalPassages ?? [],
-        _nextPostEditVerticalPassageId: !file.postEdit.verticalPassages || file.postEdit.verticalPassages.length === 0
-          ? 1
-          : Math.max(...file.postEdit.verticalPassages.map((p) => p.id)) + 1,
-        postEditDraftElevators: file.postEdit.elevators ?? [],
-        _nextPostEditElevatorId: !file.postEdit.elevators || file.postEdit.elevators.length === 0
-          ? 1
-          : Math.max(...file.postEdit.elevators.map((e) => e.id)) + 1,
-        postEditSuppressedElevatorPairs: new Set(file.postEdit.suppressedElevatorPairs ?? []),
-        postEditSuppressedVerticalPassagePairs: new Set(file.postEdit.suppressedVerticalPassagePairs ?? []),
-      });
+      const baseline = get().postEditBaseline;
+      const derived = baseline !== null ? replayPostEditCommandsFailClosed(baseline, file.postEdit.commands) : undefined;
+      if (baseline !== null && derived !== undefined) {
+        set({
+          postEditCommands: file.postEdit.commands,
+          postEditDerived: derived,
+          ...legacyFieldsFor(derived),
+          // Ephemeral UI selection, never persisted — always starts fresh on load.
+          postEditActiveSplitNode: {},
+          postEditEdges: null,
+          postEditMeta: null,
+          postEditAnalytics: null,
+          _nextPostEditTeleportId: file.postEdit.nextTeleportId,
+          _nextPostEditVerticalPassageId: file.postEdit.nextVerticalPassageId,
+          _nextPostEditElevatorId: file.postEdit.nextElevatorId,
+          _nextSplitSlotId: file.postEdit.nextSplitSlotId,
+        });
+      } else {
+        console.error("Post-edit section rejected: command log doesn't resolve against the regenerated maze; discarding saved post-edit state.");
+      }
     }
 
     // Restore dirty flags — generateWithSeed resets them, but saved values take precedence

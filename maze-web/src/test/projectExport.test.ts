@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { parseAndValidate, serializeProject } from "../store/projectExport";
-import type { MazeState, PostEditEdge } from "../store/mazeStore";
+import type { MazeState } from "../store/mazeStore";
 import { nodeEndpoint, splitEndpoint } from "../pixi/postEditEndpoint";
 import { presetEndpoint } from "../pixi/presetEndpoint";
+import { buildPostEditBaseline } from "../store/slices/postEditSliceHelpers";
+import type { PostEditCommand } from "../store/postEditCommandTypes";
 import { DEFAULT_VECTOR_BY_WALLS_SETTINGS, DEFAULT_VECTOR_BY_CORRIDORS_SETTINGS, DEFAULT_PNG_EXPORT_SETTINGS } from "../store/slices/imageExportSlice";
 
 function makeState(overrides: Partial<MazeState> = {}): MazeState {
@@ -57,6 +59,9 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     presetActiveSplitNode: {},
     presetFocusedPoint: null,
     postEditDirty: false,
+    postEditCommands: [],
+    postEditBaseline: buildPostEditBaseline([], [], 0, null, null),
+    postEditDerived: buildPostEditBaseline([], [], 0, null, null).derived,
     postEditDraftEdges: null,
     postEditDraftMeta: null,
     postEditDraftTeleports: [],
@@ -64,10 +69,12 @@ function makeState(overrides: Partial<MazeState> = {}): MazeState {
     postEditActiveSplitNode: {},
     postEditDraftVerticalPassages: [],
     postEditVerticalPassagePending: null,
+    _nextPostEditTeleportId: 1,
     _nextPostEditVerticalPassageId: 1,
     postEditDraftElevators: [],
     postEditElevatorPending: null,
     _nextPostEditElevatorId: 1,
+    _nextSplitSlotId: {},
     postEditSuppressedElevatorPairs: new Set<string>(),
     postEditSuppressedVerticalPassagePairs: new Set<string>(),
     fieldDirty: false,
@@ -230,16 +237,14 @@ describe("serializeProject / parseAndValidate round-trip", () => {
     expect(reparsed.quality.repairTimeBudgetSecs).toBe(10);
   });
 
-  it("round-trips dirty post-edit draft edges", () => {
-    const edges: Record<string, PostEditEdge> = {
-      "0-1": { from: nodeEndpoint(0), to: nodeEndpoint(1), kind: "basic" },
-      "1-2": { from: nodeEndpoint(1), to: nodeEndpoint(2), kind: "one_way_forward" },
-    };
-    const state = makeState({
-      postEditDirty: true,
-      postEditDraftEdges: edges,
-      postEditDraftMeta: { start: nodeEndpoint(0), finish: nodeEndpoint(2) },
-    });
+  it("round-trips dirty post-edit command log", () => {
+    const commands: PostEditCommand[] = [
+      { kind: "setEdge", from: nodeEndpoint(0), to: nodeEndpoint(1), edgeKind: "basic" },
+      { kind: "setEdge", from: nodeEndpoint(1), to: nodeEndpoint(2), edgeKind: "one_way_forward" },
+      { kind: "setMeta", slot: "start", endpoint: nodeEndpoint(0) },
+      { kind: "setMeta", slot: "finish", endpoint: nodeEndpoint(2) },
+    ];
+    const state = makeState({ postEditDirty: true, postEditCommands: commands });
     const serialized = serializeProject(state);
     expect(serialized.postEdit).not.toBeNull();
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
@@ -250,73 +255,63 @@ describe("serializeProject / parseAndValidate round-trip", () => {
   // `validatePostEditEndpoint` on project load, collapsing every floor-1+ split reference onto
   // floor 0 after a save/load round-trip even though `level` was correctly serialized.
   it("round-trips a split post-edit endpoint's non-zero level (GitHub issue #425)", () => {
-    const edges: Record<string, PostEditEdge> = {
-      "s0": { from: splitEndpoint([0, 0], 0, 1), to: nodeEndpoint(12), kind: "basic" },
-    };
-    const state = makeState({
-      postEditDirty: true,
-      postEditDraftEdges: edges,
-      postEditDraftMeta: { start: splitEndpoint([0, 0], 0, 1), finish: nodeEndpoint(12) },
-    });
+    const commands: PostEditCommand[] = [
+      { kind: "setEdge", from: splitEndpoint([0, 0], 0, 1), to: nodeEndpoint(12), edgeKind: "basic" },
+      { kind: "setMeta", slot: "start", endpoint: splitEndpoint([0, 0], 0, 1) },
+    ];
+    const state = makeState({ postEditDirty: true, postEditCommands: commands });
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
     expect(reparsed.postEdit).toEqual(serialized.postEdit);
-    const reparsedFrom = reparsed.postEdit?.edges.find(([k]) => k === "s0")?.[1].from;
+    const reparsedFrom = reparsed.postEdit?.commands[0].kind === "setEdge" ? reparsed.postEdit.commands[0].from : undefined;
     expect(reparsedFrom).toEqual(splitEndpoint([0, 0], 0, 1));
   });
 
   it("round-trips dirty post-edit teleports", () => {
-    const state = makeState({
-      postEditDirty: true,
-      postEditDraftEdges: {},
-      postEditDraftMeta: null,
-      postEditDraftTeleports: [
-        { id: 1, from: nodeEndpoint(0), to: nodeEndpoint(2), direction: "forward" },
-        { id: 2, from: nodeEndpoint(1), to: nodeEndpoint(3), direction: "two_way" },
-      ],
-    });
+    const commands: PostEditCommand[] = [
+      { kind: "addTeleport", id: 1, from: nodeEndpoint(0), to: nodeEndpoint(2), direction: "forward" },
+      { kind: "addTeleport", id: 2, from: nodeEndpoint(1), to: nodeEndpoint(3), direction: "two_way" },
+    ];
+    const state = makeState({ postEditDirty: true, postEditCommands: commands, _nextPostEditTeleportId: 3 });
     const serialized = serializeProject(state);
     expect(serialized.postEdit).not.toBeNull();
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
-    expect(reparsed.postEdit?.teleports).toEqual(serialized.postEdit?.teleports);
+    expect(reparsed.postEdit?.commands).toEqual(serialized.postEdit?.commands);
   });
 
   it("round-trips split points", () => {
-    const state = makeState({
-      postEditDirty: true,
-      postEditDraftEdges: {},
-      postEditDraftMeta: null,
-      postEditDraftSplitPoints: { "3,4": [0, 1] },
-    });
+    const commands: PostEditCommand[] = [
+      { kind: "addSplitNode", point: [3, 4], slotId: 0 },
+      { kind: "addSplitNode", point: [3, 4], slotId: 1 },
+    ];
+    const state = makeState({ postEditDirty: true, postEditCommands: commands, _nextSplitSlotId: { "3,4": 2 } });
     const serialized = serializeProject(state);
     const reparsed = parseAndValidate(JSON.parse(JSON.stringify(serialized)));
-    expect(reparsed.postEdit?.splitPoints).toEqual({ "3,4": [0, 1] });
+    expect(reparsed.postEdit?.commands).toEqual(commands);
+    expect(reparsed.postEdit?.nextSplitSlotId).toEqual({ "3,4": 2 });
   });
 
-  it("defaults postEdit.splitPoints to {} for a project file saved before split points existed", () => {
-    const state = makeState({ postEditDirty: true, postEditDraftEdges: {}, postEditDraftMeta: null });
+  it("rejects a project file with an unregistered version", () => {
+    const state = makeState({ postEditDirty: true, postEditCommands: [] });
     const data = JSON.parse(JSON.stringify(serializeProject(state)));
-    delete data.postEdit.splitPoints;
-    const reparsed = parseAndValidate(data);
-    expect(reparsed.postEdit?.splitPoints).toEqual({});
+    data.version = 3;
+    expect(() => parseAndValidate(data)).toThrow();
   });
 
   it("rejects an invalid PostEditEndpoint kind", () => {
-    const state = makeState({
-      postEditDirty: true,
-      postEditDraftEdges: {},
-      postEditDraftMeta: { start: { kind: "bogus" } as unknown as ReturnType<typeof nodeEndpoint>, finish: null },
-    });
+    const commands: PostEditCommand[] = [
+      { kind: "setMeta", slot: "start", endpoint: { kind: "bogus" } as unknown as ReturnType<typeof nodeEndpoint> },
+    ];
+    const state = makeState({ postEditDirty: true, postEditCommands: commands });
     const data = JSON.parse(JSON.stringify(serializeProject(state)));
     expect(() => parseAndValidate(data)).toThrow();
   });
 
-  it("defaults postEdit.teleports to empty array for a project file saved before post-edit teleport editing existed", () => {
-    const state = makeState({ postEditDirty: true, postEditDraftEdges: {}, postEditDraftMeta: null });
+  it("rejects an unknown PostEditCommand kind", () => {
+    const state = makeState({ postEditDirty: true, postEditCommands: [] });
     const data = JSON.parse(JSON.stringify(serializeProject(state)));
-    delete data.postEdit.teleports;
-    const result = parseAndValidate(data);
-    expect(result.postEdit?.teleports).toEqual([]);
+    data.postEdit.commands = [{ kind: "bogus" }];
+    expect(() => parseAndValidate(data)).toThrow();
   });
 
   it("postEdit is null when not dirty", () => {
@@ -389,8 +384,11 @@ describe("parseAndValidate — malformed input", () => {
 
   it("throws on invalid postEditEdge kind", () => {
     const data = valid();
-    data.postEdit = { edges: [["0-1", { from: 0, to: 1, kind: "bogus" }]], meta: null };
-    expect(() => parseAndValidate(data)).toThrow(/Invalid PostEditEdge kind/);
+    data.postEdit = {
+      commands: [{ kind: "setEdge", from: nodeEndpoint(0), to: nodeEndpoint(1), edgeKind: "bogus" }],
+      nextTeleportId: 1, nextVerticalPassageId: 1, nextElevatorId: 1, nextSplitSlotId: {},
+    };
+    expect(() => parseAndValidate(data)).toThrow(/Invalid PostEditEdgeKind/);
   });
 
   it("throws on invalid defaultEdgeState", () => {
@@ -408,17 +406,13 @@ describe("parseAndValidate — malformed input", () => {
     expect(() => parseAndValidate(data)).toThrow(/Duplicate teleport id/);
   });
 
-  it("throws on duplicate post-edit teleport id", () => {
+  it("throws on invalid post-edit teleport direction", () => {
     const data = valid();
     data.postEdit = {
-      edges: [],
-      meta: null,
-      teleports: [
-        { id: 1, from: nodeEndpoint(0), to: nodeEndpoint(2), direction: "forward" },
-        { id: 1, from: nodeEndpoint(1), to: nodeEndpoint(3), direction: "two_way" },
-      ],
+      commands: [{ kind: "addTeleport", id: 1, from: nodeEndpoint(0), to: nodeEndpoint(2), direction: "bogus" }],
+      nextTeleportId: 2, nextVerticalPassageId: 1, nextElevatorId: 1, nextSplitSlotId: {},
     };
-    expect(() => parseAndValidate(data)).toThrow(/Duplicate teleport id/);
+    expect(() => parseAndValidate(data)).toThrow(/Invalid.*[Dd]irection/);
   });
 
   it("throws when root is not an object", () => {

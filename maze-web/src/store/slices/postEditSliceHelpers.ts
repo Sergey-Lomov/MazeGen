@@ -1,8 +1,13 @@
 import type { NodeDto, EdgeDto, PostEditEndpointWasmDto } from "../../wasm/types";
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
-import { nodeEndpoint, splitEndpoint, resolverForNodeId } from "../../pixi/postEditEndpoint";
+import { nodeEndpoint, splitEndpoint, resolverForNodeId, buildSplitNodeResolver } from "../../pixi/postEditEndpoint";
 import { deriveSplitPointsFromNodes } from "../../pixi/splitPointsCore";
-import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports } from "../../pixi/postEditUtils";
+import { buildPostEditDraftEdgesFromGenerated, extractPostEditTeleports, pruneRemovedSplitNodes } from "../../pixi/postEditUtils";
+import type {
+  PostEditBaseline, PostEditDerivedState, PostEditReplayContext,
+} from "../../pixi/postEditReplay";
+import { applyPostEditCommand, replayPostEditCommands } from "../../pixi/postEditReplay";
+import type { PostEditCommand } from "../postEditCommandTypes";
 import type { MazeStore, PostEditVerticalPassageEntry } from "../storeTypes";
 import type { PostEditEdge, PostEditTeleportEntry } from "../postEditTypes";
 
@@ -135,6 +140,120 @@ export function buildMultiFloorPostEditDraft(
   return { draftEdges, draftTeleports, splitPoints, endpointFor };
 }
 
+/** Builds a fresh `PostEditBaseline` from a generation snapshot (GitHub issue #543) — the
+ * replacement for `buildMultiFloorPostEditDraft`'s old "build the initial draft" role, now
+ * producing the replay context + empty-log derived state a fresh command log folds on top of.
+ * `revision` is the caller's responsibility to bump (only on new generation, never on reset). */
+export function buildPostEditBaseline(
+  nodes: NodeDto[],
+  edges: EdgeDto[],
+  revision: number,
+  generatedStart: number | null,
+  generatedFinish: number | null,
+): PostEditBaseline {
+  const { draftEdges, draftTeleports, splitPoints, endpointFor } = buildMultiFloorPostEditDraft(nodes, edges);
+  const derived: PostEditDerivedState = {
+    edges: draftEdges,
+    teleports: draftTeleports,
+    meta: {
+      start: generatedStart !== null ? endpointFor(generatedStart) : null,
+      finish: generatedFinish !== null ? endpointFor(generatedFinish) : null,
+    },
+    splitPoints,
+    verticalPassages: [],
+    elevators: [],
+    suppressedVerticalPassagePairs: new Set(),
+    suppressedElevatorPairs: new Set(),
+  };
+  const prunedNodes = pruneRemovedSplitNodes(nodes, splitPoints, (n) => {
+    const level = n.level ?? 0;
+    return level === 0 ? `${n.x},${n.y}` : `${n.x},${n.y}@${level}`;
+  });
+  const pointNodeMap = buildMultiFloorPointNodeMap(prunedNodes);
+  const resolveSplit = buildSplitNodeResolver(pointNodeMap, splitPoints);
+  const context: PostEditReplayContext = { nodes, edges, resolveSplit };
+  return { revision, context, derived };
+}
+
+/** Mirrors a `PostEditDerivedState` into the legacy field names every non-mutating consumer still
+ * reads (`postEditDraftEdges`/`Teleports`/`Meta`/`SplitPoints`/`VerticalPassages`/`Elevators`/
+ * `Suppressed*Pairs`, GitHub issue #543) — the suppression sets are now log-derived facts
+ * (`suppressGenerationPair` command) rather than an independently-mutated store field, but the
+ * field names stay since ~40 read sites still destructure them. Called by
+ * `appendPostEditCommand`/`replacePostEditCommands`, the sole log-mutation points, so these fields
+ * are always in sync with `postEditCommands`/`postEditBaseline`. */
+export function derivedStateToLegacyFields(derived: PostEditDerivedState): {
+  postEditDraftEdges: Record<string, PostEditEdge>;
+  postEditDraftTeleports: PostEditTeleportEntry[];
+  postEditDraftMeta: { start: PostEditEndpoint | null; finish: PostEditEndpoint | null };
+  postEditDraftSplitPoints: Record<string, number[]>;
+  postEditDraftVerticalPassages: PostEditVerticalPassageEntry[];
+  postEditDraftElevators: import("../postEditTypes").PostEditElevatorEntry[];
+  postEditSuppressedElevatorPairs: ReadonlySet<string>;
+  postEditSuppressedVerticalPassagePairs: ReadonlySet<string>;
+} {
+  return {
+    postEditDraftEdges: derived.edges,
+    postEditDraftTeleports: derived.teleports,
+    postEditDraftMeta: derived.meta,
+    postEditDraftSplitPoints: derived.splitPoints,
+    postEditDraftVerticalPassages: derived.verticalPassages,
+    postEditDraftElevators: derived.elevators,
+    postEditSuppressedElevatorPairs: derived.suppressedElevatorPairs,
+    postEditSuppressedVerticalPassagePairs: derived.suppressedVerticalPassagePairs,
+  };
+}
+
+/** The only entry point that appends a single command to the log incrementally (GitHub issue #543
+ * plan section 6) — calls `applyPostEditCommand` directly against the current derived state rather
+ * than a full `replayPostEditCommands` (parity between the two is covered by
+ * `postEditReplay.test.ts`). Returns `false` (leaving state untouched) if the command didn't apply
+ * — callers must not have advanced any id counter before this returns `true`, since UX guards in
+ * the action already reject almost every invalid case before a command is even built. Bumps
+ * `_postEditRequestId` on any successful mutation (not just `confirmPostEdit`), closing the
+ * async-staleness race the plan calls out. */
+export function appendPostEditCommand(
+  get: () => MazeStore,
+  set: (partial: Partial<MazeStore> | ((state: MazeStore) => Partial<MazeStore>)) => void,
+  command: PostEditCommand,
+): boolean {
+  const state = get();
+  const { postEditBaseline, postEditCommands, postEditDerived } = state;
+  if (postEditBaseline === null || postEditDerived === null) return false;
+  const result = applyPostEditCommand(postEditBaseline.context, postEditDerived, command);
+  if (!result.applied) return false;
+  set((state) => ({
+    postEditCommands: [...postEditCommands, command],
+    postEditDerived: result.state,
+    ...derivedStateToLegacyFields(result.state),
+    postEditDirty: true,
+    _postEditRequestId: state._postEditRequestId + 1,
+  }));
+  return true;
+}
+
+/** The only entry point that replaces the whole log (reset / point-reset / load, GitHub issue #543
+ * plan section 6) — always a full `replayPostEditCommands` from `postEditBaseline`, since the new
+ * list isn't a plain append to the old one. `dirty` is an explicit parameter per the plan's dirty
+ * table (never inferred here) — callers state their own intent. */
+export function replacePostEditCommands(
+  get: () => MazeStore,
+  set: (partial: Partial<MazeStore> | ((state: MazeStore) => Partial<MazeStore>)) => void,
+  commands: PostEditCommand[],
+  dirty: boolean,
+): void {
+  const { postEditBaseline } = get();
+  if (postEditBaseline === null) return;
+  const derived = replayPostEditCommands(postEditBaseline, commands);
+  set((state) => ({
+    postEditCommands: commands,
+    postEditDerived: derived,
+    ...derivedStateToLegacyFields(derived),
+    postEditDirty: dirty,
+    _postEditRequestId: state._postEditRequestId + 1,
+  }));
+}
+
 /** Builds the new `PostEditVerticalPassageEntry` for a single-click placement (GitHub issue #341,
  * mirrors `commitPresetVerticalPassage` in `presetConnectionsSlice.ts`) — `origin` is always
  * `from`; `direction` ("up"/"down", already resolved as available by
@@ -155,18 +274,17 @@ export function commitPostEditVerticalPassage(
   const toLevel = direction === "up" ? originLevel + 1 : originLevel - 1;
   const toNode = state.nodes.find((n) => n.x === originNode.x && n.y === originNode.y && (n.level ?? 0) === toLevel);
   if (!toNode) return;
-  const entry: PostEditVerticalPassageEntry = {
-    id: state._nextPostEditVerticalPassageId,
-    from: origin,
-    to: nodeEndpoint(toNode.id),
+  const id = state._nextPostEditVerticalPassageId;
+  const applied = appendPostEditCommand(get, set, {
+    kind: "addVerticalPassage", id, from: origin, to: nodeEndpoint(toNode.id),
     direction: tool === "vertical_passage_two_way" ? "two_way" : "forward",
-  };
-  set((state) => ({
-    postEditDraftVerticalPassages: [...state.postEditDraftVerticalPassages, entry],
-    _nextPostEditVerticalPassageId: state._nextPostEditVerticalPassageId + 1,
-    postEditVerticalPassagePending: null,
-    postEditDirty: true,
-  }));
+  });
+  if (applied) {
+    set((state) => ({
+      _nextPostEditVerticalPassageId: state._nextPostEditVerticalPassageId + 1,
+      postEditVerticalPassagePending: null,
+    }));
+  }
   if (get().postEditAutoConfirm) {
     void get().confirmPostEdit();
   }

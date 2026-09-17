@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useMazeStore } from "../store/mazeStore";
-import { baseStoreState, baseFloorFieldConfig, mockSnapshot, TEST_FLOOR_ID } from "./storeTestHelpers";
+import {
+  baseStoreState, baseFloorFieldConfig, mockSnapshot, TEST_FLOOR_ID, postEditStatePatch,
+} from "./storeTestHelpers";
+import type { PostEditSeed } from "./storeTestHelpers";
 import { nodeEndpoint, splitEndpoint, edgeKey } from "../pixi/postEditEndpoint";
+import { suppressionPairKey } from "../pixi/postEditReplay";
 import { configAllCells } from "../pixi/tessellationCells";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
 
@@ -19,30 +23,69 @@ import { computeAnalytics } from "../wasm/mazeService";
 
 const n = nodeEndpoint;
 const key01 = edgeKey(n(0), n(1));
+/** Suppression-set key for a generation-time node-to-node pair. Built via the real
+ *  `suppressionPairKey` (not a hand-written `"a,b"` literal) so these assertions can't drift from
+ *  the production key format again (GitHub issue #543 — the keys are `endpointKey`-based now). */
+const vpPair = (a: number, b: number) => suppressionPairKey(n(a), n(b));
+const elevPair = vpPair;
+
+/** The default generation snapshot every test starts from: two floor-0 nodes with a single
+ *  one-directional `basic` edge 0->1 (so `buildPostEditBaseline` derives a `one_way_forward` draft
+ *  edge from it, matching what the old hand-written `beforeEach` relied on for the `reset`-tool
+ *  and `resetPostEdit` tests). */
+const BASE_NODES = [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }];
+const BASE_EDGES = [{ from: 0, to: 1, kind: "basic" as const }];
+
+/** Seeds a full, self-consistent post-edit scenario: a real `postEditBaseline` built from the
+ *  generation snapshot plus a replayed command log, with the legacy `postEditDraft*` mirror fields
+ *  derived from it (GitHub issue #543 — actions read the baseline, never the mirror fields, so
+ *  seeding the mirror fields alone silently desyncs the two). `extra` carries any non-post-edit
+ *  store fields the scenario also needs (floors, tessellation, tool, ...). */
+function seedPostEdit(
+  seed: Partial<PostEditSeed> = {},
+  extra: Partial<ReturnType<typeof useMazeStore.getState>> = {},
+) {
+  useMazeStore.setState({
+    ...postEditStatePatch({
+      nodes: BASE_NODES, edges: BASE_EDGES, start: 0, finish: 1, ...seed,
+    }),
+    postEditActiveSplitNode: {},
+    postEditEdges: null,
+    postEditMeta: null,
+    postEditAnalytics: null,
+    postEditDirty: false,
+    postEditDraftTeleports: [],
+    ...extra,
+  } as Partial<ReturnType<typeof useMazeStore.getState>>);
+}
 
 beforeEach(() => {
   useMazeStore.setState(baseStoreState());
   vi.mocked(computeAnalytics).mockReset();
   vi.mocked(computeAnalytics).mockReturnValue(mockSnapshot);
   useMazeStore.setState({
-    edges: [{ from: 0, to: 1, kind: "basic" }],
-    nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
-    _generatedEdges: [{ from: 0, to: 1, kind: "basic" }],
-    _generatedNodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
-    start: 0,
-    finish: 1,
     activeTessellationConfig: { type: "square", width: 2, height: 1 },
-    postEditDraftEdges: { [key01]: { from: n(0), to: n(1), kind: "basic" } },
-    postEditDraftMeta: { start: n(0), finish: n(1) },
-    postEditDraftSplitPoints: {},
-    postEditActiveSplitNode: {},
-    postEditEdges: null,
-    postEditMeta: null,
-    postEditAnalytics: null,
-    postEditDirty: false,
     postEditAutoConfirm: false,
-    _generatedStart: 0,
-    _generatedFinish: 1,
+    _nextPostEditTeleportId: 1,
+    _nextPostEditVerticalPassageId: 1,
+    _nextPostEditElevatorId: 1,
+    postEditTeleportPendingFrom: null,
+    postEditVerticalPassagePending: null,
+    postEditElevatorPending: null,
+    postEditSplitTargetPrompt: null,
+    error: null,
+  });
+  // The shared default scenario: generation produced a single directed 0->1 `basic` edge (so a
+  // `reset`/`resetPostEdit` restores it as `one_way_forward`), which the user has since upgraded
+  // to a full two-way passage — matching the `{ key01: basic }` default draft the pre-command-log
+  // `beforeEach` wrote into `postEditDraftEdges` by hand. `setEdge` sets exactly one directed key
+  // (GitHub issue #543 — it never touches the reverse key as a side effect), so a full two-way
+  // passage needs both directions seeded explicitly. Start is node 0, finish is node 1.
+  seedPostEdit({
+    commands: [
+      { kind: "setEdge", from: n(0), to: n(1), edgeKind: "basic" },
+      { kind: "setEdge", from: n(1), to: n(0), edgeKind: "basic" },
+    ],
   });
 });
 
@@ -64,7 +107,8 @@ describe("mazeStore post-edit actions", () => {
   });
 
   it("applyPostEditTool('passage') sets a basic edge entry", () => {
-    useMazeStore.setState({ postEditTool: "passage", postEditDraftEdges: {} });
+    // Generation left the two nodes unconnected, so the draft starts with no 0-1 entry at all.
+    seedPostEdit({ edges: [] }, { postEditTool: "passage" });
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
     expect(useMazeStore.getState().postEditDraftEdges?.[key01]?.kind).toBe("basic");
   });
@@ -72,30 +116,30 @@ describe("mazeStore post-edit actions", () => {
   it("applyPostEditTool('reset') restores the edge from _generatedEdges, not the current (edited) state.edges (GitHub issue #323)", () => {
     // Simulates state after a confirmed manual edit: state.edges no longer has 0-1 (a wall was
     // confirmed there), while _generatedEdges still holds the original generation output.
-    useMazeStore.setState({
-      postEditTool: "reset",
-      edges: [],
-      postEditDraftEdges: {},
-    });
+    seedPostEdit(
+      { liveEdges: [], commands: [{ kind: "setEdge", from: n(0), to: n(1), edgeKind: "wall" }] },
+      { postEditTool: "reset" },
+    );
+    expect(useMazeStore.getState().postEditDraftEdges?.[key01]).toBeUndefined();
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
     expect(useMazeStore.getState().postEditDraftEdges?.[key01]?.kind).toBe("one_way_forward");
   });
 
   it("applyPostEditTool is no-op when there is no draft yet", () => {
-    useMazeStore.setState({ postEditDraftEdges: null, postEditDirty: false });
+    useMazeStore.setState({ postEditBaseline: null, postEditDraftEdges: null, postEditDirty: false });
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
     expect(useMazeStore.getState().postEditDirty).toBe(false);
   });
 
   it("applyPostEditToolAt triggers confirmPostEdit when postEditAutoConfirm is on (GitHub issue #241)", async () => {
-    useMazeStore.setState({ postEditAutoConfirm: true, postEditDraftEdges: {} });
+    seedPostEdit({ edges: [] }, { postEditAutoConfirm: true });
     useMazeStore.getState().applyPostEditToolAt("passage", key01, n(0), n(1));
     await Promise.resolve();
     expect(computeAnalytics).toHaveBeenCalled();
   });
 
   it("applyPostEditToolAt does not call confirmPostEdit when postEditAutoConfirm is off", () => {
-    useMazeStore.setState({ postEditAutoConfirm: false, postEditDraftEdges: {} });
+    seedPostEdit({ edges: [] }, { postEditAutoConfirm: false });
     useMazeStore.getState().applyPostEditToolAt("passage", key01, n(0), n(1));
     expect(computeAnalytics).not.toHaveBeenCalled();
   });
@@ -105,7 +149,12 @@ describe("mazeStore post-edit actions", () => {
     const s = useMazeStore.getState();
     expect(computeAnalytics).toHaveBeenCalled();
     expect(s.postEditAnalytics).not.toBeNull();
-    expect(s.postEditEdges).toEqual({ [key01]: { from: n(0), to: n(1), kind: "basic" } });
+    // A two-way `basic` passage is two directed draft entries (see `applyPostEditEdgeTool`'s
+    // "passage" branch) — the snapshot carries both, unchanged from the draft.
+    expect(s.postEditEdges).toEqual({
+      [key01]: { from: n(0), to: n(1), kind: "basic" },
+      [edgeKey(n(1), n(0))]: { from: n(1), to: n(0), kind: "basic" },
+    });
     expect(s.postEditMeta).toEqual({ start: n(0), finish: n(1) });
   });
 
@@ -565,10 +614,10 @@ describe("mazeStore post-edit actions", () => {
   });
 
   it("resetPostEditPoint resets one point's draft edges to generation-time state and marks dirty", () => {
-    useMazeStore.setState({
-      postEditDraftEdges: {},
-      postEditAutoConfirm: false,
-    });
+    // The user walled off the generated 0-1 passage; resetting (0,0) must prune that edit out of
+    // the log, leaving the generation-time `one_way_forward` edge the baseline carries.
+    seedPostEdit({ commands: [{ kind: "setEdge", from: n(0), to: n(1), edgeKind: "wall" }] });
+    expect(useMazeStore.getState().postEditDraftEdges?.[key01]).toBeUndefined();
     useMazeStore.getState().resetPostEditPoint([0, 0]);
     const s = useMazeStore.getState();
     expect(s.postEditDraftEdges?.[key01]).toEqual({ from: n(0), to: n(1), kind: "one_way_forward" });
@@ -576,18 +625,17 @@ describe("mazeStore post-edit actions", () => {
   });
 
   it("resetPostEditPoint excludes a floor-1 node sharing the reset point's (x,y) when the active floor is floor 0 (GitHub issue #337, #358)", () => {
-    // beforeEach's floor-0 nodes are (0,0)->id 0 and (1,0)->id 1. Add a floor-1 node also at (0,0)
-    // (id 2) - resetting point (0,0) on the active floor (floor 0 here) must never pull that
-    // floor-1 node's edges/teleports in, even though post-edit tools now work on any floor.
-    useMazeStore.setState({
-      _generatedNodes: [
+    // Floor-0 nodes are (0,0)->id 0 and (1,0)->id 1, plus a floor-1 node also at (0,0) (id 2) -
+    // resetting point (0,0) on the active floor (floor 0 here) must never pull that floor-1 node's
+    // edges/teleports in, even though post-edit tools now work on any floor.
+    seedPostEdit({
+      nodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 0 },
         { id: 1, x: 1, y: 0, i: 0, level: 0 },
         { id: 2, x: 0, y: 0, i: 0, level: 1 },
       ],
-      _generatedEdges: [{ from: 0, to: 1, kind: "basic" }, { from: 2, to: 1, kind: "vertical_passage" }],
-      postEditDraftEdges: {},
-      postEditAutoConfirm: false,
+      edges: [{ from: 0, to: 1, kind: "basic" }, { from: 2, to: 1, kind: "vertical_passage" }],
+      commands: [{ kind: "setEdge", from: n(0), to: n(1), edgeKind: "wall" }],
     });
     useMazeStore.getState().resetPostEditPoint([0, 0]);
     const s = useMazeStore.getState();
@@ -595,15 +643,17 @@ describe("mazeStore post-edit actions", () => {
     expect(Object.keys(s.postEditDraftEdges ?? {})).toHaveLength(1);
   });
 
-  it("resetPostEditPoint bumps _nextPostEditTeleportId past a restored teleport's freshly minted id, so a later addPostEditTeleport can't collide (GitHub issue #327)", () => {
-    useMazeStore.setState({
-      _generatedEdges: [{ from: 0, to: 1, kind: "basic" }, { from: 0, to: 5, kind: "teleport" }],
+  it("resetPostEditPoint restores a generation-time teleport the user had removed, and a later addPostEditTeleport can't collide with its id (GitHub issue #327)", () => {
+    // Generation put a teleport 0->5 at the reset point; the user removed it. The reset must prune
+    // that `removeTeleport` command out of the log (restoring the baseline teleport), and the next
+    // `addPostEditTeleport` must still mint a free id.
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 5, x: 5, y: 5, i: 0 }],
-      _generatedNodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 5, x: 5, y: 5, i: 0 }],
-      postEditDraftTeleports: [],
-      _nextPostEditTeleportId: 1,
-      postEditAutoConfirm: false,
-    });
+      edges: [{ from: 0, to: 1, kind: "basic" }, { from: 0, to: 5, kind: "teleport" }],
+      commands: [{ kind: "removeTeleport", id: 1 }],
+    }, { _nextPostEditTeleportId: 2 });
+    expect(useMazeStore.getState().postEditDraftTeleports).toHaveLength(0);
+
     useMazeStore.getState().resetPostEditPoint([0, 0]);
     const s = useMazeStore.getState();
     expect(s.postEditDraftTeleports).toHaveLength(1);
@@ -621,39 +671,45 @@ describe("mazeStore post-edit actions", () => {
     expect(computeAnalytics).toHaveBeenCalled();
   });
 
-  it("resetPostEditPoint's elevator un-suppress walks the full mesh via _generatedEdges, not just pairs naming the point's own node (GitHub issue #341 follow-up)", () => {
-    useMazeStore.setState({
-      floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }, { id: "f2", title: "Floor 3" }],
-      activeFloorId: "f1",
-      _generatedNodes: [
+  it("resetPostEditPoint's elevator un-suppress covers the full mesh, not just pairs naming the point's own node (GitHub issue #341 follow-up)", () => {
+    // A three-floor generation-time elevator mesh at (0,0) which the user then deleted from floor 2
+    // (activeFloorId "f1", level 1, node 11) — that delete suppressed the *entire* component
+    // (BFS over `_generatedEdges`, see `deletePoint`'s own reducer case), including the 10-12 pair
+    // that never names node 11. Resetting that same point must prune the whole delete command back
+    // out, un-suppressing all three pairs — not just the two naming node 11.
+    seedPostEdit({
+      nodes: [
         { id: 10, x: 0, y: 0, i: 0, level: 0 },
         { id: 11, x: 0, y: 0, i: 0, level: 1 },
         { id: 12, x: 0, y: 0, i: 0, level: 2 },
       ],
-      _generatedEdges: [
+      edges: [
         { from: 10, to: 11, kind: "elevator" }, { from: 11, to: 10, kind: "elevator" },
         { from: 10, to: 12, kind: "elevator" }, { from: 12, to: 10, kind: "elevator" },
         { from: 11, to: 12, kind: "elevator" }, { from: 12, to: 11, kind: "elevator" },
       ],
-      postEditSuppressedElevatorPairs: new Set(["10,11", "10,12", "11,12"]),
-      postEditAutoConfirm: false,
+      start: null, finish: null,
+      commands: [{ kind: "deletePoint", point: [0, 0], level: 1 }],
+    }, {
+      floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }, { id: "f2", title: "Floor 3" }],
+      activeFloorId: "f1",
     });
-    // Resets floor 2's (activeFloorId "f1", level 1) own point at (0,0) - its node is 11. The old
-    // (pre-fix) logic only un-suppressed pairs naming node 11 (10-11 and 11-12), leaving 10-12
-    // suppressed forever even though it's part of the same elevator. The BFS-based fix must clear
-    // the entire mesh.
+    expect(useMazeStore.getState().postEditSuppressedElevatorPairs).toEqual(
+      new Set([elevPair(10, 11), elevPair(10, 12), elevPair(11, 12)]),
+    );
+
     useMazeStore.getState().resetPostEditPoint([0, 0]);
     expect(useMazeStore.getState().postEditSuppressedElevatorPairs).toEqual(new Set());
   });
 
   it("deletePostEditPoint clears start/finish, teleports, vertical passages and elevators touching the point, but leaves draft edges untouched (GitHub issue #386)", () => {
-    useMazeStore.setState({
-      postEditDraftEdges: { [key01]: { from: n(0), to: n(1), kind: "basic" } },
-      postEditDraftMeta: { start: n(0), finish: n(1) },
-      postEditDraftTeleports: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
-      postEditDraftVerticalPassages: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
-      postEditDraftElevators: [{ id: 1, floors: [n(0), n(1)] }],
-      postEditAutoConfirm: false,
+    seedPostEdit({
+      commands: [
+        { kind: "setEdge", from: n(0), to: n(1), edgeKind: "basic" },
+        { kind: "addTeleport", id: 1, from: n(0), to: n(1), direction: "forward" },
+        { kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" },
+        { kind: "addElevator", id: 1, floors: [n(0), n(1)] },
+      ],
     });
     useMazeStore.getState().deletePostEditPoint([0, 0]);
     const s = useMazeStore.getState();
@@ -667,10 +723,7 @@ describe("mazeStore post-edit actions", () => {
   });
 
   it("deletePostEditPoint clears finish alone when only finish addresses the point", () => {
-    useMazeStore.setState({
-      postEditDraftMeta: { start: n(1), finish: n(0) },
-      postEditAutoConfirm: false,
-    });
+    seedPostEdit({ start: 1, finish: 0 });
     useMazeStore.getState().deletePostEditPoint([0, 0]);
     const s = useMazeStore.getState();
     expect(s.postEditDraftMeta?.start).toEqual(n(1));
@@ -678,46 +731,51 @@ describe("mazeStore post-edit actions", () => {
   });
 
   it("deletePostEditPoint suppresses a generation-time vertical passage/elevator touching the point, so it isn't resent on confirm", () => {
-    useMazeStore.setState({
-      _generatedEdges: [
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 },
+        { id: 5, x: 0, y: 0, i: 0, level: 1 }, { id: 6, x: 0, y: 0, i: 0, level: 2 },
+      ],
+      edges: [
         { from: 0, to: 1, kind: "basic" },
         { from: 0, to: 5, kind: "vertical_passage" },
         { from: 0, to: 6, kind: "elevator" }, { from: 6, to: 0, kind: "elevator" },
       ],
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditSuppressedElevatorPairs: new Set<string>(),
-      postEditAutoConfirm: false,
     });
     useMazeStore.getState().deletePostEditPoint([0, 0]);
     const s = useMazeStore.getState();
-    expect(s.postEditSuppressedVerticalPassagePairs).toEqual(new Set(["0,5"]));
-    expect(s.postEditSuppressedElevatorPairs).toEqual(new Set(["0,6"]));
+    expect(s.postEditSuppressedVerticalPassagePairs).toEqual(new Set([vpPair(0, 5)]));
+    expect(s.postEditSuppressedElevatorPairs).toEqual(new Set([elevPair(0, 6)]));
   });
 
   it("deletePostEditPoint normalizes a suppressed pair the same way regardless of which side the generated edge names first (reversed from/to)", () => {
-    useMazeStore.setState({
-      _generatedEdges: [
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 },
+        { id: 5, x: 0, y: 0, i: 0, level: 1 }, { id: 6, x: 0, y: 0, i: 0, level: 2 },
+      ],
+      edges: [
         { from: 5, to: 0, kind: "vertical_passage" },
         { from: 6, to: 0, kind: "elevator" },
       ],
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditSuppressedElevatorPairs: new Set<string>(),
-      postEditAutoConfirm: false,
     });
     useMazeStore.getState().deletePostEditPoint([0, 0]);
     const s = useMazeStore.getState();
-    expect(s.postEditSuppressedVerticalPassagePairs).toEqual(new Set(["0,5"]));
-    expect(s.postEditSuppressedElevatorPairs).toEqual(new Set(["0,6"]));
+    // Same keys as the non-reversed variant above — `suppressionPairKey` sorts its two endpoints.
+    expect(s.postEditSuppressedVerticalPassagePairs).toEqual(new Set([vpPair(0, 5)]));
+    expect(s.postEditSuppressedElevatorPairs).toEqual(new Set([elevPair(0, 6)]));
   });
 
   it("deletePostEditPoint clears content on an unconfirmed split slot too, not just the point's live nodes (GitHub issue #221's unresolved-endpoint window)", () => {
     const slot0 = splitEndpoint([0, 0], 0);
-    useMazeStore.setState({
-      postEditDraftSplitPoints: { "0,0": [0] },
-      postEditDraftTeleports: [{ id: 1, from: n(1), to: slot0, direction: "forward" }],
-      postEditDraftMeta: { start: slot0, finish: null },
-      postEditAutoConfirm: false,
+    seedPostEdit({
+      commands: [
+        { kind: "addSplitNode", point: [0, 0], slotId: 0 },
+        { kind: "addTeleport", id: 1, from: n(1), to: slot0, direction: "forward" },
+        { kind: "setMeta", slot: "start", endpoint: slot0 },
+      ],
     });
+    expect(useMazeStore.getState().postEditDraftSplitPoints["0,0"]).toEqual([0]);
     useMazeStore.getState().deletePostEditPoint([0, 0]);
     const s = useMazeStore.getState();
     expect(s.postEditDraftTeleports).toHaveLength(0);
@@ -732,13 +790,19 @@ describe("mazeStore post-edit actions", () => {
 });
 
 describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #341)", () => {
+  /** Two floors' worth of `floors`/`floorFields`, with `activeFloorId` on floor index 1 — the
+   *  geometry `startPostEditVerticalPassagePlacement`'s own available-direction probe reads. */
+  const floorsExtra = (count: number, activeIndex: number) => ({
+    activeFloorId: `f${activeIndex}`,
+    floors: Array.from({ length: count }, (_, i) => ({ id: `f${i}`, title: `Floor ${i + 1}` })),
+    floorFields: Object.fromEntries(Array.from({ length: count }, (_, i) => [`f${i}`, baseFloorFieldConfig()])),
+  });
+
   it("startPostEditVerticalPassagePlacement on a node with an existing generation-time forward edge seeds a draft entry with that direction, instead of creating a duplicate", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
       edges: [{ from: 0, to: 1, kind: "vertical_passage" }],
-      postEditDraftVerticalPassages: [],
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditAutoConfirm: false,
+      start: null, finish: null,
     });
     useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
     const s = useMazeStore.getState();
@@ -746,40 +810,38 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     expect(s.postEditDraftVerticalPassages[0]).toMatchObject({ from: n(0), to: n(1), direction: "forward" });
     // The generation-time pair must be suppressed, or the old edge would keep coexisting with the
     // new draft entry on the next confirm (see the doc comment on this code path).
-    expect(s.postEditSuppressedVerticalPassagePairs.has("0,1")).toBe(true);
+    expect(s.postEditSuppressedVerticalPassagePairs.has(vpPair(0, 1))).toBe(true);
   });
 
   it("startPostEditVerticalPassagePlacement detects a bidirectional generation-time pair (both directed edges present) as two_way", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
       edges: [{ from: 0, to: 1, kind: "vertical_passage" }, { from: 1, to: 0, kind: "vertical_passage" }],
-      postEditDraftVerticalPassages: [],
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditAutoConfirm: false,
+      start: null, finish: null,
     });
     useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_two_way");
     expect(useMazeStore.getState().postEditDraftVerticalPassages[0].direction).toBe("two_way");
   });
 
   it("startPostEditVerticalPassagePlacement detects a bidirectional pair as two_way even when the reverse edge is the one matched first (GitHub issue #385)", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
       edges: [{ from: 1, to: 0, kind: "vertical_passage" }, { from: 0, to: 1, kind: "vertical_passage" }],
-      postEditDraftVerticalPassages: [],
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditAutoConfirm: false,
+      start: null, finish: null,
     });
     useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_two_way");
     expect(useMazeStore.getState().postEditDraftVerticalPassages[0].direction).toBe("two_way");
   });
 
   it("startPostEditVerticalPassagePlacement is a no-op on a node that already has a draft entry to the same partner, instead of minting a duplicate (GitHub issue #385)", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
       edges: [{ from: 0, to: 1, kind: "vertical_passage" }],
-      postEditDraftVerticalPassages: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
-      postEditSuppressedVerticalPassagePairs: new Set<string>(["0,1"]),
-      postEditAutoConfirm: false,
+      start: null, finish: null,
+      commands: [
+        { kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" },
+        { kind: "suppressGenerationPair", entity: "verticalPassage", a: n(0), b: n(1) },
+      ],
     });
     // A click landing in the same cell as the node's own marker, but outside the marker's own hit
     // radius, still resolves to this action rather than the pick-endpoint/cycle path - see the
@@ -791,7 +853,7 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
   });
 
   it("startPostEditVerticalPassagePlacement still seeds a second draft entry for a different generation-time partner (a cell with an up passage and a down passage are independent connections)", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 1 },
         { id: 1, x: 0, y: 0, i: 0, level: 2 },
@@ -801,10 +863,12 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
         { from: 0, to: 2, kind: "vertical_passage" },
         { from: 0, to: 1, kind: "vertical_passage" },
       ],
-      postEditDraftVerticalPassages: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
-      postEditSuppressedVerticalPassagePairs: new Set<string>(["0,1"]),
-      postEditAutoConfirm: false,
-    });
+      start: null, finish: null,
+      commands: [
+        { kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" },
+        { kind: "suppressGenerationPair", entity: "verticalPassage", a: n(0), b: n(1) },
+      ],
+    }, { _nextPostEditVerticalPassageId: 2 });
     useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_two_way");
     const s = useMazeStore.getState();
     expect(s.postEditDraftVerticalPassages).toHaveLength(2);
@@ -812,59 +876,47 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
   });
 
   it("startPostEditVerticalPassagePlacement calls confirmPostEdit when seeding from a generation-time edge and postEditAutoConfirm is true", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
       edges: [{ from: 0, to: 1, kind: "vertical_passage" }],
-      postEditDraftVerticalPassages: [],
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditAutoConfirm: true,
-    });
+      start: null, finish: null,
+    }, { postEditAutoConfirm: true });
     useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
     expect(computeAnalytics).toHaveBeenCalled();
   });
 
   it("startPostEditVerticalPassagePlacement falls through to the new-placement flow once every generation-time partner is already drafted", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 1 },
         { id: 1, x: 0, y: 0, i: 0, level: 2 },
         { id: 2, x: 0, y: 0, i: 0, level: 0 },
       ],
       edges: [{ from: 0, to: 1, kind: "vertical_passage" }],
-      postEditDraftVerticalPassages: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
-      postEditSuppressedVerticalPassagePairs: new Set<string>(["0,1"]),
-      postEditAutoConfirm: false,
-      activeFloorId: "f1",
-      floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }, { id: "f2", title: "Floor 3" }],
-      floorFields: {
-        f0: baseFloorFieldConfig(),
-        f1: baseFloorFieldConfig(),
-        f2: baseFloorFieldConfig(),
-      },
-    });
+      start: null, finish: null,
+      commands: [
+        { kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" },
+        { kind: "suppressGenerationPair", entity: "verticalPassage", a: n(0), b: n(1) },
+      ],
+    }, { ...floorsExtra(3, 1), _nextPostEditVerticalPassageId: 2 });
     // Level 2 ("up") is already drafted; level 0 ("down") has neither a generation-time edge nor a
     // draft entry. Both directions are geometrically available from the field, but "up" is filtered
     // out as already-drafted, leaving "down" as the only free direction — so this commits "down"
     // directly instead of opening the direction dialog for a choice that's really forced.
     useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_two_way");
     const s = useMazeStore.getState();
-    expect(useMazeStore.getState().postEditVerticalPassagePending).toBeNull();
+    expect(s.postEditVerticalPassagePending).toBeNull();
     expect(s.postEditDraftVerticalPassages).toHaveLength(2);
     expect(s.postEditDraftVerticalPassages[1]).toMatchObject({ from: n(0), to: n(2), direction: "two_way" });
   });
 
   it("startPostEditVerticalPassagePlacement cycles a within-session draft entry's direction instead of minting a duplicate when the cell is re-clicked outside the marker radius (GitHub issue #491)", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 1 }, { id: 1, x: 0, y: 0, i: 0, level: 0 }],
       edges: [],
-      postEditDraftVerticalPassages: [{ id: 7, from: n(0), to: n(1), direction: "forward" }],
-      _nextPostEditVerticalPassageId: 8,
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditAutoConfirm: false,
-      activeFloorId: "f1",
-      floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }],
-      floorFields: { f0: baseFloorFieldConfig(), f1: baseFloorFieldConfig() },
-    });
+      start: null, finish: null,
+      commands: [{ kind: "addVerticalPassage", id: 7, from: n(0), to: n(1), direction: "forward" }],
+    }, { ...floorsExtra(2, 1), _nextPostEditVerticalPassageId: 8 });
     // origin (level 1) can only go "down" here (no level 2 floor), and "down" is already drafted →
     // this cell click cycles that entry instead of adding a second passage for the same pair.
     useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
@@ -874,20 +926,16 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
   });
 
   it("startPostEditVerticalPassagePlacement cycles a within-session draft entry even after its own edge was echoed into state.edges by an auto-confirm (GitHub issue #491)", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 1 }, { id: 1, x: 0, y: 0, i: 0, level: 0 }],
+      edges: [],
       // The draft's own forward edge is now in `state.edges` (post auto-confirm), but the pair was
       // never suppressed (the create path doesn't suppress) — the #385 guard would treat this as a
       // generation-time edge and fall through to a duplicate.
-      edges: [{ from: 0, to: 1, kind: "vertical_passage" }],
-      postEditDraftVerticalPassages: [{ id: 7, from: n(0), to: n(1), direction: "forward" }],
-      _nextPostEditVerticalPassageId: 8,
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditAutoConfirm: false,
-      activeFloorId: "f1",
-      floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }],
-      floorFields: { f0: baseFloorFieldConfig(), f1: baseFloorFieldConfig() },
-    });
+      liveEdges: [{ from: 0, to: 1, kind: "vertical_passage" }],
+      start: null, finish: null,
+      commands: [{ kind: "addVerticalPassage", id: 7, from: n(0), to: n(1), direction: "forward" }],
+    }, { ...floorsExtra(2, 1), _nextPostEditVerticalPassageId: 8 });
     useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
     const s = useMazeStore.getState();
     expect(s.postEditDraftVerticalPassages).toHaveLength(1);
@@ -895,24 +943,19 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
   });
 
   it("startPostEditVerticalPassagePlacement is a no-op when a re-clicked cell holds two independent within-session draft passages (up and down), rather than guessing or duplicating (GitHub issue #491)", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 1 },
         { id: 1, x: 0, y: 0, i: 0, level: 2 },
         { id: 2, x: 0, y: 0, i: 0, level: 0 },
       ],
       edges: [],
-      postEditDraftVerticalPassages: [
-        { id: 1, from: n(0), to: n(1), direction: "forward" },
-        { id: 2, from: n(0), to: n(2), direction: "forward" },
+      start: null, finish: null,
+      commands: [
+        { kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" },
+        { kind: "addVerticalPassage", id: 2, from: n(0), to: n(2), direction: "forward" },
       ],
-      _nextPostEditVerticalPassageId: 3,
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditAutoConfirm: false,
-      activeFloorId: "f1",
-      floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }, { id: "f2", title: "Floor 3" }],
-      floorFields: { f0: baseFloorFieldConfig(), f1: baseFloorFieldConfig(), f2: baseFloorFieldConfig() },
-    });
+    }, { ...floorsExtra(3, 1), _nextPostEditVerticalPassageId: 3 });
     useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
     const s = useMazeStore.getState();
     expect(s.postEditDraftVerticalPassages).toHaveLength(2);
@@ -921,17 +964,12 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
   });
 
   it("startPostEditVerticalPassagePlacement leaves a two_way within-session draft entry unchanged when its cell is re-clicked with only one direction available (GitHub issue #491)", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 1 }, { id: 1, x: 0, y: 0, i: 0, level: 0 }],
       edges: [],
-      postEditDraftVerticalPassages: [{ id: 7, from: n(0), to: n(1), direction: "two_way" }],
-      _nextPostEditVerticalPassageId: 8,
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditAutoConfirm: false,
-      activeFloorId: "f1",
-      floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }],
-      floorFields: { f0: baseFloorFieldConfig(), f1: baseFloorFieldConfig() },
-    });
+      start: null, finish: null,
+      commands: [{ kind: "addVerticalPassage", id: 7, from: n(0), to: n(1), direction: "two_way" }],
+    }, { ...floorsExtra(2, 1), _nextPostEditVerticalPassageId: 8 });
     useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
     const s = useMazeStore.getState();
     expect(s.postEditDraftVerticalPassages).toHaveLength(1);
@@ -939,42 +977,42 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
   });
 
   it("startPostEditVerticalPassagePlacement on a node whose generation-time edge only arrives (backward) detects it as backward", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
       edges: [{ from: 1, to: 0, kind: "vertical_passage" }],
-      postEditDraftVerticalPassages: [],
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditAutoConfirm: false,
+      start: null, finish: null,
     });
     useMazeStore.getState().startPostEditVerticalPassagePlacement(n(0), "vertical_passage_one_way");
     expect(useMazeStore.getState().postEditDraftVerticalPassages[0].direction).toBe("backward");
   });
 
   it("cyclePostEditVerticalPassageDirection suppresses the pair unconditionally, including on a second cycle of an already-confirmed entry", () => {
-    useMazeStore.setState({
-      postEditDraftVerticalPassages: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditAutoConfirm: false,
-    });
+    seedPostEdit({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" }],
+    }, { _nextPostEditVerticalPassageId: 2 });
     useMazeStore.getState().cyclePostEditVerticalPassageDirection(1);
     expect(useMazeStore.getState().postEditDraftVerticalPassages[0].direction).toBe("backward");
-    expect(useMazeStore.getState().postEditSuppressedVerticalPassagePairs.has("0,1")).toBe(true);
+    expect(useMazeStore.getState().postEditSuppressedVerticalPassagePairs.has(vpPair(0, 1))).toBe(true);
 
     // Second cycle on the same (now already-"confirmed" by convention) entry - suppression must
-    // still be (re-)applied, not skipped as "already done once" (GitHub issue #341 follow-up bug:
-    // a second direction cycle without this left the old edge from the first cycle's own confirm
-    // coexisting with the new one, reading as two-way).
-    useMazeStore.setState({ postEditSuppressedVerticalPassagePairs: new Set<string>() });
+    // still hold afterwards, not be skipped/lost as "already done once" (GitHub issue #341
+    // follow-up bug: a second direction cycle without this left the old edge from the first
+    // cycle's own confirm coexisting with the new one, reading as two-way).
     useMazeStore.getState().cyclePostEditVerticalPassageDirection(1);
-    expect(useMazeStore.getState().postEditSuppressedVerticalPassagePairs.has("0,1")).toBe(true);
+    expect(useMazeStore.getState().postEditDraftVerticalPassages[0].direction).toBe("forward");
+    expect(useMazeStore.getState().postEditSuppressedVerticalPassagePairs.has(vpPair(0, 1))).toBe(true);
   });
 
   it("removePostEditVerticalPassage removes the draft entry and marks dirty", () => {
-    useMazeStore.setState({
-      postEditDraftVerticalPassages: [{ id: 1, from: n(0), to: n(1), direction: "forward" }],
-      postEditAutoConfirm: false,
-      postEditDirty: false,
-    });
+    seedPostEdit({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }, { id: 1, x: 0, y: 0, i: 0, level: 1 }],
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "addVerticalPassage", id: 1, from: n(0), to: n(1), direction: "forward" }],
+    }, { _nextPostEditVerticalPassageId: 2 });
     useMazeStore.getState().removePostEditVerticalPassage(1);
     const s = useMazeStore.getState();
     expect(s.postEditDraftVerticalPassages).toHaveLength(0);
@@ -982,7 +1020,7 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
   });
 
   it("startPostEditElevatorPlacement on a node with an existing generation-time elevator mesh seeds pending floors from every reachable node, with sourceNodeIds for later suppression", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 0 },
         { id: 1, x: 0, y: 0, i: 0, level: 1 },
@@ -993,8 +1031,7 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
         { from: 0, to: 2, kind: "elevator" }, { from: 2, to: 0, kind: "elevator" },
         { from: 1, to: 2, kind: "elevator" }, { from: 2, to: 1, kind: "elevator" },
       ],
-      postEditDraftElevators: [],
-      postEditElevatorPending: null,
+      start: null, finish: null,
     });
     useMazeStore.getState().startPostEditElevatorPlacement(n(0));
     const pending = useMazeStore.getState().postEditElevatorPending;
@@ -1005,15 +1042,15 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
   });
 
   it("startPostEditElevatorPlacement on a node already in a draft elevator edits that entry (editingId set) instead of creating a duplicate", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 0 },
         { id: 1, x: 0, y: 0, i: 0, level: 1 },
       ],
       edges: [],
-      postEditDraftElevators: [{ id: 7, floors: [n(0), n(1)] }],
-      postEditElevatorPending: null,
-    });
+      start: null, finish: null,
+      commands: [{ kind: "addElevator", id: 7, floors: [n(0), n(1)] }],
+    }, { _nextPostEditElevatorId: 8 });
     useMazeStore.getState().startPostEditElevatorPlacement(n(0));
     const pending = useMazeStore.getState().postEditElevatorPending;
     expect(pending!.editingId).toBe(7);
@@ -1021,30 +1058,32 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
   });
 
   it("confirmPostEditElevatorPlacement suppresses every pairwise combination of the previous mesh's sourceNodeIds", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 0 },
         { id: 1, x: 0, y: 0, i: 0, level: 1 },
         { id: 2, x: 0, y: 0, i: 0, level: 2 },
       ],
+      edges: [],
+      start: null, finish: null,
+    }, {
       postEditElevatorPending: { origin: n(0), floors: new Set([0, 1]), sourceNodeIds: [0, 1, 2] },
-      postEditSuppressedElevatorPairs: new Set<string>(),
-      postEditAutoConfirm: false,
-      postEditDraftElevators: [],
     });
     useMazeStore.getState().confirmPostEditElevatorPlacement();
     const s = useMazeStore.getState();
-    expect(s.postEditSuppressedElevatorPairs).toEqual(new Set(["0,1", "0,2", "1,2"]));
+    expect(s.postEditSuppressedElevatorPairs).toEqual(
+      new Set([elevPair(0, 1), elevPair(0, 2), elevPair(1, 2)]),
+    );
     expect(s.postEditDraftElevators).toHaveLength(1);
     expect(s.postEditElevatorPending).toBeNull();
   });
 
   it("confirmPostEditElevatorPlacement with fewer than 2 selected floors is a no-op", () => {
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0, level: 0 }],
-      postEditElevatorPending: { origin: n(0), floors: new Set([0]) },
-      postEditDraftElevators: [],
-    });
+      edges: [],
+      start: null, finish: null,
+    }, { postEditElevatorPending: { origin: n(0), floors: new Set([0]) } });
     useMazeStore.getState().confirmPostEditElevatorPlacement();
     const s = useMazeStore.getState();
     expect(s.postEditDraftElevators).toHaveLength(0);
@@ -1052,11 +1091,15 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
   });
 
   it("removePostEditElevator removes the draft entry and marks dirty", () => {
-    useMazeStore.setState({
-      postEditDraftElevators: [{ id: 1, floors: [n(0), n(1)] }],
-      postEditAutoConfirm: false,
-      postEditDirty: false,
-    });
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0, level: 0 },
+        { id: 1, x: 0, y: 0, i: 0, level: 1 },
+      ],
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "addElevator", id: 1, floors: [n(0), n(1)] }],
+    }, { _nextPostEditElevatorId: 2 });
     useMazeStore.getState().removePostEditElevator(1);
     const s = useMazeStore.getState();
     expect(s.postEditDraftElevators).toHaveLength(0);
@@ -1105,16 +1148,14 @@ describe("mazeStore applyPostEditSplitTargetPick (GitHub issue #474)", () => {
     // Seed a generation-time vertical passage from node 1 so the placement takes its
     // "seed from existing edge" branch (no adjacent-floor field needed) and we can assert the
     // deferred tool reached node 1, not the point's original node.
-    useMazeStore.setState({
+    seedPostEdit({
       nodes: [
         { id: 0, x: 0, y: 0, i: 0, level: 0 },
         { id: 1, x: 0, y: 0, i: 1, level: 0 },
         { id: 2, x: 0, y: 0, i: 0, level: 1 },
       ],
       edges: [{ from: 1, to: 2, kind: "vertical_passage" }],
-      postEditDraftVerticalPassages: [],
-      postEditSuppressedVerticalPassagePairs: new Set<string>(),
-      postEditAutoConfirm: false,
+      start: null, finish: null,
     });
     openPrompt({ tool: "vertical_passage_one_way" });
     useMazeStore.getState().applyPostEditSplitTargetPick(1);
@@ -1159,18 +1200,30 @@ describe("mazeStore split-node actions", () => {
     expect(s.postEditActiveSplitNode["2,2@1"]).toEqual(splitEndpoint([2, 2], 0, 1));
   });
 
-  it("addSplitNode mints max(existing)+1 for a point that already has slots", () => {
-    useMazeStore.setState({ postEditDraftSplitPoints: { "2,2": [0, 3] } });
+  it("addSplitNode mints from the point's next-slot high-water mark, never reusing an id", () => {
+    // Slot ids come from `_nextSplitSlotId` (GitHub issue #543 plan section 7), not "max existing
+    // + 1" — a point that has already issued ids up to 3 (two of which the user has since removed)
+    // mints 4, not 1, so a pruned high id can never be reissued to a different node.
+    seedPostEdit({
+      commands: [
+        { kind: "addSplitNode", point: [2, 2], slotId: 0 },
+        { kind: "addSplitNode", point: [2, 2], slotId: 3 },
+      ],
+    }, { _nextSplitSlotId: { "2,2": 4 } });
     useMazeStore.getState().addSplitNode([2, 2]);
     expect(useMazeStore.getState().postEditDraftSplitPoints["2,2"]).toEqual([0, 3, 4]);
+    expect(useMazeStore.getState()._nextSplitSlotId["2,2"]).toBe(5);
   });
 
   it("removeSplitNode removes the slot and any edges/teleports referencing it", () => {
     const target = splitEndpoint([2, 2], 0);
-    useMazeStore.setState({
-      postEditDraftSplitPoints: { "2,2": [0] },
-      postEditDraftEdges: { [edgeKey(n(0), target)]: { from: n(0), to: target, kind: "basic" } },
-      postEditDraftTeleports: [{ id: 1, from: target, to: n(1), direction: "forward" }],
+    seedPostEdit({
+      edges: [],
+      commands: [
+        { kind: "addSplitNode", point: [2, 2], slotId: 0 },
+        { kind: "setEdge", from: n(0), to: target, edgeKind: "basic" },
+        { kind: "addTeleport", id: 1, from: target, to: n(1), direction: "forward" },
+      ],
     });
     useMazeStore.getState().removeSplitNode([2, 2], 0);
     const s = useMazeStore.getState();
@@ -1181,9 +1234,11 @@ describe("mazeStore split-node actions", () => {
 
   it("removeSplitNode rejects removal when the target is assigned as start", () => {
     const target = splitEndpoint([2, 2], 0);
-    useMazeStore.setState({
-      postEditDraftSplitPoints: { "2,2": [0] },
-      postEditDraftMeta: { start: target, finish: null },
+    seedPostEdit({
+      commands: [
+        { kind: "addSplitNode", point: [2, 2], slotId: 0 },
+        { kind: "setMeta", slot: "start", endpoint: target },
+      ],
     });
     useMazeStore.getState().removeSplitNode([2, 2], 0);
     const s = useMazeStore.getState();
@@ -1193,10 +1248,10 @@ describe("mazeStore split-node actions", () => {
 
   it("removeSplitNode resets the active node to the original when the removed slot was active", () => {
     const target = splitEndpoint([2, 2], 0);
-    useMazeStore.setState({
-      postEditDraftSplitPoints: { "2,2": [0] },
-      postEditActiveSplitNode: { "2,2": target },
-    });
+    seedPostEdit(
+      { commands: [{ kind: "addSplitNode", point: [2, 2], slotId: 0 }] },
+      { postEditActiveSplitNode: { "2,2": target } },
+    );
     useMazeStore.getState().removeSplitNode([2, 2], 0);
     expect(useMazeStore.getState().postEditActiveSplitNode["2,2"]).toBeUndefined();
   });
@@ -1204,12 +1259,14 @@ describe("mazeStore split-node actions", () => {
   it("removeSplitNode does not disturb a sibling slot's edges", () => {
     const target = splitEndpoint([2, 2], 0);
     const sibling = splitEndpoint([2, 2], 1);
-    useMazeStore.setState({
-      postEditDraftSplitPoints: { "2,2": [0, 1] },
-      postEditDraftEdges: {
-        [edgeKey(n(0), target)]: { from: n(0), to: target, kind: "basic" },
-        [edgeKey(n(0), sibling)]: { from: n(0), to: sibling, kind: "basic" },
-      },
+    seedPostEdit({
+      edges: [],
+      commands: [
+        { kind: "addSplitNode", point: [2, 2], slotId: 0 },
+        { kind: "addSplitNode", point: [2, 2], slotId: 1 },
+        { kind: "setEdge", from: n(0), to: target, edgeKind: "basic" },
+        { kind: "setEdge", from: n(0), to: sibling, edgeKind: "basic" },
+      ],
     });
     useMazeStore.getState().removeSplitNode([2, 2], 0);
     const s = useMazeStore.getState();
@@ -1218,7 +1275,12 @@ describe("mazeStore split-node actions", () => {
   });
 
   it("cycleActiveSplitNode cycles original -> slot0 -> slot1 -> original", () => {
-    useMazeStore.setState({ postEditDraftSplitPoints: { "2,2": [0, 1] } });
+    seedPostEdit({
+      commands: [
+        { kind: "addSplitNode", point: [2, 2], slotId: 0 },
+        { kind: "addSplitNode", point: [2, 2], slotId: 1 },
+      ],
+    });
     const store = useMazeStore.getState();
 
     store.cycleActiveSplitNode([2, 2]);
@@ -1237,7 +1299,12 @@ describe("mazeStore split-node actions", () => {
   });
 
   it("setActiveSplitNode sets a specific split endpoint active", () => {
-    useMazeStore.setState({ postEditDraftSplitPoints: { "2,2": [0, 1] } });
+    seedPostEdit({
+      commands: [
+        { kind: "addSplitNode", point: [2, 2], slotId: 0 },
+        { kind: "addSplitNode", point: [2, 2], slotId: 1 },
+      ],
+    });
     useMazeStore.getState().setActiveSplitNode([2, 2], splitEndpoint([2, 2], 1));
     expect(useMazeStore.getState().postEditActiveSplitNode["2,2"]).toEqual(splitEndpoint([2, 2], 1));
   });
@@ -1265,14 +1332,14 @@ describe("mazeStore applySplitBlueprint", () => {
   const wideField = { type: "square" as const, width: 9, height: 9 };
 
   it("mints one slot per extra blueprint node and wires passages to existing neighbors", () => {
-    useMazeStore.setState({
-      activeTessellationConfig: wideField,
-      postEditDraftMeta: null,
+    seedPostEdit({
       nodes: [
         { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 },
         { id: 2, x: -1, y: 0, i: 0 }, { id: 3, x: 0, y: 1, i: 0 }, { id: 4, x: 0, y: -1, i: 0 },
       ],
-    });
+      edges: [],
+      start: null, finish: null,
+    }, { activeTessellationConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
@@ -1289,27 +1356,36 @@ describe("mazeStore applySplitBlueprint", () => {
 
   it("replaces an existing split point entirely, dropping stale slots/edges", () => {
     const staleTarget = splitEndpoint([0, 0], 5);
-    useMazeStore.setState({
-      activeTessellationConfig: wideField,
-      postEditDraftMeta: null,
+    // The point has already issued slot ids up to 5; the blueprint's own slot is minted from the
+    // high-water mark (6), never by reusing the stale id it is replacing (GitHub issue #543 plan
+    // section 7) — what matters here is that slot 5 and its edge are gone afterwards.
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
-      postEditDraftSplitPoints: { "0,0": [5] },
-      postEditDraftEdges: { [edgeKey(n(0), staleTarget)]: { from: n(0), to: staleTarget, kind: "basic" } },
-    });
+      edges: [],
+      start: null, finish: null,
+      commands: [
+        { kind: "addSplitNode", point: [0, 0], slotId: 5 },
+        { kind: "setEdge", from: n(0), to: staleTarget, edgeKind: "basic" },
+      ],
+      nextSplitSlotId: { "0,0": 6 },
+    }, { activeTessellationConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const s = useMazeStore.getState();
-    expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
+    expect(s.postEditDraftSplitPoints["0,0"]).toEqual([6]);
     expect(s.postEditDraftEdges?.[edgeKey(n(0), staleTarget)]).toBeUndefined();
   });
 
   it("rejects applying a blueprint while an existing slot is assigned as start/finish", () => {
     const target = splitEndpoint([0, 0], 0);
-    useMazeStore.setState({
-      activeTessellationConfig: wideField,
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }],
-      postEditDraftSplitPoints: { "0,0": [0] },
-      postEditDraftMeta: { start: target, finish: null },
-    });
+      edges: [],
+      start: null, finish: null,
+      commands: [
+        { kind: "addSplitNode", point: [0, 0], slotId: 0 },
+        { kind: "setMeta", slot: "start", endpoint: target },
+      ],
+    }, { activeTessellationConfig: wideField });
     useMazeStore.getState().applySplitBlueprint([0, 0], square);
     const s = useMazeStore.getState();
     expect(s.postEditDraftSplitPoints["0,0"]).toEqual([0]);
@@ -1320,11 +1396,11 @@ describe("mazeStore applySplitBlueprint", () => {
     // Square tiles have 4 faces (offsets.length === 4) - a hex blueprint's face index 5 has
     // nothing to destructure from `offsets[5]` on a square tile.
     const oversized: SplitNodeBlueprint = { id: 0, degree: 6, nodeFaces: [[0, 5]] };
-    useMazeStore.setState({
-      activeTessellationConfig: wideField,
-      postEditDraftMeta: null,
+    seedPostEdit({
       nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
-    });
+      edges: [],
+      start: null, finish: null,
+    }, { activeTessellationConfig: wideField });
     expect(() => useMazeStore.getState().applySplitBlueprint([0, 0], oversized)).not.toThrow();
     const s = useMazeStore.getState();
     // Face 0 (in range) still wires normally; face 5 (out of range) is silently skipped.
@@ -1335,20 +1411,20 @@ describe("mazeStore applySplitBlueprint", () => {
     // C1 at (0,0) is already split: id0 = original, id10 = slot0 - and id10 is the one with the
     // real (pre-existing) connection east, toward C2. C2 at (1,0) is still a plain point (id1),
     // about to be blueprinted with a slot of its own that requires a passage west, toward C1.
-    useMazeStore.setState({
-      activeTessellationConfig: wideField,
-      postEditDraftMeta: null,
+    // C1's split slot is already confirmed into the snapshot (node id 10, i:1). Generation itself
+    // left the two cells unconnected; the user then drew the C1-slot0 -> C2 passage by hand, which
+    // (unlike a generation-derived edge) is recorded against the slot's real `nodeEndpoint(10)` —
+    // exactly the edge `resolvePostEditPartnerAt` has to find.
+    seedPostEdit({
       nodes: [
         { id: 0, x: 0, y: 0, i: 0 }, { id: 10, x: 0, y: 0, i: 1 },
         { id: 1, x: 1, y: 0, i: 0 },
       ],
-      postEditDraftSplitPoints: { "0,0": [0] },
-      postEditActiveSplitNode: {},
-      postEditDraftEdges: {
-        [edgeKey(n(10), n(1))]: { from: n(10), to: n(1), kind: "basic" },
-        [edgeKey(n(1), n(10))]: { from: n(1), to: n(10), kind: "basic" },
-      },
-    });
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "setEdge", from: n(10), to: n(1), edgeKind: "basic" }],
+    }, { activeTessellationConfig: wideField });
+    expect(useMazeStore.getState().postEditDraftSplitPoints["0,0"]).toEqual([0]);
 
     // Square offsets: index0=E(1,0) index2=W(-1,0). node0(original) has no faces here; node1(slot0)
     // requires the west face - the one actually facing C1.
@@ -1357,7 +1433,8 @@ describe("mazeStore applySplitBlueprint", () => {
     const s = useMazeStore.getState();
 
     // C1's slot0 already has a real confirmed id (10) - the partner resolves to `nodeEndpoint(10)`,
-    // not an unresolved `splitEndpoint`, since a confirmed node is always addressed by its real id.
+    // not C1's original node, since that's the node actually holding the pre-existing connection
+    // east (GitHub issue #243).
     const c2Slot0 = splitEndpoint([1, 0], 0);
     expect(s.postEditDraftEdges?.[edgeKey(n(10), c2Slot0)]).toBeDefined();
     expect(s.postEditDraftEdges?.[edgeKey(c2Slot0, n(10))]).toBeDefined();

@@ -1,6 +1,8 @@
 import type { NodeDto, EdgeDto } from "../wasm/types";
 import type { PostEditEndpoint } from "../pixi/postEditEndpoint";
 import type { SplitNodeBlueprint } from "../pixi/splitBlueprints";
+import type { PostEditCommand } from "./postEditCommandTypes";
+import type { PostEditBaseline, PostEditDerivedState } from "../pixi/postEditReplay";
 import type {
   PostEditTool,
   PostEditEdge,
@@ -71,6 +73,27 @@ export interface AnalyticsOverlayActions {
 export interface PostEditState {
   postEditAutoConfirm: boolean;
   postEditTool: PostEditTool;
+  /** Ordered, replayable command log (GitHub issue #543) — the single source of truth for every
+   * manual post-edit change. `postEditDraft*`/`postEditSuppressed*` fields below are derived from
+   * this log + `postEditBaseline` by `applyPostEditCommand`/`replayPostEditCommands`
+   * (`pixi/postEditReplay.ts`) and re-mirrored into those fields on every log mutation
+   * (`appendPostEditCommand`/`replacePostEditCommands`, `postEditSliceHelpers.ts`) — kept as plain
+   * state fields (not lazy getters) since most of the ~40 read sites across the codebase subscribe
+   * to them individually via zustand selectors. Treat `postEditDraft*`/`postEditSuppressed*` as
+   * read-only outside `postEditSlice.ts`/`postEditSliceHelpers.ts` — the log is what gets mutated. */
+  postEditCommands: PostEditCommand[];
+  /** Generation-time snapshot (`context`) + revision + pristine (empty-log) derived state — see
+   * `PostEditBaseline`'s own doc comment. `derived` here is NEVER overwritten after construction
+   * (`replayPostEditCommands`/`replayPostEditCommandsFailClosed` always fold starting from it) —
+   * the *current* derived state (log applied) lives in `postEditDerived` below, a separate field.
+   * `null` before the first generation. */
+  postEditBaseline: PostEditBaseline | null;
+  /** Current derived state — `postEditBaseline.derived` (pristine) with `postEditCommands`
+   * replayed on top. Cache kept in sync by `appendPostEditCommand`/`replacePostEditCommands`
+   * (`postEditSliceHelpers.ts`), the sole log-mutation points; `postEditDraft*`/
+   * `postEditSuppressed*` fields are mirrored from this on every mutation. `null` before the first
+   * generation (mirrors `postEditBaseline`). */
+  postEditDerived: PostEditDerivedState | null;
   /** Working copy — updated on every tool click. Read by PostEditRenderer. */
   postEditDraftEdges: Record<string, PostEditEdge> | null;
   /** Teleport links, edited by node id. Kept separate from `postEditDraftEdges` (a `Record`
@@ -88,13 +111,20 @@ export interface PostEditState {
   /** slotIds of a split point's extra nodes (beyond the point's original node), keyed by "x,y".
    * Absent/empty for an unsplit point (GitHub issue #221). Each slotId is unique only within its
    * own point (not globally — `PostEditEndpoint`'s `split` variant already addresses point+slotId
-   * together, so per-point uniqueness is enough, see `addSplitNode` in postEditSlice.ts, which
-   * mints the next slotId as the max of the point's existing slotIds + 1 rather than keeping a
-   * separate counter) and is never reused while it still exists — same stable-identity principle
-   * already used for `PostEditTeleportEntry.id`, just with its own per-point counter instead of a
-   * global one. Re-applied via `Maze::add_node_at` (one call per slotId, in a deterministic order)
+   * together, so per-point uniqueness is enough). Minted from `_nextSplitSlotId[key]` (a high-water
+   * mark per point, GitHub issue #543 plan section 7) rather than `max(existing)+1` — a point-reset
+   * can prune a high-id slot out of the log while the mark stays put, so a later `addSplitNode` at
+   * the same point never reissues an id that outstanding references (e.g. in the confirmed graph
+   * or export) might still resolve to. Never reused while a slot still exists — same stable-identity
+   * principle already used for `PostEditTeleportEntry.id`, just with its own per-point counter
+   * instead of a global one. Re-applied via `Maze::add_node_at` (one call per slotId, in a deterministic order)
    * on every confirmPostEdit. */
   postEditDraftSplitPoints: Record<string, number[]>;
+  /** High-water mark for `postEditDraftSplitPoints`' per-point slotId minting — see that field's
+   * doc comment. Keyed the same way (`"x,y"`/`"x,y@level"`). Persisted separately from the command
+   * log (plan section 7) so a point-reset that prunes high-id slot commands out of the log can't
+   * cause a later `addSplitNode` at that point to reissue a pruned id. */
+  _nextSplitSlotId: Record<string, number>;
   /** Which of a point's nodes is currently "active" for edge-tool clicks on its faces, keyed by
    * "x,y". No entry means the point's original node. */
   postEditActiveSplitNode: Record<string, PostEditEndpoint>;
@@ -222,7 +252,7 @@ export interface PostEditActions {
   setPostEditFocusedPoint: (point: [number, number] | null) => void;
   setPostEditHoveredLink: (link: { from: PostEditEndpoint; to: PostEditEndpoint } | null) => void;
   /** Rotates every geometric-face connection of `point`'s nodes (original + every declared slot)
-   * by one offset index — see `rotatePostEditSplitPoint` (postEditUtils.ts). No-op if it would
+   * by one offset index — see `rotateSplitPointMoves` (postEditUtils.ts). No-op if it would
    * push any connection outside the field. */
   rotateSplitPoint: (point: [number, number], direction: 1 | -1) => void;
   /** Applies a built-in split-node blueprint (GitHub issue #235) to `point` — a full replace:

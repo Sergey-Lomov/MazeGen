@@ -2,27 +2,24 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import type { NodeLockKind, InitialGenerationConfig, ElementsConfig, SplitPattern } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
-import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, PostEditVerticalPassageEntry, PostEditElevatorEntry, FeatureId, RenderModeId } from "../mazeStore";
+import type { FeatureId, RenderModeId } from "../mazeStore";
+import type { PostEditCommand } from "../postEditCommandTypes";
 import type { VectorByWallsSettings, VectorByCorridorsSettings, PngExportSettings, HexOrientation, TriOrientation } from "../storeTypes";
 
+/** Replayable command log (GitHub issue #543) — replaces the old per-entity draft snapshot +
+ * suppression-set persistence shape. `commands` replays on top of the freshly-regenerated
+ * baseline at load time (see `mazeStore.ts`'s load path); the high-water marks are persisted
+ * separately from the log and never recomputed as max-of-log, since a point-reset can prune a
+ * previously-issued high id out of the log while the mark itself must never go backwards (or a
+ * later id could be reissued and collide with something still referenced elsewhere in the file).
+ * Breaking change from the old per-entity shape — no migration, `CURRENT_VERSION` bumped. */
 export interface ProjectFilePostEdit {
-  edges: [string, PostEditEdge][];
-  meta: PostEditMeta | null;
-  teleports: PostEditTeleportEntry[];
-  /** slotIds of each split point's extra nodes, keyed by "x,y" (GitHub issue #221). Without this,
-   * saving/reloading a project would silently lose every manually created split point. */
-  splitPoints: Record<string, number[]>;
-  /** User-placed vertical passages/elevators (GitHub issue #341) — optional, absent in project
-   * files saved before this feature existed. */
-  verticalPassages: PostEditVerticalPassageEntry[];
-  elevators: PostEditElevatorEntry[];
-  /** Node-id pairs (`"min,max"`) of generation-time `elevator` edges suppressed by an elevator edit
-   * (GitHub issue #341 follow-up) — without this, reloading a project would silently resurrect a
-   * generation-time floor connection the user had explicitly removed via the elevator dialog. */
-  suppressedElevatorPairs: string[];
-  /** Node-id pairs (`"min,max"`) of generation-time `vertical_passage` edges suppressed by a
-   * vertical-passage edit (GitHub issue #341 follow-up) — mirrors `suppressedElevatorPairs`. */
-  suppressedVerticalPassagePairs: string[];
+  commands: PostEditCommand[];
+  nextTeleportId: number;
+  nextVerticalPassageId: number;
+  nextElevatorId: number;
+  /** Per point key ("x,y" or "x,y@level") high-water mark for that point's split slot ids. */
+  nextSplitSlotId: Record<string, number>;
 }
 
 export interface ProjectFileAnalytics {
@@ -200,4 +197,4 @@ export interface ProjectFile {
   floors: ProjectFileFloors;
 }
 
-export const CURRENT_VERSION = 3;
+export const CURRENT_VERSION = 4;

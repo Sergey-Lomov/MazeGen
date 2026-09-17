@@ -20,7 +20,8 @@ import { canvas } from "./colorTokens";
 import type { NodeDto } from "../wasm/types";
 import type { PostEditEdge, PostEditTeleportEntry } from "../store/mazeStore";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
-import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint } from "./postEditEndpoint";
+import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, nodeEndpoint } from "./postEditEndpoint";
+import { suppressionPairKey } from "./postEditReplay";
 import { recordOnLevel } from "./fieldEditUtils";
 import { activeFloorLevel } from "../store/storeHelpers";
 
@@ -404,10 +405,10 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // send, without waiting for the next confirm.
     const isSuppressedEdge = (e: { from: number; to: number; kind: string }) => {
       if (e.kind !== "elevator" && e.kind !== "vertical_passage") return false;
-      const [a, b] = [e.from, e.to].sort((x, y) => x - y);
+      const key = suppressionPairKey(nodeEndpoint(e.from), nodeEndpoint(e.to));
       return e.kind === "elevator"
-        ? state.postEditSuppressedElevatorPairs.has(`${a},${b}`)
-        : state.postEditSuppressedVerticalPassagePairs.has(`${a},${b}`);
+        ? state.postEditSuppressedElevatorPairs.has(key)
+        : state.postEditSuppressedVerticalPassagePairs.has(key);
     };
     const stateEdgesUnsuppressed = state.edges.filter((e) => !isSuppressedEdge(e));
     const edgesUnsuppressed = edges.filter((e) => !isSuppressedEdge(e));

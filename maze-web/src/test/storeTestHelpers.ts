@@ -1,8 +1,11 @@
 import { emptyFreePoints } from "../store/storeHelpers";
 import { RECURSIVE_BACKTRACKER_EVENT_TAG, NO_NODE } from "../debug/eventTape";
 import type { DebugValueDescriptor } from "../debug/eventTape";
-import type { NodeDto } from "../wasm/types";
-import type { QcRuleState, CheckInstance, FloorFieldConfig } from "../store/storeTypes";
+import type { NodeDto, EdgeDto } from "../wasm/types";
+import type { QcRuleState, CheckInstance, FloorFieldConfig, MazeStore } from "../store/storeTypes";
+import type { PostEditCommand } from "../store/postEditCommandTypes";
+import { replayPostEditCommands } from "../pixi/postEditReplay";
+import { buildPostEditBaseline, derivedStateToLegacyFields } from "../store/slices/postEditSliceHelpers";
 
 export { emptyFreePoints };
 
@@ -258,6 +261,57 @@ export function trianglePredefinedState(extra?: Record<string, unknown> & { floo
     },
     ...rest,
   };
+}
+
+/** Seed for `postEditStatePatch` — a generation snapshot plus the command log applied on top of it.
+ *  `nodes`/`edges` default to the snapshot's own (the state right after a generation, before any
+ *  confirm has overwritten them); pass `liveNodes`/`liveEdges` explicitly to simulate a later
+ *  confirm having replaced `state.nodes`/`state.edges` with a different (edited) graph. */
+export interface PostEditSeed {
+  /** The generation snapshot the baseline (and thus every command's identity resolution) is built
+   *  from — lands in `_generatedNodes`/`_generatedEdges`. */
+  nodes: NodeDto[];
+  edges: EdgeDto[];
+  start?: number | null;
+  finish?: number | null;
+  commands?: PostEditCommand[];
+  /** Live confirmed graph, when it must differ from the generation snapshot. */
+  liveNodes?: NodeDto[];
+  liveEdges?: EdgeDto[];
+  /** Per-point high-water marks for split slot ids (`"x,y"`/`"x,y@level"` keys) — normally left
+   *  alone (a fresh point mints slot 0); set explicitly by tests that need a specific next id. */
+  nextSplitSlotId?: Record<string, number>;
+  revision?: number;
+}
+
+/** Builds the full post-edit store patch for a scenario (GitHub issue #543): a real
+ *  `postEditBaseline` built from the generation snapshot, the given command log replayed on top of
+ *  it, and the legacy `postEditDraft*`/`postEditSuppressed*` mirror fields derived from the result.
+ *
+ *  Post-edit actions read `postEditBaseline.derived` as their source of truth, never the legacy
+ *  mirror fields — seeding a scenario by `setState`-ing `postEditDraftEdges` & co. alone silently
+ *  desyncs the two, so every test scenario must go through this. */
+export function postEditStatePatch(seed: PostEditSeed): Partial<MazeStore> {
+  const start = seed.start ?? null;
+  const finish = seed.finish ?? null;
+  const baseline = buildPostEditBaseline(seed.nodes, seed.edges, seed.revision ?? 0, start, finish);
+  const commands = seed.commands ?? [];
+  const derived = replayPostEditCommands(baseline, commands);
+  return {
+    _generatedNodes: seed.nodes,
+    _generatedEdges: seed.edges,
+    _generatedStart: start,
+    _generatedFinish: finish,
+    nodes: seed.liveNodes ?? seed.nodes,
+    edges: seed.liveEdges ?? seed.edges,
+    start,
+    finish,
+    postEditBaseline: baseline,
+    postEditDerived: derived,
+    postEditCommands: commands,
+    ...derivedStateToLegacyFields(derived),
+    _nextSplitSlotId: seed.nextSplitSlotId ?? {},
+  } as Partial<MazeStore>;
 }
 
 /** Resets generateMaze/computeAnalytics/initWasm mocks to their default working state. Call in beforeEach. */

@@ -1,8 +1,8 @@
 import type { NodeLockKind } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
-import type { PostEditEdge, PostEditTeleportEntry, PostEditVerticalPassageEntry, PostEditElevatorEntry } from "../mazeStore";
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
+import type { PostEditCommand, ResolvedRotateMove, ResolvedSplitSlot } from "../postEditCommandTypes";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type {
   ProjectFilePostEdit,
@@ -14,7 +14,7 @@ import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
 import * as m from "~/paraglide/messages";
 import {
   assertObject, assertString, assertNumber, assertBoolean, assertArray, assertHexOrientation, assertTriOrientation,
-  assertStringRecord, optEnum, validatePairArray, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
+  assertStringRecord, optEnum, assertUniqueIds, validateTeleportDirection, validateVerticalPassageDirection,
 } from "./validatePrimitives";
 
 // ─── Section validators ──────────────────────────────────────────────────────
@@ -119,44 +119,143 @@ export function validatePostEditEndpoint(v: unknown, path: string): PostEditEndp
   throw new Error(`Invalid PostEditEndpoint kind at ${path}.kind: ${kind}`);
 }
 
-export function validatePostEditEdge(v: unknown, path: string): PostEditEdge {
+function validateOptionalLevel(obj: Record<string, unknown>, path: string): number | undefined {
+  if (obj.level === undefined) return undefined;
+  const level = assertNumber(obj.level, `${path}.level`);
+  if (!Number.isInteger(level) || level < 0) throw new Error(`Expected non-negative integer level at ${path}.level, got ${level}`);
+  return level;
+}
+
+function validatePostEditEdgeKind(v: unknown, path: string): "wall" | "basic" | "one_way_forward" | "one_way_backward" {
+  const kind = assertString(v, path);
+  if (kind !== "wall" && kind !== "basic" && kind !== "one_way_forward" && kind !== "one_way_backward")
+    throw new Error(`Invalid PostEditEdgeKind at ${path}: ${kind}`);
+  return kind;
+}
+
+function validateResolvedSplitSlot(v: unknown, path: string): ResolvedSplitSlot {
+  const obj = assertObject(v, path);
+  const faces = assertArray(obj.faces, `${path}.faces`).map((f, i) => {
+    const faceObj = assertObject(f, `${path}.faces[${i}]`);
+    return {
+      faceIndex: assertNumber(faceObj.faceIndex, `${path}.faces[${i}].faceIndex`),
+      neighbor: validatePostEditEndpoint(faceObj.neighbor, `${path}.faces[${i}].neighbor`),
+    };
+  });
+  return { slotId: assertNumber(obj.slotId, `${path}.slotId`), faces };
+}
+
+function validateResolvedRotateMove(v: unknown, path: string): ResolvedRotateMove {
+  const obj = assertObject(v, path);
+  return {
+    oldKey: assertString(obj.oldKey, `${path}.oldKey`),
+    from: validatePostEditEndpoint(obj.from, `${path}.from`),
+    to: validatePostEditEndpoint(obj.to, `${path}.to`),
+    edgeKind: validatePostEditEdgeKind(obj.edgeKind, `${path}.edgeKind`),
+  };
+}
+
+/** Validates one `PostEditCommand` (GitHub issue #543) — schema/format only, the first pass before
+ * the fail-closed semantic replay (`mazeStore.ts`'s load path) rejects the whole log if any command
+ * doesn't resolve against the freshly-regenerated baseline. Every `PostEditCommand` variant needs an
+ * explicit case — the `default` throw catches an unknown/future `kind` from a newer file version
+ * (already turned away earlier by the `version > CURRENT_VERSION` check, but defensive here too). */
+export function validatePostEditCommand(v: unknown, path: string): PostEditCommand {
   const obj = assertObject(v, path);
   const kind = assertString(obj.kind, `${path}.kind`);
-  if (kind !== "wall" && kind !== "basic" && kind !== "one_way_forward" && kind !== "one_way_backward")
-    throw new Error(`Invalid PostEditEdge kind at ${path}.kind: ${kind}`);
-  return {
-    from: validatePostEditEndpoint(obj.from, `${path}.from`),
-    to: validatePostEditEndpoint(obj.to, `${path}.to`),
-    kind,
-  };
+  switch (kind) {
+    case "setEdge":
+      return {
+        kind, from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
+        edgeKind: validatePostEditEdgeKind(obj.edgeKind, `${path}.edgeKind`),
+      };
+    case "addTeleport":
+      return {
+        kind, id: assertNumber(obj.id, `${path}.id`),
+        from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
+        direction: validateTeleportDirection(obj.direction, `${path}.direction`),
+      };
+    case "setTeleportDirection":
+      return { kind, id: assertNumber(obj.id, `${path}.id`), direction: validateTeleportDirection(obj.direction, `${path}.direction`) };
+    case "moveTeleportEndpoint":
+      return {
+        kind, id: assertNumber(obj.id, `${path}.id`),
+        end: obj.end === "from" || obj.end === "to" ? obj.end : (() => { throw new Error(`Invalid end at ${path}.end`); })(),
+        endpoint: validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`),
+      };
+    case "removeTeleport":
+      return { kind, id: assertNumber(obj.id, `${path}.id`) };
+    case "setMeta":
+      if (obj.slot !== "start" && obj.slot !== "finish") throw new Error(`Invalid slot at ${path}.slot`);
+      return { kind, slot: obj.slot, endpoint: obj.endpoint === null ? null : validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`) };
+    case "addSplitNode":
+    case "removeSplitNode":
+      return {
+        kind, point: validateCoordPair(obj.point, `${path}.point`), level: validateOptionalLevel(obj, path),
+        slotId: assertNumber(obj.slotId, `${path}.slotId`),
+      };
+    case "rotateSplitPoint":
+      return {
+        kind, point: validateCoordPair(obj.point, `${path}.point`), level: validateOptionalLevel(obj, path),
+        moves: assertArray(obj.moves, `${path}.moves`).map((m, i) => validateResolvedRotateMove(m, `${path}.moves[${i}]`)),
+      };
+    case "applySplitBlueprint":
+      return {
+        kind, point: validateCoordPair(obj.point, `${path}.point`), level: validateOptionalLevel(obj, path),
+        resolvedSlots: assertArray(obj.resolvedSlots, `${path}.resolvedSlots`).map((s, i) => validateResolvedSplitSlot(s, `${path}.resolvedSlots[${i}]`)),
+      };
+    case "addVerticalPassage":
+      return {
+        kind, id: assertNumber(obj.id, `${path}.id`),
+        from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
+        direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
+      };
+    case "setVerticalPassageDirection":
+      return { kind, id: assertNumber(obj.id, `${path}.id`), direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`) };
+    case "moveVerticalPassageEndpoint":
+      return {
+        kind, id: assertNumber(obj.id, `${path}.id`),
+        end: obj.end === "from" || obj.end === "to" ? obj.end : (() => { throw new Error(`Invalid end at ${path}.end`); })(),
+        endpoint: validatePostEditEndpoint(obj.endpoint, `${path}.endpoint`),
+      };
+    case "removeVerticalPassage":
+      return { kind, id: assertNumber(obj.id, `${path}.id`) };
+    case "addElevator":
+      return {
+        kind, id: assertNumber(obj.id, `${path}.id`),
+        floors: assertArray(obj.floors, `${path}.floors`).map((f, i) => validatePostEditEndpoint(f, `${path}.floors[${i}]`)),
+      };
+    case "updateElevatorFloors":
+      return {
+        kind, id: assertNumber(obj.id, `${path}.id`),
+        floors: assertArray(obj.floors, `${path}.floors`).map((f, i) => validatePostEditEndpoint(f, `${path}.floors[${i}]`)),
+      };
+    case "removeElevator":
+      return { kind, id: assertNumber(obj.id, `${path}.id`) };
+    case "deletePoint":
+      return { kind, point: validateCoordPair(obj.point, `${path}.point`), level: validateOptionalLevel(obj, path) };
+    case "suppressGenerationPair":
+      if (obj.entity !== "verticalPassage" && obj.entity !== "elevator") throw new Error(`Invalid entity at ${path}.entity`);
+      return {
+        kind, entity: obj.entity,
+        a: validatePostEditEndpoint(obj.a, `${path}.a`), b: validatePostEditEndpoint(obj.b, `${path}.b`),
+      };
+    default:
+      throw new Error(`Invalid PostEditCommand kind at ${path}.kind: ${kind}`);
+  }
 }
 
-export function validatePostEditTeleportEntry(v: unknown, path: string): PostEditTeleportEntry {
+/** Validates `postEdit.nextSplitSlotId` (GitHub issue #543) — per-point high-water mark record,
+ * each value a non-negative integer. */
+export function validateSplitSlotIdMarks(v: unknown, path: string): Record<string, number> {
   const obj = assertObject(v, path);
-  return {
-    id: assertNumber(obj.id, `${path}.id`),
-    from: validatePostEditEndpoint(obj.from, `${path}.from`),
-    to: validatePostEditEndpoint(obj.to, `${path}.to`),
-    direction: validateTeleportDirection(obj.direction, `${path}.direction`),
-  };
-}
-
-export function validatePostEditVerticalPassageEntry(v: unknown, path: string): PostEditVerticalPassageEntry {
-  const obj = assertObject(v, path);
-  return {
-    id: assertNumber(obj.id, `${path}.id`),
-    from: validatePostEditEndpoint(obj.from, `${path}.from`),
-    to: validatePostEditEndpoint(obj.to, `${path}.to`),
-    direction: validateVerticalPassageDirection(obj.direction, `${path}.direction`),
-  };
-}
-
-export function validatePostEditElevatorEntry(v: unknown, path: string): PostEditElevatorEntry {
-  const obj = assertObject(v, path);
-  return {
-    id: assertNumber(obj.id, `${path}.id`),
-    floors: assertArray(obj.floors, `${path}.floors`).map((f, i) => validatePostEditEndpoint(f, `${path}.floors[${i}]`)),
-  };
+  const result: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(obj)) {
+    const n = assertNumber(raw, `${path}.${key}`);
+    if (!Number.isInteger(n) || n < 0) throw new Error(`Expected non-negative integer at ${path}.${key}, got ${n}`);
+    result[key] = n;
+  }
+  return result;
 }
 
 /** Validates `postEdit.splitPoints` (GitHub issue #221) — each value must be an array of unique
@@ -177,45 +276,22 @@ export function validateSplitPoints(v: unknown, path: string): Record<string, nu
   return result;
 }
 
+/** Validates `postEdit` as a replayable command log (GitHub issue #543) — schema/format only.
+ * Semantic validity (every command's references actually resolve against the freshly-regenerated
+ * baseline) is checked afterwards by `mazeStore.ts`'s fail-closed replay, which rejects the whole
+ * section — commands and high-water marks together — the moment any single command doesn't apply,
+ * rather than silently dropping just that one command (see `ProjectFilePostEdit`'s own doc
+ * comment for why the marks can't be salvaged independently of the log). */
 export function validatePostEdit(v: unknown): ProjectFilePostEdit {
   const obj = assertObject(v, "postEdit");
-  const edges = validatePairArray(obj.edges, "postEdit.edges", validatePostEditEdge);
-  let meta: ProjectFilePostEdit["meta"] = null;
-  if (obj.meta !== null && obj.meta !== undefined) {
-    const m = assertObject(obj.meta, "postEdit.meta");
-    meta = {
-      start: m.start === null ? null : validatePostEditEndpoint(m.start, "postEdit.meta.start"),
-      finish: m.finish === null ? null : validatePostEditEndpoint(m.finish, "postEdit.meta.finish"),
-    };
-  }
-  // Optional — absent in project files saved before post-edit teleport editing existed.
-  const teleports = obj.teleports != null
-    ? assertArray(obj.teleports, "postEdit.teleports").map((t, i) => validatePostEditTeleportEntry(t, `postEdit.teleports[${i}]`))
-    : [];
-  assertUniqueIds(teleports, (t) => t.id, "teleport id", "postEdit.teleports");
-  // Optional — absent in project files saved before split points existed (GitHub issue #221).
-  const splitPoints = obj.splitPoints != null ? validateSplitPoints(obj.splitPoints, "postEdit.splitPoints") : {};
-  // Optional — absent in project files saved before post-edit vertical passages/elevators existed
-  // (GitHub issue #341).
-  const verticalPassages = obj.verticalPassages != null
-    ? assertArray(obj.verticalPassages, "postEdit.verticalPassages").map((v, i) => validatePostEditVerticalPassageEntry(v, `postEdit.verticalPassages[${i}]`))
-    : [];
-  assertUniqueIds(verticalPassages, (p) => p.id, "vertical passage id", "postEdit.verticalPassages");
-  const elevators = obj.elevators != null
-    ? assertArray(obj.elevators, "postEdit.elevators").map((v, i) => validatePostEditElevatorEntry(v, `postEdit.elevators[${i}]`))
-    : [];
-  assertUniqueIds(elevators, (e) => e.id, "elevator id", "postEdit.elevators");
-  // Optional — absent in project files saved before elevator editing existed (GitHub issue #341
-  // follow-up).
-  const suppressedElevatorPairs = obj.suppressedElevatorPairs != null
-    ? assertArray(obj.suppressedElevatorPairs, "postEdit.suppressedElevatorPairs").map((s, i) => assertString(s, `postEdit.suppressedElevatorPairs[${i}]`))
-    : [];
-  // Optional — absent in project files saved before vertical-passage editing existed (GitHub issue
-  // #341 follow-up).
-  const suppressedVerticalPassagePairs = obj.suppressedVerticalPassagePairs != null
-    ? assertArray(obj.suppressedVerticalPassagePairs, "postEdit.suppressedVerticalPassagePairs").map((s, i) => assertString(s, `postEdit.suppressedVerticalPassagePairs[${i}]`))
-    : [];
-  return { edges, meta, teleports, splitPoints, verticalPassages, elevators, suppressedElevatorPairs, suppressedVerticalPassagePairs };
+  const commands = assertArray(obj.commands, "postEdit.commands").map((c, i) => validatePostEditCommand(c, `postEdit.commands[${i}]`));
+  return {
+    commands,
+    nextTeleportId: assertNumber(obj.nextTeleportId, "postEdit.nextTeleportId"),
+    nextVerticalPassageId: assertNumber(obj.nextVerticalPassageId, "postEdit.nextVerticalPassageId"),
+    nextElevatorId: assertNumber(obj.nextElevatorId, "postEdit.nextElevatorId"),
+    nextSplitSlotId: validateSplitSlotIdMarks(obj.nextSplitSlotId, "postEdit.nextSplitSlotId"),
+  };
 }
 
 export function validateCoordPair(v: unknown, path: string): [number, number] {

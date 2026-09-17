@@ -1,5 +1,5 @@
 import type { FieldConfig as TessellationConfig } from "../../fieldConfig";
-import type { PostEditEdge, MazeState } from "../mazeStore";
+import type { MazeState } from "../mazeStore";
 import { selectPostEditDirty } from "../../pixi/selectors/mazeSelectors";
 import { CURRENT_VERSION, type ProjectFile, type ProjectFilePostEdit, type ProjectFileFloorField } from "./types";
 import { decodePoint } from "../../pixi/tessellationProjection";
@@ -7,14 +7,11 @@ import { decodePoint } from "../../pixi/tessellationProjection";
 export function serializeProject(state: MazeState): ProjectFile {
   const postEdit: ProjectFilePostEdit | null = selectPostEditDirty(state)
     ? {
-        edges: Object.entries(state.postEditDraftEdges ?? {}) as [string, PostEditEdge][],
-        meta: state.postEditDraftMeta,
-        teleports: state.postEditDraftTeleports,
-        splitPoints: state.postEditDraftSplitPoints,
-        verticalPassages: state.postEditDraftVerticalPassages,
-        elevators: state.postEditDraftElevators,
-        suppressedElevatorPairs: Array.from(state.postEditSuppressedElevatorPairs),
-        suppressedVerticalPassagePairs: Array.from(state.postEditSuppressedVerticalPassagePairs),
+        commands: state.postEditCommands,
+        nextTeleportId: state._nextPostEditTeleportId,
+        nextVerticalPassageId: state._nextPostEditVerticalPassageId,
+        nextElevatorId: state._nextPostEditElevatorId,
+        nextSplitSlotId: state._nextSplitSlotId,
       }
     : null;
 
