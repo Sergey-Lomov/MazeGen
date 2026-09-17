@@ -3,7 +3,7 @@ import { entriesForSlot } from "../storeTypes";
 import type { MazeStore, GenerationActions, NestedStrategyState, PathSegment } from "../storeTypes";
 import { debugStaleOf } from "../storeHelpers";
 import {
-  resolveCheckKind, isTypeAlreadyActive, defaultParamsFor, buildDefaultNestedStrategies,
+  resolveCheckKind, defaultParamsFor, buildDefaultNestedStrategies,
   newRule, appendRuleToStage, updateNestedAt, moveNestedAt,
 } from "./generationSliceHelpers";
 
@@ -14,14 +14,12 @@ type RulesSliceKeys =
   | "toggleRuleCollapsed" | "renameRule" | "removeRule" | "moveRule";
 
 export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<GenerationActions, RulesSliceKeys>> = (set) => ({
-  // A check type with `allow_multiple_instances` (none currently — see GitHub issue #60,
   // retired) could always be added, including one already active elsewhere — each call mints a
   // fresh, independent `CheckInstance`. Every other check type is still limited to one active
   // instance at a time, across all rules.
   addCheck: (typeId, ruleId, initialParams) => set((state) => {
     const descriptor = state.availableChecks.find((c) => c.id === typeId);
     if (!descriptor) return {};
-    if (!descriptor.allow_multiple_instances && isTypeAlreadyActive(state.rules, typeId)) return {};
     const params = initialParams ?? defaultParamsFor(descriptor);
     const checkKind = resolveCheckKind(descriptor);
     // A kind mismatch here would only be caught later, at wasm config-build time, with a
@@ -47,11 +45,7 @@ export const createGenerationRulesSlice: StateCreator<MazeStore, [], [], Pick<Ge
     const descriptors = typeIds
       .map((id) => state.availableChecks.find((c) => c.id === id))
       .filter((d): d is NonNullable<typeof d> => d !== undefined)
-      // Drop any type that's single-instance-only and already active elsewhere — same
-      // restriction as `addCheck`, applied per id rather than rejecting the whole call (the
-      // multiselect dialog already pre-filters its candidate list, but the store must not rely
-      // on that being the only caller).
-      .filter((d) => d.allow_multiple_instances || !isTypeAlreadyActive(state.rules, d.id));
+      ;
     if (descriptors.length === 0) return {};
     const checkKind = resolveCheckKind(descriptors[0]);
     const checks = descriptors.map((descriptor, i) => ({

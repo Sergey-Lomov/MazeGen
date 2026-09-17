@@ -51,21 +51,13 @@ Wherever the old flat "which check types are active" list is needed, it's derive
 `rules.flatMap(r => r.checks)` (UI filters, analytics, `buildGenerateConfig`), not cached as its
 own field.
 
-**Most check types still allow only one active instance at a time, across all rules** —
-`CheckDescriptor.allow_multiple_instances` (see `quality_control.md`) gates this per type, and is
-`true` only for `min_region_count`. Two or more independent instances of `min_region_count` —
-each with its own `region_class`/`count` — is the one supported case (the motivating scenario
-for #60: "at least 2 trap regions" and separately "at least 2 alternative regions" at once).
-Enforced in `addCheck`/`createRule` (see below — both silently drop/no-op a duplicate of a
-single-instance type rather than erroring) and mirrored in candidate filtering
-(`RulesColumn.candidatesFor`, `CheckSelectDialog`) so the UI doesn't even offer an already-active
-single-instance type as addable.
+All check types may have multiple independent instances across rules and stages.
 
 - `kind` is captured once at rule creation and kept on the rule itself (not derived from `checks[0]`) so it survives `checks` becoming empty.
 - A rule's `checks` **can become empty** — e.g. after removing its last member via the check row's own `✖` (not via `removeCheckFromRule`, which moves the check elsewhere instead of leaving it homeless). An empty rule is not auto-dropped: it stays as a card with `strategyId`/`kind` intact so the user can repopulate it via the rule's own `+ Add check`.
 - The card title shows `"{name} ({kind label})"` — `kind label` (`resolveIssueLabel(kind)`) is the rule's fixed, non-renamable, translatable title carrying the semantic context (e.g. "Teleport validation"); `name` is the free-text, user-editable label, defaulting to `kind label` itself at creation (`defaultRuleName`, `generationSliceHelpers.ts`). Shown unconditionally (not only for an empty rule) so a check's own label is never seen without its owning rule's context — the audit basis check labels below were trimmed against (GitHub issue #176) — except the `(kind label)` suffix is omitted when it's identical to `name` (the common un-renamed case), to avoid a literal `"Endpoint presence (Endpoint presence)"`-style duplication.
 - `disabled` (strategy-only toggle) vs `ruleDisabled` (whole-rule toggle) are independent: `disabled` skips the fix but the rule's checks still run (QC still reports the issue, just unfixed); `ruleDisabled` excludes the rule's checks from generation entirely, as if never selected.
-- `CheckInstance.disabled` — a per-check toggle, independent of `disabled`/`ruleDisabled` above. A disabled check is excluded entirely from the next `generate()` call (dropped from its rule's `checks` before crossing the wasm boundary — see "Generate pipeline" below), as if it were never added to the rule, mirroring `ruleDisabled`'s effect at check granularity. Unlike `ruleDisabled`, it still counts as "active" for `isTypeAlreadyActive`'s single-instance-per-type gating (`addCheck`/`createRule` above) — re-enabling the existing disabled instance is the way back to using that type again, not adding a second one. If disabling a check leaves its rule with zero *effective* (non-disabled) checks, that rule itself is omitted from `GenerateConfig` the same way a `ruleDisabled` rule is — core's `build_qc_and_repair` rejects a rule with an empty `checks` array outright.
+A disabled check remains a normal check instance and may be added again like any other check.
 - `nextLocalCheckId` starts at the rule's initial check count, increments on every check added to this rule, and never resets or reuses a previously-issued `localId` even after that check is removed — addressing a check is always the pair `(ruleId, localId)`, never a bare `localId` searched across all rules. Not serialized to project files (see "Project file persistence" below) — recomputed on load as `max(checks.map(c => c.localId)) + 1` (or `0` if `checks` is empty).
 - `collapsed` (GitHub issue #320) — UI-only card collapse state, toggled via `toggleRuleCollapsed`. When `true`, `RulesColumn` hides the whole card body (checks list, `RuleParamsSection`, and `RuleStrategyPanel`), showing only the title row. Purely cosmetic — has no effect on `GenerateConfig` or any other generation-facing behavior, unlike `disabled`/`ruleDisabled` above. Still serialized to project files (see "Project file persistence" below) since it's part of the rule's own persisted UI state, defaulting to `false` for files saved before it existed.
 
@@ -301,7 +293,7 @@ Modal using `ItemSelectDialog`. Lists distinct issue kinds — `Array.from(new S
 
 Modal using `ItemSelectDialog` in single-select mode (row click selects and previews), takes a required `kind` prop from step 1. Shows available checks of that kind only.
 
-- A check type with `allow_multiple_instances` (currently only `min_region_count`, see GitHub issue #60) can always be selected, including one already active elsewhere. Every other type: row disabled, red error text `check.already_active` shown in right panel when previewed, once it's already active in some existing rule.
+All check types are always selectable, including when already active elsewhere.
 - Right panel (for the selected row): check label, description, params (edited locally in this dialog's own state — `paramOverrides` — nothing commits to the store here).
 - Footer: `[Back]` (returns to `IssueSelectDialog`) `[Cancel]` `[Next]` (disabled when no check is selected or the selected one is already active elsewhere).
 - Next: calls `onNext(id, paramOverrides)` — hands the picked id to step 3, no store mutation.
@@ -320,7 +312,7 @@ Modal using `ItemSelectDialog`, takes a required `kind` prop. Shows `no_fix` plu
 
 Modal using `ItemSelectDialog`, targets one specific existing rule (`ruleId`, `kind` props). Title: `quality.add_check_dialog_title` ("Add check: {issue}"), where `{issue}` is the rule's kind, localized via `resolveIssueLabel`.
 
-- Candidates: check descriptors sharing the rule's `kind`, computed by `RulesColumn.candidatesFor` (type `CheckCandidateVM[]` — `{ typeId, label, description, params }`, distinct from `CheckVM` — a candidate isn't an active instance yet, so it has no `ruleId`/`localId`). A type with `allow_multiple_instances` (currently only `min_region_count`, see GitHub issue #60) is always offered, including one already active elsewhere or in this same rule. Every other type is filtered out once already active anywhere (adding it would be a no-op in the store anyway).
+- Candidates: check descriptors sharing the rule's `kind`, computed by `RulesColumn.candidatesFor` (type `CheckCandidateVM[]` — `{ typeId, label, description, params }`, distinct from `CheckVM` — a candidate isn't an active instance yet, so it has no `ruleId`/`localId`). A type with `multiple instances` (currently only `min_region_count`, see GitHub issue #60) is always offered, including one already active elsewhere or in this same rule. Every other type is filtered out once already active anywhere (adding it would be a no-op in the store anyway).
 - Right panel: check label, description.
 - Footer: `[Cancel]` `[Add]`.
 - Add: calls `addCheck(typeId, ruleId)` — mints a fresh `CheckInstance` directly into the target rule's `checks` array, not as a new rule (see `addCheck`'s `ruleId` parameter below). Closes.
@@ -619,25 +611,17 @@ id searched across all rules.
 
 ### addCheck(typeId, ruleId?, initialParams?)
 
-- No-op if `typeId`'s descriptor isn't found in `availableChecks`.
-- No-op if the descriptor's `allow_multiple_instances` is `false` (every type except
-  `min_region_count`) and `typeId` is already active in some rule. Otherwise mints a fresh
-  `CheckInstance` — for `min_region_count`, this always succeeds, including when another
-  instance of it is already active elsewhere (see GitHub issue #60). `initialParams` overrides
-  the descriptor defaults if given (e.g. values already edited in a select dialog before
-  confirming); otherwise the new instance gets the descriptor's default params.
-- If `ruleId` is **omitted**: creates a fresh singleton rule for the check (`newRule(kind, [{ localId: 0, typeId, params }], null, false)`) — the top-level "Add new rule" path.
-- If `ruleId` is **given** and resolves to an existing rule: mints `localId` from that rule's own `nextLocalCheckId`, appends the new `CheckInstance` to that rule's `checks` instead of creating a new rule — the per-rule "+ Add check" path (`AddCheckToRuleDialog`).
-- If `ruleId` is given but does not resolve to any current rule (stale/unknown id): silently falls back to creating a new singleton rule, same as if `ruleId` were omitted. Not expected to happen from the UI (dialogs only ever pass a currently-rendered rule's id) and not surfaced as an error.
-- If the check's descriptor reports more than one `issue_kinds` entry: only `issue_kinds[0]` is used as the rule's kind, and a `console.error` is logged (`resolveCheckKind` in `generationSlice.ts`) — rules only support one kind per check; no current check produces more than one, this is a guard against silently dropping the others if that ever changes.
+- No-op if the descriptor is not found.
+- Otherwise always creates a fresh `CheckInstance`, even when the same type is already active in another rule, stage, or the target rule.
+- An omitted `ruleId` creates a singleton rule; a matching `ruleId` appends to that rule.
 
 ### createRule(typeIds, strategyId, initialCheckParams?, initialStrategyParams?)
 
 - No-op if `typeIds` is empty or none resolve to a known descriptor.
-- Drops any `typeId` whose descriptor has `allow_multiple_instances: false` and is already
-  active in some existing rule — same restriction as `addCheck`, applied per id rather than
-  rejecting the whole call (the multiselect dialog already pre-filters/disables such candidates,
-  but the store doesn't rely on that being the only caller).
+- Retains every supplied type id whose descriptor is known; duplicate types are allowed.
+
+
+
 - Creates exactly **one** new rule with one fresh `CheckInstance` per surviving `typeIds` entry (`localId` 0..n by position) — the multiselect "Add new rule" flow (`IssueSelectDialog` → `CheckSelectDialog` → `NewRuleStrategyDialog`). Unlike calling `addCheck` once per id, this never creates intermediate singleton rules for ids after the first.
 - `kind` is taken from `typeIds[0]`'s descriptor — same one-kind-per-rule assumption as `addCheck`; callers pre-filter candidates by kind.
 - Each instance's params: `initialCheckParams[typeId]` if given, else descriptor defaults.

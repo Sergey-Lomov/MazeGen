@@ -92,7 +92,6 @@ pub struct CheckDescriptor {
     /// blanket allowance. The web store/UI enforce this (see `addCheck`/`createRule` in
     /// `generationSlice.ts`) — wasm/core themselves don't reject a duplicate, since nothing
     /// downstream of this flag depends on it being correct for repair/QC to function.
-    pub allow_multiple_instances: bool,
     /// `None` means always offered — see `EntityVisibility`'s own doc comment.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub visibility: Option<EntityVisibility>,

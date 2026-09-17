@@ -24,7 +24,7 @@ Only if no existing kind fits — see `quality_control.md`'s "Hard rule: `IssueK
    combined with `--check`, `--scaffold`, or each other; `codegen` rejects that combination instead
    of silently running only one of the requested actions.
 1. Implement `Check<T, I>` (own file under `quality_control/checks/`).
-2. Register a `CheckDescriptor { id, label, description, issue_kinds, params, allow_multiple_instances }` in `maze-wasm/src/checks_catalog.rs`'s `available_checks_list()` — this is the single source of truth for the check's id and every param id it exposes.
+2. Register a `CheckDescriptor { id, label, description, issue_kinds, params }` in `maze-wasm/src/checks_catalog.rs`'s `available_checks_list()` — this is the single source of truth for the check's id and every param id it exposes.
 3. Wire the check into `maze-runner`'s rule-building: add its `type_id` to the matching `KindTag` entry's id list in `maze-runner/src/runner/qc_kind_registry.rs`'s `qc_kind_registry!` table (or add a new entry if it's a new `KindTag`) so `config.checks` can select it. This single table generates `KindTag`, `check_kind_for_type`, and `build_rule`'s dispatch together (GitHub issue #407) — before this, the three had to be hand-kept in sync separately, which is exactly the class of gap GitHub issue #405 hit.
 4. Add `qualityI18n.ts` entries: `checkI18n[id]` (label/description). Also add a `DETAIL_LABELS`/`DETAIL_DESCRIPTIONS` entry in `issueRegistry.ts` if the check calls `.with_detail(...)` (see "New Check without details" below if it doesn't).
 5. Add the corresponding `check.<id>.label`/`.description` (and any detail-label) keys to **both** `maze-web/messages/en.json` and `ru.json`.

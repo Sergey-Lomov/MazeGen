@@ -15,14 +15,10 @@ export function resolveCheckKind(descriptor: CheckDescriptor): string {
 }
 
 // Most checks may only have one active instance at a time, across all rules — only checks with
-// `allow_multiple_instances` (none currently — see GitHub issue #60, retired) can have several
+// `multiple instances` (none currently — see GitHub issue #60, retired) can have several
 // independent configurations active simultaneously. Exported so component-layer
 // candidate filters (RulesColumn, CheckSelectDialog) apply the exact same predicate the store
 // itself enforces, instead of each re-implementing it.
-export function isTypeAlreadyActive(rules: QcRuleState[], typeId: string): boolean {
-  return rules.some((g) => g.checks.some((c) => c.typeId === typeId));
-}
-
 export function defaultParamsFor(descriptor: { params: CheckDescriptor["params"] }): Record<string, string> {
   return Object.fromEntries(
     descriptor.params.map((p) => [p.id, defaultParamValue(p.kind)])

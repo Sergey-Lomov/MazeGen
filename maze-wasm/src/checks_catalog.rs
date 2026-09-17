@@ -41,7 +41,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             description: "Fires if the maze has no start or no finish.",
             issue_kinds: vec![kind_str(MISSING_ENDPOINTS)],
             params: vec![],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -50,7 +49,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             description: "Fires if finish cannot be reached from start via directed traversal.",
             issue_kinds: vec![kind_str(UNREACHABLE_FINISH)],
             params: vec![],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -59,7 +57,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             description: "Fires if a teleport edge duplicates a regular connection already present between the same pair in the same direction.",
             issue_kinds: vec![kind_str(INVALID_TELEPORT)],
             params: vec![],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -90,8 +87,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // Multiple instances with different waypoint/edge/distance combinations are a
             // legitimate common configuration (e.g. "entry far from start" AND separately "exit
-            // far from finish") — same rationale as min_region_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // far from finish") — same rationale as min_region_count's multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -109,7 +105,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 comparison_param(Comparison::Lt),
                 geometric_floor_mode_param(TELEPORT_GEOMETRIC_LENGTH_DEFAULT_FLOOR_MODE),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -126,7 +121,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 comparison_param(Comparison::Lt),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -148,7 +142,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -164,7 +157,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -195,8 +187,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // Multiple instances with different own_edge/other_edge/distance combinations are a
             // legitimate simultaneous configuration (e.g. "entries close to each other" AND
             // separately "exits close to each other") -- same rationale as
-            // teleport_waypoint_distance's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // teleport_waypoint_distance's multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -216,8 +207,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // Multiple instances (e.g. different floor_scope) now cooperate correctly via
             // RemainingDeficits (GitHub issue #369's double-count fix), so stacking is a
             // legitimate configuration -- same rationale as min_region_count's
-            // allow_multiple_instances.
-            allow_multiple_instances: true,
+            // multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -234,8 +224,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MIN_TELEPORT_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
-            // See min_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // See min_teleport_count's multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -256,8 +245,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // Different direction/floor_kind combinations are a legitimate simultaneous
             // configuration (e.g. "at most N bidirectional" AND separately "at most M
-            // inter-floor") -- same rationale as min_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // inter-floor") -- same rationale as min_teleport_count's multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -276,8 +264,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 teleport_direction_param(MAX_TELEPORT_DENSITY_DEFAULT_DIRECTION),
                 teleport_floor_kind_param(MAX_TELEPORT_DENSITY_DEFAULT_FLOOR_KIND),
             ],
-            // See max_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // See max_teleport_count's multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -294,8 +281,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MIN_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
-            // See min_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // See min_teleport_count's multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -312,8 +298,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MIN_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
-            // See min_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // See min_teleport_count's multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -338,8 +323,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // Multiple instances with different waypoint/distance combinations are a legitimate
             // simultaneous configuration -- same rationale as teleport_waypoint_distance's
-            // allow_multiple_instances.
-            allow_multiple_instances: true,
+            // multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -357,8 +341,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 geometric_floor_mode_param(ONE_WAY_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE),
             ],
             // Multiple instances with different distance thresholds are a legitimate simultaneous
-            // configuration -- same rationale as teleport_group_proximity's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // configuration -- same rationale as teleport_group_proximity's multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -374,7 +357,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: true,
             visibility: None,
         },
         CheckDescriptor {
@@ -390,7 +372,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -407,7 +388,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MAX_ONE_WAY_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -424,7 +404,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MAX_ONE_WAY_RATIO_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -441,8 +420,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MIN_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
-            // See min_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // See min_teleport_count's multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -465,8 +443,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MIN_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
-            // See min_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // See min_teleport_count's multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -484,7 +461,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 comparison_param(Comparison::Lt),
                 cycle_kind_param(),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -501,7 +477,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 cycle_kind_param(),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -518,7 +493,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 cycle_kind_param(),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -535,7 +509,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 cycle_kind_param(),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -552,7 +525,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MAX_LOOP_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -569,7 +541,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MAX_LOOPS_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -583,7 +554,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 kind: ParamKindDto::Integer { default: MAX_SCC_COUNT_DEFAULT as i64, min: 1, max: 1_000_000 },
             visibility: None,
             }],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -600,7 +570,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 region_class_filter_param(),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -617,7 +586,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 region_class_filter_param(),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -634,7 +602,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 region_class_filter_param(),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -651,7 +618,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 region_class_filter_param(),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -688,7 +654,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             // A single instance now evaluates all four classes at once (see GitHub issue #60's
             // multi-instance design, retired — `MinRegionCountCheck` no longer needs more than
             // one active instance to express "different minimums per class").
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -713,8 +678,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // Multiple instances with different waypoint/distance combinations are a legitimate
             // simultaneous configuration -- same rationale as teleport_waypoint_distance's
-            // allow_multiple_instances.
-            allow_multiple_instances: true,
+            // multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -730,7 +694,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -746,7 +709,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -763,7 +725,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MAX_SPLIT_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -780,7 +741,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MAX_SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -799,8 +759,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // Multiple instances with different distance thresholds are a legitimate simultaneous
             // configuration -- same rationale as one_way_group_geometric_proximity's
-            // allow_multiple_instances.
-            allow_multiple_instances: true,
+            // multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -816,7 +775,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: true,
             visibility: None,
         },
         CheckDescriptor {
@@ -833,8 +791,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(SPLIT_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
-            // See min_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // See min_teleport_count's multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -851,8 +808,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(SPLIT_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
-            // See min_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // See min_teleport_count's multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -877,8 +833,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // Multiple instances with different count/direction combinations are a legitimate
             // simultaneous configuration -- same rationale as split_distance_from_waypoint's
-            // allow_multiple_instances.
-            allow_multiple_instances: true,
+            // multiple instances.
             visibility: None,
         },
         CheckDescriptor {
@@ -894,7 +849,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: true,
             visibility: None,
         },
         CheckDescriptor {
@@ -910,7 +864,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: true,
             visibility: None,
         },
         CheckDescriptor {
@@ -926,7 +879,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: true,
             visibility: None,
         },
         CheckDescriptor {
@@ -942,7 +894,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: None,
         },
         CheckDescriptor {
@@ -960,8 +911,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 floor_scope_param(MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_FLOOR_SCOPE),
                 vertical_passage_count_incoming_param(MIN_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING),
             ],
-            // See min_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // See min_teleport_count's multiple instances.
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -979,8 +929,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 floor_scope_param(MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_FLOOR_SCOPE),
                 vertical_passage_count_incoming_param(MIN_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING),
             ],
-            // See min_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // See min_teleport_count's multiple instances.
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -999,8 +948,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 vertical_passage_type_param(MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_TYPE),
                 vertical_passage_count_incoming_param(MAX_VERTICAL_PASSAGE_COUNT_DEFAULT_COUNT_INCOMING),
             ],
-            // See min_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // See min_teleport_count's multiple instances.
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1019,8 +967,7 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 vertical_passage_type_param(MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_TYPE),
                 vertical_passage_count_incoming_param(MAX_VERTICAL_PASSAGE_RATIO_DEFAULT_COUNT_INCOMING),
             ],
-            // See min_teleport_count's allow_multiple_instances.
-            allow_multiple_instances: true,
+            // See min_teleport_count's multiple instances.
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1040,7 +987,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 vertical_passage_count_incoming_param(VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_COUNT_INCOMING),
                 geometric_floor_mode_param(VERTICAL_PASSAGE_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE),
             ],
-            allow_multiple_instances: true,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1058,7 +1004,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 vertical_passage_type_param(VERTICAL_PASSAGE_GROUP_GRAPH_PROXIMITY_DEFAULT_TYPE),
                 vertical_passage_same_type_only_param(),
             ],
-            allow_multiple_instances: true,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1075,7 +1020,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 comparison_param(ELEVATOR_STOP_COUNT_DEFAULT_COMPARISON),
             ],
-            allow_multiple_instances: true,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1092,7 +1036,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 comparison_param(ELEVATOR_SPAN_DEFAULT_COMPARISON),
             ],
-            allow_multiple_instances: true,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1108,7 +1051,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1124,7 +1066,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1140,7 +1081,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1156,7 +1096,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1173,7 +1112,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MIN_ELEVATOR_STOPS_PER_AREA_COUNT_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: true,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1190,7 +1128,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 floor_scope_param(MIN_ELEVATOR_STOPS_PER_AREA_DENSITY_DEFAULT_FLOOR_SCOPE),
             ],
-            allow_multiple_instances: true,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1206,7 +1143,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1222,7 +1158,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1238,7 +1173,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1254,7 +1188,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1270,7 +1203,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1286,7 +1218,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1302,7 +1233,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: false,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1319,7 +1249,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 },
                 geometric_floor_mode_param(ELEVATOR_STOP_GROUP_GEOMETRIC_PROXIMITY_DEFAULT_FLOOR_MODE),
             ],
-            allow_multiple_instances: true,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1335,7 +1264,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                 visibility: None,
                 },
             ],
-            allow_multiple_instances: true,
             visibility: Some(EntityVisibility::MultiFloorOnly),
         },
         CheckDescriptor {
@@ -1361,7 +1289,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
             ],
             // Multiple instances with different type sets / thresholds are a legitimate
             // simultaneous configuration -- same rationale as teleport_group_proximity.
-            allow_multiple_instances: true,
             visibility: None,
         },
         CheckDescriptor {
@@ -1384,7 +1311,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
                     visibility: None,
                 },
             ],
-            allow_multiple_instances: true,
             visibility: None,
         },
     ]
@@ -1393,53 +1319,6 @@ pub fn available_checks_list() -> Vec<CheckDescriptor> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn only_known_checks_allow_multiple_instances() {
-        // GitHub issue #60's multi-instance design (min_region_count being the one check that
-        // could run more than once at a time, for different region_class values) is retired:
-        // a single min_region_count instance now evaluates all four classes' balances at once.
-        // teleport_waypoint_distance (issue #74) and teleport_group_proximity (issue #75) are
-        // further checks that legitimately allow multiple simultaneous instances (distinct
-        // own_edge/other_edge/distance combinations are independent configurations). The 8
-        // min_*/split_count/split_density deficit checks joined this set once their repair
-        // strategies started sharing live deficit counts via RemainingDeficits (GitHub issue
-        // #369's double-count fix) -- stacking several instances (e.g. different floor_scope) no
-        // longer over-delivers. elevator_stop_count/elevator_span (GitHub issue #397) allow
-        // multiple instances too -- each instance independently flags whichever elevators cross
-        // its own threshold, no shared mutable state to double-count. min_elevator_stops_per_area_count/
-        // _density (GitHub issue #408) join the RemainingDeficits-backed deficit-check group above.
-        // max_teleport_count/max_teleport_density (GitHub issue #379 follow-up) allow multiple
-        // instances too -- distinct direction/floor_kind combinations are independent thresholds.
-        let checks = available_checks_list();
-        let allowing: Vec<&str> = checks.iter()
-            .filter(|c| c.allow_multiple_instances)
-            .map(|c| c.id)
-            .collect();
-        let mut allowing_sorted = allowing.clone();
-        allowing_sorted.sort();
-        assert_eq!(
-            allowing_sorted,
-            vec![
-                "cross_element_geometric_proximity", "cross_element_graph_proximity",
-                "elevator_span", "elevator_stop_count",
-                "elevator_stop_group_geometric_proximity", "elevator_stop_group_graph_proximity",
-                "max_teleport_count", "max_teleport_density",
-                "max_vertical_passage_count", "max_vertical_passage_ratio",
-                "min_elevator_stops_per_area_count", "min_elevator_stops_per_area_density",
-                "min_loop_density", "min_loops_count", "min_one_way_count", "min_one_way_ratio",
-                "min_teleport_count", "min_teleport_ratio",
-                "min_vertical_passage_count", "min_vertical_passage_ratio",
-                "one_way_group_geometric_proximity", "one_way_group_graph_proximity", "one_way_waypoint_distance",
-                "split_count", "split_density",
-                "split_distance_from_waypoint", "split_group_geometric_proximity", "split_group_graph_proximity",
-                "split_node_connection_count", "split_node_connection_per_face", "split_node_connection_per_neighbor", "split_node_connection_traversal_distance",
-                "teleport_group_proximity", "teleport_waypoint_distance",
-                "vertical_passage_group_geometric_proximity", "vertical_passage_group_graph_proximity",
-            ],
-            "unexpected set of checks allowing multiple instances: {allowing:?}"
-        );
-    }
 
     // GitHub issue #349 follow-up: every check that only makes sense with vertical passages/
     // elevators (which don't exist on a single-floor maze) is hidden from the selection dialogs

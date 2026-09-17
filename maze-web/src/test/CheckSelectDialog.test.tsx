@@ -4,9 +4,9 @@ import { CheckSelectDialog } from "../components/features/CheckSelectDialog";
 import { useMazeStore } from "../store/mazeStore";
 
 const availableChecks = [
-  { id: "min_loops_count", label: "Minimum loop count", description: "Fires if too few loops.", issue_kinds: ["missing_loops"], params: [], allow_multiple_instances: false },
-  { id: "min_loop_length", label: "Minimum loop length", description: "Fires if a loop is too short.", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false },
-  { id: "max_loop_length", label: "Maximum loop length", description: "Fires if a loop is too long.", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false },
+  { id: "min_loops_count", label: "Minimum loop count", description: "Fires if too few loops.", issue_kinds: ["missing_loops"], params: [] },
+  { id: "min_loop_length", label: "Minimum loop length", description: "Fires if a loop is too short.", issue_kinds: ["invalid_loop"], params: [] },
+  { id: "max_loop_length", label: "Maximum loop length", description: "Fires if a loop is too long.", issue_kinds: ["invalid_loop"], params: [] },
 ];
 
 beforeEach(() => {
@@ -26,13 +26,13 @@ describe("CheckSelectDialog", () => {
     expect(screen.getByText("Next")).not.toBeDisabled();
   });
 
-  it("Next stays disabled when the default-selected check is already active elsewhere", () => {
+  it("Next stays enabled when the default-selected check is already active elsewhere", () => {
     useMazeStore.setState({
       availableChecks,
       rules: [{ id: "g1", name: "Rule 1", kind: "invalid_loop", checks: [{ localId: 0, typeId: "min_loop_length", params: {}, disabled: false }], nextLocalCheckId: 1, strategyId: null, disabled: false, ruleDisabled: false, params: {}, nestedStrategies: [], collapsed: false }],
     });
     render(<CheckSelectDialog kind="invalid_loop" onBack={vi.fn()} onNext={vi.fn()} onClose={vi.fn()} />);
-    expect(screen.getByText("Next")).toBeDisabled();
+    expect(screen.getByText("Next")).not.toBeDisabled();
   });
 
   it("Next hands the selected check id to onNext, without touching the store", () => {
@@ -64,7 +64,7 @@ describe("CheckSelectDialog", () => {
   describe("multi-floor-only checks", () => {
     const withFloorOnlyCheck = [
       ...availableChecks,
-      { id: "min_vertical_passage_count", label: "Min count", description: "", issue_kinds: ["invalid_loop"], params: [], allow_multiple_instances: false, visibility: { type: "multi_floor_only" as const } },
+      { id: "min_vertical_passage_count", label: "Min count", description: "", issue_kinds: ["invalid_loop"], params: [], visibility: { type: "multi_floor_only" as const } },
     ];
 
     it("hides a multi-floor-only check on a single floor", () => {
