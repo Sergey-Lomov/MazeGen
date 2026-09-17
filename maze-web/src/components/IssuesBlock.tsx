@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ui, typography, muted, spacing } from "../styles/theme";
+import { ui, typography, muted, spacing, indent } from "../styles/theme";
 import { darken } from "../styles/palette";
 import { Modal } from "./Modal";
 import { useMazeStore } from "../store/mazeStore";
@@ -451,6 +451,10 @@ const issueStyles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: spacing.itemGap,
+    // One indent level for the section's own content, relative to its `SectionHeader` label —
+    // same shared `indent.tree` token every other feature-card section nests its body under
+    // (GitHub issue #511), not a bespoke padding just for this block.
+    paddingLeft: indent.tree,
   },
   bubble: {
     ...embeddedNotificationStyle,

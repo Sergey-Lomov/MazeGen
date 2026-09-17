@@ -17,6 +17,12 @@ export function messageFor(key: string): string {
 export const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
   statBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  // Same shape as `statBlock`, plus one indent level -- for a section's content sitting directly
+  // under its own top-level `SectionHeader` (Path/Stats summary/Timing in `AnalyticsFeature`),
+  // where `statBlock` alone (used elsewhere already nested inside a `StatGroup`) would double-
+  // indent. Same shared `indent.tree` token every other feature-card section nests its body under
+  // (GitHub issue #511), not a bespoke padding just for Analytics.
+  topLevelStatBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   statRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
   statLabelGroup: { flex: 1, display: "flex", alignItems: "center", gap: spacing.rowGap },
   statLabel: { ...muted(typography.body) },
@@ -65,7 +71,7 @@ export const styles: Record<string, React.CSSProperties> = {
   nestedGroup: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   floorSectionBody: { paddingBottom: 8 },
   subsectionHeaderRow: { display: "flex", alignItems: "center", gap: spacing.itemGap },
-  toggleBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap },
+  toggleBlock: { display: "flex", flexDirection: "column", gap: spacing.itemGap, paddingLeft: indent.tree },
   legendRow: { display: "flex", alignItems: "center", gap: spacing.groupGap },
   legendSwatch: { width: 14, height: 14, borderRadius: 3, flexShrink: 0 },
   legendLabel: { ...typography.body, fontWeight: "bold" as const },
