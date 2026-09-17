@@ -66,7 +66,13 @@ export function buildVerticalConnectionMarkers(
 
   const byPair = verticalPairs;
   const allNodes = Array.from(nodeById.values());
-  const nodePos = buildNodePositions(allNodes, cfg, []);
+  // Keep split-node marker anchors in sync with graph/split renderers. In particular, a square
+  // bridge has a shape-aware pair of anchors; an empty directed-pair list falls back to the
+  // generic hub circle and puts the two vertical markers diagonally apart (GitHub issue #555).
+  const directedPairs = allEdges
+    .filter((e) => e.kind !== "teleport")
+    .map(({ from, to }) => ({ from, to }));
+  const nodePos = buildNodePositions(allNodes, cfg, directedPairs);
 
   // Aggregates direction across every reachable floor, not just one edge — an `Elevator`'s fan can
   // connect one node to several other floors at once (several edges sharing the same `from`), so a

@@ -204,6 +204,12 @@ A vertical passage/elevator created entirely in post-edit (no generation-time co
 
 Persisted in project files (`ProjectFilePostEdit.verticalPassages`/`elevators`/`suppressedElevatorPairs`/`suppressedVerticalPassagePairs`) — all four optional, defaulting to empty for files saved before this issue.
 
+## Split-node vertical marker anchoring (GitHub issue #555)
+
+Vertical passage and elevator markers use the same directed, non-teleport edge set as graph
+rendering when resolving node positions. This preserves shape-aware bridge/diagonal anchors for
+split nodes instead of falling back to the generic hub-circle positions.
+
 ## Non-goals (deferred to later epic #333 issues)
 
 - No per-floor generation/QC config — every floor shares one rule/stage/strategy setup. Field shape is per-floor as of GitHub issue #338 (see `Specs/field-editor.md`) — kind/orientation stay maze-wide, but each floor's own shape/size/custom points are independent and each reaches core as its own entry of `GenerateConfig.level_fields` (no shared/replicated shape on the wire anymore). Preset connections are floor-aware as of GitHub issue #340 (see `Specs/preset-connections.md`'s "Multi-floor presets") and post-edit is floor-aware as of GitHub issue #358 (see "Post-edit multi-floor awareness" above) — neither is a non-goal anymore.
