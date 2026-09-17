@@ -45,6 +45,15 @@ export class PostEditController extends BaseController {
   private verticalPassageDragMoved = false;
   private lastViewportPos = { x: 0, y: 0 };
 
+  // Origin endpoints captured at drag-arm time (GitHub issue #545) — the command log only gets one
+  // command on release, so pointermove can't lean on "the store already reflects every intermediate
+  // step" the way it did when each move appended its own command. `current`/`other` below are always
+  // compared against these fixed origins, not against the live `postEditDragOverride`, so dragging
+  // back and forth still resolves "did this end up different from where it started" correctly.
+  private markerDragOrigin: PostEditEndpoint | null = null;
+  private teleportDragOrigin: { current: PostEditEndpoint; other: PostEditEndpoint } | null = null;
+  private verticalPassageDragOrigin: { current: PostEditEndpoint; other: PostEditEndpoint } | null = null;
+
   private onKeyDown = (e: KeyboardEvent) => {
     if (e.code === "Escape") {
       this.cancelPendingTeleport();
@@ -119,30 +128,34 @@ export class PostEditController extends BaseController {
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeMap = this.getNodeMap(floorNodes);
       const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
+      // Live preview only (GitHub issue #545) — no command appended per move, so a drag that never
+      // ends on a different node costs nothing to have started. Origin comparison lives in
+      // `onPointerUp`, which is the sole place that appends the command.
       if (endpoint !== null) {
-        useMazeStore.getState().setPostEditEndpoint(this.draggingMarker === "set_start" ? "start" : "finish", endpoint);
+        useMazeStore.getState().setPostEditDragOverride({
+          kind: "marker", marker: this.draggingMarker === "set_start" ? "start" : "finish", endpoint,
+        });
       }
       return;
     }
 
-    if (this.draggingTeleportEndpoint) {
+    if (this.draggingTeleportEndpoint && this.teleportDragOrigin) {
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeMap = this.getNodeMap(floorNodes);
       const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, state.postEditActiveSplitNode, level);
       if (endpoint === null) return;
-      const teleport = state.postEditDraftTeleports.find(t => t.id === this.draggingTeleportEndpoint!.id);
-      if (!teleport) return;
-      const current = this.draggingTeleportEndpoint.end === "from" ? teleport.from : teleport.to;
-      const other = this.draggingTeleportEndpoint.end === "from" ? teleport.to : teleport.from;
       const floorNodeIds = new Set(floorNodes.map((n) => n.id));
       const resolveSplit = buildSplitNodeResolver(nodeMap, recordOnLevel(state.postEditDraftSplitPoints, level));
-      // `current`/`other` come from raw `state.postEditDraftTeleports`, which can carry their
-      // original non-zero `level` — `resolveSplit` above is built from a bare-keyed, floor-scoped
-      // `nodeMap`/`splitPoints`, so resolving a level-tagged split endpoint against it silently
-      // returns `undefined` on any floor above the first (GitHub issue #425). `floorScopedEndpoint`
-      // strips `level` after confirming the endpoint belongs to this floor; an off-floor endpoint
-      // resolves to `undefined` here same as before.
+      // `current`/`other` are the FIXED origin captured on pointerdown (GitHub issue #545) — no
+      // command is appended per move any more, so the store's own `postEditDraftTeleports` no
+      // longer advances with the cursor and can't be used as "where the drag currently is".
+      // `resolveSplit` above is built from a bare-keyed, floor-scoped `nodeMap`/`splitPoints`, so
+      // resolving a level-tagged split endpoint against it silently returns `undefined` on any
+      // floor above the first (GitHub issue #425) — `floorScopedEndpoint` strips `level` after
+      // confirming the endpoint belongs to this floor; an off-floor endpoint resolves to
+      // `undefined` here same as before.
+      const { current, other } = this.teleportDragOrigin;
       const currentId = resolveEndpoint(floorScopedEndpoint(current, level, floorNodeIds) ?? current, resolveSplit);
       const otherId = resolveEndpoint(floorScopedEndpoint(other, level, floorNodeIds) ?? other, resolveSplit);
       const endpointId = resolveEndpoint(endpoint, resolveSplit);
@@ -152,31 +165,36 @@ export class PostEditController extends BaseController {
         // endpoint's node is rejected below, so pointerup must not reinterpret it as a click.
         this.teleportDragMoved = true;
         if (!movedToOther) {
-          useMazeStore.getState().movePostEditTeleportEndpoint(this.draggingTeleportEndpoint.id, this.draggingTeleportEndpoint.end, endpoint);
+          useMazeStore.getState().setPostEditDragOverride({
+            kind: "teleportEndpoint", id: this.draggingTeleportEndpoint.id, end: this.draggingTeleportEndpoint.end, endpoint,
+          });
         }
+      } else {
+        useMazeStore.getState().setPostEditDragOverride(null);
       }
       return;
     }
 
-    if (this.draggingVerticalPassageEndpoint) {
+    if (this.draggingVerticalPassageEndpoint && this.verticalPassageDragOrigin) {
       const proj = makeProjection(state.activeTessellationConfig);
       const cell = proj.screenToGrid(vpX, vpY);
       const nodeMap = this.getNodeMap(floorNodes);
       const endpoint = this.resolveActiveEndpointAt([cell.x, cell.y], nodeMap, {}, level);
       if (endpoint === null || endpoint.kind !== "node") return;
-      const passage = state.postEditDraftVerticalPassages.find(p => p.id === this.draggingVerticalPassageEndpoint!.id);
-      if (!passage) return;
       const hit = this.draggingVerticalPassageEndpoint;
-      const current = hit.end === "from" ? passage.from : passage.to;
-      const other = hit.end === "from" ? passage.to : passage.from;
+      const { current, other } = this.verticalPassageDragOrigin;
       const currentId = current.kind === "node" ? current.id : undefined;
       const otherId = other.kind === "node" ? other.id : undefined;
       const movedToOther = otherId !== undefined && otherId === endpoint.id;
       if (currentId !== endpoint.id) {
         this.verticalPassageDragMoved = true;
         if (!movedToOther) {
-          useMazeStore.getState().movePostEditVerticalPassageEndpoint(hit.id, hit.end, endpoint);
+          useMazeStore.getState().setPostEditDragOverride({
+            kind: "verticalPassageEndpoint", id: hit.id, end: hit.end, endpoint,
+          });
         }
+      } else {
+        useMazeStore.getState().setPostEditDragOverride(null);
       }
       return;
     }
@@ -382,6 +400,7 @@ export class PostEditController extends BaseController {
 
       if (markerUnderCursor) {
         this.armMarkerDrag(markerUnderCursor === "start" ? "set_start" : "set_finish");
+        this.markerDragOrigin = markerUnderCursor === "start" ? meta.start : meta.finish;
         return;
       }
       if (teleportHit) {
@@ -390,11 +409,21 @@ export class PostEditController extends BaseController {
         // direction) instead of a drag.
         this.draggingTeleportEndpoint = teleportHit;
         this.teleportDragMoved = false;
+        const originTeleport = scopedTeleports.find((t) => t.id === teleportHit.id);
+        this.teleportDragOrigin = originTeleport ? {
+          current: teleportHit.end === "from" ? originTeleport.from : originTeleport.to,
+          other: teleportHit.end === "from" ? originTeleport.to : originTeleport.from,
+        } : null;
         return;
       }
       if (verticalPassageHit) {
         this.draggingVerticalPassageEndpoint = verticalPassageHit;
         this.verticalPassageDragMoved = false;
+        const originPassage = state.postEditDraftVerticalPassages.find((p) => p.id === verticalPassageHit.id);
+        this.verticalPassageDragOrigin = originPassage ? {
+          current: verticalPassageHit.end === "from" ? originPassage.from : originPassage.to,
+          other: verticalPassageHit.end === "from" ? originPassage.to : originPassage.from,
+        } : null;
         return;
       }
 
@@ -471,12 +500,31 @@ export class PostEditController extends BaseController {
       }
       this.dragDidApply = false;
     }
+    // Marker drag commits here, before `super.onPointerUp` clears `draggingMarker` (GitHub issue
+    // #545) — only one `setMeta` for the whole gesture, and only if the drag actually landed on a
+    // different endpoint than it started from (a plain click that never moved must stay a no-op,
+    // same as before this change — it simply never got a pointermove to react to).
+    if (button === 0 && this.draggingMarker) {
+      const override = useMazeStore.getState().postEditDragOverride;
+      if (override?.kind === "marker" && (this.markerDragOrigin === null || !endpointsEqual(override.endpoint, this.markerDragOrigin))) {
+        useMazeStore.getState().setPostEditEndpoint(this.draggingMarker === "set_start" ? "start" : "finish", override.endpoint);
+      }
+      useMazeStore.getState().setPostEditDragOverride(null);
+      this.markerDragOrigin = null;
+    }
     super.onPointerUp(button);
     if (button === 0) {
       this.endEdgeDrag();
 
       if (this.draggingTeleportEndpoint) {
-        if (!this.teleportDragMoved) {
+        if (this.teleportDragMoved) {
+          // Commits the whole gesture as a single `moveTeleportEndpoint` command (GitHub issue
+          // #545) — the override built up during the drag is exactly the final position.
+          const override = useMazeStore.getState().postEditDragOverride;
+          if (override?.kind === "teleportEndpoint" && override.id === this.draggingTeleportEndpoint.id) {
+            useMazeStore.getState().movePostEditTeleportEndpoint(override.id, override.end, override.endpoint);
+          }
+        } else {
           const state = useMazeStore.getState();
           if (TELEPORT_TOOLS.has(state.postEditTool)) {
             const level = activeFloorLevel(state);
@@ -495,19 +543,31 @@ export class PostEditController extends BaseController {
             }
           }
         }
+        useMazeStore.getState().setPostEditDragOverride(null);
         this.draggingTeleportEndpoint = null;
         this.teleportDragMoved = false;
+        this.teleportDragOrigin = null;
       }
 
       if (this.draggingVerticalPassageEndpoint) {
-        if (!this.verticalPassageDragMoved) {
+        if (this.verticalPassageDragMoved) {
+          // Commits the whole gesture as a single `moveVerticalPassageEndpoint` command plus its
+          // suppression pairs (GitHub issue #545) — mirrors `movePostEditVerticalPassageEndpoint`'s
+          // own per-move suppression, now issued once on release instead of once per move.
+          const override = useMazeStore.getState().postEditDragOverride;
+          if (override?.kind === "verticalPassageEndpoint" && override.id === this.draggingVerticalPassageEndpoint.id) {
+            useMazeStore.getState().movePostEditVerticalPassageEndpoint(override.id, override.end, override.endpoint);
+          }
+        } else {
           const state = useMazeStore.getState();
           if (VERTICAL_PASSAGE_TOOLS.has(state.postEditTool)) {
             state.cyclePostEditVerticalPassageDirection(this.draggingVerticalPassageEndpoint.id);
           }
         }
+        useMazeStore.getState().setPostEditDragOverride(null);
         this.draggingVerticalPassageEndpoint = null;
         this.verticalPassageDragMoved = false;
+        this.verticalPassageDragOrigin = null;
       }
     }
   }

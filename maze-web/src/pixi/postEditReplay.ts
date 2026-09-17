@@ -47,6 +47,23 @@ export function suppressionPairKey(a: PostEditEndpoint, b: PostEditEndpoint): st
   return `${x}|${y}`;
 }
 
+/** Folds `pairs` (an `addElevator`/`updateElevatorFloors` command's own `suppressPairs`, GitHub
+ * issue #545) into a suppression set, returning a fresh `Set` only when at least one pair is new
+ * — mirrors the standalone `suppressGenerationPair` command's own idempotent-add behavior, just
+ * batched. `undefined`/`[]` returns `set` unchanged (same reference, no-op). */
+function addSuppressPairs(set: Set<string>, pairs: [PostEditEndpoint, PostEditEndpoint][] | undefined): Set<string> {
+  if (!pairs || pairs.length === 0) return set;
+  let next: Set<string> | undefined;
+  for (const [a, b] of pairs) {
+    const key = suppressionPairKey(a, b);
+    if (!set.has(key)) {
+      if (!next) next = new Set(set);
+      next.add(key);
+    }
+  }
+  return next ?? set;
+}
+
 export interface PostEditBaseline {
   /** Bumped on every new generation, never on post-edit reset. */
   revision: number;
@@ -99,6 +116,16 @@ export function applyPostEditCommand(
       }
       return ok({ ...state, edges: next });
     }
+    case "setEdgePair": {
+      const abKey = edgeKey(command.a, command.b);
+      const baKey = edgeKey(command.b, command.a);
+      const next = { ...state.edges };
+      if (command.aToB === "wall") delete next[abKey];
+      else next[abKey] = { from: command.a, to: command.b, kind: command.aToB };
+      if (command.bToA === "wall") delete next[baKey];
+      else next[baKey] = { from: command.b, to: command.a, kind: command.bToA };
+      return ok({ ...state, edges: next });
+    }
     case "addTeleport": {
       if (state.teleports.some((t) => t.id === command.id)) return fail(state);
       const entry: PostEditTeleportEntry = { id: command.id, from: command.from, to: command.to, direction: command.direction };
@@ -144,6 +171,24 @@ export function applyPostEditCommand(
       );
       return ok({ ...state, edges, teleports, splitPoints });
     }
+    case "updateSplitNodeFaces": {
+      const key = pointKeyOf(command.point, command.level);
+      const existing = state.splitPoints[key] ?? [];
+      if (!existing.includes(command.slotId)) return fail(state);
+      const target = splitEndpoint(command.point, command.slotId, command.level);
+      const refsTarget = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
+        endpointsEqual(e.from, target) || endpointsEqual(e.to, target);
+      const edges = Object.fromEntries(Object.entries(state.edges).filter(([, e]) => !refsTarget(e)));
+      for (const face of command.faces) {
+        const toKey = edgeKey(target, face.neighbor);
+        const fromKey = edgeKey(face.neighbor, target);
+        if (face.toNeighbor === "wall") delete edges[toKey];
+        else edges[toKey] = { from: target, to: face.neighbor, kind: face.toNeighbor };
+        if (face.fromNeighbor === "wall") delete edges[fromKey];
+        else edges[fromKey] = { from: face.neighbor, to: target, kind: face.fromNeighbor };
+      }
+      return ok({ ...state, edges });
+    }
     case "rotateSplitPoint": {
       // Pre-resolved at construction time (see `ResolvedRotateMove`'s doc comment) — replay just
       // re-keys the named edges, no tessellation/field access needed here.
@@ -171,13 +216,19 @@ export function applyPostEditCommand(
 
       const slotEndpoints: PostEditEndpoint[] = command.resolvedSlots.map((s) => splitEndpoint(command.point, s.slotId, command.level));
       // `resolvedSlots` carries only the minted slots' faces — the original node (when present)
-      // keeps its own faces via separate `setEdge` commands appended right after this one by the
-      // store action, since it has no slotId to be keyed under here.
+      // keeps its own faces via `originalFaces`, folded into the same command (GitHub issue #545),
+      // since it has no slotId to be keyed under here.
       for (let i = 0; i < command.resolvedSlots.length; i++) {
         const endpoint = slotEndpoints[i];
         for (const face of command.resolvedSlots[i].faces) {
           edges[edgeKey(endpoint, face.neighbor)] = { from: endpoint, to: face.neighbor, kind: "basic" };
           edges[edgeKey(face.neighbor, endpoint)] = { from: face.neighbor, to: endpoint, kind: "basic" };
+        }
+      }
+      if (originalEndpoint && command.originalFaces) {
+        for (const face of command.originalFaces) {
+          edges[edgeKey(originalEndpoint, face.neighbor)] = { from: originalEndpoint, to: face.neighbor, kind: "basic" };
+          edges[edgeKey(face.neighbor, originalEndpoint)] = { from: face.neighbor, to: originalEndpoint, kind: "basic" };
         }
       }
 
@@ -208,12 +259,14 @@ export function applyPostEditCommand(
     case "addElevator": {
       if (state.elevators.some((e) => e.id === command.id)) return fail(state);
       const entry: PostEditElevatorEntry = { id: command.id, floors: command.floors };
-      return ok({ ...state, elevators: [...state.elevators, entry] });
+      const suppressedElevatorPairs = addSuppressPairs(state.suppressedElevatorPairs, command.suppressPairs);
+      return ok({ ...state, elevators: [...state.elevators, entry], suppressedElevatorPairs });
     }
     case "updateElevatorFloors": {
       if (!state.elevators.some((e) => e.id === command.id)) return fail(state);
       const elevators = state.elevators.map((e) => (e.id === command.id ? { ...e, floors: command.floors } : e));
-      return ok({ ...state, elevators });
+      const suppressedElevatorPairs = addSuppressPairs(state.suppressedElevatorPairs, command.suppressPairs);
+      return ok({ ...state, elevators, suppressedElevatorPairs });
     }
     case "removeElevator": {
       if (!state.elevators.some((e) => e.id === command.id)) return fail(state);
@@ -229,60 +282,6 @@ export function applyPostEditCommand(
           ? { ...state, suppressedVerticalPassagePairs: next }
           : { ...state, suppressedElevatorPairs: next },
       );
-    }
-    case "deletePoint": {
-      const level = command.level;
-      const pointNodeIds = new Set(
-        context.nodes.filter((n) => n.x === command.point[0] && n.y === command.point[1] && (n.level ?? 0) === (level ?? 0)).map((n) => n.id),
-      );
-      const key = pointKeyOf(command.point, level);
-      const draftTargets: PostEditEndpoint[] = [
-        ...[...pointNodeIds].map((id) => nodeEndpoint(id)),
-        ...(state.splitPoints[key] ?? []).map((slotId) => splitEndpoint(command.point, slotId, level)),
-      ];
-      const endpointRefsTarget = (ep: PostEditEndpoint) => draftTargets.some((t) => endpointsEqual(ep, t));
-      const refsTarget = (e: { from: PostEditEndpoint; to: PostEditEndpoint }) =>
-        endpointRefsTarget(e.from) || endpointRefsTarget(e.to);
-
-      const nextMeta = { ...state.meta };
-      if (nextMeta.start !== null && endpointRefsTarget(nextMeta.start)) nextMeta.start = null;
-      if (nextMeta.finish !== null && endpointRefsTarget(nextMeta.finish)) nextMeta.finish = null;
-
-      const teleports = state.teleports.filter((t) => !refsTarget(t));
-      const verticalPassages = state.verticalPassages.filter((p) => !refsTarget(p));
-      const elevators = state.elevators.filter((e) => !e.floors.some(endpointRefsTarget));
-
-      // A generation-time vertical passage/elevator has no draft entry to filter out above — it's
-      // resent verbatim from `context.edges` (the generation snapshot) by `confirmPostEdit` unless
-      // suppressed, so deleting the point needs to suppress its generation-time pair(s) too, or the
-      // mesh edge would keep reappearing on every confirm. Mirrors the pre-command-log
-      // `deletePostEditPoint`'s own suppression logic. An elevator's suppression covers its *entire*
-      // generation-time connected component (BFS over `context.edges`' own `elevator` edges), same
-      // as a component can span floors that never name this point's own node directly.
-      let suppressedVerticalPassagePairs = state.suppressedVerticalPassagePairs;
-      for (const e of context.edges) {
-        if (e.kind !== "vertical_passage") continue;
-        if (!pointNodeIds.has(e.from) && !pointNodeIds.has(e.to)) continue;
-        const pairKey = suppressionPairKey(nodeEndpoint(e.from), nodeEndpoint(e.to));
-        if (!suppressedVerticalPassagePairs.has(pairKey)) {
-          suppressedVerticalPassagePairs = new Set(suppressedVerticalPassagePairs).add(pairKey);
-        }
-      }
-      const elevatorComponentIds = elevatorComponent(context.edges, pointNodeIds);
-      let suppressedElevatorPairs = state.suppressedElevatorPairs;
-      for (const e of context.edges) {
-        if (e.kind !== "elevator") continue;
-        if (!elevatorComponentIds.has(e.from) && !elevatorComponentIds.has(e.to)) continue;
-        const pairKey = suppressionPairKey(nodeEndpoint(e.from), nodeEndpoint(e.to));
-        if (!suppressedElevatorPairs.has(pairKey)) {
-          suppressedElevatorPairs = new Set(suppressedElevatorPairs).add(pairKey);
-        }
-      }
-
-      return ok({
-        ...state, meta: nextMeta, teleports, verticalPassages, elevators,
-        suppressedVerticalPassagePairs, suppressedElevatorPairs,
-      });
     }
   }
 }
@@ -322,8 +321,11 @@ export function replayPostEditCommandsFailClosed(
 }
 
 /** Stable key identifying which logical entity a command belongs to (plan section 9) — teleport/
- * vertical passage/elevator/split-slot/edge/meta each get their own lifeline; `deletePoint` gets
- * its own separate lifeline (`deletePoint:...`) so a point reset always cancels a prior delete. */
+ * vertical passage/elevator/split-slot/edge/meta each get their own lifeline. The Delete tool
+ * (GitHub issue #386) emits ordinary per-entity commands (`setMeta`/`removeTeleport`/etc. plus
+ * `suppressGenerationPair`, GitHub issue #545) rather than a single bundled command, so each
+ * removal is undone by a point reset through its own existing lifeline — no dedicated
+ * "deletePoint" lifeline is needed. */
 export function lifelineKeyOf(command: PostEditCommand): string {
   switch (command.kind) {
     case "addTeleport": case "setTeleportDirection": case "moveTeleportEndpoint": case "removeTeleport":
@@ -332,16 +334,21 @@ export function lifelineKeyOf(command: PostEditCommand): string {
       return `vertical:${command.id}`;
     case "addElevator": case "updateElevatorFloors": case "removeElevator":
       return `elevator:${command.id}`;
-    case "addSplitNode": case "removeSplitNode":
+    case "addSplitNode": case "removeSplitNode": case "updateSplitNodeFaces":
       return `slot:${pointKeyOf(command.point, command.level)}:${command.slotId}`;
     case "rotateSplitPoint": case "applySplitBlueprint":
       return `point:${pointKeyOf(command.point, command.level)}`;
     case "setEdge":
       return `edge:${edgeKey(command.from, command.to)}`;
+    case "setEdgePair":
+      // Both directions of the same face pair always touch the same point(s) by construction (see
+      // `setEdgePair`'s own doc comment) — one shared lifeline for the pair is enough, keyed the
+      // same way an unordered pair would be, so it never collides with a plain `setEdge` lifeline
+      // for either direction alone (that key ends with a single `-`-joined `from-to`, this one has
+      // two dashes and a `|`).
+      return `edgePair:${[edgeKey(command.a, command.b), edgeKey(command.b, command.a)].sort().join("|")}`;
     case "setMeta":
       return `meta:${command.slot}`;
-    case "deletePoint":
-      return `deletePoint:${pointKeyOf(command.point, command.level)}`;
     case "suppressGenerationPair":
       return `suppress:${command.entity}:${suppressionPairKey(command.a, command.b)}`;
   }
@@ -364,6 +371,8 @@ function commandTouchesPoint(
   switch (command.kind) {
     case "setEdge":
       return epTouches(command.from) || epTouches(command.to);
+    case "setEdgePair":
+      return epTouches(command.a) || epTouches(command.b);
     case "addTeleport":
       return epTouches(command.from) || epTouches(command.to);
     case "setTeleportDirection": case "removeTeleport": {
@@ -376,7 +385,7 @@ function commandTouchesPoint(
     }
     case "setMeta":
       return command.endpoint !== null && epTouches(command.endpoint);
-    case "addSplitNode": case "removeSplitNode": case "rotateSplitPoint": case "applySplitBlueprint": case "deletePoint":
+    case "addSplitNode": case "removeSplitNode": case "rotateSplitPoint": case "applySplitBlueprint": case "updateSplitNodeFaces":
       return command.point[0] === point[0] && command.point[1] === point[1] && (command.level ?? 0) === (level ?? 0);
     case "addVerticalPassage":
       return epTouches(command.from) || epTouches(command.to);
@@ -389,13 +398,35 @@ function commandTouchesPoint(
       return (p !== undefined && (epTouches(p.from) || epTouches(p.to))) || epTouches(command.endpoint);
     }
     case "addElevator":
-      return command.floors.some(epTouches);
-    case "updateElevatorFloors": case "removeElevator": {
+      return command.floors.some(epTouches) || (command.suppressPairs ?? []).some(([a, b]) => epTouches(a) || epTouches(b));
+    case "updateElevatorFloors": {
+      const e = before.elevators.find((x) => x.id === command.id);
+      return (e !== undefined && e.floors.some(epTouches)) || (command.suppressPairs ?? []).some(([a, b]) => epTouches(a) || epTouches(b));
+    }
+    case "removeElevator": {
       const e = before.elevators.find((x) => x.id === command.id);
       return e !== undefined && e.floors.some(epTouches);
     }
-    case "suppressGenerationPair":
-      return epTouches(command.a) || epTouches(command.b);
+    case "suppressGenerationPair": {
+      if (epTouches(command.a) || epTouches(command.b)) return true;
+      // An elevator's generation-time mesh can span more than two floors (GitHub issue #341
+      // follow-up) — a pair between two OTHER stops of the same physically-connected mesh (neither
+      // naming a node at `point`/`level` directly) must still count as touching, or resetting the
+      // point the Delete tool was clicked on wouldn't un-suppress the whole mesh it suppressed
+      // (GitHub issue #545 — the Delete tool now emits one `suppressGenerationPair` command per
+      // mesh pair instead of one bundled `deletePoint` command, so the *lifeline* check has to
+      // restore the old command's component-wide reach itself). Not applicable to
+      // `verticalPassage` — that entity is always exactly two nodes, so its one pair already IS the
+      // whole entity.
+      if (command.entity !== "elevator") return false;
+      const pointNodeIds = context.nodes
+        .filter((n) => n.x === point[0] && n.y === point[1] && (n.level ?? 0) === (level ?? 0))
+        .map((n) => n.id);
+      if (pointNodeIds.length === 0) return false;
+      const component = elevatorComponent(context.edges, pointNodeIds);
+      return (command.a.kind === "node" && component.has(command.a.id))
+        || (command.b.kind === "node" && component.has(command.b.id));
+    }
     default:
       return false;
   }
@@ -407,14 +438,16 @@ function commandTouchesPoint(
 function endpointsReferencedBy(command: PostEditCommand): PostEditEndpoint[] {
   switch (command.kind) {
     case "setEdge": return [command.from, command.to];
+    case "setEdgePair": return [command.a, command.b];
     case "addTeleport": return [command.from, command.to];
     case "moveTeleportEndpoint": return [command.endpoint];
     case "setMeta": return command.endpoint !== null ? [command.endpoint] : [];
     case "addVerticalPassage": return [command.from, command.to];
     case "moveVerticalPassageEndpoint": return [command.endpoint];
-    case "addElevator": return command.floors;
-    case "updateElevatorFloors": return command.floors;
+    case "addElevator": return [...command.floors, ...(command.suppressPairs ?? []).flat()];
+    case "updateElevatorFloors": return [...command.floors, ...(command.suppressPairs ?? []).flat()];
     case "rotateSplitPoint": return command.moves.flatMap((m) => [m.from, m.to]);
+    case "updateSplitNodeFaces": return command.faces.map((f) => f.neighbor);
     case "suppressGenerationPair": return [command.a, command.b];
     default: return [];
   }

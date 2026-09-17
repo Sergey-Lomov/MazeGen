@@ -18,7 +18,7 @@ import { postEditTeleportsToDto, postEditVerticalToDto, pruneRemovedSplitNodes }
 import { buildHoverEdgeHighlight } from "./selectors/presetSelectors";
 import { canvas } from "./colorTokens";
 import type { NodeDto } from "../wasm/types";
-import type { PostEditEdge, PostEditTeleportEntry } from "../store/mazeStore";
+import type { PostEditEdge, PostEditMeta, PostEditTeleportEntry, PostEditVerticalPassageEntry } from "../store/mazeStore";
 import { BaseFieldRenderer } from "./BaseFieldRenderer";
 import { type PostEditEndpoint, resolveEndpoint, buildSplitNodeResolver, floorScopedEndpoint, nodeEndpoint } from "./postEditEndpoint";
 import { suppressionPairKey } from "./postEditReplay";
@@ -174,6 +174,8 @@ export class PostEditRenderer extends BaseFieldRenderer {
     if (
       state.postEditDraftEdges !== prev.postEditDraftEdges ||
       state.postEditDraftTeleports !== prev.postEditDraftTeleports ||
+      state.postEditDraftVerticalPassages !== prev.postEditDraftVerticalPassages ||
+      state.postEditDragOverride !== prev.postEditDragOverride ||
       state.nodes !== prev.nodes ||
       state.edges !== prev.edges ||
       state.postEditDraftMeta !== prev.postEditDraftMeta ||
@@ -208,8 +210,51 @@ export class PostEditRenderer extends BaseFieldRenderer {
    * `buildSplitPassages`, etc.) is still level-agnostic and expects single-floor-shaped data — a
    * same-(x,y) node/split point on another floor would otherwise be drawn on top of the active
    * floor's own. */
+  /** Substitutes `state.postEditDragOverride`'s live drag target into whichever one of
+   *  `postEditDraftMeta`/`postEditDraftTeleports`/`postEditDraftVerticalPassages` it names (GitHub
+   *  issue #545) — the other two pass through unchanged. Purely a rendering-time overlay: the
+   *  underlying store fields (and the command log behind them) are untouched, so every other
+   *  reader of `state` still sees the pre-drag values. Called once per `redrawAll`, its result fed
+   *  wherever those three fields would otherwise be read from `state` directly. */
+  private dragOverrideFields(state: MazeState): {
+    postEditDraftMeta: PostEditMeta | null;
+    postEditDraftTeleports: PostEditTeleportEntry[];
+    postEditDraftVerticalPassages: PostEditVerticalPassageEntry[];
+  } {
+    const override = state.postEditDragOverride;
+    if (override === null) {
+      return {
+        postEditDraftMeta: state.postEditDraftMeta,
+        postEditDraftTeleports: state.postEditDraftTeleports,
+        postEditDraftVerticalPassages: state.postEditDraftVerticalPassages,
+      };
+    }
+    if (override.kind === "marker") {
+      return {
+        postEditDraftMeta: { ...(state.postEditDraftMeta ?? { start: null, finish: null }), [override.marker]: override.endpoint },
+        postEditDraftTeleports: state.postEditDraftTeleports,
+        postEditDraftVerticalPassages: state.postEditDraftVerticalPassages,
+      };
+    }
+    if (override.kind === "teleportEndpoint") {
+      return {
+        postEditDraftMeta: state.postEditDraftMeta,
+        postEditDraftTeleports: state.postEditDraftTeleports.map((t) =>
+          t.id === override.id ? { ...t, [override.end]: override.endpoint } : t),
+        postEditDraftVerticalPassages: state.postEditDraftVerticalPassages,
+      };
+    }
+    return {
+      postEditDraftMeta: state.postEditDraftMeta,
+      postEditDraftTeleports: state.postEditDraftTeleports,
+      postEditDraftVerticalPassages: state.postEditDraftVerticalPassages.map((p) =>
+        p.id === override.id ? { ...p, [override.end]: override.endpoint } : p),
+    };
+  }
+
   private floorScoped(state: MazeState) {
     const level = activeFloorLevel(state);
+    const { postEditDraftMeta: overrideMeta, postEditDraftTeleports: overrideTeleports } = this.dragOverrideFields(state);
     const { nodes: floorNodes, edges, start, finish } = selectFloorScopedMaze(state.nodes, state.edges, state.floors, state.activeFloorId, state.start, state.finish);
     const postEditDraftSplitPoints = recordOnLevel(state.postEditDraftSplitPoints, level);
     const nodes = pruneRemovedSplitNodes(floorNodes, postEditDraftSplitPoints);
@@ -237,7 +282,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // made a cross-floor teleport vanish from every floor's own draft entirely. Only the on-level
     // endpoint is stripped of its `level` (see above) — an off-floor endpoint is left untouched, so
     // it still fails the scoped resolver and is silently dropped, same as before this fix.
-    const postEditDraftTeleports: PostEditTeleportEntry[] = state.postEditDraftTeleports
+    const postEditDraftTeleports: PostEditTeleportEntry[] = overrideTeleports
       .map((t) => {
         const from = onLevel(t.from);
         const to = onLevel(t.to);
@@ -245,9 +290,9 @@ export class PostEditRenderer extends BaseFieldRenderer {
       })
       .filter((t): t is PostEditTeleportEntry => t !== null);
     const postEditActiveSplitNode = recordOnLevel(state.postEditActiveSplitNode, level);
-    const postEditDraftMeta = state.postEditDraftMeta === null ? null : {
-      start: state.postEditDraftMeta.start !== null ? onLevel(state.postEditDraftMeta.start) ?? null : null,
-      finish: state.postEditDraftMeta.finish !== null ? onLevel(state.postEditDraftMeta.finish) ?? null : null,
+    const postEditDraftMeta = overrideMeta === null ? null : {
+      start: overrideMeta.start !== null ? onLevel(overrideMeta.start) ?? null : null,
+      finish: overrideMeta.finish !== null ? onLevel(overrideMeta.finish) ?? null : null,
     };
     return { nodes, edges, start, finish, postEditDraftEdges, postEditDraftTeleports, postEditDraftSplitPoints, postEditActiveSplitNode, postEditDraftMeta };
   }
@@ -303,6 +348,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     this.grid.render({ viewport: this.viewport }, cfg);
 
     const { nodes, edges, postEditDraftEdges, postEditDraftTeleports, postEditDraftMeta, postEditDraftSplitPoints, postEditActiveSplitNode } = this.floorScoped(state);
+    const { postEditDraftVerticalPassages: overrideVerticalPassages } = this.dragOverrideFields(state);
 
     // Resolves `split` endpoints from the latest confirmed node snapshot — a draft reference to
     // a split node not yet confirmed simply doesn't resolve, and is dropped from what's drawn
@@ -398,7 +444,7 @@ export class PostEditRenderer extends BaseFieldRenderer {
     // `selectVerticalPassagePairSet`'s own doc comment gives (a floor-scoped edge list is missing
     // the reverse-direction edge of a bidirectional passage, whose own `from` lives on the other
     // floor).
-    const draftVerticalEdges = postEditVerticalToDto(state.postEditDraftVerticalPassages, state.postEditDraftElevators, resolveSplit);
+    const draftVerticalEdges = postEditVerticalToDto(overrideVerticalPassages, state.postEditDraftElevators, resolveSplit);
     // Drop a generation-time `elevator`/`vertical_passage` edge once the user has edited that
     // connection (see `postEditSuppressedElevatorPairs`'s/`postEditSuppressedVerticalPassagePairs`'s
     // own doc comments) — draws the same "draft is now authoritative" state confirmPostEdit will

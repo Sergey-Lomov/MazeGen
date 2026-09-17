@@ -2,7 +2,7 @@ import type { NodeLockKind } from "../../wasm/types";
 import type { PresetConnectionEntry, PresetTeleportEntry, PresetVerticalPassageEntry, PresetElevatorEntry } from "../../pixi/fieldEditUtils";
 import type { PostEditEndpoint } from "../../pixi/postEditEndpoint";
 import type { PresetEndpoint } from "../../pixi/presetEndpoint";
-import type { PostEditCommand, ResolvedRotateMove, ResolvedSplitSlot } from "../postEditCommandTypes";
+import type { PostEditCommand, ResolvedRotateMove, ResolvedSplitEdgeFace, ResolvedSplitFace, ResolvedSplitSlot } from "../postEditCommandTypes";
 import { MAX_NESTED_STRATEGY_DEPTH } from "../storeTypes";
 import type {
   ProjectFilePostEdit,
@@ -126,6 +126,22 @@ function validateOptionalLevel(obj: Record<string, unknown>, path: string): numb
   return level;
 }
 
+/** `addElevator`/`updateElevatorFloors`'s optional `suppressPairs` (GitHub issue #545) — an array
+ * of `[PostEditEndpoint, PostEditEndpoint]` pairs, each validated the same way `suppressGenerationPair`'s
+ * own `a`/`b` are. `undefined` passes through (a fresh elevator with no generation-time mesh to
+ * suppress never carries this field). */
+function validateOptionalSuppressPairs(v: unknown, path: string): [PostEditEndpoint, PostEditEndpoint][] | undefined {
+  if (v === undefined) return undefined;
+  return assertArray(v, path).map((pair, i) => {
+    const pairArr = assertArray(pair, `${path}[${i}]`);
+    if (pairArr.length !== 2) throw new Error(`Expected a 2-element pair at ${path}[${i}]`);
+    return [
+      validatePostEditEndpoint(pairArr[0], `${path}[${i}][0]`),
+      validatePostEditEndpoint(pairArr[1], `${path}[${i}][1]`),
+    ];
+  });
+}
+
 function validatePostEditEdgeKind(v: unknown, path: string): "wall" | "basic" | "one_way_forward" | "one_way_backward" {
   const kind = assertString(v, path);
   if (kind !== "wall" && kind !== "basic" && kind !== "one_way_forward" && kind !== "one_way_backward")
@@ -133,16 +149,47 @@ function validatePostEditEdgeKind(v: unknown, path: string): "wall" | "basic" | 
   return kind;
 }
 
-function validateResolvedSplitSlot(v: unknown, path: string): ResolvedSplitSlot {
-  const obj = assertObject(v, path);
-  const faces = assertArray(obj.faces, `${path}.faces`).map((f, i) => {
-    const faceObj = assertObject(f, `${path}.faces[${i}]`);
+function validateResolvedSplitFaces(v: unknown, path: string): ResolvedSplitFace[] {
+  return assertArray(v, path).map((f, i) => {
+    const faceObj = assertObject(f, `${path}[${i}]`);
     return {
-      faceIndex: assertNumber(faceObj.faceIndex, `${path}.faces[${i}].faceIndex`),
-      neighbor: validatePostEditEndpoint(faceObj.neighbor, `${path}.faces[${i}].neighbor`),
+      faceIndex: assertNumber(faceObj.faceIndex, `${path}[${i}].faceIndex`),
+      neighbor: validatePostEditEndpoint(faceObj.neighbor, `${path}[${i}].neighbor`),
     };
   });
-  return { slotId: assertNumber(obj.slotId, `${path}.slotId`), faces };
+}
+
+function validateResolvedSplitSlot(v: unknown, path: string): ResolvedSplitSlot {
+  const obj = assertObject(v, path);
+  return {
+    slotId: assertNumber(obj.slotId, `${path}.slotId`),
+    faces: validateResolvedSplitFaces(obj.faces, `${path}.faces`),
+  };
+}
+
+function validateResolvedSplitEdgeFaces(v: unknown, path: string): ResolvedSplitEdgeFace[] {
+  return assertArray(v, path).map((f, i) => {
+    const faceObj = assertObject(f, `${path}[${i}]`);
+    return {
+      neighbor: validatePostEditEndpoint(faceObj.neighbor, `${path}[${i}].neighbor`),
+      toNeighbor: validatePostEditEdgeKind(faceObj.toNeighbor, `${path}[${i}].toNeighbor`),
+      fromNeighbor: validatePostEditEdgeKind(faceObj.fromNeighbor, `${path}[${i}].fromNeighbor`),
+    };
+  });
+}
+
+/** `applySplitBlueprint`'s optional `originalFaces`/`blueprintTitleKey` (GitHub issue #545) — the
+ * pre-existing node's own blueprint faces and the applied blueprint's title, folded into the same
+ * command instead of trailing `setEdge` commands / left unresolved. Both are absent for a blueprint
+ * applied to a point with no pre-existing node, or with no recognizable shape, respectively. */
+function validateOptionalResolvedSplitFaces(obj: Record<string, unknown>, path: string): ResolvedSplitFace[] | undefined {
+  if (obj.originalFaces === undefined) return undefined;
+  return validateResolvedSplitFaces(obj.originalFaces, `${path}.originalFaces`);
+}
+
+function validateOptionalBlueprintTitleKey(obj: Record<string, unknown>, path: string): string | undefined {
+  if (obj.blueprintTitleKey === undefined) return undefined;
+  return assertString(obj.blueprintTitleKey, `${path}.blueprintTitleKey`);
 }
 
 function validateResolvedRotateMove(v: unknown, path: string): ResolvedRotateMove {
@@ -168,6 +215,11 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
       return {
         kind, from: validatePostEditEndpoint(obj.from, `${path}.from`), to: validatePostEditEndpoint(obj.to, `${path}.to`),
         edgeKind: validatePostEditEdgeKind(obj.edgeKind, `${path}.edgeKind`),
+      };
+    case "setEdgePair":
+      return {
+        kind, a: validatePostEditEndpoint(obj.a, `${path}.a`), b: validatePostEditEndpoint(obj.b, `${path}.b`),
+        aToB: validatePostEditEdgeKind(obj.aToB, `${path}.aToB`), bToA: validatePostEditEdgeKind(obj.bToA, `${path}.bToA`),
       };
     case "addTeleport":
       return {
@@ -199,10 +251,18 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
         kind, point: validateCoordPair(obj.point, `${path}.point`), level: validateOptionalLevel(obj, path),
         moves: assertArray(obj.moves, `${path}.moves`).map((m, i) => validateResolvedRotateMove(m, `${path}.moves[${i}]`)),
       };
+    case "updateSplitNodeFaces":
+      return {
+        kind, point: validateCoordPair(obj.point, `${path}.point`), level: validateOptionalLevel(obj, path),
+        slotId: assertNumber(obj.slotId, `${path}.slotId`),
+        faces: validateResolvedSplitEdgeFaces(obj.faces, `${path}.faces`),
+      };
     case "applySplitBlueprint":
       return {
         kind, point: validateCoordPair(obj.point, `${path}.point`), level: validateOptionalLevel(obj, path),
         resolvedSlots: assertArray(obj.resolvedSlots, `${path}.resolvedSlots`).map((s, i) => validateResolvedSplitSlot(s, `${path}.resolvedSlots[${i}]`)),
+        originalFaces: validateOptionalResolvedSplitFaces(obj, path),
+        blueprintTitleKey: validateOptionalBlueprintTitleKey(obj, path),
       };
     case "addVerticalPassage":
       return {
@@ -224,16 +284,16 @@ export function validatePostEditCommand(v: unknown, path: string): PostEditComma
       return {
         kind, id: assertNumber(obj.id, `${path}.id`),
         floors: assertArray(obj.floors, `${path}.floors`).map((f, i) => validatePostEditEndpoint(f, `${path}.floors[${i}]`)),
+        suppressPairs: validateOptionalSuppressPairs(obj.suppressPairs, `${path}.suppressPairs`),
       };
     case "updateElevatorFloors":
       return {
         kind, id: assertNumber(obj.id, `${path}.id`),
         floors: assertArray(obj.floors, `${path}.floors`).map((f, i) => validatePostEditEndpoint(f, `${path}.floors[${i}]`)),
+        suppressPairs: validateOptionalSuppressPairs(obj.suppressPairs, `${path}.suppressPairs`),
       };
     case "removeElevator":
       return { kind, id: assertNumber(obj.id, `${path}.id`) };
-    case "deletePoint":
-      return { kind, point: validateCoordPair(obj.point, `${path}.point`), level: validateOptionalLevel(obj, path) };
     case "suppressGenerationPair":
       if (obj.entity !== "verticalPassage" && obj.entity !== "elevator") throw new Error(`Invalid entity at ${path}.entity`);
       return {

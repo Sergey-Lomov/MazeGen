@@ -17,6 +17,7 @@
  *  Filtered by tile degree (`topology[0].length`), same convention as `blueprintsForDegree`. */
 
 import type { SplitFaceRequirement } from "../wasm/types";
+import * as m from "~/paraglide/messages";
 
 const PASSAGE: SplitFaceRequirement = { kind: "passage" };
 const WALL: SplitFaceRequirement = { kind: "wall" };
@@ -124,4 +125,22 @@ export function titleKeyForTopology(topology: SplitFaceRequirement[][]): string 
   const degree = topology[0]?.length ?? 0;
   const entries = TITLES_BY_DEGREE[degree] ?? [];
   return entries.find((e) => topologyEquals(e.topology, topology))?.titleKey ?? null;
+}
+
+/** Every `titleKey` this registry (and `splitBlueprints.ts`'s own hand-assigned `titleKey` field,
+ *  GitHub issue #545) can produce, mapped to its resolved message — a plain `Record` lookup rather
+ *  than dynamic `m[key]()` indexing, since paraglide's generated `m` object isn't meant to be
+ *  indexed by an arbitrary runtime string. */
+const TITLE_MESSAGES: Record<string, () => string> = {
+  "split_pattern_title.split_fork": () => m["split_pattern_title.split_fork"](),
+  "split_pattern_title.bridge": () => m["split_pattern_title.bridge"](),
+  "split_pattern_title.diagonal_divider": () => m["split_pattern_title.diagonal_divider"](),
+  "split_pattern_title.double_bridge": () => m["split_pattern_title.double_bridge"](),
+  "split_pattern_title.triple_corridor": () => m["split_pattern_title.triple_corridor"](),
+};
+
+/** Resolves a `titleKey` (from `titleKeyForTopology` or a `SplitNodeBlueprint`'s own field) to its
+ *  message text. */
+export function messageForTitleKey(key: string): string {
+  return TITLE_MESSAGES[key]();
 }

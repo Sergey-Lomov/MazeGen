@@ -13,6 +13,7 @@ describe("blueprintsForDegree", () => {
       id: 6,
       degree: 6,
       nodeFaces: [[0, 1, 2], [3, 4, 5]],
+      titleKey: "split_pattern_title.diagonal_divider",
     });
   });
 

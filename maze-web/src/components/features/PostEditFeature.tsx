@@ -11,6 +11,7 @@ import { Switch } from "../Switch";
 import { IssuesBlock } from "../IssuesBlock";
 import { Stack, Inline } from "../Layout";
 import { ManageSplitNodesDialog } from "./ManageSplitNodesDialog";
+import { PostEditChangesPanel } from "./PostEditChangesPanel";
 import { PostEditElevatorFloorDialog } from "../dialogs/PostEditElevatorFloorDialog";
 import { PostEditVerticalDirectionDialog } from "../dialogs/PostEditVerticalDirectionDialog";
 import { PostEditSplitTargetDialog } from "../dialogs/PostEditSplitTargetDialog";
@@ -103,6 +104,8 @@ export function PostEditFeature() {
   const cancelPostEditElevatorPlacement = useMazeStore((s) => s.cancelPostEditElevatorPlacement);
   const postEditSplitTargetPrompt = useMazeStore((s) => s.postEditSplitTargetPrompt);
   const cancelPostEditSplitTarget = useMazeStore((s) => s.cancelPostEditSplitTarget);
+  const postEditChangesOpen = useMazeStore((s) => s.postEditChangesOpen);
+  const setPostEditChangesOpen = useMazeStore((s) => s.setPostEditChangesOpen);
 
   // The "Manage split nodes" dialog closes when leaving the post-edit card — it has no meaning
   // once the user is looking at a different feature (see GitHub issue #221's plan, §6.2).
@@ -119,6 +122,14 @@ export function PostEditFeature() {
       cancelPostEditSplitTarget();
     }
   }, [openCard, postEditSplitTargetPrompt, cancelPostEditSplitTarget]);
+
+  // The "Changes" panel closes when leaving the post-edit card, same as the other post-edit
+  // panels above — it has no meaning once the user is looking at a different feature.
+  useEffect(() => {
+    if (openCard !== "post_edit" && postEditChangesOpen) {
+      setPostEditChangesOpen(false);
+    }
+  }, [openCard, postEditChangesOpen, setPostEditChangesOpen]);
 
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -161,6 +172,14 @@ export function PostEditFeature() {
       <div style={styles.nestedContent}>
         <Stack gap="itemGap">
           <Button
+            variant={postEditChangesOpen ? "toggle-selected" : "toggle"}
+            layoutStyle={{ width: "100%" }}
+            onClick={() => setPostEditChangesOpen(!postEditChangesOpen)}
+          >
+            {m["post_edit.changes_tool"]()}
+          </Button>
+
+          <Button
             variant="destructive"
             layoutStyle={{ width: "100%" }}
             onClick={() => setConfirmReset(true)}
@@ -191,6 +210,10 @@ export function PostEditFeature() {
           onConfirm={() => { resetPostEdit(); setConfirmReset(false); }}
           onCancel={() => setConfirmReset(false)}
         />
+      )}
+
+      {postEditChangesOpen && (
+        <PostEditChangesPanel onClose={() => setPostEditChangesOpen(false)} />
       )}
 
       {postEditFocusedPoint && (

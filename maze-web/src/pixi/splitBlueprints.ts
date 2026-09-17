@@ -21,7 +21,8 @@ import type { SplitPattern } from "../wasm/types";
 
 export interface SplitNodeBlueprint {
   /** Unique within its own degree's list — used as a stable React `key`, nothing else (no label
-   *  is shown anywhere; the preview thumbnail itself is the only UI for picking a blueprint). */
+   *  is shown anywhere in the picker UI; the preview thumbnail itself is the only UI for picking
+   *  a blueprint). */
   id: number;
   /** Tile degree this blueprint applies to (`offsets.length`). */
   degree: number;
@@ -29,25 +30,35 @@ export interface SplitNodeBlueprint {
    *  gets a `passage` on. Every other face defaults to `wall` (post-edit) / stays undecided
    *  (preset, see `applySplitBlueprint`'s own handling). */
   nodeFaces: number[][];
+  /** i18n message key (paraglide, `split_pattern_title.*` — same registry `splitPatternTitles.ts`
+   *  uses for a generation-time pattern's recognizable shape) for the "Changes" panel's
+   *  `applySplitBlueprint` label (GitHub issue #545). Deliberately independent of
+   *  `titleKeyForTopology`'s exact structural match against core's rotation/mirror-canonicalized
+   *  `SplitGroupDto.topology` — a blueprint here is authored raw, in whatever face order/rotation
+   *  its own `nodeFaces` happens to use, so it can't reuse that matcher; set by hand instead,
+   *  purely by eyeballing the shape against the registry's own entries. `undefined` for a
+   *  blueprint with no recognizable/named counterpart — the panel falls back to a generic
+   *  "split-tile" label. */
+  titleKey?: string;
 }
 
 const TRIANGLE_BLUEPRINTS: SplitNodeBlueprint[] = [
-  { id: 0, degree: 3, nodeFaces: [[0, 1], [0, 2]] },
+  { id: 0, degree: 3, nodeFaces: [[0, 1], [0, 2]], titleKey: "split_pattern_title.split_fork" },
 ];
 
 const SQUARE_BLUEPRINTS: SplitNodeBlueprint[] = [
-  { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]] },
-  { id: 1, degree: 4, nodeFaces: [[0, 1], [2, 3]] },
+  { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]], titleKey: "split_pattern_title.bridge" },
+  { id: 1, degree: 4, nodeFaces: [[0, 1], [2, 3]], titleKey: "split_pattern_title.diagonal_divider" },
 ];
 
 const HEX_BLUEPRINTS: SplitNodeBlueprint[] = [
-  { id: 0, degree: 6, nodeFaces: [[0, 3], [1, 4]] },
+  { id: 0, degree: 6, nodeFaces: [[0, 3], [1, 4]], titleKey: "split_pattern_title.bridge" },
   { id: 1, degree: 6, nodeFaces: [[1, 2], [4, 5]] },
   { id: 2, degree: 6, nodeFaces: [[0, 2], [4, 5]] },
   { id: 3, degree: 6, nodeFaces: [[0, 2], [3, 5]] },
-  { id: 4, degree: 6, nodeFaces: [[0, 3], [1, 4], [2, 5]] },
+  { id: 4, degree: 6, nodeFaces: [[0, 3], [1, 4], [2, 5]], titleKey: "split_pattern_title.double_bridge" },
   { id: 5, degree: 6, nodeFaces: [[0, 3], [1, 2], [4, 5]] },
-  { id: 6, degree: 6, nodeFaces: [[0, 1, 2], [3, 4, 5]] },
+  { id: 6, degree: 6, nodeFaces: [[0, 1, 2], [3, 4, 5]], titleKey: "split_pattern_title.diagonal_divider" },
 ];
 
 const BLUEPRINTS_BY_DEGREE: Record<number, SplitNodeBlueprint[]> = {

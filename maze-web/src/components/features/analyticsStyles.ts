@@ -1,18 +1,8 @@
 import type React from "react";
 import { ui, typography, muted, disabled, spacing, indent, dialogSpacing } from "../../styles/theme";
-import * as m from "~/paraglide/messages";
+import { messageForTitleKey } from "../../pixi/splitPatternTitles";
 
-const SPLIT_PATTERN_TITLES: Record<string, () => string> = {
-  "split_pattern_title.split_fork": () => m["split_pattern_title.split_fork"](),
-  "split_pattern_title.bridge": () => m["split_pattern_title.bridge"](),
-  "split_pattern_title.diagonal_divider": () => m["split_pattern_title.diagonal_divider"](),
-  "split_pattern_title.double_bridge": () => m["split_pattern_title.double_bridge"](),
-  "split_pattern_title.triple_corridor": () => m["split_pattern_title.triple_corridor"](),
-};
-
-export function messageFor(key: string): string {
-  return SPLIT_PATTERN_TITLES[key]();
-}
+export const messageFor = messageForTitleKey;
 
 export const styles: Record<string, React.CSSProperties> = {
   root: { display: "flex", flexDirection: "column", gap: spacing.itemGap },

@@ -125,6 +125,26 @@ describe("mazeStore post-edit actions", () => {
     expect(useMazeStore.getState().postEditDraftEdges?.[key01]?.kind).toBe("one_way_forward");
   });
 
+  it("applyPostEditTool records wall/passage/one_way edge-tool clicks as a single setEdgePair command, not two setEdge commands (GitHub issue #545)", () => {
+    seedPostEdit({ edges: [] }, { postEditTool: "wall" });
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands).toEqual([
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: "wall", bToA: "wall" },
+    ]);
+
+    seedPostEdit({ edges: [] }, { postEditTool: "passage" });
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands).toEqual([
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: "basic", bToA: "basic" },
+    ]);
+
+    seedPostEdit({ edges: [] }, { postEditTool: "one_way" });
+    useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
+    expect(useMazeStore.getState().postEditCommands).toEqual([
+      { kind: "setEdgePair", a: n(0), b: n(1), aToB: "one_way_forward", bToA: "wall" },
+    ]);
+  });
+
   it("applyPostEditTool is no-op when there is no draft yet", () => {
     useMazeStore.setState({ postEditBaseline: null, postEditDraftEdges: null, postEditDirty: false });
     useMazeStore.getState().applyPostEditTool(key01, n(0), n(1));
@@ -673,10 +693,12 @@ describe("mazeStore post-edit actions", () => {
 
   it("resetPostEditPoint's elevator un-suppress covers the full mesh, not just pairs naming the point's own node (GitHub issue #341 follow-up)", () => {
     // A three-floor generation-time elevator mesh at (0,0) which the user then deleted from floor 2
-    // (activeFloorId "f1", level 1, node 11) — that delete suppressed the *entire* component
-    // (BFS over `_generatedEdges`, see `deletePoint`'s own reducer case), including the 10-12 pair
-    // that never names node 11. Resetting that same point must prune the whole delete command back
-    // out, un-suppressing all three pairs — not just the two naming node 11.
+    // (activeFloorId "f1", level 1, node 11) — the Delete tool suppresses the *entire* component
+    // (BFS over `_generatedEdges`, see `deletePostEditPoint`'s own action), including the 10-12 pair
+    // that never names node 11, as three separate `suppressGenerationPair` commands (GitHub issue
+    // #545 — no bundled `deletePoint` command any more). Resetting that same point must prune all
+    // three commands back out via their own lifelines, un-suppressing all three pairs — not just
+    // the two naming node 11.
     seedPostEdit({
       nodes: [
         { id: 10, x: 0, y: 0, i: 0, level: 0 },
@@ -689,7 +711,11 @@ describe("mazeStore post-edit actions", () => {
         { from: 11, to: 12, kind: "elevator" }, { from: 12, to: 11, kind: "elevator" },
       ],
       start: null, finish: null,
-      commands: [{ kind: "deletePoint", point: [0, 0], level: 1 }],
+      commands: [
+        { kind: "suppressGenerationPair", entity: "elevator", a: n(10), b: n(11) },
+        { kind: "suppressGenerationPair", entity: "elevator", a: n(10), b: n(12) },
+        { kind: "suppressGenerationPair", entity: "elevator", a: n(11), b: n(12) },
+      ],
     }, {
       floors: [{ id: "f0", title: "Floor 1" }, { id: "f1", title: "Floor 2" }, { id: "f2", title: "Floor 3" }],
       activeFloorId: "f1",
@@ -1076,6 +1102,13 @@ describe("mazeStore post-edit vertical-passage/elevator actions (GitHub issue #3
     );
     expect(s.postEditDraftElevators).toHaveLength(1);
     expect(s.postEditElevatorPending).toBeNull();
+    // GitHub issue #545: the suppression pairs are folded into the SAME `addElevator` command as
+    // its own `suppressPairs`, not appended as separate `suppressGenerationPair` commands — one
+    // floor edit is one log entry.
+    expect(s.postEditCommands).toHaveLength(1);
+    expect(s.postEditCommands[0]).toMatchObject({ kind: "addElevator", suppressPairs: expect.arrayContaining([
+      [n(0), n(1)], [n(0), n(2)], [n(1), n(2)],
+    ]) });
   });
 
   it("confirmPostEditElevatorPlacement with fewer than 2 selected floors is a no-op", () => {
@@ -1324,7 +1357,7 @@ describe("mazeStore split-node actions", () => {
 });
 
 describe("mazeStore applySplitBlueprint", () => {
-  const square: SplitNodeBlueprint = { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]] };
+  const square: SplitNodeBlueprint = { id: 0, degree: 4, nodeFaces: [[0, 2], [1, 3]], titleKey: "split_pattern_title.bridge" };
 
   // `activeTessellationConfig` square field is centered on the origin (`ox = floor(width/2)`,
   // see `configAllCells`) - width 9 covers x,y in [-4, 4], comfortably wide enough for a point
@@ -1352,6 +1385,28 @@ describe("mazeStore applySplitBlueprint", () => {
     expect(s.postEditDraftEdges?.[edgeKey(slot0, n(3))]).toBeDefined();
     expect(s.postEditDraftEdges?.[edgeKey(slot0, n(4))]).toBeDefined();
     expect(s.postEditDirty).toBe(true);
+  });
+
+  it("records the original node's own faces on the same applySplitBlueprint command, not trailing setEdge commands (GitHub issue #545)", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 },
+        { id: 2, x: -1, y: 0, i: 0 }, { id: 3, x: 0, y: 1, i: 0 }, { id: 4, x: 0, y: -1, i: 0 },
+      ],
+      edges: [],
+      start: null, finish: null,
+    }, { activeTessellationConfig: wideField });
+    useMazeStore.getState().applySplitBlueprint([0, 0], square);
+    const s = useMazeStore.getState();
+    expect(s.postEditCommands).toHaveLength(1);
+    expect(s.postEditCommands[0]).toMatchObject({
+      kind: "applySplitBlueprint",
+      originalFaces: expect.arrayContaining([
+        { faceIndex: 0, neighbor: n(1) },
+        { faceIndex: 2, neighbor: n(2) },
+      ]),
+      blueprintTitleKey: "split_pattern_title.bridge",
+    });
   });
 
   it("replaces an existing split point entirely, dropping stale slots/edges", () => {
@@ -1441,5 +1496,72 @@ describe("mazeStore applySplitBlueprint", () => {
     // The original nodes on either side must not end up wrongly linked to each other.
     expect(s.postEditDraftEdges?.[edgeKey(n(0), n(1))]).toBeUndefined();
     expect(s.postEditDraftEdges?.[edgeKey(n(0), c2Slot0)]).toBeUndefined();
+  });
+});
+
+describe("mazeStore applyPostEditTool on a split node's own face (GitHub issue #545)", () => {
+  const wideField = { type: "square" as const, width: 9, height: 9 };
+
+  it("records a single updateSplitNodeFaces command, not a setEdgePair, when wiring a freshly-added slot's face", () => {
+    seedPostEdit({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "addSplitNode", point: [0, 0], slotId: 0 }],
+      nextSplitSlotId: { "0,0": 1 },
+    }, { activeTessellationConfig: wideField, postEditTool: "passage" });
+    const slot0 = splitEndpoint([0, 0], 0);
+    useMazeStore.getState().applyPostEditTool(edgeKey(slot0, n(1)), slot0, n(1));
+    const s = useMazeStore.getState();
+    expect(s.postEditCommands).toHaveLength(2);
+    expect(s.postEditCommands[1]).toEqual({
+      kind: "updateSplitNodeFaces", point: [0, 0], level: undefined, slotId: 0,
+      faces: [{ neighbor: n(1), toNeighbor: "basic", fromNeighbor: "basic" }],
+    });
+    expect(s.postEditDraftEdges?.[edgeKey(slot0, n(1))]).toEqual({ from: slot0, to: n(1), kind: "basic" });
+    expect(s.postEditDraftEdges?.[edgeKey(n(1), slot0)]).toEqual({ from: n(1), to: slot0, kind: "basic" });
+  });
+
+  it("accumulates a second face onto the same slot's next updateSplitNodeFaces command instead of dropping the first", () => {
+    seedPostEdit({
+      nodes: [
+        { id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }, { id: 2, x: -1, y: 0, i: 0 },
+      ],
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "addSplitNode", point: [0, 0], slotId: 0 }],
+      nextSplitSlotId: { "0,0": 1 },
+    }, { activeTessellationConfig: wideField, postEditTool: "passage" });
+    const slot0 = splitEndpoint([0, 0], 0);
+    useMazeStore.getState().applyPostEditTool(edgeKey(slot0, n(1)), slot0, n(1));
+    useMazeStore.getState().applyPostEditTool(edgeKey(slot0, n(2)), slot0, n(2));
+    const s = useMazeStore.getState();
+    expect(s.postEditCommands).toHaveLength(3);
+    expect(s.postEditCommands[2]).toMatchObject({
+      kind: "updateSplitNodeFaces", point: [0, 0], slotId: 0,
+      faces: expect.arrayContaining([
+        { neighbor: n(1), toNeighbor: "basic", fromNeighbor: "basic" },
+        { neighbor: n(2), toNeighbor: "basic", fromNeighbor: "basic" },
+      ]),
+    });
+    expect(s.postEditDraftEdges?.[edgeKey(slot0, n(1))]).toBeDefined();
+    expect(s.postEditDraftEdges?.[edgeKey(slot0, n(2))]).toBeDefined();
+  });
+
+  it("resetPostEditPoint drops both addSplitNode and its updateSplitNodeFaces commands together (shared lifeline)", () => {
+    seedPostEdit({
+      nodes: [{ id: 0, x: 0, y: 0, i: 0 }, { id: 1, x: 1, y: 0, i: 0 }],
+      edges: [],
+      start: null, finish: null,
+      commands: [{ kind: "addSplitNode", point: [0, 0], slotId: 0 }],
+      nextSplitSlotId: { "0,0": 1 },
+    }, { activeTessellationConfig: wideField, postEditTool: "passage" });
+    const slot0 = splitEndpoint([0, 0], 0);
+    useMazeStore.getState().applyPostEditTool(edgeKey(slot0, n(1)), slot0, n(1));
+    expect(useMazeStore.getState().postEditCommands).toHaveLength(2);
+    useMazeStore.getState().resetPostEditPoint([0, 0]);
+    const s = useMazeStore.getState();
+    expect(s.postEditCommands).toEqual([]);
+    expect(s.postEditDraftSplitPoints["0,0"]).toBeUndefined();
   });
 });

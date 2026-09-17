@@ -14,6 +14,15 @@ export interface ResolvedSplitSlot {
   faces: ResolvedSplitFace[];
 }
 
+/** One face wired on an `updateSplitNodeFaces` command (GitHub issue #545) — same
+ * neighbor-plus-outcome shape `setEdgePair` carries per direction, since a manually-wired split
+ * face (unlike a blueprint's, always `basic`) can be `wall`/`basic`/one-way in either direction. */
+export interface ResolvedSplitEdgeFace {
+  neighbor: PostEditEndpoint;
+  toNeighbor: PostEditEdgeKind;
+  fromNeighbor: PostEditEdgeKind;
+}
+
 /** One edge re-key resulting from a `rotateSplitPoint` command, pre-computed at construction time
  * from live tessellation geometry (`rotateSplitPointMoves`'s own move-list, `postEditUtils.ts`)
  * — replay has no tessellation/field access (`PostEditReplayContext` is identity-only, plan
@@ -35,6 +44,14 @@ export interface ResolvedRotateMove {
  * `PostEditReplayContext`/fold state. */
 export type PostEditCommand =
   | { kind: "setEdge"; from: PostEditEndpoint; to: PostEditEndpoint; edgeKind: PostEditEdgeKind }
+  // Wall/passage/one-way/reset edge tools (GitHub issue #545) always set both directed edges of a
+  // face pair at once — the graph model is directed, but a click on a face is always one logical
+  // action, not two. `setEdgePair` carries both outcomes atomically instead of two separate
+  // `setEdge` commands; `aToB.edgeKind` is `a -> b`, `bToA.edgeKind` is `b -> a`. `setEdge` itself
+  // stays for the rare single-direction case (`applySplitBlueprint`'s per-face wiring, GitHub issue
+  // #235, which sets one direction from a freshly-minted slot and its own reverse as two
+  // independently-timed commands against different lifelines).
+  | { kind: "setEdgePair"; a: PostEditEndpoint; b: PostEditEndpoint; aToB: PostEditEdgeKind; bToA: PostEditEdgeKind }
   | { kind: "addTeleport"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditTeleportDirection }
   | { kind: "setTeleportDirection"; id: number; direction: PostEditTeleportDirection }
   | { kind: "moveTeleportEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
@@ -42,16 +59,45 @@ export type PostEditCommand =
   | { kind: "setMeta"; slot: "start" | "finish"; endpoint: PostEditEndpoint | null }
   | { kind: "addSplitNode"; point: [number, number]; level?: number; slotId: number }
   | { kind: "removeSplitNode"; point: [number, number]; level?: number; slotId: number }
+  // A split slot's face wiring, resolved atomically (GitHub issue #545) — every edge-tool click on
+  // one of a split node's faces (`ManageSplitNodesDialog`'s per-face controls, or a general edge
+  // click that happens to land on an already-placed slot) appends one of these carrying the FULL
+  // current face list, exactly like `updateElevatorFloors` carries the full floor list rather than
+  // a diff — never a `setEdgePair`/`setEdge` command for that face, which would fragment one
+  // logical "reconfigure this slot's wiring" edit into one log entry per face touched. Shares its
+  // lifeline with the slot's own `addSplitNode`/`removeSplitNode` (`slot:${point}:${slotId}`,
+  // `lifelineKeyOf`) — same "one entity, one lifeline across every command kind touching it"
+  // convention `addElevator`/`updateElevatorFloors`/`removeElevator` already established.
+  | { kind: "updateSplitNodeFaces"; point: [number, number]; level?: number; slotId: number; faces: ResolvedSplitEdgeFace[] }
   | { kind: "rotateSplitPoint"; point: [number, number]; level?: number; moves: ResolvedRotateMove[] }
-  | { kind: "applySplitBlueprint"; point: [number, number]; level?: number; resolvedSlots: ResolvedSplitSlot[] }
+  // `originalFaces` (GitHub issue #545) carries the pre-existing node's own blueprint faces in the
+  // SAME command, instead of a `setEdge` pair per face appended right after — applying a blueprint
+  // is one logical action (one click, one shape), and splitting the original node's wiring into N
+  // extra log entries (`Specs/post-edit.md`'s command-log contract) doesn't reflect that. The
+  // original node has no `slotId` to be keyed under `resolvedSlots`, hence the separate field.
+  // `undefined`/`[]` when the point had no pre-existing node (a fresh split with nothing to wire).
+  // `blueprintTitleKey` (GitHub issue #545) carries the applied `SplitNodeBlueprint`'s own
+  // `titleKey` (`splitBlueprints.ts`), if it has one, straight onto the command — the "Changes"
+  // panel label needs it and a command must never look anything up outside its own fields at
+  // format time (same reasoning as every other pre-resolved field here). `undefined` for a
+  // blueprint with no recognizable name; the panel falls back to a generic label.
+  | {
+      kind: "applySplitBlueprint"; point: [number, number]; level?: number;
+      resolvedSlots: ResolvedSplitSlot[]; originalFaces?: ResolvedSplitFace[]; blueprintTitleKey?: string;
+    }
   | { kind: "addVerticalPassage"; id: number; from: PostEditEndpoint; to: PostEditEndpoint; direction: PostEditVerticalPassageDirection }
   | { kind: "setVerticalPassageDirection"; id: number; direction: PostEditVerticalPassageDirection }
   | { kind: "moveVerticalPassageEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
   | { kind: "removeVerticalPassage"; id: number }
-  | { kind: "addElevator"; id: number; floors: PostEditEndpoint[] }
-  | { kind: "updateElevatorFloors"; id: number; floors: PostEditEndpoint[] }
+  // `suppressPairs` (GitHub issue #545) folds the generation-time mesh pairs this elevator edit
+  // replaces into the SAME command, rather than one separate `suppressGenerationPair` command per
+  // pair — a lifts's floor edit is one logical action, and splitting it into N+1 log entries
+  // (`Specs/post-edit.md`'s command-log contract) doesn't reflect that. `undefined`/`[]` when no
+  // generation-time (or previously-confirmed draft) mesh needs suppressing, e.g. a brand-new
+  // elevator with no prior confirmed state.
+  | { kind: "addElevator"; id: number; floors: PostEditEndpoint[]; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
+  | { kind: "updateElevatorFloors"; id: number; floors: PostEditEndpoint[]; suppressPairs?: [PostEditEndpoint, PostEditEndpoint][] }
   | { kind: "removeElevator"; id: number }
-  | { kind: "deletePoint"; point: [number, number]; level?: number }
   // A generation-time vertical-passage/elevator mesh edge has been edited via a *seed* draft
   // entry derived from it (`startPostEditVerticalPassagePlacement`'s guard-1 branch, or the
   // equivalent elevator seed) — `confirmPostEdit` must stop re-emitting the original generation

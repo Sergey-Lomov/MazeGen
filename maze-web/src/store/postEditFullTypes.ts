@@ -217,7 +217,28 @@ export interface PostEditState {
           | { tool: "teleport_one_way" | "teleport_two_way" };
       }
     | null;
+  /** Whether the "Changes" panel (GitHub issue #545) — the post-edit command log listing — is
+   *  open. Own toggle-driven `SidePanel`, independent of `postEditFocusedPoint`'s "Manage split
+   *  nodes" panel (the two never open at once — `setPostEditChangesOpen(true)` closes the split-
+   *  node panel and vice versa, since both dock to the same `SidePanel` slot). Not persisted. */
+  postEditChangesOpen: boolean;
+  /** Live drag preview for the start/finish marker, a teleport endpoint, or a vertical-passage
+   *  endpoint (GitHub issue #545) — set by `PostEditController` on every pointermove while a drag
+   *  is armed, cleared on pointerup. Purely visual: `PostEditRenderer` overlays it on top of
+   *  `postEditDraftMeta`/`postEditDraftTeleports`/`postEditDraftVerticalPassages` when building the
+   *  scene, but nothing here ever touches `postEditCommands`/`postEditDerived` — the command log
+   *  only gets a single command on release (if the drag actually moved to a different node), not
+   *  one per pointermove. Not persisted. */
+  postEditDragOverride: PostEditDragOverride | null;
 }
+
+/** See `PostEditState.postEditDragOverride`. Each variant names the entity being dragged and its
+ *  current (possibly still-unconfirmed) target endpoint — `PostEditRenderer` substitutes this for
+ *  the entity's real endpoint while the drag is live. */
+export type PostEditDragOverride =
+  | { kind: "marker"; marker: "start" | "finish"; endpoint: PostEditEndpoint }
+  | { kind: "teleportEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint }
+  | { kind: "verticalPassageEndpoint"; id: number; end: "from" | "to"; endpoint: PostEditEndpoint };
 
 export interface PostEditActions {
   setPostEditAutoConfirm: (v: boolean) => void;
@@ -283,4 +304,10 @@ export interface PostEditActions {
   applyPostEditSplitTargetPick: (nodeId: number) => void;
   /** Dismisses an open `postEditSplitTargetPrompt` without placing anything. */
   cancelPostEditSplitTarget: () => void;
+  /** Opens/closes the "Changes" panel (GitHub issue #545). Opening it closes the "Manage split
+   *  nodes" panel (`postEditFocusedPoint`), since both dock to the same `SidePanel` slot. */
+  setPostEditChangesOpen: (open: boolean) => void;
+  /** Sets/clears the live drag preview (GitHub issue #545) — see `postEditDragOverride`'s doc
+   *  comment. Pure visual state, never touches the command log. */
+  setPostEditDragOverride: (override: PostEditDragOverride | null) => void;
 }
