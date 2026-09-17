@@ -1124,7 +1124,7 @@ describe("VectorByCorridorsRenderer", () => {
     vi.mocked(buildMazeMarkers).mockReturnValueOnce([{ pos: [5, 5], color: 0x999, radius: 4 }]);
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
     const corridorsGraphics = (renderer as unknown as { corridors: { fill: ReturnType<typeof vi.fn> } }).corridors;
-    expect(corridorsGraphics.fill).toHaveBeenCalledWith(settingsA.color);
+    expect(corridorsGraphics.fill).toHaveBeenCalledWith({ color: settingsA.color });
   });
 
   it("also widens the corridor under teleport markers, reusing the same markerWidenPadding setting (no separate teleport padding)", () => {
@@ -1132,7 +1132,7 @@ describe("VectorByCorridorsRenderer", () => {
     const renderer = new VectorByCorridorsRenderer({ addChild: vi.fn() } as never);
     const corridorsGraphics = (renderer as unknown as { corridors: { poly: ReturnType<typeof vi.fn>; circle: ReturnType<typeof vi.fn>; fill: ReturnType<typeof vi.fn> } }).corridors;
     // settingsA.teleportLineShape is "diamond" — drawn via `poly`, not `circle` (see drawMarkerShape).
-    expect(corridorsGraphics.fill).toHaveBeenCalledWith(settingsA.color);
+    expect(corridorsGraphics.fill).toHaveBeenCalledWith({ color: settingsA.color });
     expect(corridorsGraphics.poly).toHaveBeenCalled();
   });
 

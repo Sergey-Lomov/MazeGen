@@ -1,7 +1,7 @@
 import { BitmapText, Container, Graphics } from "pixi.js";
 import type { VerticalConnectionMarker, MarkerShape, TeleportCornerStyle, OneWayPattern, VerticalArrowStyle, ElevatorBadgeFontWeight } from "./types";
 import type { ElevatorBadgeSettings } from "../../store/imageExportTypes";
-import { drawMarkerShape } from "./markerShapes";
+import { drawMarkerShape, drawMarkerUnderlay } from "./markerShapes";
 import { drawOneWayArrow, drawOneWayTriangle, drawOneWayChevron } from "./wallUtils";
 import { TILE_SIZE } from "../constants";
 import { navigateToFloor } from "./floorNavigation";
@@ -333,8 +333,7 @@ function drawStairsArrow(g: Graphics, cx: number, cy: number, r: number, size: n
 function drawElevatorBadgeGap(container: Container, pos: { x: number; y: number }, radius: number, shape: MarkerShape, rounded: boolean, gapWidth: number, gapColor: number): void {
   if (gapWidth <= 0) return;
   const gapGraphics = new Graphics();
-  drawMarkerShape(gapGraphics, shape, pos.x, pos.y, radius + gapWidth, rounded);
-  gapGraphics.fill(gapColor);
+  drawMarkerUnderlay(gapGraphics, shape, pos.x, pos.y, radius, rounded, gapWidth, gapColor);
   container.addChild(gapGraphics);
 }
 
@@ -579,9 +578,12 @@ export class VerticalConnectionRenderer {
       const fillColor = oneWay && !marker.arrowFilled ? accentColor : settings.fillColor;
       const borderColor = oneWay ? accentColor : (settings.borderColor ?? settings.fillColor);
 
+      // Single true outward offset of the fill path (`radius`) by `borderWidth + gapWidth` — see
+      // `drawMarkerUnderlay`'s own doc comment (GitHub issue #552 ninth follow-up). The marker's own
+      // border below covers the ring's inner `borderWidth`-wide band, leaving only the outer
+      // `gapWidth`-wide band visible.
       if (gapWidth > 0) {
-        drawShape(radius + borderWidth + gapWidth);
-        this.g.fill(settings.gapColor);
+        drawMarkerUnderlay(this.g, settings.shape, cx, cy, radius, rounded, borderWidth + gapWidth, settings.gapColor);
       }
       drawShape(radius);
       this.g.fill(fillColor);

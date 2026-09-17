@@ -1,6 +1,6 @@
 import { Container, Graphics } from "pixi.js";
 import type { MarkerData } from "./types";
-import { drawMarkerShape } from "./markerShapes";
+import { drawMarkerShape, drawMarkerUnderlay } from "./markerShapes";
 
 export class WaypointsRenderer {
   private readonly g: Graphics;
@@ -17,15 +17,12 @@ export class WaypointsRenderer {
       const rounded = m.cornerStyle === "round";
       const borderWidth = m.borderWidth ?? 0;
       const gapWidth = m.gapWidth ?? 0;
-      // The border is drawn `alignment: 0` (pixi's outer alignment, grows entirely outward from
-      // `radius` — same convention every border/gap in this codebase now uses, GitHub issue #302
-      // follow-up), so the marker's true outer edge is always `radius + borderWidth`, never just
-      // `radius` — the gap ring (drawn first, underneath) must start there, not at
-      // `radius + borderWidth/2` (a centered-border assumption that let a large enough `borderWidth`
-      // visually eat into the gap).
+      // Single true outward offset of the fill path (`radius`) by `borderWidth + gapWidth` — see
+      // `drawMarkerUnderlay`'s own doc comment (GitHub issue #552 ninth follow-up) for the full
+      // rationale; the marker's own border (drawn on top, below) covers the ring's inner
+      // `borderWidth`-wide band, leaving only the outer `gapWidth`-wide band visible.
       if (gapWidth > 0) {
-        drawMarkerShape(this.g, shape, m.pos[0], m.pos[1], m.radius + borderWidth + gapWidth, rounded);
-        this.g.fill(m.gapColor ?? m.color);
+        drawMarkerUnderlay(this.g, shape, m.pos[0], m.pos[1], m.radius, rounded, borderWidth + gapWidth, m.gapColor ?? m.color);
       }
       drawMarkerShape(this.g, shape, m.pos[0], m.pos[1], m.radius, rounded);
       this.g.fill(m.color);

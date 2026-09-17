@@ -171,6 +171,44 @@ describe("VerticalConnectionRenderer", () => {
     expect(circleCalls[0].args[1]).toBeCloseTo(60);
   });
 
+  it("gapWidth > 0 draws a floor-colored gap ring as a single true outward offset of the marker's own fill radius by borderWidth + gapWidth (GitHub issue #552 ninth follow-up)", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [0, 0], kind: "vertical_passage", filled: true })],
+      style: baseStyle({
+        twoWayPassageMarker: circleMarkerStyle({ borderWidth: 4, gapWidth: 3, gapColor: 0x999999 }),
+      }),
+    });
+
+    const circleCalls = g.calls.filter((c) => c.method === "circle");
+    // Gap ring draws its own path twice (`drawMarkerUnderlay`'s fill + outward stroke), then the
+    // marker's own shape is drawn again separately for its fill and its border stroke — 4 total.
+    expect(circleCalls).toHaveLength(4);
+    const gapBaseRadius = circleCalls[0].args[2];
+    const markerRadius = circleCalls[2].args[2];
+    // The marker's own fill radius, not `radius + borderWidth` — a single true outward offset from
+    // here, not a shape redrawn at a bigger radius first.
+    expect(gapBaseRadius).toBe(markerRadius);
+    expect(g.strokeCalls[0]).toMatchObject({ width: 4 + 3, alignment: 0 });
+    expect(g.fillCalls[0]).toMatchObject({ color: 0x999999 });
+  });
+
+  it("gapWidth 0 (or unset) skips the gap ring entirely — not a zero-radius circle", () => {
+    const container = new Container();
+    const renderer = new VerticalConnectionRenderer(container as never);
+    const g = (renderer as unknown as { g: FakeGraphics }).g;
+
+    render(renderer, {
+      markers: [marker({ pos: [0, 0], kind: "vertical_passage", filled: true })],
+      style: baseStyle({ twoWayPassageMarker: circleMarkerStyle({ borderWidth: 4, gapWidth: 0 }) }),
+    });
+
+    expect(g.calls.filter((c) => c.method === "circle")).toHaveLength(2);
+  });
+
   it("spreads two markers sharing the same cell left/right, symmetric around the shared position", () => {
     const container = new Container();
     const renderer = new VerticalConnectionRenderer(container as never);

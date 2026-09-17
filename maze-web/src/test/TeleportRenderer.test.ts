@@ -316,20 +316,24 @@ describe("TeleportRenderer.render draw order", () => {
     const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).view;
 
     // `drawGroupGaps` draws both points' gap rings first (its own loop over the whole group), then
-    // `drawGroupPoints` draws both points' fill pass, then both points' border pass: circle(gapA),
-    // circle(gapB), circle(fillA), circle(fillB), circle(borderA), circle(borderB).
+    // `drawGroupPoints` draws both points' fill pass, then both points' border pass. Each gap ring
+    // draws its own path twice (`drawMarkerUnderlay`'s fill circle + outward-stroke circle, GitHub
+    // issue #552 second follow-up), so: circle(gapA fill), circle(gapA stroke), circle(gapB fill),
+    // circle(gapB stroke), circle(fillA), circle(fillB), circle(borderA), circle(borderB).
     const circleCalls = g.calls.filter((c) => c.fn === "circle");
     const fillCalls = g.calls.filter((c) => c.fn === "fill");
-    // 2 gap rings + 2 markers (fill pass) + 2 markers (border pass) = 6 circle() calls total.
-    expect(circleCalls).toHaveLength(6);
-    // The gap ring's own radius (size*TILE_SIZE + borderWidth + edgeGapWidth) must exceed the plain
-    // marker radius (size*TILE_SIZE) — the first two circle calls (the gap rings) must be larger
-    // than the next two (the markers' own fill-pass radius).
+    // 2 gap rings x 2 circle calls each + 2 markers (fill pass) + 2 markers (border pass) = 8 total.
+    expect(circleCalls).toHaveLength(8);
+    // The gap ring's own base radius is the plain marker fill radius (size*TILE_SIZE) itself, not
+    // `size*TILE_SIZE + borderWidth` — it's a single true outward offset by `borderWidth +
+    // edgeGapWidth` from the same fill path the marker itself uses (GitHub issue #552 ninth
+    // follow-up), so the first two circle calls (the gap ring's own path) match the fill-pass circle
+    // calls further down exactly.
     const [gapRadius] = circleCalls[0].args.slice(2) as [number];
-    const [markerRadius] = circleCalls[2].args.slice(2) as [number];
-    expect(gapRadius).toBeGreaterThan(markerRadius);
+    const [markerRadius] = circleCalls[4].args.slice(2) as [number];
+    expect(gapRadius).toBe(markerRadius);
     // First fill call is the gap ring's own floor-colored fill, before any marker fill.
-    expect(fillCalls[0].args[0]).toBe(0x444);
+    expect((fillCalls[0].args[0] as { color: number }).color).toBe(0x444);
   });
 
   it("skips the gap ring entirely when edgeGapWidth is 0 (no-op, not a zero-radius circle)", () => {
@@ -351,12 +355,13 @@ describe("TeleportRenderer.render draw order", () => {
     renderer.render({ edges, waypoints: [], lineStyle: baseLineStyle({ edgeGapWidth: 3 }) });
     const g = (renderer as unknown as { view: InstanceType<typeof Graphics> & { calls: { fn: string; args: unknown[] }[] } }).view;
 
-    // Each group draws gap(x2) + marker(x2 circle calls x2 points) = 6 circle calls; two independent
-    // groups (no shared points) = 12 total, in two contiguous group-sized blocks.
+    // Each group draws gap(x2 points x2 circle calls each) + marker(x2 circle calls x2 points) = 8
+    // circle calls; two independent groups (no shared points) = 16 total, in two contiguous
+    // group-sized blocks.
     const circleCalls = g.calls.filter((c) => c.fn === "circle");
-    expect(circleCalls).toHaveLength(12);
-    const firstGroupXs = circleCalls.slice(0, 6).map((c) => c.args[0]);
-    const secondGroupXs = circleCalls.slice(6, 12).map((c) => c.args[0]);
+    expect(circleCalls).toHaveLength(16);
+    const firstGroupXs = circleCalls.slice(0, 8).map((c) => c.args[0]);
+    const secondGroupXs = circleCalls.slice(8, 16).map((c) => c.args[0]);
     expect(new Set(firstGroupXs)).toEqual(new Set([0, 10]));
     expect(new Set(secondGroupXs)).toEqual(new Set([50, 60]));
   });
@@ -577,16 +582,19 @@ describe("TeleportRenderer.render cross-floor floor badge", () => {
     const thick = new TeleportRenderer(new Container());
     thick.render({ edges: [{ from: [0, 0], to: [10, 10], oneWay: true, toFloor: 1 }], waypoints: [], lineStyle: baseLineStyle({ connectorStyle: "straight", edgeGapWidth: 0, borderWidth: 8 }) });
     // `connectorStyle: "straight"` (needed so the cross-floor badge draws at all, GitHub issue
-    // #519) also strokes the connector line itself at `connectorWidth` (3) — excluded here since
-    // this test only cares about the marker/badge border strokes.
-    const strokeWidthsOf = (r: InstanceType<typeof TeleportRenderer>) => {
+    // #519) also strokes the connector line itself at `connectorWidth` (3), and the badge's own gap
+    // ring always draws an outward-offset stroke of width `borderWidth + max(edgeGapWidth, 1)`
+    // (`drawMarkerUnderlay`, GitHub issue #552 second, eighth and ninth follow-up) — both excluded
+    // here (by their own known widths, `borderWidth + 1`) since this test only cares about the
+    // marker/badge border strokes, which are the only strokes left at exactly `borderWidth`.
+    const strokeWidthsOf = (r: InstanceType<typeof TeleportRenderer>, borderWidth: number) => {
       const g = (r as unknown as { view: { calls: { fn: string; args: unknown[] }[] } }).view;
-      return g.calls.filter((c) => c.fn === "stroke").map((c) => (c.args[0] as { width: number }).width).filter((w) => w !== 3);
+      return g.calls.filter((c) => c.fn === "stroke").map((c) => (c.args[0] as { width: number }).width).filter((w) => w !== 3 && w !== borderWidth + 1);
     };
     // Both the origin marker and the badge stroke at the edge marker's own borderWidth.
-    expect(strokeWidthsOf(thin).every((w) => w === 1)).toBe(true);
-    expect(strokeWidthsOf(thick).every((w) => w === 8)).toBe(true);
-    expect(strokeWidthsOf(thick).length).toBeGreaterThanOrEqual(1);
+    expect(strokeWidthsOf(thin, 1).every((w) => w === 1)).toBe(true);
+    expect(strokeWidthsOf(thick, 8).every((w) => w === 8)).toBe(true);
+    expect(strokeWidthsOf(thick, 8).length).toBeGreaterThanOrEqual(1);
   });
 
   // GitHub issue #485 follow-up item 3: textPadding 0 fits the label to the whole badge including

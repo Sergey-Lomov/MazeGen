@@ -1,7 +1,7 @@
 import type { Graphics } from "pixi.js";
 import { TILE_SIZE } from "../constants";
 import { DEFAULT_MAZE_RENDER_STYLE } from "../defaultMazeRenderStyle";
-import { drawMarkerShape } from "./markerShapes";
+import { drawMarkerShape, drawMarkerUnderlay } from "./markerShapes";
 import { clipDistance } from "./teleportGeometry";
 
 /** Dimmed while-placing look for a teleport whose first endpoint is fixed: the endpoint marker at
@@ -44,9 +44,10 @@ export function drawTeleportPreview(
     }
   }
 
+  // Single true outward offset of the fill path (`r`) by `borderWidth + edgeGapWidth` (GitHub issue
+  // #552 ninth follow-up) — see `WaypointsRenderer`'s own gap ring for the full rationale.
   if (style.edgeGapWidth > 0) {
-    drawMarkerShape(g, style.shape, originX, originY, outerR, rounded);
-    g.fill({ color: style.floorColor, alpha: 0.5 });
+    drawMarkerUnderlay(g, style.shape, originX, originY, r, rounded, style.borderWidth + style.edgeGapWidth, { color: style.floorColor, alpha: 0.5 });
   }
   drawMarkerShape(g, style.shape, originX, originY, r, rounded);
   g.fill({ color: style.edgeColor, alpha: 0.5 });

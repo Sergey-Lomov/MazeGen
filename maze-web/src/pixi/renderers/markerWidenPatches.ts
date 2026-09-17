@@ -1,6 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { MarkerData } from "./types";
-import { drawMarkerShape } from "./markerShapes";
+import { drawMarkerUnderlay } from "./markerShapes";
 
 /** Draws a filled patch matching each marker's own shape, in the line's own color, wherever a
  *  marker sits on top of a stroked line — GitHub issue #311's reusable "widen the line so a
@@ -8,7 +8,12 @@ import { drawMarkerShape } from "./markerShapes";
  *  drawing markers over a stroked line (a corridor, a wall, ...) can call this with its own
  *  `MarkerData[]` and stroke color/width. A marker's own visible footprint radius is
  *  `radius + (borderWidth ?? 0) + (gapWidth ?? 0)` (same convention `exportWarnings.ts`'s
- *  `markerWorldRadius` uses for its overlap checks); `padding` is added on top of that footprint so
+ *  `markerWorldRadius` uses for its overlap checks). The patch itself is a single true outward
+ *  offset of the marker's own *fill* path (`radius`) by `borderWidth` plus whatever's left of the
+ *  footprint beyond that — not a `drawMarkerShape` redrawn at `radius + borderWidth`, which rescales
+ *  a rounded shape's corner radius right along with it and drifts from the marker's real outer
+ *  silhouette at the corners (GitHub issue #552 sixth follow-up; see `drawMarkerWidenPatches`'s own
+ *  comment). `padding` is added on top of the footprint so
  *  the patch actually extends past what the marker itself draws — without it, a marker with no
  *  border/gap has a footprint exactly equal to its own fill radius, so the marker completely covers
  *  the patch and no widened line is visible around it at all. The result is floored at the line's
@@ -33,14 +38,26 @@ export function drawMarkerWidenPatches(
   shapeOverride?: "circle" | "square" | "match_marker",
   squareCornerStyle?: "sharp" | "round",
 ): void {
+  if (padding <= 0) return; // padding is this patch's own on/off switch — 0 means no widen patch at all, regardless of borderWidth/gapWidth
   const halfWidth = lineWidth / 2;
   for (const marker of markers) {
-    const footprint = marker.radius + (marker.borderWidth ?? 0) + (marker.gapWidth ?? 0) + padding;
+    const borderWidth = marker.borderWidth ?? 0;
+    const markerOuterRadius = marker.radius + borderWidth;
+    const footprint = markerOuterRadius + (marker.gapWidth ?? 0) + padding;
     const patchRadius = Math.max(footprint, halfWidth);
     const useOverride = shapeOverride !== undefined && shapeOverride !== "match_marker";
     const shape = useOverride ? shapeOverride : (marker.shape ?? "circle");
     const rounded = useOverride ? squareCornerStyle === "round" : marker.cornerStyle === "round";
-    drawMarkerShape(g, shape, marker.pos[0], marker.pos[1], patchRadius, rounded);
-    g.fill(lineColor);
+    // The patch must offset outward from the marker's *own fill path* (`marker.radius`), not from a
+    // `drawMarkerShape` redrawn at `markerOuterRadius` — see `drawMarkerUnderlay`'s own doc comment
+    // for why redrawing a rounded shape at a bigger radius drifts from the marker's true outer edge
+    // at the corners (GitHub issue #552 sixth follow-up). `extra` (floored at 0) is what's left of
+    // the footprint beyond the marker's own outer edge — `patchRadius` can be `halfWidth`-floored
+    // below `markerOuterRadius` for a marker smaller than the stroke.
+    const extra = Math.max(patchRadius - markerOuterRadius, 0);
+    // `padding > 0` (checked above) guarantees `footprint > markerOuterRadius`, so `extra > 0` and
+    // therefore `outset > 0` here always — there's always something to draw once this loop runs.
+    const outset = borderWidth + extra;
+    drawMarkerUnderlay(g, shape, marker.pos[0], marker.pos[1], marker.radius, rounded, outset, lineColor);
   }
 }
