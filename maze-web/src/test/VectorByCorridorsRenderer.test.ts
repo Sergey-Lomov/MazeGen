@@ -350,6 +350,12 @@ describe("buildVerticalWidenMarkers", () => {
     expect(marker.cornerStyle).toBe(settingsA.oneWayPassageMarker.cornerStyle);
   });
 
+  it("carries the resolved marker's own borderWidth/gapWidth through (GitHub issue #551)", () => {
+    const [marker] = buildVerticalWidenMarkers([makeMarker({ kind: "elevator" })], settingsA);
+    expect(marker.borderWidth).toBe(settingsA.elevatorMarker.borderWidth);
+    expect(marker.gapWidth).toBe(settingsA.elevatorMarker.gapWidth);
+  });
+
   it("carries each marker's own pos through unchanged", () => {
     const markers = [makeMarker({ pos: [3, 4] }), makeMarker({ pos: [5, 6], kind: "elevator" })];
     expect(buildVerticalWidenMarkers(markers, settingsA).map((m) => m.pos)).toEqual([[3, 4], [5, 6]]);

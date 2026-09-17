@@ -78,13 +78,26 @@ export function buildTeleportWidenMarkers(teleportEdges: TeleportEdge[], setting
  *  "Vector by corridors" has no decorative pictogram treatment (GitHub issue #348 — unlike "Vector
  *  by walls"), so radius/shape always mirror `twoWayPassageMarker`/`oneWayPassageMarker`/
  *  `elevatorMarker`'s own `size`/`shape`/`cornerStyle`, same resolution `VerticalConnectionRenderer`
- *  itself uses for its abstract-marker draw path. Only `shape`/`cornerStyle`/`radius` matter here
- *  (widen patches draw in the corridor's own color, not the marker's), so `color: 0` is an unused
+ *  itself uses for its abstract-marker draw path. `borderWidth`/`gapWidth` are carried over too
+ *  (GitHub issue #551 fix) — `VerticalConnectionRenderer` draws its own visible footprint out to
+ *  `radius + borderWidth + gapWidth` (same convention every other marker on this canvas follows),
+ *  so omitting them here undersized the widen patch by exactly that border+gap amount, independent
+ *  of `markerWidenPadding`: the patch looked unaffected by the padding until it grew past that
+ *  missing gap. Only `shape`/`cornerStyle`/`radius`/`borderWidth`/`gapWidth` matter here (widen
+ *  patches draw in the corridor's own color, not the marker's), so `color: 0` is an unused
  *  placeholder, same convention `buildTeleportWidenMarkers` uses. */
 export function buildVerticalWidenMarkers(markers: VerticalConnectionMarker[], settings: VectorByCorridorsSettings): MarkerData[] {
   return markers.map((marker) => {
     const markerSettings = marker.kind === "elevator" ? settings.elevatorMarker : marker.filled ? settings.twoWayPassageMarker : settings.oneWayPassageMarker;
-    return { pos: marker.pos, color: 0, radius: markerSettings.size * TILE_SIZE, shape: markerSettings.shape, cornerStyle: markerSettings.cornerStyle };
+    return {
+      pos: marker.pos,
+      color: 0,
+      radius: markerSettings.size * TILE_SIZE,
+      shape: markerSettings.shape,
+      cornerStyle: markerSettings.cornerStyle,
+      borderWidth: markerSettings.borderWidth,
+      gapWidth: markerSettings.gapWidth,
+    };
   });
 }
 
